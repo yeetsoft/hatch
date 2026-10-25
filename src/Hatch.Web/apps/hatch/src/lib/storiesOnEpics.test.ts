@@ -1,6 +1,34 @@
-import { describe, expect, it } from 'vitest';
-import { carried, countWords, storyCount } from './storiesOnEpics';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  COLLAPSED_EPICS_STORAGE_KEY,
+  carried,
+  countWords,
+  readCollapsedEpics,
+  storyCount,
+  toggleCollapsed,
+  writeCollapsedEpics,
+} from './storiesOnEpics';
 import type { IssueCard, IssueType, Project, Status } from '../types';
+
+/** A localStorage that holds what it is given, and can be made to throw - the
+    same stub filter.test.ts uses. `throwOn` limits the failure to one call. */
+function stubStorage(initial: Record<string, string> = {}, throwOn: 'get' | 'set' | 'both' | null = null) {
+  const data = { ...initial };
+  const storage = {
+    getItem: (k: string) => {
+      if (throwOn === 'get' || throwOn === 'both') throw new Error('blocked');
+      return k in data ? data[k] : null;
+    },
+    setItem: (k: string, v: string) => {
+      if (throwOn === 'set' || throwOn === 'both') throw new Error('blocked');
+      data[k] = v;
+    },
+  };
+  vi.stubGlobal('window', { localStorage: storage });
+  return data;
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
   id,
@@ -226,5 +254,71 @@ describe('countWords', () => {
     expect(countWords(3, 1)).toBe('1 of 3 done');
     expect(countWords(0, 0)).toBe('0 of 0 done');
     expect(countWords(2, 2)).toBe('2 of 2 done');
+  });
+});
+
+describe('readCollapsedEpics', () => {
+  it('is empty when nothing is stored', () => {
+    stubStorage();
+    expect(readCollapsedEpics()).toEqual(new Set());
+  });
+
+  it('round-trips what was written', () => {
+    const data = stubStorage();
+    writeCollapsedEpics(new Set(['AER-1', 'AER-7']));
+    expect(data[COLLAPSED_EPICS_STORAGE_KEY]).toBe('["AER-1","AER-7"]');
+    expect(readCollapsedEpics()).toEqual(new Set(['AER-1', 'AER-7']));
+  });
+
+  it('drops members that are not strings', () => {
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: JSON.stringify(['AER-1', 2, null, { key: 'AER-3' }, 'AER-4']) });
+    expect(readCollapsedEpics()).toEqual(new Set(['AER-1', 'AER-4']));
+  });
+
+  it('is empty for unreadable JSON and for a value that is not an array', () => {
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: '{not json' });
+    expect(readCollapsedEpics()).toEqual(new Set());
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: '{"AER-1":true}' });
+    expect(readCollapsedEpics()).toEqual(new Set());
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: '"AER-1"' });
+    expect(readCollapsedEpics()).toEqual(new Set());
+  });
+
+  it('is empty when the store throws', () => {
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: '["AER-1"]' }, 'get');
+    expect(readCollapsedEpics()).toEqual(new Set());
+  });
+
+  it('returns a fresh Set each time', () => {
+    stubStorage({ [COLLAPSED_EPICS_STORAGE_KEY]: '["AER-1"]' });
+    const first = readCollapsedEpics();
+    first.add('AER-2');
+    expect(readCollapsedEpics()).toEqual(new Set(['AER-1']));
+  });
+});
+
+describe('writeCollapsedEpics', () => {
+  it('does not throw when the store does', () => {
+    stubStorage({}, 'set');
+    expect(() => writeCollapsedEpics(['AER-1'])).not.toThrow();
+  });
+});
+
+describe('toggleCollapsed', () => {
+  it('adds a key that is not collapsed', () => {
+    expect(toggleCollapsed(new Set(['AER-1']), 'AER-2')).toEqual(new Set(['AER-1', 'AER-2']));
+  });
+
+  it('removes a key that is collapsed, so expanding stores nothing', () => {
+    expect(toggleCollapsed(new Set(['AER-1', 'AER-2']), 'AER-1')).toEqual(new Set(['AER-2']));
+  });
+
+  it('does not mutate its input', () => {
+    const before = new Set(['AER-1']);
+    const added = toggleCollapsed(before, 'AER-2');
+    const removed = toggleCollapsed(before, 'AER-1');
+    expect(before).toEqual(new Set(['AER-1']));
+    expect(added).not.toBe(before);
+    expect(removed).not.toBe(before);
   });
 });
