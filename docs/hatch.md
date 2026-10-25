@@ -6401,7 +6401,7 @@ cleared by the next loop in that checkout, so a `kill -9` needs nobody to tidy
 up after it.
 
 Running two loops on one machine, each in its own checkout, is walked
-through in [Two runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#two-runners-on-one-machine).
+through in [Several runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#several-runners-on-one-machine).
 
 ### What a runner does, in order
 
@@ -7837,7 +7837,7 @@ that feeds the attention panel's dot, and
 sets this in the first place.
 
 Running two loops on one machine, each in its own checkout, is walked
-through in [Two runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#two-runners-on-one-machine).
+through in [Several runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#several-runners-on-one-machine).
 
 ### The console
 
