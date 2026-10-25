@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Modal, Text } from '@hatch/ui';
-import { agePhrase, pace, rowPercent, rowResetPhrase, rowSentence, timeGoneFraction, usageVars } from '../lib/utilization';
+import { agePhrase, rowPercent, rowResetPhrase, rowSentence, timeGoneFraction, usageVars } from '../lib/utilization';
 import { useMe } from '../lib/useMe';
 import type { Utilization } from '../types';
 
@@ -77,7 +77,7 @@ export function UtilizationModal({
                   <div className="hatch-usage-bar-track">
                     <div
                       className="hatch-usage-bar-fill"
-                      style={{ ...usageVars(pace(limit, now)), width: `${percent}%` }}
+                      style={{ ...usageVars(percent), width: `${percent}%` }}
                     />
                   </div>
                   {hasTimeBar && (
