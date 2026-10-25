@@ -296,6 +296,85 @@ public sealed class BackupServiceTests : IDisposable
         Assert.Equal(before, Names("*"));
     }
 
+    [Fact]
+    public async Task TryRunAsync_FreeService_RunsOnceAndReturnsTheAttempt()
+    {
+        var process = new FakeBackupProcess { Stdout = [1, 2], ExitCode = 0 };
+        var (service, status) = NewService(process, _dir);
+
+        var attempt = await service.TryRunAsync(TimeSpan.FromMinutes(2), CancellationToken.None);
+
+        Assert.NotNull(attempt);
+        Assert.Equal(BackupOutcome.Ok, attempt!.Outcome);
+        Assert.Same(attempt, status.Last);
+        var file = Assert.Single(Directory.GetFiles(_dir));
+        Assert.Equal(BackupNames.Final(Now), Path.GetFileName(file));
+    }
+
+    [Fact]
+    public async Task TryRunAsync_WhileARunHoldsTheGate_ReturnsNullAndStartsNothing()
+    {
+        var process = new FakeBackupProcess { Hangs = true };
+        var (service, status) = NewService(process, _dir);
+        using var first = new CancellationTokenSource();
+        var firstRun = service.RunAsync(first.Token);
+        await process.Started.Task;
+        var partials = Names("*");
+
+        var attempt = await service.TryRunAsync(TimeSpan.FromMinutes(2), CancellationToken.None);
+
+        Assert.Null(attempt);
+        Assert.Null(status.Last);
+        Assert.Equal(1, process.Runs);
+        Assert.Equal(partials, Names("*"));
+
+        await first.CancelAsync();
+        var cancelled = await firstRun;
+        Assert.Equal(BackupOutcome.Failed, cancelled.Outcome);
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public async Task TryRunAsync_ProcessHangs_FailsAtTheCapAndLeavesNoPartial()
+    {
+        var process = new FakeBackupProcess { Hangs = true };
+        var (service, status) = NewService(process, _dir);
+
+        var attempt = await service.TryRunAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        Assert.NotNull(attempt);
+        Assert.Equal(BackupOutcome.Failed, attempt!.Outcome);
+        Assert.Contains("did not finish within", attempt.Error);
+        Assert.Same(attempt, status.Last);
+        Assert.Empty(Directory.GetFiles(_dir));
+    }
+
+    [Fact]
+    public async Task TryRunAsync_AlreadyCancelled_RecordsCancelledInsteadOfThrowing()
+    {
+        var (service, status) = NewService(new FakeBackupProcess(), _dir);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var attempt = await service.TryRunAsync(TimeSpan.FromMinutes(2), cts.Token);
+
+        Assert.NotNull(attempt);
+        Assert.Equal("cancelled", attempt!.Error);
+        Assert.Same(attempt, status.Last);
+    }
+
+    [Theory]
+    [InlineData(null, 14)]
+    [InlineData(0, 0)]
+    [InlineData(-3, 14)]
+    [InlineData(30, 30)]
+    public void KeepDays_IsTheGuardedConfiguredValue(int? configured, int expected)
+    {
+        var (service, _) = NewService(new FakeBackupProcess(), _dir, keepDays: configured);
+
+        Assert.Equal(expected, service.KeepDays);
+    }
+
     private async Task RunOk(int? keepDays = null)
     {
         var (service, status) = NewService(new FakeBackupProcess { Stdout = [1], ExitCode = 0 }, _dir, keepDays: keepDays);
@@ -362,11 +441,16 @@ public sealed class BackupServiceTests : IDisposable
         public Exception? Throws { get; set; }
         public bool Hangs { get; set; }
 
+        public TaskCompletionSource Started = new();
+        public int Runs { get; private set; }
+
         public BackupProcessStart? LastStart { get; private set; }
 
         public async Task<BackupProcessResult> RunAsync(BackupProcessStart start, Stream stdout, CancellationToken ct)
         {
             LastStart = start;
+            Runs++;
+            Started.TrySetResult();
 
             if (Throws is { } ex) throw ex;
             if (Hangs) await Task.Delay(Timeout.Infinite, ct);

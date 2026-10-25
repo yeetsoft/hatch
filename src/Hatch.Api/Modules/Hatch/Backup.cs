@@ -250,6 +250,12 @@ public sealed class BackupService
     }
 
     /// <summary>
+    /// How many newest finished copies pruning always keeps: the configured
+    /// value, 0 when the operator turned pruning off, the default when negative.
+    /// </summary>
+    public int KeepDays => _keepDays;
+
+    /// <summary>
     /// The folder's finished backups - see <see cref="BackupFolder.List"/>.
     /// An empty path answers directly, with no sentence naming a folder the
     /// operator never configured.
@@ -276,7 +282,7 @@ public sealed class BackupService
 
         try
         {
-            return await RunLockedAsync(ct);
+            return await RunLockedAsync(ct, _timeout);
         }
         catch (Exception ex)
         {
@@ -292,7 +298,43 @@ public sealed class BackupService
         }
     }
 
-    private async Task<BackupAttempt> RunLockedAsync(CancellationToken ct)
+    /// <summary>
+    /// Runs one backup attempt only if none is running, and never throws:
+    /// <c>null</c> says the gate was busy and nothing was started, where
+    /// <see cref="RunAsync"/> would have queued behind it. The run is capped
+    /// at <paramref name="cap"/> rather than the constructor's timeout.
+    /// </summary>
+    public async Task<BackupAttempt?> TryRunAsync(TimeSpan cap, CancellationToken ct)
+    {
+        // WaitAsync checks ct even with a zero timeout, so a cancelled token
+        // throws here and has to be caught the way RunAsync catches it.
+        bool acquired;
+        try
+        {
+            acquired = await _gate.WaitAsync(0, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return Record(Failed("cancelled"));
+        }
+
+        if (!acquired) return null;
+
+        try
+        {
+            return await RunLockedAsync(ct, cap);
+        }
+        catch (Exception ex)
+        {
+            return Record(Failed(ex.Message));
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<BackupAttempt> RunLockedAsync(CancellationToken ct, TimeSpan timeout)
     {
         var path = _options.BackupPath;
         if (string.IsNullOrEmpty(path))
@@ -340,7 +382,7 @@ public sealed class BackupService
         var start = new BackupProcessStart("pg_dump", args, env);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(_timeout);
+        cts.CancelAfter(timeout);
 
         try
         {
@@ -373,7 +415,7 @@ public sealed class BackupService
         catch (OperationCanceledException)
         {
             DeletePartial(partialPath);
-            return Record(Failed(ct.IsCancellationRequested ? "cancelled" : $"pg_dump did not finish within {_timeout}"));
+            return Record(Failed(ct.IsCancellationRequested ? "cancelled" : $"pg_dump did not finish within {timeout}"));
         }
         catch (Exception ex)
         {
