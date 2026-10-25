@@ -193,3 +193,8 @@ story whose epic is missing, shelved or past the horizon. A carried story is
 never a card, at any column or fold stage, and the "hidden by the filter" count
 on a column never counts one. With the setting off, the board draws exactly as
 it always has.
+
+The filter bar finds a carried story through its epic. Searching a carried
+story's key or words from its title, the Waiting switch and the assignee facet
+each draw the epic whose carried story matches. The Types and Project filters
+judge the epic itself. The story is never drawn as a card.
