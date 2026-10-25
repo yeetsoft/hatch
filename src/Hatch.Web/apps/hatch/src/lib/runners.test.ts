@@ -7,6 +7,7 @@ import {
   boundsProblem,
   boundsRequest,
   drivesLabel,
+  groupByHost,
   isIssueKeyShape,
   orderSentence,
   isControllable,
@@ -403,5 +404,28 @@ describe('runnerBuildLabel', () => {
 
   it('says nothing for a runner that has never reported a build', () => {
     expect(runnerBuildLabel(runner({ revision: null }), NOW)).toBeNull();
+  });
+});
+
+describe('groupByHost', () => {
+  it('gathers a host at the place of its first member and sums runs and spend, null as zero', () => {
+    const groups = groupByHost([
+      runner({ name: 'a', host: 'box', runs: 2, spent: 1 }),
+      runner({ name: 'x', host: 'other', runs: 1, spent: 5 }),
+      runner({ name: 'b', host: 'box', runs: null, spent: 0.5 }),
+    ]);
+    expect(groups.map((g) => [g.host, g.runners.map((r) => r.name)])).toEqual([
+      ['box', ['a', 'b']],
+      ['other', ['x']],
+    ]);
+    expect(groups[0]).toMatchObject({ totalRuns: 2, totalSpent: 1.5 });
+  });
+
+  it('leaves each runner with no host alone, with a null host', () => {
+    const groups = groupByHost([runner({ name: 'a', host: null }), runner({ name: 'b', host: '' })]);
+    expect(groups.map((g) => [g.host, g.runners.length])).toEqual([
+      [null, 1],
+      [null, 1],
+    ]);
   });
 });

@@ -2731,6 +2731,13 @@ input.hatch-inline-title-input {
   margin: var(--sp-4) 0;
 }
 
+/* The summary under the runners of one machine: quieter than a runner row, so it
+   reads as the total of the rows above it rather than as another runner. */
+.hatch-runners-host-total td {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 .hatch-runner-group-title {
   font-size: var(--t-label);
   font-weight: 700;

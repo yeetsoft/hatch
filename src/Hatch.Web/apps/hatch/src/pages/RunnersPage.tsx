@@ -15,6 +15,7 @@ import {
   boundsProblem,
   boundsRequest,
   drivesLabel,
+  groupByHost,
   isControllable,
   isIssueKeyShape,
   MAX_SPEND_HINT,
@@ -26,8 +27,10 @@ import {
   tagsLabel,
   projectsLabel,
   type RunnerBounds,
+  type RunnerHostGroup,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
+import { moneyPhrase } from '../lib/workLog';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 /**
@@ -90,21 +93,40 @@ export function RunnersPage() {
               </tr>
             </thead>
             <tbody>
-              {runners.map((runner) => (
-                <Row
-                  key={runner.name}
-                  runner={runner}
-                  now={now}
-                  onPatch={(request) => void act(() => patchRunner(runner.name, request))}
-                  onOrder={(request) => void act(() => orderRunner(runner.name, request))}
-                  onWithdraw={() => void act(() => withdrawOrder(runner.name))}
-                />
+              {groupByHost(runners).map((group) => (
+                <Fragment key={group.host ?? group.runners[0].name}>
+                  {group.runners.map((runner) => (
+                    <Row
+                      key={runner.name}
+                      runner={runner}
+                      now={now}
+                      onPatch={(request) => void act(() => patchRunner(runner.name, request))}
+                      onOrder={(request) => void act(() => orderRunner(runner.name, request))}
+                      onWithdraw={() => void act(() => withdrawOrder(runner.name))}
+                    />
+                  ))}
+                  {group.runners.length > 1 && <HostTotal group={group} />}
+                </Fragment>
               ))}
             </tbody>
           </Table>
         </Card>
       )}
     </div>
+  );
+}
+
+/** The one line under the runners that share a machine: what that machine has
+    run and spent between them. Drawn only for a group of two or more - a lone
+    runner's own row already says as much. */
+export function HostTotal({ group }: { group: RunnerHostGroup }) {
+  return (
+    <tr className="hatch-runners-host-total">
+      <td colSpan={6}>
+        <strong>{group.host}</strong>
+        {` · ${group.totalRuns} runs · ${moneyPhrase(group.totalSpent)}`}
+      </td>
+    </tr>
   );
 }
 
