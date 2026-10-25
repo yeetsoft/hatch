@@ -31,17 +31,18 @@ namespace Hatch.Api.Tests;
 public class MinimalStartupTests
 {
     /// <summary>
-    /// Everything the four house jobs, BackfillChannelHistory and
-    /// ReflectionCadence are registered under - criterion 6 is that no
-    /// <em>house</em> job holds a trigger here. ReflectionCadence is not one
-    /// (<see cref="Hatch.Api.Modules.Hatch.ReflectionCadenceJob.ServesTheHouse"/>
-    /// is false), so it is scheduled either way and is the one trigger this
+    /// Everything the four house jobs, BackfillChannelHistory, ReflectionCadence
+    /// and Backup are registered under - criterion 6 is that no <em>house</em>
+    /// job holds a trigger here. ReflectionCadence and Backup are not house
+    /// jobs (<see cref="Hatch.Api.Modules.Hatch.ReflectionCadenceJob.ServesTheHouse"/>
+    /// and <see cref="Hatch.Api.Modules.Hatch.BackupJob.ServesTheHouse"/> are
+    /// false), so they are scheduled either way and are the two triggers this
     /// group is left holding.
     /// </summary>
     private const string JobGroup = "Hatch.Api";
 
-    /// <summary>The only trigger a house-less install still carries - see <see cref="JobGroup"/>.</summary>
-    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger"];
+    /// <summary>The only triggers a house-less install still carries - see <see cref="JobGroup"/>.</summary>
+    private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger", "Backup_Trigger"];
 
     /// <summary>
     /// The whole assembly runs in about twenty seconds today and each of these
@@ -101,13 +102,15 @@ public class MinimalStartupTests
     }
 
     /// <summary>
-    /// ReflectionCadence's trigger starts now, so its first firing lands inside
-    /// the few hundred milliseconds between /health/ready answering and this
-    /// host being disposed. Disposed mid-firing, Quartz fails to build the job
-    /// from a service provider that is already gone and says so at Error -
-    /// the test's own teardown, not a fault in startup. So the host is not
-    /// stopped until that one firing has run its course; the next is fifteen
-    /// minutes away. Bounded at ten seconds and then let go, so a firing that
+    /// ReflectionCadence's and Backup's triggers start now, so their first
+    /// firings land inside the few hundred milliseconds between /health/ready
+    /// answering and this host being disposed. Disposed mid-firing, Quartz
+    /// fails to build the job from a service provider that is already gone and
+    /// says so at Error - the test's own teardown, not a fault in startup. So
+    /// the host is not stopped until both firings have run their course; the
+    /// next is fifteen minutes away for one and a day for the other. Backup
+    /// with no path set is a no-op, but it is still a firing to be caught
+    /// mid-construction. Bounded at ten seconds and then let go, so a firing that
     /// never comes is not this case's failure to report.
     ///
     /// <para>"Fired" and "executing" are not the same instant: Quartz records
@@ -122,13 +125,23 @@ public class MinimalStartupTests
     {
         const int IdleSamples = 10;
 
-        var trigger = new TriggerKey("ReflectionCadence_Trigger", JobGroup);
+        var triggers = new[]
+        {
+            new TriggerKey("ReflectionCadence_Trigger", JobGroup),
+            new TriggerKey("Backup_Trigger", JobGroup),
+        };
         var until = DateTimeOffset.UtcNow.AddSeconds(10);
         var idle = 0;
 
         while (DateTimeOffset.UtcNow < until)
         {
-            var fired = (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
+            var fired = true;
+            foreach (var trigger in triggers)
+            {
+                fired &= (await scheduler.GetTrigger(trigger))?.GetPreviousFireTimeUtc() is not null;
+            }
+
+
             idle = fired && (await scheduler.GetCurrentlyExecutingJobs()).Count == 0 ? idle + 1 : 0;
             if (idle >= IdleSamples) return;
             await Task.Delay(50);
@@ -177,7 +190,7 @@ public class MinimalStartupTests
             var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
 
-            await deadline.BoundAsync("letting the reflection job's first firing finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
+            await deadline.BoundAsync("letting the jobs' first firings finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally
         {
@@ -190,7 +203,9 @@ public class MinimalStartupTests
         // server right alongside the one that says so.
         try
         {
-            Assert.Equal(ExpectedTriggers, await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup)));
+            // Unordered: the query has no ORDER BY, so compare sorted.
+            var triggerNames = await deadline.BoundAsync("reading job triggers", () => MinimalDatabases.TriggerNamesAsync(quartz, JobGroup));
+            Assert.Equal(ExpectedTriggers.Order(), triggerNames.Order());
 
             if (migrated)
             {

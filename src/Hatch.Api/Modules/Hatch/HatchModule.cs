@@ -75,6 +75,11 @@ public static class HatchModule
         // context and is a module's own, not the house's.
         services.AddScoped<IAppJob, ReflectionCadenceJob>();
 
+        // Scoped like ReflectionCadenceJob, though it holds only singletons: a
+        // module's own job, not one of Program.cs's house jobs. Its "on start,
+        // then daily" is JobsInit's, not a trigger of its own.
+        services.AddScoped<IAppJob, BackupJob>();
+
         // Singletons, both: the status must outlive the scoped job that
         // writes to it between runs, and the service itself holds only
         // options and a lock - nothing scoped to a request.
