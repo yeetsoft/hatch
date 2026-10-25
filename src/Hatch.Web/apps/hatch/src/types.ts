@@ -2017,6 +2017,9 @@ export interface Runner {
       writes to it, after which the row is the board's and only a PATCH
       moves it. */
   tags: string[];
+  /** The project keys this runner is held to, upper-case; empty is every
+      project. A bound on the loop's own work - the merge train ignores it. */
+  projects: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
@@ -2079,6 +2082,10 @@ export interface RunnerPatchRequest {
       list sets it - the one write that reaches a row after its first beat
       has seeded it. */
   tags?: string[];
+  /** The project keys to hold the runner to. Absent leaves the row's projects
+      alone, an empty list clears the bound, a list sets it; the server refuses
+      a key it does not know. */
+  projects?: string[];
 }
 
 /** A one-off order for a loop: work this ticket, or run one pass. Mirrors RunnerOrderRequest. */

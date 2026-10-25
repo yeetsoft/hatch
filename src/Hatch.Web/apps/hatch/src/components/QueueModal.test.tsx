@@ -145,6 +145,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   under: null,
   repositories: [],
   tags: [],
+  projects: [],
   drives: [],
   clones: null,
   mine: null,

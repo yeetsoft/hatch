@@ -17,6 +17,7 @@ import {
   runnerBuildLabel,
   runnerStrip,
   tagsLabel,
+  projectsLabel,
 } from './runners';
 import type { Runner } from '../types';
 
@@ -38,6 +39,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   under: null,
   repositories: [],
   tags: [],
+  projects: [],
   drives: [],
   clones: null,
   mine: null,
@@ -236,6 +238,17 @@ describe('repositoriesLabel', () => {
   });
 });
 
+describe('projectsLabel', () => {
+  it('says nothing for a runner held to no project', () => {
+    expect(projectsLabel(runner())).toBeNull();
+  });
+
+  it('prefixes the keys with the word, since a bare key reads as nothing', () => {
+    expect(projectsLabel(runner({ projects: ['HA'] }))).toBe('projects HA');
+    expect(projectsLabel(runner({ projects: ['HA', 'AER'] }))).toBe('projects HA, AER');
+  });
+});
+
 describe('tagsLabel', () => {
   it('is null for a runner that has named none', () => {
     expect(tagsLabel(runner())).toBeNull();
@@ -280,7 +293,7 @@ describe('MAX_SPEND_HINT', () => {
 
 describe('the bounds form', () => {
   it('shows an unbounded runner as empty boxes rather than as zeroes', () => {
-    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '' });
+    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '' });
   });
 
   it('round-trips what the row holds', () => {
@@ -290,6 +303,7 @@ describe('the bounds form', () => {
       maxSpend: 40,
       untilAt: '2026-09-09T06:00:00Z',
       tags: ['gpu', 'fast'],
+      projects: ['HA', 'AER'],
     });
 
     expect(boundsOf(bounded)).toEqual({
@@ -298,6 +312,7 @@ describe('the bounds form', () => {
       maxSpend: '40',
       untilAt: '2026-09-09T06:00:00Z',
       tags: 'gpu\nfast',
+      projects: 'HA\nAER',
     });
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
@@ -315,23 +330,31 @@ describe('the bounds form', () => {
     expect(boundsChanged({ ...boundsOf(bounded), tags: 'fast\ngpu' }, bounded)).toBe(true);
   });
 
+  it('notices projects changing, order-sensitively rather than as trimmed text', () => {
+    const bounded = runner({ projects: ['HA', 'AER'] });
+
+    expect(boundsChanged({ ...boundsOf(bounded), projects: 'HA\nAER\n' }, bounded)).toBe(false);
+    expect(boundsChanged({ ...boundsOf(bounded), projects: 'AER\nHA' }, bounded)).toBe(true);
+  });
+
   it('sends every field, so a cleared box clears the cap', () => {
     // The tri-state, from the other end: a field left out of the request means
     // "leave it alone", so an emptied box that was not sent would silently keep
     // the cap it was clearing.
-    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '', tags: 'gpu\n\nfast ' })).toEqual({
+    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ' })).toEqual({
       under: 'AER-930',
       maxRuns: '',
       maxSpend: '40',
       untilAt: '',
       tags: ['gpu', 'fast'],
+      projects: ['HA', 'AER'],
     });
   });
 
   it('says an until needs an hour before the server has to', () => {
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09', tags: '' })).toContain('an hour');
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z', tags: '' })).toBeNull();
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '' })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09', tags: '', projects: '' })).toContain('an hour');
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z', tags: '', projects: '' })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '' })).toBeNull();
   });
 });
 

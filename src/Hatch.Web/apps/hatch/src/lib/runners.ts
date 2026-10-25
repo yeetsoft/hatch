@@ -15,6 +15,7 @@
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
+import { runnerProjectsDraft, runnerProjectsRequest, sameProjects } from './runnerProjects';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import type { Runner, RunnerPatchRequest } from '../types';
 
@@ -175,6 +176,11 @@ export function tagsLabel(runner: Runner): string | null {
   return runner.tags.length === 0 ? null : runner.tags.join(', ');
 }
 
+/** A runner's project bound, as the summary says it - or null where it has none. The `projects ` prefix is deliberate: a bare key beside an issue key reads as nothing. The bound does not change the merge train. */
+export function projectsLabel(runner: Runner): string | null {
+  return runner.projects.length === 0 ? null : `projects ${runner.projects.join(', ')}`;
+}
+
 /** Whether this runner was started with do-my-work or --mine, as the word for the row - or null, drawn the same as `clones`. */
 export function mineLabel(runner: Runner): string | null {
   return runner.mine ? 'own tickets only' : null;
@@ -205,6 +211,7 @@ export interface RunnerBounds {
   /** The wire form, or `''` - what MomentField hands back. */
   untilAt: string;
   tags: string;
+  projects: string;
 }
 
 /** What a row's bounds look like in the form that edits them. */
@@ -215,6 +222,7 @@ export function boundsOf(runner: Runner): RunnerBounds {
     maxSpend: runner.maxSpend === null ? '' : String(runner.maxSpend),
     untilAt: runner.untilAt ?? '',
     tags: runnerTagsDraft(runner.tags),
+    projects: runnerProjectsDraft(runner.projects),
   };
 }
 
@@ -223,7 +231,8 @@ export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
   const saved = boundsOf(runner);
   return (
     (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim()) ||
-    !sameTags(runnerTagsRequest(draft.tags), runner.tags)
+    !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
+    !sameProjects(runnerProjectsRequest(draft.projects), runner.projects)
   );
 }
 
@@ -255,5 +264,6 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     maxSpend: draft.maxSpend.trim(),
     untilAt: draft.untilAt.trim(),
     tags: runnerTagsRequest(draft.tags),
+    projects: runnerProjectsRequest(draft.projects),
   };
 }
