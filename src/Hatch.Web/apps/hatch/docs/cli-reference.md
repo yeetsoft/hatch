@@ -23,6 +23,7 @@ every variable.
 |---|---|---|
 | `config` | No | No: it writes local files only |
 | `use` | No | No: it writes local files only |
+| `standby` | Yes | No: it registers or forgets a login item on this machine |
 | `board` | No | No |
 | `next` | No | No |
 | `queue` | No | No |
@@ -51,8 +52,9 @@ same list. Two more commands exist and are left off the table because nobody
 types them: one is called by the container runner's entrypoint, and one by a
 session's hooks. They are in `--help`, in their own groups.
 
-Only `work`, `go-to-work` and `do-my-work` need a checkout, or a workspace to
-clone into. Everything else is one request and a sentence about the answer, so
+`work`, `go-to-work` and `do-my-work` need a checkout, or a workspace to
+clone into, and `standby` needs the checkout it registers a login item for.
+Everything else is one request and a sentence about the answer, so
 it runs from anywhere. Every write carries the key's name as its actor, so the
 ticket's history says who did what without anybody being asked to record it.
 
@@ -131,6 +133,34 @@ It touches no ticket and no column, so it writes nothing to the board.
 A running `go-to-work` that follows the active profile restarts, or stops
 saying why, when this moves the pointer; see
 [Restarts](one-increment-and-the-loop#restarts).
+
+### standby
+
+```
+hatch standby [install | show | remove]
+```
+
+Registers, shows or forgets the login item that starts this checkout's loop
+(`hatch go-to-work --standby`) whenever its operator signs in. It makes no
+board call, but it needs a checkout: the item is registered for the one you
+are standing in, and under the profile you name with `--profile`, if any.
+
+- `hatch standby install` registers the item and prints the checkout, the
+  command it runs and the log it writes. It starts at the next sign-in;
+  `hatch go-to-work --standby` starts it now. Run again, it says it is already
+  installed and changes nothing.
+- `hatch standby show`, or `hatch standby` alone, prints whether the item is
+  installed, the command and the log, and then the loop lock: the pid of the
+  loop holding this checkout right now, or that no loop does. A lock left by a
+  process that has died counts as no loop.
+- `hatch standby remove` forgets the login item. A loop that is already
+  running is not stopped by this - only the login item goes away. With nothing
+  installed it says so.
+
+`show`, a repeated `install` and a `remove` with nothing installed exit 0. A
+refusal by the platform's own tool, no checkout, or a hatch that cannot be
+started from a login item (the bare `dotnet` host) exits 1 with one sentence on
+standard error.
 
 ### board
 
