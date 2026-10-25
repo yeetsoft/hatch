@@ -1225,6 +1225,33 @@ button.hatch-card-stories:focus-visible {
   color: var(--muted);
 }
 
+/* A story waiting on a person (an open question, or held) draws a dark "!"
+   instead of its column's dot. Never `--status-color`: a hue an operator
+   picked for a column could collide with it. */
+.hatch-card-story-dot--needs-me,
+.hatch-card-story-icon--needs-me {
+  width: 10px;
+  height: 10px;
+  background: var(--ink);
+  color: var(--on-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.hatch-card-story-dot--needs-me::after,
+.hatch-card-story-icon--needs-me::after {
+  content: '!';
+}
+
+.hatch-card-story-column--needs-me {
+  font-weight: 700;
+  color: var(--ink);
+}
+
 /* ---- The filter bar ----
 
    Above the board and outside the scrolling area, because it is about the whole

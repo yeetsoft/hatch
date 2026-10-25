@@ -5,7 +5,7 @@ import { DndContext } from '@dnd-kit/core';
 import { SortableContext } from '@dnd-kit/sortable';
 import { MemoryRouter } from 'react-router-dom';
 import { BoardCard, CardPreview, lineClick } from './BoardCard';
-import { countWords } from '../lib/storiesOnEpics';
+import { countWords, needsMe, stripLabel } from '../lib/storiesOnEpics';
 import type { IssueCard, Project, Status } from '../types';
 
 const card = (over: Partial<IssueCard> = {}): IssueCard => ({
@@ -341,6 +341,57 @@ describe('BoardCard, carrying stories', () => {
     expect(buttonStart).toBeGreaterThanOrEqual(0);
     expect(html.slice(buttonStart, html.indexOf('</button>'))).toContain('aria-expanded="true"');
     expect(html).toContain('hatch-card-story-lines');
+  });
+
+  describe.each([
+    ['an open question', { openQuestions: 1 }],
+    ['a hold', { held: true }],
+  ])('a story with %s', (_name, over) => {
+    const needing = [stories[0], card({ ...stories[1], ...over }), stories[2]];
+
+    it('draws its dot and icon as a "!" mark and its line as Needs me', () => {
+      expect(needsMe(needing[1])).toBe(true);
+      const html = renderSortable(<BoardCard card={epic} stories={needing} statuses={statuses} />, [epic.key]);
+
+      expect(html.split('hatch-card-story-dot--needs-me').length - 1).toBe(1);
+      expect(html.split('hatch-card-story-icon--needs-me').length - 1).toBe(1);
+      expect(html.split('hatch-card-story-column--needs-me').length - 1).toBe(1);
+      expect(html).toContain('>Needs me<');
+      expect(html).toContain('title="AER-3 - Doing - needs me"');
+      expect(html).toContain(`· 1 needs me`);
+      expect(html).toContain(`aria-label="${stripLabel(3, 1, 1)}"`);
+      expect(html).toContain('aria-label="3 stories, 1 done, 1 needs you"');
+    });
+
+    it('leaves the other stories as they were', () => {
+      const html = renderSortable(<BoardCard card={epic} stories={needing} statuses={statuses} />, [epic.key]);
+
+      expect(html).toContain('title="AER-2 - Backlog"');
+      expect(html).toContain('title="AER-4 - Done"');
+      expect(html).toContain('>Backlog<');
+      expect(html).toContain('>Done<');
+      expect(html).not.toContain('>Doing<');
+    });
+
+    it('keeps the dot and the count when collapsed, with no lines', () => {
+      const html = renderSortable(
+        <BoardCard card={epic} stories={needing} statuses={statuses} collapsed />,
+        [epic.key],
+      );
+
+      expect(html).toContain('hatch-card-story-dot--needs-me');
+      expect(html).toContain('· 1 needs me');
+      expect(html).not.toContain('hatch-card-story-lines');
+    });
+  });
+
+  it('marks nothing when no story is waiting on anyone', () => {
+    const html = renderSortable(<BoardCard card={epic} stories={stories} statuses={statuses} />, [epic.key]);
+
+    expect(html).not.toContain('needs-me');
+    expect(html).not.toContain('Needs me');
+    expect(html).not.toContain('needs you');
+    expect(html).toContain('aria-label="3 stories, 1 done"');
   });
 
   it('nests no <a inside the face anchor, and no <button inside any <a', () => {

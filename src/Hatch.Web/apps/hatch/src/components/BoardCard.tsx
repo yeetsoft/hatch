@@ -12,7 +12,7 @@ import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick, type ClickIntent } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
 import type { Spot } from '../lib/spotlight';
-import { countWords, storyCount } from '../lib/storiesOnEpics';
+import { countWords, needsMe, storyCount, stripLabel } from '../lib/storiesOnEpics';
 import { truncate } from '../lib/text';
 import type { IssueCard, Project, Status } from '../types';
 
@@ -205,7 +205,7 @@ export function BoardCard({
         className="hatch-card-stories"
         aria-expanded={!collapsed}
         aria-controls={storiesId}
-        aria-label={`${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`}
+        aria-label={stripLabel(total, done, stories.filter(needsMe).length)}
         onClick={() => onToggle?.(card.key)}
       >
         <StoryStrip stories={stories} statuses={statuses} />
@@ -372,7 +372,7 @@ function CardFace({
       </div>
       {card.parentKey && <div className="hatch-card-parent">↳ {card.parentKey}</div>}
       {stories.length > 0 && showStrip && (
-        <div className="hatch-card-stories" aria-label={`${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`}>
+        <div className="hatch-card-stories" aria-label={stripLabel(total, done, stories.filter(needsMe).length)}>
           <StoryStrip stories={stories} statuses={statuses} />
         </div>
       )}
@@ -396,20 +396,22 @@ function CardFace({
  */
 export function StoryStrip({ stories, statuses }: { stories: IssueCard[]; statuses: Status[] }) {
   const { total, done } = storyCount(stories, statuses);
+  const needing = stories.filter(needsMe).length;
   return (
     <>
       {stories.map((story) => {
         const column = statuses.find((s) => s.id === story.statusId);
+        const needs = needsMe(story);
         return (
           <span
             key={story.key}
-            className="hatch-card-story-dot"
+            className={`hatch-card-story-dot${needs ? ' hatch-card-story-dot--needs-me' : ''}`}
             style={statusVars(column?.color)}
-            title={`${story.key} - ${column?.name ?? ''}`}
+            title={`${story.key} - ${column?.name ?? ''}${needs ? ' - needs me' : ''}`}
           />
         );
       })}
-      <span className="hatch-card-stories-words">{countWords(total, done)}</span>
+      <span className="hatch-card-stories-words">{countWords(total, done, needing)}</span>
     </>
   );
 }
@@ -452,17 +454,20 @@ export function StoryLines({
     <ul id={id} className="hatch-card-story-lines">
       {stories.map((story) => {
         const column = statuses.find((s) => s.id === story.statusId);
+        const needs = needsMe(story);
         return (
           <li key={story.key} style={statusVars(column?.color)}>
             <Link
               className="hatch-card-story-line"
               to={`/issues/${story.key}`}
-              title={`${story.key} - ${column?.name ?? ''}`}
+              title={`${story.key} - ${column?.name ?? ''}${needs ? ' - needs me' : ''}`}
               onClick={lineClick(story, onPeek)}
             >
-              <span className="hatch-card-story-icon" />
+              <span className={`hatch-card-story-icon${needs ? ' hatch-card-story-icon--needs-me' : ''}`} />
               <span className="hatch-card-story-title">{truncate(story.title)}</span>
-              <span className="hatch-card-story-column">{column?.name ?? ''}</span>
+              <span className={`hatch-card-story-column${needs ? ' hatch-card-story-column--needs-me' : ''}`}>
+                {needs ? 'Needs me' : (column?.name ?? '')}
+              </span>
             </Link>
           </li>
         );
