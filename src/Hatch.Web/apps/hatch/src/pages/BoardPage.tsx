@@ -48,6 +48,7 @@ import { aimAt } from '../lib/aim';
 import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
+import { carried } from '../lib/storiesOnEpics';
 import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
@@ -293,6 +294,13 @@ export function BoardPage() {
   );
 
   const cards = board?.issues;
+  /* Decided on the whole board, never on `vis`: a story is carried because of
+     where its epic stands, not because a filter happens to show it, so the
+     type filter hiding an epic hides the stories it carries too. */
+  const { carried: carriedKeys, storiesByEpic } = useMemo(
+    () => carried(board?.issues ?? [], board?.pastHorizon ?? [], board?.statuses ?? [], projectsByKey),
+    [board, projectsByKey],
+  );
   /* Grouped once per status, right where the filter's own output would
      otherwise have been a flat list: `Column`/`PhoneColumn` just filter this
      by statusId (unchanged), so a column's drawn order falls out of this one
@@ -302,10 +310,11 @@ export function BoardPage() {
      parent hidden by the type filter still costs its children no depth. */
   const visible: LineageCard[] = useMemo(() => {
     const vis = filterCards(cards ?? [], filter);
+    const carriedCards = vis.filter((c) => !carriedKeys.has(c.key));
     const statusIds: number[] = [];
-    for (const c of vis) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
-    return statusIds.flatMap((id) => lineage(cards ?? [], vis.filter((c) => c.statusId === id)));
-  }, [cards, filter]);
+    for (const c of carriedCards) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
+    return statusIds.flatMap((id) => lineage(cards ?? [], carriedCards.filter((c) => c.statusId === id)));
+  }, [cards, filter, carriedKeys]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
@@ -640,7 +649,7 @@ export function BoardPage() {
         projects={projects}
         cards={board.issues}
         showing={visible.length}
-        total={board.issues.length}
+        total={board.issues.length - carriedKeys.size}
         collapsed={isPhone}
         leading={
           isPhone && (
@@ -702,13 +711,15 @@ export function BoardPage() {
                 key={status.id}
                 status={status}
                 cards={visible.filter((i) => i.statusId === status.id)}
-                hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
+                hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                 filtering={isFiltering(filter)}
                 found={found}
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
                 projectsByKey={projectsByKey}
                 showProjectMark={showProjectMark}
                 doneHorizonHours={board.doneHorizonHours ?? null}
+                statuses={board.statuses}
+                stories={storiesByEpic}
               />
             ))}
           </div>
@@ -719,6 +730,8 @@ export function BoardPage() {
                 card={dragging}
                 terminal={terminalOf(board.statuses, dragging.statusId)}
                 project={showProjectMark ? (projectsByKey.get(dragging.projectKey) ?? null) : null}
+                statuses={board.statuses}
+                stories={storiesByEpic.get(dragging.key)}
               />
             )}
           </DragOverlay>
@@ -740,7 +753,7 @@ export function BoardPage() {
                   key={status.id}
                   status={status}
                   cards={visible.filter((i) => i.statusId === status.id)}
-                  hidden={board.issues.filter((i) => i.statusId === status.id).length - visible.filter((i) => i.statusId === status.id).length}
+                  hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                   filtering={isFiltering(filter)}
                   dropping={dragging !== null && over === status.id}
                   lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
@@ -753,6 +766,8 @@ export function BoardPage() {
                   doneHorizonHours={board.doneHorizonHours ?? null}
                   rows={rows}
                   spots={spots}
+                  statuses={board.statuses}
+                  stories={storiesByEpic}
                 />
               ))}
             </div>
@@ -771,6 +786,8 @@ export function BoardPage() {
                 card={dragging}
                 terminal={terminalOf(board.statuses, dragging.statusId)}
                 project={showProjectMark ? (projectsByKey.get(dragging.projectKey) ?? null) : null}
+                statuses={board.statuses}
+                stories={storiesByEpic.get(dragging.key)}
               />
             )}
           </DragOverlay>
@@ -867,6 +884,8 @@ function Column({
   doneHorizonHours,
   rows,
   spots,
+  statuses,
+  stories,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -901,6 +920,10 @@ function Column({
   /** What the hovered band's spotlight makes of each card, by key - empty
       when none is hovered. See lib/spotlight.ts. */
   spots: Map<string, Spot>;
+  /** Every status, for the colour and name of each story dot an epic carries. */
+  statuses: Status[];
+  /** Each epic's carried stories by epic key; an epic with none has no entry. */
+  stories: Map<string, IssueCard[]>;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
 
@@ -962,6 +985,8 @@ function Column({
                 band={rows ? flowBand(rows.get(card.key), card) : undefined}
                 sentence={rows ? flowSentence(rows.get(card.key), card) : undefined}
                 spot={spots.get(card.key)}
+                statuses={statuses}
+                stories={stories.get(card.key)}
               />
             );
           })}
@@ -1009,6 +1034,8 @@ function PhoneColumn({
   projectsByKey,
   showProjectMark,
   doneHorizonHours,
+  statuses,
+  stories,
 }: {
   status: Status;
   cards: LineageCard[];
@@ -1024,6 +1051,10 @@ function PhoneColumn({
   showProjectMark: boolean;
   /** The board's done-fold horizon, or null where the fold is off. */
   doneHorizonHours: number | null;
+  /** Every status, for the colour and name of each story dot an epic carries. */
+  statuses: Status[];
+  /** Each epic's carried stories by epic key; an epic with none has no entry. */
+  stories: Map<string, IssueCard[]>;
 }) {
   const [showWaiting, setShowWaiting] = useState(false);
   const [open, setOpen] = useState(() => !startsCollapsed(status));
@@ -1063,6 +1094,8 @@ function PhoneColumn({
                 terminal={status.isTerminal}
                 found={found === card.key}
                 project={project}
+                statuses={statuses}
+                stories={stories.get(card.key)}
               />
             );
           })}
