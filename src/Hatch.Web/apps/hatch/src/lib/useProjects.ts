@@ -16,7 +16,7 @@ export function useProjects() {
   const { data } = useLoaded<Project[]>(getProjects);
   const projects = useMemo(() => data ?? [], [data]);
   const byKey = useMemo(() => new Map(projects.map((project) => [project.key, project])), [projects]);
-  return { projects, byKey };
+  return { projects, byKey, loaded: data !== null };
 }
 
 /** Whether there is a choice to make between projects - the one rule
