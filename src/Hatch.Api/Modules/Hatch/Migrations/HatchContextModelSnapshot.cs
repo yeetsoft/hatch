@@ -1045,6 +1045,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Projects")
                         .HasColumnType("text");
 
+                    b.Property<bool?>("RefusesDangerous")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Remotes")
                         .HasColumnType("text");
 

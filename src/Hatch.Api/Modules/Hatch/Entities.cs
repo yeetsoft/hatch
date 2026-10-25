@@ -2927,6 +2927,14 @@ public class EfHatchRunner
     public string? Tags { get; set; }
 
     /// <summary>
+    /// Whether this runner refuses dangerous work. Seeded once by a heartbeat
+    /// that says it; from then on only a <c>PATCH</c> moves it, so a restart
+    /// with a different flag leaves the row alone. Null is never said, and
+    /// reads as false.
+    /// </summary>
+    public bool? RefusesDangerous { get; set; }
+
+    /// <summary>
     /// The project keys this runner is bound to, newline-joined in the order
     /// given - a key cannot contain a newline, and the wire is a JSON list. A
     /// bound, unlike <see cref="Tags"/>: a fresh <c>loop</c> beat re-applies it

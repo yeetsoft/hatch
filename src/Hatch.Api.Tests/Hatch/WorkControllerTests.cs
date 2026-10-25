@@ -4435,6 +4435,41 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_AsRunner_FoldsFlaggedWorkByTheRowsOwnRefusesDangerous()
+    {
+        var h = await NewAsync();
+        var issue = await FileFlaggedAsync(h);
+
+        h.Db.Runners.AddRange(
+            new EfHatchRunner
+            {
+                Name = "careful-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, RefusesDangerous = true,
+            },
+            new EfHatchRunner
+            {
+                Name = "willing-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, RefusesDangerous = false,
+            },
+            new EfHatchRunner
+            {
+                Name = "silent-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, RefusesDangerous = null,
+            });
+        await h.Db.SaveChangesAsync();
+
+        // The query string's own ?dangerous= is ignored beside asRunner, even
+        // where it disagrees with the row: the row wins both ways.
+        Assert.Equal(
+            $"{Key(issue)} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "careful-box", dangerous: true)).Blocked);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "willing-box", dangerous: false)).Blocked);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "silent-box")).Blocked);
+    }
+
+    [Fact]
     public async Task Tag_WithASpaceInside_Is400OnNextQueueAndWork()
     {
         var h = await NewAsync();

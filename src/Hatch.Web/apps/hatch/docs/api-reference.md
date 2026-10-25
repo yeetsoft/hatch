@@ -626,7 +626,7 @@ state rather than a stall.
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, tags, and projects |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -670,6 +670,15 @@ a single increment first. `standby` is read on that beat alone: without
 fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
+
+`refusesDangerous` follows the tags rule: the first heartbeat a name is seen
+under that carries it (true or false) seeds the row, a later beat with another
+value leaves the row alone, the instruction answers the row's value (always
+true or false from a current Hatch), and `PATCH` is the one write after the
+first beat - a bool, where absent leaves it and true or false sets it. A row
+never told reads as false, and `GET /work/queue?asRunner=` reads it from the
+row, so it folds flagged work for a runner whose row says true whatever
+`?dangerous=` said.
 
 `/runners/{name}/order` is a standing order a person places from the Runners
 page - work a named ticket next, or pass on the loop's own pick - read and
