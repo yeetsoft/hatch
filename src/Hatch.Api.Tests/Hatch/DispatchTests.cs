@@ -492,6 +492,23 @@ public class DispatchTests
         Assert.Contains("in todo is worked only by a runner advertising", RowFor(judged, c).Blocked);
     }
 
+    // ---- Dangerous: the reason an issue carries, or the nearest ancestor's ----
+
+    [Fact]
+    public async Task EffectiveDangerous_ATaskUnderAFlaggedStory_ReadsTheStorysReasonAndKey_AndTheStoryItsOwnWithNoKey()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "s", h.Todo);
+        story.Dangerous = "load-tests the API";
+        await h.Db.SaveChangesAsync();
+        var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        Assert.Equal(("load-tests the API", IssueKey.Format(h.ProjectKey, story.Number)), tree.EffectiveDangerous(task.Id));
+        Assert.Equal(("load-tests the API", (string?)null), tree.EffectiveDangerous(story.Id));
+    }
+
     // ---- Tags: the union an ancestor and the issue's own add to the project's ----
 
     [Fact]

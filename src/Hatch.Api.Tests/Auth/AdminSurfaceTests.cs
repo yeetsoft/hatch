@@ -499,6 +499,11 @@ public class AdminSurfaceTests
         // reason one-pr is. IssueRunnerTagsController.
         "IssueRunnerTagsController.PutIssueRunnerTags",
 
+        // Why running an issue and its subtree is dangerous - the same kind of
+        // statement about the ticket, open to a key for the same reason.
+        // IssueDangerousController.
+        "IssueDangerousController.PutIssueDangerous",
+
         // A release note, open to a key only under the issue's live claim: the
         // claim check is in the action, not the attribute, so a key can write the
         // note of the ticket it is working and no other. IssueReleaseNoteController.

@@ -150,6 +150,7 @@ public class SearchController(
                 i.Priority,
                 i.PreApproval,
                 i.RunnerTags,
+                i.Dangerous,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -184,6 +185,7 @@ public class SearchController(
                 i.Priority,
                 i.PreApproval,
                 i.RunnerTags,
+                i.Dangerous,
                 i.StalledAt,
                 i.StalledWhy,
                 i.Held,
@@ -214,6 +216,7 @@ public class SearchController(
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
+            var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
 
             // The same card /issues answers, built the same way - a hit that read
             // one way here and another on the board is the divergence
@@ -237,6 +240,9 @@ public class SearchController(
                 RunnerTagsOwn: RunnerTagColumn.Read(i.RunnerTags),
                 RunnerTags: effectiveRunnerTags,
                 RunnerTagsFrom: effectiveRunnerTagsFrom,
+                DangerousOwn: i.Dangerous,
+                Dangerous: dangerous,
+                DangerousFrom: dangerousFrom,
                 PriorityFrom: effectiveFrom,
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
