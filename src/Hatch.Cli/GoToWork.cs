@@ -985,6 +985,52 @@ public sealed class GoToWorkCommand(Runtime runtime)
         public bool TooOld(DateTimeOffset now) => On && (After is { } age && now - Born >= age || SetRestarting);
     }
 
+    /// <summary>
+    /// Whether a loop that follows the active profile should leave it because
+    /// <c>hatch use</c> has moved the pointer: null to carry on, true to restart
+    /// onto the new profile's board, false to stop. Read only between
+    /// increments, never inside one, and never by a pinned loop, whose
+    /// <c>ActiveProfilePath</c> is null.
+    /// </summary>
+    private bool? ProfileMoved(bool once, Restarts restart, Tally tally, ref string? unusable)
+    {
+        if (runtime.ActiveProfilePath is not { } pointer || once) return null;
+
+        var now = Settings.ReadActiveProfile(pointer);
+        var was = runtime.ProfileName;
+
+        if (string.Equals(now, was, StringComparison.Ordinal))
+        {
+            unusable = null;
+            return null;
+        }
+
+        if (now is not null && (!Settings.ValidProfileName(now) || !File.Exists(Path.Combine(runtime.ProfilesDirectory, now))))
+        {
+            if (!string.Equals(unusable, now, StringComparison.Ordinal))
+            {
+                unusable = now;
+                runtime.Say.Line($"hatch: the active profile is now \"{now}\" but no profile file has that name - staying on \"{was ?? "<none>"}\"");
+            }
+
+            return null;
+        }
+
+        var from = was ?? "<none>";
+        var to = now ?? "<none>";
+
+        if (!restart.On)
+        {
+            tally.StopWhy = $"the active profile changed from {from} to {to}, and this run cannot restart onto it (no supervisor, or --no-restart)";
+            return false;
+        }
+
+        runtime.Say.Line("");
+        runtime.Say.Line($"hatch: the active profile changed from {from} to {to} - restarting on its board");
+        runtime.Say.Line($"hatch:   {tally.SoFar()}");
+        return true;
+    }
+
     /// <summary>Answers whether the loop is asking to come back as a newer version of itself.</summary>
     private async Task<bool> LoopAsync(
         string? under, bool quiet, bool mine, bool once, int interval, int mergeInterval, Tally tally,
@@ -1008,6 +1054,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // checks at once rather than waiting a further ten minutes for news
         // that arrived just before the limit hit.
         var checkedSelfAt = DateTimeOffset.MinValue;
+
+        // The pointer value last found to name no usable profile, so the line
+        // saying so is said once per value rather than once per pass.
+        string? unusable = null;
 
         // Who this beat says the runner works for, held here rather than read
         // fresh every time the readout is updated: the board writes it on every
@@ -1056,6 +1106,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         while (!ct.IsCancellationRequested)
         {
+            if (ProfileMoved(once, restart, tally, ref unusable) is { } moved) return moved;
+
             if (runtime.Sessions is IUsageProbe probe)
             {
                 var probeNow = runtime.Clock.GetUtcNow();
