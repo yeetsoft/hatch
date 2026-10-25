@@ -350,6 +350,13 @@ public class AdminSurfaceTests
         // ChangelogController.
         "ChangelogController.GetChangelog",
 
+        // The backup folder's truth and the last attempt's - Hatch-scoped and
+        // open to a person like OvernightController's read is. Running one is
+        // the operator's own act, never a key's or a keyless runner's. See
+        // BackupController.
+        "BackupController.GetBackup",
+        "BackupController.PostBackupRun",
+
         // Playbooks are guarded twice over. Reading one is Hatch-scoped like
         // the rest; writing one names no scope at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its
@@ -677,6 +684,10 @@ public class AdminSurfaceTests
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
         "OvernightController.PostSeen",
+
+        // Running a backup is the operator's own act, never a key's or a
+        // keyless runner's. See BackupController.PostBackupRun.
+        "BackupController.PostBackupRun",
         "WipController.PutWip",
         "AssigneeController.PutIssueAssignee",
         "IssueExpediteController.PutIssuePriority",

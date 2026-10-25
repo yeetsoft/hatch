@@ -628,6 +628,8 @@ state rather than a stall.
 | PUT | `/settings` | **person** | Edits them |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
 | GET | `/settings/claude-token` | key | The same, kept for an older container; `credentials/claude` is its successor |
+| GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |
+| POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
 
 `/runners/{name}` is the one call a running loop makes about itself, and the
@@ -710,6 +712,20 @@ nowhere else to read it from, the container entrypoint's own
 and [cli-reference](cli-reference). Both refuse outright wherever the wall
 is up - a credential that crosses a network Hatch does not own is a
 different question from one handed to a container on the same laptop.
+
+`/backup` answers a `BackupStatusDto`: `configured` and `path` (the
+operator's own setting, or `false`/`null` when there is none), `keepDays`,
+`copies` (newest first, each with its name, size and the instant it was
+taken) and `lastSuccessfulAt`, all read from the backup folder itself rather
+than from the last attempt - deleting a file by hand changes the next read.
+`lastAttemptAt`, `lastOutcome` (`ok`, `failed`, `not-configured`, or `never`)
+and `lastError` (set only when the outcome is `failed`) come from the last
+attempt, whoever made it. `POST /backup/run`, person-only, runs one backup
+synchronously, capped at two minutes, and answers the same shape: a `failed`
+attempt is still a `200`, with its sentence in `lastError`. It `400`s with no
+folder configured, `409`s while another run already holds the gate, and
+`403`s for an API key or a keyless runner, the same as a program reaching
+`/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
 Owner, Scopes)` - `kind: key` for an API key, naming its own name, its
@@ -844,7 +860,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **40** person-only paths on this page,
+on this page with both) - there are **41** person-only paths on this page,
 across both halves together:
 
 ```
@@ -885,16 +901,17 @@ GET    /runner/download/{rid}
 GET    /settings
 PUT    /settings
 POST   /overnight/seen
+POST   /backup/run
 POST   /playbooks
 PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
 Twenty-nine belong to a project, a column, the WIP section, a ticket's own
-fields, or image upload; the other eleven are a runner's own record (now
+fields, or image upload; the other twelve are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
-and the three playbook writes.
+running a backup, and the three playbook writes.
 
 Two writes that look like the same shape are deliberately **not** on this
 list, because the attribute itself does not narrow them - the narrowing is
