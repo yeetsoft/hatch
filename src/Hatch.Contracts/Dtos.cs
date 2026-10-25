@@ -3428,6 +3428,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// A control surface is worth drawing only for the first.
 /// </param>
 /// <param name="ClaimKey">The issue it holds right now, or null between increments.</param>
+/// <param name="ClaimStatus">
+/// The name of the column that issue sits in right now, read live off the
+/// issue like <paramref name="ClaimKey"/>, so it says which step the runner is
+/// on. Null whenever <paramref name="ClaimKey"/> is.
+/// </param>
 /// <param name="Line">
 /// The last thing it said: the claim's chatter while it holds one, and its own
 /// last line when it does not. One field because it is one question - what is
@@ -3564,7 +3569,8 @@ public record RunnerDto(
     bool Yours = false,
     int? Runs = null,
     decimal? Spent = null,
-    string? Host = null)
+    string? Host = null,
+    string? ClaimStatus = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

@@ -92,7 +92,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// that matters.
     /// </remarks>
     public RunnerDto Project(
-        EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null,
+        EfHatchRunner runner, (string Key, ClaimSnapshot Claim, string? Status)? claim, IReadOnlyList<string>? drives = null,
         string? forName = null, bool canControl = true, RunnerOrderDto? order = null,
         bool yours = false)
     {
@@ -137,7 +137,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             yours,
             runner.Runs,
             runner.Spent,
-            runner.Host);
+            runner.Host,
+            claim?.Status);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
@@ -169,7 +170,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// second copy to keep in step - shared between <see cref="RunnersController"/>'s
     /// own read and <see cref="Preemption"/>'s rule 5, rather than kept twice.
     /// </summary>
-    public async Task<Dictionary<string, (string Key, ClaimSnapshot Claim)>> HeldAsync(
+    public async Task<Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)>> HeldAsync(
         HatchContext db, IssueClaims claims, DateTimeOffset now, CancellationToken ct)
     {
         var rows = await db.Issues.AsNoTracking()
@@ -185,6 +186,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 i.ClaimHeartbeatAt,
                 i.ClaimChatter,
                 i.ClaimChatterAt,
+                Status = i.Status!.Name,
             })
             .ToListAsync(ct);
 
@@ -194,7 +196,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 Key: IssueKey.Format(i.Key, i.Number),
                 Claim: new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
-                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt)))
+                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                i.Status))
             .Where(i => claims.IsLive(i.Claim, now))
             // A runner holds one ticket at a time by construction, and the most
             // recent heartbeat is the one to draw if something ever leaves two
@@ -204,7 +207,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             .ToDictionary(
                 g => g.Key,
                 g => g.OrderByDescending(i => i.Claim.HeartbeatAt)
-                    .Select(i => (i.Key, i.Claim))
+                    .Select(i => (i.Key, i.Claim, i.Status))
                     .First(),
                 StringComparer.Ordinal);
     }

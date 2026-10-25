@@ -685,7 +685,9 @@ will never read it back.
 Each row carries `CanControl`, whether the caller may `PATCH` it, and `Yours`,
 whether it is the caller's own: `Yours` is true for the caller's runners and for
 every row with the wall off, while `CanControl` is also true on others' rows for
-an admin and on rows that belong to nobody.
+an admin and on rows that belong to nobody. `ClaimKey` is the ticket the runner
+holds and `ClaimStatus` the name of that ticket's column now; both are null
+between increments.
 
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
