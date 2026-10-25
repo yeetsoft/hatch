@@ -645,16 +645,16 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605) ----
 
     [Fact]
-    public void The_fixed_part_of_the_prompt_stays_under_four_thousand_characters()
+    public void The_fixed_part_of_the_prompt_stays_under_forty_five_hundred_characters()
     {
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 4000,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,000.");
+        Assert.True(fixedPart.Length < 4500,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,500.");
     }
 
     [Fact]
@@ -677,6 +677,24 @@ public sealed class PromptTests
         Assert.Contains("hatch verdict AER-12 pass|fail [\"findings\"]", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("hatch start AER-12", prompt, StringComparison.Ordinal);
         Assert.DoesNotContain("hatch move AER-12 <column>", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_work_prompt_carries_the_dangerous_call_and_when_to_use_it()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch dangerous AER-12 \"why\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("load testing", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_check_s_prompt_does_not_carry_the_dangerous_call()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", isCheck: true));
+
+        Assert.DoesNotContain("hatch dangerous", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("load testing", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
