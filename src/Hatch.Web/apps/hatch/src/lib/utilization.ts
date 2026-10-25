@@ -353,8 +353,8 @@ export const hasBattery = (reading: Utilization | null): reading is Utilization 
  * which is what a reading with no session row at all reads as - a battery
  * that cannot say how full it is must not say "0".
  */
-export const percentLabel = (limit: UtilizationLimit | null): string =>
-  limit === null ? '—' : `${Math.round(limit.percent)}%`;
+export const percentLabel = (limit: UtilizationLimit | null, now: Date): string =>
+  limit === null ? '—' : `${Math.round(rowPercent(limit, now))}%`;
 
 /**
  * The row's sentence for a screen reader: its name, the percent used, the
@@ -393,7 +393,7 @@ export function batteryLabel(reading: Utilization | null, now: Date): string {
 
   const worst = worstRow(reading, now);
   const phrase = paceLabel(worst ? pace(worst, now) : 0);
-  const headline = `Claude session usage ${Math.round(limit.percent)}%, ${phrase}, ${resetPhrase(limit.resetsAt, now)}`;
+  const headline = `Claude session usage ${Math.round(rowPercent(limit, now))}%, ${phrase}, ${rowResetPhrase(limit, now)}`;
 
   const colouredBy =
     worst && worst.window !== 'session' ? `, coloured by ${worst.label} at ${rowPercent(worst, now)}%` : '';
