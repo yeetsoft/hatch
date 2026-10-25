@@ -38,6 +38,7 @@ saying so; those are read from the environment alone.
 | `HATCH_PUBLIC_URL` | `compose.yaml`, for `api` (as `Apps__PublicBaseUrl`) | empty: the address the runner itself reaches Hatch at | The address a browser opens this Hatch at, so a pull request's link back to its ticket is one a reviewer can open. |
 | `HATCH_ANDROID_PACKAGE` | `compose.yaml`, for `api` | empty: no statements are served | The package name of one phone's installed app, read off the phone ([Hatch on your phone](hatch-on-your-phone)). |
 | `HATCH_ANDROID_CERT_FINGERPRINT` | `compose.yaml`, for `api` | empty: no statements are served | The signing certificate's fingerprint for that same app. |
+| `HATCH_BACKUP_DIR` | `compose.yaml`, for `api` (as `Hatch__BackupPath`) | empty: no backups | A folder on the host Hatch writes its nightly database copies into. Written with forward slashes, even on Windows ([Backup, restore and replication](backup-restore-and-replication)). |
 | **The stack's own, which nobody changes** | | | |
 | `HATCH_MIGRATE` | the API (`migrate` sets it to `1`) | unset | Runs the API image as the migration, which exits when it is done, instead of serving. |
 | **The runner service in the stack, from your shell or `.env`** | | | |
