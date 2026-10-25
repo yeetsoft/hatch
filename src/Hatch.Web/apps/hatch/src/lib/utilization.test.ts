@@ -4,7 +4,6 @@ import {
   agePhrase,
   batteryLabel,
   hasBattery,
-  pace,
   percentLabel,
   rampColor,
   rampInk,
@@ -127,43 +126,6 @@ describe('rowPercent', () => {
   });
 });
 
-describe('pace', () => {
-  it('reads identically for a window whose allowance and whose time run out together', () => {
-    // 10% used, 10% of the window gone - 90% of it still to run.
-    const level10 = pace(limit({ percent: 10, resetsAt: at(SESSION_WINDOW_MS * 0.9) }), NOW);
-    // 95% used, 95% of the window gone - 5% of it still to run.
-    const level95 = pace(limit({ percent: 95, resetsAt: at(SESSION_WINDOW_MS * 0.05) }), NOW);
-
-    expect(level10).toBeCloseTo(100);
-    expect(level95).toBeCloseTo(100);
-  });
-
-  it('is 0 with nothing spent, however much of the window has gone', () => {
-    expect(pace(limit({ percent: 0, resetsAt: at(SESSION_WINDOW_MS * 0.9) }), NOW)).toBe(0);
-    expect(pace(limit({ percent: 0, resetsAt: at(1) }), NOW)).toBe(0);
-  });
-
-  it('reads no worse inside the grace window than it would once the floor had actually been reached', () => {
-    // 1% of the window gone, well inside the grace floor.
-    const insideGrace = pace(limit({ percent: 2, resetsAt: at(SESSION_WINDOW_MS * 0.99) }), NOW);
-    // 5% of the window gone, exactly PACE_GRACE.
-    const atGrace = pace(limit({ percent: 2, resetsAt: at(SESSION_WINDOW_MS * 0.95) }), NOW);
-
-    expect(insideGrace).toBeCloseTo(40);
-    expect(atGrace).toBeCloseTo(40);
-  });
-
-  it('reads gone as 1 when the elapsed share is unknown - the extra row', () => {
-    const extra = limit({ window: 'extra', percent: 50, resetsAt: null, label: 'Extra usage' });
-
-    expect(pace(extra, NOW)).toBe(50);
-  });
-
-  it('is 0 once the reset instant has passed, via rowPercent\'s own rule', () => {
-    expect(pace(limit({ percent: 99, resetsAt: at(-1) }), NOW)).toBe(0);
-  });
-});
-
 describe('rowResetPhrase', () => {
   it('reads as resetPhrase does while the window has not reset', () => {
     expect(rowResetPhrase(limit({ resetsAt: at(80 * 60_000) }), NOW)).toBe('resets in 1h 20m');
@@ -226,28 +188,32 @@ describe('sessionLimit', () => {
 });
 
 describe('rampColor', () => {
-  it('is exactly the given colour at each of the five control points', () => {
-    expect(rampColor(0)).toBe('#1fd65f');
-    expect(rampColor(60)).toBe('#2e9e43');
-    expect(rampColor(90)).toBe('#f2c500');
-    expect(rampColor(100)).toBe('#f07c00');
-    expect(rampColor(150)).toBe('#d32f2f');
+  it.each([
+    [0, '#1fd65f'],
+    [49, '#1fd65f'],
+    [50, '#f2c500'],
+    [79, '#f2c500'],
+    [80, '#d32f2f'],
+    [100, '#d32f2f'],
+  ])('is %i%% -> %s', (percent, color) => {
+    expect(rampColor(percent)).toBe(color);
   });
 
-  it('gives 151 distinct colours across 0..150, one per whole projected percent', () => {
-    const colors = new Set(Array.from({ length: 151 }, (_, percent) => rampColor(percent)));
-    expect(colors.size).toBe(151);
+  it('rounds to the whole percent the badge shows before it picks a band', () => {
+    expect(rampColor(49.4)).toBe('#1fd65f');
+    expect(rampColor(49.6)).toBe('#f2c500');
+    expect(rampColor(79.6)).toBe('#d32f2f');
   });
 
-  it('clamps below 0 and above 150 rather than extrapolating past the ends', () => {
-    expect(rampColor(-10)).toBe(rampColor(0));
-    expect(rampColor(160)).toBe(rampColor(150));
+  it('clamps below 0 and above 100 rather than extrapolating past the ends', () => {
+    expect(rampColor(-10)).toBe('#1fd65f');
+    expect(rampColor(160)).toBe('#d32f2f');
   });
 });
 
 describe('rampInk', () => {
-  it('measures at least 4.5:1 against every one of the 151 colours', () => {
-    for (let percent = 0; percent <= 150; percent++) {
+  it('measures at least 4.5:1 against every colour the ramp can give', () => {
+    for (let percent = 0; percent <= 100; percent++) {
       const color = rampColor(percent);
       const ink = rampInk(color);
       const l = luminance(color);
@@ -267,7 +233,7 @@ describe('usageVars', () => {
 });
 
 describe('worstRow', () => {
-  it('picks the highest pace among the rows', () => {
+  it('picks the highest percentage among the rows', () => {
     const worst = worstRow(
       reading({
         limits: [limit({ window: 'session', percent: 10 }), limit({ window: 'weekly', percent: 60, label: 'Weekly' })],
@@ -305,10 +271,9 @@ describe('worstRow', () => {
     ).toBeNull();
   });
 
-  /* The case that tells pace and percentage apart: percentage alone would
-     pick B (70 > 30), but A's pace is far higher because almost none of its
-     window has gone. */
-  it('picks by pace rather than by percentage when the two disagree', () => {
+  /* Pace no longer paints anything: the session is spending far faster
+     against its clock, but the weekly has the higher percentage. */
+  it('picks by percentage rather than by pace when the two disagree', () => {
     const worst = worstRow(
       reading({
         limits: [
@@ -322,6 +287,31 @@ describe('worstRow', () => {
             resetsAt: at(7 * 24 * 60 * 60 * 1000 * 0.05),
           }),
         ],
+      }),
+      NOW,
+    );
+
+    expect(worst?.window).toBe('weekly');
+  });
+
+  it('never picks a window that has reset, though its raw percent is the highest', () => {
+    const worst = worstRow(
+      reading({
+        limits: [
+          limit({ window: 'session', percent: 99, resetsAt: at(-1) }),
+          limit({ window: 'weekly', label: 'Weekly', percent: 40 }),
+        ],
+      }),
+      NOW,
+    );
+
+    expect(worst?.window).toBe('weekly');
+  });
+
+  it('lets the first row win a tie', () => {
+    const worst = worstRow(
+      reading({
+        limits: [limit({ window: 'session', percent: 40 }), limit({ window: 'weekly', label: 'Weekly', percent: 40 })],
       }),
       NOW,
     );
@@ -356,51 +346,56 @@ describe('percentLabel', () => {
 });
 
 describe('rowSentence', () => {
-  it('says the name, the percent used, the percent of the window gone, the pace, and when it resets', () => {
+  it('says the name, the percent used, the percent of the window gone, the band, and when it resets', () => {
     const week = 7 * 24 * 60 * 60 * 1000;
     const row = limit({ window: 'weekly', label: 'Weekly', percent: 40, resetsAt: at(week / 2) });
 
-    // pace: 0.4 / max(0.5, 0.05) = 0.8 -> 80%, nearest control point 90.
-    expect(rowSentence(row, NOW)).toBe('Weekly: 40% used, 50% of the window gone, just ahead of the reset, resets in 84h');
+    expect(rowSentence(row, NOW)).toBe('Weekly: 40% used, 50% of the window gone, plenty left, resets in 84h');
   });
 
-  it('leaves out the window-gone clause for a row with no known length, but still says the pace', () => {
+  it('leaves out the window-gone clause for a row with no known length, but still says the band', () => {
     const extra = limit({ window: 'extra', label: 'Extra usage', percent: 12, resetsAt: null });
 
-    // gone defaults to 1 with no known window length, so pace is 12%.
-    expect(rowSentence(extra, NOW)).toBe('Extra usage: 12% used, allowance to spare, reset time unknown');
+    expect(rowSentence(extra, NOW)).toBe('Extra usage: 12% used, plenty left, reset time unknown');
   });
 
-  it('says a row past its reset has reset, draws at 0, and paces at 0', () => {
+  it('says a row past its reset has reset, and draws at 0', () => {
     const past = limit({ window: 'session', label: 'Session', percent: 88, resetsAt: at(-1) });
 
-    expect(rowSentence(past, NOW)).toBe('Session: 0% used, 100% of the window gone, allowance to spare, has reset');
+    expect(rowSentence(past, NOW)).toBe('Session: 0% used, 100% of the window gone, plenty left, has reset');
+  });
+
+  it('says the band the percentage falls in, at each edge', () => {
+    const phrase = (percent: number) => rowSentence(limit({ percent }), NOW).split(', ')[2];
+
+    expect(phrase(49)).toBe('plenty left');
+    expect(phrase(50)).toBe('over half spent');
+    expect(phrase(79)).toBe('over half spent');
+    expect(phrase(80)).toBe('nearly spent');
   });
 });
 
 describe('batteryLabel', () => {
-  it('says the number, the pace, and the time left', () => {
-    // default limit: 17% used, 90m of the 5h window left -> 70% gone, pace ~24.3% -> nearest 0.
-    expect(batteryLabel(reading(), NOW)).toBe('Claude session usage 17%, allowance to spare, resets in 1h 30m');
+  it('says the number, the band, and the time left', () => {
+    expect(batteryLabel(reading(), NOW)).toBe('Claude session usage 17%, plenty left, resets in 1h 30m');
   });
 
   it('says the reset is unknown when the row carries no instant', () => {
-    // no resetsAt -> gone defaults to 1, pace 17%.
     expect(batteryLabel(reading({ limits: [limit({ resetsAt: null })] }), NOW)).toBe(
-      'Claude session usage 17%, allowance to spare, reset time unknown',
+      'Claude session usage 17%, plenty left, reset time unknown',
     );
   });
 
   it('says 0% and has reset once the session window has elapsed, matching the popup row', () => {
     const elapsed = reading({ limits: [limit({ percent: 88, resetsAt: at(-1) })] });
 
-    expect(batteryLabel(elapsed, NOW)).toBe('Claude session usage 0%, allowance to spare, has reset');
+    expect(batteryLabel(elapsed, NOW)).toBe('Claude session usage 0%, plenty left, has reset');
   });
 
   it('carries the age of a stale reading, so an old number says it is old', () => {
     const stale = reading({ state: 'stale', readAt: at(-12 * 60_000) });
 
-    expect(batteryLabel(stale, NOW)).toBe('Claude session usage 17%, allowance to spare, resets in 1h 30m (read 12 minutes ago)');
+    expect(batteryLabel(stale, NOW)).toBe('Claude session usage 17%, plenty left, resets in 1h 30m (read 12 minutes ago)');
   });
 
   it('reads as unknown when there is no battery at all', () => {
@@ -422,9 +417,8 @@ describe('batteryLabel', () => {
       limits: [limit({ window: 'session', percent: 17 }), limit({ window: 'weekly', percent: 91, label: 'Weekly' })],
     });
 
-    // weekly pace (default resetsAt, 90m of 7d gone) ~91.8% -> nearest 90.
     expect(batteryLabel(worseWeekly, NOW)).toBe(
-      'Claude session usage 17%, just ahead of the reset, resets in 1h 30m, coloured by Weekly at 91%',
+      'Claude session usage 17%, nearly spent, resets in 1h 30m, coloured by Weekly at 91%',
     );
   });
 
@@ -433,8 +427,7 @@ describe('batteryLabel', () => {
       limits: [limit({ window: 'session', percent: 91 }), limit({ window: 'weekly', percent: 10, label: 'Weekly' })],
     });
 
-    // session pace: 0.91 / max(90m/5h = 0.3, 0.05) = 0.91/0.3 ~= 303% -> clamped to 150.
-    expect(batteryLabel(sessionWorst, NOW)).toBe('Claude session usage 91%, spending ahead of the reset, resets in 1h 30m');
+    expect(batteryLabel(sessionWorst, NOW)).toBe('Claude session usage 91%, nearly spent, resets in 1h 30m');
   });
 });
 

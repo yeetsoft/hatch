@@ -5593,9 +5593,9 @@ button.hatch-option.chosen {
    number.
 
    Colour is a chip, painted from --usage-color/--usage-ink (lib/utilization.ts,
-   usageVars) - the worst window's own place on the 101-step ramp, not a
-   three-tone decision made on the server. It is no longer furniture when
-   calm: the operator asked for green at zero. A literal colour in this block
+   usageVars) - the worst window's own percentage used, as one of three
+   bands (green under 50, yellow 50-79, red 80 and up), decided in the web
+   app and not on the server. It is no longer furniture when calm: the operator asked for green at zero. A literal colour in this block
    would be a bug - see the note at the top of this file. */
 
 .hatch-battery {

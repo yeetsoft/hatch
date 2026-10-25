@@ -184,9 +184,9 @@ runner under another agent) - not a reading of the board's work, and drawn only
 once one of your runners has reported a reading. The fill is how much of the
 current session window has been spent; the ring around it is how much of
 that window is left before it resets, drawn as a dashed track while the reset
-time is unknown. Its colour runs through five bands, from allowance to spare
-up to spending ahead of the reset, coloured by whichever of your windows is
-under the most pressure. Pressing it opens every window your account
+time is unknown. Its colour is one of three bands by percent used, green under
+50%, yellow to 79% and red from 80%, coloured by whichever of your windows has
+the highest percentage. Pressing it opens every window your account
 reports, each with its own percent used and how old the reading is, and a
 button to refresh it. [Flow, WIP and the battery](flow-wip-and-the-battery)
 covers what the board does with this reading.
