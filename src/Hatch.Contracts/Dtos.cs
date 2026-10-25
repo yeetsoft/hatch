@@ -844,7 +844,20 @@ public static class PreApprovalLevels
 /// Absent leaves the claim's <c>ClaimPlaybookId</c> alone; a value overwrites
 /// it. There is no third state to clear it back to null from a heartbeat.
 /// </param>
-public record ClaimHeartbeatRequest(Guid Token, string? Chatter, int? PlaybookId = null);
+/// <param name="Usage">
+/// Same meaning as <see cref="RunnerHeartbeatRequest.Usage"/>; absent or empty
+/// leaves the runner's row alone.
+/// </param>
+/// <param name="UsageReadAt">
+/// Same meaning as <see cref="RunnerHeartbeatRequest.UsageReadAt"/>; absent
+/// leaves the runner's row alone.
+/// </param>
+public record ClaimHeartbeatRequest(
+    Guid Token,
+    string? Chatter,
+    int? PlaybookId = null,
+    IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
+    DateTimeOffset? UsageReadAt = null);
 
 /// <summary>
 /// A new issue. It lands in the leftmost status and at the bottom of that

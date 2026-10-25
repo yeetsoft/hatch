@@ -99,6 +99,17 @@ public static class Utilization
     };
 
     /// <summary>
+    /// The windows off a non-empty reading, as JSON, percent clamped 0..100 -
+    /// it is drawn as a fill, and a fill is a fraction of something. Null where
+    /// the request carries none, so the caller can tell "nothing to write" from
+    /// "write this".
+    /// </summary>
+    public static string? Serialise(IReadOnlyList<RunnerUsageWindowDto>? usage) =>
+        usage is not { Count: > 0 } windows
+            ? null
+            : JsonSerializer.Serialize(windows.Select(w => w with { Percent = Math.Clamp(w.Percent, 0, 100) }));
+
+    /// <summary>
     /// The caller's own reading, or null where none of <paramref name="runners"/>
     /// has ever reported one - the endpoint's <c>204</c>.
     /// </summary>

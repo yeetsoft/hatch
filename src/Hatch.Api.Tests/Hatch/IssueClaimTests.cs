@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
@@ -1238,6 +1239,146 @@ public class IssueClaimTests
         Assert.NotNull(result.Value);
     }
 
+    // ---- A usage reading on the beat ----
+
+    private const string Runner = "somewhere:/checkouts/one";
+
+    private static RunnerUsageWindowDto[] Session(int percent) => [new("session", "Session", percent)];
+
+    /// <summary>The one window's percent a row holds - the column is jsonb, so its text is not the text written.</summary>
+    private static int PercentOf(EfHatchRunner row) =>
+        JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(row.Usage!)!.Single().Percent;
+
+    private static Task<ActionResult<ClaimPreemptedDto>> BeatAsync(
+        Harness h, string issue, Guid token, RunnerUsageWindowDto[]? usage, DateTimeOffset? readAt) =>
+        h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, null, usage, readAt), default);
+
+    [SkippableFact]
+    public async Task ABeatWithAReading_IsWhatUtilizationAnswersForTheRunnersPerson()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.AddRunnerAsync(Runner, Now.AddHours(-1), forPersonId: nathan.Id);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+        var readAt = Now.AddMinutes(-1);
+
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(42), readAt)).Result);
+
+        var reading = Value(await h.Utilization.Get(default));
+        Assert.Equal(UtilizationStates.Ok, reading.State);
+        Assert.Equal(readAt, reading.ReadAt);
+        Assert.Equal(42, Assert.Single(reading.Limits).Percent);
+    }
+
+    [SkippableFact]
+    public async Task ABeatsPercentAbove100_IsStoredAs100()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        await h.AddRunnerAsync(Runner, Now, forPersonId: nathan.Id);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, Session(140), Now);
+
+        Assert.Equal(100, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Percent);
+    }
+
+    [SkippableFact]
+    public async Task ABeatsReading_LeavesAnotherPersonsRunnerAlone()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        var alice = h.Actors.AddPerson("Alice");
+        var aliceReadAt = Now.AddMinutes(-2);
+        await h.AddRunnerAsync(Runner, Now, forPersonId: nathan.Id);
+        await h.AddRunnerAsync(
+            "elsewhere:/checkouts/two", Now, forPersonId: alice.Id, usageReadAt: aliceReadAt, usage: Session(7));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, Session(42), Now);
+
+        var theirs = await h.RunnerAsync("elsewhere:/checkouts/two");
+        Assert.Equal(aliceReadAt, theirs.UsageReadAt);
+        Assert.Equal(7, PercentOf(theirs));
+
+        h.Actors.Principal = alice;
+        Assert.Equal(7, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Percent);
+    }
+
+    [SkippableFact]
+    public async Task ABeatWithNoUsableReading_LeavesTheRowsReadingAsSeeded()
+    {
+        await using var h = await NewAsync();
+        var seededAt = Now.AddMinutes(-3);
+        await h.AddRunnerAsync(Runner, Now, usageReadAt: seededAt, usage: Session(7));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        // Absent, empty, and windows with no read time - the last must not
+        // null out the timestamp the row already holds.
+        await BeatAsync(h, issue, token, null, Now);
+        await BeatAsync(h, issue, token, [], Now);
+        await BeatAsync(h, issue, token, Session(90), null);
+
+        var row = await h.RunnerAsync(Runner);
+        Assert.Equal(seededAt, row.UsageReadAt);
+        Assert.Equal(7, PercentOf(row));
+    }
+
+    [SkippableTheory]
+    [InlineData(-1, 7)]  // older than the row's own: the row keeps its reading
+    [InlineData(0, 90)]  // equal: replaced
+    [InlineData(1, 90)]  // newer: replaced
+    public async Task ABeatsReading_IsGuardedAgainstOneOlderThanTheRows(int minutesFromRows, int expectedPercent)
+    {
+        await using var h = await NewAsync();
+        var rowsReadAt = Now.AddMinutes(-3);
+        await h.AddRunnerAsync(Runner, Now, usageReadAt: rowsReadAt, usage: Session(7));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        await BeatAsync(h, issue, token, Session(90), rowsReadAt.AddMinutes(minutesFromRows));
+
+        var row = await h.RunnerAsync(Runner);
+        Assert.Equal(expectedPercent, PercentOf(row));
+        Assert.Equal(rowsReadAt.AddMinutes(Math.Max(minutesFromRows, 0)), row.UsageReadAt);
+    }
+
+    [SkippableFact]
+    public async Task ARefusedBeat_WritesNoReading()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+        var seededAt = Now.AddMinutes(-3);
+        await h.AddRunnerAsync(Runner, Now, usageReadAt: seededAt, usage: Session(7));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        // A wrong token, then the right one after the lease has expired.
+        Conflict(await BeatAsync(h, issue, Guid.NewGuid(), Session(90), Now));
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+        Conflict(await BeatAsync(h, issue, token, Session(90), Now.AddMinutes(10)));
+
+        var row = await h.RunnerAsync(Runner);
+        Assert.Equal(seededAt, row.UsageReadAt);
+        Assert.Equal(7, PercentOf(row));
+    }
+
+    [SkippableFact]
+    public async Task ABeatWhoseRunnerHasNoRow_WritesNothingAndSucceeds()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(42), Now)).Result);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -1297,6 +1438,8 @@ public class IssueClaimTests
         }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
+
+        public UtilizationController Utilization => new(Connect(), Actors, Time);
 
         /// <summary>A connection of its own, disposed with the harness.</summary>
         public HatchContext Connect()
@@ -1365,7 +1508,9 @@ public class IssueClaimTests
         /// <c>RunnersControllerTests.cs</c> does - these tests are about what a
         /// claim heartbeat does with a row, not about how one is created.
         /// </summary>
-        public async Task AddRunnerAsync(string name, DateTimeOffset lastSeenAt)
+        public async Task AddRunnerAsync(
+            string name, DateTimeOffset lastSeenAt, Guid? forPersonId = null,
+            DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null)
         {
             var db = Connect();
             db.Runners.Add(new EfHatchRunner
@@ -1375,9 +1520,15 @@ public class IssueClaimTests
                 FirstSeenAt = lastSeenAt,
                 LastSeenAt = lastSeenAt,
                 State = EfHatchRunner.Running,
+                ForPersonId = forPersonId,
+                UsageReadAt = usageReadAt,
+                Usage = usage is null ? null : JsonSerializer.Serialize(usage),
             });
             await db.SaveChangesAsync();
         }
+
+        public Task<EfHatchRunner> RunnerAsync(string name) =>
+            Connect().Runners.AsNoTracking().SingleAsync(r => r.Name == name);
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one", int? playbookId = null) =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner, playbookId), default)).Token;

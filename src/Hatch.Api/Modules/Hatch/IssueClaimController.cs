@@ -114,7 +114,7 @@ public class IssueClaimController(
 
     /// <summary>
     /// Still here. Refreshes the lease and, optionally, replaces the line it is
-    /// carrying - and answers <see cref="ClaimPreemptedDto"/> in place of the
+    /// carrying and hands on the runner's usage reading - and answers <see cref="ClaimPreemptedDto"/> in place of the
     /// ordinary <c>204</c> where the board has chosen this runner's issue to
     /// make room for an emergency one - see <see cref="Preemption"/> for the
     /// five rules that decide it.
@@ -126,7 +126,8 @@ public class IssueClaimController(
     /// A preempted one is the exception: it is the board's own decision, and
     /// the event it writes is also the record that this runner has already
     /// been told, so a later heartbeat - this one's own, or another runner's -
-    /// does not tell it, or anybody else, twice.
+    /// does not tell it, or anybody else, twice. Nor does a usage reading
+    /// carried on the beat write one - see <see cref="WriteUsageAsync"/>.
     /// </remarks>
     [HttpPost("heartbeat")]
     public async Task<ActionResult<ClaimPreemptedDto>> Heartbeat(
@@ -157,6 +158,7 @@ public class IssueClaimController(
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
         await TouchRunnerAsync(claim.Runner, now, ct);
+        await WriteUsageAsync(claim.Runner, request, ct);
 
         if (await preemption.ForAsync(issue, ct) is not { } emergency) return NoContent();
 
@@ -334,6 +336,31 @@ public class IssueClaimController(
         runner is null
             ? Task.CompletedTask
             : db.Runners.Where(r => r.Name == runner).ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+
+    /// <summary>
+    /// Hands the holding runner's usage reading to its own row, so
+    /// <c>GET /api/hatch/utilization</c> stays current while an increment
+    /// runs - the runner's own heartbeat is sent only between increments.
+    /// Nothing is written where the beat carries no windows or no read time:
+    /// <see cref="Utilization.Of"/> skips a row with no read time, so a
+    /// reading without one could only null out a good timestamp. The guard on
+    /// <c>UsageReadAt</c> is in the <c>WHERE</c> rather than a read first,
+    /// because this and the runner's own heartbeat race, and a reading older
+    /// than the one the row holds is not the account's current word. Equal
+    /// writes.
+    /// </summary>
+    private Task WriteUsageAsync(string? runner, ClaimHeartbeatRequest request, CancellationToken ct)
+    {
+        if (runner is null
+            || request.UsageReadAt is not { } readAt
+            || Utilization.Serialise(request.Usage) is not { } usage)
+            return Task.CompletedTask;
+
+        return db.Runners
+            .Where(r => r.Name == runner && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
+    }
 
     // ---- Odds and ends ----
 
