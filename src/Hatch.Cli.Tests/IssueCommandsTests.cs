@@ -130,7 +130,7 @@ public sealed class IssueCommandsTests
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
-        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "stories at once:", "runner:" })
+        foreach (var absent in new[] { "parent:", "children:", "depends:", "blocks:", "ready:", "due:", "priority:", "pre-approval:", "runner tags:", "dangerous:", "stories at once:", "runner:" })
             Assert.DoesNotContain(absent, h.Said);
     }
 
@@ -458,6 +458,33 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
         Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket's implementation (gpu from HA-12)", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_the_reason_an_issue_is_flagged_dangerous()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousOwn = "load tests the node" });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("dangerous:    load tests the node", h.Said);
+        Assert.DoesNotContain("(from", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_ancestor_a_dangerous_flag_was_inherited_from()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousFrom = "HA-12" });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("dangerous:    load tests the node (from HA-12)", h.Said);
     }
 
     [Fact]

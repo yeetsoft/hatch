@@ -488,6 +488,10 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public Task<IssueDto?> SetOnePrAsync(string key, string value, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/one-pr", new OnePrRequest(value), ct);
 
+    /// <summary>Flags the issue as dangerous to run, with the reason; an empty reason clears it.</summary>
+    public Task<IssueDto?> SetDangerousAsync(string key, string reason, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/dangerous", new DangerousRequest(reason), ct);
+
     /// <summary>The release note a session wrote for the issue, written under the claim the runner holds.</summary>
     public Task<IssueDto?> ReleaseNoteAsync(string key, string note, Guid heldToken, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(

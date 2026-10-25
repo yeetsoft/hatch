@@ -577,9 +577,21 @@ public static class Prompt
                 : new[] { $"hatch move {key} <column>     move it anywhere non-terminal" }),
         $"hatch comment {key} \"...\"     write on the ticket",
         $"hatch ask {key} \"...\"         ask for a decision, and stop",
+        ..(isCheck ? Array.Empty<string>() : new[]
+        {
+            $"hatch dangerous {key} \"why\"   flag it if running its work could destabilise the machine",
+        }),
         $"hatch api GET /api/hatch/issues?parentKey={key}",
         "```",
         "",
+        ..(isCheck ? Array.Empty<string>() : new[]
+        {
+            "Flag an issue with `hatch dangerous` when running its work is security testing,",
+            "performance or load testing, or crashing or hanging processes on purpose. Write",
+            "the reason a runner's operator would need in order to decide whether to run it",
+            "(200 characters at most).",
+            "",
+        }),
         ..(isCheck || startsHere ? Array.Empty<string>() : new[]
         {
             "Claiming is the marker that you have started. The ticket moves once, at the end,",
