@@ -75,6 +75,13 @@ public static class HatchModule
         // context and is a module's own, not the house's.
         services.AddScoped<IAppJob, ReflectionCadenceJob>();
 
+        // Singletons, both: the status must outlive the scoped job that
+        // writes to it between runs, and the service itself holds only
+        // options and a lock - nothing scoped to a request.
+        services.AddSingleton<BackupStatus>();
+        services.AddSingleton<IBackupProcess, SystemBackupProcess>();
+        services.AddSingleton<BackupService>();
+
         return services;
     }
 }
