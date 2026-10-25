@@ -442,6 +442,73 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_AGENT"));
     }
 
+    // ---- HATCH_LOG ----
+
+    private Settings LoadWithLog(string? value)
+    {
+        var env = value is null
+            ? Env(("HATCH_BASE", "https://somewhere"))
+            : Env(("HATCH_BASE", "https://somewhere"), ("HATCH_LOG", value));
+        Assert.True(Settings.TryLoad(null, env, out var settings, out _, Path.Combine(_temp, "does-not-exist")));
+        return settings;
+    }
+
+    [Fact]
+    public void HATCH_LOG_unset_is_no_log()
+    {
+        var settings = LoadWithLog(null);
+
+        Assert.Null(settings.LogDirectory);
+        Assert.Equal(Settings.Layer.Unset, settings.SourceOf("HATCH_LOG"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData(" Off ")]
+    public void HATCH_LOG_blank_or_off_is_no_log(string value) => Assert.Null(LoadWithLog(value).LogDirectory);
+
+    [Theory]
+    [InlineData("on")]
+    [InlineData("ON")]
+    [InlineData(" On ")]
+    public void HATCH_LOG_on_is_the_default_folder(string value) =>
+        Assert.Equal(Settings.DefaultLogPath(), LoadWithLog(value).LogDirectory);
+
+    [Fact]
+    public void HATCH_LOG_anything_else_is_the_directory()
+    {
+        var dir = Path.Combine(_temp, "logs");
+
+        Assert.Equal(dir, LoadWithLog(dir).LogDirectory);
+    }
+
+    [Fact]
+    public void HATCH_LOG_in_a_settings_file_is_accepted_and_read()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_LOG=on");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.Equal(Settings.DefaultLogPath(), settings.LogDirectory);
+        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_LOG"));
+        Assert.Contains("HATCH_LOG", Settings.FileNames);
+        Assert.False(Settings.IsBoardBound("HATCH_LOG"));
+    }
+
+    [Fact]
+    public void The_default_log_folder_is_the_one_the_standby_item_logs_to()
+    {
+        var folder = Path.GetDirectoryName(Settings.UserConfigPath())!;
+        var item = StandbyItem.For(
+            _temp, "Alder", null, "/opt/hatch/hatch", false, folder, out _);
+
+        Assert.NotNull(item);
+        Assert.Equal(Settings.DefaultLogPath(), Path.GetDirectoryName(item.Log));
+    }
+
     // ---- HATCH_WORKSPACE ----
 
     [Fact]

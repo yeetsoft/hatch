@@ -72,7 +72,8 @@ ticket's history says who did what without anybody being asked to record it.
 
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
-              | --repo <path>... | --tag <tag>... | --workspace <dir>]
+              | --repo <path>... | --tag <tag>... | --workspace <dir>
+              | --log on|<dir>|off]
              [--here | --profile <name>]
 ```
 
@@ -108,6 +109,10 @@ header instead. Never put it in a repository, either way.
   follows them ([the runner](the-runner#what-a-runner-advertises)).
 - `--workspace <dir>` names the directory where the runner clones what the
   board binds and it has no checkout of. `--workspace off` never clones.
+- `--log on|<dir>|off` writes `HATCH_LOG`, where this runner's log goes: `on` is
+  the `logs` folder beside the per-user file, a directory is made if it is not
+  there (and refused, with nothing written, if it cannot be), and `off` keeps
+  none. The setting is only recorded here.
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is

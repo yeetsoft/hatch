@@ -36,7 +36,8 @@ public sealed record ConfigCommand(
     public static readonly string[] ConfigUsage =
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...]",
+        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...",
+        "                     | --log on|<dir>|off]",
         "                     [--here | --profile <name>]",
         "",
         "  hatch config                    asks for the origin, the key and the runner",
@@ -51,6 +52,9 @@ public sealed record ConfigCommand(
         "  hatch config --workspace <dir>  clone every repository the board binds that",
         "                                     this runner has no checkout of, into <dir>",
         "  hatch config --workspace off    ...never clone: serve only the checkouts it has",
+        "  hatch config --log on           keep a log, in the `logs` folder beside the per-user file",
+        "  hatch config --log <dir>        ...keep it in <dir>, made if it is not there",
+        "  hatch config --log off          ...keep none",
         "  hatch config --tag <tag>        advertise this tag, repeatable",
         "  hatch config --tag              ...alone, clears them",
         "",
@@ -84,6 +88,12 @@ public sealed record ConfigCommand(
         "  clones) is two owners of one path. With none written, the default is a",
         "  `workspace` directory beside the per-user file; `--workspace off` writes",
         "  `off`, which keeps this runner from cloning at all.",
+        "",
+        "  --log writes HATCH_LOG: where this runner's log goes. `on` is the default",
+        "  folder, `off` (or nothing written) keeps no log, and a directory is made if",
+        "  it does not exist, and refused with nothing written if it cannot be. The",
+        "  setting is only recorded here; `on` is the `logs` folder beside the per-user",
+        "  file.",
         "",
         "  --tag writes HATCH_TAGS: the tags this runner advertises, so a project's",
         "  own runner tags can ask for one and only a runner carrying it is matched.",
@@ -262,6 +272,8 @@ public sealed record ConfigCommand(
 
         if (args.Length > 0 && args[0] == "--workspace") return Workspace(args, here);
 
+        if (args.Length > 0 && args[0] == "--log") return Log(args, here);
+
         if (args.Length > 0 && args[0] == "--tag") return Tag(args, here);
 
         if (args.Length > 0)
@@ -303,6 +315,7 @@ public sealed record ConfigCommand(
         var repos = overlay ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
         var workspace = overlay ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
         var tags = overlay ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
+        var log = overlay ? Carry("HATCH_LOG") : fold("HATCH_LOG").Value ?? "";
 
         var target = overlayPath ?? ConfigPath;
         Say.Line($"Writing {target}. Enter keeps what is shown in brackets.");
@@ -391,7 +404,7 @@ public sealed record ConfigCommand(
 
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "");
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(Root!), chosenRunner);
@@ -464,11 +477,12 @@ public sealed record ConfigCommand(
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
         var tags = Field("HATCH_TAGS");
+        var log = Field("HATCH_LOG");
 
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "--origin");
 
         // Rebuilt after the write and before HATCH_BASE is exported: `fold`
@@ -555,6 +569,7 @@ public sealed record ConfigCommand(
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
         var tags = Field("HATCH_TAGS");
+        var log = Field("HATCH_LOG");
 
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
@@ -562,7 +577,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "--key");
 
         Environment["HATCH_KEY"] = key;
@@ -727,6 +742,7 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var workspace = Field("HATCH_WORKSPACE");
         var tags = Field("HATCH_TAGS");
+        var log = Field("HATCH_LOG");
 
         // The reverse of the check `--workspace` makes: a checkout named here
         // that sits inside the workspace already configured is the same two
@@ -741,7 +757,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "--repo");
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
@@ -784,6 +800,7 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var reposRaw = Field("HATCH_REPOS");
         var tags = Field("HATCH_TAGS");
+        var log = Field("HATCH_LOG");
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
@@ -795,7 +812,7 @@ public sealed record ConfigCommand(
             // A word and not a directory: nothing to overlap and nothing to make.
             Write(
                 origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
-                ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+                ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
                 path: overlayPath, overlay: overlay, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {target}");
@@ -817,10 +834,77 @@ public sealed record ConfigCommand(
 
         Write(
             origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "--workspace");
 
         Environment["HATCH_WORKSPACE"] = dir;
+
+        Say.Line($"wrote {target}");
+        return 0;
+    }
+
+    /// <summary>
+    /// Where this runner's log goes, taken from the command line and written
+    /// without a question being asked - the mirror of <see cref="Workspace"/>:
+    /// everything else is carried forward unchanged. Only the setting is
+    /// recorded; nothing reads it yet.
+    /// </summary>
+    private int Log(string[] args, bool here)
+    {
+        if (args is not ["--log", var value])
+            return Usage.Refuse(Say, "config --log takes on, off, or one directory", ConfigUsage);
+
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
+
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var agent = Field("HATCH_AGENT");
+        var repos = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+        var tags = Field("HATCH_TAGS");
+
+        var target = overlayPath ?? ConfigPath;
+        var written = value.Trim();
+
+        // A word and not a directory: nothing to make. A folder is made before
+        // anything is written, so a path that cannot be one leaves the file as it was.
+        if (Settings.IsLogOff(written)) written = Settings.LogOff;
+        else
+        {
+            var dir = Settings.IsLogOn(written) ? Settings.DefaultLogPath() : written;
+            if (dir.Length == 0)
+                return Usage.Refuse(Say, "config --log takes on, off, or one directory", ConfigUsage);
+
+            if (Settings.IsLogOn(written)) written = Settings.LogOn;
+
+            try
+            {
+                Directory.CreateDirectory(dir);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException
+                or ArgumentException)
+            {
+                Say.Complain($"hatch: cannot make the log folder {dir} - {e.Message}");
+                return 1;
+            }
+        }
+
+        Write(
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: written,
+            path: overlayPath, overlay: overlay, mode: "--log");
+
+        Environment["HATCH_LOG"] = written;
 
         Say.Line($"wrote {target}");
         return 0;
@@ -881,11 +965,12 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
+        var log = Field("HATCH_LOG");
 
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log,
             path: overlayPath, overlay: overlay, mode: "--tag");
 
         Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
@@ -1074,12 +1159,18 @@ public sealed record ConfigCommand(
                     ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
                     : name == "HATCH_WORKSPACE"
                         ? $"<unset - clones go to {Settings.DefaultWorkspacePath(profileName)}>{profileSuffix}"
-                        : "<unset>"
+                        : name == "HATCH_LOG"
+                            ? "<unset - no log>"
+                            : "<unset>"
                 : name == "HATCH_KEY"
                     ? Mask(value)
                     : name == "HATCH_WORKSPACE" && Settings.IsWorkspaceOff(value)
                         ? "off - this runner never clones"
-                        : value;
+                        : name == "HATCH_LOG" && Settings.IsLogOff(value)
+                            ? "off - no log"
+                            : name == "HATCH_LOG" && Settings.IsLogOn(value)
+                                ? Settings.DefaultLogPath()
+                                : value;
 
             // A name as wide as the column would print its value glued to the colon.
             var label = name.Length + 1 < 19 ? (name + ":").PadRight(19) : name + ":  ";
@@ -1106,7 +1197,7 @@ public sealed record ConfigCommand(
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
         string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
-        string? path = null, bool overlay = false, string mode = "")
+        string log = "", string? path = null, bool overlay = false, string mode = "")
     {
         var target = path ?? ConfigPath;
 
@@ -1152,6 +1243,7 @@ public sealed record ConfigCommand(
         if (agent.Length > 0) lines.Add($"HATCH_AGENT={agent}");
         if (repos.Length > 0) lines.Add($"HATCH_REPOS={repos}");
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
+        if (log.Length > 0) lines.Add($"HATCH_LOG={log}");
         if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
 
         AtomicFile.Write(target, lines);

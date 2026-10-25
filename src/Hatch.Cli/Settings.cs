@@ -30,7 +30,7 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_TAGS",
+        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
@@ -124,6 +124,12 @@ public sealed partial record Settings
     public bool WorkspaceDefaulted { get; init; }
 
     /// <summary>
+    /// The folder this runner's log goes to - null where <c>HATCH_LOG</c> is
+    /// unset or <see cref="LogOff"/>, which is the default. Nothing acts on it yet.
+    /// </summary>
+    public string? LogDirectory { get; init; }
+
+    /// <summary>
     /// What <c>HATCH_WORKSPACE</c> (or <c>--workspace</c>) says to turn the
     /// default off: this runner serves the checkouts it has and never clones.
     /// A word rather than a blank because a blank value reads as unset in every
@@ -134,6 +140,26 @@ public sealed partial record Settings
     /// <summary>Whether a workspace value is <see cref="WorkspaceOff"/>.</summary>
     public static bool IsWorkspaceOff(string? value) =>
         string.Equals(value?.Trim(), WorkspaceOff, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The word <c>HATCH_LOG</c> (or <c>--log</c>) says to turn the log off. Unset means the same.</summary>
+    public const string LogOff = "off";
+
+    /// <summary>The word <c>HATCH_LOG</c> (or <c>--log</c>) says for the default folder, <see cref="DefaultLogPath"/>.</summary>
+    public const string LogOn = "on";
+
+    /// <summary>Whether a log value is <see cref="LogOff"/>.</summary>
+    public static bool IsLogOff(string? value) =>
+        string.Equals(value?.Trim(), LogOff, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether a log value is <see cref="LogOn"/>.</summary>
+    public static bool IsLogOn(string? value) =>
+        string.Equals(value?.Trim(), LogOn, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The folder <c>HATCH_LOG=on</c> means: <c>logs</c>, beside
+    /// <see cref="UserConfigPath"/> - the folder the standby item already logs to.
+    /// </summary>
+    public static string DefaultLogPath() => Path.Combine(Path.GetDirectoryName(UserConfigPath())!, "logs");
 
     /// <summary>
     /// The workspace one run serves, and whether it is the default: the
@@ -363,6 +389,7 @@ public sealed partial record Settings
         var reposRaw = Read("HATCH_REPOS");
         var workspace = Read("HATCH_WORKSPACE");
         var tagsRaw = Read("HATCH_TAGS");
+        var logRaw = Read("HATCH_LOG");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -431,6 +458,7 @@ public sealed partial record Settings
             Repos = repos,
             Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(profileName),
             WorkspaceDefaulted = workspace is null,
+            LogDirectory = logRaw is null || IsLogOff(logRaw) ? null : IsLogOn(logRaw) ? DefaultLogPath() : logRaw,
             Tags = tags,
             Sources = sources,
             KeyNote = ignoredKeyLayer() is { } ignoredKey
