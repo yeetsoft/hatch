@@ -122,6 +122,18 @@ public sealed class LoopLock : IDisposable
     }
 
     /// <summary>
+    /// The pid of the live loop holding this checkout's lock right now, or null
+    /// where there is no lock or its owner is gone. Reads only - a stale lock is
+    /// reported as no holder and left for the next <see cref="Take"/> to clear.
+    /// </summary>
+    public static int? Holder(string root, string tempDirectory, Func<int, bool>? alive = null)
+    {
+        alive ??= StillRunning;
+        var pid = ReadPid(PathFor(root, tempDirectory));
+        return pid is { } owner && alive(owner) ? owner : null;
+    }
+
+    /// <summary>
     /// Whether that pid is still there. Asking for the process rather than
     /// signalling it, which is what <c>kill -0</c> was doing.
     /// </summary>

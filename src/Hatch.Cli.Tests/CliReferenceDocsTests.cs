@@ -17,6 +17,7 @@ public sealed class CliReferenceDocsTests
     {
         ["config"] = ConfigCommand.ConfigUsage,
         ["use"] = UseCommand.UseUsage,
+        ["standby"] = StandbyCommand.StandbyUsage,
         ["board"] = BoardCommands.BoardUsage,
         ["next"] = BoardCommands.NextUsage,
         ["queue"] = BoardCommands.QueueUsage,

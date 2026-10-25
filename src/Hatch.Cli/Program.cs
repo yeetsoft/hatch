@@ -335,6 +335,7 @@ try
         "queue" => await new BoardCommands(cli).QueueAsync(rest, cancelling.Token),
         "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
         "runners" => await new RunnersCommand(cli).RunAsync(rest, cancelling.Token),
+        "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)).RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
         "comments" => await new IssueCommands(cli).CommentsAsync(rest, cancelling.Token),
         "start" => await new IssueCommands(cli).StartAsync(rest, cancelling.Token),
@@ -462,7 +463,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "use", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "standby", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -546,6 +547,9 @@ internal partial class Program
         "  hatch answer                 answer them, one at a time, here",
         "  hatch api GET /api/hatch/issues?statusId=2",
         "  hatch api PATCH /api/hatch/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
+        "  hatch standby install        start this checkout's loop at every sign-in",
+        "  hatch standby show           whether that is installed, what it runs, and whether a loop holds the checkout now",
+        "  hatch standby remove         forget the login item (a loop already running is not stopped)",
         "",
         "The one the container runner's entrypoint calls, and nobody types:",
         "",
