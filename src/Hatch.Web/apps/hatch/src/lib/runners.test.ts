@@ -34,6 +34,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   firstSeenAt: at(-3_600_000),
   lastSeenAt: at(0),
   claimKey: null,
+  claimStatus: null,
   line: null,
   lineAt: null,
   state: 'running',

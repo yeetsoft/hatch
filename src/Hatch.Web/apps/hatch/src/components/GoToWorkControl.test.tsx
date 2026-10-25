@@ -14,6 +14,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   firstSeenAt: NOW.toISOString(),
   lastSeenAt: NOW.toISOString(),
   claimKey: null,
+  claimStatus: null,
   line: null,
   lineAt: null,
   state: 'running',
