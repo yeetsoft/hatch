@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { CardPreview } from './BoardCard';
+import type { ReactElement } from 'react';
+import { DndContext } from '@dnd-kit/core';
+import { SortableContext } from '@dnd-kit/sortable';
+import { MemoryRouter } from 'react-router-dom';
+import { BoardCard, CardPreview, lineClick } from './BoardCard';
 import { countWords } from '../lib/storiesOnEpics';
 import type { IssueCard, Project, Status } from '../types';
 
@@ -95,6 +99,18 @@ const between = (html: string, open: string) => {
   const end = html.indexOf('</div>', start);
   return html.slice(start, end);
 };
+
+// useSortable needs a DndContext above it and the id in a SortableContext's
+// own items to resolve without throwing - neither does any dragging here, so
+// a static render never exercises sensors or a DragOverlay.
+const renderSortable = (node: ReactElement, ids: string[]) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <DndContext>
+        <SortableContext items={ids}>{node}</SortableContext>
+      </DndContext>
+    </MemoryRouter>,
+  );
 
 describe('BoardCard CardFace', () => {
   it('draws only the project mark and the key on the head, no type word and no enhancers', () => {
@@ -243,5 +259,137 @@ describe('BoardCard CardFace', () => {
       <CardPreview card={bare} waiting={false} terminal={false} project={null} stories={[]} statuses={[]} />,
     );
     expect(emptyHtml).not.toContain('hatch-card-stories');
+  });
+});
+
+// Every anchor's own span, start index inclusive and end index exclusive of
+// its own `</a>` - used to check nothing is nested that should not be.
+const anchorSpans = (html: string): Array<[number, number]> => {
+  const spans: Array<[number, number]> = [];
+  let from = 0;
+  for (;;) {
+    const start = html.indexOf('<a ', from);
+    if (start < 0) break;
+    const end = html.indexOf('</a>', start);
+    expect(end).toBeGreaterThan(start);
+    spans.push([start, end]);
+    from = end + 4;
+  }
+  return spans;
+};
+
+describe('BoardCard, carrying stories', () => {
+  const epic = card({ type: 'epic', key: 'AER-1' });
+  const statuses = [
+    status(1, 0, { name: 'Backlog', color: '#111111' }),
+    status(2, 1, { name: 'Doing', color: '#222222' }),
+    status(3, 2, { name: 'Done', color: '#333333', isTerminal: true }),
+  ];
+  const stories = [
+    card({ key: 'AER-2', type: 'story', parentKey: 'AER-1', statusId: 1, title: 'First story' }),
+    card({ key: 'AER-3', type: 'story', parentKey: 'AER-1', statusId: 2, title: 'Second story' }),
+    card({ key: 'AER-4', type: 'story', parentKey: 'AER-1', statusId: 3, title: 'Third story' }),
+  ];
+
+  it('draws one line per story, in order, each with its own column name', () => {
+    const html = renderSortable(<BoardCard card={epic} stories={stories} statuses={statuses} />, [epic.key]);
+
+    expect(html.split('class="hatch-card-story-line"').length - 1).toBe(stories.length);
+    const indices = stories.map((s) => html.indexOf(`>${s.title}<`));
+    for (const i of indices) expect(i).toBeGreaterThanOrEqual(0);
+    for (let i = 1; i < indices.length; i++) expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+
+    for (const [story, st] of [
+      [stories[0], statuses[0]],
+      [stories[1], statuses[1]],
+      [stories[2], statuses[2]],
+    ] as const) {
+      expect(html).toContain(`title="${story.key} - ${st.name}"`);
+      expect(html).toContain(`>${st.name}<`);
+    }
+  });
+
+  it('cuts a 300-character title with the ellipsis character truncate() appends', () => {
+    const longTitle = 'x'.repeat(300);
+    const longStory = card({ key: 'AER-5', type: 'story', parentKey: 'AER-1', statusId: 1, title: longTitle });
+    const html = renderSortable(
+      <BoardCard card={epic} stories={[longStory]} statuses={statuses} />,
+      [epic.key],
+    );
+
+    expect(html).not.toContain(longTitle);
+    expect(html).toContain('…');
+    expect(html).not.toContain('...');
+  });
+
+  it('renders the toggle collapsed, with no story lines', () => {
+    const html = renderSortable(
+      <BoardCard card={epic} stories={stories} statuses={statuses} collapsed />,
+      [epic.key],
+    );
+
+    const buttonStart = html.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    expect(html.slice(buttonStart, html.indexOf('</button>'))).toContain('aria-expanded="false"');
+    expect(html).not.toContain('hatch-card-story-lines');
+  });
+
+  it('renders the toggle expanded, with the story lines, by default', () => {
+    const html = renderSortable(<BoardCard card={epic} stories={stories} statuses={statuses} />, [epic.key]);
+
+    const buttonStart = html.indexOf('<button');
+    expect(buttonStart).toBeGreaterThanOrEqual(0);
+    expect(html.slice(buttonStart, html.indexOf('</button>'))).toContain('aria-expanded="true"');
+    expect(html).toContain('hatch-card-story-lines');
+  });
+
+  it('nests no <a inside the face anchor, and no <button inside any <a', () => {
+    const html = renderSortable(<BoardCard card={epic} stories={stories} statuses={statuses} />, [epic.key]);
+
+    const spans = anchorSpans(html);
+    expect(spans.length).toBeGreaterThan(0);
+    for (const [start, end] of spans) {
+      const inner = html.slice(start, end);
+      expect(inner.indexOf('<a ', 1)).toBe(-1);
+      expect(inner).not.toContain('<button');
+    }
+  });
+
+  it('carries no hatch-card--carrying on a plain card or a stories-less epic', () => {
+    const plainCard = card({ key: 'AER-9' });
+    const plain = renderSortable(<BoardCard card={plainCard} />, [plainCard.key]);
+    expect(plain).not.toContain('hatch-card--carrying');
+
+    const bareEpic = renderSortable(<BoardCard card={epic} stories={[]} statuses={statuses} />, [epic.key]);
+    expect(bareEpic).not.toContain('hatch-card--carrying');
+  });
+});
+
+describe('lineClick', () => {
+  const story = card({ key: 'AER-2', type: 'story', parentKey: 'AER-1' });
+
+  it('calls onPeek with the story and prevents default on a plain click', () => {
+    const onPeek = vi.fn();
+    const preventDefault = vi.fn();
+    lineClick(story, onPeek)({ button: 0, preventDefault });
+
+    expect(onPeek).toHaveBeenCalledWith(story);
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it('does neither on a ctrl-click', () => {
+    const onPeek = vi.fn();
+    const preventDefault = vi.fn();
+    lineClick(story, onPeek)({ button: 0, ctrlKey: true, preventDefault });
+
+    expect(onPeek).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('does neither with no onPeek', () => {
+    const preventDefault = vi.fn();
+    lineClick(story, undefined)({ button: 0, preventDefault });
+
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });

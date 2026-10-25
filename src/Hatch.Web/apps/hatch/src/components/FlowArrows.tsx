@@ -43,9 +43,14 @@ export function FlowArrows({ edges }: { edges: readonly ChainEdge[] }) {
     const boardRect = board.getBoundingClientRect();
     const boxes = new Map<string, Box>();
     for (const key of new Set(edgesRef.current.flatMap((e) => [e.from, e.to]))) {
-      const card = document.querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(key)}"]`);
-      if (!card) continue;
+      const el = document.querySelector<HTMLElement>(`[data-issue-key="${CSS.escape(key)}"]`);
+      if (!el) continue;
 
+      // HA-1560: an epic carrying stories has `data-issue-key` on its face, a
+      // child of the whole card now rather than the card itself - climb back
+      // up so the arrow still meets the card's full height, strip and lines
+      // included.
+      const card = el.closest('.hatch-card') ?? el;
       const cardRect = card.getBoundingClientRect();
       const port = card.closest('.hatch-column-cards');
       if (port) {
