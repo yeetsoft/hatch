@@ -8,7 +8,7 @@
 
 import { patchRunner } from '../api/client';
 import { message } from './errors';
-import { runnerActivity } from './runners';
+import { ACTIVITY_TONES, activityWords, runnerActivity } from './runners';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 export type GoToWorkPlan =
@@ -39,6 +39,72 @@ export function planGoToWork(runners: Runner[] | null, now: Date): GoToWorkPlan 
   if (paused.length > 0) return { mode: 'go', targets: paused };
 
   return alive.length > 0 ? { mode: 'stopping' } : { mode: 'none' };
+}
+
+/** The line beside the button: `before` + `key` (drawn as a link to the issue)
+    + `after`, so a line with no key has all its words in `before`. `more` is
+    how many other loops of the caller's the line does not name. */
+export interface StatusLine {
+  before: string;
+  key: string | null;
+  after: string;
+  tone: 'muted' | 'success' | 'danger' | 'primary';
+  more: number;
+}
+
+const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0 };
+
+/** One row's line and its rank, 1 the most worth saying. */
+function lineFor(r: Runner, now: Date): { rank: number; line: Omit<StatusLine, 'more'> } {
+  const keyless = (rank: number, before: string, tone: StatusLine['tone']) => ({
+    rank,
+    line: { before, key: null, after: '', tone },
+  });
+
+  // Silence beats state, so a gone row never reads as working or on its way
+  // to stopping, whatever it holds.
+  if (runnerActivity(r, now) === 'gone') {
+    return r.state === 'running' ? keyless(8, 'Stopped unexpectedly', 'danger') : keyless(9, 'Off', 'muted');
+  }
+
+  if (r.claimKey) {
+    const key = r.claimKey;
+    if (r.state === 'running') {
+      const after = r.claimStatus ? ` · ${r.claimStatus}` : '';
+      return { rank: 1, line: { before: 'Working ', key, after, tone: ACTIVITY_TONES.working } };
+    }
+    if (r.state === 'paused') return { rank: 2, line: { before: 'Pausing after ', key, after: '', tone: 'primary' } };
+    return { rank: 3, line: { before: 'Stopping after ', key, after: '', tone: 'primary' } };
+  }
+
+  if (runnerActivity(r, now) === 'exhausted') return keyless(4, activityWords(r, now), ACTIVITY_TONES.exhausted);
+  if (r.state === 'running') {
+    const where = r.projects.length > 0 ? r.projects.join(', ') : 'any project';
+    return keyless(5, `Idle - nothing to do in ${where}`, ACTIVITY_TONES.idle);
+  }
+  return r.state === 'paused' ? keyless(6, 'Paused', 'primary') : keyless(7, 'Stopping', 'primary');
+}
+
+/**
+ * What the caller's own loops are doing, in one line.
+ *
+ * Each of the caller's loops is ranked by what it is doing and the best rank
+ * names the line; a tie goes to the first row, which is the server's
+ * most-recently-heard-first order. `null` runners, not loaded yet, is the empty
+ * line, which the component draws as nothing.
+ */
+export function statusLine(runners: Runner[] | null, now: Date): StatusLine {
+  if (runners === null) return EMPTY_LINE;
+
+  const mine = runners.filter((r) => r.yours && r.kind === 'loop');
+  if (mine.length === 0) return { ...EMPTY_LINE, before: 'No runner' };
+
+  const ranked = mine.map((r) => ({ r, ...lineFor(r, now) }));
+  const best = ranked.reduce((a, b) => (b.rank < a.rank ? b : a));
+  const others = ranked.filter((x) => x !== best);
+  const more = best.rank >= 8 ? others.length : others.filter((x) => x.rank < 8).length;
+
+  return { ...best.line, more };
 }
 
 /** The PATCH a press sends to each target. `project` is the filter's key, `''`
