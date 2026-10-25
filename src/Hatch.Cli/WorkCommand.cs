@@ -334,6 +334,7 @@ public sealed class WorkCommand(Runtime runtime)
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
                 Tags: runtime.Settings.Tags,
                 Where: runtime.Where,
+                Host: Checkout.Host(),
                 Agent: runtime.Adapter.Id,
                 Revision: runtime.CliRevision.Revision,
                 Sequence: runtime.CliRevision.Sequence,

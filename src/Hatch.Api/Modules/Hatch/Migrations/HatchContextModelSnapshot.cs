@@ -983,6 +983,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<Guid?>("ForPersonId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Host")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1033,6 +1037,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<int?>("Runs")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("Sequence")
                         .HasColumnType("integer");
 
@@ -1042,6 +1049,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<int?>("SourceSequence")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("Spent")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
 
                     b.Property<bool?>("Standing")
                         .HasColumnType("boolean");

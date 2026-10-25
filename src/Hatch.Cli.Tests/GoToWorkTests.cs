@@ -196,6 +196,36 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_loop_beat_carries_the_tallys_runs_and_spend_and_this_machine()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1, Runs = 3, Spent = 1.25m });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 4, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "4"], default));
+
+        var first = Beats(h)[0];
+        Assert.Equal(3, first.Runs);
+        Assert.Equal(1.25m, first.Spent);
+        Assert.Equal(Checkout.Host(), first.Host);
+    }
+
+    [Fact]
+    public async Task A_once_beat_carries_this_machine_but_not_runs_or_spend()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h));
+        Assert.Equal(Checkout.Host(), beat.Host);
+        Assert.Null(beat.Runs);
+        Assert.Null(beat.Spent);
+    }
+
+    [Fact]
     public async Task The_heartbeat_carries_standing()
     {
         using var h = new Harness();

@@ -126,6 +126,29 @@ public sealed class WorkCommandTests
         Assert.All(beats, c => Assert.Null(c.Read<RunnerHeartbeatRequest>().Projects));
     }
 
+    [Fact]
+    public async Task A_one_off_run_s_beat_carries_this_machine_and_no_totals()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-9") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-9", Fixtures.Work("AER-9"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-9");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync([], default));
+
+        var beats = h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(beats);
+        Assert.All(beats, c =>
+        {
+            var beat = c.Read<RunnerHeartbeatRequest>();
+            Assert.Equal(Checkout.Host(), beat.Host);
+            Assert.Null(beat.Runs);
+            Assert.Null(beat.Spent);
+        });
+    }
+
     [Theory]
     [InlineData("fil1x9z")]
     [InlineData("")]
