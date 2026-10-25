@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 
 namespace Hatch.Cli;
@@ -219,6 +220,68 @@ public static class RunnerSet
     /// <summary>Whether the set's host has left <paramref name="fileName"/> in <paramref name="setDir"/>.</summary>
     public static bool Signalled(string? setDir, string fileName) =>
         setDir is { Length: > 0 } && Path.Exists(Path.Combine(setDir, fileName));
+
+    /// <summary>
+    /// The prefix of the file each member keeps in <see cref="DirVariable"/>'s
+    /// directory (<c>ledger.2</c>) holding its own cumulative runs and spend, so
+    /// that <c>--max-runs</c> and <c>--max-spend</c> can bound the set's total.
+    /// </summary>
+    public const string LedgerFileName = "ledger";
+
+    /// <summary>
+    /// Leaves this member's cumulative <paramref name="runs"/> and
+    /// <paramref name="spent"/> where its siblings can read them. One file per
+    /// slot, so two processes never write one path, written beside itself and
+    /// moved into place so a sibling never reads half of it.
+    /// </summary>
+    public static void WriteLedger(string setDir, int slot, int runs, decimal spent)
+    {
+        var path = Path.Combine(setDir, $"{LedgerFileName}.{slot}");
+        try
+        {
+            File.WriteAllText(path + ".tmp", string.Create(CultureInfo.InvariantCulture, $"{runs} {spent}"));
+            File.Move(path + ".tmp", path, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>
+    /// What every member but <paramref name="exceptSlot"/> has recorded. A file
+    /// that is missing, unreadable or does not parse contributes nothing, so the
+    /// total can only under-count - never stop a set early.
+    /// </summary>
+    public static (int Runs, decimal Spent) ReadLedgerTotal(string setDir, int exceptSlot)
+    {
+        var runs = 0;
+        var spent = 0m;
+        var own = $"{LedgerFileName}.{exceptSlot}";
+
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(setDir, LedgerFileName + ".*"))
+            {
+                var name = Path.GetFileName(path);
+                if (name == own || name.EndsWith(".tmp", StringComparison.Ordinal)) continue;
+
+                try
+                {
+                    var parts = File.ReadAllText(path).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2
+                        && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var r)
+                        && decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var s)
+                        && s >= 0)
+                    {
+                        runs += r;
+                        spent += s;
+                    }
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+
+        return (runs, spent);
+    }
 
     /// <summary>
     /// Runs <paramref name="runners"/> children of this command at once and

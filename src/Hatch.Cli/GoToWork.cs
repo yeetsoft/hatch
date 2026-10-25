@@ -193,6 +193,9 @@ public sealed class Tally
     /// </summary>
     public string? SetDir { get; init; }
 
+    /// <summary>This runner's slot in its set - null for slot 1, which is started without one, and for a lone runner.</summary>
+    public int? Slot { get; init; }
+
     /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
     public Controls? Controls { get; init; }
 
@@ -240,16 +243,31 @@ public sealed class Tally
             return true;
         }
 
-        if (MaxRuns is { } cap && Runs >= cap)
+        // In a set the two bounds are the set's: this runner's own count plus
+        // what its siblings have left in their ledgers. Alone, they are its own.
+        var runs = Runs;
+        var spent = Spent;
+        if (SetDir is not null && (MaxRuns is not null || MaxSpend is not null))
         {
-            StopWhy = $"--max-runs {cap} reached";
+            var others = RunnerSet.ReadLedgerTotal(SetDir, Slot ?? 1);
+            runs += others.Runs;
+            spent += others.Spent;
+        }
+
+        if (MaxRuns is { } cap && runs >= cap)
+        {
+            StopWhy = SetDir is null
+                ? $"--max-runs {cap} reached"
+                : $"--max-runs {cap} reached across the set at {runs}";
             return true;
         }
 
         // Spent holds priced increments only, so an unpriced one never counts here.
-        if (MaxSpend is { } budget && Spent >= budget)
+        if (MaxSpend is { } budget && spent >= budget)
         {
-            StopWhy = $"--max-spend {budget.ToString(CultureInfo.InvariantCulture)} reached at ${Format.Money(Spent)}";
+            StopWhy = SetDir is null
+                ? $"--max-spend {budget.ToString(CultureInfo.InvariantCulture)} reached at ${Format.Money(spent)}"
+                : $"--max-spend {budget.ToString(CultureInfo.InvariantCulture)} reached across the set at ${Format.Money(spent)}";
             return true;
         }
 
@@ -268,6 +286,10 @@ public sealed class Tally
         Runs++;
         if (report.Cost is { } cost) Spent += cost;
         if (report.Unpriced) Unpriced++;
+
+        // The local counters are this slot's cumulative total, carried and new,
+        // so the ledger is a mirror of them for the siblings to read.
+        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent);
 
         var before = ExhaustedUntil;
 
@@ -897,9 +919,19 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt = carried?.UntilAt ?? untilAt,
                 StopFile = stopFile,
                 SetDir = runtime.SetDir,
+                Slot = runtime.Slot,
                 Controls = runtime.Controls,
                 Standby = standby,
             };
+
+            // The host recreates the set's directory on every start, so after a
+            // restart every ledger is gone while this member's night state still
+            // holds what it carried: put that back, or the set's total re-opens
+            // the cap. A member checking before its siblings have re-seeded sees
+            // a partial total, which can only under-count - at worst one extra
+            // increment, never a premature stop. A fresh start writes zeros.
+            if (runtime.SetDir is not null)
+                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent);
 
             // Only a fresh start: a restarted incarnation carries the board's
             // own pause or run, and has nothing to announce.

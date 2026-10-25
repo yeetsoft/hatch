@@ -601,8 +601,12 @@ has the pass in order, the bounds and the restarts.
   `<workspace>.n`. Output is prefixed `[n]` and no footer or keys are drawn.
   Ctrl-C, `--stop-file` and a restart apply to all of them, and each finishes
   its increment first. It needs a workspace, so `--workspace off` is refused.
-- `--max-runs <n>` stops after that many increments.
-- `--max-spend <dollars>` stops once the run has cost that much.
+- `--max-runs <n>` stops after that many increments. With `--runners` it bounds
+  the set's combined total, and every runner stops once they have made that many
+  between them.
+- `--max-spend <dollars>` stops once the run has cost that much. With
+  `--runners` it is the set's combined spend, and a restart of the set carries it
+  forward.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
 - `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
 - `--restart-after <minutes>` comes back as a newer build at least that often.
