@@ -45,6 +45,10 @@ export type AttentionTone = 'rest' | 'asking';
  * `deadlocked` counts for the same reason: nothing dispatches into a ring, so
  * every row is a person's to break.
  *
+ * `backup` counts for the same reason: nothing in the loop will fix a folder,
+ * so a backup that is failing or stale is a person's to fix, every time.
+ * Healthy and unconfigured both arrive as null, and add nothing.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -57,7 +61,8 @@ export function attentionCount(attention: Attention | null): number {
     (attention.trunkBuilds?.length ?? 0) +
     (attention.approvedHeld?.length ?? 0) +
     (attention.landingHeld?.length ?? 0) +
-    (attention.deadlocked?.length ?? 0)
+    (attention.deadlocked?.length ?? 0) +
+    (attention.backup ? 1 : 0)
   );
 }
 
@@ -65,7 +70,7 @@ export function attentionCount(attention: Attention | null): number {
  * What the bar's attention pills add up to at phone width, where they fold
  * into one count: exactly the four sections that draw a pill - deadlocked,
  * trunk, review and question. Deliberately not `attentionCount`, which also
- * counts `approvedHeld` and `landingHeld`: those light the control and have
+ * counts `approvedHeld`, `landingHeld` and `backup`: those light the control and have
  * a row in the panel, but no pill, so a total that included them would not
  * be the sum of the pills it stands in for.
  */
@@ -103,6 +108,7 @@ export function attentionLabel(attention: Attention | null): string {
   const parts: string[] = [];
   if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
   if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
+  if (attention.backup) parts.push('backup needs attention');
   if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
 

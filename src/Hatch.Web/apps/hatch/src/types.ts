@@ -1608,6 +1608,11 @@ export interface Attention {
   /** The issues the board has deadlocked, with the judge's own sentence saying
       why - a person's to fix, every time. Absent from a board that predates it. */
   deadlocked?: Deadlocked[];
+  /** The backup folder gone wrong - failing, or stale - with the judge's own
+      sentence saying why, and when the last good copy was taken: a person's to
+      fix, every time. Null when backups are healthy or not configured. Absent
+      from a board that predates it. */
+  backup?: BackupAttention | null;
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
@@ -1685,6 +1690,13 @@ export interface BackupCopy {
   name: string;
   bytes: number;
   takenAt: string;
+}
+
+/** The Backups row in the attention panel: the sentence, and the last copy
+    that is known good. */
+export interface BackupAttention {
+  sentence: string;
+  lastSuccessfulAt: string | null;
 }
 
 /** What the Backups card shows. Mirrors BackupStatusDto. */

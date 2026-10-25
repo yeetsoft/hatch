@@ -15,6 +15,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from '../lib/attention';
+import { lastSuccessWords } from '../lib/backup';
 import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
 import { TrunkBuildBugDialog } from './TrunkBuildBugDialog';
@@ -112,10 +113,11 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 }
 
 /**
- * The Human half of what the loop is waiting on a person for: trunk builds
- * that fail, pull requests to review, pull requests approved but not
- * merging, questions to answer - in that order, the order somebody would
- * work through them.
+ * The Human half of what the loop is waiting on a person for: a backup that
+ * needs attention, deadlocked issues, trunk builds that fail, pull requests
+ * to review, pull requests approved but not merging, issues landed but not
+ * done, questions to answer - in that order, the order somebody would work
+ * through them.
  *
  * Exported alone, no outer heading and no `.hatch-attention-group` wrapper, so
  * its caller - the bar's `AttentionPanel`, beside the Agent group it draws
@@ -140,9 +142,32 @@ export function AttentionHuman({
   const approvedHeld = attention?.approvedHeld ?? [];
   const landingHeld = attention?.landingHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
+  const backup = attention?.backup ?? null;
 
   return (
     <>
+      {/* First, since a database with no copy outranks everything under it.
+          Unlike its siblings it has no empty state: a healthy or unconfigured
+          install must see nothing at all. */}
+      {backup && (
+        <section className="hatch-attention-section">
+          <h3 className="hatch-attention-heading">Backups</h3>
+
+          <ul className="hatch-attention-rows">
+            <li>
+              {/* This tab, and to Settings: the folder is fixed there. */}
+              <Link className="hatch-attention-row" to="/settings">
+                <span className="hatch-attention-row-head">
+                  <span className="hatch-attention-key">Backups</span>
+                </span>
+                <span className="hatch-attention-files">{backup.sentence}</span>
+                <span className="hatch-attention-files">{lastSuccessWords(backup)}</span>
+              </Link>
+            </li>
+          </ul>
+        </section>
+      )}
+
       <section className="hatch-attention-section">
         <h3 className="hatch-attention-heading">Deadlocked</h3>
 

@@ -190,6 +190,17 @@ describe('attentionCount', () => {
     expect(attentionCount(attention())).toBe(0);
   });
 
+  it('counts a backup as one row, adds it to the other sources, and counts null or absent as zero', () => {
+    // Nothing in the loop will fix a folder, so it is a person's, every time.
+    const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
+
+    expect(attentionCount(attention({ backup }))).toBe(1);
+    expect(attentionCount(attention({ reviews: [review()], backup }))).toBe(2);
+    expect(attentionCount(attention({ backup: null }))).toBe(0);
+    expect(attentionCount(attention())).toBe(0);
+    expect(attentionTone(attention({ backup }))).toBe('asking');
+  });
+
   it('does not count a runner out of usage, and stays resting for it', () => {
     // A dot, not a pill: see the control's own remarks.
     const exhausted = attention({ exhaustedRunners: [exhaustedRunner()] });
@@ -235,6 +246,13 @@ describe('pillCount', () => {
     // but the bar has no pill for them, so the folded total must not either.
     expect(pillCount(attention({ approvedHeld: [approvedHeld()] }))).toBe(0);
     expect(attentionCount(attention({ approvedHeld: [approvedHeld()] }))).toBe(1);
+  });
+
+  it('does not count a backup, which lights the control but draws no pill', () => {
+    const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
+
+    expect(pillCount(attention({ backup }))).toBe(0);
+    expect(attentionCount(attention({ backup }))).toBe(1);
   });
 
   it('is zero before the first answer', () => {
@@ -312,6 +330,15 @@ describe('attentionLabel', () => {
     expect(attentionLabel(attention({ deadlocked: [deadlocked()] }))).toBe('1 issue deadlocked');
     expect(attentionLabel(attention({ deadlocked: [deadlocked(), deadlocked({ key: 'AER-23' })] }))).toBe(
       '2 issues deadlocked',
+    );
+  });
+
+  it('says a backup needs attention, after the trunk builds and before the pull requests', () => {
+    const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
+
+    expect(attentionLabel(attention({ backup }))).toContain('backup needs attention');
+    expect(attentionLabel(attention({ trunkBuilds: [trunkBuild()], backup, reviews: [review()] }))).toBe(
+      '1 trunk build failing, backup needs attention, 1 pull request to review',
     );
   });
 
