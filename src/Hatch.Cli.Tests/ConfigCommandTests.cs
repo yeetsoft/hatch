@@ -1518,6 +1518,176 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
     }
 
+    // ---- --log ----
+
+    [Fact]
+    public async Task Log_dir_writes_HATCH_LOG_makes_the_directory_and_touches_nothing_else()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept"]);
+        var dir = Path.Combine(_temp, "logs-here");
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--log", dir], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains($"HATCH_LOG={dir}", written);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", written);
+        Assert.True(Directory.Exists(dir));
+    }
+
+    [Fact]
+    public async Task Log_on_writes_the_word_and_makes_the_default_folder()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--log", "on"], default));
+
+        Assert.Contains("HATCH_LOG=on", File.ReadAllLines(ConfigPath));
+        Assert.True(Directory.Exists(Settings.DefaultLogPath()));
+    }
+
+    [Fact]
+    public async Task Log_off_writes_the_word_and_makes_no_directory()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--log", "off"], default));
+
+        Assert.Contains("HATCH_LOG=off", File.ReadAllLines(ConfigPath));
+        Assert.False(Directory.Exists("off"));
+    }
+
+    [Fact]
+    public async Task Log_shaped_wrong_is_refused()
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--log"], default));
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--log", "a", "b"], default));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_log_directory_that_cannot_be_made_is_refused_and_the_file_is_untouched()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
+        var file = Path.Combine(_temp, "a-file");
+        File.WriteAllText(file, "");
+        var dir = Path.Combine(file, "logs");
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--log", dir], default));
+
+        Assert.Contains(dir, Complained, StringComparison.Ordinal);
+        Assert.Equal(["HATCH_BASE=https://kept"], File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Log_is_left_in_the_file_by_every_other_write()
+    {
+        var logs = Path.Combine(_temp, "logs-kept");
+        var checkout = Tree("checkout");
+        var clones = Path.Combine(_temp, "clones");
+        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+
+        await Command(new Replies()).RunAsync(["--repo", checkout], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", clones], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", "off"], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+        Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Tag_after_log_and_log_after_tag_keep_both()
+    {
+        var logs = Path.Combine(_temp, "logs-both");
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains($"HATCH_LOG={logs}", written);
+    }
+
+    [Fact]
+    public async Task Here_log_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+        var dir = Path.Combine(_temp, "logs-here");
+
+        Assert.Equal(
+            0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--log", dir], default));
+
+        Assert.Contains($"HATCH_LOG={dir}", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_log_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--log", "off"], default));
+
+        Assert.Contains("HATCH_LOG=off", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_with_no_log_says_unset()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_LOG:         <unset - no log>", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_off_for_an_off_log()
+    {
+        await Command(new Replies()).RunAsync(["--log", "off"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_LOG:         off - no log  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_default_folder_for_an_on_log()
+    {
+        await Command(new Replies()).RunAsync(["--log", "on"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_LOG:         {Settings.DefaultLogPath()}  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_names_the_folder_of_a_directory_log()
+    {
+        var dir = Path.Combine(_temp, "logs-shown");
+        await Command(new Replies()).RunAsync(["--log", dir], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_LOG:         {dir}  ({ConfigPath})", Said);
+    }
+
     // ---- --here ----
 
     [Fact]

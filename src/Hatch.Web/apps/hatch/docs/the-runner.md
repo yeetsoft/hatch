@@ -202,6 +202,8 @@ HATCH_TAGS           the tags this runner advertises, comma-separated (default:
                      none)
 HATCH_WORKSPACE      where it clones what the board binds (unset: a per-user
                      default; off: never clone)
+HATCH_LOG            where its log goes (on: the logs folder beside the
+                     per-user file; a directory; unset or off: no log)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -235,6 +237,8 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 - `HATCH_REPOS` as a path a line;
 - `HATCH_TAGS` as a comma-separated list, or `<unset>`;
 - for an unset `HATCH_WORKSPACE`, the directory clones would go to;
+- `HATCH_LOG:` as `<unset - no log>`, `off - no log`, or the folder the log
+  goes to (the `logs` folder beside the per-user file, for `on`);
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
