@@ -73,11 +73,19 @@ off` for none.
 
 The bounds are not seeded once the way tags are. Each fresh start of a loop -
 one started by hand, or the supervisor's first start - writes the bounds it
-was started with onto its row on its first heartbeat, overwriting an edit made
+was started with, **Projects** among them, onto its row on its first heartbeat, overwriting an edit made
 here and clearing any bound the row held for a flag the loop was not given.
 A supervisor restart does not: it keeps what the row holds, so an edit made
 here survives it. A row made by `hatch work` or `go-to-work --once` never
 takes bounds from that heartbeat.
+
+**Projects** is the one bound that is a list. A row bound to some shows
+`projects HA, AER` in Bounds, comma-separated; `hatch runners` prints the same
+binding space-separated, `projects HA AER`. The loop adopts a changed list on
+its very next heartbeat, saying so once - `hatch: the board set --project HA
+AER`, or `--project off` for none. It narrows which tickets this runner picks
+up, and nothing else: the merge train is unaffected, and an approved pull
+request in any project still merges on its own clock.
 
 An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one

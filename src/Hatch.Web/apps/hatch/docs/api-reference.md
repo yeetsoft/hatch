@@ -454,7 +454,12 @@ holds.
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
 `ancestorKey` to narrow to one corner of the board and `mine` to narrow to
-the caller's own tickets; `{key}` and `next` also take `heldToken`, a claim
+the caller's own tickets; `next` and `queue` also take `tag`, what the
+caller's runner advertises, and `project`, the project keys it is bound to -
+each repeatable, one value per occurrence (`?project=FIL&project=AER`). An
+absent or empty `project` folds nothing, so a caller that never declared a
+binding sees every project as before; a key no project has is refused with a
+400 naming it on `next`. `{key}` and `next` also take `heldToken`, a claim
 the caller already holds, so re-reading a dispatch for a ticket it is already
 working is not folded as a conflict. `queue` instead takes `asRunner`, which
 answers off that named runner's own row - its repositories, `mine` and
@@ -614,7 +619,7 @@ state rather than a stall.
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, and tags |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, tags, and projects |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -630,14 +635,21 @@ whole round trip: it reports what it is - its repositories, whether it
 clones, `mine`, `standing`, where it runs, which agent spawned it - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
 stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
-running within. Those four bounds are written by a fresh loop's first beat
+running within, and `Projects`, the project keys it is bound to. Those four
+bounds are written by a fresh loop's first beat
 (`Fresh: true`, a `loop` beat only), which also clears any the row held for a
 flag the loop was not given, and otherwise only by a person's `PATCH` -
 a supervisor restart sending its original `--max-runs` again never undoes an
 operator's midnight edit, a `once` beat never writes them, and a running agent
 cannot raise its own budget: only a new process started with flags can, which
-is the failure the bounds exist to prevent. The `state` is a person's too, with
-one exception: a fresh `loop` beat that also sends `standby: true` writes the
+is the failure the bounds exist to prevent. `Projects` follows the same
+fresh-beat rule as the four - the CLI sends it on every heartbeat, but only a
+fresh `loop` beat writes it, so a supervisor restart never undoes a person's
+edit of it - while its `PATCH` payload is list-shaped like `tags`, not scalar
+like the four: absent leaves the row's projects as they are, `[]` clears them,
+and a list sets them. (Tags differ on the first axis: they are seeded once
+ever, and a fresh beat never re-seeds a row that already has them.) The
+`state` is a person's too, with one exception: a fresh `loop` beat that also sends `standby: true` writes the
 row `paused` - on a new row, or over `running` or `stopping` - and is answered
 `paused` on that same beat, since a start that asked to stand by should not run
 a single increment first. `standby` is read on that beat alone: without

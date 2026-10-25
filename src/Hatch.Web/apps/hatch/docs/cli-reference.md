@@ -216,6 +216,10 @@ A row's marker says where the pass puts it:
   considered last of all.
 - `||` is paused. A person set it aside, and nothing picks it up until they
   set it back.
+- A runner bound to projects folds past an issue in any other project, in a
+  sentence such as `AER-12 is in project AER - this runner is bound to FIL and
+  HA`. Hops are folded too: a runner does not carry a ticket on in a project it
+  does not drive.
 - A note such as `(express, no session)`, `(parent pulled, no session)`,
   `(epic, no session)`, `(under <epic>, no session)` or `(pre-approved, no
   session)` marks a hop: the loop carries the ticket on itself, with no session,
@@ -249,6 +253,12 @@ heard from first: its name, what it is doing, the ticket it holds (or
 prints one sentence saying so. It writes nothing.
 
 - `--json` prints the endpoint's own answer and nothing else.
+
+A runner bound to some projects (`go-to-work --project FIL --project AER`, or
+the Projects field on the Runners page) closes its line with `  projects FIL AER`,
+the keys space-separated. A runner bound to none ends its line as it always did.
+The Runners page writes the same list comma-separated, `projects HA, AER`; it is
+the same binding.
 
 ### show
 
@@ -500,6 +510,7 @@ hatch:   run it inside a checkout, name one with --repo, set HATCH_REPOS, or giv
 
 ```
 hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]
+           [--project <key>]...
            [--model <model>] [--effort <effort>] [--agent <id>] [--dry-run]
            [--no-keys] [--repo <path>]... [--workspace <dir>]
 ```
@@ -518,6 +529,11 @@ has what it prints and every exit code.
   ```
 - `--under <epic key>` looks only inside that epic's subtree. Not with a key
   either: one says which ticket, the other says where to look for one.
+- `--project <key>` looks only in that project (`AER`, say). It is repeatable,
+  and the whole list is for this run. It narrows the scan, so it does nothing
+  with a key, and it never touches the runner's row: a one-off `work` does not
+  change what the board says this runner is bound to. A value that is not the
+  shape of a project key is refused with the usage block.
 - `-i` runs a session you sit in, rather than a headless one.
 - `--quiet` says nothing until the increment is finished.
 - `--model <model>` beats the playbook's model, for this run only.
@@ -536,7 +552,7 @@ has what it prints and every exit code.
 ### go-to-work
 
 ```
-hatch go-to-work [--mine] [--under <epic key>] [--once] [--standby] [--quiet]
+hatch go-to-work [--mine] [--under <epic key>] [--project <key>]... [--once] [--standby] [--quiet]
                  [--interval <seconds>] [--merge-interval <seconds>]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
                  [--until <HH:MM>] [--stop-file <path>] [--no-keys]
@@ -552,6 +568,12 @@ has the pass in order, the bounds and the restarts.
 - `--mine` takes only the caller's own tickets. Plain `go-to-work` skips every
   person's tickets, including yours.
 - `--under <epic key>` stays inside one epic's subtree.
+- `--project <key>` takes only that project's tickets. It is repeatable, and
+  the whole list is for this run, until the board sets another. Like `--tag`,
+  a list on the command line is a starting value, not a standing one: the board
+  can change it from the Runners page, and the loop prints it when it does
+  (`hatch: the board set --project FIL AER`, or `--project off` for none).
+  With none given the loop works every project, as it always has.
 - `--once` makes one pass, and out.
 - `--standby` starts the runner paused: it says so once, reports in, and takes
   nothing until the board's Go to Work sets it running. A restarted incarnation
@@ -583,8 +605,8 @@ has the pass in order, the bounds and the restarts.
   `0` means only when the loop's own source actually changed.
 - `--no-restart` never comes back as a newer build.
 
-None of the bounds is set by default. Each is read between increments, so the
-increment in flight always finishes. The two restart flags do nothing in a
+None of the bounds, `--project` included, is set by default. Each is read
+between increments, so the increment in flight always finishes. The two restart flags do nothing in a
 `hatch` started by hand, which has no supervisor to rebuild and run it again.
 
 ### do-my-work

@@ -244,7 +244,8 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
-   (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
+   (`the board set --max-runs 3`, or `the board set --project FIL AER` - `--project off`
+   for none). Then the bounds, [below](#bounds-timeouts-and-stopping).
    This is the one moment no claim is held. A one-off order from the page
    (work a named ticket, or take one ordinary pass) is read here too, and runs
    as the next increment even while paused, counting like any other.
@@ -321,6 +322,7 @@ hatch go-to-work --max-runs 5             stop after five increments
 hatch go-to-work --max-spend 20           stop once the night has cost $20
 hatch go-to-work --until 08:00            stop at that wall-clock hour (tomorrow, if it has gone by today)
 hatch go-to-work --stop-file /tmp/stop    stop once that path exists
+hatch go-to-work --project FIL --project AER   take only those projects' tickets
 ```
 
 `--max-runs` and `--max-spend` take at least 0, so `--max-runs 0` stops before
@@ -335,13 +337,19 @@ to reach for from another terminal or another machine: with no pid to find and
 no signal that could land mid-push, `touch /tmp/stop` ends the loop after the
 increment in flight.
 
+`--project` is the odd one out: it stops nothing, it narrows. A runner bound to
+projects folds past every ticket in any other, a hop included, naming the
+project it is bound to, and the merge train is unaffected. It is repeatable,
+and a key is a project's key, upper-cased and de-duplicated for you. `hatch work`
+takes the same flag for a one-off scan, and never writes it to the row.
+
 The same bounds are controls on **Agents → Runners**, and a value set there is folded
 in on the next heartbeat, including being cleared (*Watching the loop*).
 
 From the loop's side, a bound reaches that row when the loop starts fresh: a
 loop started by hand, or the supervisor's first start. Its first heartbeat
-writes the four bounds it was started with, and clears any the row held for a
-flag it was not given, so restarting by hand with `--max-runs` dropped leaves
+writes the five bounds it was started with - the four above and `--project` -
+and clears any the row held for a flag it was not given, so restarting by hand with `--max-runs` dropped leaves
 no limit on the row rather than the old one. The supervisor's own restart
 (exit 75, which carries the night in) writes none and keeps what the row
 holds, so a bound edited on the page at midnight survives it. `hatch work` and
