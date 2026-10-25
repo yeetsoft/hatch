@@ -731,8 +731,8 @@ public class RunnersController(
     /// nulls that is not itself null - a claim on nothing, drawn as though it
     /// were one.
     /// </summary>
-    private static (string Key, ClaimSnapshot Claim)? Holding(
-        Dictionary<string, (string Key, ClaimSnapshot Claim)> held, string name) =>
+    private static (string Key, ClaimSnapshot Claim, string? Status)? Holding(
+        Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held, string name) =>
         held.TryGetValue(name, out var claim) ? claim : null;
 
     // ---- The two numbers ----

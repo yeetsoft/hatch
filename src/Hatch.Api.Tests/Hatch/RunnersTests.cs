@@ -89,6 +89,7 @@ public class RunnersTests
         var projected = With().Project(Row(line: "nothing on the board is an agent's to move"), null);
 
         Assert.Null(projected.ClaimKey);
+        Assert.Null(projected.ClaimStatus);
         Assert.Equal("nothing on the board is an agent's to move", projected.Line);
         Assert.Equal(With().GoneAfterSeconds, projected.GoneAfterSeconds);
     }
@@ -102,9 +103,10 @@ public class RunnersTests
         var claim = new ClaimSnapshot(
             Guid.NewGuid(), "hatch", "here:/tree", Now, Now, "running make test-api", Now);
 
-        var projected = With().Project(Row(line: "resetting the workspace"), ("AER-12", claim));
+        var projected = With().Project(Row(line: "resetting the workspace"), ("AER-12", claim, "In Progress"));
 
         Assert.Equal("AER-12", projected.ClaimKey);
+        Assert.Equal("In Progress", projected.ClaimStatus);
         Assert.Equal("running make test-api", projected.Line);
         Assert.Equal(Now, projected.LineAt);
     }
