@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useQueue } from '../lib/useQueue';
-import { useRunners } from '../lib/useRunners';
 import { QueueModal } from './QueueModal';
-import type { IssueCard } from '../types';
+import type { IssueCard, Runner } from '../types';
 
 /**
  * The button and its modal, and the one place they meet - `NavUtilization`'s
@@ -10,14 +9,22 @@ import type { IssueCard } from '../types';
  * the modal is open, so the board mounts one element and knows nothing about
  * either piece of state.
  *
- * The read happens on open, not on mount and not on a timer: the board
+ * The queue is read on open, not on mount and not on a timer: the board
  * behind this already polls every 30s, and a queue nobody has asked to see
- * is a request for nothing.
+ * is a request for nothing. The runners are the page's own read, handed in -
+ * the Go to Work button needs them whether or not this modal is open.
  */
-export function QueueControl({ cards, onTake }: { cards: readonly IssueCard[]; onTake: (card: IssueCard) => void }) {
+export function QueueControl({
+  cards,
+  runners,
+  onTake,
+}: {
+  cards: readonly IssueCard[];
+  runners: Runner[] | null;
+  onTake: (card: IssueCard) => void;
+}) {
   const { status, queue, error, runner, load, choose } = useQueue();
   const [open, setOpen] = useState(false);
-  const { runners } = useRunners(open);
 
   return (
     <>

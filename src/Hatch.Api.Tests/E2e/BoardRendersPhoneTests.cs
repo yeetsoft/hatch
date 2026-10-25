@@ -46,6 +46,19 @@ public class BoardRendersPhoneTests(ITestOutputHelper output)
             var bar = await harness.MeasureBarAsync(deadline);
             output.WriteLine(bar.ToString());
 
+            // The board's own bar, which the measurement above does not reach: every trailing control, Go to Work
+            // among them, must sit inside the viewport, and Go must be a finger's height. A scratch database has no runner,
+            // so the button draws disabled - and that is the width that matters.
+            var board = await harness.MeasureBoardBarAsync(deadline);
+            output.WriteLine(board.ToString());
+
+            Assert.True(board.ScrollWidth <= board.InnerWidth, $"the board scrolls sideways:{Environment.NewLine}{board}");
+            Assert.True(board.CoarsePointerMatches, $"the profile has no coarse pointer:{Environment.NewLine}{board}");
+            var go = Assert.Single(board.Trailing, t => t.Name == "span \"Go\"");
+            Assert.True(go.Box.Height >= 44, $"Go is under 44px high:{Environment.NewLine}{board}");
+            foreach (var (name, box) in board.Trailing)
+                Assert.True(box.Right <= board.InnerWidth, $"{name} runs off the right edge:{Environment.NewLine}{board}");
+
             harness.AssertNoPageErrors();
         }
         catch (Exception e) when (e is not Xunit.SkipException)
