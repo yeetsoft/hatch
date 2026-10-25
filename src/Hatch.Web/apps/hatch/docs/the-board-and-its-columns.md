@@ -72,6 +72,14 @@ The hops the board makes are:
 [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
 across every column and hop above, start to finish.
 
+## Narrowing the board
+
+The **Project** picker is drawn only when Hatch has more than one project,
+and **All projects** is a choice like any other. It and the type filter are
+remembered per browser, in `localStorage`, across pages, reloads and
+restarts. A `?project=KEY` link opens that project whatever this browser
+remembers, and the browser remembers it afterwards.
+
 ## Column flags
 
 A column's behaviour is a set of flags, ticked on the **Statuses** screen.
