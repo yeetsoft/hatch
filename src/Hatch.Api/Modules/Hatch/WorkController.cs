@@ -107,6 +107,11 @@ public class WorkController(
     /// for no runner in particular is <see cref="TagDeclaration.Unjudged"/>
     /// and never reaches this route.
     /// </param>
+    /// <param name="project">
+    /// The project keys this runner is bound to, repeatable. Absent or empty
+    /// folds nothing, which is every caller before this one; a key no
+    /// project has is refused with a 400 naming it.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -117,12 +122,13 @@ public class WorkController(
         [FromQuery] bool? clones = null,
         [FromQuery] bool mine = false,
         CancellationToken ct = default,
-        [FromQuery] List<string>? tag = null)
+        [FromQuery] List<string>? tag = null,
+        [FromQuery] List<string>? project = null)
     {
         if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project));
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -192,6 +198,12 @@ public class WorkController(
     /// <paramref name="ancestorKey"/> come off the row and not the query
     /// string.
     /// </param>
+    /// <param name="project">
+    /// The project keys this runner is bound to, repeatable. Ignored, not
+    /// refused and not validated, beside <paramref name="asRunner"/>: that
+    /// row's own <see cref="EfHatchRunner.Projects"/> is what is read
+    /// instead, the same way <paramref name="tag"/> is.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -206,9 +218,12 @@ public class WorkController(
         // unchanged. Do not move this back beside mine - that reopens the churn.
         CancellationToken ct = default,
         [FromQuery] string? asRunner = null,
-        [FromQuery] List<string>? tag = null)
+        [FromQuery] List<string>? tag = null,
+        [FromQuery] List<string>? project = null)
     {
         if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+
+        var projects = ProjectKeys(project);
 
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
@@ -235,6 +250,7 @@ public class WorkController(
             ancestorKey = row.Under;
             mine = row.Mine ?? false;
             tags = TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            projects = ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries));
 
             if (mine)
             {
@@ -254,7 +270,7 @@ public class WorkController(
             repos = RepositoryDeclaration.From(remote, standing, clones);
         }
 
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -1346,4 +1362,13 @@ public class WorkController(
     private static StatusDto ToStatusDto(EfHatchStatus s) =>
         new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
             RunnerTags: RunnerTagColumn.Read(s.RunnerTags));
+
+    /// <summary>
+    /// The project keys a request named: trimmed, upper-cased (the normal
+    /// form of <see cref="EfHatchProject.Key"/>), blanks dropped and
+    /// duplicates folded, in the order given - the same normalisation
+    /// <see cref="RunnersController"/> applies on its own write.
+    /// </summary>
+    private static List<string> ProjectKeys(IEnumerable<string>? raw) =>
+        (raw ?? []).Select(p => p.Trim().ToUpperInvariant()).Where(p => p.Length > 0).Distinct().ToList();
 }

@@ -4443,6 +4443,106 @@ public class WorkControllerTests
         Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
+    // ---- Projects, a runner's own binding (HA-1535) ----
+
+    [Fact]
+    public async Task Queue_NamesTheProjectThisRunnerIsBoundTo()
+    {
+        var h = await NewAsync();
+        var fil = await h.AddProjectAsync("FIL");
+        var issue = await h.FileAsync("story", "in AER", h.InProgress);
+        var filIssue = await h.FileAsync("story", "in FIL", h.InProgress, projectId: fil);
+
+        var bound = Value(await h.Work.GetQueue(0, null, default, project: ["FIL"]));
+        Assert.Equal(
+            $"{Key(issue)} is in project AER - this runner is bound to FIL",
+            bound.Single(e => e.Issue.Key == Key(issue)).Blocked);
+        Assert.Null(bound.Single(e => e.Issue.Key == Key("FIL", filIssue)).Blocked);
+
+        var other = Value(await h.Work.GetQueue(0, null, default, project: ["AER"]));
+        Assert.Null(other.Single(e => e.Issue.Key == Key(issue)).Blocked);
+        Assert.Equal(
+            $"{Key("FIL", filIssue)} is in project FIL - this runner is bound to AER",
+            other.Single(e => e.Issue.Key == Key("FIL", filIssue)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ALowerCaseProject_EqualsTheUpperCaseOne()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        await h.FileAsync("story", "in AER", h.InProgress);
+
+        Assert.Equal(
+            Only(await h.Work.GetQueue(0, null, default, project: ["FIL"])).Blocked,
+            Only(await h.Work.GetQueue(0, null, default, project: ["fil"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AProjectBoundToNothing_FoldsNothingOnProjects()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "built anywhere", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task NextWork_WithAProjectBound_SkipsAClearRowOutsideItAndReturnsTheOneInside()
+    {
+        var h = await NewAsync();
+        var fil = await h.AddProjectAsync("FIL");
+        await h.FileAsync("story", "in AER", h.InProgress);
+        var filIssue = await h.FileAsync("story", "in FIL", h.InProgress, projectId: fil);
+
+        Assert.Equal(
+            Key("FIL", filIssue),
+            Value(await h.Work.GetNextWork(0, null, null, default, project: ["FIL"])).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Project_AnUnknownKey_Is400OnNextAndQueue()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "clear", h.Todo);
+        const string expected = "there is no project NOPE";
+
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetNextWork(0, null, null, default, project: ["NOPE"])).Result).Value);
+        Assert.Equal(expected, Assert.IsType<BadRequestObjectResult>(
+            (await h.Work.GetQueue(0, null, default, project: ["NOPE"])).Result).Value);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_FoldsByTheRowsOwnProjectsRatherThanTheQueryString()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        var issue = await h.FileAsync("story", "in AER", h.InProgress);
+
+        h.Db.Runners.AddRange(
+            new EfHatchRunner
+            {
+                Name = "fil-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, Projects = "FIL",
+            },
+            new EfHatchRunner
+            {
+                Name = "aer-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+                State = EfHatchRunner.Running, Projects = "FIL\nAER",
+            });
+        await h.Db.SaveChangesAsync();
+
+        // The query string's own project is ignored beside asRunner, even
+        // where it disagrees with the row's: the row's own declaration is
+        // what is read, the same way a row's own tags are.
+        Assert.Equal(
+            $"{Key(issue)} is in project AER - this runner is bound to FIL",
+            Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "fil-box", null, ["AER"])).Blocked);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "aer-box")).Blocked);
+    }
+
     // ---- Runner tags, the union and where it comes from (HA-1367) ----
 
     [Fact]

@@ -43,21 +43,40 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// board, whatever <paramref name="ancestorKey"/>, <paramref name="mine"/>
     /// or <paramref name="repos"/> narrow this scan to, so a narrowed scan
     /// pays for a second, unnarrowed one. So does a judged scan when some
-    /// project requires tags: the tag fold precedes the dependency and family
-    /// folds, so a tag-folded row loses its <c>WaitsOn</c> and would hide a
-    /// ring; the second scan is unjudged. Only the queue asks.
+    /// project requires tags, or when <paramref name="projects"/> is bound:
+    /// the tag fold and the project fold both precede the dependency and
+    /// family folds, so a row either one folds loses its <c>WaitsOn</c> and
+    /// would hide a ring; the second scan is unjudged and unbound. Only the
+    /// queue asks.
     /// </param>
     /// <param name="tags">
     /// What the caller's runner advertises, see <see cref="TagDeclaration"/>.
     /// Null is <see cref="TagDeclaration.Unjudged"/>: a scan answering for the
     /// board and not for a runner folds nothing on tags.
     /// </param>
+    /// <param name="projects">
+    /// The project keys this runner is bound to, repeatable - see
+    /// <see cref="ProjectFold"/>. Null or empty folds nothing: a scan
+    /// answering for the board and not for a bound runner judges every
+    /// project.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
-        TagDeclaration? tags = null)
+        TagDeclaration? tags = null, IReadOnlyList<string>? projects = null)
     {
         tags ??= TagDeclaration.Unjudged;
+
+        // Judged here, on the one entry every caller shares - the same place
+        // ancestorKey's own unknown key is refused - so a refused scan never
+        // reaches the walk below.
+        if (projects is { Count: > 0 })
+        {
+            var knownProjects = await db.Projects.Select(p => p.Key).ToListAsync(ct);
+            var unknownProjects = projects.Where(k => !knownProjects.Contains(k)).ToList();
+            if (unknownProjects.Count > 0)
+                return Scan.Refused($"there is no project {string.Join(", ", unknownProjects)}");
+        }
 
         var statuses = await OrderedStatusesAsync(ct);
 
@@ -298,7 +317,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing, projectRepoSourced, tags: tags);
+                        landing, projectRepoSourced, tags: tags, projects: projects);
 
                     var blocked = blocking.Sentence;
                     var sentence = blocked;
@@ -360,6 +379,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var whole = scope is not null || mine || repos.IsDeclared
                 || (tags.Judged && candidates.Any(i => tree.EffectiveRunnerTags(i.Id).All.Count > 0))
                 || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
+                || projects is { Count: > 0 }
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
@@ -632,6 +652,26 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         return columnTags.Count > 0
             ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
             : $"{key} is implemented only by a runner advertising {Listed(required)} - this runner advertises {has}";
+    }
+
+    /// <summary>
+    /// Why this caller's runner is not the one for the issue: the issue's own
+    /// project is outside the list the runner is bound to. Null when
+    /// <paramref name="projects"/> is null or empty - a caller that declared
+    /// no binding at all - or when the issue's project is in the list.
+    /// Unconditional on <c>hop</c>, unlike <see cref="TagFold"/>: there is no
+    /// "which runner advertises what" question for a project binding to
+    /// answer, so a hop in a project this runner does not drive is folded the
+    /// same as any other move in it.
+    /// </summary>
+    private static string? ProjectFold(EfHatchIssue issue, IReadOnlyList<string>? projects)
+    {
+        if (projects is null || projects.Count == 0) return null;
+
+        var key = issue.Project!.Key;
+        if (projects.Contains(key)) return null;
+
+        return $"{IssueKey.Format(key, issue.Number)} is in project {key} - this runner is bound to {Listed(projects)}";
     }
 
     /// <summary>
@@ -965,6 +1005,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// names the file in the fallback sentence instead of only the Playbooks
     /// page.
     /// </param>
+    /// <param name="projects">
+    /// The project keys this runner is bound to, or null/empty for a caller
+    /// that declared no binding - see <see cref="ProjectFold"/>. Checked
+    /// after the open-question fold and before the repository fold: a column
+    /// or tag sentence about a project this runner does not drive would
+    /// mislead, so the project fold runs first.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -990,11 +1037,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         TrainSlot? train = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
-        TagDeclaration? tags = null) =>
+        TagDeclaration? tags = null,
+        IReadOnlyList<string>? projects = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
-            repoSourced, tags).Sentence;
+            repoSourced, tags, projects).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -1028,7 +1076,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         TrainSlot? train = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
-        TagDeclaration? tags = null)
+        TagDeclaration? tags = null,
+        IReadOnlyList<string>? projects = null)
     {
         var hop = hopKind is not null;
 
@@ -1162,6 +1211,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (waiting > 0)
             return new Blocking($"{waiting} unanswered question{(waiting == 1 ? "" : "s")} - it is waiting on a person, not on an agent", BlockedKinds.Person);
+
+        // Ahead of the repository and tag folds, both of which speak about a
+        // project this runner drives - a sentence naming either would mislead
+        // about one it does not. Unconditional on hop, unlike TagGated below:
+        // a hop in a project outside the bound is still none of this runner's
+        // business.
+        if (ProjectFold(issue, projects) is { } projectBlock) return new Blocking(projectBlock, BlockedKinds.Other);
 
         // A repository matters wherever a session is spawned, because every
         // session runs in the primary repository's checkout: every move but a

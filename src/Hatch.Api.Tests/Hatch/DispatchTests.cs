@@ -634,6 +634,154 @@ public class DispatchTests
         Assert.Null(RowFor(unjudged, issue).Blocked);
     }
 
+    // ---- Projects: a runner's own project binding ----
+
+    [Fact]
+    public async Task ScanAsync_AnIssueInTheBoundProject_IsClear()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: [h.ProjectKey]);
+
+        Assert.Null(RowFor(scan, issue).Blocked);
+    }
+
+    [Theory]
+    [InlineData(new[] { "FIL" }, "FIL")]
+    [InlineData(new[] { "FIL", "OPS" }, "FIL and OPS")]
+    public async Task ScanAsync_AnIssueOutsideTheBoundProjects_FoldsWithTheProjectSentence(
+        string[] bound, string list)
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        foreach (var project in bound)
+            if (project != h.ProjectKey) await h.AddProjectAsync(project);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: bound);
+
+        var row = RowFor(scan, issue);
+        Assert.Equal($"{key} is in project {h.ProjectKey} - this runner is bound to {list}", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+        Assert.Null(row.WaitsOn);
+    }
+
+    [Fact]
+    public async Task ScanAsync_NoProjectsOrAnEmptyList_FoldsNothingOnProjects()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+
+        var none = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var empty = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: []);
+
+        Assert.Null(RowFor(none, issue).Blocked);
+        Assert.Null(RowFor(empty, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnUnknownProjectKey_RefusesTheScan()
+    {
+        var h = await NewAsync();
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["NOPE"]);
+
+        Assert.Contains("NOPE", scan.Failure);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AProjectFoldedRow_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, projects: ["FIL"]);
+
+        foreach (var issue in new[] { p, c, x })
+            Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(scan, p).Blocked);
+        Assert.Contains("is in project", RowFor(scan, p).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnAncestorOutsideTheBoundProjects_FoldsEveryRowAndClearsNone()
+    {
+        var h = await NewAsync();
+        var filId = await h.AddProjectAsync("FIL");
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var epic = await h.FileAsync("epic", "e", h.Todo, projectId: filId);
+        var story = await h.FileAsync("story", "s", h.Todo, projectId: filId, parentId: epic.Id);
+        var task = await h.FileAsync("task", "t", h.Todo, projectId: filId, parentId: story.Id);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, IssueKey.Format("FIL", epic.Number), null, RepositoryDeclaration.Undeclared, false, default,
+            projects: [h.ProjectKey]);
+
+        Assert.Null(scan.Failure);
+        Assert.NotEmpty(scan.Rows);
+        Assert.All(scan.Rows, row => Assert.NotNull(row.Blocked));
+    }
+
+    [Fact]
+    public async Task ScanAsync_AMergeColumnRowOutsideTheBoundProjects_KeepsTheMergeSentence()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync("story", "merging", merges.Id);
+        issue.PullRequestUrl = "https://example.com/pr/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+
+        var unbound = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        var bound = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
+
+        var sentence = RowFor(bound, issue).Blocked;
+        Assert.DoesNotContain("bound to", sentence);
+        Assert.DoesNotContain("is in project", sentence);
+        Assert.Equal(RowFor(unbound, issue).Blocked, sentence);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHopOnAnIssueOutsideTheBoundProjects_IsFoldedByTheProjectSentence()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, projects: ["FIL"]);
+
+        var row = RowFor(scan, issue);
+        Assert.Equal($"{key} is in project {h.ProjectKey} - this runner is bound to FIL", row.Blocked);
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
