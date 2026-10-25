@@ -68,7 +68,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt))));
+        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Bound(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -78,6 +78,13 @@ public sealed class RunnersCommand(Cli cli)
             .Select(r => r.Runner.PadRight(runnerWidth) + "  " + r.State.PadRight(stateWidth) + "  " + r.Ticket.PadRight(ticketWidth) + "  " + r.Heard)
             .ToList();
     }
+
+    /// <summary>
+    /// The projects a runner is bound to, closing its row; nothing where it is
+    /// bound to none, so a row without them reads as it always has.
+    /// </summary>
+    private static string Bound(RunnerDto row) =>
+        row.Projects.Count > 0 ? $"  projects {string.Join(" ", row.Projects)}" : "";
 
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence

@@ -21,6 +21,16 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
 
     /// <summary>
+    /// The project keys this runner is bound to on every scan, one
+    /// <c>project=</c> each on a queue or next read; none where it is bound to
+    /// no project - and it follows the board's own list once a heartbeat
+    /// answers with one. A property rather than a constructor argument because
+    /// the board is rebuilt when a command is pointed at another checkout, and
+    /// the command assigns this after that.
+    /// </summary>
+    public IReadOnlyList<string> Projects { get; set; } = [];
+
+    /// <summary>
     /// This machine's offset from UTC in minutes, which is what the API wants in
     /// order to fold ready dates against the caller's calendar day rather than
     /// the server's.
@@ -347,15 +357,18 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
     /// per checkout that has one, and <c>standing=true</c> where one of them is
     /// the process's own, then a repeatable <c>tag=</c> per tag this runner
-    /// carries. Prefixed with <c>&amp;</c> for a query that already has
-    /// something in it, which every caller's does.
+    /// carries, then a repeatable <c>project=</c> per project it is bound to.
+    /// Prefixed with <c>&amp;</c> for a query that already has something in
+    /// it, which every caller's does.
     /// </summary>
     private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
-        DeclareParts(checkouts, clones).Concat(TagParts()).ToList() is { Count: > 0 } parts
+        DeclareParts(checkouts, clones).Concat(TagParts()).Concat(ProjectParts()).ToList() is { Count: > 0 } parts
             ? $"&{string.Join('&', parts)}"
             : "";
 
     private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
+
+    private IEnumerable<string> ProjectParts() => Projects.Select(p => $"project={Uri.EscapeDataString(p)}");
 
     private static List<string> DeclareParts(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false)
     {

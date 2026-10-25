@@ -365,6 +365,135 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
     }
 
+    // ---- --project: the projects a runner is bound to ----
+
+    private static RunnerHeartbeatRequest OnlyBeat(Harness h) =>
+        h.Wire.To("POST", Beat).Single().Read<RunnerHeartbeatRequest>();
+
+    [Fact]
+    public async Task Project_flags_ride_the_heartbeat_and_the_queue_read_upper_cased()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(
+            ["--once", "--project", "FIL", "--project", "aer", "--project", "fil"], default));
+
+        Assert.Equal(new[] { "FIL", "AER" }, OnlyBeat(h).Projects);
+        var query = h.Wire.To("GET", Queue)[0].Query;
+        Assert.Contains("project=FIL", query);
+        Assert.Contains("project=AER", query);
+    }
+
+    [Fact]
+    public async Task No_project_flag_sends_no_projects_and_reads_with_none()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Null(OnlyBeat(h).Projects);
+        Assert.DoesNotContain("project=", h.Wire.To("GET", Queue)[0].Query);
+    }
+
+    [Theory]
+    [InlineData("fil1x9z")]
+    [InlineData("")]
+    [InlineData("1AB")]
+    public async Task A_malformed_project_is_refused_before_anything_is_sent(string bad)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--project", bad], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("names a project, like AER", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_project_flag_with_no_value_is_refused()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--project"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--project takes a project key", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_project_flag_survives_the_board_being_rebuilt_for_a_repo_override()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        var tree = Tree(h, "bound", "https://example.test/bound.git");
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(
+            ["--once", "--repo", tree, "--project", "FIL"], default));
+
+        Assert.Contains("project=FIL", h.Wire.To("GET", Queue)[0].Query);
+        var beat = h.Wire.Calls.Single(c => c.Method == "POST" && c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal));
+        Assert.Equal(new[] { "FIL" }, beat.Read<RunnerHeartbeatRequest>().Projects);
+    }
+
+    /// <summary>
+    /// <see cref="OnePassTold"/> for the projects: a loop started with
+    /// <paramref name="started"/> flags, answered with <paramref name="told"/>.
+    /// </summary>
+    private static async Task<Harness> OnePassToldProjects(string[] started, IReadOnlyList<string>? told)
+    {
+        var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null, Projects: told));
+
+        string[] args = ["--max-runs", "1", .. started.SelectMany(p => new[] { "--project", p })];
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(args, default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_s_projects_replace_the_loops_own_and_the_next_read_carries_them()
+    {
+        using var h = await OnePassToldProjects([], ["FIL", "AER"]);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --project FIL AER");
+        Assert.Equal(new[] { "FIL", "AER" }, h.Runtime.Board.Projects);
+        var reads = h.Wire.To("GET", Queue);
+        Assert.Contains("project=FIL", reads[^1].Query);
+        Assert.Contains("project=AER", reads[^1].Query);
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_projects_clears_the_next_read()
+    {
+        using var h = await OnePassToldProjects(["FIL"], []);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --project off");
+        Assert.Empty(h.Runtime.Board.Projects);
+        Assert.DoesNotContain("project=", h.Wire.To("GET", Queue)[^1].Query);
+    }
+
+    [Fact]
+    public async Task A_board_whose_projects_match_the_loops_says_nothing()
+    {
+        using var h = await OnePassToldProjects(["FIL", "AER"], ["FIL", "AER"]);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("project=FIL", c.Query));
+    }
+
+    [Fact]
+    public async Task An_older_hatch_that_answers_no_projects_leaves_them_alone()
+    {
+        using var h = await OnePassToldProjects(["FIL"], null);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
+        Assert.Equal(new[] { "FIL" }, h.Runtime.Board.Projects);
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("project=FIL", c.Query));
+    }
+
     // ---- A fresh loop says so on its first answered beat ----
 
     private static IReadOnlyList<RunnerHeartbeatRequest> Beats(Harness h) =>
