@@ -8,6 +8,7 @@ import type {
   AssigneeDirectory,
   AssigneeRequest,
   Attention,
+  BackupStatus,
   Board,
   ChangelogDto,
   Comment,
@@ -583,6 +584,11 @@ export const getHatchSettings = () => fetchJson<HatchSettings>('/api/hatch/setti
 /** Answers with the settings as they now read, so a save needs no reload. */
 export const putHatchSettings = (request: HatchSettingsWriteRequest) =>
   fetchJson<HatchSettings>('/api/hatch/settings', { method: 'PUT', ...asJson(request) });
+
+// ---- Backups ----
+
+export const getBackup = () => fetchJson<BackupStatus>('/api/hatch/backup');
+export const runBackup = () => fetchJson<BackupStatus>('/api/hatch/backup/run', { method: 'POST' });
 
 // ---- The runner ----
 //
