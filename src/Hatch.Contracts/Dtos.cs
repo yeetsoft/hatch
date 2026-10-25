@@ -3494,6 +3494,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// </param>
 /// <param name="Sequence">This runner's own commit count at build time, read beside <see cref="Revision"/>.</param>
 /// <param name="BuiltAt">When this runner's binary was written, read beside <see cref="Revision"/>.</param>
+/// <param name="Standby">
+/// Only read on a <see cref="Fresh"/> loop beat: this start asks to be paused,
+/// and the row is written <c>paused</c> on that beat, whatever state it was in.
+/// Absent, or on any other beat, leaves the state alone.
+/// </param>
 /// <param name="BoardDrift">
 /// Where this runner's own build sits relative to the board's - the same
 /// comparison the board makes for its own web clients
@@ -3661,7 +3666,8 @@ public record RunnerHeartbeatRequest(
     int? Sequence = null,
     DateTimeOffset? BuiltAt = null,
     string? SourceRevision = null,
-    int? SourceSequence = null);
+    int? SourceSequence = null,
+    bool? Standby = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
