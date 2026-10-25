@@ -467,6 +467,28 @@ public sealed class TallyTests
     }
 
     [Fact]
+    public void A_stop_file_in_the_sets_directory_is_noticed_and_only_there()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var inSet = new Tally(TimeProvider.System) { SetDir = dir.FullName };
+            var alone = new Tally(TimeProvider.System);
+
+            Assert.False(inSet.ShouldStop());
+            File.WriteAllText(Path.Combine(dir.FullName, "stop"), "");
+
+            Assert.True(inSet.ShouldStop());
+            Assert.Equal("this runner's set was told to stop", inSet.StopWhy);
+            Assert.False(alone.ShouldStop());
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void Somebody_who_says_until_six_at_eleven_at_night_means_the_morning()
     {
         var lateEvening = new DateTimeOffset(2026, 9, 7, 23, 0, 0, TimeSpan.Zero);
