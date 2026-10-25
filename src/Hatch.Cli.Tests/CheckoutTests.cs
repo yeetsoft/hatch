@@ -288,6 +288,58 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
+    public void The_naming_root_is_the_standing_checkout_when_there_is_one()
+    {
+        var workspace = Tree("ws");
+        var standing = Tree("standing");
+        var named = Tree("named");
+
+        var root = Checkouts.NamingRoot(
+            [new CheckoutEntry(named, null, false), new CheckoutEntry(standing, null, true)], workspace, "here");
+
+        Assert.Equal(standing, root);
+    }
+
+    [Fact]
+    public void The_naming_root_is_a_named_repo_over_a_clone_under_the_workspace()
+    {
+        var workspace = Tree("ws");
+        var clone = Path.Combine(workspace, "clone");
+        var named = Tree("named");
+
+        var root = Checkouts.NamingRoot(
+            [new CheckoutEntry(clone, null, false), new CheckoutEntry(named, null, false)], workspace, "here");
+
+        Assert.Equal(named, root);
+    }
+
+    [Fact]
+    public void The_naming_root_is_the_workspace_when_only_clones_were_found()
+    {
+        var workspace = Tree("ws");
+
+        var root = Checkouts.NamingRoot([new CheckoutEntry(Path.Combine(workspace, "clone"), null, false)], workspace, "here");
+
+        Assert.Equal(workspace, root);
+    }
+
+    [Fact]
+    public void The_naming_root_is_the_workspace_when_there_are_no_checkouts()
+    {
+        var workspace = Tree("ws");
+
+        Assert.Equal(workspace, Checkouts.NamingRoot([], workspace, "here"));
+    }
+
+    [Fact]
+    public void The_naming_root_is_the_typed_in_directory_when_there_is_no_workspace()
+    {
+        Assert.Equal("here", Checkouts.NamingRoot([], null, "here"));
+        var named = Tree("named");
+        Assert.Equal(named, Checkouts.NamingRoot([new CheckoutEntry(named, null, false)], null, "here"));
+    }
+
+    [Fact]
     public void A_named_checkout_with_an_origin_reads_it()
     {
         var tree = Tree("with-origin");
