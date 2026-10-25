@@ -1164,6 +1164,91 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task AFreshStandbyLoopBeat_OnANewRow_WritesItPaused()
+    {
+        var h = await NewAsync();
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Standby: true));
+
+        Assert.Equal("paused", instruction.State);
+        Assert.Equal("paused", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AFreshStandbyLoopBeat_PausesARunningRow_AndAnswersPaused()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal("running", (await h.OneAsync()).State);
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Standby: true));
+
+        Assert.Equal("paused", instruction.State);
+        Assert.Equal("paused", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AFreshStandbyLoopBeat_PausesAStoppingRow()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "stopping"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Standby: true));
+
+        Assert.Equal("paused", instruction.State);
+        Assert.Equal("paused", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AStandbyLoopBeat_ThatIsNotFresh_LeavesTheStateAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        // A supervisor restart of a loop that was started on standby long ago.
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Standby: true));
+
+        Assert.Equal("running", instruction.State);
+        Assert.Equal("running", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_WithoutStandby_LeavesAPausedRowPaused()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        Assert.Equal("paused", instruction.State);
+        Assert.Equal("paused", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_EvenIfFreshAndStandby_LeavesTheStateAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Fresh: true, Standby: true));
+
+        Assert.Equal("running", instruction.State);
+        Assert.Equal("running", (await h.OneAsync()).State);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_OnANewRow_WritesItRunning_EvenIfStandby()
+    {
+        var h = await NewAsync();
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Fresh: true, Standby: true));
+
+        Assert.Equal("running", instruction.State);
+    }
+
+    [Fact]
     public async Task AHeartbeat_NeverWritesTheState()
     {
         var h = await NewAsync();

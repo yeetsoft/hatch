@@ -636,7 +636,13 @@ flag the loop was not given, and otherwise only by a person's `PATCH` -
 a supervisor restart sending its original `--max-runs` again never undoes an
 operator's midnight edit, a `once` beat never writes them, and a running agent
 cannot raise its own budget: only a new process started with flags can, which
-is the failure the bounds exist to prevent. There is no
+is the failure the bounds exist to prevent. The `state` is a person's too, with
+one exception: a fresh `loop` beat that also sends `standby: true` writes the
+row `paused` - on a new row, or over `running` or `stopping` - and is answered
+`paused` on that same beat, since a start that asked to stand by should not run
+a single increment first. `standby` is read on that beat alone: without
+`fresh` (a supervisor restart) or on a `once` beat it writes nothing, and a
+fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
 

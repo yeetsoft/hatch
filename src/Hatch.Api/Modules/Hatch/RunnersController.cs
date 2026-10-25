@@ -139,6 +139,12 @@ public class RunnersController(
     /// heartbeat, but not as <c>Fresh</c>, because a row that took them would
     /// quietly undo the edit an operator made at midnight.</para>
     ///
+    /// <para>The state is the operator's too, with one exception: a <c>loop</c>
+    /// beat that is <c>Fresh</c> and says <c>Standby</c> leaves the row
+    /// <c>paused</c> - new, <c>running</c> or <c>stopping</c> - and is answered
+    /// <c>paused</c> on that same beat. <c>Standby</c> without <c>Fresh</c> (a
+    /// supervisor restart) writes nothing.</para>
+    ///
     /// <para>Nothing here is refused for being unreasonable. A heartbeat is not
     /// a decision, and a night that ended because a runner sent a line somebody
     /// would call too long would be the wrong trade twice over - so the line is
@@ -580,7 +586,9 @@ public class RunnersController(
             LastSeenAt = now,
             Line = line is { Length: > 0 } ? line : null,
             LineAt = line is { Length: > 0 } ? now : null,
-            State = EfHatchRunner.Running,
+            State = kind == EfHatchRunner.LoopKind && request.Standby == true
+                ? EfHatchRunner.Paused
+                : EfHatchRunner.Running,
 
             // Facts about the process, not bounds an operator set - written from
             // whatever the first beat carried, the same as every later one.
@@ -608,10 +616,11 @@ public class RunnersController(
 
     /// <summary>
     /// A row that already exists: kind, last seen, line, and the two facts
-    /// about what it serves. The state is the operator's. The four bounds are
-    /// the flags' at a fresh start - a <c>loop</c> beat that says so - and the
-    /// operator's after: any other beat writing one would be the runner having
-    /// the last word on what it may spend.
+    /// about what it serves. The state is the operator's, with one exception: a
+    /// fresh <c>loop</c> beat that says <c>Standby</c> writes it <c>paused</c>.
+    /// The four bounds are the flags' at a fresh start - a <c>loop</c> beat that
+    /// says so - and the operator's after: any other beat writing one would be
+    /// the runner having the last word on what it may spend.
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
@@ -669,7 +678,15 @@ public class RunnersController(
         // and its flagless beat must not clear the loop's budget.
         row.ForPersonId = forPersonId;
 
-        if (request.Fresh == true && kind == EfHatchRunner.LoopKind) Bound(row, request);
+        if (request.Fresh == true && kind == EfHatchRunner.LoopKind)
+        {
+            Bound(row, request);
+
+            // The one beat that writes state: a start that asked to stand by
+            // is paused on the beat that says so, from any state, so its own
+            // answer is already `paused`.
+            if (request.Standby == true) row.State = EfHatchRunner.Paused;
+        }
 
         // A non-empty reading writes; absent or empty leaves the row's own
         // reading alone - see the remark on RunnerHeartbeatRequest.Usage.
