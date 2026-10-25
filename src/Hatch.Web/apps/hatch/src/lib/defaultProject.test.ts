@@ -57,6 +57,9 @@ const project = (over: Partial<Project>): Project => ({
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
   storiesOnEpics: false,
+  checkApprovesMerge: false,
+  checkApprovesMergeBy: null,
+  checkApprovesMergeAt: null,
   ...over,
 });
 

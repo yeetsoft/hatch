@@ -33,6 +33,9 @@ const projectOf = (key: string, name: string): Project => ({
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
   storiesOnEpics: false,
+  checkApprovesMerge: false,
+  checkApprovesMergeBy: null,
+  checkApprovesMergeAt: null,
 });
 
 const ONE = [projectOf('AER', 'Aero')];
