@@ -164,7 +164,7 @@ foreach (var stray in strays)
 
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
-var primaryRoot = checkouts.Count > 0 ? checkouts[0].Path : (settings.Workspace ?? here);
+var primaryRoot = Checkouts.NamingRoot(checkouts, settings.Workspace, here);
 var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, profileName, CancellationToken.None);
 
 // A lambda rather than say.Complain directly: `say` is reassigned below to a
