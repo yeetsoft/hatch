@@ -351,6 +351,26 @@ public sealed class BoardCommandsTests
     }
 
     /// <summary>
+    /// The project fold is a sentence the server writes too, and prints the same way.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_its_project_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-3 is in project AER - this runner is bound to FIL";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-3", type: "story"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal($"AER-3  [story]  In Progress  {sentence}", h.Said);
+    }
+
+    /// <summary>
     /// The review column's move ends in the review column, so an arrow to it
     /// would say nothing. The row says what the increment does instead, and
     /// names the trunk from the verdict that conflicted.

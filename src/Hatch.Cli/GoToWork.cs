@@ -529,7 +529,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
     public static readonly string[] GoToWorkUsage =
     [
-        "usage: hatch go-to-work [--mine] [--under <epic key>] [--once] [--standby] [--quiet]",
+        "usage: hatch go-to-work [--mine] [--under <epic key>] [--project <key>]...",
+        "                        [--once] [--standby] [--quiet]",
         "                        [--interval <seconds>] [--merge-interval <seconds>]",
         "                        [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--until <HH:MM>]",
@@ -551,6 +552,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                     your own; `hatch do-my-work` is this flag on by default,",
         "                     and the two are otherwise identical",
         "  --under            stay inside one epic's subtree",
+        "  --project <key>    take only this project's tickets, repeatable - the whole",
+        "                     list for this run, until the board sets another",
         "  --once             one pass, and out",
         "  --standby          start paused: the runner reports in and takes nothing until",
         "                     the board's Go to Work sets it running. Ignored by a",
@@ -615,6 +618,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         int? maxRuns = null;
         decimal? maxSpend = null;
         var repoFlags = new List<string>();
+        var projectFlags = new List<string>();
         string? workspaceFlag = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -684,6 +688,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":
                     return Usage.Refuse(runtime.Say, "go-to-work --repo takes a path", GoToWorkUsage);
+                case "--project" when i + 1 < args.Length: projectFlags.Add(args[++i]); break;
+                case "--project":
+                    return Usage.Refuse(runtime.Say, "go-to-work --project takes a project key", GoToWorkUsage);
                 case "--workspace" when i + 1 < args.Length: workspaceFlag = args[++i]; break;
                 case "--workspace":
                     return Usage.Refuse(runtime.Say, "go-to-work --workspace takes a directory", GoToWorkUsage);
@@ -694,6 +701,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     return Usage.Refuse(runtime.Say, $"go-to-work does not take {flag}", GoToWorkUsage);
                 default: key = args[i]; break;
             }
+        }
+
+        if (!ProjectFlags.Parse(projectFlags, out var projects, out var badProject))
+        {
+            return Usage.Refuse(
+                runtime.Say, $"go-to-work --project names a project, like AER - not \"{badProject}\"", GoToWorkUsage);
         }
 
         // A key with --under is the refusal `work` makes, for the reason `work`
@@ -861,6 +874,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     Board = runtime.NewBoard(runnerName),
                 };
             }
+
+            // After the block above, which replaces the board and with it anything set earlier.
+            runtime.Board.Projects = projects;
 
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
@@ -1467,6 +1483,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
@@ -1534,6 +1551,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
             runtime.Board.Tags = tags;
+        }
+
+        if (told.Projects is { } projects && !projects.SequenceEqual(runtime.Board.Projects))
+        {
+            moved.Add($"--project {(projects.Count > 0 ? string.Join(" ", projects) : "off")}");
+            runtime.Board.Projects = projects;
         }
 
         if (moved.Count > 0) runtime.Say.Line($"hatch: the board set {string.Join(", ", moved)}");
