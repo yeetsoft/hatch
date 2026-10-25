@@ -1183,6 +1183,9 @@ button.hatch-card-stories:focus-visible {
   list-style: none;
   margin: 0;
   display: grid;
+  /* An auto track will not shrink below its widest line, and a title that
+     cannot wrap would then push the column name out past the card's edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-1);
 }
 
