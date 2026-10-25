@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
 import { orderRunner, patchRunner, withdrawOrder } from '../api/client';
 import { MomentField } from '../components/MomentField';
+import { RunnerProjectsField } from '../components/RunnerProjectsField';
 import { RunnerTagsField } from '../components/RunnerTagsField';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
@@ -23,6 +24,7 @@ import {
   runnerActivity,
   runnerBuildLabel,
   tagsLabel,
+  projectsLabel,
   type RunnerBounds,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
@@ -256,6 +258,7 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
       </>
     ),
     tagsLabel(runner),
+    projectsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
@@ -313,6 +316,12 @@ function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: Runn
           hint="One tag per line. Empty is any runner."
           value={draft.tags}
           onChange={(next) => set('tags', next)}
+        />
+        <RunnerProjectsField
+          label="Projects"
+          hint="One project key per line. Empty is every project. Does not change the merge train."
+          value={draft.projects}
+          onChange={(next) => set('projects', next)}
         />
       </div>
 

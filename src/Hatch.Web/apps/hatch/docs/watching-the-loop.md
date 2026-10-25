@@ -49,7 +49,7 @@ on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, its build - a short sha and how long ago, or
 `dev build` for one that hasn't been stamped - what it drives, and the
 repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
-not just a day), **Tags**, with **Save bounds** and **Revert** - and an Order
+not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), with **Save bounds** and **Revert** - and an Order
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at
 its next heartbeat, paused or running, then returns to what its state says.

@@ -22,6 +22,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   under: null,
   repositories: [],
   tags: [],
+  projects: [],
   drives: [],
   clones: null,
   mine: null,
@@ -226,6 +227,16 @@ describe('RunnersPage BoundsSummary', () => {
     expect(html).toContain('href="/issues/HA-930"');
     expect(html).toContain('5 run(s)');
     expect(html).toContain(', ');
+  });
+
+  it('lists the project keys when set, prefixed by the word', () => {
+    expect(renderBounds(runner({ projects: ['HA', 'AER'] }))).toContain('projects HA, AER');
+  });
+
+  it('says no bounds for a runner held to no project', () => {
+    const html = renderBounds(runner({ projects: [] }));
+    expect(html).toContain('no bounds');
+    expect(html).not.toContain('projects');
   });
 });
 
