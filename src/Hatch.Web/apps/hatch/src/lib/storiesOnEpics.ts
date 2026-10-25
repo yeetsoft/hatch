@@ -87,9 +87,27 @@ export function storyCount(stories: IssueCard[], statuses: Status[]): { total: n
   };
 }
 
-/** The count as it is said on the card - `countWords(3, 1)` reads "1 of 3 done". */
-export function countWords(total: number, done: number): string {
-  return `${done} of ${total} done`;
+/**
+ * Whether a card is waiting on a person: the same two reads the `?` badge
+ * (open questions) and the Hold for me mark (held) use. A stall at the resume
+ * limit is not included.
+ */
+export function needsMe(card: IssueCard): boolean {
+  return card.openQuestions > 0 || card.held;
+}
+
+/** The count as it is said on the card - `countWords(3, 1)` reads "1 of 3 done",
+    and `countWords(3, 1, 2)` "1 of 3 done · 2 needs me". */
+export function countWords(total: number, done: number, needing = 0): string {
+  const count = `${done} of ${total} done`;
+  return needing > 0 ? `${count} · ${needing} needs me` : count;
+}
+
+/** The strip's accessible sentence - `stripLabel(3, 1, 2)` reads "3 stories,
+    1 done, 2 needs you". With nobody needed it is the plain count. */
+export function stripLabel(total: number, done: number, needing = 0): string {
+  const count = `${total} ${total === 1 ? 'story' : 'stories'}, ${done} done`;
+  return needing > 0 ? `${count}, ${needing} needs you` : count;
 }
 
 /** Where the collapsed epics are persisted - namespaced next to

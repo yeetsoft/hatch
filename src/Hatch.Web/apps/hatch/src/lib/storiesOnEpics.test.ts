@@ -3,8 +3,10 @@ import {
   COLLAPSED_EPICS_STORAGE_KEY,
   carried,
   countWords,
+  needsMe,
   readCollapsedEpics,
   storyCount,
+  stripLabel,
   toggleCollapsed,
   writeCollapsedEpics,
 } from './storiesOnEpics';
@@ -254,6 +256,47 @@ describe('countWords', () => {
     expect(countWords(3, 1)).toBe('1 of 3 done');
     expect(countWords(0, 0)).toBe('0 of 0 done');
     expect(countWords(2, 2)).toBe('2 of 2 done');
+  });
+
+  it('adds how many need the operator', () => {
+    expect(countWords(3, 1, 1)).toBe('1 of 3 done · 1 needs me');
+    expect(countWords(3, 1, 2)).toBe('1 of 3 done · 2 needs me');
+  });
+
+  it('says nothing of it when none do', () => {
+    expect(countWords(3, 1, 0)).not.toContain('needs me');
+  });
+});
+
+describe('needsMe', () => {
+  const base = card('A', 'story', 'E');
+
+  it('is false for a card with no open question and no hold', () => {
+    expect(needsMe({ ...base, openQuestions: 0, held: false })).toBe(false);
+  });
+
+  it('is true for an open question', () => {
+    expect(needsMe({ ...base, openQuestions: 1 })).toBe(true);
+  });
+
+  it('is true for a held card', () => {
+    expect(needsMe({ ...base, held: true })).toBe(true);
+  });
+
+  it('is true for both', () => {
+    expect(needsMe({ ...base, openQuestions: 1, held: true })).toBe(true);
+  });
+});
+
+describe('stripLabel', () => {
+  it('says the count of stories and how many are done', () => {
+    expect(stripLabel(1, 0)).toBe('1 story, 0 done');
+    expect(stripLabel(3, 1)).toBe('3 stories, 1 done');
+  });
+
+  it('adds how many need you', () => {
+    expect(stripLabel(3, 1, 1)).toBe('3 stories, 1 done, 1 needs you');
+    expect(stripLabel(3, 1, 2)).toBe('3 stories, 1 done, 2 needs you');
   });
 });
 
