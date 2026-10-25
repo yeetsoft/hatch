@@ -27,7 +27,10 @@ public class BackupJob(BackupService backup, BackupStatus status, ILogger<Backup
 
     public string Group => "Hatch.Api";
 
-    public TimeSpan Interval => TimeSpan.FromHours(24);
+    /// <summary>How often a backup is taken - also what <see cref="BackupWatch"/> measures staleness in.</summary>
+    public static readonly TimeSpan Every = TimeSpan.FromHours(24);
+
+    public TimeSpan Interval => Every;
 
     public bool ServesTheHouse => false;
 

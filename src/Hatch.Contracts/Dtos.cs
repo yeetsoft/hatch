@@ -1306,6 +1306,13 @@ public record ReviewDto(
 /// sentence. Empty, not null, when there is none, on every board shape. Defaults
 /// to null so an older client still reads.
 /// </param>
+/// <param name="Backup">
+/// The backup folder's trouble, when there is any: the last attempt failed, the
+/// folder cannot be read, or no copy is newer than two backup intervals. Counted
+/// like <paramref name="ApprovedHeld"/> - nothing in the loop fixes a folder, so
+/// it is a person's. Null when no backup path is configured or all is well, on
+/// every board shape. Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1318,7 +1325,16 @@ public record AttentionDto(
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
-    IReadOnlyList<DeadlockedDto>? Deadlocked = null);
+    IReadOnlyList<DeadlockedDto>? Deadlocked = null,
+    BackupAttentionDto? Backup = null);
+
+/// <summary>
+/// What is wrong with the backups, in a sentence, and when one last worked -
+/// see <see cref="AttentionDto.Backup"/>.
+/// </summary>
+/// <param name="Sentence">The failure's own words, or that no backup has been taken in the last 48 hours.</param>
+/// <param name="LastSuccessfulAt">The newest copy's own stamp, read from the folder, or null when there is no copy.</param>
+public record BackupAttentionDto(string Sentence, DateTimeOffset? LastSuccessfulAt);
 
 /// <summary>
 /// The backup folder's truth and the last attempt's, for the Backups card -
