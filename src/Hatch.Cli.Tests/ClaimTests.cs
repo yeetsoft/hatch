@@ -160,6 +160,43 @@ public sealed class ClaimTests
     }
 
     [Fact]
+    public async Task The_heartbeat_carries_the_usage_reading_only_when_it_has_moved()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+        claim!.Readout = new ReadoutState();
+        var readAt = new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero);
+        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.42, null)], readAt);
+
+        await Harness.Eventually(
+            () => Beats(h).Count(b => b.UsageReadAt is not null) >= 1, "the reading to reach the board");
+        await Harness.Eventually(
+            () => Beats(h).Count >= 4, "several more heartbeats");
+
+        var carried = Beats(h).Where(b => b.UsageReadAt is not null).ToList();
+
+        // Once, and not again while the reading has not moved: the board has it.
+        Assert.Single(carried);
+        Assert.Equal(readAt, carried[0].UsageReadAt);
+        var window = Assert.Single(carried[0].Usage!);
+        Assert.Equal("session", window.Window);
+        Assert.Equal(42, window.Percent);
+
+        // A newer reading is carried again.
+        claim.Readout.SetUsage([new UsageWindow("session", "Session", 0.55, null)], readAt.AddMinutes(2));
+        await Harness.Eventually(
+            () => Beats(h).Count(b => b.UsageReadAt is not null) >= 2, "the newer reading to reach the board");
+
+        await claim.ReleaseAsync();
+
+        Assert.Equal(55, Beats(h).Last(b => b.UsageReadAt is not null).Usage![0].Percent);
+    }
+
+    [Fact]
     public async Task A_line_printed_again_is_carried_again_though_its_text_is_the_same()
     {
         using var h = new Harness();

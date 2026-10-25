@@ -3194,7 +3194,11 @@ or a token without the profile scope — gets nothing back, and the panel simply
 keeps whatever it already knew. A reading from either source still replaces
 the whole of what the heartbeat sends, never a per-window merge, so the number
 that used to move only while a session ran now moves while the loop is merely
-up.
+up. The same probe, on the same two-minute clock, also runs through a
+running increment, session or `--quiet`: a stream's `rate_limit_event` may not
+arrive for minutes, so the claim heartbeat would otherwise carry a reading that
+ages past what the board trusts. A probe that answers nothing leaves whichever
+reading is already there.
 
 Where somebody has two runners, **the freshest whole reading wins**, not a
 per-window merge. One person has one Claude login, so two runners are two

@@ -127,7 +127,8 @@ endpoint answers `204`. That is a supported state, and it is the default.
 **Where the reading comes from.** The runner reports the account's usage on the
 heartbeat it already sends, and on the claim heartbeat while an increment
 runs. During a session the reading comes from the session's own stream; between sessions it comes from a `/usage` probe at the top
-of idle passes. Hatch keeps it per person and answers only the caller's own. A
+of idle passes, and the same probe runs every two minutes through a running
+increment, so the reading never ages past what the board trusts. Hatch keeps it per person and answers only the caller's own. A
 person with two runners has one account, so the freshest whole reading wins
 rather than a merge of the two.
 
