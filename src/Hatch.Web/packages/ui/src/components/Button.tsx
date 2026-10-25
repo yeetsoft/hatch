@@ -4,7 +4,7 @@ import './Button.css';
 /** `secondary` is the default because it is the default in practice: admin
     writes it three times for every `primary`. A page has one primary action
     and a page full of secondary ones. */
-export type ButtonVariant = 'primary' | 'secondary' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'success';
 
 export type ButtonProps<T extends ElementType = 'button'> = {
   /** What to render. A <button> by default; `a` for a control that navigates,

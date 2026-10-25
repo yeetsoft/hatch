@@ -55,6 +55,7 @@ const GROUPS: ColorGroup[] = [
       { name: '--success', use: 'Healthy, connected, saved' },
       { name: '--success-bg', use: 'The wash behind a confirmation' },
       { name: '--success-ink', use: 'Hover, and success text' },
+      { name: '--success-fill', use: 'The fill behind a success button' },
     ],
   },
   {
