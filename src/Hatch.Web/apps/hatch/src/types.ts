@@ -2047,6 +2047,8 @@ export interface Runner {
   for: string | null;
   /** Whether this caller's PATCH would succeed - judged the same way the server's own gate judges it. */
   canControl: boolean;
+  /** Whether this row is the caller's own - the wall off, or the caller being its owner. Mirrors RunnerDto.Yours; not canControl, which an admin also has on others' rows. */
+  yours: boolean;
   /** The standing order this loop has not yet read back, or null. Mirrors RunnerOrderDto. */
   order: { kind: 'work' | 'pass'; key: string | null; by: string | null; at: string | null } | null;
   /** The sha this runner's own build was published from, `'dev'` for an

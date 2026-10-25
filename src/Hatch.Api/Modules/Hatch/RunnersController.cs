@@ -94,7 +94,7 @@ public class RunnersController(
             var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
             var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
             var order = r.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, r.OrderKey, r.OrderedBy, r.OrderedAt) : null;
-            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order));
+            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order, yours: Yours(r.ForPersonId, wallEnabled, callerPerson)));
         }
 
         return dtos;
@@ -387,7 +387,8 @@ public class RunnersController(
             (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
-            order);
+            order,
+            yours: Yours(row.ForPersonId, wallEnabled, callerPerson));
     }
 
     /// <summary>
@@ -479,7 +480,8 @@ public class RunnersController(
             (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
-            new RunnerOrderDto(kind, key, by, now));
+            new RunnerOrderDto(kind, key, by, now),
+            yours: Yours(row.ForPersonId, wallEnabled, callerPerson));
     }
 
     /// <summary>Withdraws whatever standing order this runner holds - see <see cref="PostRunnerOrder"/>.</summary>
@@ -549,6 +551,10 @@ public class RunnersController(
     private static bool CanControl(Guid? forPersonId, bool wallEnabled, EfPerson? callerPerson) =>
         !wallEnabled || forPersonId is not { } forId
         || (callerPerson is not null && (callerPerson.Id == forId || callerPerson.Role >= PersonRole.Admin));
+
+    /// <summary>Whether this row is the caller's own: the wall off, or the caller being the row's owner. Unlike <see cref="CanControl"/>, an admin does not have it on others' rows, and nobody has it on a row that belongs to nobody.</summary>
+    private static bool Yours(Guid? forPersonId, bool wallEnabled, EfPerson? callerPerson) =>
+        !wallEnabled || (forPersonId is { } id && callerPerson?.Id == id);
 
     // ---- The name ----
 

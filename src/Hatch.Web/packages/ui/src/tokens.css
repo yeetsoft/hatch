@@ -156,6 +156,7 @@
   --success: #388e3c;
   --success-bg: rgba(56, 142, 60, 0.08);
   --success-ink: #1b5e20;
+  --success-fill: #2e7d32;
   /* The fourth accent: something is not wrong yet and wants looking at before
      it is. Amber rather than orange so it is not mistaken for --danger at a
      glance down a column, and dark enough in light mode that --warn-ink on
@@ -287,6 +288,7 @@
     --success: #66bb6a;
     --success-bg: rgba(102, 187, 106, 0.12);
     --success-ink: #99e699;
+    --success-fill: #66bb6a;
     --warn: #ffb74d;
     --warn-bg: rgba(255, 183, 77, 0.14);
     --warn-ink: #ffd08a;
@@ -342,6 +344,7 @@
   --success: #66bb6a;
   --success-bg: rgba(102, 187, 106, 0.12);
   --success-ink: #99e699;
+  --success-fill: #66bb6a;
   --warn: #ffb74d;
   --warn-bg: rgba(255, 183, 77, 0.14);
   --warn-ink: #ffd08a;

@@ -1,4 +1,5 @@
-/* The three variants admin already had, carried across unchanged.
+/* The three variants admin already had, carried across unchanged, and the
+   green success variant added since.
 
    The base rule restates what base.css says about <button> rather than
    inheriting it. That is deliberate duplication: a component in this package
@@ -48,6 +49,15 @@
   background: var(--danger-ink);
 }
 
+.hatch-btn--success {
+  background: var(--success-fill);
+  color: var(--on-accent);
+}
+
+.hatch-btn--success:hover:not(:disabled) {
+  background: var(--success-ink);
+}
+
 .hatch-btn--secondary {
   background: var(--line);
   color: var(--ink);
@@ -68,9 +78,10 @@ a.hatch-btn {
 }
 
 /* A focus ring drawn in --primary is invisible on the primary fill, so the
-   two filled variants ring in their own ink instead. */
+   filled variants ring in their own ink instead. */
 .hatch-btn--primary:focus-visible,
-.hatch-btn--danger:focus-visible {
+.hatch-btn--danger:focus-visible,
+.hatch-btn--success:focus-visible {
   outline-color: var(--on-accent);
 }
 
