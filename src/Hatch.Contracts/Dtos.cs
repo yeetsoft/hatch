@@ -3626,6 +3626,11 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// it is bound to none. Re-applied by a fresh <c>loop</c> beat and moved by
 /// <c>PATCH</c>, unlike <see cref="Tags"/>.
 /// </param>
+/// <param name="RefusesDangerous">
+/// Whether this runner refuses work flagged dangerous. Seeded once from its
+/// first heartbeat that says, and from then on only <c>PATCH</c> moves it.
+/// Never null on the wire: a row that was never told reads false.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3662,7 +3667,8 @@ public record RunnerDto(
     int? Runs = null,
     decimal? Spent = null,
     string? Host = null,
-    string? ClaimStatus = null)
+    string? ClaimStatus = null,
+    bool RefusesDangerous = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -3778,6 +3784,11 @@ public enum RunnerBoardDrift
 /// </param>
 /// <param name="Spent">The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</param>
 /// <param name="Host">The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</param>
+/// <param name="RefusesDangerous">
+/// Whether this runner was started refusing dangerous work. Seeded once, like
+/// <see cref="Tags"/>: the first beat that says writes it onto the row, and
+/// from then on only <c>PATCH</c> moves it. Absent says nothing.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3806,7 +3817,8 @@ public record RunnerHeartbeatRequest(
     IReadOnlyList<string>? Projects = null,
     int? Runs = null,
     decimal? Spent = null,
-    string? Host = null);
+    string? Host = null,
+    bool? RefusesDangerous = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -3864,6 +3876,11 @@ public record RunnerUsageWindowDto(
 /// The project keys the row is bound to, <see cref="RunnerDto.Projects"/> - in
 /// the order they were given, empty where it is bound to none.
 /// </param>
+/// <param name="RefusesDangerous">
+/// The row's <see cref="RunnerDto.RefusesDangerous"/> as it stands. Null means
+/// this Hatch does not answer it (an older Hatch); a current Hatch always
+/// answers true or false.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -3874,7 +3891,8 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Drives = null,
     IReadOnlyList<string>? Tags = null,
     RunnerOrderDto? Order = null,
-    IReadOnlyList<string>? Projects = null);
+    IReadOnlyList<string>? Projects = null,
+    bool? RefusesDangerous = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -3899,6 +3917,11 @@ public record RunnerInstructionDto(
 /// Absent leaves the row's project bound alone, an empty list clears it, a
 /// list sets it. A key that names no project is refused, naming it.
 /// </param>
+/// <param name="RefusesDangerous">
+/// Absent leaves the row alone; true or false sets it. A bool, not the string
+/// tri-state of the numbers, since there is nothing to clear: false is the
+/// off position.
+/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -3906,7 +3929,8 @@ public record RunnerPatchRequest(
     string? MaxSpend = null,
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
-    IReadOnlyList<string>? Projects = null);
+    IReadOnlyList<string>? Projects = null,
+    bool? RefusesDangerous = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.

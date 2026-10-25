@@ -349,6 +349,107 @@ public class RunnersControllerTests
         Assert.Equal("", (await h.RowAsync()).Tags);
     }
 
+    // ---- RefusesDangerous ----
+
+    [Fact]
+    public async Task AFirstHeartbeatSayingRefusesDangerous_WritesItAndALaterOneNeverChangesIt()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task AFirstHeartbeatSayingFalse_IsSeededToo_AndALaterTrueDoesNotUndoIt()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
+        Assert.False((await h.RowAsync()).RefusesDangerous);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+        Assert.False((await h.RowAsync()).RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task AFirstHeartbeatThatSaidNothing_LeavesTheRowOpenForALaterOneToSeedIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Null((await h.RowAsync()).RefusesDangerous);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task ABeatThatSaysNothingAboutRefusesDangerous_LeavesASetRowAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task ARowNeverToldRefusesDangerous_ReadsFalseOnTheDtoAndOnTheInstruction()
+    {
+        var h = await NewAsync();
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Null((await h.RowAsync()).RefusesDangerous);
+        Assert.False((await h.OneAsync()).RefusesDangerous);
+        Assert.False(instruction.RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task APatchNamingRefusesDangerous_SetsItAndTheNextInstructionCarriesIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(RefusesDangerous: true));
+        Assert.True(patched.RefusesDangerous);
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.True(instruction.RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task APatchSayingFalseAfterABeatSaidTrue_SetsItFalseAndAFollowingBeatDoesNotUndoIt()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(RefusesDangerous: false));
+        Assert.False((await h.OneAsync()).RefusesDangerous);
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+        Assert.False((await h.OneAsync()).RefusesDangerous);
+        Assert.False(instruction.RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task APatchChangingAnUnrelatedField_LeavesRefusesDangerousAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.True((await h.OneAsync()).RefusesDangerous);
+    }
+
     // ---- Projects ----
 
     private static async Task AddProjectAsync(Harness h, string key)

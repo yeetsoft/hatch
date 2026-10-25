@@ -365,6 +365,9 @@ public class RunnersController(
         // "" clears it, never null, the same as Tags above.
         if (wantedProjects is not null) row.Projects = wantedProjects.Count > 0 ? string.Join('\n', wantedProjects) : "";
 
+        // Nothing to validate, so no place before the refusals above.
+        if (request.RefusesDangerous is not null) row.RefusesDangerous = request.RefusesDangerous;
+
         await db.SaveChangesAsync(ct);
 
         var now = time.GetUtcNow();
@@ -618,6 +621,7 @@ public class RunnersController(
             SourceSequence = request.SourceSequence,
             BuiltAt = request.BuiltAt,
             Tags = tags,
+            RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
             ForPersonId = forPersonId,
             Usage = Utilization.Serialise(request.Usage),
@@ -680,6 +684,13 @@ public class RunnersController(
         // a later heartbeat again. Only a row still null, from a beat before
         // this one shipped, takes a heartbeat's tags at all.
         if (request.Tags is not null && row.Tags is null) row.Tags = tags;
+
+        // Seeded once like Tags, and not fact-vs-absent like its neighbours:
+        // a person can PATCH it, so a later beat re-stating the flag the
+        // process started with would undo their choice. Only a row still null
+        // - never said - takes a beat's word for it. Null stays null where
+        // nothing has said, which reads as false.
+        if (request.RefusesDangerous is not null && row.RefusesDangerous is null) row.RefusesDangerous = request.RefusesDangerous;
 
         // A tri-state of its own: absent leaves the row's own record alone (an
         // older CLI, or hatch work's single beat, neither of which knows
