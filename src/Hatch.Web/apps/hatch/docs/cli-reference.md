@@ -17,6 +17,13 @@ from four layers of settings, highest first: [the runner](the-runner) has how
 to get the binary and what those layers are, and [`environment-variables`](environment-variables) has
 every variable.
 
+`--profile <name>` is taken out of the arguments of any command, wherever it
+appears, and uses that profile for the one call; it also pins the run, so
+`hatch use` never moves it. Given twice, the last wins; given with no name it
+is refused with `hatch: --profile takes a name`; a name with no profile file
+behind it is refused with `no such profile`. `HATCH_PROFILE` does the same
+without the flag.
+
 ## Every command
 
 | Command | Needs a checkout | Writes to the board |
@@ -600,7 +607,8 @@ has the pass in order, the bounds and the restarts.
   is 1. The first is this one as it runs today, and the others clone into
   `<workspace>.n`. Output is prefixed `[n]` and no footer or keys are drawn.
   Ctrl-C, `--stop-file` and a restart apply to all of them, and each finishes
-  its increment first. It needs a workspace, so `--workspace off` is refused.
+  its increment first. It needs a workspace, so `--workspace off` is refused. A
+  pinned `--profile` is handed to every member.
 - `--max-runs <n>` stops after that many increments. With `--runners` it bounds
   the set's combined total, and every runner stops once they have made that many
   between them.

@@ -45,6 +45,12 @@ dollars. A machine with one runner draws no such line, and a runner that never
 said where it runs is never grouped with another: an absent machine is not
 evidence of a shared one.
 
+A runner's name is recorded for a (profile, checkout) pair, so one checkout run
+under two profiles speaks to two boards under two names, and each board's page
+shows it as one row under the name recorded for that pair. The two rows need
+not match, and the page does not group them by checkout - only by machine. See
+[the runner's name](the-runner#the-runners-name).
+
 Spend shows here only as that per-machine total, with no cost column; the
 **Leaderboard** stays the place for spend over time and by session. Own-tickets-only
 still shows on the row, inside Bounds: the repositories a runner serves no
