@@ -25,17 +25,105 @@ public static class BackupOutcome
 public record BackupAttempt(DateTimeOffset At, string Outcome, string? Error, string? File, long? Bytes);
 
 /// <summary>
-/// The last backup attempt, held for whoever asks - the status endpoint, and
-/// nothing else. A reference swap is the whole of its thread safety: the
-/// record it holds is immutable, so nothing ever reads it half-written.
+/// The last backup attempt, held for whoever asks - the status endpoint and
+/// the attention read - along with when this process started and a one-minute
+/// copy of the folder listing, so the attention poll never walks the folder
+/// on every request. A reference swap is the whole of its thread safety: the
+/// records it holds are immutable, so nothing ever reads one half-written.
 /// </summary>
-public class BackupStatus
+public class BackupStatus(TimeProvider? clock = null)
 {
+    private static readonly TimeSpan ListingFor = TimeSpan.FromMinutes(1);
+
     private BackupAttempt? _last;
+    private CachedListing? _listing;
+
+    private sealed record CachedListing(BackupCopies Copies, DateTimeOffset ReadAt);
 
     public BackupAttempt? Last => Volatile.Read(ref _last);
 
-    public void Record(BackupAttempt attempt) => Volatile.Write(ref _last, attempt);
+    /// <summary>When this process started - a first dump cannot have run before it.</summary>
+    public DateTimeOffset StartedAt { get; } = (clock ?? TimeProvider.System).GetUtcNow();
+
+    /// <summary>
+    /// Recording an attempt drops the cached listing: a backup that just
+    /// finished must be seen by the very next read, not a minute later.
+    /// </summary>
+    public void Record(BackupAttempt attempt)
+    {
+        Volatile.Write(ref _last, attempt);
+        Volatile.Write(ref _listing, null);
+    }
+
+    /// <summary>
+    /// The folder's listing as <paramref name="read"/> found it, reused while
+    /// it is under a minute old at <paramref name="now"/>.
+    /// </summary>
+    public BackupCopies Listing(DateTimeOffset now, Func<BackupCopies> read)
+    {
+        if (Volatile.Read(ref _listing) is { } cached && now - cached.ReadAt < ListingFor)
+        {
+            return cached.Copies;
+        }
+
+        var copies = read();
+        Volatile.Write(ref _listing, new CachedListing(copies, now));
+        return copies;
+    }
+}
+
+/// <summary>
+/// Whether the backups need a person, judged in one place - the attention
+/// read's rule, kept a pure function so its boundaries are testable without
+/// a folder or a clock.
+/// </summary>
+public static class BackupWatch
+{
+    /// <summary>
+    /// How long a process is given after it starts to take its first dump:
+    /// the backup job fires as the process comes up, so until then there is
+    /// nothing to be stale.
+    /// </summary>
+    public static readonly TimeSpan StartupGrace = TimeSpan.FromMinutes(5);
+
+    private const string Stale = "no backup in the last 48 hours";
+
+    /// <summary>
+    /// The sentence for what is wrong, or null when nothing is - first match
+    /// wins: no path is never nagged; a failed last attempt says why; a
+    /// folder that cannot be listed says so; a newest copy older than two
+    /// backup intervals, or no copy at all once the startup grace has passed,
+    /// is stale. <c>LastSuccessfulAt</c> is the newest copy's own stamp,
+    /// never the last attempt's - the rule the status endpoint states.
+    /// </summary>
+    public static BackupAttentionDto? Judge(
+        string? path, BackupAttempt? last, BackupCopies copies, DateTimeOffset startedAt, DateTimeOffset now)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        DateTimeOffset? newest = copies.Items.Count > 0 ? copies.Items.Max(c => c.At) : null;
+
+        if (last?.Outcome == BackupOutcome.Failed)
+        {
+            return new BackupAttentionDto(
+                string.IsNullOrWhiteSpace(last.Error) ? "the last backup failed" : last.Error, newest);
+        }
+
+        if (newest is null && copies.Problem is not null)
+        {
+            return new BackupAttentionDto(copies.Problem, null);
+        }
+
+        if (newest is { } at)
+        {
+            return now - at > 2 * BackupJob.Every ? new BackupAttentionDto(Stale, at) : null;
+        }
+
+        return now - startedAt > StartupGrace ? new BackupAttentionDto(Stale, null) : null;
+    }
 }
 
 /// <summary>One finished backup on disk, as <see cref="BackupFolder.List"/> finds it.</summary>
@@ -262,6 +350,23 @@ public sealed class BackupService
     /// </summary>
     public BackupCopies Copies() =>
         string.IsNullOrEmpty(_options.BackupPath) ? new BackupCopies([], null) : BackupFolder.List(_options.BackupPath);
+
+    /// <summary>
+    /// What needs a person's attention about the backups, or null - see
+    /// <see cref="BackupWatch.Judge"/>. Reads the folder through
+    /// <see cref="BackupStatus.Listing"/>, so a poll every few seconds lists
+    /// it once a minute at most; <see cref="Copies"/> stays uncached.
+    /// </summary>
+    public BackupAttentionDto? Attention()
+    {
+        if (string.IsNullOrEmpty(_options.BackupPath))
+        {
+            return null;
+        }
+
+        var now = _clock.GetUtcNow();
+        return BackupWatch.Judge(_options.BackupPath, _status.Last, _status.Listing(now, Copies), _status.StartedAt, now);
+    }
 
     /// <summary>
     /// Runs one backup attempt, start to finish, and never throws: every

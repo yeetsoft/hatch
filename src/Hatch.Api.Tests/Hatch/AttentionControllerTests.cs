@@ -3,6 +3,8 @@ using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Hatch.Api.Tests.Hatch;
 
@@ -16,8 +18,16 @@ namespace Hatch.Api.Tests.Hatch;
 /// than off its name, so renaming or reordering columns has to change nothing -
 /// which is the whole reason <see cref="Columns"/> exists as a shared static.
 /// </summary>
-public class AttentionControllerTests
+public class AttentionControllerTests : IDisposable
 {
+    // The folder the backup tests point the service at; the other tests leave
+    // the path empty, so the row is null for them and nothing is read.
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "hatch-attention-backup-" + Guid.NewGuid().ToString("N"));
+
+    public AttentionControllerTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose() => Directory.Delete(_dir, true);
+
     // ---- The pull request half ----
 
     [Fact]
@@ -1463,6 +1473,130 @@ public class AttentionControllerTests
         Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
     }
 
+    // ---- Backups ----
+
+    [Fact]
+    public async Task Attention_AnswersNoBackupRowWhenNoPathIsConfigured_EvenAfterAFailure()
+    {
+        var h = await NewAsync();
+        h.Status.Record(new BackupAttempt(Now, BackupOutcome.Failed, "boom", null, null));
+        h.Time.Advance(TimeSpan.FromHours(100));
+
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+    }
+
+    [Fact]
+    public async Task Attention_SaysWhyTheLastBackupFailed_WithTheNewestCopysOwnStamp()
+    {
+        var h = await NewAsync(_dir);
+        var copy = Now.AddHours(-30);
+        Seed(copy);
+        h.Status.Record(new BackupAttempt(Now, BackupOutcome.Failed, "pg_dump: connection refused", null, null));
+
+        var row = Value(await h.Attention.GetAttention(default)).Backup;
+
+        Assert.NotNull(row);
+        Assert.Equal("pg_dump: connection refused", row.Sentence);
+        Assert.Equal(copy, row.LastSuccessfulAt);
+    }
+
+    [Fact]
+    public async Task Attention_CallsACopyFiftyHoursOldStale()
+    {
+        var h = await NewAsync(_dir);
+        h.Status.Record(new BackupAttempt(Now, BackupOutcome.Ok, null, "x", 1));
+        var stale = Now.AddHours(-50);
+        Seed(stale);
+
+        var row = Value(await h.Attention.GetAttention(default)).Backup;
+
+        Assert.Equal("no backup in the last 48 hours", row?.Sentence);
+        Assert.Equal(stale, row?.LastSuccessfulAt);
+    }
+
+    [Fact]
+    public async Task Attention_CallsACopyFortySevenHoursOldFine()
+    {
+        var h = await NewAsync(_dir);
+        h.Status.Record(new BackupAttempt(Now, BackupOutcome.Ok, null, "x", 1));
+        Seed(Now.AddHours(-47));
+
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+    }
+
+    [Fact]
+    public async Task Attention_GivesAProcessThatJustStartedFiveMinutesBeforeCallingAnEmptyFolderStale()
+    {
+        var h = await NewAsync(_dir);
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+
+        var row = Value(await h.Attention.GetAttention(default)).Backup;
+        Assert.Equal("no backup in the last 48 hours", row?.Sentence);
+        Assert.Null(row?.LastSuccessfulAt);
+    }
+
+    [Fact]
+    public async Task Attention_SeesASuccessfulBackUpNowOnTheVeryNextRead()
+    {
+        var h = await NewAsync(_dir);
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        h.Process.ExitCode = 1;
+        h.Process.Stderr = "boom";
+        await h.Backup.RunAsync(default);
+
+        // Lit by the failure - and the empty listing is now cached.
+        Assert.Equal("boom", Value(await h.Attention.GetAttention(default)).Backup?.Sentence);
+
+        h.Process.ExitCode = 0;
+        h.Process.Stdout = [1];
+        await h.Backup.RunAsync(default);
+
+        // No clock advance: without Record clearing the cache this would still
+        // read the empty listing, and say the 48-hours sentence.
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+    }
+
+    [Fact]
+    public async Task Attention_ReadsTheFolderOnceAMinute()
+    {
+        var h = await NewAsync(_dir);
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        var copy = Now.AddMinutes(10).AddHours(-47);
+        Seed(copy);
+
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+
+        File.Delete(Path.Combine(_dir, BackupNames.Final(copy)));
+        h.Time.Advance(TimeSpan.FromSeconds(30));
+
+        Assert.Null(Value(await h.Attention.GetAttention(default)).Backup);
+
+        h.Time.Advance(TimeSpan.FromSeconds(31));
+
+        var row = Value(await h.Attention.GetAttention(default)).Backup;
+        Assert.Equal("no backup in the last 48 hours", row?.Sentence);
+        Assert.Null(row?.LastSuccessfulAt);
+    }
+
+    [Fact]
+    public async Task Attention_CarriesTheBackupRowOnABoardWithNoReviewColumnToo()
+    {
+        var h = await OneColumnAsync(_dir);
+        h.Status.Record(new BackupAttempt(Now, BackupOutcome.Failed, "boom", null, null));
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal("boom", attention.Backup?.Sentence);
+    }
+
+    private void Seed(DateTimeOffset at) =>
+        File.WriteAllBytes(Path.Combine(_dir, BackupNames.Final(at)), [1]);
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
@@ -1472,6 +1606,9 @@ public class AttentionControllerTests
         public required HatchContext Db { get; init; }
         public required AttentionController Attention { get; init; }
         public required Microsoft.Extensions.Time.Testing.FakeTimeProvider Time { get; init; }
+        public required BackupService Backup { get; init; }
+        public required BackupStatus Status { get; init; }
+        public required FakeBackupProcess Process { get; init; }
         public required int ProjectId { get; init; }
         public required int Inbox { get; init; }
         public required int Todo { get; init; }
@@ -1751,7 +1888,7 @@ public class AttentionControllerTests
     }
 
     /// <summary>A board with the shape the Playbooks migration leaves behind.</summary>
-    private static async Task<Harness> NewAsync()
+    private static async Task<Harness> NewAsync(string backupPath = "")
     {
         var db = NewDb();
 
@@ -1767,11 +1904,16 @@ public class AttentionControllerTests
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
         var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
 
+        var (backup, status, process) = NewBackup(time, backupPath);
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time)),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time), backup),
             Time = time,
+            Backup = backup,
+            Status = status,
+            Process = process,
             ProjectId = project.Id,
             Inbox = inbox.Id,
             Todo = todo.Id,
@@ -1786,7 +1928,7 @@ public class AttentionControllerTests
     /// with nothing to its left. Not a board anybody would keep, but it is one
     /// the Statuses page can be left in halfway through building a new one.
     /// </summary>
-    private static async Task<Harness> OneColumnAsync()
+    private static async Task<Harness> OneColumnAsync(string backupPath = "")
     {
         var db = NewDb();
 
@@ -1798,11 +1940,16 @@ public class AttentionControllerTests
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
         var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
 
+        var (backup, status, process) = NewBackup(time, backupPath);
+
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time)),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time), backup),
             Time = time,
+            Backup = backup,
+            Status = status,
+            Process = process,
             ProjectId = project.Id,
             Inbox = done.Id,
             Todo = done.Id,
@@ -1810,6 +1957,41 @@ public class AttentionControllerTests
             Review = done.Id,
             Done = done.Id,
         };
+    }
+
+    /// <summary>
+    /// A <see cref="BackupService"/> wired as BackupControllerTests wires it:
+    /// the harness's own clock, and a fake process that writes nothing real.
+    /// </summary>
+    private static (BackupService Service, BackupStatus Status, FakeBackupProcess Process) NewBackup(
+        Microsoft.Extensions.Time.Testing.FakeTimeProvider time, string path)
+    {
+        var status = new BackupStatus(time);
+        var process = new FakeBackupProcess();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Hatch"] = "Host=db-test;Port=5433;Username=hatchuser;Password=s3cret;Database=hatchdb",
+            })
+            .Build();
+        var service = new BackupService(
+            Microsoft.Extensions.Options.Options.Create(new HatchOptions { BackupPath = path }),
+            configuration, process, status, time, NullLogger<BackupService>.Instance);
+
+        return (service, status, process);
+    }
+
+    private sealed class FakeBackupProcess : IBackupProcess
+    {
+        public byte[] Stdout { get; set; } = [];
+        public int ExitCode { get; set; }
+        public string Stderr { get; set; } = "";
+
+        public async Task<BackupProcessResult> RunAsync(BackupProcessStart start, Stream stdout, CancellationToken ct)
+        {
+            await stdout.WriteAsync(Stdout, ct);
+            return new BackupProcessResult(ExitCode, Stderr);
+        }
     }
 
     private static HatchContext NewDb() => new(

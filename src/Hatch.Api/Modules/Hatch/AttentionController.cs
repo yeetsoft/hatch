@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/attention")]
 [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch) : ControllerBase
+public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AttentionDto>> GetAttention(CancellationToken ct)
@@ -61,6 +61,10 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .Select(t => TrunkBuildProjection.Project(t, projectKey: null))
             .ToList();
 
+        // The same read as the rest, never a second poll of its own - and
+        // whatever the board's shape, as the trunk builds are.
+        var backupRow = backup.Attention();
+
         // The queue's own verdict, unnarrowed, so the scan runs the fixpoint over
         // its own rows and this list and the queue's marked rows cannot disagree.
         // Whatever the board's shape: a ring needs no review column to be read.
@@ -74,7 +78,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -331,7 +335,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, deadlocked);
+            approvedHeld, approvedWaiting, landingHeld, deadlocked, backupRow);
     }
 
     /// <summary>
