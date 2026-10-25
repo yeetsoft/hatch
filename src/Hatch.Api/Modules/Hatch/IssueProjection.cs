@@ -181,6 +181,7 @@ public static class IssueProjection
             var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(issue.Id);
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
+            var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -246,7 +247,10 @@ public static class IssueProjection
                 issue.ReleaseNote,
                 RunnerTagColumn.Read(issue.RunnerTags),
                 effectiveRunnerTags,
-                effectiveRunnerTagsFrom);
+                effectiveRunnerTagsFrom,
+                issue.Dangerous,
+                dangerous,
+                dangerousFrom);
         });
     }
 

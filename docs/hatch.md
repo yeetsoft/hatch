@@ -1221,6 +1221,36 @@ beyond the issue's own comes from, one entry per non-empty contributor in
 the same root-most-first order - the issue's own row is never named there,
 even when it carries tags.
 
+#### Dangerous
+
+**A reason running an issue is dangerous, carried down its subtree.**
+`Dangerous` is a nullable text column on the issue - null is "not flagged",
+and there is no separate boolean. Written only through its own route, `PUT
+/issues/{key}/dangerous` (`IssueDangerousController.PutIssueDangerous`), open
+to a key the same way [runner tags](#runner-tags) are: it is a statement about
+the ticket, not a power over the board, and it only ever narrows who runs it.
+No type restriction, no claim gate, no lock - any issue may carry a reason,
+and any key may set it at any time. `{ reason }` is trimmed; `""` or
+whitespace clears it (stores null). `reason` absent (JSON `null`) is `400` -
+*"reason is required - send \"\" to clear"* - so clearing is something the
+caller says. A reason over 200 characters, measured after the trim, is `400`
+- *"a dangerous reason is at most 200 characters"*. Sending the value the
+issue already holds writes nothing, adds no event and leaves `UpdatedAt`
+where it was; a change writes `dangerous_changed` with `{ from, to }`, either
+side null, and sets `UpdatedAt`. `PATCH /issues/{key}`, create and the bulk
+endpoint carry no field for it, so this route is the only way in or out.
+
+**The reason that applies is read live, the same way `EffectivePreApproval`
+is.** `PriorityTree.EffectiveDangerous` walks from the issue up its parents
+and answers the first non-empty reason it meets, with the key of the ancestor
+it came from, or `(null, null)` when none is flagged. A card or an issue
+carries three fields: `dangerousOwn` is the issue's own row, exactly what
+`PUT .../dangerous` last wrote and nothing else; `dangerous` is the reason
+that applies - its own, else the nearest flagged ancestor's, else null; and
+`dangerousFrom` is that ancestor's key, null when the reason is the issue's
+own or there is none. The issue, the card list, search and the board all
+carry them. Nothing acts on the flag yet.
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
@@ -3064,6 +3094,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
 | `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
+| `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |

@@ -1060,6 +1060,17 @@ public class EfHatchIssue
     public string? ReleaseNote { get; set; }
 
     /// <summary>
+    /// Why running this issue (and everything beneath it) is dangerous, or null
+    /// where it is not flagged - there is no separate boolean. Trimmed. Written
+    /// only by <see cref="IssueDangerousController"/>; <c>IssuePatchRequest</c>,
+    /// create and the bulk endpoint carry no field for it. The cap is the API's
+    /// (<c>DangerousRequest.MaxLength</c>), not the column's. A row reads the
+    /// nearest flagged ancestor's reason when it has none of its own - see
+    /// <c>PriorityTree.EffectiveDangerous</c>.
+    /// </summary>
+    public string? Dangerous { get; set; }
+
+    /// <summary>
     /// When an increment last left this ticket where it found it. Null for
     /// the overwhelming majority of issues.
     /// </summary>
@@ -1944,6 +1955,12 @@ public class EfHatchIssueEvent
     /// The payload is <c>{ from, to }</c>, both sides a real array.
     /// </summary>
     public const string RunnerTagsChanged = "runner_tags_changed";
+
+    /// <summary>
+    /// An issue's dangerous flag changed - see <see cref="EfHatchIssue.Dangerous"/>.
+    /// The payload is <c>{ from, to }</c>, either side null.
+    /// </summary>
+    public const string DangerousChanged = "dangerous_changed";
 
     /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
