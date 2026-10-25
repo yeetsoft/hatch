@@ -163,8 +163,22 @@ WORKDIR /App
 # - before anything the app itself logs, on both a serving start and a migrate
 # run. They are the first thing a new operator sees and they say nothing is
 # wrong. About a megabyte to make them go away.
+#
+# postgresql-client-18 gives the api image its own pg_dump, pinned to the same
+# Postgres major containers/hatch-db/Dockerfile.db pins today. This base image
+# is Ubuntu 24.04 (noble), whose own postgresql-client candidate is two majors
+# behind - so the PGDG apt repo is added first, the same shape this repository
+# already uses for the GitHub CLI repo in containers/hatch-runner/Dockerfile.
+# PGDG's key is ASCII-armored, unlike GitHub's, hence the `gpg --dearmor` step.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+ && mkdir -p -m 755 /etc/apt/keyrings \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+ && echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends libgssapi-krb5-2 postgresql-client-18 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build-env /App/out .
