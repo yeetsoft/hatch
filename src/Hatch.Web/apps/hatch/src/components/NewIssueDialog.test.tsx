@@ -80,6 +80,9 @@ const PROJECT: Project = {
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
   storiesOnEpics: false,
+  checkApprovesMerge: false,
+  checkApprovesMergeBy: null,
+  checkApprovesMergeAt: null,
 };
 
 const OTHER: Project = {
@@ -112,6 +115,9 @@ const OTHER: Project = {
   reflectionLastPeriodStart: null,
   reflectionNextDueAt: null,
   storiesOnEpics: false,
+  checkApprovesMerge: false,
+  checkApprovesMergeBy: null,
+  checkApprovesMergeAt: null,
 };
 
 const noop = () => undefined;

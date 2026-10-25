@@ -83,6 +83,12 @@ export interface Project {
   reflectionNextDueAt: string | null;
   /** Whether the board draws stories inside their epic's card, not as cards of their own. See ProjectDto.StoriesOnEpics. */
   storiesOnEpics: boolean;
+  /** Whether a green check on a pull request counts as approval to merge it. See ProjectDto.CheckApprovesMerge. */
+  checkApprovesMerge: boolean;
+  /** Who last changed checkApprovesMerge, or null until the first write. */
+  checkApprovesMergeBy: string | null;
+  /** When checkApprovesMerge was last changed on this project, or null until the first write. */
+  checkApprovesMergeAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -926,6 +932,11 @@ export interface ProjectBindsTrackerWriteRequest {
 /** A write to whether a project shows stories on their epics. See ProjectStoriesOnEpicsWriteRequest (Hatch.Contracts). */
 export interface ProjectStoriesOnEpicsWriteRequest {
   storiesOnEpics: boolean;
+}
+
+/** A write to whether a green check approves a pull request's merge. See ProjectCheckApprovesMergeWriteRequest (Hatch.Contracts). */
+export interface ProjectCheckApprovesMergeWriteRequest {
+  checkApprovesMerge: boolean;
 }
 
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and

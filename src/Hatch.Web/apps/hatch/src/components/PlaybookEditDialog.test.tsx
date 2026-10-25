@@ -68,6 +68,9 @@ const ONE_PROJECT: Project[] = [
     reflectionLastPeriodStart: null,
     reflectionNextDueAt: null,
     storiesOnEpics: false,
+    checkApprovesMerge: false,
+    checkApprovesMergeBy: null,
+    checkApprovesMergeAt: null,
   },
 ];
 
