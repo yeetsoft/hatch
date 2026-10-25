@@ -855,6 +855,42 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.CheckApprovesMerge"/> is on - a passing
+    /// check on this project's pull request counts as the approval that lets it
+    /// merge. Only an owner may call this. It is accepted whatever the project
+    /// binds or has playbooks for, and writing the value a project already has
+    /// changes nothing, the audit columns included. This route is the only way
+    /// to write the flag; <c>PATCH</c> and <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/check-approves-merge")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutCheckApprovesMerge(int id, ProjectCheckApprovesMergeWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether a passing check approves the merge") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.CheckApprovesMerge != project.CheckApprovesMerge)
+        {
+            project.CheckApprovesMerge = request.CheckApprovesMerge;
+            project.CheckApprovesMergeBy = await caller.ActorNameAsync(ct);
+            project.CheckApprovesMergeAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} check approves merge set to {CheckApprovesMerge} by {Actor}", project.Key, project.CheckApprovesMerge, project.CheckApprovesMergeBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -927,7 +963,8 @@ public class ProjectsController(
             project.ReflectionCadenceDays, project.ReflectionLastPeriodStart,
             ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now),
             project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt,
-            project.StoriesOnEpics);
+            project.StoriesOnEpics,
+            project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

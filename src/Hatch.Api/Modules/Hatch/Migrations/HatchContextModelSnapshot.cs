@@ -780,6 +780,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<bool>("CheckApprovesMerge")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("CheckApprovesMergeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CheckApprovesMergeBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<bool>("ChecksRequired")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

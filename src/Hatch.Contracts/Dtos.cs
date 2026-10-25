@@ -33,6 +33,9 @@ namespace Hatch.Contracts;
 /// <param name="BindsTrackerBy">Who last changed <paramref name="BindsTracker"/> on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerBy"/>.</param>
 /// <param name="BindsTrackerAt">When <paramref name="BindsTracker"/> was last changed on this project, or null until the first write - see <see cref="EfHatchProject.BindsTrackerAt"/>.</param>
 /// <param name="StoriesOnEpics">Whether this project's stories show on their epics - see <see cref="EfHatchProject.StoriesOnEpics"/>. Off by default.</param>
+/// <param name="CheckApprovesMerge">Whether a passing check counts as the approval that lets a pull request merge - see <see cref="EfHatchProject.CheckApprovesMerge"/>. Off by default.</param>
+/// <param name="CheckApprovesMergeBy">Who last changed <paramref name="CheckApprovesMerge"/>, or null until the first change - see <see cref="EfHatchProject.CheckApprovesMergeBy"/>.</param>
+/// <param name="CheckApprovesMergeAt">When <paramref name="CheckApprovesMerge"/> was last changed, or null until the first change - see <see cref="EfHatchProject.CheckApprovesMergeAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -44,7 +47,8 @@ public record ProjectDto(
     IReadOnlyList<string> RunnerTags = null!,
     int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null,
     bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null,
-    bool StoriesOnEpics = false)
+    bool StoriesOnEpics = false,
+    bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -123,6 +127,9 @@ public record ProjectBindsTrackerWriteRequest(bool BindsTracker);
 
 /// <summary>A write to whether a project's stories show on their epics - see <see cref="EfHatchProject.StoriesOnEpics"/>.</summary>
 public record ProjectStoriesOnEpicsWriteRequest(bool StoriesOnEpics);
+
+/// <summary>A write to whether a passing check approves a project's pull request to merge - see <see cref="EfHatchProject.CheckApprovesMerge"/>.</summary>
+public record ProjectCheckApprovesMergeWriteRequest(bool CheckApprovesMerge);
 
 /// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
 /// <param name="Project">The project written.</param>

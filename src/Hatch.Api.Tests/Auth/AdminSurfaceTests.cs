@@ -574,6 +574,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
         "ProjectsController.PutStoriesOnEpics",
+        "ProjectsController.PutCheckApprovesMerge",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -730,6 +731,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutRunnerTags",
         "ProjectsController.PutBindsTracker",
         "ProjectsController.PutStoriesOnEpics",
+        "ProjectsController.PutCheckApprovesMerge",
         "ImagesController.PostImage",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",

@@ -57,6 +57,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/runner-tags` | **person** | Replaces the whole list of runner tags |
 | PUT | `/projects/{id}/binds-tracker` | **person** | Sets `bindsTracker`, clearing it elsewhere |
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
+| PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -80,7 +81,9 @@ one is still open, the same issue with nothing filed; it never writes
 own repository, so turning it on takes it from whichever project had it, and the answer is a
 `ProjectBindsTrackerDto(Project, ClearedKey)` naming that project's key, or null. The
 stories-on-epics PUT body is `ProjectStoriesOnEpicsWriteRequest(StoriesOnEpics)`, and resending the
-value a project already holds writes nothing. Every other answer is a `ProjectDto`
+value a project already holds writes nothing. The check-approves-merge PUT body is
+`ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
+already holds writes nothing, the audit fields included. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -101,7 +104,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.
 
 ## Columns
 
@@ -874,6 +877,7 @@ PUT    /projects/{id}/landing
 PUT    /projects/{id}/playbooks-source
 PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
+PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

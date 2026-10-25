@@ -245,6 +245,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasIndex(p => p.BindsTracker).IsUnique().HasFilter("\"BindsTracker\" = true");
             e.Property(p => p.RunnerTags).HasColumnType("jsonb").HasDefaultValue("[]");
             e.Property(p => p.StoriesOnEpics).HasDefaultValue(false);
+            e.Property(p => p.CheckApprovesMerge).HasDefaultValue(false);
 
             e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);
             e.Property(p => p.AutoHealBugPriority).HasDefaultValue(global::Hatch.Contracts.PriorityLevels.Emergency);
