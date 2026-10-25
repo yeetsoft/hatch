@@ -91,7 +91,18 @@ when **All projects** is picked; **Pause** pauses the running ones. The
 press alone sets the project — changing the picker afterwards moves nothing
 until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
-With none of yours on, the button is disabled, with a link to start one.
+With none of yours on, the button is disabled, with a link to start one
+beside a status line that says "No runner".
+
+A short **status line** sits right after the button (on a phone, a row under
+the bar) and says what your loops are doing: working on a ticket, with its
+link and column; pausing after or stopping after the ticket in hand; out of
+usage; idle, with the project it is bound to; paused; stopping; stopped
+unexpectedly; off; or no runner. When several of your loops are on it names
+the one most worth saying and adds "and N more". It is blank while the runners
+load, and it follows the runners poll (every 20 seconds) and every press. A
+"Stopped unexpectedly" line becomes "No runner" two hours after the loop was
+last heard.
 
 ## Column flags
 

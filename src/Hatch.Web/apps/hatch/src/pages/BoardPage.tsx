@@ -21,6 +21,7 @@ import { ColumnHead } from '../components/ColumnHead';
 import { FlowArrows } from '../components/FlowArrows';
 import { FlowVizControl } from '../components/FlowVizControl';
 import { GoToWorkControl, GoToWorkNote } from '../components/GoToWorkControl';
+import { GoToWorkStatus } from '../components/GoToWorkStatus';
 import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
@@ -49,7 +50,7 @@ import { aimAt } from '../lib/aim';
 import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
-import { planGoToWork } from '../lib/goToWork';
+import { planGoToWork, statusLine } from '../lib/goToWork';
 import { carried, readCollapsedEpics, toggleCollapsed, writeCollapsedEpics } from '../lib/storiesOnEpics';
 import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeBoardView } from '../lib/phoneBoard';
 import type { BoardView } from '../lib/phoneBoard';
@@ -162,6 +163,7 @@ export function BoardPage() {
      to age a silent runner to gone, since the plan takes its own clock. */
   const { runners, reload: reloadRunners } = useRunners(true);
   const goToWork = useMemo(() => planGoToWork(runners, new Date()), [runners]);
+  const status = useMemo(() => statusLine(runners, new Date()), [runners]);
   /* Who is signed in, read once for the whole board rather than once per card
      opened. The summary needs it to know whether to offer the expedite press -
      the write is a person's - and a dialog that fetched its own copy would ask
@@ -686,7 +688,7 @@ export function BoardPage() {
         }
         trailing={
           <>
-            <GoToWorkControl plan={goToWork} project={filter.project} reload={reloadRunners} isPhone={isPhone} />
+            <GoToWorkControl plan={goToWork} status={status} project={filter.project} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
@@ -710,9 +712,15 @@ export function BoardPage() {
         }
       />
 
-      {isPhone && (goToWork.mode === 'none' || goToWork.mode === 'stopping') && (
+      {isPhone && goToWork.mode !== 'loading' && (
         <p className="hatch-go-to-work-note text-muted">
-          <GoToWorkNote plan={goToWork} />
+          <GoToWorkStatus status={status} />
+          {goToWork.mode === 'none' && (
+            <>
+              {' '}
+              <GoToWorkNote plan={goToWork} />
+            </>
+          )}
         </p>
       )}
 
