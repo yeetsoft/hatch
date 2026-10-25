@@ -141,6 +141,19 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>The line the heartbeat carries. Written by whoever is rendering the session.</summary>
     public Chatter Chatter { get; } = new();
 
+    private ReadoutState? _readout;
+
+    /// <summary>
+    /// The readout whose usage reading the heartbeat carries, set by the
+    /// increment once it has one. A property over a volatile field for the
+    /// reason <see cref="Chatter"/> is: the heartbeat reads it on its own thread.
+    /// </summary>
+    public ReadoutState? Readout
+    {
+        get => Volatile.Read(ref _readout);
+        set => Volatile.Write(ref _readout, value);
+    }
+
     private readonly Signal<string> _lost = new();
     private readonly Signal<ClaimPreemptedDto> _preempted = new();
 
@@ -256,6 +269,7 @@ public sealed class Claim : IAsyncDisposable
     {
         string? sent = null;
         long saidSent = 0;
+        DateTimeOffset? usageReadAtSent = null;
         var lastGood = _client.Clock.GetUtcNow();
 
         while (!ct.IsCancellationRequested)
@@ -289,9 +303,17 @@ public sealed class Claim : IAsyncDisposable
             var spoke = said != saidSent && !string.IsNullOrEmpty(line);
             if (string.IsNullOrEmpty(line)) line = sent;
 
-            var body = line == sent && !spoke
-                ? new ClaimHeartbeatRequest(Token, null)
-                : new ClaimHeartbeatRequest(Token, line);
+            // The usage reading rides along only when it has moved since the one
+            // the board last acknowledged: a probe or a rate_limit_event stamps a
+            // new read-at, and an unchanged reading is not worth the bytes.
+            var snapshot = Readout?.Snapshot();
+            var usageReadAt = snapshot?.UsageReadAt;
+            var usageMoved = usageReadAt is { } at && at != usageReadAtSent;
+
+            var body = new ClaimHeartbeatRequest(
+                Token, line == sent && !spoke ? null : line,
+                Usage: usageMoved ? snapshot!.UsageWindows.ToDtos() : null,
+                UsageReadAt: usageMoved ? usageReadAt : null);
 
             // Quiet: a heartbeat says nothing about weather today, whatever
             // HatchClient.Send spent retrying underneath it - see docs/hatch.md,
@@ -303,6 +325,7 @@ public sealed class Claim : IAsyncDisposable
             {
                 sent = line;
                 saidSent = said;
+                usageReadAtSent = usageReadAt ?? usageReadAtSent;
                 lastGood = _client.Clock.GetUtcNow();
 
                 // A 200 instead of the ordinary 204: the board has picked this

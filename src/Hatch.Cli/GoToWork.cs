@@ -524,14 +524,6 @@ public sealed class GoToWorkCommand(Runtime runtime)
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// How stale a usage probe's reading is allowed to get before the top of a
-    /// pass asks again, on an otherwise idle loop. The server's own freshness
-    /// window is five minutes; this plus one <c>--interval</c> stays inside it -
-    /// see the decisions on HA-173, criterion 1.4.
-    /// </summary>
-    private static readonly TimeSpan ProbeMaxAge = TimeSpan.FromMinutes(2);
-
-    /// <summary>
     /// What the runner exits with to ask the supervisor in <c>scripts/hatch.sh</c>
     /// or <c>scripts/hatch.ps1</c> to build the new source and run it again.
     /// </summary>
@@ -1163,18 +1155,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
             if (runtime.Sessions is IUsageProbe probe)
             {
                 var probeNow = runtime.Clock.GetUtcNow();
-                var due = probedAt is not { } last || probeNow - last >= ProbeMaxAge || workedSinceProbe;
+                var due = probedAt is not { } last || probeNow - last >= UsageReport.ProbeMaxAge || workedSinceProbe;
                 workedSinceProbe = false;
 
                 if (due)
                 {
                     probedAt = probeNow;
-                    var probed = await probe.ProbeAsync(runtime.TempDirectory, ct);
-                    var windows = probed is not null ? UsageReport.Parse(probed, probeNow) : null;
+                    var (probed, windows) = await UsageReport.ProbeAndSetUsageAsync(
+                        probe, runtime.TempDirectory, runtime.Readout, probeNow, ct);
 
                     if (windows is { } found)
                     {
-                        runtime.Readout.SetUsage(found, probeNow);
                         var session = found.FirstOrDefault(w => w.Window == "session");
                         lastProbedResetsAt = session?.ResetsAt;
                         tally.CorrectExhausted(session);
@@ -1540,10 +1531,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // Absent before this loop's first rate_limit_event - a restart
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
-                Usage: usage.UsageReadAt is null ? null : usage.UsageWindows
-                    .Select(w => new RunnerUsageWindowDto(
-                        w.Window, w.Label, (int)Math.Round(w.Utilization * 100), w.ResetsAt))
-                    .ToList(),
+                Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
                 UsageReadAt: usage.UsageReadAt),
             ct);
 

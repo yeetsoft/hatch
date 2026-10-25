@@ -20,6 +20,16 @@ public sealed record IdleSnapshot(string Line, DateTimeOffset? NextLookAt);
 /// </param>
 public sealed record UsageWindow(string Window, string Label, double Utilization, DateTimeOffset? ResetsAt);
 
+/// <summary>The wire shape of the windows, for the runner heartbeat and the claim heartbeat alike.</summary>
+public static class UsageWindowExtensions
+{
+    public static List<RunnerUsageWindowDto> ToDtos(this IReadOnlyList<UsageWindow> windows) =>
+        windows
+            .Select(w => new RunnerUsageWindowDto(
+                w.Window, w.Label, (int)Math.Round(w.Utilization * 100), w.ResetsAt))
+            .ToList();
+}
+
 /// <summary>Whose runner this is, and how its night is going.</summary>
 public sealed record RunnerSnapshot(
     string RunnerName, string? ForName, int NightRuns, TimeSpan NightElapsed, decimal NightSpent, string? Bound, int NightUnpriced = 0)

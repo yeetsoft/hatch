@@ -20,6 +20,29 @@ namespace Hatch.Cli;
 public static partial class UsageReport
 {
     /// <summary>
+    /// How stale a usage probe's reading is allowed to get before it is asked
+    /// for again - at the top of an idle pass, and every this long through a
+    /// running increment. The server's own freshness window is five minutes;
+    /// this plus one <c>--interval</c> stays inside it - see the decisions on
+    /// HA-173, criterion 1.4.
+    /// </summary>
+    public static readonly TimeSpan ProbeMaxAge = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// One <c>/usage</c> probe, and its windows into the readout when it
+    /// answered. A probe that answers nothing, or nothing that parses, leaves
+    /// the readout as it was: whichever reading is there stays.
+    /// </summary>
+    public static async Task<(IReadOnlyList<string>? Lines, IReadOnlyList<UsageWindow>? Windows)> ProbeAndSetUsageAsync(
+        IUsageProbe probe, string tempDirectory, ReadoutState readout, DateTimeOffset probeNow, CancellationToken ct)
+    {
+        var probed = await probe.ProbeAsync(tempDirectory, ct);
+        var windows = probed is not null ? Parse(probed, probeNow) : null;
+        if (windows is { } found) readout.SetUsage(found, probeNow);
+        return (probed, windows);
+    }
+
+    /// <summary>
     /// The account's windows, out of the probe's raw stream-json lines - null
     /// where nothing usable arrived at all. A limit whose <c>kind</c> this does
     /// not know is skipped rather than guessed at. A structured

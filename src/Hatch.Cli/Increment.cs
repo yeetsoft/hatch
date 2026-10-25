@@ -394,6 +394,7 @@ public sealed class Increment(
             // Ctrl-C comes down the caller's own token, which this is linked to.
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
             claim.OnLost = _ => stopping.Cancel();
+            claim.Readout = _readout;
             claim.OnPreempted = p =>
             {
                 report.Preempted = true;
@@ -1029,6 +1030,10 @@ public sealed class Increment(
 
         await MarkSaidAsync(work, ct);
 
+        // Through both exits below, the streamed one and the --quiet one: a
+        // quiet session gets no rate_limit_event to move the readout at all.
+        await using var probing = new Probing(ProbeDuringAsync, ct);
+
         if (quiet)
         {
             // No renderer, so the facts come from the CLI's own summary instead:
@@ -1151,6 +1156,58 @@ public sealed class Increment(
         ReadClamp();
         ReadOutputLastMessage();
         return streamed;
+    }
+
+    /// <summary>
+    /// The idle pass's own <c>/usage</c> probe, on the same clock, run through
+    /// a session instead of between them: the stream's <c>rate_limit_event</c>
+    /// may not arrive for minutes, and a --quiet session has none, so the
+    /// readout the claim heartbeat carries would age past what the board
+    /// trusts. A probe that answers nothing leaves whichever reading is in the
+    /// readout alone, and one that fails is said and tried again - it must
+    /// never fail the increment it is watching.
+    /// </summary>
+    private async Task ProbeDuringAsync(CancellationToken ct)
+    {
+        if (sessions is not IUsageProbe probe) return;
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(UsageReport.ProbeMaxAge, _clock, ct);
+                await UsageReport.ProbeAndSetUsageAsync(probe, _temp, _readout, _clock.GetUtcNow(), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception e) when (e is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException)
+            {
+                say.Complain($"hatch: a usage probe during the increment failed - {e.Message}");
+            }
+        }
+    }
+
+    /// <summary>The probe loop of one session: started with it, stopped and awaited when it ends.</summary>
+    private sealed class Probing : IAsyncDisposable
+    {
+        private readonly CancellationTokenSource _stop;
+        private readonly Task _task;
+
+        public Probing(Func<CancellationToken, Task> loop, CancellationToken ct)
+        {
+            _stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _task = loop(_stop.Token);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _stop.CancelAsync();
+            try { await _task; }
+            catch (OperationCanceledException) { }
+            _stop.Dispose();
+        }
     }
 
     /// <summary>

@@ -976,6 +976,43 @@ public sealed class GoToWorkTests
     }
 
     /// <summary>
+    /// HA-1588: the idle pass is not the only thing that asks. A session that
+    /// is running re-probes on the same <see cref="UsageReport.ProbeMaxAge"/>
+    /// clock, so the readout the claim heartbeat carries does not age while the
+    /// stream is silent - and the reading lands in the readout.
+    /// </summary>
+    [Fact]
+    public async Task A_running_session_is_probed_again_every_probe_max_age()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero));
+        using var interrupting = new CancellationTokenSource();
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () => [Fixtures.UsageReport([("session", 61, null)]), Fixtures.Result(turns: 0)],
+        };
+        fake.Inner.Behaviour = FakeSessions.UntilStopped();
+        var runtime = h.Runtime with { Sessions = fake, Clock = clock };
+
+        var running = new GoToWorkCommand(runtime).RunAsync([], interrupting.Token);
+        await fake.Inner.StartedWithin();
+
+        // The one probe taken at the top of the pass, before the claim.
+        Assert.Single(fake.Probed);
+
+        clock.Advance(UsageReport.ProbeMaxAge + TimeSpan.FromSeconds(1));
+        await Harness.Eventually(() => fake.Probed.Count >= 2, "a probe while the session runs");
+
+        var snapshot = runtime.Readout.Snapshot();
+        Assert.Equal(clock.GetUtcNow(), snapshot.UsageReadAt);
+        Assert.Equal(0.61, Assert.Single(snapshot.UsageWindows).Utilization, 2);
+
+        await interrupting.CancelAsync();
+        await running;
+    }
+
+    /// <summary>
     /// The guard belongs to the runner, not the loop: the loop keeps checking
     /// in every pass it is due, but a probe that has already cost a turn once
     /// answers nothing for the rest of the process, never handing the loop a
