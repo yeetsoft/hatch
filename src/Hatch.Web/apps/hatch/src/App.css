@@ -1118,6 +1118,23 @@
   color: var(--muted);
 }
 
+.hatch-card-stories {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  font-size: var(--t-micro);
+  color: var(--muted);
+}
+
+.hatch-card-story-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--status-color);
+}
+
 /* ---- The filter bar ----
 
    Above the board and outside the scrolling area, because it is about the whole
