@@ -19,16 +19,17 @@ export function ButtonPage() {
   return (
     <GalleryPage
       title="Button"
-      blurb="The pressable thing, in three weights. 110 sites in admin — and three quarters of them are secondary, which is why that is the default."
+      blurb="The pressable thing, in four weights. 110 sites in admin — and three quarters of them are secondary, which is why that is the default."
     >
       <GallerySection
-        title="The three variants"
-        note="One primary action per page. Danger is for the action that loses something. Everything else is secondary, including most of what a page does."
+        title="The four variants"
+        note="One primary action per page. Danger is for the action that loses something. Success is for the action that starts something going. Everything else is secondary, including most of what a page does."
       >
         <div className="row">
           <Button variant="primary">Add zone</Button>
           <Button variant="secondary">Edit</Button>
           <Button variant="danger">Delete</Button>
+          <Button variant="success">Save</Button>
         </div>
       </GallerySection>
 
@@ -74,6 +75,7 @@ export function ButtonPage() {
           <Button variant="primary">Primary</Button>
           <Button variant="secondary">Secondary</Button>
           <Button variant="danger">Danger</Button>
+          <Button variant="success">Success</Button>
         </div>
       </GallerySection>
 
