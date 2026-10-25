@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, Card, Field, PageHeader } from '@hatch/ui';
-import { getHatchSettings, putHatchSettings } from '../api/client';
+import { getBackup, getHatchSettings, putHatchSettings, runBackup } from '../api/client';
 import { Command } from '../components/Command';
+import { backupState, canRunNow, errorWords, folderWords, keptWords, lastSuccessWords, OFF_WORDS } from '../lib/backup';
 import { LIFETIME_CHOICES, readLifetime, writeLifetime } from '../lib/confirmationLifetime';
 import type { Lifetime } from '../lib/confirmationLifetime';
 import { message } from '../lib/errors';
@@ -10,7 +12,7 @@ import { credentialClear, credentialIsSet, credentialPlaceholder, credentialSave
 import type { CredentialField } from '../lib/hatchSettings';
 import { announceLocalPersonChanged } from '../lib/localPerson';
 import { useLoaded } from '../lib/useLoaded';
-import type { HatchSettings, HatchSettingsWriteRequest } from '../types';
+import type { BackupStatus, HatchSettings, HatchSettingsWriteRequest } from '../types';
 
 /** One agent's credential card: what it is called, and how an operator gets one. */
 const AGENT_CREDENTIALS: {
@@ -120,6 +122,10 @@ const AGENT_CREDENTIALS: {
  * behaves differently, since it is a name that always is read back. The rules
  * each follows are in lib/hatchSettings.ts, which is where they are tested.
  *
+ * The Backups card reads `getBackup` on its own load, so neither it nor the
+ * settings failing to load hides the other, and lib/backup.ts owns every
+ * sentence it says.
+ *
  * The last card is neither: how long a confirmation stays in the corner is
  * remembered by this browser, like the theme, and never sent anywhere. So it
  * is drawn outside everything the server says - the wall being up, or the
@@ -136,6 +142,31 @@ export function SettingsPage() {
   // Which button is mid-request, so one card's Save does not spin the other's.
   const [busy, setBusy] = useState<CredentialField | 'name' | null>(null);
   const [lifetime, setLifetime] = useState<Lifetime>(readLifetime);
+  // Its own load, not `settings`: the card is drawn whichever of the two fails.
+  const {
+    data: backup,
+    setData: setBackup,
+    error: backupError,
+    reload: reloadBackup,
+  } = useLoaded<BackupStatus>(getBackup);
+  const [backupRunning, setBackupRunning] = useState(false);
+  const [backupRunError, setBackupRunError] = useState<string | null>(null);
+
+  async function backUpNow() {
+    setBackupRunning(true);
+    try {
+      // A failed run is a 200 with lastError set, so it shows through errorWords;
+      // only a refusal throws. setData also drops any read still in flight.
+      setBackup(await runBackup());
+      setBackupRunError(null);
+    } catch (err) {
+      setBackupRunError(message(err));
+      // A 409 means a run is finishing: show the card's truth, not the refusal's.
+      void reloadBackup();
+    } finally {
+      setBackupRunning(false);
+    }
+  }
 
   async function save(what: CredentialField | 'name', request: HatchSettingsWriteRequest) {
     setBusy(what);
@@ -235,6 +266,39 @@ export function SettingsPage() {
           </div>
         </Card>
       )}
+
+      <Card>
+        <h2 className="hatch-section-title">Backups</h2>
+        {backupError && <p className="text-danger">{backupError}</p>}
+        {backup && backupState(backup) === 'off' && (
+          <p>
+            {OFF_WORDS} <Link to="/docs/backup-restore-and-replication">How to set one</Link>
+          </p>
+        )}
+        {backup && backupState(backup) !== 'off' && (
+          <>
+            <p>{lastSuccessWords(backup)}</p>
+            {errorWords(backup) !== null && <p className="text-danger">{errorWords(backup)}</p>}
+            {backupState(backup) === 'kept' && <p>{keptWords(backup)}</p>}
+            <p>{folderWords(backup)}</p>
+          </>
+        )}
+        {backup?.configured && (
+          <>
+            {backupRunError && <p className="text-danger">{backupRunError}</p>}
+            <div className="hatch-form-actions">
+              <Button
+                variant="primary"
+                loading={backupRunning}
+                disabled={!canRunNow(backup, backupRunning)}
+                onClick={() => void backUpNow()}
+              >
+                Back up now
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
 
       <Card>
         <h2 className="hatch-section-title">Confirmations</h2>

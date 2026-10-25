@@ -47,9 +47,9 @@ a long outage still ends with that many copies, not one. Nothing but Hatch's
 own exactly-named files in that folder is ever touched, so the folder can hold
 other things.
 
-The Settings page's Backups card shows the last success, or that there has
-never been one, and the attention panel raises a hand on a backup that failed
-or has gone stale.
+The [Settings](/apps/hatch/settings) page's Backups card shows the last
+successful backup, the copies kept and a *Back up now* button, and the
+attention panel raises a hand on a backup that failed or has gone stale.
 
 Unset `HATCH_BACKUP_DIR` and Hatch takes no backups: nothing is written
 anywhere. A copy somewhere other than this machine is yours to arrange.
