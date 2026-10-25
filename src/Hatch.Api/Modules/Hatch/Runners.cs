@@ -93,7 +93,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// </remarks>
     public RunnerDto Project(
         EfHatchRunner runner, (string Key, ClaimSnapshot Claim)? claim, IReadOnlyList<string>? drives = null,
-        string? forName = null, bool canControl = true, RunnerOrderDto? order = null)
+        string? forName = null, bool canControl = true, RunnerOrderDto? order = null,
+        bool yours = false)
     {
         var drift = RevisionComparison.Compare(revision.Revision, revision.Sequence, runner.Revision ?? "", runner.Sequence ?? 0);
         // Reference and client swapped on purpose: the reference here is the
@@ -132,7 +133,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             ToBoardDrift(drift),
             ToBoardDrift(sourceDrift),
             // Not sorted, unlike Tags: the order given is the order kept.
-            runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
+            yours);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
