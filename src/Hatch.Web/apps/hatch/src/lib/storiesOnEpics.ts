@@ -19,7 +19,10 @@
    A story past the horizon is still counted on its epic, but never joins the
    carried set: it was never in the drawn cards, so there is no column entry
    to take out. Nothing here touches React or the DOM, and nothing mutates
-   its inputs. */
+   its inputs.
+
+   It also remembers which epics a browser is shown with collapsed - a
+   browser's own choice, with no bearing on what gets carried. */
 
 import type { IssueCard, Project, Status } from '../types';
 import { boardColumns } from './columns';
@@ -87,4 +90,44 @@ export function storyCount(stories: IssueCard[], statuses: Status[]): { total: n
 /** The count as it is said on the card - `countWords(3, 1)` reads "1 of 3 done". */
 export function countWords(total: number, done: number): string {
   return `${done} of ${total} done`;
+}
+
+/** Where the collapsed epics are persisted - namespaced next to
+    `hatch.board.types` (lib/filter.ts). */
+export const COLLAPSED_EPICS_STORAGE_KEY = 'hatch.board.collapsedEpics';
+
+/** The keys of the epics this browser has collapsed, or none - try/catch for
+    the same reason `readBoardTypes` does one: localStorage throws in a
+    partitioned or locked-down context, and the board still has to render.
+    Only strings are kept. Nothing is pruned when an epic leaves the board, so
+    an epic hidden by a filter keeps its state. Always a fresh Set. */
+export function readCollapsedEpics(): Set<string> {
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(COLLAPSED_EPICS_STORAGE_KEY) ?? 'null');
+    if (Array.isArray(stored)) {
+      return new Set(stored.filter((key): key is string => typeof key === 'string'));
+    }
+  } catch {
+    /* See above. */
+  }
+  return new Set();
+}
+
+/** Persists the keys. A store that cannot be written is not worth surfacing:
+    the choice holds until the next reload, as the board's types do. */
+export function writeCollapsedEpics(keys: Iterable<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_EPICS_STORAGE_KEY, JSON.stringify([...keys]));
+  } catch {
+    /* See above. */
+  }
+}
+
+/** A new Set with `key` collapsed, or expanded again if it was collapsed.
+    Expanded is the default and is never stored, so expanding deletes the key.
+    The input is not mutated. */
+export function toggleCollapsed(collapsed: ReadonlySet<string>, key: string): Set<string> {
+  const next = new Set(collapsed);
+  if (!next.delete(key)) next.add(key);
+  return next;
 }
