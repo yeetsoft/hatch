@@ -14,6 +14,7 @@ public sealed class WorkCommand(Runtime runtime)
     public static readonly string[] WorkUsage =
     [
         "usage: hatch work [<issue key>] [--mine] [--under <epic key>] [-i] [--quiet]",
+        "                  [--project <key>]...",
         "                  [--model <model>] [--effort <effort>] [--dry-run] [--no-keys]",
         "                  [--repo <path>]... [--workspace <dir>]",
         "",
@@ -29,6 +30,8 @@ public sealed class WorkCommand(Runtime runtime)
         "  --mine             the next ticket `hatch do-my-work` would take - only the",
         "                     caller's own. Refused together with a key: one names the",
         "                     ticket, the other narrows which ticket is picked",
+        "  --project <key>    look only in this project, repeatable. Narrows the scan, so",
+        "                     it does nothing with a key, and never touches the runner's row",
         "  -i                 a session you sit in, rather than a headless one",
         "  --quiet            say nothing until the increment is finished",
         "  --model            beat the playbook, for this run only",
@@ -60,6 +63,7 @@ public sealed class WorkCommand(Runtime runtime)
         var quiet = false;
         var mine = false;
         var repoFlags = new List<string>();
+        var projectFlags = new List<string>();
         string? workspaceFlag = null;
 
         for (var i = 0; i < args.Length; i++)
@@ -82,6 +86,9 @@ public sealed class WorkCommand(Runtime runtime)
                 case "--repo" when i + 1 < args.Length: repoFlags.Add(args[++i]); break;
                 case "--repo":
                     return Usage.Refuse(runtime.Say, "work --repo takes a path", WorkUsage);
+                case "--project" when i + 1 < args.Length: projectFlags.Add(args[++i]); break;
+                case "--project":
+                    return Usage.Refuse(runtime.Say, "work --project takes a project key", WorkUsage);
                 case "--workspace" when i + 1 < args.Length: workspaceFlag = args[++i]; break;
                 case "--workspace":
                     return Usage.Refuse(runtime.Say, "work --workspace takes a directory", WorkUsage);
@@ -89,6 +96,12 @@ public sealed class WorkCommand(Runtime runtime)
                     return Usage.Refuse(runtime.Say, $"work does not take {flag}", WorkUsage);
                 default: key = args[i]; break;
             }
+        }
+
+        if (!ProjectFlags.Parse(projectFlags, out var projects, out var badProject))
+        {
+            return Usage.Refuse(
+                runtime.Say, $"work --project names a project, like AER - not \"{badProject}\"", WorkUsage);
         }
 
         var agentId = agent ?? runtime.Settings.Agent;
@@ -150,6 +163,9 @@ public sealed class WorkCommand(Runtime runtime)
                 Settings = runtime.Settings.WithWorkspace(servedWorkspace, defaulted),
             };
         }
+
+        // After the block above, which replaces the board and with it anything set earlier.
+        runtime.Board.Projects = projects;
 
         if (runtime.Checkouts.Count == 0 && runtime.Settings.Workspace is null)
         {

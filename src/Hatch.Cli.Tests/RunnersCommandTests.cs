@@ -12,14 +12,15 @@ public sealed class RunnersCommandTests
 
     private static RunnerDto ARunner(
         string name = "runner-1", string? claimKey = null, DateTimeOffset? lastSeenAt = null,
-        int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null) =>
+        int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
+        IReadOnlyList<string>? projects = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
             ClaimKey: claimKey, Line: null, LineAt: null, State: state, Under: null,
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
-            ExhaustedUntil: exhaustedUntil);
+            ExhaustedUntil: exhaustedUntil, Projects: projects ?? []);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -53,6 +54,23 @@ public sealed class RunnersCommandTests
 
         Assert.Contains("idle", h.Said);
         Assert.Contains("none", h.Said);
+    }
+
+    [Fact]
+    public async Task A_row_bound_to_projects_ends_with_them_and_a_row_bound_to_none_does_not()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "bound", projects: ["FIL", "AER"]),
+            ARunner(name: "free"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  projects FIL AER", lines.Single(l => l.StartsWith("bound", StringComparison.Ordinal)));
+        Assert.DoesNotContain("projects", lines.Single(l => l.StartsWith("free", StringComparison.Ordinal)));
     }
 
     [Fact]

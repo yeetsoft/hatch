@@ -92,6 +92,67 @@ public sealed class WorkCommandTests
     }
 
     [Fact]
+    public async Task The_next_read_carries_the_projects_and_no_heartbeat_does()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(
+            0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run", "--project", "FIL", "--project", "aer"], default));
+
+        var query = h.Wire.To("GET", "/api/hatch/work/next")[0].Query;
+        Assert.Contains("project=FIL", query);
+        Assert.Contains("project=AER", query);
+        Assert.DoesNotContain(
+            h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)),
+            c => c.Read<RunnerHeartbeatRequest>().Projects is not null);
+    }
+
+    [Fact]
+    public async Task A_one_off_run_bound_to_a_project_never_writes_it_to_the_runner_row()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-9") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/hatch/work/AER-9", Fixtures.Work("AER-9"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-9/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-9");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--project", "FIL"], default));
+
+        Assert.Contains("project=FIL", h.Wire.To("GET", Queue)[0].Query);
+        var beats = h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(beats);
+        Assert.All(beats, c => Assert.Null(c.Read<RunnerHeartbeatRequest>().Projects));
+    }
+
+    [Theory]
+    [InlineData("fil1x9z")]
+    [InlineData("")]
+    public async Task A_malformed_project_is_refused_before_anything_is_sent(string bad)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["--dry-run", "--project", bad], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("names a project, like AER", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_project_flag_survives_the_board_being_rebuilt_for_a_repo_override()
+    {
+        using var h = new Harness();
+        var tree = Tree(h, "bound", "https://example.test/bound.git");
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(
+            0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run", "--repo", tree, "--project", "FIL"], default));
+
+        Assert.Contains("project=FIL", h.Wire.To("GET", "/api/hatch/work/next")[0].Query);
+    }
+
+    [Fact]
     public async Task A_dry_run_on_a_hop_prints_no_prompt()
     {
         using var h = new Harness();
