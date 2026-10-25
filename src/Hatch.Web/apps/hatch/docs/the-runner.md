@@ -113,7 +113,7 @@ Every setting is read from four places, highest first:
 
 1. an exported variable;
 2. `scripts/.env` in the checkout you are standing in;
-3. the named profile file, when one resolved (`--profile`, `HATCH_PROFILE`, or the active-profile pointer file);
+3. the named profile file, when one resolved (`--profile`, `HATCH_PROFILE`, or the active-profile pointer file), at `<per-user config>/profiles/<name>`;
 4. the per-user file `hatch config` writes.
 
 `hatch config --here` writes the second layer directly - every other write
@@ -124,6 +124,41 @@ It is mode 600 wherever the platform has modes; on Windows it inherits the
 directory's ACL. A blank value is the same as unset. A flag beats every layer
 for its run: `--repo` on `work` or `go-to-work` replaces `HATCH_REPOS` rather
 than adding to it.
+
+**Where the profile layer lives.** A profile is the file
+`<per-user config>/profiles/<profile-a>`; its name is letters, digits and
+hyphens, nothing else. The active profile is the one-line file
+`<per-user config>/profile`, and that pointer is what `hatch use` moves
+([`use`](cli-reference#use)). `--profile <profile-a>` or an exported
+`HATCH_PROFILE` pins one run to a profile instead, and a pinned run ignores the
+pointer. A name that resolves to no file refuses the run
+(`no such profile "<profile-a>" - looked in <per-user config>/profiles`); a name
+given nowhere is not a refusal, it is the no-profile fold of the other three
+layers.
+
+**The pairing rule.** `HATCH_KEY` answers only from the layer `HATCH_BASE` came
+from. A key in any other layer is ignored, with a line saying which file held
+it:
+
+```
+hatch: HATCH_KEY in <checkout-a>/scripts/.env is ignored - HATCH_BASE comes from <per-user config>/profiles/<profile-a>, and a key goes with its origin. Set both in <checkout-a>/scripts/.env, or neither.
+```
+
+An exported key gets `Export both, or neither.` in the same place. So a layer
+that names an origin and no key is keyless on purpose, and `hatch config --here
+--origin <origin>` alone leaves that checkout keyless - give it a key in the
+same call, or none. *Two runners on one machine* has this in a recipe.
+
+**Board-bound names.** While a profile is active, the per-user file is not
+consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_RUNNER`, `HATCH_TAGS`,
+`HATCH_WORKSPACE` and `HATCH_REPOS`: they belong to one board, so the profile
+answers for them or nothing does, and `--show` marks each of them
+`(profile active: the per-user file was not consulted)`. The machine-bound
+names - `HATCH_AGENT`, the three CLI paths, `HATCH_OLLAMA_*` and
+`HATCH_BASE_BRANCH` - still fall through to the per-user file, since they
+describe the machine rather than the board. `HATCH_RUNNER` is stricter than the
+rest: it is never read from a profile or the per-user file, active profile or
+not (the **Warn** below).
 
 Both files are parsed, not sourced: a `KEY=value` line, blanks and `#`
 comments skipped, one layer of matching quotes stripped off the value. An
@@ -194,11 +229,23 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
 - each setting that can live in a file, with the layer it came from: exported,
-  the `.env` path, or the per-user file;
+  the `.env` path, the profile file `<per-user config>/profiles/<profile-a>`,
+  or the per-user file;
 - the key masked, never in full;
 - `HATCH_REPOS` as a path a line;
 - `HATCH_TAGS` as a comma-separated list, or `<unset>`;
-- for an unset `HATCH_WORKSPACE`, the directory clones would go to.
+- for an unset `HATCH_WORKSPACE`, the directory clones would go to;
+- a note after the line it explains, when a value was passed over or never
+  looked for. `<layer>` is `exported`, a file path, or the profile path:
+
+  ```
+  HATCH_KEY: …  (ignored: <layer> holds a key, but HATCH_BASE comes from <layer> - set both there, or neither)
+  HATCH_RUNNER: …  (ignored: <layer> holds a name, but a runner's name belongs to a checkout - export it, or put it in scripts/.env)
+  HATCH_TAGS: …  (profile active: the per-user file was not consulted)
+  ```
+
+  The first is the pairing rule, the second the **Warn** on `HATCH_RUNNER`, the
+  third every board-bound line while a profile is active, set or not.
 
 ## What a runner advertises
 
