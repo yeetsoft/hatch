@@ -254,6 +254,10 @@ prints one sentence saying so. It writes nothing.
 
 - `--json` prints the endpoint's own answer and nothing else.
 
+A runner that has reported its own process adds `  on HOST`, `N runs` and
+`$X.XX` (the machine, the increments run and the dollars spent) before any
+projects, each only where it has said so.
+
 A runner bound to some projects (`go-to-work --project FIL --project AER`, or
 the Projects field on the Runners page) closes its line with `  projects FIL AER`,
 the keys space-separated. A runner bound to none ends its line as it always did.

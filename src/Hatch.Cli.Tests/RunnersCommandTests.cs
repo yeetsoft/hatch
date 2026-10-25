@@ -13,14 +13,14 @@ public sealed class RunnersCommandTests
     private static RunnerDto ARunner(
         string name = "runner-1", string? claimKey = null, DateTimeOffset? lastSeenAt = null,
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
-        IReadOnlyList<string>? projects = null) =>
+        IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
             ClaimKey: claimKey, Line: null, LineAt: null, State: state, Under: null,
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
-            ExhaustedUntil: exhaustedUntil, Projects: projects ?? []);
+            ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -71,6 +71,25 @@ public sealed class RunnersCommandTests
         var lines = h.Said.Split('\n');
         Assert.EndsWith("  projects FIL AER", lines.Single(l => l.StartsWith("bound", StringComparison.Ordinal)));
         Assert.DoesNotContain("projects", lines.Single(l => l.StartsWith("free", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_reporting_its_host_runs_and_spend_prints_them_before_any_projects_and_a_row_reporting_none_does_not()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "told", runs: 3, spent: 1.25m, host: "Fry", projects: ["HA"]),
+            ARunner(name: "mute"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  on Fry 3 runs $1.25  projects HA", lines.Single(l => l.StartsWith("told", StringComparison.Ordinal)));
+        var mute = lines.Single(l => l.StartsWith("mute", StringComparison.Ordinal));
+        Assert.DoesNotContain(" runs", mute);
+        Assert.DoesNotContain("$", mute);
     }
 
     [Fact]

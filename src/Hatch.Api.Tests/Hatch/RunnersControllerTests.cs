@@ -617,6 +617,59 @@ public class RunnersControllerTests
         Assert.Null((await h.RowAsync()).ForPersonId);
     }
 
+    // ---- What it reports of itself: runs, spent, host ----
+
+    [Fact]
+    public async Task RunsSpentAndHost_AreStoredAndReadBack()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Runs: 3, Spent: 1.25m, Host: "Fry"));
+
+        var row = await h.OneAsync();
+        Assert.Equal(3, row.Runs);
+        Assert.Equal(1.25m, row.Spent);
+        Assert.Equal("Fry", row.Host);
+    }
+
+    [Fact]
+    public async Task RunsSpentAndHost_AbsentOnALaterBeat_LeaveTheRowAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Runs: 3, Spent: 1.25m, Host: "Fry"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.OneAsync();
+        Assert.Equal(3, row.Runs);
+        Assert.Equal(1.25m, row.Spent);
+        Assert.Equal("Fry", row.Host);
+    }
+
+    [Fact]
+    public async Task RunsSpentAndHost_OnALaterBeat_OverwriteWithNoFresh()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Runs: 3, Spent: 1.25m, Host: "Fry"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Runs: 4, Spent: 2.5m, Host: "Leela"));
+
+        var row = await h.OneAsync();
+        Assert.Equal(4, row.Runs);
+        Assert.Equal(2.5m, row.Spent);
+        Assert.Equal("Leela", row.Host);
+    }
+
+    [Fact]
+    public async Task Host_PastItsLimit_IsTruncatedNotRefused()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Host: new string('h', EfHatchRunner.MaxHostLength + 20)));
+
+        Assert.Equal(new string('h', EfHatchRunner.MaxHostLength), (await h.OneAsync()).Host);
+    }
+
     // ---- Where it runs ----
 
     [Fact]

@@ -199,6 +199,9 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // Two places, because a spend cap is dollars and cents and the default
         // scale would refuse the number an operator types into the box.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.MaxSpend).HasPrecision(18, 2);
+        // The same scale CostUsd has: what a runner reports having spent is
+        // priced per token, and the CLI rounds it for display.
+        modelBuilder.Entity<EfHatchRunner>().Property(r => r.Spent).HasPrecision(18, 8);
 
         // jsonb for the reason EfHatchWorkLogEntry.ModelUsage below is.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.Usage).HasColumnType("jsonb");

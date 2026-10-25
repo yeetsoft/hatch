@@ -619,6 +619,9 @@ public class RunnersController(
             Mine = request.Mine,
             Standing = request.Standing,
             Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
+            Runs = request.Runs,
+            Spent = request.Spent,
+            Host = Fits(request.Host, EfHatchRunner.MaxHostLength),
             Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
             Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength),
             Sequence = request.Sequence,
@@ -672,6 +675,9 @@ public class RunnersController(
         if (request.Mine is not null) row.Mine = request.Mine;
         if (request.Standing is not null) row.Standing = request.Standing;
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+        if (request.Runs is not null) row.Runs = request.Runs;
+        if (request.Spent is not null) row.Spent = request.Spent;
+        if (request.Host is not null) row.Host = Fits(request.Host, EfHatchRunner.MaxHostLength);
         if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
         if (request.Revision is not null) row.Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength);
         if (request.Sequence is not null) row.Sequence = request.Sequence;
