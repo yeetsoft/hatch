@@ -43,16 +43,16 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// board, whatever <paramref name="ancestorKey"/>, <paramref name="mine"/>
     /// or <paramref name="repos"/> narrow this scan to, so a narrowed scan
     /// pays for a second, unnarrowed one. So does a judged scan when some
-    /// project requires tags, or when <paramref name="projects"/> is bound:
-    /// the tag fold and the project fold both precede the dependency and
-    /// family folds, so a row either one folds loses its <c>WaitsOn</c> and
-    /// would hide a ring; the second scan is unjudged and unbound. Only the
-    /// queue asks.
+    /// project requires tags, when the runner refuses dangerous work, or when
+    /// <paramref name="projects"/> is bound: the tag, danger and project folds
+    /// all precede the dependency and family folds, so a row any of them folds
+    /// loses its <c>WaitsOn</c> and would hide a ring; the second scan is
+    /// unjudged and unbound. Only the queue asks.
     /// </param>
     /// <param name="tags">
     /// What the caller's runner advertises, see <see cref="TagDeclaration"/>.
     /// Null is <see cref="TagDeclaration.Unjudged"/>: a scan answering for the
-    /// board and not for a runner folds nothing on tags.
+    /// board and not for a runner folds nothing on tags, or on danger.
     /// </param>
     /// <param name="projects">
     /// The project keys this runner is bound to, repeatable - see
@@ -379,6 +379,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             var whole = scope is not null || mine || repos.IsDeclared
                 || (tags.Judged && candidates.Any(i => tree.EffectiveRunnerTags(i.Id).All.Count > 0))
                 || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
+                || (tags.RefusesDangerous && candidates.Any(i => tree.EffectiveDangerous(i.Id).Reason is not null))
                 || projects is { Count: > 0 }
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
@@ -614,19 +615,29 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             : $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}";
 
     /// <summary>
+    /// Whether a session spawned for this move runs the issue's code: every
+    /// session spawned out of the implementation column, or the review
+    /// self-move only while it is conflict or build work. Not the move into
+    /// implementation or a hop - nothing is spawned for either, and
+    /// <paramref name="hop"/> already says so.
+    /// </summary>
+    private static bool CodeGated(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        !hop && (from.Id == implementation?.Id
+                 || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
+
+    /// <summary>
     /// Whether a session spawned for this move writes code, and so needs a
-    /// runner advertising the union this issue requires: every session spawned
-    /// out of the implementation column, the review self-move only while it
-    /// is conflict or build work, or any move out of a column carrying its own
-    /// runner tags. Not the move into implementation or a hop - nothing is
-    /// spawned for either, and <paramref name="hop"/> already says so.
+    /// runner advertising the union this issue requires: any move
+    /// <see cref="CodeGated"/> names, or any move out of a column carrying its
+    /// own runner tags.
     /// </summary>
     private static bool TagGated(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
         IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
-        !hop && (from.Id == implementation?.Id
-                 || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null)
-                 || RunnerTagColumn.Read(from.RunnerTags).Count > 0);
+        CodeGated(issue, from, to, hop, implementation, verdicts, builds)
+        || (!hop && RunnerTagColumn.Read(from.RunnerTags).Count > 0);
 
     /// <summary>
     /// Why this caller's runner is not the one for the issue: the union of the
@@ -653,6 +664,18 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
             : $"{key} is implemented only by a runner advertising {Listed(required)} - this runner advertises {has}";
     }
+
+    /// <summary>
+    /// Why this caller's runner will not run the issue's code: the runner
+    /// refuses dangerous work, and the issue or an ancestor is flagged
+    /// dangerous. Null for a runner that does not refuse it, which includes
+    /// <see cref="TagDeclaration.Unjudged"/>, and for an issue with no flag
+    /// live on it.
+    /// </summary>
+    private static string? DangerFold(EfHatchIssue issue, TagDeclaration tags, DependencyGate gate) =>
+        tags.RefusesDangerous && gate.EffectiveDangerous(issue.Id).Reason is { } reason
+            ? $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is flagged dangerous ({reason}) - this runner refuses dangerous work"
+            : null;
 
     /// <summary>
     /// Why this caller's runner is not the one for the issue: the issue's own
@@ -1236,6 +1259,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
             && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
+
+        // After the tag fold, so a runner that is wrong on both hears about the
+        // tags; before the dependencies, which it cannot be asked to wait on.
+        if (CodeGated(issue, from, to, hop, implementation, verdicts, builds)
+            && DangerFold(issue, tags ?? TagDeclaration.Unjudged, gate) is { } dangerBlock)
+            return new Blocking(dangerBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
             || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
@@ -1848,24 +1877,29 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
 /// runner at all. A caller that sends nothing has declared none, so
 /// <see cref="Of"/> with an empty list is a real declaration; only
 /// <see cref="Unjudged"/> - the board's own scans, which no runner asked
-/// for - folds nothing on tags.
+/// for - folds nothing on tags. It also says whether the runner refuses
+/// dangerous work (<c>?dangerous=false</c>); that is independent of the tags,
+/// and <see cref="Unjudged"/> never refuses it.
 /// </summary>
-public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged)
+public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged, bool RefusesDangerous = false)
 {
     public static readonly TagDeclaration Unjudged = new([], false);
 
     /// <summary>A caller's declaration, already normalised.</summary>
-    public static TagDeclaration Of(IReadOnlyList<string> tags) => new(tags, true);
+    public static TagDeclaration Of(IReadOnlyList<string> tags, bool refusesDangerous = false) =>
+        new(tags, true, refusesDangerous);
 
     /// <summary>
     /// <paramref name="raw"/> run through <see cref="RunnerTags.Normalise"/>:
     /// null is a caller that sent nothing, which is <c>Of([])</c>. Returns the
     /// refusal sentence, or null; on a refusal the declaration is <c>Of([])</c>.
+    /// <paramref name="dangerous"/> false is a runner that refuses dangerous
+    /// work; null and true refuse nothing.
     /// </summary>
-    public static string? From(IReadOnlyList<string>? raw, out TagDeclaration declaration)
+    public static string? From(IReadOnlyList<string>? raw, out TagDeclaration declaration, bool? dangerous = null)
     {
         var refusal = RunnerTags.Normalise(raw, out var normalised);
-        declaration = Of(refusal is null ? normalised : []);
+        declaration = Of(refusal is null ? normalised : [], dangerous == false);
         return refusal;
     }
 }

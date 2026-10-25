@@ -4328,6 +4328,56 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, tag: ["macos", "xcode"])).Blocked);
     }
 
+    // ---- Dangerous: ?dangerous=false is a runner that refuses flagged work ----
+
+    private static async Task<EfHatchIssue> FileFlaggedAsync(Harness h)
+    {
+        var issue = await h.FileAsync("story", "load test", h.InProgress);
+        issue.Dangerous = "load-tests the API";
+        await h.Db.SaveChangesAsync();
+        return issue;
+    }
+
+    [Fact]
+    public async Task Queue_AFlaggedRow_CarriesTheDangerSentenceOnlyWhenTheRunnerRefusesDangerousWork()
+    {
+        var h = await NewAsync();
+        var issue = await FileFlaggedAsync(h);
+
+        var refused = Only(await h.Work.GetQueue(0, null, default, dangerous: false));
+        Assert.Equal(
+            $"{Key(issue)} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            refused.Blocked);
+        Assert.Equal(BlockedKinds.Other, refused.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, dangerous: true)).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_AFlaggedRow_IsNoContentWhenTheRunnerRefusesDangerousWork_AndAnswersOtherwise()
+    {
+        var h = await NewAsync();
+        var issue = await FileFlaggedAsync(h);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default, dangerous: false)).Result);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default, dangerous: true)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Work_AFlaggedRow_CarriesTheDangerSentenceOnlyWhenTheRunnerRefusesDangerousWork()
+    {
+        var h = await NewAsync();
+        var issue = await FileFlaggedAsync(h);
+
+        Assert.Equal(
+            $"{Key(issue)} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            Value(await h.Work.GetWork(Key(issue), null, default, dangerous: false)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, dangerous: true)).Blocked);
+    }
+
     [Fact]
     public async Task Hop_InATagRequiringProject_IsNotFoldedByTheTagSentenceForATaglessCaller()
     {

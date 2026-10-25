@@ -435,10 +435,10 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next` |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
