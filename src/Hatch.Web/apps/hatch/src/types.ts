@@ -1678,6 +1678,30 @@ export interface HatchSettingsWriteRequest {
   localPersonName?: string;
 }
 
+// ---- Backups ----
+
+/** One finished backup on disk. Mirrors BackupCopyDto. */
+export interface BackupCopy {
+  name: string;
+  bytes: number;
+  takenAt: string;
+}
+
+/** What the Backups card shows. Mirrors BackupStatusDto. */
+export interface BackupStatus {
+  /** Whether a backup folder is set at all. */
+  configured: boolean;
+  path: string | null;
+  keepDays: number;
+  lastSuccessfulAt: string | null;
+  lastAttemptAt: string | null;
+  lastOutcome: 'ok' | 'failed' | 'not-configured' | 'never';
+  lastError: string | null;
+  folderReadable: boolean;
+  folderProblem: string | null;
+  copies: BackupCopy[];
+}
+
 // ---- The runner ----
 
 /** One platform's `hatch` binary, as this image publishes it. Mirrors RunnerDownloadDto. */
