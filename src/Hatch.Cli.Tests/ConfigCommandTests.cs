@@ -1688,6 +1688,156 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_LOG:         {dir}  ({ConfigPath})", Said);
     }
 
+    // ---- --dangerous ----
+
+    [Theory]
+    [InlineData("off", "off")]
+    [InlineData("on", "on")]
+    [InlineData(" OFF ", "off")]
+    public async Task Dangerous_writes_the_word_and_touches_nothing_else(string typed, string written)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--dangerous", typed], default));
+
+        var lines = File.ReadAllLines(ConfigPath);
+        Assert.Contains($"HATCH_DANGEROUS={written}", lines);
+        Assert.Contains("HATCH_BASE=https://kept", lines);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
+        Assert.Contains("HATCH_TAGS=gpu", lines);
+    }
+
+    [Fact]
+    public async Task Dangerous_shaped_wrong_or_not_on_or_off_is_refused_and_nothing_is_written()
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--dangerous"], default));
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--dangerous", "maybe"], default));
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--dangerous", "off", "on"], default));
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--dangerous", ""], default));
+
+        Assert.Contains("config --dangerous takes on or off", Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Dangerous_is_left_in_the_file_by_every_other_write()
+    {
+        var checkout = Tree("checkout");
+        var clones = Path.Combine(_temp, "clones-dangerous");
+        var logs = Path.Combine(_temp, "logs-dangerous");
+        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
+
+        await Command(new Replies()).RunAsync(["--repo", checkout], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", clones], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", "off"], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Log_and_tag_after_dangerous_and_dangerous_after_them_keep_all_three()
+    {
+        var logs = Path.Combine(_temp, "logs-three");
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains($"HATCH_LOG={logs}", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
+    }
+
+    [Fact]
+    public async Task Here_dangerous_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
+                .RunAsync(["--here", "--dangerous", "off"], default));
+
+        Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Profile_dangerous_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    {
+        var profilePath = Profile();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), profileName: "work", profilePath: profilePath)
+                .RunAsync(["--dangerous", "on"], default));
+
+        Assert.Contains("HATCH_DANGEROUS=on", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_with_no_dangerous_setting_says_it_takes_dangerous_work()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_DANGEROUS:   <unset - takes dangerous work>", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_off_for_an_off_dangerous_setting()
+    {
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_DANGEROUS:   off - this runner refuses dangerous work  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_on_for_an_on_dangerous_setting()
+    {
+        await Command(new Replies()).RunAsync(["--dangerous", "on"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_DANGEROUS:   on - takes dangerous work  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_a_bad_dangerous_value_is_refused()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_DANGEROUS=maybe"]);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains(
+            $"HATCH_DANGEROUS:   maybe  (refused: \"maybe\" is not on or off)  ({ConfigPath})", Said);
+    }
+
     // ---- --here ----
 
     [Fact]

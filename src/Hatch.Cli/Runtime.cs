@@ -86,6 +86,9 @@ public sealed record Runtime(
     /// </summary>
     public string? NightStatePath { get; init; }
 
+    /// <summary>The file this run's log is being written to, or null where there is none - handed to the next incarnation in the night's state, so a restart appends to it.</summary>
+    public string? LogPath { get; init; }
+
     /// <summary>The directory a runner set's host owns, from <c>HATCH_SET_DIR</c>; null outside a set.</summary>
     public string? SetDir { get; init; }
 
@@ -96,7 +99,7 @@ public sealed record Runtime(
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
 
-    public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
+    public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine, RunnerName);
 
     public Increment Increment() => new(Board, Sessions, Adapter, Settings, Say, Checkouts, Readout, TempDirectory, Controls, Workspace, QuietBoard, Clock);
 
@@ -176,7 +179,7 @@ public sealed record Runtime(
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous),
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

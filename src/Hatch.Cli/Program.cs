@@ -184,6 +184,12 @@ using var hangup = Handle(PosixSignal.SIGHUP);
 // itself - each child does - so it returns before any of that is built. -h goes
 // on to go-to-work's own usage, and a member never hosts a set of its own.
 var runners = 1;
+
+// What the incarnation before this one handed on, if there was one: here only
+// the log it was writing, so a restart appends to the same file.
+var nightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE");
+var carried = NightState.Read(nightStatePath);
+
 if (command is "go-to-work" or "do-my-work")
 {
     if (!RunnerSet.TryExtract(rest, out rest, out runners, out var runnersRefusal))
@@ -194,9 +200,20 @@ if (command is "go-to-work" or "do-my-work")
 
     if (runners > 1 && memberSlot is null && !Hatch.Cli.Usage.Wanted(rest))
     {
-        return await RunnerSet.RunAsync(
+        // The host writes the set's one log; the members write none, and their
+        // lines reach it prefixed with their slot. A restart hands the path on
+        // through the bare state path, which no member uses.
+        using var hostLog = RunLog.Open(say, settings.LogDirectory, command, "set", TimeProvider.System, carried?.LogPath);
+        if (hostLog is not null) say = hostLog;
+
+        var code = await RunnerSet.RunAsync(
             command, runners, rest, profileArg, settings, environment, new ProcessSetLauncher(), say.Line,
             cancelling.Token);
+
+        if (code == GoToWorkCommand.RestartExitCode)
+            new NightState { LogPath = hostLog?.Path }.Write(nightStatePath);
+
+        return code;
     }
 }
 
@@ -229,7 +246,7 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
-var board = new Board(client, settings.Tags);
+var board = new Board(client, settings.Tags, settings.RefusesDangerous);
 
 LiveTerminal? live = null;
 KeyReader? keys = null;
@@ -281,7 +298,7 @@ try
         // the terminal there belongs to the interactive session.
         if (!attached)
         {
-            log = RunLog.Open(say, settings.LogDirectory, command, runnerName, TimeProvider.System);
+            log = RunLog.Open(say, settings.LogDirectory, command, runnerName, TimeProvider.System, carried?.LogPath);
             if (log is not null) say = log;
         }
 
@@ -317,7 +334,8 @@ try
             // again. See docs/hatch.md, "What it stops for".
             ProfileName = profileName,
             ActiveProfilePath = Settings.Pinned(profileArg, environment) ? null : Settings.ActiveProfilePath(),
-            NightStatePath = environment.GetValueOrDefault("HATCH_NIGHT_STATE"),
+            NightStatePath = nightStatePath,
+            LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
             Readout = readoutState,
@@ -633,6 +651,8 @@ internal partial class Program
         "                     unset means a per-user default, `off` means never clone",
         "  HATCH_LOG          where this runner's log goes: `on` for the `logs` folder beside the",
         "                     per-user file, a directory, or `off`; unset means no log",
+        "  HATCH_DANGEROUS    `off` makes this runner refuse work flagged dangerous; `on`, or",
+        "                     unset, takes it. Seeds the runner's row once, then the board owns it",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

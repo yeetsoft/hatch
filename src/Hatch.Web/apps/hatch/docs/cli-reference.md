@@ -73,7 +73,7 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
               | --repo <path>... | --tag <tag>... | --workspace <dir>
-              | --log on|<dir>|off]
+              | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -113,6 +113,11 @@ header instead. Never put it in a repository, either way.
   the `logs` folder beside the per-user file, a directory is made if it is not
   there (and refused, with nothing written, if it cannot be), and `off` keeps
   none. The setting is only recorded here.
+- `--dangerous on|off` writes `HATCH_DANGEROUS`: `off` makes this runner refuse
+  work flagged dangerous, and `on` (the default) takes it. It seeds the runner's
+  row once and the row is the board's after that, so it changes nothing for a
+  runner that already has one ([the runner](the-runner#what-a-runner-refuses)).
+  Any other value is refused, with nothing written.
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
@@ -212,6 +217,8 @@ reason it would be folded past or the transition it is clear for. It is the
 dry run for the loop and the answer to "why did it not pick up the ticket I
 meant". It spawns nothing and writes nothing, and a board with nothing to look
 at says so in a sentence.
+It reads as this checkout's runner, so a row can say a ticket is left for another
+runner.
 
 - `<ancestor key>` narrows it to one epic's tree.
 - `--mine` shows what a `--mine` pass would take and folds past everything
@@ -603,7 +610,8 @@ takes no ticket key. [The loop: `hatch go-to-work`](one-increment-and-the-loop#t
 has the pass in order, the bounds and the restarts.
 
 With `HATCH_LOG` set, the run keeps a plain-text copy of what it says in a file
-under that folder, and its first line names it (`hatch: logging to <path>`).
+under that folder, and its first line names it (`hatch: logging to <path>`). A
+restart appends to the same file and the next night starts a new one.
 
 - `--mine` takes only the caller's own tickets. Plain `go-to-work` skips every
   person's tickets, including yours.

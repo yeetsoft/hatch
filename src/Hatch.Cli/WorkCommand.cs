@@ -228,7 +228,7 @@ public sealed class WorkCommand(Runtime runtime)
         {
             work = key is { Length: > 0 }
                 ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones)
-                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones, mine);
+                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones, mine, runtime.RunnerName);
         }
         catch (HatchException e)
         {
@@ -333,6 +333,7 @@ public sealed class WorkCommand(Runtime runtime)
                 Kind: RunnerKinds.Once,
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
                 Tags: runtime.Settings.Tags,
+                RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Where: runtime.Where,
                 Host: Checkout.Host(),
                 Agent: runtime.Adapter.Id,

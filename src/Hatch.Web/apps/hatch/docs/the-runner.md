@@ -206,6 +206,7 @@ HATCH_LOG            where its log goes (on: the logs folder beside the
                      per-user file; a directory; unset or off: no log). A
                      work or go-to-work run keeps one file there, named on
                      its first line
+HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -241,6 +242,8 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 - for an unset `HATCH_WORKSPACE`, the directory clones would go to;
 - `HATCH_LOG:` as `<unset - no log>`, `off - no log`, or the folder the log
   goes to (the `logs` folder beside the per-user file, for `on`);
+- `HATCH_DANGEROUS:` as `<unset - takes dangerous work>`, `on - takes dangerous work`,
+  `off - this runner refuses dangerous work`, or a bad value with the sentence that refuses it;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -288,6 +291,31 @@ A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
 implemented only by a runner advertising macos and xcode - this runner
 advertises linux"* (*"... advertises none"* for a runner with no tags at all).
+
+## What a runner refuses
+
+A ticket can be flagged dangerous: security testing, load testing, anything
+that destabilises a process or a machine. **A runner takes dangerous work by
+default.** A runner that should not - a shared machine, a laptop somebody is
+using - says so:
+
+```
+hatch config --dangerous off
+HATCH_DANGEROUS=off
+```
+
+With `off`, every dispatch read the runner makes (`next`, `queue`, and the read
+for a named ticket) carries `dangerous=false`, so the board hands it nothing
+flagged, and its heartbeat says it refuses. `on`, or nothing written, takes
+dangerous work. Any other value refuses every command with a sentence.
+`--here` and `--profile` write the setting where they write anything else, and
+it is machine-bound: a profile still reads it from the per-user file.
+
+**The setting seeds the row once.** The first heartbeat writes it onto the
+runner's row; after that **the row is where it lives**, and `hatch config
+--dangerous` typed at a checkout whose runner already has a row changes nothing
+on the board. A running loop adopts the row's answer on its next heartbeat and
+says so once: `hatch: the board set --dangerous off` (or `on`).
 
 ## The runner's name
 
@@ -723,6 +751,11 @@ lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `--runners` needs a workspace, so `--workspace off` is refused, and
 `do-my-work` takes it too; [cli-reference](cli-reference#go-to-work) has the
 flag.
+
+With `HATCH_LOG` set, the host writes the set's one log
+(`go-to-work-set-<yyyyMMdd-HHmmss>.log`), each member's lines prefixed `[n]` as
+on screen, and the members write none. A restart of the set appends to the same
+file.
 
 ### Switching the set
 

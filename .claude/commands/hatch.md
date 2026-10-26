@@ -70,8 +70,17 @@ columns.
    `docs/browser-testing.md` describes, then comment the page, the profile and
    what you saw on the ticket. The operator's look still has the last word, so
    say a screen renders only as far as you saw it, never from the build alone.
-   If something is red and you cannot fix it, stop at step 6 and say so
-   rather than pushing red.
+   Work that is not green still leaves this machine: a branch nobody else can
+   see is work the next runner starts again from nothing.
+
+   - If the checks cannot run here at all (a toolchain this machine lacks), go
+     on to step 6, push, open the pull request as usual, and say on the ticket
+     which check was not run and why. The pull request's own checks are the
+     gate.
+   - If something is red and you cannot fix it, commit what you have and push
+     it in step 6, then comment what is red, what you tried and where you would
+     look next, and stop, leaving the ticket where it is. Never put a branch
+     you know is red up for review.
 
 6. **Commit and push.** This command is the standing ask for both — the usual
    "never commit unless asked" is satisfied by the invocation, and it covers

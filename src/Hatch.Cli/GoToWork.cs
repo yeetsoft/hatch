@@ -948,7 +948,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // a fresh night: the budget back to nothing, the streak cleared,
                 // the hour re-read. Better the version that is running carries
                 // on to its own end than a new one starts with no bounds on it.
-                if (restarting && !tally.ToState().Write(runtime.NightStatePath))
+                if (restarting && !(tally.ToState() with { LogPath = runtime.LogPath }).Write(runtime.NightStatePath))
                 {
                     runtime.Say.Complain(
                         $"hatch: could not write the night's totals to {runtime.NightStatePath} - not restarting, since the next one would start the budget over");
@@ -1510,6 +1510,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
@@ -1560,7 +1561,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// make a cap impossible to take off from the page that set it. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
-    /// null bound means cleared.
+    /// null bound means cleared. Whether dangerous work is refused is the same: a null
+    /// answer is an older Hatch and leaves the loop's own alone.
     /// </remarks>
     private string? Fold(RunnerInstructionDto told, Tally tally, string? under)
     {
@@ -1580,6 +1582,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
             runtime.Board.Tags = tags;
+        }
+
+        if (told.RefusesDangerous is { } refuses && refuses != runtime.Board.RefusesDangerous)
+        {
+            moved.Add($"--dangerous {(refuses ? "off" : "on")}");
+            runtime.Board.RefusesDangerous = refuses;
         }
 
         if (told.Projects is { } projects && !projects.SequenceEqual(runtime.Board.Projects))

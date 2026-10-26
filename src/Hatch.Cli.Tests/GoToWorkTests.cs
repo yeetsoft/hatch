@@ -420,6 +420,81 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_heartbeat_and_the_queue_read_carry_the_dangerous_refusal(bool refuses)
+    {
+        using var h = new Harness(refusesDangerous: refuses);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(refuses, beat.RefusesDangerous);
+
+        var call = h.Wire.To("GET", Queue)[0];
+        Assert.Contains("remote=", call.Query);
+        if (refuses) Assert.Contains("dangerous=false", call.Query);
+        else Assert.DoesNotContain("dangerous=", call.Query);
+    }
+
+    /// <summary>
+    /// <see cref="OnePassTold"/> for whether dangerous work is refused: a loop
+    /// started refusing or not, answered with <paramref name="told"/>.
+    /// </summary>
+    private static async Task<Harness> OnePassToldDangerous(bool started, bool? told)
+    {
+        var h = new Harness(refusesDangerous: started);
+        OneTicket(h);
+        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+            new RunnerInstructionDto("running", null, 1, null, null, RefusesDangerous: told));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_refusing_dangerous_work_is_adopted_and_the_next_read_carries_it()
+    {
+        using var h = await OnePassToldDangerous(false, true);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --dangerous off");
+        Assert.True(h.Runtime.Board.RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task The_board_taking_dangerous_work_drops_the_refusal_from_the_next_read()
+    {
+        using var h = await OnePassToldDangerous(true, false);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.DoesNotContain("dangerous=", c.Query));
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --dangerous on");
+        Assert.False(h.Runtime.Board.RefusesDangerous);
+    }
+
+    [Fact]
+    public async Task An_older_hatch_that_answers_no_dangerous_refusal_leaves_the_loops_own_alone()
+    {
+        using var h = await OnePassToldDangerous(true, null);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
+        Assert.True(h.Runtime.Board.RefusesDangerous);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--dangerous", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_whose_dangerous_refusal_matches_the_loops_says_nothing()
+    {
+        using var h = await OnePassToldDangerous(true, true);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--dangerous", StringComparison.Ordinal));
+    }
+
     // ---- --project: the projects a runner is bound to ----
 
     private static RunnerHeartbeatRequest OnlyBeat(Harness h) =>

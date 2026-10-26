@@ -13,7 +13,8 @@ namespace Hatch.Cli;
 /// and separately.
 /// </remarks>
 public sealed class Idle(
-    Board board, Terminal say, IReadOnlyList<CheckoutEntry> checkouts, bool clones = false, bool mine = false)
+    Board board, Terminal say, IReadOnlyList<CheckoutEntry> checkouts, bool clones = false, bool mine = false,
+    string? runner = null)
 {
     public async Task ReportAsync(
         string? under, IReadOnlyList<QueueEntryDto>? queue, int offsetMinutes, CancellationToken ct)
@@ -28,7 +29,7 @@ public sealed class Idle(
         {
             try
             {
-                queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, clones, mine);
+                queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, clones, mine, runner);
             }
             catch (HatchException)
             {

@@ -281,6 +281,34 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public async Task The_queue_read_names_the_runner_with_its_characters_escaped()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_a_runner_name_neither_read_sends_one()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        await h.Board.QueueAsync([], null, 0, default);
+        await h.Board.NextAsync([], null, 0, default);
+        await h.Board.QueueAsync([], null, 0, default, runner: "");
+        await h.Board.NextAsync([], null, 0, default, runner: "");
+
+        Assert.All(h.Wire.To("GET", "/api/hatch/work/queue"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
+        Assert.All(h.Wire.To("GET", "/api/hatch/work/next"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
+        Assert.Equal(4, h.Wire.Calls.Count(c => c.Path.StartsWith("/api/hatch/work/", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task Mine_and_an_ancestor_key_combine()
     {
         using var h = new CliHarness();
