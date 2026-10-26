@@ -247,9 +247,15 @@ public class ReportsController(
         // same instant; the comment carries no marker, so the event names it.
         // The wait figures are over a person's answers, so that comment is set
         // aside and the question is counted as lapsed instead.
+        //
+        // The prefilter is a containment on Postgres, which has no LIKE for
+        // jsonb, and a substring on InMemory, which has no containment.
         var lapseAt = new Dictionary<long, DateTimeOffset>();
-        var lapseEvents = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.Answered && e.Payload != null && e.Payload.Contains("lapsed"))
+        var answered = db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.Answered && e.Payload != null);
+        var lapseEvents = await (db.Database.IsNpgsql()
+                ? answered.Where(e => EF.Functions.JsonContains(e.Payload!, "{\"lapsed\":true}"))
+                : answered.Where(e => e.Payload!.Contains("lapsed")))
             .Select(e => new { e.At, e.Payload })
             .ToListAsync(ct);
 

@@ -118,12 +118,25 @@ public static class LetGo
     /// </summary>
     public static async Task<Dictionary<long, LetGoBy>> ByAsync(HatchContext db, string runner, CancellationToken ct)
     {
-        var named = "\"runner\":" + JsonSerializer.Serialize(runner);
+        var releases = db.IssueEvents.AsNoTracking().Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
 
-        var ids = await db.IssueEvents.AsNoTracking()
-            .Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased
-                && e.Payload!.Contains("\"outcome\":\"dropped\"")
-                && e.Payload.Contains(named))
+        // Postgres has no LIKE for jsonb, which is what the string match below
+        // becomes against that column; it has containment, @>, which InMemory
+        // has not. Either way the prefilter only has to be a superset of the
+        // fold that follows.
+        IQueryable<EfHatchIssueEvent> drops;
+        if (db.Database.IsNpgsql())
+        {
+            var contained = JsonSerializer.Serialize(new { outcome = ClaimOutcomes.Dropped, runner });
+            drops = releases.Where(e => EF.Functions.JsonContains(e.Payload!, contained));
+        }
+        else
+        {
+            var named = "\"runner\":" + JsonSerializer.Serialize(runner);
+            drops = releases.Where(e => e.Payload!.Contains("\"outcome\":\"dropped\"") && e.Payload.Contains(named));
+        }
+
+        var ids = await drops
             .Select(e => e.IssueId)
             .Distinct()
             .ToListAsync(ct);
