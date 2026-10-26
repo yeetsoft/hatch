@@ -5880,6 +5880,12 @@ green-before-pushed bullet to render a changed screen in the headless driver
 (`docs/browser-testing.md`) rather than leaving all browser verification to
 the operator, guarded and written on `DefaultPrompt` alone — no row's own
 `Prompt` is read or touched, and `UpdatedAt` does not move.
+`PushWorkThatIsNotGreen` is the second, and rewords that same bullet: work that
+is not green is still pushed. Checks that cannot run on the machine (a missing
+toolchain) are no reason to hold work back — push, open the pull request, say
+which check was not run, and let the pull request's own checks be the gate —
+and work that is red and cannot be fixed is committed and pushed for the next
+runner, never put up for review, with the ticket left where it is.
 
 **A board that wants a code review adds a check column; it does not widen the
 review row.** Take a six-column board, `To Do, In Progress, In Review, In QA,
