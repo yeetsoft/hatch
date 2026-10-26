@@ -40,7 +40,8 @@ public sealed class LoopLock : IDisposable
     /// </summary>
     /// <returns>The lock, or null - in which case <paramref name="refusal"/> says why.</returns>
     public static LoopLock? Take(
-        string root, string tempDirectory, out string refusal, Func<int, bool>? alive = null)
+        string root, string tempDirectory, out string refusal, Func<int, bool>? alive = null,
+        Action<string>? say = null)
     {
         alive ??= StillRunning;
         var dir = PathFor(root, tempDirectory);
@@ -61,7 +62,7 @@ public sealed class LoopLock : IDisposable
             return null;
         }
 
-        Console.Error.WriteLine($"hatch: clearing a stale lock left by pid {pid?.ToString() ?? "?"}");
+        (say ?? Console.Error.WriteLine)($"hatch: clearing a stale lock left by pid {pid?.ToString() ?? "?"}");
         try
         {
             Directory.Delete(dir, recursive: true);
