@@ -181,6 +181,12 @@ public sealed record NightState
     /// </summary>
     public DateTimeOffset? UntilAt { get; init; }
 
+    /// <summary>
+    /// The log file this night has been writing, carried so the next incarnation
+    /// appends to the same file. Absent in an older state file, which reads as null.
+    /// </summary>
+    public string? LogPath { get; init; }
+
     /// <summary>The tally's lists, so the morning's report is the whole night's.</summary>
     public IReadOnlyList<string> Moved { get; init; } = [];
 

@@ -365,7 +365,9 @@ public static class RunnerSet
         string[] pinned = profile is null ? [] : ["--profile", profile];
         string[] args = [command, .. pinned, .. ArgsFor(rest, slot, WorkspaceFor(baseWorkspace, slot))];
 
-        var env = new Dictionary<string, string> { [DirVariable] = setDir };
+        // The host writes the set's one log; a member that kept its own would
+        // make a file per runner, and slot 1's child is silenced the same way.
+        var env = new Dictionary<string, string> { [DirVariable] = setDir, ["HATCH_LOG"] = "off" };
         if (NightStateFor(nightState, slot) is { } state) env["HATCH_NIGHT_STATE"] = state;
 
         // Slot 1 is the host's own checkout and serves it as a lone runner would.

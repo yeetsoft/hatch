@@ -605,7 +605,8 @@ takes no ticket key. [The loop: `hatch go-to-work`](one-increment-and-the-loop#t
 has the pass in order, the bounds and the restarts.
 
 With `HATCH_LOG` set, the run keeps a plain-text copy of what it says in a file
-under that folder, and its first line names it (`hatch: logging to <path>`).
+under that folder, and its first line names it (`hatch: logging to <path>`). A
+restart appends to the same file and the next night starts a new one.
 
 - `--mine` takes only the caller's own tickets. Plain `go-to-work` skips every
   person's tickets, including yours.

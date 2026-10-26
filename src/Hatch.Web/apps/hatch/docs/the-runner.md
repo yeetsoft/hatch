@@ -724,6 +724,11 @@ lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `do-my-work` takes it too; [cli-reference](cli-reference#go-to-work) has the
 flag.
 
+With `HATCH_LOG` set, the host writes the set's one log
+(`go-to-work-set-<yyyyMMdd-HHmmss>.log`), each member's lines prefixed `[n]` as
+on screen, and the members write none. A restart of the set appends to the same
+file.
+
 ### Switching the set
 
 `hatch use <profile-b>` moves a running set to another board. Every member
