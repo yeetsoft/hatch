@@ -119,9 +119,11 @@ public interface IWorkspace
     /// issue's branch - cutting it first if the tree is still on the trunk -
     /// and pushes it to origin, with no force. Called only when a session ended
     /// because its Claude account ran out of usage: the one place a runner
-    /// pushes a session's own work for it, because green-before-pushed is not a
-    /// session's to judge once it can no longer say so. Called before
-    /// <see cref="Leave"/>, which then finds a clean tree.
+    /// pushes a session's uncommitted work for it - committing it first, which
+    /// <see cref="Leave"/>'s backstop push of commits already made does not -
+    /// because green-before-pushed is not a session's to judge once it can no
+    /// longer say so. Called before <see cref="Leave"/>, which then finds a clean
+    /// tree.
     /// </summary>
     LimitPushed PushForLimit(string key, string title);
 

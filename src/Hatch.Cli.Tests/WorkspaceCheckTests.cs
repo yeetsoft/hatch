@@ -252,9 +252,14 @@ public sealed class WorkspaceCheckTests : RepoFixture
         var ws = Ws();
         ws.Prepare();
         ws.Enter("HA-31", "Thing", null);
+        ws.Leave("HA-31", false);
+
+        // After Leave, which pushes what a session left on the branch: the
+        // drift has to be made once the runner has had its say.
+        G(_work, "checkout", "--quiet", "ha-31-thing");
         File.WriteAllText(Path.Combine(_work, "a.txt"), "local\n");
         Commit(_work, "Local only");
-        ws.Leave("HA-31", false);
+        G(_work, "checkout", "--quiet", "main");
         MoveMain("a.txt", "trunk\n");
         ws.Fetch();
 
