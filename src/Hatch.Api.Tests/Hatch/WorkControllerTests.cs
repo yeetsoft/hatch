@@ -1943,13 +1943,219 @@ public class WorkControllerTests
         Assert.Equal(2, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
     }
 
-    /// <summary>A release event, in the <c>{ from, to, outcome }</c> shape the controller writes - a null <c>outcome</c> reads back the same as one left out entirely, since nothing here asks for the difference.</summary>
-    private static Task Released(Harness h, EfHatchIssue issue, DateTimeOffset at, string? outcome) =>
+    /// <summary>A release event, in the <c>{ from, to, outcome }</c> shape the controller writes - a null <c>outcome</c> reads back the same as one left out entirely, since nothing here asks for the difference. A <paramref name="runner"/> adds the <c>runner</c> an outcome-bearing release carries.</summary>
+    private static Task Released(Harness h, EfHatchIssue issue, DateTimeOffset at, string? outcome, string? runner = null) =>
         h.LogEventAsync(
             issue,
             EfHatchIssueEvent.ClaimReleased,
-            new { from = "Nathan on host:/checkout", to = (string?)null, outcome },
+            runner is null
+                ? new { from = "Nathan on host:/checkout", to = (string?)null, outcome }
+                : new { from = $"Nathan on {runner}", to = (string?)null, outcome, runner },
             at);
+
+    // ---- A runner that let a ticket go is not the one that takes it next ----
+
+    private static string RunnerName() => $"runner-{Guid.NewGuid():N}";
+
+    private static async Task<EfHatchRunner> AddLoopRunnerAsync(Harness h, string name, Action<EfHatchRunner>? tweak = null)
+    {
+        var row = new EfHatchRunner
+        {
+            Name = name,
+            Kind = EfHatchRunner.LoopKind,
+            FirstSeenAt = Now,
+            LastSeenAt = Now,
+            State = EfHatchRunner.Running,
+        };
+        tweak?.Invoke(row);
+        h.Db.Runners.Add(row);
+        await h.Db.SaveChangesAsync();
+        return row;
+    }
+
+    private static string DeferralSentence(string runner, int minutes) =>
+        $"{runner} let this go {minutes} minutes ago, and another live runner could take it - it is left for them while one can";
+
+    [Fact]
+    public async Task LetGoBy_AFoldedTicketIsLeftToThePeer_AndOnlyForTheRunnerThatDroppedIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, b);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var forA = Only(await h.Work.GetQueue(runner: a));
+        Assert.Equal(DeferralSentence(a, 7), forA.Blocked);
+        Assert.Equal(BlockedKinds.Other, forA.BlockedKind);
+
+        var forB = Only(await h.Work.GetQueue(runner: b));
+        var forNobody = Only(await h.Work.GetQueue());
+        Assert.Null(forB.Blocked);
+        Assert.Equal((forNobody.Blocked, forNobody.BlockedKind, forNobody.ClearNote), (forB.Blocked, forB.BlockedKind, forB.ClearNote));
+
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: b)).Issue.Key);
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(runner: a)).Result);
+    }
+
+    [Fact]
+    public async Task LetGoBy_AsRunnerGivesTheSameSentenceAsTheRunnerParameter()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, RunnerName());
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var asRunner = Only(await h.Work.GetQueue(asRunner: a));
+
+        Assert.Equal(DeferralSentence(a, 7), asRunner.Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_WithOnlyTheDroppingRunnerLive_ItGetsTheTicketBack()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: a)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task LetGoBy_ARunnerWithNoRow_IsDeferredLikeAnyOther()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by a runner that has no row", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, RunnerName());
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // The record is the trail's, not the row's.
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    public enum Peer { Paused, Stale, Once, Exhausted, Until, OutOfRuns, MineOfAnother, MineOfNobody, OtherRepository }
+
+    [Theory]
+    [InlineData(Peer.Paused)]
+    [InlineData(Peer.Stale)]
+    [InlineData(Peer.Once)]
+    [InlineData(Peer.Exhausted)]
+    [InlineData(Peer.Until)]
+    [InlineData(Peer.OutOfRuns)]
+    [InlineData(Peer.MineOfAnother)]
+    [InlineData(Peer.MineOfNobody)]
+    [InlineData(Peer.OtherRepository)]
+    public async Task LetGoBy_APeerThatCannotTakeIt_LeavesTheTicketWithTheRunnerThatDroppedIt(Peer peer)
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var nathan = h.Actors.AddPerson("Nathan");
+        var ada = h.Actors.AddPerson("Ada");
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        await h.AssignAsync(issue, personId: nathan.Id);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a, row => { row.Mine = true; row.ForPersonId = nathan.Id; });
+        await AddLoopRunnerAsync(h, RunnerName(), row =>
+        {
+            switch (peer)
+            {
+                case Peer.Paused: row.State = EfHatchRunner.Paused; break;
+                case Peer.Stale: row.LastSeenAt = Now.AddDays(-1); break;
+                case Peer.Once: row.Kind = EfHatchRunner.OnceKind; break;
+                case Peer.Exhausted: row.ExhaustedUntil = Now.AddHours(1); break;
+                case Peer.Until: row.UntilAt = Now.AddMinutes(-1); break;
+                case Peer.OutOfRuns: row.MaxRuns = 3; row.Runs = 3; break;
+                case Peer.MineOfAnother: row.Mine = true; row.ForPersonId = ada.Id; break;
+                case Peer.MineOfNobody: row.Mine = true; row.ForPersonId = null; break;
+                case Peer.OtherRepository:
+                    row.Remotes = "https://example.com/o/other";
+                    row.Clones = false;
+                    row.Standing = false;
+                    break;
+            }
+        });
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        Assert.Null(Only(await h.Work.GetQueue(asRunner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatIsMineAndOwnsTheTicket_CouldTakeIt()
+    {
+        var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        var issue = await h.FileAsync("task", "Nathan's own", h.Todo);
+        await h.AssignAsync(issue, personId: nathan.Id);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a, row => { row.Mine = true; row.ForPersonId = nathan.Id; });
+        await AddLoopRunnerAsync(h, RunnerName(), row => { row.Mine = true; row.ForPersonId = nathan.Id; });
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(asRunner: a)).Blocked);
+    }
+
+    public enum Since { Worked, NoOutcome, StatusChange, PersonsAnswer, NoRunnerOnTheDrop }
+
+    [Theory]
+    [InlineData(Since.Worked)]
+    [InlineData(Since.NoOutcome)]
+    [InlineData(Since.StatusChange)]
+    [InlineData(Since.PersonsAnswer)]
+    [InlineData(Since.NoRunnerOnTheDrop)]
+    public async Task LetGoBy_AnythingThatClearsTheRecord_ClearsTheFold(Since since)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, RunnerName());
+
+        if (since == Since.NoRunnerOnTheDrop)
+        {
+            await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped);
+        }
+        else
+        {
+            await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+            switch (since)
+            {
+                case Since.Worked: await Released(h, issue, Now.AddMinutes(-5), ClaimOutcomes.Worked, a); break;
+                case Since.NoOutcome: await Released(h, issue, Now.AddMinutes(-5), null); break;
+                case Since.StatusChange:
+                    await h.LogEventAsync(issue, EfHatchIssueEvent.StatusChanged, new { from = "Backlog", to = "Todo" }, Now.AddMinutes(-5));
+                    break;
+                case Since.PersonsAnswer:
+                    await h.LogEventAsync(issue, EfHatchIssueEvent.Answered, new { questionId = 1 }, Now.AddMinutes(-5));
+                    break;
+            }
+        }
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_ADropByAnotherRunnerMovesTheRecord()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A, then B", h.Todo);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, b);
+        await Released(h, issue, Now.AddMinutes(-9), ClaimOutcomes.Dropped, a);
+        await Released(h, issue, Now.AddMinutes(-3), ClaimOutcomes.Dropped, b);
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+        Assert.Equal(DeferralSentence(b, 3), Only(await h.Work.GetQueue(runner: b)).Blocked);
+    }
 
     // ---- HA-395: whether the last move was a send-back, carried to the next session ----
 

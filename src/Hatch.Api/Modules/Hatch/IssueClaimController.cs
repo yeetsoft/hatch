@@ -263,7 +263,8 @@ public class IssueClaimController(
             holder,
             null,
             now,
-            given);
+            given,
+            claim.Runner);
 
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -422,7 +423,7 @@ public class IssueClaimController(
     /// </summary>
     private void Log(
         EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
-        string? outcome = null)
+        string? outcome = null, string? runner = null)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -430,10 +431,12 @@ public class IssueClaimController(
             Kind = kind,
             // outcome is left out of the object entirely rather than
             // serialized as null, so a release that named none writes the
-            // same payload it always has.
+            // same payload it always has. The runner rides along with an
+            // outcome only: "from" says "<who> on <runner>" and cannot be
+            // split back apart, and LetGo.By needs the runner by itself.
             Payload = outcome is null
                 ? JsonSerializer.Serialize(new { from, to })
-                : JsonSerializer.Serialize(new { from, to, outcome }),
+                : JsonSerializer.Serialize(new { from, to, outcome, runner }),
             At = at,
         });
 

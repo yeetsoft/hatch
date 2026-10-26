@@ -296,7 +296,9 @@ counts as not moved. Stalls escalate:
 
 - **The first in a row is let go.** The loop comments why, with the command to
   resume that session, and the ticket is free for the very next pass, since most
-  of the time whatever happened is weather.
+  of the time whatever happened is weather. If another live runner could take
+  the ticket, the one that let it go leaves it for them rather than being
+  handed it straight back.
 - **The second marks it stalled.** The loop comments and sets the mark, which
   blocks the next dispatch and badges the card. The board resumes the ticket
   by itself after 15 minutes (`0` never resumes it).
