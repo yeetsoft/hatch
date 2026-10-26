@@ -4593,6 +4593,22 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
+/* Dangerous, beside Express and Pre-approved and drawn the same way. --danger
+   rather than --warn: --warn is the open question's own, and a card that is
+   both dangerous and owed an answer needs the two marks to read as different
+   facts, not one tint twice. */
+.hatch-card-dangerous {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 /* The control itself, on the issue page and in the summary - the same shape
    as .hatch-priority-pill's rest state, in --success instead of --primary. */
 .hatch-express {

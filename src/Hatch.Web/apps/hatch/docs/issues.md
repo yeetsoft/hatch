@@ -139,6 +139,21 @@ inherits is read out underneath, one sentence per source in the order the
 union itself is built: the project first, then each ancestor in turn, naming
 where each one came from.
 
+## Dangerous
+
+A one-line reason, at most 200 characters, saying why running a ticket's work
+could destabilise a machine: security testing, performance or load testing,
+or crashing or hanging processes on purpose. It is read live from the
+ticket's own row, else the nearest flagged ancestor's — down the subtree and
+never up — and the issue page names the ancestor it came from when the reason
+is not the ticket's own.
+
+It is not a tag: every runner takes flagged work unless its own operator has
+turned it away (see [the runner](the-runner#what-a-runner-advertises)), so no
+board stalls on a ticket for carrying the flag. The field sits on the issue
+page, in the Details card's edit view, right after Runner tags; emptying it
+clears the flag.
+
 ## Held
 
 A person's own mark, set from the ticket's **Hold for me** button and read

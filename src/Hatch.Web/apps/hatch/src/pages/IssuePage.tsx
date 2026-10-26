@@ -24,6 +24,7 @@ import {
   setHold,
   setOnePr,
   setIssueRunnerTags,
+  setIssueDangerous,
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
@@ -61,6 +62,7 @@ import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint } from '../lib/playbookFiles';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
+import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { moveBlocked } from '../lib/protectedColumns';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -142,6 +144,8 @@ export function IssuePage() {
   const [preApprovalBusy, setPreApprovalBusy] = useState(false);
   /* A runner-tags save is already out - the same shape as `preApprovalBusy`. */
   const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
+  /* A dangerous-reason save is already out - the same shape as `runnerTagsBusy`. */
+  const [dangerousBusy, setDangerousBusy] = useState(false);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
@@ -439,6 +443,22 @@ export function IssuePage() {
         setError(message(err));
       } finally {
         setRunnerTagsBusy(false);
+      }
+    },
+    [key, load],
+  );
+
+  /* The dangerous-reason save, the same shape saveRunnerTags is. */
+  const saveDangerous = useCallback(
+    async (reason: string) => {
+      setDangerousBusy(true);
+      try {
+        await setIssueDangerous(key, { reason });
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setDangerousBusy(false);
       }
     },
     [key, load],
@@ -755,6 +775,9 @@ export function IssuePage() {
 
           <IssueRunnerTagsOwnField tags={issue.runnerTagsOwn} busy={runnerTagsBusy} onSave={(tags) => void saveRunnerTags(tags)} />
           <RunnerTagsInherited from={issue.runnerTagsFrom} />
+
+          <DangerousOwnField reason={issue.dangerousOwn} busy={dangerousBusy} onSave={(reason) => void saveDangerous(reason)} />
+          <DangerousInherited from={issue.dangerousFrom} reason={issue.dangerous} />
 
           {/* A story answers for its tasks, so it gets the control; a task under
               one that shares a pull request says so, since "why is there no PR
@@ -1838,6 +1861,48 @@ function RunnerTagsInherited({ from }: { from: RunnerTagSource[] }) {
         </p>
       ))}
     </>
+  );
+}
+
+/**
+ * This issue's own dangerous reason, editable right where it is read -
+ * blur-commit, re-sync when it changes underneath, on PullRequestField.
+ */
+function DangerousOwnField({ reason, busy, onSave }: { reason: string | null; busy: boolean; onSave: (reason: string) => void }) {
+  const [draft, setDraft] = useState(dangerousDraft(reason));
+  const [known, setKnown] = useState(reason);
+
+  // Re-syncs when the issue changes underneath - see WipLimitField.
+  if (reason !== known) {
+    setKnown(reason);
+    setDraft(dangerousDraft(reason));
+  }
+
+  return (
+    <Field label="Dangerous" hint="One line: why running this could destabilise a machine. Emptied, it clears the flag.">
+      <input
+        type="text"
+        value={draft}
+        maxLength={200}
+        disabled={busy}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const next = dangerousRequest(draft);
+          if (next !== (reason ?? '')) onSave(next);
+        }}
+      />
+    </Field>
+  );
+}
+
+/** The sentence naming the ancestor a dangerous reason is inherited from -
+    null where the reason is this issue's own, or there is none. */
+function DangerousInherited({ from, reason }: { from: string | null; reason: string | null }) {
+  if (!from) return null;
+  return (
+    <p className="hatch-section-hint text-muted">
+      Inherited from <Link to={`/issues/${from}`}>{from}</Link>: {reason}
+    </p>
   );
 }
 

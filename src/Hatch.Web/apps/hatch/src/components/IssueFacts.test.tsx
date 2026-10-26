@@ -41,6 +41,9 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
+  dangerousOwn: null,
+  dangerous: null,
+  dangerousFrom: null,
   express: false,
   stalledAt: null,
   stalledWhy: null,
@@ -141,6 +144,7 @@ describe('IssueFacts', () => {
     expect(html).toContain('the playbook decides');
     expect(html).not.toContain('Stories at once');
     expect(html).not.toContain('Runner tags');
+    expect(html).not.toContain('Dangerous');
   });
 
   it('draws a Runner tags field with the union sentence when runnerTags is non-empty', () => {
@@ -148,5 +152,19 @@ describe('IssueFacts', () => {
 
     expect(html).toContain('Runner tags');
     expect(html).toContain('Runners tagged linux.');
+  });
+
+  it('draws a Dangerous field with the reason when dangerous is set', () => {
+    const html = render(issue({ dangerous: 'load-tests the API', dangerousFrom: null }));
+
+    expect(html).toContain('Dangerous');
+    expect(html).toContain('load-tests the API');
+  });
+
+  it('names the ancestor when the dangerous reason is inherited', () => {
+    const html = render(issue({ dangerous: 'load-tests the API', dangerousFrom: 'HA-1' }));
+
+    expect(html).toContain('Dangerous');
+    expect(html).toContain('load-tests the API · inherited from HA-1');
   });
 });

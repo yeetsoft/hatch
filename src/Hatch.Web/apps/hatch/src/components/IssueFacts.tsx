@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
+import { dangerousFact } from '../lib/dangerous';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { runnerTagsSentence } from '../lib/runnerTags';
 import { MomentChip } from './MomentChip';
@@ -60,6 +61,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       {issue.runnerTags.length > 0 && (
         <Field label="Runner tags" as="div">
           {runnerTagsSentence(issue.runnerTags)}
+        </Field>
+      )}
+
+      {issue.dangerous && (
+        <Field label="Dangerous" as="div">
+          {dangerousFact(issue.dangerous, issue.dangerousFrom)}
         </Field>
       )}
 
