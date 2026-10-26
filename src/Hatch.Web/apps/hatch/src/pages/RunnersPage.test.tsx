@@ -30,6 +30,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   repositories: [],
   tags: [],
   projects: [],
+  refusesDangerous: false,
   drives: [],
   clones: null,
   mine: null,
@@ -244,10 +245,15 @@ describe('RunnersPage BoundsSummary', () => {
     expect(renderBounds(runner({ projects: ['HA', 'AER'] }))).toContain('projects HA, AER');
   });
 
+  it('says the runner refuses dangerous work when it does', () => {
+    expect(renderBounds(runner({ refusesDangerous: true }))).toContain('Refuses dangerous work');
+  });
+
   it('says no bounds for a runner held to no project', () => {
     const html = renderBounds(runner({ projects: [] }));
     expect(html).toContain('no bounds');
     expect(html).not.toContain('projects');
+    expect(html).not.toContain('Refuses dangerous work');
   });
 });
 

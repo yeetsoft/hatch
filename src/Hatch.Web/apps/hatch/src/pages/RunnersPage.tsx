@@ -14,6 +14,7 @@ import {
   boundsOf,
   boundsProblem,
   boundsRequest,
+  dangerousLabel,
   drivesLabel,
   groupByHost,
   isControllable,
@@ -280,6 +281,7 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
       </>
     ),
     tagsLabel(runner),
+    dangerousLabel(runner),
     projectsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
@@ -346,6 +348,16 @@ function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: Runn
           onChange={(next) => set('projects', next)}
         />
       </div>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={draft.refusesDangerous}
+          onChange={(e) => setDraft({ ...draft, refusesDangerous: e.target.checked })}
+        />
+        Refuse dangerous work
+      </label>
+      <Text tone="muted">A flagged issue is never handed to this runner. Off is the default.</Text>
 
       {problem && <p className="text-danger">{problem}</p>}
 
