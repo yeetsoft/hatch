@@ -60,10 +60,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// answering for the board and not for a bound runner judges every
     /// project.
     /// </param>
+    /// <param name="asking">
+    /// The runner the scan is answering for, by name, when the caller said.
+    /// A ticket that runner let go of last is folded for it - and only for it
+    /// - while some other live runner could take the ticket; see
+    /// <see cref="LetGo.By"/>. Null, every caller before this one, folds
+    /// nothing.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
-        TagDeclaration? tags = null, IReadOnlyList<string>? projects = null)
+        TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null)
     {
         tags ??= TagDeclaration.Unjudged;
 
@@ -258,6 +265,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var marked = candidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
         if (marked.Count > 0) letGoCounts = await LetGo.CountsAsync(db, marked, ct);
 
+        // The tickets this runner let go of last, with nothing since to clear
+        // the record. Only a caller that named itself pays the query.
+        var letGoBy = asking is null ? [] : await LetGo.ByAsync(db, asking.Name, ct);
+        PeerScans? peers = null;
+
         // Unconditional on the implementation column existing - nothing as cheap
         // as StalledAt pre-filters which candidates could be mid-round-trip.
         Dictionary<long, int>? sendBackStreaks = implementation is null
@@ -320,8 +332,23 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         landing, projectRepoSourced, tags: tags, projects: projects);
 
                     var blocked = blocking.Sentence;
-                    var sentence = blocked;
                     var kind = blocking.Kind;
+
+                    // A ticket this runner let go of is left for another one
+                    // while another could take it. Before the tier park below,
+                    // so a folded row parks nothing.
+                    if (blocked is null && !hop && asking is not null && letGoBy.TryGetValue(issue.Id, out var by))
+                    {
+                        peers ??= new PeerScans(this, db, asking, now, offsetMinutes);
+                        if (await peers.CouldTakeAsync(issue.Id, ct))
+                        {
+                            blocked = $"{by.Runner} let this go {Minutes((int)(now - by.At).TotalSeconds)} ago, " +
+                                      "and another live runner could take it - it is left for them while one can";
+                            kind = BlockedKinds.Other;
+                        }
+                    }
+
+                    var sentence = blocked;
 
                     // Nothing at a lower tier is picked up while a strictly
                     // higher one still has clear work - a hop is exempt from
@@ -436,6 +463,68 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// </summary>
     private static string ResumedClearNote(DateTimeOffset stalledAt, DateTimeOffset now, int resumeSeconds) =>
         $"it stalled {Minutes((int)(now - stalledAt).TotalSeconds)} ago and resumes itself after {Minutes(resumeSeconds)}";
+
+    /// <summary>
+    /// The peers of the runner a scan is answering for, and what each would do
+    /// with the board - read once per scan, and only when a deferral is in
+    /// question. A peer is another runner that is here, running, and has
+    /// budget left; it could take a ticket when a scan on its own declaration
+    /// finds the ticket clear, or parked only behind higher-ranking work. The
+    /// peer's scan names no asker, so it defers nothing: the question is
+    /// whether the ticket is takeable, not who would be asked next.
+    /// </summary>
+    private sealed class PeerScans(Dispatch dispatch, HatchContext db, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
+    {
+        private List<EfHatchRunner>? _peers;
+        private readonly Dictionary<string, HashSet<long>> _takeable = [];
+
+        public async Task<bool> CouldTakeAsync(long issueId, CancellationToken ct)
+        {
+            _peers ??= await db.Runners.AsNoTracking()
+                .Where(r => r.Name != asking.Name
+                    && r.LastSeenAt >= asking.LiveSince
+                    && r.Kind == EfHatchRunner.LoopKind
+                    && r.State == EfHatchRunner.Running
+                    && (r.ExhaustedUntil == null || r.ExhaustedUntil <= now)
+                    && (r.UntilAt == null || r.UntilAt > now)
+                    && (r.MaxRuns == null || (r.Runs ?? 0) < r.MaxRuns))
+                .ToListAsync(ct);
+
+            foreach (var peer in _peers)
+            {
+                if (!_takeable.TryGetValue(peer.Name, out var ids))
+                {
+                    ids = await dispatch.TakeableByAsync(peer, offsetMinutes, ct);
+                    _takeable[peer.Name] = ids;
+                }
+
+                if (ids.Contains(issueId)) return true;
+            }
+
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The issues a scan on <paramref name="peer"/>'s own declaration finds
+    /// clear, or parked only behind higher-ranking work. A runner whose
+    /// declaration is refused - <c>Mine</c> with no owner - takes none.
+    /// </summary>
+    private async Task<HashSet<long>> TakeableByAsync(EfHatchRunner peer, int offsetMinutes, CancellationToken ct)
+    {
+        var declared = await RunnerDeclaration.OfAsync(peer, actors, ct);
+        if (declared.Refusal is not null) return [];
+
+        var scan = await ScanAsync(
+            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            tags: declared.Tags, projects: declared.Projects);
+        if (scan.Failure is not null) return [];
+
+        return scan.Rows
+            .Where(r => r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
+            .Select(r => r.Issue.Id)
+            .ToHashSet();
+    }
 
     private static string Minutes(int seconds)
     {
@@ -1871,6 +1960,12 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
     public string? Match(string canonical) =>
         ByCanonical is not null && ByCanonical.TryGetValue(canonical, out var raw) ? raw : null;
 }
+
+/// <summary>
+/// The runner a scan is answering for: its name, and the instant before which
+/// a runner's last sighting means it is gone (<see cref="Runners.Cutoff"/>).
+/// </summary>
+public sealed record RunnerAsking(string Name, DateTimeOffset LiveSince);
 
 /// <summary>
 /// The tags a caller's runner advertises, or that the scan answers for no

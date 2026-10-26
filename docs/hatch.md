@@ -1997,6 +1997,18 @@ count: the board itself ordered that put-down, not a choice the increment
 made, and the runner's own account of what it pushed lands as its own comment,
 not as a dropped increment.
 
+**A release that gave an outcome also names the runner.** The event's `from`
+reads `"<who> on <runner>"`, which cannot be split reliably, so the
+`claim_released` payload gains `runner` — the claim's runner name — beside
+`outcome`, and only when an outcome was given: a release with none writes
+exactly what it always has, and an older release has no `runner`. It is what
+lets the dispatcher tell which runner let a ticket go last (see [A marked issue
+folds the dispatcher](#the-dispatcher)): while a `dropped` release naming a
+runner is the issue's newest release, and nothing newer is a release of any
+other outcome (or none), a `status_changed`, or an `answered` event a person
+wrote — claim takes, lapses, clears and comments are stepped over — that
+runner is the one that let it go.
+
 **A heartbeat may answer that this runner has been preempted.** Ordinarily a
 heartbeat that refreshed the lease answers `204`. Where the board has chosen
 this runner's issue to make room for an emergency one — see
@@ -2510,6 +2522,24 @@ row is held for a person, not resumed again. Resuming — `PUT .../hold` with
 `held: false` — clears `StalledAt` and `StalledWhy` together, the same
 gesture whether or not anything was ever actually held, so *Resume now*
 always leaves a clean mark behind it.
+
+**A ticket a runner let go of is left to a different live runner.** When the
+caller names itself (`?runner=<name>` on `work/next` and `work/queue`; `asRunner`
+already names it on `queue`, and wins), a ticket whose newest claim outcome is
+that runner's own `dropped` release is folded for that runner, and only that
+runner, for as long as some other runner could take it: another row that is
+here (seen within the runners' gone-after window), `loop`, `running`, not
+exhausted, not past its `until`, not at its `maxRuns`, and whose own declaration
+— repositories, clones, standing, tags, projects, dangerous, `under`, and `mine`
+with its owner — makes a scan on it find the issue clear, or parked only behind
+higher-ranking work. The sentence names the runner and how long ago, `blockedKind`
+is `other`, and the row parks nothing below it. There is no time window: the
+rule ends when another runner has been through, when the record is cleared (a
+`worked` or other release, a status change or a person's answer), or when no
+peer is left — an installation with one runner behaves exactly as it did.
+`Hatch:StallResumeLimit` still holds the ticket for a person. The cost is
+accepted: a capable but busy peer leaves the ticket waiting while the dropper
+idles.
 
 **A row clear only because its resume window has passed names it.** `hatch
 queue` prints it in place of the bare arrow, e.g. `clear for To Do -> In
@@ -3109,9 +3139,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. Nor does it read `?tag=` or `?dangerous=`: a hop is never gated by [runner tags](#project) or by a dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
@@ -5489,6 +5519,14 @@ relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
 runner tag it does not advertise, or a flagged-dangerous issue it refuses, among them: no new kind.
+
+**A ticket this runner let go of is folded for it while another could take
+it.** Send `?runner=<name>` (or `?asRunner=`) and a row whose newest claim
+outcome is that runner's `dropped` release reads `<runner> let this go N
+minutes ago, and another live runner could take it - it is left for them while
+one can`, kind `other`; every other runner's row is unchanged. See [A ticket a
+runner let go of](#the-dispatcher) for what counts as another runner that could
+take it. A name matching no row is fine, and no `runner` folds nothing.
 
 **The rows arrive in the board's own order.** Rightmost column first, and
 within a column the `(rank, id)` that `GET /api/hatch/board` serves that column
