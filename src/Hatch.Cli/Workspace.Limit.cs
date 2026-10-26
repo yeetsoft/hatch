@@ -1,10 +1,10 @@
 namespace Hatch.Cli;
 
 /// <summary>
-/// The one exception to "nothing here pushes a session's work" - see the
-/// remarks on <see cref="Leave"/>. A session that ran out of Claude usage never
-/// gets to say whether what it left is fit to publish, so the runner publishes
-/// it anyway, onto the issue's own branch and nowhere else.
+/// The push of a session's work that does not wait for <see cref="Leave"/> - see
+/// the remarks there. A session that ran out of Claude usage never gets to say
+/// whether what it left is fit to publish, so the runner commits what is in the
+/// tree and publishes it, onto the issue's own branch and nowhere else.
 /// </summary>
 public sealed partial class Workspace
 {
