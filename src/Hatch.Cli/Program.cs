@@ -229,7 +229,7 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
-var board = new Board(client, settings.Tags);
+var board = new Board(client, settings.Tags, settings.RefusesDangerous);
 
 LiveTerminal? live = null;
 KeyReader? keys = null;
@@ -616,6 +616,8 @@ internal partial class Program
         "                     unset means a per-user default, `off` means never clone",
         "  HATCH_LOG          where this runner's log goes: `on` for the `logs` folder beside the",
         "                     per-user file, a directory, or `off`; unset means no log",
+        "  HATCH_DANGEROUS    `off` makes this runner refuse work flagged dangerous; `on`, or",
+        "                     unset, takes it. Seeds the runner's row once, then the board owns it",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

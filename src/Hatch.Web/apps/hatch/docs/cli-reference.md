@@ -73,7 +73,7 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
               | --repo <path>... | --tag <tag>... | --workspace <dir>
-              | --log on|<dir>|off]
+              | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -113,6 +113,11 @@ header instead. Never put it in a repository, either way.
   the `logs` folder beside the per-user file, a directory is made if it is not
   there (and refused, with nothing written, if it cannot be), and `off` keeps
   none. The setting is only recorded here.
+- `--dangerous on|off` writes `HATCH_DANGEROUS`: `off` makes this runner refuse
+  work flagged dangerous, and `on` (the default) takes it. It seeds the runner's
+  row once and the row is the board's after that, so it changes nothing for a
+  runner that already has one ([the runner](the-runner#what-a-runner-refuses)).
+  Any other value is refused, with nothing written.
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
