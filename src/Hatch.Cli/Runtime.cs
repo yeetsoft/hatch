@@ -179,7 +179,7 @@ public sealed record Runtime(
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous),
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

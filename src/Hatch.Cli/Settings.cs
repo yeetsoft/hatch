@@ -30,7 +30,7 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG",
+        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
@@ -131,6 +131,13 @@ public sealed partial record Settings
     public string? LogDirectory { get; init; }
 
     /// <summary>
+    /// True where <c>HATCH_DANGEROUS</c> is <see cref="DangerousOff"/>: this
+    /// runner refuses work flagged dangerous. False - taking it - is the default.
+    /// Seeds the runner's row once; the row is the board's after that.
+    /// </summary>
+    public bool RefusesDangerous { get; init; }
+
+    /// <summary>
     /// What <c>HATCH_WORKSPACE</c> (or <c>--workspace</c>) says to turn the
     /// default off: this runner serves the checkouts it has and never clones.
     /// A word rather than a blank because a blank value reads as unset in every
@@ -147,6 +154,12 @@ public sealed partial record Settings
 
     /// <summary>The word <c>HATCH_LOG</c> (or <c>--log</c>) says for the default folder, <see cref="DefaultLogPath"/>.</summary>
     public const string LogOn = "on";
+
+    /// <summary>The word <c>HATCH_DANGEROUS</c> (or <c>--dangerous</c>) says to refuse work flagged dangerous.</summary>
+    public const string DangerousOff = "off";
+
+    /// <summary>The word <c>HATCH_DANGEROUS</c> (or <c>--dangerous</c>) says to take it, which is also what unset means.</summary>
+    public const string DangerousOn = "on";
 
     /// <summary>Whether a log value is <see cref="LogOff"/>.</summary>
     public static bool IsLogOff(string? value) =>
@@ -391,6 +404,7 @@ public sealed partial record Settings
         var workspace = Read("HATCH_WORKSPACE");
         var tagsRaw = Read("HATCH_TAGS");
         var logRaw = Read("HATCH_LOG");
+        var dangerousRaw = Read("HATCH_DANGEROUS");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -431,6 +445,16 @@ public sealed partial record Settings
             return false;
         }
 
+        if (ParseDangerous(dangerousRaw, out var refusesDangerous) is { } dangerousSentence)
+        {
+            refusal = $"""
+                hatch: HATCH_DANGEROUS - {dangerousSentence}
+
+                  Fix it with `hatch config --dangerous on|off`, or change the exported variable.
+                """;
+            return false;
+        }
+
         if (OllamaAdapter.ParseTiers(ollamaTiersRaw, out var ollamaTiers) is { } tiersSentence)
         {
             refusal = $"""
@@ -461,6 +485,7 @@ public sealed partial record Settings
             WorkspaceDefaulted = workspace is null,
             LogDirectory = logRaw is null || IsLogOff(logRaw) ? null : IsLogOn(logRaw) ? DefaultLogPath() : logRaw,
             Tags = tags,
+            RefusesDangerous = refusesDangerous,
             Sources = sources,
             KeyNote = ignoredKeyLayer() is { } ignoredKey
                 ? IgnoredKeySentence(
@@ -519,6 +544,29 @@ public sealed partial record Settings
 
         var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return RunnerTags.Normalise(list, out tags);
+    }
+
+    /// <summary>
+    /// <paramref name="raw"/> as the <c>HATCH_DANGEROUS</c> word it is: null or
+    /// blank and <see cref="DangerousOn"/> answer a false <paramref name="refuses"/>,
+    /// <see cref="DangerousOff"/> a true one, trimmed and case-insensitive. Anything
+    /// else answers the refusal sentence. Public because <c>ConfigCommand</c> reuses it.
+    /// </summary>
+    public static string? ParseDangerous(string? raw, out bool refuses)
+    {
+        refuses = false;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        var word = raw.Trim();
+        if (string.Equals(word, DangerousOff, StringComparison.OrdinalIgnoreCase))
+        {
+            refuses = true;
+            return null;
+        }
+
+        return string.Equals(word, DangerousOn, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : $"\"{word}\" is not {DangerousOn} or {DangerousOff}";
     }
 
     /// <summary>Where a value came from, or <see cref="Layer.Unset"/> if nothing set it.</summary>

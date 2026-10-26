@@ -9,7 +9,7 @@ namespace Hatch.Cli;
 /// the trail says who did what without anybody being asked to record it. The
 /// work log is the deliberate exception - a meter reading is not a decision.
 /// </remarks>
-public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null)
+public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null, bool refusesDangerous = false)
 {
     public HatchClient Client { get; } = client;
 
@@ -19,6 +19,13 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// heartbeat answers with one.
     /// </summary>
     public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
+
+    /// <summary>
+    /// Whether this runner sends <c>dangerous=false</c> on every dispatch read, so the
+    /// board leaves work flagged dangerous for a runner that takes it - and it follows
+    /// the board's own answer once a heartbeat gives one.
+    /// </summary>
+    public bool RefusesDangerous { get; set; } = refusesDangerous;
 
     /// <summary>
     /// The project keys this runner is bound to on every scan, one
@@ -211,6 +218,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         if (heldToken is { } token) parts.Add($"heldToken={token}");
         parts.AddRange(DeclareParts(checkouts, clones));
         parts.AddRange(TagParts());
+        parts.AddRange(DangerousParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
@@ -367,11 +375,16 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// it, which every caller's does.
     /// </summary>
     private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
-        DeclareParts(checkouts, clones).Concat(TagParts()).Concat(ProjectParts()).ToList() is { Count: > 0 } parts
+        DeclareParts(checkouts, clones).Concat(TagParts())
+            .Concat(DangerousParts())
+            .Concat(ProjectParts())
+            .ToList() is { Count: > 0 } parts
             ? $"&{string.Join('&', parts)}"
             : "";
 
     private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
+
+    private IEnumerable<string> DangerousParts() => RefusesDangerous ? ["dangerous=false"] : [];
 
     private IEnumerable<string> ProjectParts() => Projects.Select(p => $"project={Uri.EscapeDataString(p)}");
 
