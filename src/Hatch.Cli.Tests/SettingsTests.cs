@@ -509,6 +509,57 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.DefaultLogPath(), Path.GetDirectoryName(item.Log));
     }
 
+    // ---- HATCH_DANGEROUS ----
+
+    private Settings LoadWithDangerous(string? value)
+    {
+        var env = value is null
+            ? Env(("HATCH_BASE", "https://somewhere"))
+            : Env(("HATCH_BASE", "https://somewhere"), ("HATCH_DANGEROUS", value));
+        Assert.True(Settings.TryLoad(null, env, out var settings, out _, Path.Combine(_temp, "does-not-exist")));
+        return settings;
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("on")]
+    [InlineData(" On ")]
+    public void HATCH_DANGEROUS_unset_blank_or_on_takes_dangerous_work(string? value) =>
+        Assert.False(LoadWithDangerous(value).RefusesDangerous);
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("OFF")]
+    [InlineData(" Off ")]
+    public void HATCH_DANGEROUS_off_refuses_dangerous_work(string value) =>
+        Assert.True(LoadWithDangerous(value).RefusesDangerous);
+
+    [Fact]
+    public void HATCH_DANGEROUS_anything_else_is_refused_with_a_sentence_and_the_fix()
+    {
+        Assert.False(Settings.TryLoad(
+            null, Env(("HATCH_BASE", "https://somewhere"), ("HATCH_DANGEROUS", "maybe")), out _, out var refusal,
+            Path.Combine(_temp, "does-not-exist")));
+
+        Assert.Contains("hatch: HATCH_DANGEROUS - \"maybe\" is not on or off", refusal, StringComparison.Ordinal);
+        Assert.Contains("hatch config --dangerous on|off", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HATCH_DANGEROUS_is_a_settings_file_name_and_machine_bound()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_DANGEROUS=off");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
+
+        Assert.True(settings.RefusesDangerous);
+        Assert.Equal(Settings.Layer.User, settings.SourceOf("HATCH_DANGEROUS"));
+        Assert.Contains("HATCH_DANGEROUS", Settings.FileNames);
+        Assert.False(Settings.IsBoardBound("HATCH_DANGEROUS"));
+    }
+
     // ---- HATCH_WORKSPACE ----
 
     [Fact]

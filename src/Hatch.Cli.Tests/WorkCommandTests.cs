@@ -91,6 +91,43 @@ public sealed class WorkCommandTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_one_off_heartbeat_and_the_named_read_carry_the_dangerous_refusal(bool refuses)
+    {
+        using var h = new Harness(refusesDangerous: refuses);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(refuses, beat.RefusesDangerous);
+
+        var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];
+        if (refuses) Assert.Contains("dangerous=false", call.Query);
+        else Assert.DoesNotContain("dangerous=", call.Query);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_next_read_carries_the_dangerous_refusal(bool refuses)
+    {
+        using var h = new Harness(refusesDangerous: refuses);
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default));
+
+        var call = h.Wire.To("GET", "/api/hatch/work/next")[0];
+        if (refuses) Assert.Contains("dangerous=false", call.Query);
+        else Assert.DoesNotContain("dangerous=", call.Query);
+    }
+
     [Fact]
     public async Task The_next_read_carries_the_projects_and_no_heartbeat_does()
     {

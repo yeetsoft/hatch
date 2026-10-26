@@ -748,14 +748,14 @@ public sealed class Harness : IDisposable
     /// </summary>
     public TimeProvider Clock { get; }
 
-    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null)
+    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false)
     {
         Temp = Directory.CreateTempSubdirectory("hatch-test-").FullName;
         Root = Path.Combine(Temp, "checkout");
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
         Clock = clock ?? TimeProvider.System;
-        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [] };
+        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous };
         _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
@@ -782,7 +782,7 @@ public sealed class Harness : IDisposable
 
         Runtime = new Runtime(
             Settings: settings,
-            Board: new Board(_client, settings.Tags),
+            Board: new Board(_client, settings.Tags, settings.RefusesDangerous),
             Sessions: Sessions,
             Adapter: new ClaudeAdapter(),
             Say: Say,
@@ -797,7 +797,7 @@ public sealed class Harness : IDisposable
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
             SourceRevision = () => SourceRevision,
-            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags),
+            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags, settings.RefusesDangerous),
             MakeClone = Clone.Factory,
             Clock = Clock,
             // A temp file rather than the real Settings.UserConfigPath() -
