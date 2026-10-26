@@ -7800,6 +7800,15 @@ nothing for a runner that has none. `hatch work`'s own one-off heartbeat
 carries none of this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
+**It also says whether it refuses dangerous work, once, the same way.** The
+first heartbeat a name is ever seen under that carries `refusesDangerous`
+(true or false) writes it onto the row; every later heartbeat leaves it alone,
+a different value included. A `PATCH` is the one write after that, and the
+answer carries the row's value back, true or false, never absent from a current
+Hatch. A row nobody has told reads as false. `GET /work/queue?asRunner=` reads
+it from the row, so a runner whose row says true has a flagged issue folded
+whatever `?dangerous=` said.
+
 **What it is working is not stored.** A row's ticket and the line beside it are
 read off whichever issue carries that runner's live claim at the moment of the
 request, the way an open question is computed rather than kept. A second copy

@@ -216,7 +216,8 @@ public class WorkController(
     /// False is a runner that refuses dangerous work - see
     /// <see cref="GetNextWork"/>. Ignored beside <paramref name="asRunner"/>,
     /// exactly as <paramref name="tag"/> is, since the row replaces the whole
-    /// declaration; the row will carry its own field for this.
+    /// declaration: the row's own <see cref="EfHatchRunner.RefusesDangerous"/>
+    /// is read instead, where true refuses and null reads as false.
     /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
@@ -264,7 +265,7 @@ public class WorkController(
                 row.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Standing, row.Clones);
             ancestorKey = row.Under;
             mine = row.Mine ?? false;
-            tags = TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            tags = TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], row.RefusesDangerous ?? false);
             projects = ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries));
 
             if (mine)
