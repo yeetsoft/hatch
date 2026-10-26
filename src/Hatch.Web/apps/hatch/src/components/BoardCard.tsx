@@ -8,6 +8,7 @@ import { FlowBand } from './FlowBand';
 import { MomentChip } from './MomentChip';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
+import { dangerousTitle } from '../lib/dangerous';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { isPlainClick, type ClickIntent } from '../lib/pointer';
 import type { FlowBandKind } from '../lib/queue';
@@ -77,6 +78,7 @@ const priorityClass = (card: IssueCard) => (card.priority === 'normal' ? '' : ` 
 const hasMarks = (card: IssueCard) =>
   card.priority !== 'normal' ||
   card.express ||
+  !!card.dangerous ||
   !!card.claim ||
   card.openQuestions > 0 ||
   card.held ||
@@ -308,6 +310,11 @@ function CardFace({
               title="Express - carried past a column marked Express skips, with no session"
             >
               »
+            </span>
+          )}
+          {card.dangerous && (
+            <span className="hatch-card-dangerous" title={dangerousTitle(card.dangerous)}>
+              ⚠
             </span>
           )}
           {card.preApproval === 'preapproved' && (
