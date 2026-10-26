@@ -948,7 +948,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // a fresh night: the budget back to nothing, the streak cleared,
                 // the hour re-read. Better the version that is running carries
                 // on to its own end than a new one starts with no bounds on it.
-                if (restarting && !tally.ToState().Write(runtime.NightStatePath))
+                if (restarting && !(tally.ToState() with { LogPath = runtime.LogPath }).Write(runtime.NightStatePath))
                 {
                     runtime.Say.Complain(
                         $"hatch: could not write the night's totals to {runtime.NightStatePath} - not restarting, since the next one would start the budget over");

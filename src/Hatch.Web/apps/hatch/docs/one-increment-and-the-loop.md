@@ -124,7 +124,10 @@ the readout rather than instead of it. Its first line names the file,
 `<command>-<runner name>-<yyyyMMdd-HHmmss>.log`, one stamped line per line said,
 with the colour and the readout's redraws left out and stale-lock notices
 included. No `tee` or `Tee-Object` is needed, and the screen is unchanged. It is
-off unless asked for, and `work -i` never keeps one.
+off unless asked for, and `work -i` never keeps one. A night is one file: a
+restart appends to the same file (`hatch: logging to <path> (continued)`), and
+the next night starts a new one. A name already taken - by an earlier night or
+by another runner starting the same second - gets `-2`, `-3` before `.log`.
 
 ```
 n   check now, skipping the wait: ends the idle nap early (the loop only)

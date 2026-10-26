@@ -86,6 +86,9 @@ public sealed record Runtime(
     /// </summary>
     public string? NightStatePath { get; init; }
 
+    /// <summary>The file this run's log is being written to, or null where there is none - handed to the next incarnation in the night's state, so a restart appends to it.</summary>
+    public string? LogPath { get; init; }
+
     /// <summary>The directory a runner set's host owns, from <c>HATCH_SET_DIR</c>; null outside a set.</summary>
     public string? SetDir { get; init; }
 
