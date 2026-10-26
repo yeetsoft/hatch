@@ -42,7 +42,8 @@ public sealed class WorkspaceLock : IDisposable
     /// <returns>The lock, or null - in which case <paramref name="holder"/> says who has it.</returns>
     public static WorkspaceLock? Take(
         string workspace, string checkout, string tempDirectory,
-        out WorkspaceHolder? holder, Func<int, bool>? alive = null)
+        out WorkspaceHolder? holder, Func<int, bool>? alive = null,
+        Action<string>? say = null)
     {
         alive ??= LoopLock.StillRunning;
         var dir = PathFor(workspace, tempDirectory);
@@ -58,7 +59,7 @@ public sealed class WorkspaceLock : IDisposable
             return null;
         }
 
-        Console.Error.WriteLine($"hatch: clearing a stale lock left by pid {read.Pid?.ToString() ?? "?"}");
+        (say ?? Console.Error.WriteLine)($"hatch: clearing a stale lock left by pid {read.Pid?.ToString() ?? "?"}");
         try
         {
             Directory.Delete(dir, recursive: true);
@@ -180,7 +181,7 @@ public sealed class WorkspaceLock : IDisposable
         }
 
         var checkout = runtime.Checkouts.FirstOrDefault(c => c.Standing)?.Path ?? runtime.Root;
-        held = Take(workspace, checkout, runtime.TempDirectory, out var holder);
+        held = Take(workspace, checkout, runtime.TempDirectory, out var holder, say: runtime.Say.Complain);
         if (held is not null)
         {
             served = runtime;

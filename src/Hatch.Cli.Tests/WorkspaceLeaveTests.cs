@@ -39,7 +39,7 @@ public sealed class WorkspaceLeaveTests : RepoFixture
     }
 
     [Fact]
-    public void Leaving_names_commits_on_the_issue_branch_that_origin_lacks_and_does_not_push_them()
+    public void Leaving_pushes_commits_on_the_issue_branch_that_origin_lacks_and_says_so()
     {
         Publish("ha-31-thing", "x.txt", "x");
         var ws = Ws();
@@ -50,13 +50,108 @@ public sealed class WorkspaceLeaveTests : RepoFixture
         File.WriteAllText(Path.Combine(_work, "more2.txt"), "more");
         Commit(_work, "Session work again");
         var tip = G(_work, "rev-parse", "--short=9", "HEAD").Trim();
+        var local = Tip(_work, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.Contains(left.Notes, n => n.Contains("ha-31-thing has 2 commit(s) origin does not, tip " + tip) && n.Contains("the runner pushed them"));
+        Assert.Equal(local, Tip(_origin, "ha-31-thing"));
+        Assert.Equal(local, G(_work, "rev-parse", "origin/ha-31-thing").Trim());
+        Assert.DoesNotContain(_complained, l => l.Contains("pushed them"));
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Leaving_creates_the_issue_branch_on_origin_when_it_is_the_only_one_with_work_and_origin_has_none()
+    {
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-b", "ha-31-thing");
+        File.WriteAllText(Path.Combine(_work, "more.txt"), "more");
+        Commit(_work, "Session work");
+        var local = Tip(_work, "ha-31-thing");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.Contains(left.Notes, n => n.Contains("ha-31-thing has 1 commit(s)") && n.Contains("the runner pushed them"));
+        Assert.Equal(local, Tip(_origin, "ha-31-thing"));
+        Assert.Equal("ha-31-thing", left.Found!.Branch);
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Leaving_guesses_nothing_when_several_local_branches_name_the_issue_and_origin_has_none()
+    {
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-b", "ha-31-one");
+        File.WriteAllText(Path.Combine(_work, "one.txt"), "one");
+        Commit(_work, "One");
+        G(_work, "checkout", "--quiet", "main");
+        G(_work, "checkout", "--quiet", "-b", "ha-31-two");
+        File.WriteAllText(Path.Combine(_work, "two.txt"), "two");
+        Commit(_work, "Two");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.Contains(left.Notes, n => n.Contains("2 local branches name this issue") && n.Contains("ha-31-one, ha-31-two") && n.Contains("was not guessed"));
+        Assert.DoesNotContain("ha-31-", Refs(_origin));
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Leaving_reports_a_refused_push_when_origin_moved_on_and_forces_nothing()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        ws.Enter("HA-31", "Thing", null);
+        File.WriteAllText(Path.Combine(_work, "more.txt"), "more");
+        Commit(_work, "Session work");
+        Publish("ha-31-thing", "y.txt", "y", reset: false);
         var origin = Tip(_origin, "ha-31-thing");
 
         var left = ws.Leave("HA-31", false);
 
-        Assert.Contains(left.Notes, n => n.Contains("ha-31-thing has 2 commit(s) origin does not, tip " + tip));
+        Assert.Contains(left.Notes, n => n.Contains("ha-31-thing has 1 commit(s) origin does not") && n.Contains("the push was refused") && n.Contains("only on this machine"));
+        Assert.Contains(_complained, l => l.Contains("the push was refused"));
         Assert.Equal(origin, Tip(_origin, "ha-31-thing"));
         Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Leaving_never_pushes_the_trunk_or_the_rescue_branch_made_from_it()
+    {
+        var ws = Ws();
+        ws.Prepare();
+        File.WriteAllText(Path.Combine(_work, "oops.txt"), "oops");
+        Commit(_work, "Committed to main by mistake");
+        var short9 = G(_work, "rev-parse", "--short=9", "HEAD").Trim();
+        var trunk = Tip(_origin, "main");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.Contains(left.Notes, n => n.Contains($"ha-31-rescued-{short9}"));
+        Assert.Equal(trunk, Tip(_origin, "main"));
+        Assert.DoesNotContain("rescued", Refs(_origin));
+        Assert.Equal("main", Current(_work));
+    }
+
+    [Fact]
+    public void Leaving_does_not_push_a_rescue_branch_an_earlier_increment_cut()
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        var ws = Ws();
+        ws.Prepare();
+        G(_work, "checkout", "--quiet", "-b", "ha-31-rescued-abcdef123", "origin/main");
+        File.WriteAllText(Path.Combine(_work, "oops.txt"), "oops");
+        Commit(_work, "Rescued");
+        G(_work, "checkout", "--quiet", "main");
+
+        var left = ws.Leave("HA-31", false);
+
+        Assert.DoesNotContain("rescued", Refs(_origin));
+        Assert.DoesNotContain(left.Notes, n => n.Contains("the runner pushed them"));
     }
 
     [Fact]

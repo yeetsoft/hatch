@@ -7,12 +7,16 @@ namespace Hatch.Cli;
 /// the runner rather than by whichever session happens to be next.
 /// </summary>
 /// <remarks>
-/// <para>Nothing here pushes a session's work. Whether a branch is fit to leave
-/// origin is the session's call - green before pushed - so what the runner finds
-/// that never left this machine is named on the ticket and left where it is.
-/// The one push it does make is the trunk into a branch that has a pull request,
-/// and that is made without a worktree, as a fast-forward, so it cannot
-/// overwrite anything somebody else pushed in the meantime.</para>
+/// <para>Whether a branch is fit to leave origin is the session's call - green
+/// before pushed - but a session that held its push has not made the commits
+/// safe, and commits that exist only on this machine are one disk away from
+/// gone. So the runner pushes the issue's own branch when the increment ends, as
+/// a backstop, under the same name and with no force: a push somebody else got in
+/// front of is refused and named, never overwritten. It never pushes the trunk,
+/// nor a <c>&lt;key&gt;-rescued-&lt;sha&gt;</c> branch, which would be a second
+/// unmerged branch naming the issue on origin and leave which one is the issue's
+/// to a guess. The other push it makes is the trunk into a branch that has a pull
+/// request, without a worktree, as a fast-forward.</para>
 ///
 /// <para>Nothing here fails an increment. A step that would not go is a line for
 /// the terminal and a line for the ticket, and the ones after it still run: a
@@ -65,16 +69,7 @@ public sealed partial class Workspace
                 Note($"{files} uncommitted file(s) would not stash - they are still in the tree", bad: true);
         }
 
-        // Commits the session made and did not push. Read from the local
-        // branches, against whatever origin has for each; a branch origin does
-        // not have at all is counted against the trunk.
-        foreach (var branch in LocalBranches(lower))
-        {
-            var upstream = $"refs/remotes/origin/{branch}";
-            var ahead = Count(Exists(upstream) ? $"{upstream}..refs/heads/{branch}" : $"{trunkRef}..refs/heads/{branch}");
-            if (ahead > 0)
-                Note($"{branch} has {ahead} commit(s) origin does not, tip {Short($"refs/heads/{branch}")} - not pushed; that is for whoever checks it is green");
-        }
+        PushUnpublished(lower, trunk, trunkRef, Note);
 
         // Commits on the local trunk are the ones nothing else names, and the
         // return to the trunk moves it off them. A branch of their own is
@@ -127,6 +122,70 @@ public sealed partial class Workspace
         yield return ("merge", MergeInProgress(), ["merge", "--abort"]);
         yield return ("rebase", Has("rebase-merge") || Has("rebase-apply"), ["rebase", "--abort"]);
         yield return ("cherry-pick", Has("CHERRY_PICK_HEAD"), ["cherry-pick", "--abort"]);
+    }
+
+    /// <summary>
+    /// Pushes the issue's branch where it has commits origin does not. A branch
+    /// origin already has is pushed under its own name; one it lacks is created
+    /// only when it is the one branch with unpublished work and origin has no open
+    /// branch for the issue, since a second would leave which is the issue's to a
+    /// guess. A refusal is a line, and the commits stay where they are.
+    /// </summary>
+    private void PushUnpublished(string lower, string trunk, string trunkRef, Action<string, bool> note)
+    {
+        var rescued = new Regex($"^{Regex.Escape(lower)}-rescued-[0-9a-f]{{7,40}}$");
+        var unpublished = new List<(string Branch, int Ahead, bool OnOrigin)>();
+
+        // Read from the local branches, against whatever origin has for each; a
+        // branch origin does not have at all is counted against the trunk.
+        foreach (var branch in LocalBranches(lower))
+        {
+            if (branch == trunk || rescued.IsMatch(branch)) continue;
+
+            var upstream = $"refs/remotes/origin/{branch}";
+            var onOrigin = Exists(upstream);
+            var ahead = Count(onOrigin ? $"{upstream}..refs/heads/{branch}" : $"{trunkRef}..refs/heads/{branch}");
+            if (ahead > 0) unpublished.Add((branch, ahead, onOrigin));
+        }
+
+        if (unpublished.Count == 0) return;
+
+        var open = Branched(lower, trunk).Open;
+        var lacking = unpublished.Where(u => !u.OnOrigin).Select(u => u.Branch).ToList();
+
+        foreach (var (branch, ahead, onOrigin) in unpublished)
+        {
+            var local = $"refs/heads/{branch}";
+            var has = $"{branch} has {ahead} commit(s) origin does not, tip {Short(local)}";
+
+            if (!onOrigin && open.Count > 0)
+            {
+                note($"{has} - not pushed; origin already has {string.Join(", ", open)} for this issue, and a second branch was not made", false);
+                continue;
+            }
+
+            if (!onOrigin && unpublished.Count > 1)
+            {
+                // One line for all of them, said by the first.
+                if (branch == lacking[0])
+                    note($"{lacking.Count} local branches name this issue and origin has none of them ({string.Join(", ", lacking)}), so which is the issue's branch was not guessed - not pushed", false);
+                continue;
+            }
+
+            var push = Git("push", "--quiet", "origin", $"{local}:{local}");
+            if (!push.Ok)
+            {
+                note($"{has} - the push was refused ({push.Why}); they are still only on this machine", true);
+                continue;
+            }
+
+            note($"{has} - the runner pushed them, because the session did not", false);
+
+            // Check reads the remote-tracking refs, and a push by full ref name
+            // is not what every git updates them on - fetched once where it did not.
+            if (FullSha($"refs/remotes/origin/{branch}") != FullSha(local) && !Fetch())
+                note($"could not fetch {branch} after pushing it, so what origin's branch now looks like is not known", true);
+        }
     }
 
     /// <summary>The local branches that name the key, and are not the trunk's own.</summary>

@@ -203,7 +203,9 @@ HATCH_TAGS           the tags this runner advertises, comma-separated (default:
 HATCH_WORKSPACE      where it clones what the board binds (unset: a per-user
                      default; off: never clone)
 HATCH_LOG            where its log goes (on: the logs folder beside the
-                     per-user file; a directory; unset or off: no log)
+                     per-user file; a directory; unset or off: no log). A
+                     work or go-to-work run keeps one file there, named on
+                     its first line
 HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
@@ -749,6 +751,11 @@ lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `--runners` needs a workspace, so `--workspace off` is refused, and
 `do-my-work` takes it too; [cli-reference](cli-reference#go-to-work) has the
 flag.
+
+With `HATCH_LOG` set, the host writes the set's one log
+(`go-to-work-set-<yyyyMMdd-HHmmss>.log`), each member's lines prefixed `[n]` as
+on screen, and the members write none. A restart of the set appends to the same
+file.
 
 ### Switching the set
 

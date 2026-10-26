@@ -288,6 +288,15 @@ export interface IssueCard {
   /** Where each effective runner tag came from - the project or an ancestor
       issue. See IssueCardDto.RunnerTagsFrom. */
   runnerTagsFrom: RunnerTagSource[];
+  /** The reason this issue's own row carries, or null where it is not
+      flagged itself. See IssueCardDto.DangerousOwn. */
+  dangerousOwn: string | null;
+  /** The reason that applies: this issue's own, else the nearest flagged
+      ancestor's, else null. See IssueCardDto.Dangerous. */
+  dangerous: string | null;
+  /** The key of the ancestor `dangerous` comes from; null when it is this
+      issue's own or there is none. See IssueCardDto.DangerousFrom. */
+  dangerousFrom: string | null;
   /** When an increment last left this ticket where it found it, or null.
       See IssueCardDto.StalledAt. */
   stalledAt: string | null;
@@ -612,6 +621,12 @@ export interface Issue {
   /** Where each effective runner tag came from - the project or an ancestor
       issue. See IssueCard.runnerTagsFrom and IssueDto.RunnerTagsFrom. */
   runnerTagsFrom: RunnerTagSource[];
+  /** See IssueCard.dangerousOwn and IssueDto.DangerousOwn. */
+  dangerousOwn: string | null;
+  /** See IssueCard.dangerous and IssueDto.Dangerous. */
+  dangerous: string | null;
+  /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
+  dangerousFrom: string | null;
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
@@ -968,6 +983,11 @@ export interface RunnerTagSource {
 /** Mirrors IssueRunnerTagsWriteRequest. */
 export interface IssueRunnerTagsWriteRequest {
   tags: string[];
+}
+
+/** Mirrors DangerousRequest. */
+export interface DangerousRequest {
+  reason: string;
 }
 
 /** A write to the runner tags a column requires. See StatusRunnerTagsWriteRequest (Hatch.Contracts). */

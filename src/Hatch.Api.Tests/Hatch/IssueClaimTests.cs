@@ -778,6 +778,33 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithAnOutcome_NamesTheRunnerThatHeldTheClaim()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var runner = $"runner-{Guid.NewGuid():N}";
+        var token = await h.TakeAsync(issue, runner);
+
+        await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default);
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.Equal(runner, released.Payload!.Value.GetProperty("runner").GetString());
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithNoOutcome_NamesNoRunner()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        await h.Claims.ReleaseClaim(issue, token, null, default);
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.False(released.Payload!.Value.TryGetProperty("runner", out _));
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithNoOutcome_WritesThePayloadItAlwaysHas()
     {
         await using var h = await NewAsync();
