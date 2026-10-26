@@ -14,6 +14,7 @@ import type {
   Comment,
   CommentCreateRequest,
   CumulativeFlow,
+  DangerousRequest,
   HatchSettings,
   HatchSettingsWriteRequest,
   ImportRequest,
@@ -370,6 +371,9 @@ export const setPreApproval = (key: string, level: 'none' | 'express' | 'preappr
 
 export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/runner-tags`, { method: 'PUT', ...asJson(request) });
+
+export const setIssueDangerous = (key: string, request: DangerousRequest) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
 
 /** Mark a ticket stalled, with why - and, through the same panel, read back
     off. On `setPriority`'s shape: the state is sent, not toggled, and the

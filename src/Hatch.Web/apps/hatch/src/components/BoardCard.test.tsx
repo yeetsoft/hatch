@@ -31,6 +31,9 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   runnerTags: [],
   runnerTagsOwn: [],
   runnerTagsFrom: [],
+  dangerousOwn: null,
+  dangerous: null,
+  dangerousFrom: null,
   express: false,
   stalledAt: null,
   stalledWhy: null,
@@ -120,6 +123,7 @@ describe('BoardCard CardFace', () => {
     const full = card({
       priority: 'expedited',
       express: true,
+      dangerous: 'x',
       claim: { claimedBy: 'hatch', runner: 'Jeff Winger', claimedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), chatter: null, chatterAt: null, ttlSeconds: 300 },
       openQuestions: 2,
       held: true,
@@ -134,6 +138,7 @@ describe('BoardCard CardFace', () => {
     expect(head).toContain('hatch-card-key');
     expect(head).not.toContain('hatch-card-expedited');
     expect(head).not.toContain('hatch-card-express');
+    expect(head).not.toContain('hatch-card-dangerous');
     expect(head).not.toContain('hatch-card-preapproved');
     expect(head).not.toContain('hatch-card-claim');
     expect(head).not.toContain('hatch-card-asking');
@@ -160,10 +165,22 @@ describe('BoardCard CardFace', () => {
     expect(marks).toContain('hatch-card-preapproved');
   });
 
+  it('wears the dangerous mark, with the reason in its title, when dangerous', () => {
+    const dangerous = card({ dangerous: 'load-tests the API' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={dangerous} waiting={false} terminal={false} project={project()} />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('hatch-card-dangerous');
+    expect(marks).toContain('title="Dangerous - load-tests the API"');
+  });
+
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {
     const full = card({
       priority: 'expedited',
       express: true,
+      dangerous: 'load-tests the API',
       preApproval: 'preapproved',
       claim: { claimedBy: 'hatch', runner: 'Jeff Winger', claimedAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), chatter: null, chatterAt: null, ttlSeconds: 300 },
       openQuestions: 2,
@@ -178,6 +195,7 @@ describe('BoardCard CardFace', () => {
     const classes = [
       'hatch-card-expedited',
       'hatch-card-express',
+      'hatch-card-dangerous',
       'hatch-card-preapproved',
       'hatch-card-claim',
       'hatch-card-asking',
