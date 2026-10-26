@@ -124,7 +124,10 @@ the readout rather than instead of it. Its first line names the file,
 `<command>-<runner name>-<yyyyMMdd-HHmmss>.log`, one stamped line per line said,
 with the colour and the readout's redraws left out and stale-lock notices
 included. No `tee` or `Tee-Object` is needed, and the screen is unchanged. It is
-off unless asked for, and `work -i` never keeps one.
+off unless asked for, and `work -i` never keeps one. A night is one file: a
+restart appends to the same file (`hatch: logging to <path> (continued)`), and
+the next night starts a new one. A name already taken - by an earlier night or
+by another runner starting the same second - gets `-2`, `-3` before `.log`.
 
 ```
 n   check now, skipping the wait: ends the idle nap early (the loop only)
@@ -552,9 +555,11 @@ so a session never has to work out its own base:
   runner never does. Never a rebase, never a force-push.
 - **When the increment ends, the tree is put right before the ticket is let
   go**: a merge or rebase left half-done is aborted, uncommitted changes are
-  stashed under a message naming the ticket, unpushed commits and commits
-  left on the local trunk are named on the ticket (the latter moved to a
-  `-rescued-` branch), and a pull request whose branch has fallen behind the
+  stashed under a message naming the ticket, commits on the issue's branch
+  that `origin` does not have are pushed to it (no force; a refused push is
+  named on the ticket and nothing is overwritten), commits left on the local
+  trunk are named on the ticket (moved to a `-rescued-` branch, which is not
+  pushed), and a pull request whose branch has fallen behind the
   trunk gets the trunk merged into it on origin, when that merge is clean.
   Everything found is one comment on the ticket. The checkout is back on the
   trunk afterwards.

@@ -6844,11 +6844,23 @@ last session left checked out.
   three can be stashed, so left, each would end the night.
 - **Uncommitted changes are stashed** under a message naming the ticket, and the
   ticket is told how many files.
-- **Commits on the issue's branch that `origin` does not have are named** — the
-  branch, how many, and the tip — and not pushed. Whether a branch is fit to
-  leave the machine is the session's call: green before pushed.
+- **Commits on the issue's branch that `origin` does not have are pushed** to
+  `origin` under the same name, no force, as a backstop for a session that held
+  its push (`PushUnpublished`, `Workspace.Leave.cs`). The ticket names the
+  branch, how many commits, the tip, and that the runner pushed them because the
+  session did not. A branch `origin` already has is pushed; one it lacks is
+  created only when it is the one branch with unpublished work and `origin` has
+  no open branch for the issue — with several, or one already there, the ticket
+  says which was not guessed and nothing is pushed. A push that is refused
+  (somebody pushed in between, or the forge says no) is a line on the ticket and
+  the terminal, nothing is forced, and the increment does not fail. A lost lease
+  pushes nothing: `Return` runs, not `Leave`. A branch the runner pushes is a
+  branch on `origin`, so a ticket with no pull request recorded is let go
+  `dropped`, as for any pushed branch.
 - **Commits left on the local trunk go to `<key-lowercased>-rescued-<short sha>`**
-  and the ticket names the branch, rather than leaving them to the reflog.
+  and the ticket names the branch, rather than leaving them to the reflog. That
+  branch is not pushed: a second unmerged branch naming the issue on `origin`
+  would make which one is the issue's ambiguous.
 - **The checkout goes back on the trunk**, at `origin`'s tip.
 - **A pull request's branch is brought up to date with the trunk**, when the
   issue has a pull request recorded and the branch on `origin` does not contain
@@ -6910,15 +6922,16 @@ session's own `git push`; `hatch landed` records it, the poll confirms it
 (`Poll.ConfirmLandingsAsync`, `Poll.cs:290`), and the
 [merge train](#the-merge-train) carries it. A session whose push was refused
 leaves its commits on the local trunk, which the `-rescued-` bullet above names
-(`Workspace.Leave.cs:84-86`).
+(`Workspace.Leave.cs`).
 
-**The one exception is a session that ran out of Claude usage** (below): before
+**A session that ran out of Claude usage is pushed for earlier than the rest**
+(below), where the issue's-branch push above waits for `Leave`: before
 any of the above runs, its tree is committed — untracked files included — onto
 the issue's branch (cut first if the tree was still on the trunk) and pushed to
 `origin`, no force - unchanged in a trunk-landing project (`PushForLimit`,
 `Workspace.Limit.cs`): it commits onto the issue's own branch, cutting it first
-(`CutName`) when the tree is on the trunk, and never pushes the trunk. That is
-the one place a runner pushes a session's own work for it, because a session
+(`CutName`) when the tree is on the trunk, and never pushes the trunk. It is
+the one push that commits the session's uncommitted work first, because a session
 that cannot say whether it is finished never gets to say whether it is fit to
 publish either. `Leave` then runs exactly as above and
 finds a clean tree, and the ticket gets the usage-limit comment described below
