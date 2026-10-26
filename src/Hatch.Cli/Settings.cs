@@ -125,7 +125,8 @@ public sealed partial record Settings
 
     /// <summary>
     /// The folder this runner's log goes to - null where <c>HATCH_LOG</c> is
-    /// unset or <see cref="LogOff"/>, which is the default. Nothing acts on it yet.
+    /// unset or <see cref="LogOff"/>, which is the default. A <c>work</c>, <c>go-to-work</c> or
+    /// <c>do-my-work</c> run keeps its log here (<see cref="RunLog"/>).
     /// </summary>
     public string? LogDirectory { get; init; }
 
