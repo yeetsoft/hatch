@@ -1406,6 +1406,80 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(42), Now)).Result);
     }
 
+    // ---- Who let go of what ----
+    //
+    // LetGo.ByAsync's prefilter reads the release payload, a jsonb column:
+    // `LIKE` is not an operator Postgres has for it, and a cast to text would
+    // match nothing, since it prints `"key": "value"`. LetGoTests covers the
+    // fold; these cover the read, which EF's in-memory provider cannot.
+
+    private static async Task<long> OnlyIssueIdAsync(Harness h) =>
+        (await h.Connect().Issues.AsNoTracking().SingleAsync()).Id;
+
+    private static async Task DropAsync(Harness h, string issue, string runner) =>
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, await h.TakeAsync(issue, runner), ClaimOutcomes.Dropped, default));
+
+    [SkippableFact]
+    public async Task ADropByARunner_IsFoldedForThatRunnerAndNoOther()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        var id = await OnlyIssueIdAsync(h);
+
+        var byA = await LetGo.ByAsync(h.Connect(), "host:/a", default);
+        var byB = await LetGo.ByAsync(h.Connect(), "host:/b", default);
+
+        Assert.Equal(id, Assert.Single(byA).Key);
+        Assert.Equal("host:/a", byA[id].Runner);
+        Assert.Empty(byB);
+    }
+
+    [SkippableFact]
+    public async Task ANewerDropByAnotherRunner_MovesTheRecordToThem()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await DropAsync(h, issue, "host:/b");
+        var id = await OnlyIssueIdAsync(h);
+
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), "host:/a", default));
+        Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), "host:/b", default)).Key);
+    }
+
+    [SkippableFact]
+    public async Task AStatusChangeSinceTheDrop_ClearsTheRecord()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        var id = await OnlyIssueIdAsync(h);
+
+        var db = h.Connect();
+        db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = id, Actor = "ann", Kind = EfHatchIssueEvent.StatusChanged, At = Now.AddMinutes(5),
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), "host:/a", default));
+    }
+
+    [SkippableFact]
+    public async Task ARunnerNameNeedingEscapes_IsStillFound()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        const string runner = "host:/a \"b\"";
+        await DropAsync(h, issue, runner);
+        var id = await OnlyIssueIdAsync(h);
+
+        Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), runner, default)).Key);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
