@@ -101,6 +101,10 @@ the ticket:
 The count is of consecutive releases that dropped the ticket. It starts again
 after a release that worked, a change of status, or a person's answer.
 
+A ticket an increment let go is also left to a different live runner: while
+another runner could take it, the runner that dropped it is told to leave it,
+and with only one runner nothing changes.
+
 Some endings that look like a stall are not one, and count toward nothing:
 
 - Filing issues under the ticket. The ticket is measured against the children

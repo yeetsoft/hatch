@@ -119,6 +119,15 @@ public class WorkController(
     /// nothing, which is every caller before this one. A hop and the move into
     /// implementation are never folded.
     /// </param>
+    /// <param name="runner">
+    /// The caller's own runner name, when it wants a ticket it let go of
+    /// last left to a different live runner: while its own newest release of
+    /// an issue was <c>dropped</c> and another live runner could take the
+    /// issue, the issue is folded for this caller and no one else. Last, and
+    /// named a query parameter, because the <c>X-Hatch-Runner</c> header is
+    /// stripped when a key is used. A name matching no row is fine - it only
+    /// means no peer was told apart from it. Absent folds nothing.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -131,12 +140,15 @@ public class WorkController(
         CancellationToken ct = default,
         [FromQuery] List<string>? tag = null,
         [FromQuery] List<string>? project = null,
-        [FromQuery] bool? dangerous = null)
+        [FromQuery] bool? dangerous = null,
+        [FromQuery] string? runner = null)
     {
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project));
+        var scan = await _dispatch.ScanAsync(
+            offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
+            asking: Asking(runner));
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -219,6 +231,10 @@ public class WorkController(
     /// declaration: the row's own <see cref="EfHatchRunner.RefusesDangerous"/>
     /// is read instead, where true refuses and null reads as false.
     /// </param>
+    /// <param name="runner">
+    /// As on <see cref="GetNextWork"/>. Beside <paramref name="asRunner"/>,
+    /// which already names the runner, <paramref name="asRunner"/> wins.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -235,7 +251,8 @@ public class WorkController(
         [FromQuery] string? asRunner = null,
         [FromQuery] List<string>? tag = null,
         [FromQuery] List<string>? project = null,
-        [FromQuery] bool? dangerous = null)
+        [FromQuery] bool? dangerous = null,
+        [FromQuery] string? runner = null)
     {
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
@@ -261,32 +278,23 @@ public class WorkController(
                 .FirstOrDefaultAsync(r => r.Name == asRunner && r.LastSeenAt >= dropBefore, ct);
             if (row is null) return BadRequest($"there is no runner named {asRunner}");
 
-            repos = RepositoryDeclaration.From(
-                row.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Standing, row.Clones);
-            ancestorKey = row.Under;
-            mine = row.Mine ?? false;
-            tags = TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], row.RefusesDangerous ?? false);
-            projects = ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+            var declared = await RunnerDeclaration.OfAsync(row, actors, ct);
+            if (declared.Refusal is { } unowned) return BadRequest(unowned);
 
-            if (mine)
-            {
-                principal = row.ForPersonId is { } forPersonId
-                    ? await actors.ResolveAsync(ActorKind.Person, forPersonId, ct)
-                    : null;
-                if (principal is null)
-                {
-                    return BadRequest(
-                        $"{asRunner} belongs to nobody, so it has no tickets of its own - an admin sets its " +
-                        "owner on the API Keys page");
-                }
-            }
+            repos = declared.Repos;
+            ancestorKey = declared.Under;
+            mine = declared.Mine;
+            tags = declared.Tags;
+            projects = declared.Projects.ToList();
+            principal = declared.Principal;
         }
         else
         {
             repos = RepositoryDeclaration.From(remote, standing, clones);
         }
 
-        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects);
+        var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
+            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner));
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -1390,6 +1398,14 @@ public class WorkController(
     /// duplicates folded, in the order given - the same normalisation
     /// <see cref="RunnersController"/> applies on its own write.
     /// </summary>
-    private static List<string> ProjectKeys(IEnumerable<string>? raw) =>
+    /// <summary>
+    /// Who a scan is answering for, from the name the caller gave: null for
+    /// none, otherwise the name with the instant before which a runner counts
+    /// as gone.
+    /// </summary>
+    private RunnerAsking? Asking(string? runner) =>
+        string.IsNullOrWhiteSpace(runner) ? null : new RunnerAsking(runner, runners.Cutoff(time.GetUtcNow()));
+
+    internal static List<string> ProjectKeys(IEnumerable<string>? raw) =>
         (raw ?? []).Select(p => p.Trim().ToUpperInvariant()).Where(p => p.Length > 0).Distinct().ToList();
 }

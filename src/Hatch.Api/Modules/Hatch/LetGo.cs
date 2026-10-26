@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
 
+/// <summary>The runner that let an issue go last, and when - see <see cref="LetGo.By"/>.</summary>
+public sealed record LetGoBy(string Runner, DateTimeOffset At);
+
 /// <summary>
 /// One definition of "let go", used by everything that asks - see
 /// <see cref="WorkDto.LetGo"/> for what the count means. Two callers ask
@@ -78,6 +81,75 @@ public static class LetGo
             .ToDictionary(g => g.Key, g => Count(g.Select(e => (e.Kind, e.Payload))));
     }
 
+    /// <summary>
+    /// Who let this ticket go most recently, if nothing has happened to it
+    /// since that would make the drop stale. Walks the trail newest first: a
+    /// release with outcome <see cref="ClaimOutcomes.Dropped"/> that names its
+    /// runner is the record; the first release that is anything else (worked,
+    /// preempted, no outcome), the first status change, or the first answer a
+    /// person wrote means there is none. Takes, lapses, clears and comments
+    /// are stepped over. A drop with no runner - one written before the
+    /// payload carried it - records nothing.
+    /// </summary>
+    public static LetGoBy? By(IEnumerable<(string Kind, string? Payload, DateTimeOffset At)> eventsNewestFirst)
+    {
+        foreach (var e in eventsNewestFirst)
+        {
+            if (e.Kind == EfHatchIssueEvent.StatusChanged) return null;
+
+            if (e.Kind == EfHatchIssueEvent.ClaimReleased)
+            {
+                if (ReleaseOutcome(e.Payload) == ClaimOutcomes.Dropped && ReleaseRunner(e.Payload) is { } runner)
+                    return new LetGoBy(runner, e.At);
+                return null;
+            }
+
+            if (e.Kind == EfHatchIssueEvent.Answered && !IsLapsedAnswer(e.Payload)) return null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// <see cref="By"/> for every issue <paramref name="runner"/> let go of and
+    /// has not been followed on since. One prefilter query finds the issues
+    /// whose trail holds a drop by that runner at all; only their trails are
+    /// loaded.
+    /// </summary>
+    public static async Task<Dictionary<long, LetGoBy>> ByAsync(HatchContext db, string runner, CancellationToken ct)
+    {
+        var named = "\"runner\":" + JsonSerializer.Serialize(runner);
+
+        var ids = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.ClaimReleased
+                && e.Payload!.Contains("\"outcome\":\"dropped\"")
+                && e.Payload.Contains(named))
+            .Select(e => e.IssueId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var by = new Dictionary<long, LetGoBy>();
+        if (ids.Count == 0) return by;
+
+        var events = await db.IssueEvents.AsNoTracking()
+            .Where(e => ids.Contains(e.IssueId))
+            .OrderByDescending(e => e.At).ThenByDescending(e => e.Id)
+            .Select(e => new { e.IssueId, e.Kind, e.Payload, e.At })
+            .ToListAsync(ct);
+
+        foreach (var group in events.GroupBy(e => e.IssueId))
+        {
+            // The prefilter matched on the runner's name anywhere in a drop's
+            // payload; the newest drop may be another runner's, which moves
+            // the record to them.
+            if (By(group.Select(e => (e.Kind, e.Payload, e.At))) is { } found
+                && string.Equals(found.Runner, runner, StringComparison.Ordinal))
+                by[group.Key] = found;
+        }
+
+        return by;
+    }
+
     /// <summary>A release's own outcome, or null where it did not say - see <see cref="ClaimOutcomes"/>.</summary>
     private static string? ReleaseOutcome(string? payload)
     {
@@ -89,6 +161,26 @@ public static class LetGo
             return doc.RootElement.TryGetProperty("outcome", out var value) && value.ValueKind == JsonValueKind.String
                 ? value.GetString()
                 : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The runner a release names, or null where it did not - older releases never did.</summary>
+    private static string? ReleaseRunner(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return doc.RootElement.TryGetProperty("runner", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && !string.IsNullOrEmpty(value.GetString())
+                    ? value.GetString()
+                    : null;
         }
         catch (JsonException)
         {
