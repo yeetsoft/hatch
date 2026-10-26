@@ -203,7 +203,9 @@ HATCH_TAGS           the tags this runner advertises, comma-separated (default:
 HATCH_WORKSPACE      where it clones what the board binds (unset: a per-user
                      default; off: never clone)
 HATCH_LOG            where its log goes (on: the logs folder beside the
-                     per-user file; a directory; unset or off: no log)
+                     per-user file; a directory; unset or off: no log). A
+                     work or go-to-work run keeps one file there, named on
+                     its first line
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for

@@ -233,6 +233,7 @@ var board = new Board(client, settings.Tags);
 
 LiveTerminal? live = null;
 KeyReader? keys = null;
+LogTerminal? log = null;
 
 try
 {
@@ -272,7 +273,20 @@ try
             say = live = new LiveTerminal(
                 readoutState, TimeProvider.System, color: Environment.GetEnvironmentVariable("NO_COLOR") is null,
                 controls: controls, stdout: frames);
+        }
 
+        // The log wraps whichever terminal this run is about to use - the
+        // readout's or the plain one - so the screen is unchanged and the file
+        // gets every line, the keys-off notice included. Never on `work -i`:
+        // the terminal there belongs to the interactive session.
+        if (!attached)
+        {
+            log = RunLog.Open(say, settings.LogDirectory, command, runnerName, TimeProvider.System);
+            if (log is not null) say = log;
+        }
+
+        if (drawsReadout)
+        {
             if (controls.KeysOn) keys = new KeyReader(controls, say, cancelling);
             else if (!noKeys) say.Line("hatch: keys are off — use Ctrl-C or --stop-file to stop this runner");
         }
@@ -385,6 +399,9 @@ finally
     // shell's own prompt - scrolls normally with nothing pinned below it.
     live?.Stop();
     keys?.Stop();
+
+    // Last, so nothing above writes to a closed file.
+    log?.Dispose();
 }
 
 PosixSignalRegistration? Handle(PosixSignal signal)

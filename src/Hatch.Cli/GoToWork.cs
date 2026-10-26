@@ -862,7 +862,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         foreach (var checkout in runtime.Checkouts)
         {
-            var held = LoopLock.Take(checkout.Path, runtime.TempDirectory, out var refusal);
+            var held = LoopLock.Take(checkout.Path, runtime.TempDirectory, out var refusal, say: runtime.Say.Complain);
             if (held is null)
             {
                 foreach (var taken in locks) taken.Dispose();

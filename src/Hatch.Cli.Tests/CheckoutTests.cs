@@ -110,6 +110,32 @@ public sealed class CheckoutTests : IDisposable
     }
 
     [Fact]
+    public void A_stale_loop_lock_is_reported_through_the_terminal_it_is_given()
+    {
+        var tree = Tree("one");
+        using var abandoned = LoopLock.Take(tree, _temp, out _);
+        var lines = new List<string>();
+
+        using var taken = LoopLock.Take(tree, _temp, out _, alive: _ => false, say: lines.Add);
+
+        Assert.NotNull(taken);
+        Assert.Equal([$"hatch: clearing a stale lock left by pid {Environment.ProcessId}"], lines);
+    }
+
+    [Fact]
+    public void A_stale_workspace_lock_is_reported_through_the_terminal_it_is_given()
+    {
+        var workspace = Tree("workspace");
+        using var abandoned = WorkspaceLock.Take(workspace, "one", _temp, out _);
+        var lines = new List<string>();
+
+        using var taken = WorkspaceLock.Take(workspace, "one", _temp, out _, alive: _ => false, say: lines.Add);
+
+        Assert.NotNull(taken);
+        Assert.Equal([$"hatch: clearing a stale lock left by pid {Environment.ProcessId}"], lines);
+    }
+
+    [Fact]
     public void A_released_lock_is_taken_again()
     {
         var tree = Tree("one");

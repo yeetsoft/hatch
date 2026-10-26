@@ -63,6 +63,31 @@ public sealed class GoToWorkTests
     }
 
     /// <summary>
+    /// HA-1612: the log is a wrapper around whichever terminal the run was
+    /// handed, so a pass says what it always said and the file gets the same.
+    /// </summary>
+    [Fact]
+    public async Task A_run_whose_terminal_keeps_a_log_writes_its_pass_lines_to_the_file()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var path = Path.Combine(h.Temp, "logs", "night.log");
+
+        using (var log = new LogTerminal(h.Say, path, TimeProvider.System))
+        {
+            var runtime = h.Runtime with { Say = log };
+            Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+        }
+
+        var kept = File.ReadAllLines(path);
+        Assert.NotEmpty(h.Say.Said);
+        Assert.All(
+            h.Say.Said.SelectMany(l => l.Split('\n')).Select(l => l.TrimEnd('\r')),
+            piece => Assert.Contains(kept, k => k.EndsWith("  " + piece, StringComparison.Ordinal)));
+        Assert.DoesNotContain("\x1b", string.Join('\n', kept), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// HA-118: the claim's own verdict rides along with the release - dropped
     /// for the ticket a pass leaves where it found it, so the board's own
     /// count of consecutive let-goes is what decides whether the next one is

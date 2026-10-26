@@ -117,6 +117,15 @@ draws and stdin is a terminal. Anywhere else one line says so and names Ctrl-C
 and `--stop-file`. `--no-keys` keeps the readout and drops the keys and the
 legend.
 
+With `HATCH_LOG` set (`hatch config --log on`), a `work`, `go-to-work` or
+`do-my-work` run also keeps a plain-text copy of everything it says, beside
+the readout rather than instead of it. Its first line names the file,
+`hatch: logging to <path>`; the file is
+`<command>-<runner name>-<yyyyMMdd-HHmmss>.log`, one stamped line per line said,
+with the colour and the readout's redraws left out and stale-lock notices
+included. No `tee` or `Tee-Object` is needed, and the screen is unchanged. It is
+off unless asked for, and `work -i` never keeps one.
+
 ```
 n   check now, skipping the wait: ends the idle nap early (the loop only)
 s   stop after this increment; press again to undo
