@@ -96,7 +96,7 @@ public sealed record Runtime(
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
 
-    public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine);
+    public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine, RunnerName);
 
     public Increment Increment() => new(Board, Sessions, Adapter, Settings, Say, Checkouts, Readout, TempDirectory, Controls, Workspace, QuietBoard, Clock);
 

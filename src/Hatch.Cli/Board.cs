@@ -39,16 +39,19 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
 
     /// <summary>
     /// Every issue a pass would look at, in the order it looks, each with the
-    /// reason it would be folded past - or nothing, where it is clear.
+    /// reason it would be folded past - or nothing, where it is clear. The
+    /// runner's name, where it has one, is sent so the board can leave a ticket
+    /// that runner let go of to a different live runner.
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false, bool mine = false)
+        bool clones = false, bool mine = false, string? runner = null)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         var narrowed = mine ? "&mine=true" : "";
+        var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
@@ -341,16 +344,18 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// holds nothing - and a walk that claimed in order to print a prompt would
     /// be the one thing a dry run must not do. Everywhere an increment actually
     /// follows, the queue picks and the claim decides; see <see cref="Picker"/>
-    /// for why the second read there is the named one.
+    /// for why the second read there is the named one. The runner's name, where
+    /// it has one, is sent as <see cref="QueueAsync"/> sends it.
     /// </remarks>
     public async Task<WorkDto?> NextAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false, bool mine = false)
+        bool clones = false, bool mine = false, string? runner = null)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         var narrowed = mine ? "&mine=true" : "";
+        var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>(
-            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{narrowed}{Declare(checkouts, clones)}", ct));
+            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct));
     }
 
     /// <summary>

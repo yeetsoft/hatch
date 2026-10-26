@@ -212,6 +212,8 @@ reason it would be folded past or the transition it is clear for. It is the
 dry run for the loop and the answer to "why did it not pick up the ticket I
 meant". It spawns nothing and writes nothing, and a board with nothing to look
 at says so in a sentence.
+It reads as this checkout's runner, so a row can say a ticket is left for another
+runner.
 
 - `<ancestor key>` narrows it to one epic's tree.
 - `--mine` shows what a `--mine` pass would take and folds past everything

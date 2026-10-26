@@ -117,7 +117,8 @@ marked `!!` is emergency, one marked `! ` is expedited, one marked `~ ` is
 economy — worked only once the account an unattended pass would spend has
 usage to spare — and one marked `||` is paused — its own level or one
 inherited from an ancestor, the walk does not care which. `hatch queue AER-1`
-scopes it to one epic's subtree. It spawns nothing and writes nothing, and an
+scopes it to one epic's subtree. It reads as this checkout's runner, so a row
+can say a ticket is left for another runner. It spawns nothing and writes nothing, and an
 empty board prints a sentence saying so rather than a blank line: "there is
 nothing" and "something went wrong and printed nothing" look identical
 otherwise, which is the one thing a run nobody watched cannot afford to be

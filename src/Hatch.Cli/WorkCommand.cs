@@ -228,7 +228,7 @@ public sealed class WorkCommand(Runtime runtime)
         {
             work = key is { Length: > 0 }
                 ? await runtime.Board.WorkAsync(runtime.Checkouts, key, null, ct, clones)
-                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones, mine);
+                : await runtime.Board.NextAsync(runtime.Checkouts, under, runtime.OffsetMinutes, ct, clones, mine, runtime.RunnerName);
         }
         catch (HatchException e)
         {
