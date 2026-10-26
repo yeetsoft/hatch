@@ -374,6 +374,35 @@ public sealed class RunnerSetTests
     private static string? WorkspaceFrom(SetChild child) => RunnerSet.WorkspaceFrom(child.Args);
 
     [Fact]
+    public async Task No_member_keeps_a_log_of_its_own_and_the_hosts_one_holds_their_lines_prefixed()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-log-").FullName;
+        try
+        {
+            var launcher = new FakeLauncher((child, line) =>
+            {
+                line($"from slot {child.Slot}");
+                return Task.FromResult(0);
+            });
+
+            using (var log = RunLog.Open(new Transcript(), dir, "go-to-work", "set", TimeProvider.System)!)
+                Assert.Equal(0, await Host(launcher, runners: 2, say: log.Line));
+
+            Assert.All(launcher.Children.Values, c => Assert.Equal("off", c.Env["HATCH_LOG"]));
+
+            var file = Directory.GetFiles(dir).Single();
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var text = new StreamReader(stream).ReadToEnd();
+            Assert.Contains("  [1] from slot 1", text, StringComparison.Ordinal);
+            Assert.Contains("  [2] from slot 2", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public async Task Without_a_night_state_the_children_get_none()
     {
         var launcher = new FakeLauncher((_, _) => Task.FromResult(0));

@@ -182,6 +182,48 @@ public sealed class RestartTests : IDisposable
     }
 
     [Fact]
+    public void The_log_one_incarnation_wrote_is_the_file_the_next_one_appends_to()
+    {
+        var state = Path.Combine(_root, "night.json");
+        var logs = Path.Combine(_root, "logs");
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero));
+
+        string path;
+        using (var first = RunLog.Open(new Transcript(), logs, "go-to-work", "r", clock)!)
+        {
+            first.Line("first incarnation");
+            path = first.Path;
+            Assert.True((new NightState { Runs = 1 } with { LogPath = first.Path }).Write(state));
+        }
+
+        clock.Advance(TimeSpan.FromMinutes(30));
+        var carried = NightState.Read(state);
+        using (var second = RunLog.Open(new Transcript(), logs, "go-to-work", "r", clock, carried?.LogPath)!)
+        {
+            second.Line("second incarnation");
+            Assert.Equal(path, second.Path);
+        }
+
+        Assert.Equal(path, Directory.GetFiles(logs).Single());
+        var text = File.ReadAllText(path);
+        Assert.Contains("first incarnation", text, StringComparison.Ordinal);
+        Assert.Contains("second incarnation", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_state_file_from_before_the_log_was_carried_reads_with_no_log_path()
+    {
+        var old = Path.Combine(_root, "old.json");
+        File.WriteAllText(old, "{\"Runs\":3,\"Spent\":1.5}");
+
+        var back = NightState.Read(old);
+
+        Assert.NotNull(back);
+        Assert.Equal(3, back.Runs);
+        Assert.Null(back.LogPath);
+    }
+
+    [Fact]
     public void A_state_file_that_is_missing_or_broken_is_a_fresh_night_rather_than_a_crash()
     {
         // The worst a lost state file costs is a night's bookkeeping. A loop

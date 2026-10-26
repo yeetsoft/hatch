@@ -85,4 +85,70 @@ public sealed class RunLogTests : IDisposable
         Assert.EndsWith("  hatch: clearing a stale lock left by pid 7", lines[2], StringComparison.Ordinal);
         Assert.DoesNotContain("\x1b", string.Join('\n', lines), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Two_runs_in_the_same_second_get_two_files_and_neither_reuses_the_other()
+    {
+        using var first = RunLog.Open(new Transcript(), _dir, "go-to-work", "r", new FakeTimeProvider(Now))!;
+        using var second = RunLog.Open(new Transcript(), _dir, "go-to-work", "r", new FakeTimeProvider(Now))!;
+
+        Assert.Equal(Path.Combine(_dir, "go-to-work-r-20260101-120000.log"), first.Path);
+        Assert.Equal(Path.Combine(_dir, "go-to-work-r-20260101-120000-2.log"), second.Path);
+
+        first.Line("one");
+        second.Line("two");
+        Assert.DoesNotContain("two", ReadShared(first.Path), StringComparison.Ordinal);
+        Assert.DoesNotContain("one", ReadShared(second.Path), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_carried_path_is_appended_to_and_no_second_file_is_made()
+    {
+        string carried;
+        using (var before = RunLog.Open(new Transcript(), _dir, "go-to-work", "r", new FakeTimeProvider(Now))!)
+        {
+            before.Line("before the restart");
+            carried = before.Path;
+        }
+
+        var inner = new Transcript();
+        using (var after = RunLog.Open(inner, _dir, "go-to-work", "r", new FakeTimeProvider(Now.AddMinutes(5)), carried)!)
+        {
+            after.Line("after the restart");
+            Assert.Equal(carried, after.Path);
+        }
+
+        Assert.Equal([$"hatch: logging to {carried} (continued)"], inner.Said.Take(1));
+        Assert.Equal(carried, Directory.GetFiles(_dir).Single());
+
+        var text = ReadShared(carried);
+        Assert.Contains("before the restart", text, StringComparison.Ordinal);
+        Assert.Contains("after the restart", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_carried_file_that_has_been_deleted_is_made_again()
+    {
+        var carried = Path.Combine(_dir, "gone.log");
+
+        using var log = RunLog.Open(new Transcript(), _dir, "go-to-work", "r", new FakeTimeProvider(Now), carried)!;
+
+        Assert.Equal(carried, log.Path);
+        Assert.True(File.Exists(carried));
+    }
+
+    [Fact]
+    public void Every_name_being_taken_is_one_complaint_and_no_log()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "go-to-work-r-20260101-120000.log"), "");
+        for (var n = 2; n <= 500; n++)
+            File.WriteAllText(Path.Combine(_dir, $"go-to-work-r-20260101-120000-{n}.log"), "");
+
+        var inner = new Transcript();
+        Assert.Null(RunLog.Open(inner, _dir, "go-to-work", "r", new FakeTimeProvider(Now)));
+
+        Assert.Single(inner.Complained);
+        Assert.Empty(inner.Said);
+    }
 }
