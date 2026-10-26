@@ -31,6 +31,17 @@ public sealed class PickerTests
     private const string Claimed = "/api/hatch/issues/AER-2/claim";
 
     [Fact]
+    public async Task The_queue_read_names_the_runner_so_the_board_can_defer_a_ticket_it_let_go()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_row_pinned_to_another_agents_family_is_skipped_before_it_is_claimed()
     {
         using var h = new Harness();

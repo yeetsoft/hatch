@@ -158,7 +158,7 @@ public sealed class Picker(
         IReadOnlyList<QueueEntryDto> queue;
         try
         {
-            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, _clones, mine);
+            queue = await board.QueueAsync(checkouts, under, offsetMinutes, ct, _clones, mine, runner);
         }
         catch (HatchException e) when (e.Status == HttpStatusCode.BadRequest)
         {

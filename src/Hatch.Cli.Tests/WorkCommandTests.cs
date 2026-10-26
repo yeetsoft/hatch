@@ -36,6 +36,31 @@ public sealed class WorkCommandTests
         Assert.Contains(h.Say.Said, l => l.StartsWith("# AER-1 In Progress -> In Review", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_dry_run_names_its_runner_on_the_next_read()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+
+        await new WorkCommand(h.Runtime).RunAsync(["--dry-run"], default);
+
+        Assert.Contains(
+            "runner=test%3A%2Fcheckout",
+            h.Wire.To("GET", "/api/hatch/work/next").Single().Query,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_idle_report_names_its_runner_on_the_queue_it_rereads()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await h.Runtime.Idle().ReportAsync(null, null, 0, default);
+
+        Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

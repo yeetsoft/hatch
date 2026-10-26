@@ -223,7 +223,7 @@ public sealed class BoardCommands(Cli cli)
             else return Usage.Refuse(cli.Say, "queue takes [--mine] and one ancestor key", QueueUsage);
         }
 
-        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine);
+        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName);
 
         // An empty board is a sentence and not a blank line: "there is nothing"
         // and "something went wrong and printed nothing" look identical
