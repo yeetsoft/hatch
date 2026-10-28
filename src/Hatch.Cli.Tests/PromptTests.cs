@@ -645,16 +645,16 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51) ----
 
     [Fact]
-    public void The_fixed_part_of_the_prompt_stays_under_forty_five_hundred_characters()
+    public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
     {
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 4500,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,500.");
+        Assert.True(fixedPart.Length < 5000,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,000.");
     }
 
     [Fact]
@@ -686,6 +686,25 @@ public sealed class PromptTests
 
         Assert.Contains("hatch dangerous AER-12 \"why\"", prompt, StringComparison.Ordinal);
         Assert.Contains("load testing", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_work_prompt_tells_a_session_that_files_work_to_declare_what_must_land_first()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch depends AER-12 <waited-on>", prompt, StringComparison.Ordinal);
+        Assert.Contains("`hatch depends <waiting> <waited-on>`, one call per edge. Filing issues in", prompt, StringComparison.Ordinal);
+        Assert.Contains("order does not order them.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_check_s_prompt_does_not_carry_the_depends_call_or_its_paragraph()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", isCheck: true));
+
+        Assert.DoesNotContain("hatch depends", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("order does not order them", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

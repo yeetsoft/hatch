@@ -579,6 +579,7 @@ public static class Prompt
         $"hatch ask {key} \"...\"         ask for a decision, and stop",
         ..(isCheck ? Array.Empty<string>() : new[]
         {
+            $"hatch depends {key} <waited-on>   {key} cannot start until <waited-on> lands",
             $"hatch dangerous {key} \"why\"   flag it if running its work could destabilise the machine",
         }),
         $"hatch api GET /api/hatch/issues?parentKey={key}",
@@ -602,6 +603,13 @@ public static class Prompt
         "docs/hatch-planning.md has the shapes. Read it only if this increment",
         "files or reshapes work.",
         "",
+        ..(isCheck ? Array.Empty<string>() : new[]
+        {
+            "When one issue cannot start until another lands, say so with",
+            "`hatch depends <waiting> <waited-on>`, one call per edge. Filing issues in",
+            "order does not order them.",
+            "",
+        }),
         ..(deniesGitWrites ? NoPullRequest(key)
             : trunkLanding ? Landing(key)
             : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
