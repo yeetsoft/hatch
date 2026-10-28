@@ -184,6 +184,18 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_CODEX_BIN=/opt/codex", written);
     }
 
+    /// <summary>No flag writes the claude tool list, so a rewrite for something else must not drop it.</summary>
+    [Fact]
+    public async Task Choosing_an_agent_keeps_the_claude_tools_already_written()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_CLAUDE_TOOLS=Bash,Read,WebFetch"]);
+
+        Assert.Equal(0, await Command(new Replies("", "", "codex", "/opt/codex")).RunAsync([], default));
+
+        Assert.Contains("HATCH_CLAUDE_TOOLS=Bash,Read,WebFetch", File.ReadAllLines(ConfigPath));
+    }
+
     /// <summary>
     /// The point of the story: it writes where the person is, not where the
     /// checkout is - and it no longer writes a repository's scripts/.env at all.

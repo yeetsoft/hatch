@@ -1282,6 +1282,13 @@ public sealed record ConfigCommand(
     {
         var target = path ?? ConfigPath;
 
+        // No config flag writes it - it is edited in the file - so a rewrite
+        // carries forward whatever this file already says, and never one leaked
+        // in from an export or another layer under an overlay.
+        var claudeTools = overlay
+            ? Settings.ReadFile(path).GetValueOrDefault("HATCH_CLAUDE_TOOLS", "")
+            : Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath)("HATCH_CLAUDE_TOOLS").Value ?? "";
+
         var lines = !overlay
             ? new List<string>
               {
@@ -1317,6 +1324,7 @@ public sealed record ConfigCommand(
         if (!overlay || key.Length > 0) lines.Add($"HATCH_KEY={key}");
 
         if (claudeBin.Length > 0) lines.Add($"HATCH_CLAUDE_BIN={claudeBin}");
+        if (claudeTools.Length > 0) lines.Add($"HATCH_CLAUDE_TOOLS={claudeTools}");
         if (codexBin.Length > 0) lines.Add($"HATCH_CODEX_BIN={codexBin}");
         if (grokBin.Length > 0) lines.Add($"HATCH_GROK_BIN={grokBin}");
         if (ollamaHost.Length > 0) lines.Add($"HATCH_OLLAMA_HOST={ollamaHost}");

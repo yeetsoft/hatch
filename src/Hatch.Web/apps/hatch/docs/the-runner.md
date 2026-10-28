@@ -189,6 +189,8 @@ These are the settings `hatch --help` lists, with their defaults:
 HATCH_BASE           the origin of your Hatch
 HATCH_KEY            hatch_ak_...; optional against a Hatch with its wall off
 HATCH_CLAUDE_BIN     the claude CLI, if it is not on PATH
+HATCH_CLAUDE_TOOLS   the tools an unattended claude session starts with (default: Bash,Read,
+                     Edit,Write,Grep,Glob,Monitor,TaskStop; `default` is claude's full set)
 HATCH_CODEX_BIN      the codex CLI, if it is not on PATH
 HATCH_GROK_BIN       the grok CLI, if it is not on PATH
 HATCH_AGENT          claude, codex, grok or ollama (default: claude)
@@ -592,6 +594,7 @@ HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
 HATCH_CLAUDE_BIN:  <unset>
+HATCH_CLAUDE_TOOLS:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>
@@ -620,6 +623,7 @@ HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_CLAUDE_BIN:  <unset>
+HATCH_CLAUDE_TOOLS:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>

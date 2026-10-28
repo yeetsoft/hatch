@@ -235,6 +235,11 @@ The prompt is one half of it; the other is how the agent CLI is started. For
 - Each repository other than the primary is added to the session as a
   directory, so it can read and edit the sibling checkouts.
 - Each tool the playbook denies is passed as a denied tool, one per entry.
+- An unattended `claude` session gets a reduced toolset (`Bash`, `Read`, `Edit`,
+  `Write`, `Grep`, `Glob`, `Monitor`, `TaskStop`) rather than Claude Code's full
+  one, since every request re-reads its starting context from cache and the
+  unused tool definitions were most of it; `HATCH_CLAUDE_TOOLS` widens it. A
+  `claude` CLI too old to know the flag is spawned without it, with one warning.
 - `hatch` is first on its `PATH`, is the same binary that spawned it, and
   inherits `HATCH_BASE`, `HATCH_KEY` and `HATCH_RUNNER` from it - already
   pointed at the same board, with the key it holds, and named as the runner

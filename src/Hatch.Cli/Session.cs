@@ -109,7 +109,7 @@ public static class Agents
     {
         if (id == "claude")
         {
-            adapter = new ClaudeAdapter(settings.ClaudeBin, warn);
+            adapter = new ClaudeAdapter(settings.ClaudeBin, warn, settings.ClaudeTools);
             runner = new AgentSessionRunner(adapter, warn);
             refusal = "";
             return true;
