@@ -31,6 +31,15 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_pull_request_section_tells_a_session_that_changed_nothing_to_declare_it_not_push_an_empty_branch()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch pr AER-12 --none", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_trunk_landing_project_is_told_to_land_rather_than_open_a_pull_request()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk));
@@ -94,6 +103,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
         Assert.Contains("This row's playbook denies git writes", prompt, StringComparison.Ordinal);
         Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("--none", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

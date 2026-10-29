@@ -236,6 +236,7 @@ public sealed class SharedBranchTests
         Assert.Contains("do not run `hatch pr AER-6`", prompt, StringComparison.Ordinal);
         Assert.Contains("titled with the story's key, not", prompt, StringComparison.Ordinal);
         Assert.Contains("then move AER-6 to \"In Review\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("hatch pr AER-6 --none", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

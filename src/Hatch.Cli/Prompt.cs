@@ -821,6 +821,7 @@ public static class Prompt
         $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
         "merge, until the story's pull request does.",
         "",
+        .. NoCodeDeclaration(key),
     ];
 
     /// <summary>
@@ -919,6 +920,29 @@ public static class Prompt
             "",
             $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
             "",
+            .. NoCodeDeclaration(key),
         ];
     }
+
+    /// <summary>
+    /// What a session is told when its increment changed nothing in the tree: there is
+    /// no pull request to open, so it says so rather than pushing an empty branch. One
+    /// constant for the pull request section and the shared-branch one, so a test can
+    /// assert both. A task on its story's branch declares too, and then does not wait on
+    /// the story's pull request. (<c>Landing</c> is left out: the declaration is the
+    /// review column's, and a trunk-landing project has no review.)
+    /// </summary>
+    private static string[] NoCodeDeclaration(string key) =>
+    [
+        "If this increment changed nothing in the tree - a measurement, an investigation, a",
+        "finding that is the comment - there is no pull request to open. Say so instead:",
+        "",
+        "```",
+        $"hatch pr {key} --none \"<one line: what this increment produced, and where it is>\"",
+        "```",
+        "",
+        "Do not push an empty branch to stand in for one: a branch with nothing on it is a",
+        "branch the board has to second-guess.",
+        "",
+    ];
 }
