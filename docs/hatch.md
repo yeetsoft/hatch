@@ -700,6 +700,16 @@ own route (`PUT /api/hatch/statuses/{id}/parent-pulls`), for the same reason
 Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can
 set it either.
 
+Out of the one `ParentPulls` column that feeds the implementation column
+(`Columns.SendBack`), the pull carries only a child its parent already
+planned. A story under a running epic is analysed instead, since that
+analysis is the step that cuts a story into tasks, and so is a child whose
+description is over the `BriefLimit` its playbook sets in the implementation
+column, since the sendback hop would only carry it straight back. Every other
+`ParentPulls` column, `Backlog` included, pulls as it always has. Ticking it on
+the feeding column is what lets a task its story planned skip a second analysis;
+the seeded default leaves that column unticked (AR-52).
+
 `AgentFiles` marks the column a program's issue is born in — filing an issue
 reads the leftmost column, as it always has, except where an issue is being
 filed by a program (`ICallerIdentity.IsProgramAsync`) and a column carries
@@ -4477,7 +4487,13 @@ order:
    a shared story's branch holds it, at or past the implementation column, not
    terminal and not waiting on the story's pull request (HA-149, HA-1018) -
    and none of whose own [dependencies](#dependency) is unmet, which folds the
-   pull instead (HA-1017).
+   pull instead (HA-1017). Out of the column that feeds the implementation
+   column (`Columns.SendBack`) it carries a child only when the parent is not a
+   type that runs children (a task under a story, not a story under an epic)
+   and the child is not over the `BriefLimit` the implementation column's
+   playbook would send it back on; either is analysed instead, so the
+   sendback hop never carries a pulled child straight back (AR-52). Out of any
+   other `ParentPulls` column nothing narrows it.
 5. **sendback** — a childless issue standing in a column, to the right
    (strictly, in board order) of `Columns.SendBack` — the column whose own
    `Target` is the implementation column (`Columns.Implementation`),

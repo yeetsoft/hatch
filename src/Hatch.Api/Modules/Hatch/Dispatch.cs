@@ -317,7 +317,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+                        status.ParentPulls ? ImplementationPlaybook(candidatePlaybooks, statuses, issue, family) : null);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
@@ -1506,7 +1507,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
         List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
         EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit, int effectivePreApproval,
-        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now)
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
+        EfHatchPlaybook? implementationPlaybook = null)
     {
         var crosses = to is not null && to.Id != from.Id;
 
@@ -1530,7 +1532,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 return HopKinds.Under;
         }
 
-        if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
+        if (from.ParentPulls && family.Pulls(issue, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook))
+            return HopKinds.Parent;
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
             return HopKinds.SendBack;
@@ -1557,6 +1560,41 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         return null;
     }
+
+    /// <summary>
+    /// Whether a column ticked ParentPulls, being asked about a child it could
+    /// otherwise pull, holds it back for a session instead. Only the column that
+    /// feeds the implementation column (<see cref="Columns.SendBack"/>) ever
+    /// does: the analysis that column's playbook runs is what cuts a story into
+    /// tasks and plans a task, and a pull skips it. So a story under a running
+    /// epic is analysed, not carried (a task under a story was already planned
+    /// by that story's own pass); and so is a child whose brief is over the
+    /// limit that would send it straight back from the implementation column,
+    /// which a pull would only carry it into and out of again. Every other
+    /// ParentPulls column pulls as it always has.
+    /// </summary>
+    private static bool PullWithheld(
+        EfHatchIssue issue, EfHatchStatus from, FamilyGate.Parent? parent, FamilyGate family,
+        List<EfHatchStatus> statuses, EfHatchPlaybook? implementationPlaybook)
+    {
+        if (Columns.SendBack(statuses)?.Id != from.Id) return false;
+        if (parent is { } p && IssueTypeKinds.RunsChildren(p.Type)) return true;
+
+        return Columns.Implementation(statuses) is { } implementation
+            && SendBackEligible(issue, implementation, family, statuses, implementationPlaybook);
+    }
+
+    /// <summary>
+    /// The playbook the implementation column's own move would run for this
+    /// issue - the one whose <see cref="EfHatchPlaybook.BriefLimit"/>
+    /// <see cref="SendBackEligible"/> reads once the issue stands there. Null
+    /// where the board has no implementation column, or nothing covers it.
+    /// </summary>
+    public static EfHatchPlaybook? ImplementationPlaybook(
+        List<EfHatchPlaybook> playbooks, List<EfHatchStatus> statuses, EfHatchIssue issue, FamilyGate family) =>
+        Columns.Implementation(statuses) is { } implementation && Columns.Target(statuses, implementation) is { } onward
+            ? Match(playbooks, implementation.Id, onward.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId)
+            : null;
 
     /// <summary>
     /// Whether this issue, standing in <paramref name="from"/>, is the one
@@ -1708,6 +1746,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var playbook = Match(fileRows.Concat(tableRows).ToList(), from, to, type, isParent, projectId);
         return new PlaybookMatch(playbook, SourceOf(playbook), file);
     }
+
+    /// <summary>
+    /// <see cref="ImplementationPlaybook"/> for one issue, read the way
+    /// <see cref="MatchAsync"/> reads a playbook, and only asked where a parent
+    /// pull could ever consult it: out of a ParentPulls column.
+    /// </summary>
+    public async Task<EfHatchPlaybook?> ImplementationPlaybookAsync(
+        List<EfHatchStatus> statuses, EfHatchStatus from, EfHatchIssue issue, FamilyGate family, CancellationToken ct) =>
+        from.ParentPulls && Columns.Implementation(statuses) is { } implementation && Columns.Target(statuses, implementation) is { } onward
+            ? (await MatchAsync(implementation.Id, onward.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId, ct))?.Playbook
+            : null;
 
     /// <summary>
     /// The layer a matched row came from, decided from the row itself rather

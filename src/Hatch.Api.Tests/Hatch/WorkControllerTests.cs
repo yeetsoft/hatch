@@ -1385,6 +1385,128 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
+    // ---- Parent pulls out of the column that feeds implementation (AR-52) ----
+    //
+    // That column's playbook is the analysis that cuts a story into tasks and
+    // plans a task, so a pull carries only what was already planned: a task
+    // under a story, not a story under an epic, and not a child too long to
+    // stay in the implementation column once it got there.
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_CarriesATaskUnderARunningStory()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "planned by its story", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+
+        var moved = Value(await h.Work.HopWork(Key(task), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_DoesNotCarryAStoryUnderARunningEpic()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "opus"));
+        await h.TickParentPullsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "not yet cut into tasks", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+        Assert.Equal("opus", Value(await h.Work.GetWork(Key(story), null, default)).Playbook!.Model);
+
+        var result = await h.Work.HopWork(Key(story), null, null, null, default);
+        Assert.NotEqual(StatusCodes.Status200OK, (result.Result as ObjectResult)?.StatusCode ?? StatusCodes.Status200OK);
+        Assert.Equal(h.Todo, (await h.Db.Issues.FirstAsync(i => i.Id == story.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfBacklog_StillCarriesAStoryUnderARunningEpic_AndATaskOverTheLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "pulled off the backlog as ever", h.Inbox, parentId: epic.Id);
+        var parentStory = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "long", h.Inbox, parentId: parentStory.Id);
+        task.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        foreach (var key in new[] { Key(story), Key(task) })
+        {
+            var entry = queue.Single(e => e.Issue.Key == key);
+            Assert.Null(entry.Blocked);
+            Assert.True(entry.Hop);
+            Assert.Equal(HopKinds.Parent, entry.HopKind);
+        }
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_DoesNotCarryATaskOverTheImplementationColumnsBriefLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "opus"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "too long to stay in progress", h.Todo, parentId: story.Id);
+        task.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_StillFoldsOnAnUnmetDependency()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var t1 = await h.FileAsync("task", "first", h.Todo, parentId: story.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var second = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(t2));
+
+        Assert.Equal(BlockedKinds.Dependency, second.BlockedKind);
+        Assert.False(second.Hop);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_StillFoldsOnASiblingHoldingTheSharedBranch()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Equal(SharedBranchHold(first), entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
     // ---- WorkDto.NextBriefLimit ----
     //
     // The matched row's BriefLimit out of (destination column -> the column
