@@ -616,6 +616,8 @@ public record IssueClaimDto(
 /// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
 /// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
+/// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>.</param>
+/// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -670,7 +672,9 @@ public record IssueDto(
     IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
     string? DangerousOwn = null,
     string? Dangerous = null,
-    string? DangerousFrom = null)
+    string? DangerousFrom = null,
+    string? NoCode = null,
+    DateTimeOffset? NoCodeAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -1805,6 +1809,21 @@ public record ReleaseNoteRequest(string? Note)
 /// </summary>
 /// <param name="Reason">Why running the issue is dangerous. Trimmed before it is stored.</param>
 public record DangerousRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
+}
+
+/// <summary>
+/// An issue's declaration that it finished with no code. Empty or whitespace
+/// clears it; an absent or null reason is refused, so clearing is something the
+/// caller says.
+/// </summary>
+/// <param name="Reason">Why the issue needed no code. Trimmed before it is stored.</param>
+public record NoCodeRequest(string? Reason)
 {
     /// <summary>
     /// The longest reason the server will accept, measured after trimming. Here

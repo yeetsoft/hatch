@@ -627,6 +627,10 @@ export interface Issue {
   dangerous: string | null;
   /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** Why the issue finished with no code, or absent. See IssueDto.NoCode. */
+  noCode?: string | null;
+  /** When noCode was declared. See IssueDto.NoCodeAt. */
+  noCodeAt?: string | null;
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
@@ -983,6 +987,11 @@ export interface RunnerTagSource {
 /** Mirrors IssueRunnerTagsWriteRequest. */
 export interface IssueRunnerTagsWriteRequest {
   tags: string[];
+}
+
+/** Mirrors NoCodeRequest. */
+export interface NoCodeRequest {
+  reason: string | null;
 }
 
 /** Mirrors DangerousRequest. */

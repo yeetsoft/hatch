@@ -57,7 +57,7 @@ public class MergeCheckController(
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
-        var issue = await db.Issues.WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
         var remote = request.Remote?.Trim() ?? "";
@@ -169,6 +169,13 @@ public class MergeCheckController(
                 At = now,
             });
         }
+
+        // A branch on a repository the project counts shows the issue did not
+        // finish with no code. A repository it no longer binds shows nothing.
+        var counted = issue.Project!.Repositories.Count == 0 || issue.Project.Repositories.Any(r => r.Canonical == canonical);
+        if (NoCode.Declared(issue) && counted
+            && verdict is MergeVerdicts.Clean or MergeVerdicts.Conflicted or MergeVerdicts.Ambiguous)
+            issue.Events.Add(NoCode.SetAside(issue, new { remote = canonical, verdict }, actor, now));
 
         await db.SaveChangesAsync(ct);
 

@@ -645,6 +645,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
         issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -714,6 +716,8 @@ public class WorkController(
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+                issue.Events.Add(cleared);
         }
         else if (priorFails == 0)
         {
@@ -728,6 +732,8 @@ public class WorkController(
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+                issue.Events.Add(cleared);
         }
         else
         {
@@ -835,6 +841,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
 
         // A story that shares one pull request takes its waiting tasks with it:
@@ -876,6 +884,8 @@ public class WorkController(
                     task.Rank = issue.Rank + RankService.Gap * ++below;
                     task.StatusId = to.Id;
                     task.ClosedAt = Columns.ClosedAt(taskFrom, to, now, task.ClosedAt);
+                    if (NoCode.ClearOnMove(task, to, statuses, actor, now) is { } taskCleared)
+                        task.Events.Add(taskCleared);
                     task.UpdatedAt = now;
                 }
             }
@@ -970,6 +980,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(review.Id, ct);
         issue.StatusId = review.Id;
         issue.ClosedAt = Columns.ClosedAt(from, review, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, review, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -1050,6 +1062,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 

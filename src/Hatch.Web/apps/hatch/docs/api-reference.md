@@ -258,6 +258,7 @@ not mint an issue number - try again".
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories only |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
+| no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
@@ -265,12 +266,14 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's own say over its
 project's default, which gives a key nothing it could not already do by
 filing the story that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
-dangerous is the same kind of statement; landing
+dangerous is the same kind of statement; no-code
+is a statement of fact about the work, with the same reach as recording a pull
+request through `PATCH`, which is also key-open; landing
 is a fact a session or a poll reports about a repository and a sha, not a
 power over the board. `stall` carries no
 `[RequireRole]` at all, on the method or the class - it is reachable by
@@ -306,7 +309,13 @@ a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one
 over 200 characters after trimming; `404` for no such key; re-sending the reason
-it already holds writes nothing. `pre-approval` and
+it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
+clear) and one over 200 characters after trimming, 409s while a pull request is
+recorded or a counted merge check found a branch, and `404` for no such key;
+re-sending the reason it already holds writes nothing. A later branch-finding
+merge check or a recorded pull request clears the declaration with a
+`no_code_set_aside` event, and a move into a column left of review clears it
+with a `no_code_changed` one. `pre-approval` and
 `express` gate by what is being set: raising to or lowering from
 `preapproved` needs an owner or approver, 403 otherwise, since that is the
 approve press given in advance; every other transition is gated like an
