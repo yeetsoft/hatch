@@ -6,6 +6,7 @@ import {
   boundsOf,
   boundsProblem,
   boundsRequest,
+  dangerousLabel,
   drivesLabel,
   groupByHost,
   isIssueKeyShape,
@@ -42,6 +43,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   repositories: [],
   tags: [],
   projects: [],
+  refusesDangerous: false,
   drives: [],
   clones: null,
   mine: null,
@@ -255,6 +257,16 @@ describe('projectsLabel', () => {
   });
 });
 
+describe('dangerousLabel', () => {
+  it('says nothing for a runner that takes dangerous work', () => {
+    expect(dangerousLabel(runner())).toBeNull();
+  });
+
+  it('says the phrase for a runner that refuses it', () => {
+    expect(dangerousLabel(runner({ refusesDangerous: true }))).toBe('Refuses dangerous work');
+  });
+});
+
 describe('tagsLabel', () => {
   it('is null for a runner that has named none', () => {
     expect(tagsLabel(runner())).toBeNull();
@@ -299,7 +311,7 @@ describe('MAX_SPEND_HINT', () => {
 
 describe('the bounds form', () => {
   it('shows an unbounded runner as empty boxes rather than as zeroes', () => {
-    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '' });
+    expect(boundsOf(runner())).toEqual({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '', refusesDangerous: false });
   });
 
   it('round-trips what the row holds', () => {
@@ -310,6 +322,7 @@ describe('the bounds form', () => {
       untilAt: '2026-09-09T06:00:00Z',
       tags: ['gpu', 'fast'],
       projects: ['HA', 'AER'],
+      refusesDangerous: true,
     });
 
     expect(boundsOf(bounded)).toEqual({
@@ -319,6 +332,7 @@ describe('the bounds form', () => {
       untilAt: '2026-09-09T06:00:00Z',
       tags: 'gpu\nfast',
       projects: 'HA\nAER',
+      refusesDangerous: true,
     });
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
@@ -343,24 +357,41 @@ describe('the bounds form', () => {
     expect(boundsChanged({ ...boundsOf(bounded), projects: 'AER\nHA' }, bounded)).toBe(true);
   });
 
+  it('notices the refuse-dangerous box flipping, and only that', () => {
+    const open = runner();
+    const refusing = runner({ refusesDangerous: true });
+
+    expect(boundsChanged(boundsOf(open), open)).toBe(false);
+    expect(boundsChanged({ ...boundsOf(open), refusesDangerous: true }, open)).toBe(true);
+    expect(boundsChanged({ ...boundsOf(refusing), refusesDangerous: false }, refusing)).toBe(true);
+  });
+
+  it('sends refusesDangerous either way, so an unticked box can turn it off', () => {
+    const base = boundsOf(runner());
+
+    expect(boundsRequest({ ...base, refusesDangerous: true }).refusesDangerous).toBe(true);
+    expect(boundsRequest({ ...base, refusesDangerous: false }).refusesDangerous).toBe(false);
+  });
+
   it('sends every field, so a cleared box clears the cap', () => {
     // The tri-state, from the other end: a field left out of the request means
     // "leave it alone", so an emptied box that was not sent would silently keep
     // the cap it was clearing.
-    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ' })).toEqual({
+    expect(boundsRequest({ under: ' AER-930 ', maxRuns: '', maxSpend: '40', untilAt: '', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ', refusesDangerous: true })).toEqual({
       under: 'AER-930',
       maxRuns: '',
       maxSpend: '40',
       untilAt: '',
       tags: ['gpu', 'fast'],
       projects: ['HA', 'AER'],
+      refusesDangerous: true,
     });
   });
 
   it('says an until needs an hour before the server has to', () => {
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09', tags: '', projects: '' })).toContain('an hour');
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z', tags: '', projects: '' })).toBeNull();
-    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '' })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09', tags: '', projects: '', refusesDangerous: false })).toContain('an hour');
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '2026-09-09T06:00:00Z', tags: '', projects: '', refusesDangerous: false })).toBeNull();
+    expect(boundsProblem({ under: '', maxRuns: '', maxSpend: '', untilAt: '', tags: '', projects: '', refusesDangerous: false })).toBeNull();
   });
 });
 
