@@ -635,6 +635,8 @@ internal partial class Program
         "  HATCH_KEY          hatch_ak_... Optional against a Hatch with its wall off,",
         "                     where calls name themselves with a runner header instead",
         "  HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH",
+        "  HATCH_CLAUDE_TOOLS the tools an unattended claude session starts with (default: Bash,Read,",
+        "                     Edit,Write,Grep,Glob,Monitor,TaskStop; `default` is claude's full set)",
         "  HATCH_CODEX_BIN    the codex CLI, if it is not on PATH",
         "  HATCH_GROK_BIN     the grok CLI, if it is not on PATH",
         "  HATCH_AGENT        which agent spawns a session: claude, codex, grok or ollama (default: claude)",
