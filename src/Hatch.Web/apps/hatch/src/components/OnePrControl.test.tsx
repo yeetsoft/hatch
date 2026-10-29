@@ -21,12 +21,17 @@ describe('onePrSaid', () => {
     expect(onePrSaid(story({ onePr: false, onePrOwn: false }))).toBe('Off · set on this story');
   });
 
+  it('explains a bug as it does a story', () => {
+    expect(onePrSaid(story({ type: 'bug' }))).toBe("Off · the project's default");
+    expect(onePrSaid(story({ type: 'bug', onePr: true, onePrOwn: true }))).toBe('On · set on this bug');
+  });
+
   it('names the story a task inherited it from', () => {
     expect(onePrSaid({ type: 'task', onePr: true, onePrOwn: null, onePrFrom: 'HA-5' })).toBe('On · inherited from HA-5');
   });
 
   it('says so where nothing sits above', () => {
-    expect(onePrSaid({ type: 'task', onePr: false, onePrOwn: null, onePrFrom: null })).toBe('Off · not under a story');
+    expect(onePrSaid({ type: 'task', onePr: false, onePrOwn: null, onePrFrom: null })).toBe('Off · not under a story or bug');
   });
 });
 
@@ -86,14 +91,16 @@ describe('OnePrSteps', () => {
 });
 
 describe('onePrToFile', () => {
-  it('files the setting for a story', () => {
-    for (const setting of ['inherit', 'on', 'off'] as OnePrSetting[]) {
-      expect(onePrToFile('story', setting)).toBe(setting);
+  it('files the setting for a story or a bug', () => {
+    for (const type of ['story', 'bug'] as const) {
+      for (const setting of ['inherit', 'on', 'off'] as OnePrSetting[]) {
+        expect(onePrToFile(type, setting)).toBe(setting);
+      }
     }
   });
 
   it('files nothing for any other type, whatever the setting', () => {
-    for (const type of ISSUE_TYPES.filter((t) => t !== 'story')) {
+    for (const type of ISSUE_TYPES.filter((t) => t !== 'story' && t !== 'bug')) {
       for (const setting of ['inherit', 'on', 'off'] as OnePrSetting[]) {
         expect(onePrToFile(type, setting)).toBeUndefined();
       }

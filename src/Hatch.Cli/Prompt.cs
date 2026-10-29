@@ -206,7 +206,7 @@ public static class Prompt
 
         lines.AddRange(Tail(
             key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory,
-            sharesPullRequest: issue.Type == "story" && issue.OnePr,
+            sharesPullRequest: issue.Type is "story" or "bug" && issue.OnePr,
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
@@ -612,7 +612,7 @@ public static class Prompt
         }),
         ..(deniesGitWrites ? NoPullRequest(key)
             : trunkLanding ? Landing(key)
-            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
+            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null)
             : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
         "",
@@ -880,7 +880,7 @@ public static class Prompt
     /// is only ever an absolute http(s) one; without it the first line is the
     /// bare key, and the session is told not to make a link up.
     /// </summary>
-    private static string[] PullRequest(string key, string? issueUrl, bool sharesPullRequest = false)
+    private static string[] PullRequest(string key, string? issueUrl, string? sharedType = null)
     {
         var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
             && url.Scheme is "http" or "https";
@@ -889,11 +889,11 @@ public static class Prompt
         [
             "## Opening a pull request",
             "",
-            .. sharesPullRequest
+            .. sharedType is not null
                 ?
                 [
-                    "This story's tasks share its branch, and none of them opens a pull request of its",
-                    "own. If this increment is the story's closeout - its tasks are pushed to the branch",
+                    $"This {sharedType}'s tasks share its branch, and none of them opens a pull request of its",
+                    $"own. If this increment is the {sharedType}'s closeout - its tasks are pushed to the branch",
                     "above - the one pull request for all of them is yours to open, on that branch,",
                     "unless `hatch pr` on this ticket already names one.",
                     "",

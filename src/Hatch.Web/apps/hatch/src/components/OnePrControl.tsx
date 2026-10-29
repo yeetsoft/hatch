@@ -16,7 +16,7 @@ const CHOICES: OnePrChoice[] = [
   {
     name: 'on',
     word: 'On',
-    title: "This story's tasks share its branch and one pull request, whatever the project's default is.",
+    title: "Its tasks share its branch and one pull request, whatever the project's default is.",
   },
   {
     name: 'off',
@@ -67,12 +67,12 @@ export function OnePrSteps({
 }
 
 /**
- * *Do this story's tasks share its branch and one pull request?* A group of
- * three buttons - project default, on, off - with the story's own setting
+ * *Do this story's or bug's tasks share its branch and one pull request?* A group of
+ * three buttons - project default, on, off - with its own setting
  * marked, and a line beneath saying what is in effect and where it comes from.
  *
  * Shaped after `PreApprovalControl`'s band, minus the pill: there are three
- * answers and a story has one at all times, so they are all drawn and the
+ * answers and a story or a bug has one at all times, so they are all drawn and the
  * current one is the marked, disabled step. Unlike priority and pre-approval it
  * is not gated on the caller being a person - the write is open to an API key
  * (see `IssueOnePrController`), so a control it can use is always offered.

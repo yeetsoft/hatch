@@ -290,6 +290,18 @@ public sealed class SharedBranchTests
     }
 
     [Fact]
+    public void A_bug_that_shares_is_told_the_one_pull_request_is_its_to_open()
+    {
+        var bug = Fixtures.Issue(Story, type: "bug") with { OnePr = true };
+
+        var prompt = Prompt.Compose(Fixtures.Work(Story, issue: bug));
+
+        Assert.Contains("This bug's tasks share its branch, and none of them opens a pull request of its", prompt, StringComparison.Ordinal);
+        Assert.Contains("If this increment is the bug's closeout", prompt, StringComparison.Ordinal);
+        Assert.Contains("the one pull request for all of them is yours to open", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_story_that_does_not_share_gets_the_ordinary_section()
     {
         var prompt = Prompt.Compose(Fixtures.Work(Story, issue: Fixtures.Issue(Story, type: "story")));

@@ -441,15 +441,15 @@ the refusal puts as the other issue "is already waiting on this issue".
 hatch one-pr AER-5 [on|off|inherit]
 ```
 
-Whether a story's tasks share the story's branch and one pull request. With
+Whether a story's or a bug's tasks share its branch and one pull request. With
 only the key it reads. With a second argument it writes:
 
 - `on` shares them, whatever the project's default is.
 - `off` does not, whatever the project's default is.
 - `inherit` follows the project's default.
 
-A story only, and it is locked once any task under it has started: set it when
-the story is filed, before its tasks are worked.
+A story or a bug only, and it is locked once any task under it has started:
+set it when it is filed, before its tasks are worked.
 
 ### dangerous
 
