@@ -1335,6 +1335,14 @@ public record ReviewDto(
 /// an agent's to fix, so a row here is a person's, every time. Defaults to null
 /// so an older client still reads.
 /// </param>
+/// <param name="NoCodeHeld">
+/// The review column's issues that declared they were finished with no code
+/// and are not pre-approved, so no pull request will ever be recorded and the
+/// loop will not close them: each with the reason it gave. Not counted in
+/// <paramref name="InReviewWithoutPullRequest"/>: it is not waiting on a pull
+/// request, a person closes it. A pre-approved one is closed by the board and
+/// is not listed. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="Deadlocked">
 /// Every issue the work queue marks deadlocked - a ring of dependency edges,
 /// or a wait on a parent's gate, that can never clear without a person - judged
@@ -1361,6 +1369,7 @@ public record AttentionDto(
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
+    IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null);
 
@@ -1453,6 +1462,13 @@ public record ApprovedWaitingDto(string Key, string Title, string Type, string? 
 /// </summary>
 /// <param name="Sentence">The judge's own words for why it is held.</param>
 public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One review-column issue that declared it finished with no code and is not
+/// pre-approved, so a person closes it.
+/// </summary>
+/// <param name="Reason">The reason the declaration gave.</param>
+public record NoCodeHeldDto(string Key, string Title, string Type, string Reason);
 
 /// <summary>
 /// One issue the work queue marks deadlocked: waiting, directly or through a
@@ -2136,7 +2152,7 @@ public static class HopKinds
 
     /// <summary>
     /// A pre-approved issue in review with no pull request, whose children are
-    /// all done - see HA-472.
+    /// all done, or that declared it finished with no code - see HA-472.
     /// </summary>
     public const string Close = "close";
 }

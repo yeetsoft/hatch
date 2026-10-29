@@ -110,7 +110,8 @@ are seven kinds, and each is a condition and a landing column:
   that would merge cleanly or only needs bringing current. It is carried into
   the column ticked **Merges PR**.
 - **close** — a pre-approved parent in review with no pull request recorded and
-  every child done. It is carried into the first terminal column to review's
+  every child done, or a pre-approved ticket that declared it was finished with
+  no code. It is carried into the first terminal column to review's
   right.
 
 They are asked in that order, and the order matters: nothing that already

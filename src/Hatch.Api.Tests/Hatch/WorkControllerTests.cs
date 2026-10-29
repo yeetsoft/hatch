@@ -5805,6 +5805,141 @@ public class WorkControllerTests
         Assert.Contains("no runner has checked its branch", entry.Blocked);
     }
 
+    // ---- A ticket finished with no code (AR-54) ----
+    //
+    // The declaration is a claim that the work needed no branch. A
+    // pre-approved declared row is the close hop's whether or not anything is
+    // filed under it; one that is not stands in review for a person.
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedChildlessReviewRowThatDeclaredNoCodeAsACloseHopToDone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task HopWork_OnADeclaredNoCodeRow_ClosesItAndSaysSoOnTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Closed by its pre-approval on its own row: finished with no code - the setting was already right.",
+            comment.Body);
+        var e = Assert.Single(row.Events, ev => ev.Kind == EfHatchIssueEvent.StatusChanged);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("preapproved").GetBoolean());
+        Assert.True(payload.GetProperty("nocode").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HopWork_OnADeclaredNoCodeRow_NamesTheAncestorWhosePreApprovalCarriedIt()
+    {
+        var h = await NewAsync();
+        var grandparent = await h.FileAsync("story", "the pre-approval's own row", h.Todo);
+        await h.PreApproveAsync(grandparent);
+        var issue = await h.FileAsync("task", "needed no change", h.Review, parentId: grandparent.Id);
+        await h.DeclareNoCodeAsync(issue, "already done upstream");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed by its pre-approval from {Key(grandparent)}: finished with no code - already done upstream.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task ATaskThatDependsOnADeclaredNoCodeRow_IsDispatchedOnceTheCloseHopIsTaken()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("task", "needed no change", h.Review, rank: 1024);
+        await h.PreApprovedAsync(first);
+        await h.DeclareNoCodeAsync(first, "the setting was already right");
+        var second = await h.FileAsync("task", "waits on the first", h.Todo, rank: 1024);
+        await h.DependsAsync(second, first);
+
+        var waiting = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
+        Assert.NotNull(waiting.Blocked);
+
+        await h.Work.HopWork(Key(first), null, null, null, default);
+
+        Assert.Equal(Key(second), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnExpressOnlyReviewRowThatDeclaredNoCode_IsFoldedForAPersonToClose()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.ExpressAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(NoCode.Sentence, entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeRowWithAnOpenChild_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "declared, but not finished", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the children are the work");
+        await h.FileAsync("task", "still open", h.Todo, parentId: issue.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task OnePr_ADeclaredNoCodeTask_IsNotWaitingOnTheStorysPullRequest()
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrStoryAsync(h);
+        await h.DeclareNoCodeAsync(task, "nothing to push");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+        Assert.Equal(NoCode.Sentence, entry.Blocked);
+    }
+
+    [Fact]
+    public async Task OnePr_APreApprovedDeclaredNoCodeTask_IsACloseHop()
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrStoryAsync(h);
+        await h.PreApprovedAsync(task);
+        await h.DeclareNoCodeAsync(task, "nothing to push");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Null(entry.Blocked);
+    }
+
     [Fact]
     public async Task APreApprovedParentWithADoneChildButAPullRequest_IsNotACloseHop()
     {
@@ -12152,6 +12287,18 @@ public class WorkControllerTests
         public async Task PreApproveAsync(EfHatchIssue issue)
         {
             issue.PreApproval = PreApprovalLevels.PreApproved;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The no-code declaration, written straight onto the row - what the
+        /// route that writes it accepts and refuses is
+        /// <see cref="IssueNoCodeControllerTests"/>'s business.
+        /// </summary>
+        public async Task DeclareNoCodeAsync(EfHatchIssue issue, string reason)
+        {
+            issue.NoCode = reason;
+            issue.NoCodeAt = Now;
             await Db.SaveChangesAsync();
         }
 

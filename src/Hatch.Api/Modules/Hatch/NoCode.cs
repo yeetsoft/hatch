@@ -15,7 +15,10 @@ public static class NoCode
     /// <summary>The sentence a judge gives for an issue that declared it, so every reader says it the same way.</summary>
     public const string Sentence = "finished with no code - a person closes it";
 
-    public static bool Declared(EfHatchIssue issue) => !string.IsNullOrEmpty(issue.NoCode);
+    public static bool Declared(EfHatchIssue issue) => Declared(issue.NoCode);
+
+    /// <summary>The same question of a projected <see cref="EfHatchIssue.NoCode"/>, for a caller that selected the column and not the row.</summary>
+    public static bool Declared(string? noCode) => !string.IsNullOrEmpty(noCode);
 
     /// <summary>
     /// Clears the declaration when the issue is moved into a column left of the

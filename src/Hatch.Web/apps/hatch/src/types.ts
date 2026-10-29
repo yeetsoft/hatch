@@ -1577,6 +1577,15 @@ export interface LandingHeld {
   sentence: string;
 }
 
+/** An issue in review that declared it was finished with no code and is not
+    pre-approved, so a person closes it. Mirrors NoCodeHeldDto. */
+export interface NoCodeHeld {
+  key: string;
+  title: string;
+  type: string;
+  reason: string;
+}
+
 /** An issue the board has deadlocked, with the judge's own sentence saying
     why. Mirrors DeadlockedDto. */
 export interface Deadlocked {
@@ -1646,6 +1655,7 @@ export interface Attention {
       the judge's own sentence saying why - a person's to fix, every time.
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
+  noCodeHeld?: NoCodeHeld[];
   /** The issues the board has deadlocked, with the judge's own sentence saying
       why - a person's to fix, every time. Absent from a board that predates it. */
   deadlocked?: Deadlocked[];

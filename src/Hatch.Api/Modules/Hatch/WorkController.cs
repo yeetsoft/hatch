@@ -600,6 +600,7 @@ public class WorkController(
                 from, target, ("sendback", true),
                 ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
             HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            HopKinds.Close when NoCode.Declared(issue) => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
             HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
             _ => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("express", true))),
         };
@@ -635,9 +636,13 @@ public class WorkController(
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = preApprovalFromKey is null
-                    ? "Closed by its pre-approval on its own row: every child is done."
-                    : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
+                Body = NoCode.Declared(issue)
+                    ? preApprovalFromKey is null
+                        ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
+                        : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
+                    : preApprovalFromKey is null
+                        ? "Closed by its pre-approval on its own row: every child is done."
+                        : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }

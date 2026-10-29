@@ -1496,7 +1496,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// carried by the second arm only on the move that lands it in the
     /// implementation column, so the move off the backlog stays a person's
     /// (HA-1069); a sub-epic whose parent is not a running epic is never carried
-    /// by it (HA-202). The order
+    /// by it (HA-202). Beside the merge arm stands the close arm (HA-472): a
+    /// pre-approved issue in review with no pull request and a column to close
+    /// to, whose children are all done, or that declared it finished with no
+    /// code (<see cref="NoCode"/>) - a declared issue with open children still
+    /// waits for them. The order
     /// matters only where a board ticks both ExpressSkips and ParentPulls on
     /// the same column and an epic stands exactly in the implementation
     /// column - see HA-113's own decision on the overlap. Never on a move that
@@ -1552,7 +1556,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && Columns.Closes(statuses, from) is not null
             && effectivePreApproval == PreApprovalLevels.PreApproved
             && issue.PullRequestUrl is not { Length: > 0 }
-            && family.Children(issue.Id).Count > 0
+            && (family.Children(issue.Id).Count > 0 || NoCode.Declared(issue))
             && (IssueTypeKinds.RunsChildren(issue.Type)
                 ? family.EpicFold(issue.Id, statuses) is null
                 : family.OpenChildren(issue.Id).Count == 0))
@@ -2095,7 +2099,7 @@ public sealed class PriorityTree
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
-                i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "", Terminal = i.Status!.IsTerminal,
+                i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous,
             })
             .ToListAsync(ct);
@@ -2284,7 +2288,9 @@ public sealed class PriorityTree
     /// on to open the one pull request - and it is not finished as far as the
     /// board is concerned: it ends in a terminal column only when that pull
     /// request merges. A task with a pull request of its own is not waiting on
-    /// the story's. See <see cref="SharedStoryOf"/> for who shares, and
+    /// the story's, and neither is one that declared itself finished with no
+    /// code (<see cref="NoCode"/>): it has nothing on the story's branch, so it
+    /// closes on its pre-approval or waits in review on its own. See <see cref="SharedStoryOf"/> for who shares, and
     /// <c>docs/hatch.md</c>, "One pull request".
     /// </remarks>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) =>
