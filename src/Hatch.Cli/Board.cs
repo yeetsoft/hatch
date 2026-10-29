@@ -510,6 +510,10 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public Task<IssueDto?> SetDangerousAsync(string key, string reason, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/dangerous", new DangerousRequest(reason), ct);
 
+    /// <summary>Declares the issue finished with no code, with the reason; an empty reason clears the declaration.</summary>
+    public Task<IssueDto?> SetNoCodeAsync(string key, string reason, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/no-code", new NoCodeRequest(reason), ct);
+
     /// <summary>The release note a session wrote for the issue, written under the claim the runner holds.</summary>
     public Task<IssueDto?> ReleaseNoteAsync(string key, string note, Guid heldToken, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(
