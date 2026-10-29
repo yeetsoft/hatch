@@ -221,7 +221,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             siblings.Add(row.Id);
         }
 
-        // Which tasks share a story's branch, and which story: two of them
+        // Which tasks share a parent's branch, and which parent: two of them
         // working at once push to the same branch. Read only when something
         // holds a claim at all - a lineage with nobody in it never asks.
         var shared = new Dictionary<long, long>();
@@ -496,8 +496,8 @@ public sealed class ClaimLineage
             generation = next;
         }
 
-        // Then sideways, for a task whose story shares one branch: a sibling
-        // under the same story that somebody is working would be pushing to the
+        // Then sideways, for a task whose parent shares one branch: a sibling
+        // under the same parent that somebody is working would be pushing to the
         // very branch this one would. Claimed ones only, in the order they were filed, so the
         // sentence names the same sibling on every pass.
         if (_sharedStory.TryGetValue(issueId, out var story))
@@ -505,7 +505,7 @@ public sealed class ClaimLineage
             foreach (var id in _live.Keys.Where(id => id != issueId && _sharedStory.GetValueOrDefault(id, -1) == story)
                          .Order())
             {
-                if (Named(id, heldToken, "sharing this story's branch") is { } beside) return beside;
+                if (Named(id, heldToken, "sharing its parent's branch") is { } beside) return beside;
             }
         }
 

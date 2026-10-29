@@ -70,8 +70,10 @@ The hops the board makes are:
   is the one hop that moves a ticket left.
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
-- **Close** — a pre-approved parent in review with every child done goes into
-  the first Done column to its right.
+- **Close** — a pre-approved parent in review with every child done, or a
+  pre-approved ticket that declared it was finished with no code, goes into the
+  first Done column to its right. A declared ticket that is not pre-approved
+  waits in review for a person to close it.
 
 [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
 across every column and hop above, start to finish.

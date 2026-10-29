@@ -1967,6 +1967,30 @@ public class ProjectsControllerTests
     }
 
     [Fact]
+    public async Task ChangingTheDefault_FixesAStartedBugAtTheValueItWasReading_AsItDoesAStory()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        await SetDefaultAsync(h, true);
+        var bug = await IssueAsync(h, "bug", doing.Id);
+        await IssueAsync(h, "task", doing.Id, bug.Id);
+        var notStarted = await IssueAsync(h, "bug", todo.Id);
+        await IssueAsync(h, "task", todo.Id, notStarted.Id);
+
+        await SetDefaultAsync(h, false);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == bug.Id);
+        Assert.True(row.OnePullRequest);
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.OnePrChanged, e.Kind);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("inherit", payload.GetProperty("from").GetString());
+        Assert.Equal("on", payload.GetProperty("to").GetString());
+        Assert.Null((await h.Db.Issues.SingleAsync(i => i.Id == notStarted.Id)).OnePullRequest);
+    }
+
+    [Fact]
     public async Task ChangingTheDefault_ReachesATaskStartedBelowABug()
     {
         var h = await NewAsync();
@@ -1979,6 +2003,7 @@ public class ProjectsControllerTests
 
         h.Db.ChangeTracker.Clear();
         Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == story.Id)).OnePullRequest);
+        Assert.False((await h.Db.Issues.SingleAsync(i => i.Id == bug.Id)).OnePullRequest);
     }
 
     [Fact]

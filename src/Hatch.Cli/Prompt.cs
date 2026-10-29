@@ -206,7 +206,7 @@ public static class Prompt
 
         lines.AddRange(Tail(
             key, to, work.IssueUrl, repositories, issue.PreApproval, sharedStory,
-            sharesPullRequest: issue.Type == "story" && issue.OnePr,
+            sharesPullRequest: issue.Type is "story" or "bug" && issue.OnePr,
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
@@ -612,7 +612,7 @@ public static class Prompt
         }),
         ..(deniesGitWrites ? NoPullRequest(key)
             : trunkLanding ? Landing(key)
-            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest)
+            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null)
             : SharedPullRequest(key, sharedStory, to)),
         "## When you cannot decide",
         "",
@@ -821,6 +821,7 @@ public static class Prompt
         $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
         "merge, until the story's pull request does.",
         "",
+        .. NoCodeDeclaration(key),
     ];
 
     /// <summary>
@@ -879,7 +880,7 @@ public static class Prompt
     /// is only ever an absolute http(s) one; without it the first line is the
     /// bare key, and the session is told not to make a link up.
     /// </summary>
-    private static string[] PullRequest(string key, string? issueUrl, bool sharesPullRequest = false)
+    private static string[] PullRequest(string key, string? issueUrl, string? sharedType = null)
     {
         var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
             && url.Scheme is "http" or "https";
@@ -888,11 +889,11 @@ public static class Prompt
         [
             "## Opening a pull request",
             "",
-            .. sharesPullRequest
+            .. sharedType is not null
                 ?
                 [
-                    "This story's tasks share its branch, and none of them opens a pull request of its",
-                    "own. If this increment is the story's closeout - its tasks are pushed to the branch",
+                    $"This {sharedType}'s tasks share its branch, and none of them opens a pull request of its",
+                    $"own. If this increment is the {sharedType}'s closeout - its tasks are pushed to the branch",
                     "above - the one pull request for all of them is yours to open, on that branch,",
                     "unless `hatch pr` on this ticket already names one.",
                     "",
@@ -919,6 +920,29 @@ public static class Prompt
             "",
             $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
             "",
+            .. NoCodeDeclaration(key),
         ];
     }
+
+    /// <summary>
+    /// What a session is told when its increment changed nothing in the tree: there is
+    /// no pull request to open, so it says so rather than pushing an empty branch. One
+    /// constant for the pull request section and the shared-branch one, so a test can
+    /// assert both. A task on its story's branch declares too, and then does not wait on
+    /// the story's pull request. (<c>Landing</c> is left out: the declaration is the
+    /// review column's, and a trunk-landing project has no review.)
+    /// </summary>
+    private static string[] NoCodeDeclaration(string key) =>
+    [
+        "If this increment changed nothing in the tree - a measurement, an investigation, a",
+        "finding that is the comment - there is no pull request to open. Say so instead:",
+        "",
+        "```",
+        $"hatch pr {key} --none \"<one line: what this increment produced, and where it is>\"",
+        "```",
+        "",
+        "Do not push an empty branch to stand in for one: a branch with nothing on it is a",
+        "branch the board has to second-guess.",
+        "",
+    ];
 }

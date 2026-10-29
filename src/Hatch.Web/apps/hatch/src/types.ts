@@ -627,6 +627,10 @@ export interface Issue {
   dangerous: string | null;
   /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** Why the issue finished with no code, or absent. See IssueDto.NoCode. */
+  noCode?: string | null;
+  /** When noCode was declared. See IssueDto.NoCodeAt. */
+  noCodeAt?: string | null;
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
@@ -983,6 +987,11 @@ export interface RunnerTagSource {
 /** Mirrors IssueRunnerTagsWriteRequest. */
 export interface IssueRunnerTagsWriteRequest {
   tags: string[];
+}
+
+/** Mirrors NoCodeRequest. */
+export interface NoCodeRequest {
+  reason: string | null;
 }
 
 /** Mirrors DangerousRequest. */
@@ -1568,6 +1577,15 @@ export interface LandingHeld {
   sentence: string;
 }
 
+/** An issue in review that declared it was finished with no code and is not
+    pre-approved, so a person closes it. Mirrors NoCodeHeldDto. */
+export interface NoCodeHeld {
+  key: string;
+  title: string;
+  type: string;
+  reason: string;
+}
+
 /** An issue the board has deadlocked, with the judge's own sentence saying
     why. Mirrors DeadlockedDto. */
 export interface Deadlocked {
@@ -1637,6 +1655,7 @@ export interface Attention {
       the judge's own sentence saying why - a person's to fix, every time.
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
+  noCodeHeld?: NoCodeHeld[];
   /** The issues the board has deadlocked, with the judge's own sentence saying
       why - a person's to fix, every time. Absent from a board that predates it. */
   deadlocked?: Deadlocked[];

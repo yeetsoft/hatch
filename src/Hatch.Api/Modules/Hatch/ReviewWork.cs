@@ -19,6 +19,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// often gets no CI run at all.</para>
 ///
 /// <list type="number">
+/// <item>An issue that declared it finished with no code (<see cref="NoCode"/>):
+/// folded, <i>finished with no code - a person closes it</i>. Asked first, since
+/// a declared issue has no counted branch-finding check to say anything else -
+/// the declaration is set aside the moment one exists - so this never hides a
+/// conflict or a failed build.</item>
 /// <item>Any <c>conflicted</c> merge check: <see cref="WorkKinds.Conflicts"/>.</item>
 /// <item>No merge check, an ambiguous branch, or no branch at all: folded, with
 /// the sentence each has always had. A build is about a branch, and these are
@@ -63,6 +68,8 @@ public static class ReviewWork
     public static Judgement Judge(
         EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds)
     {
+        if (NoCode.Declared(issue)) return Fold(NoCode.Sentence);
+
         var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
 
         var counted = Counted(bound, merges);

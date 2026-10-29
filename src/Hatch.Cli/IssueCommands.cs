@@ -75,14 +75,16 @@ public sealed class IssueCommands(Cli cli)
 
     public static readonly string[] PrUsage =
     [
-        "usage: hatch pr AER-12 [<url>|--clear]",
+        "usage: hatch pr AER-12 [<url>|--clear|--none \"reason\"]",
         "",
-        "  hatch pr AER-12              where it is being reviewed, and nothing else",
-        "  hatch pr AER-12 https://...  ...or say where, having opened one",
-        "  hatch pr AER-12 --clear      ...or take it off the one it has",
+        "  hatch pr AER-12                 where it is being reviewed, and nothing else",
+        "  hatch pr AER-12 https://...     ...or say where, having opened one",
+        "  hatch pr AER-12 --clear         ...or take it off the one it has",
+        "  hatch pr AER-12 --none \"why\"   ...or declare it finished with no code",
         "",
         "  The read prints the URL alone, so `open \"$(hatch pr AER-12)\"` is the",
-        "  whole of \"show me the review\".",
+        "  whole of \"show me the review\". An issue that declared no code prints the",
+        "  declaration instead. The reason is at most 200 characters.",
     ];
 
     public static readonly string[] LandedUsage =
@@ -159,6 +161,9 @@ public sealed class IssueCommands(Cli cli)
         // Said only where the issue is flagged, by itself or by an ancestor,
         // like the lines above it.
         if (DangerousCommand.Draw(issue) is { } dangerous) cli.Say.Line(dangerous);
+
+        // Said only where the issue declared it finished with no code.
+        if (issue.NoCode is { Length: > 0 } noCode) cli.Say.Line($"no code:      {noCode}");
 
         // Said only where it is on, or where a story has been told one way or
         // the other; a project that never turned it on has nothing to report.
@@ -357,9 +362,34 @@ public sealed class IssueCommands(Cli cli)
     public async Task<int> PrAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, PrUsage);
-        if (args.Length is 0 or > 2) return Usage.Refuse(cli.Say, "pr takes one issue key and one url", PrUsage);
+        if (args.Length is 0 or > 3) return Usage.Refuse(cli.Say, "pr takes one issue key and one url", PrUsage);
 
         var key = args[0];
+
+        // The one form with a third argument: the declaration, and its reason.
+        // A refusal from the server (a branch or a pull request already
+        // exists) is a HatchException, which the program prints and exits 1 on.
+        if (args.Length == 3 || args[^1] == "--none")
+        {
+            if (args.Length != 3 || args[1] != "--none")
+                return Usage.Refuse(cli.Say, "pr --none takes one issue key and one reason", PrUsage);
+
+            var reason = args[2].Trim();
+            if (reason.Length == 0)
+            {
+                cli.Say.Complain("hatch: --none needs a reason - say what this increment produced instead of code");
+                return 1;
+            }
+            if (reason.Length > NoCodeRequest.MaxLength)
+            {
+                cli.Say.Complain($"hatch: the reason is {reason.Length} characters; the limit is {NoCodeRequest.MaxLength}");
+                return 1;
+            }
+
+            var declared = await cli.Board.SetNoCodeAsync(key, reason, ct);
+            cli.Say.Line($"{declared?.Key ?? key}: finished with no code - {declared?.NoCode ?? reason}");
+            return 0;
+        }
 
         // No second argument is a read. Distinguished by the count rather than
         // by the value, so that an empty one is the mistake below and not a
@@ -369,6 +399,12 @@ public sealed class IssueCommands(Cli cli)
             var issue = await cli.Board.IssueAsync(key, ct);
             if (issue?.PullRequestUrl is not { Length: > 0 } found)
             {
+                if (issue?.NoCode is { Length: > 0 } declaration)
+                {
+                    cli.Say.Line($"{key}: finished with no code - {declaration}");
+                    return 0;
+                }
+
                 cli.Say.Complain($"hatch: {key} points at no pull request");
                 return 2;
             }

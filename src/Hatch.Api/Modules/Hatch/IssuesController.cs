@@ -291,8 +291,8 @@ public class IssuesController(
         bool? onePr = null;
         if (request.OnePr is { } onePrText && !IssueOnePrController.TryParse(onePrText, out onePr))
             return BadRequest(IssueOnePrController.UnknownValue(onePrText));
-        if (request.OnePr is not null && request.Type != "story")
-            return BadRequest(IssueOnePrController.NotAStory($"this is a {request.Type}"));
+        if (request.OnePr is not null && request.Type is not ("story" or "bug"))
+            return BadRequest(IssueOnePrController.NotAStoryOrBug($"this is a {request.Type}"));
 
         EfHatchStatus? status;
         if (statusId is { } chosen)
@@ -804,6 +804,8 @@ public class IssuesController(
 
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
+                events.Add(cleared);
             // A column change through PATCH has no neighbours to sit between,
             // so the card goes to the bottom of the new column. The board sends
             // its drops to `move`, which does have them.
@@ -861,6 +863,10 @@ public class IssuesController(
                 EfHatchIssueEvent.PullRequestChanged,
                 new { from = issue.PullRequestUrl, to = edit.PullRequestUrl },
                 now));
+
+            // A pull request is a branch: the issue did not finish with no code.
+            if (!string.IsNullOrWhiteSpace(edit.PullRequestUrl) && NoCode.Declared(issue))
+                events.Add(NoCode.SetAside(issue, new { pullRequest = edit.PullRequestUrl }, actor, now));
 
             issue.PullRequestUrl = edit.PullRequestUrl;
             issue.PullRequestClosedAt = null;
@@ -1028,6 +1034,8 @@ public class IssuesController(
             issue.UpdatedAt = now;
             issue.StatusId = status.Id;
             issue.ClosedAt = Columns.ClosedAt(from, status, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, status, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct), actor, now) is { } cleared)
+                issue.Events.Add(cleared);
 
             // The board has no deferred column to drop onto, so this endpoint
             // is not how a ticket is usually shelved - but it is an endpoint,

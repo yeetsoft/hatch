@@ -779,21 +779,21 @@ export function IssuePage() {
           <DangerousOwnField reason={issue.dangerousOwn} busy={dangerousBusy} onSave={(reason) => void saveDangerous(reason)} />
           <DangerousInherited from={issue.dangerousFrom} reason={issue.dangerous} />
 
-          {/* A story answers for its tasks, so it gets the control; a task under
+          {/* A story or a bug answers for its tasks, so it gets the control; a task under
               one that shares a pull request says so, since "why is there no PR
               on this" is the question that value answers. Anything else has no
-              story to share with and shows nothing. */}
-          {issue.type === 'story' && (
+              story or bug to share with and shows nothing. */}
+          {(issue.type === 'story' || issue.type === 'bug') && (
             <Field
               label="One pull request"
               as="div"
-              hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each. Locked once any task under it has started: work begun on one branch cannot be moved onto the other."
+              hint={`Whether this ${issue.type}'s tasks share its branch and open one pull request, merged once, instead of one each. Locked once any task under it has started: work begun on one branch cannot be moved onto the other.`}
             >
               <OnePrControl issue={issue} busy={onePrBusy} onChange={(setting) => void saveOnePr(setting)} />
             </Field>
           )}
-          {issue.type !== 'story' && issue.onePr && (
-            <Field label="One pull request" as="div" hint="This task shares its story's branch; the story opens the one pull request.">
+          {issue.type !== 'story' && issue.type !== 'bug' && issue.onePr && (
+            <Field label="One pull request" as="div" hint="This task shares its parent's branch; the parent opens the one pull request.">
               <span className="hatch-one-pr-said on">{onePrSaid(issue)}</span>
             </Field>
           )}

@@ -28,6 +28,7 @@ public sealed class IssueCommandsTests
         string? readyAt = null,
         string? dueAt = null,
         string? pr = null,
+        string? noCode = null,
         IReadOnlyList<LandingDto>? landings = null) =>
         Fixtures.Issue(key) with
         {
@@ -38,6 +39,7 @@ public sealed class IssueCommandsTests
             ReadyAt = readyAt,
             DueAt = dueAt,
             PullRequestUrl = pr,
+            NoCode = noCode,
             Landings = landings ?? [],
         };
 
@@ -899,6 +901,90 @@ public sealed class IssueCommandsTests
         Assert.Equal(1, await new IssueCommands(h.Cli).PrAsync(["AER-12", ""], default));
         Assert.Contains("give a url, or --clear to take AER-12 off the one it has", h.Complained);
         Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task Pr_none_puts_the_reason_and_says_what_was_recorded()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-12/no-code", AnIssue(noCode: "an investigation"));
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", "--none", "  an investigation "], default));
+
+        Assert.Equal("an investigation", h.Wire.To("PUT", "/api/hatch/issues/AER-12/no-code").Single().Read<NoCodeRequest>().Reason);
+        Assert.Equal("AER-12: finished with no code - an investigation", h.Said);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Pr_none_with_an_empty_reason_is_refused_without_a_request(string reason)
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).PrAsync(["AER-12", "--none", reason], default));
+        Assert.Contains("--none needs a reason - say what this increment produced instead of code", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task Pr_none_with_a_reason_over_the_limit_is_refused_without_a_request()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).PrAsync(["AER-12", "--none", new string('x', NoCodeRequest.MaxLength + 1)], default));
+        Assert.Contains($"the limit is {NoCodeRequest.MaxLength}", h.Complained);
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Theory]
+    [InlineData("AER-12", "--none")]
+    [InlineData("AER-12", "why", "--none")]
+    [InlineData("AER-12", "--none", "why", "more")]
+    [InlineData("AER-12", "--clear", "why")]
+    public async Task Pr_none_in_any_other_shape_is_a_usage_refusal_without_a_request(params string[] args)
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).PrAsync(args, default));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task Pr_none_refused_by_the_server_surfaces_its_sentence()
+    {
+        using var h = new CliHarness();
+        h.Wire.Reply("PUT", "/api/hatch/issues/AER-12/no-code", HttpStatusCode.Conflict,
+            "AER-12 has a pull request recorded - it did not finish with no code");
+
+        var refused = await Assert.ThrowsAsync<HatchException>(
+            () => new IssueCommands(h.Cli).PrAsync(["AER-12", "--none", "why"], default));
+
+        Assert.Equal(409, (int)refused.Status!.Value);
+        Assert.Contains("AER-12 has a pull request recorded - it did not finish with no code", refused.Message);
+    }
+
+    [Fact]
+    public async Task Pr_on_a_declared_issue_with_no_url_reads_back_the_declaration()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(noCode: "an investigation"));
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12"], default));
+        Assert.Equal("AER-12: finished with no code - an investigation", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_the_declaration_of_an_issue_finished_with_no_code()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(noCode: "an investigation"));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("no code:      an investigation", h.Said);
     }
 
     // ---- verdict ----

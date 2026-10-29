@@ -504,6 +504,11 @@ public class AdminSurfaceTests
         // IssueDangerousController.
         "IssueDangerousController.PutIssueDangerous",
 
+        // That an issue finished with no code, and why - a statement of fact
+        // about the work with the reach of recording a pull request through
+        // PATCH, which is key-open too. IssueNoCodeController.
+        "IssueNoCodeController.PutIssueNoCode",
+
         // A release note, open to a key only under the issue's live claim: the
         // claim check is in the action, not the attribute, so a key can write the
         // note of the ticket it is working and no other. IssueReleaseNoteController.

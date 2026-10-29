@@ -86,6 +86,14 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
         {issue.pullRequestUrl ? <PullRequestLink url={issue.pullRequestUrl} /> : <span className="text-muted">—</span>}
       </Field>
 
+      {/* Read-only: a session declares it with `hatch pr --none`, and a branch
+          or a move left sets it aside, so there is no control to set it. */}
+      {issue.noCode && (
+        <Field label="No code" as="div">
+          Finished with no code: {issue.noCode}
+        </Field>
+      )}
+
       <Field label="Model" as="div">
         {modelFact(issue.modelOverride)}
       </Field>

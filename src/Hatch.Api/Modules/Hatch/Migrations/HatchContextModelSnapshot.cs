@@ -256,6 +256,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
 
+                    b.Property<string>("NoCode")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("NoCodeAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("Number")
                         .HasColumnType("integer");
 

@@ -96,6 +96,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.Type,
                 i.Title,
                 i.PullRequestUrl,
+                i.NoCode,
                 i.PullRequestClosedAt,
                 Landing = i.Project!.Landing,
                 i.Project.ChecksRequired,
@@ -263,6 +264,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // stands from there is LandingWork's to say - see landingHeld below.
         var withoutPr = inReview.Count(i =>
             string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && !NoCode.Declared(i.NoCode)
             && !(LandingWork.Applies(i.Landing, i.PullRequestUrl) && landingsByIssue.ContainsKey(i.Id))
             && !(family is not null
                 && tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved
@@ -287,6 +289,16 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             if (judged.Kind == WorkKinds.Hold)
                 landingHeld.Add(new LandingHeldDto(IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, judged.Sentence));
         }
+
+        // A declared issue the close hop would carry is the board's. One that is
+        // not pre-approved stays in review for a person, with the reason it gave:
+        // it has no pull request to be a row in Reviews and is not "without" one.
+        var noCodeHeld = inReview
+            .Where(i => string.IsNullOrWhiteSpace(i.PullRequestUrl)
+                && NoCode.Declared(i.NoCode)
+                && tree.EffectivePreApproval(i.Id).Level != PreApprovalLevels.PreApproved)
+            .Select(i => new NoCodeHeldDto(IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.NoCode!))
+            .ToList();
 
         var approvedHeld = new List<ApprovedHeldDto>();
         var approvedWaiting = new List<ApprovedWaitingDto>();
@@ -335,7 +347,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, deadlocked, backupRow);
+            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow);
     }
 
     /// <summary>

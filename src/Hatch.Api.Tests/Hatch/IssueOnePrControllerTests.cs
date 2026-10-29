@@ -99,17 +99,60 @@ public class IssueOnePrControllerTests
     [Theory]
     [InlineData("epic")]
     [InlineData("task")]
-    [InlineData("bug")]
-    public async Task OnlyAStoryTakesIt(string type)
+    public async Task OnlyAStoryOrABugTakesIt(string type)
     {
         var h = await NewAsync();
-        var issue = await h.FileAsync(type, "not a story");
+        var issue = await h.FileAsync(type, "not a story or a bug");
 
         var refused = await h.OnePr.PutIssueOnePr(issue.Key, new OnePrRequest("on"), default);
 
         var bad = Assert.IsType<BadRequestObjectResult>(refused.Result);
         Assert.Contains(type, bad.Value!.ToString());
+        Assert.Contains("only a story or a bug carries an override", bad.Value!.ToString());
         Assert.Null((await h.RowAsync(issue.Key)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task ABug_CanBeSetOn_AndTheTrailSaysSo()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "the bug");
+
+        var set = await h.SetAsync(bug.Key, "on");
+
+        Assert.True(set.OnePr);
+        Assert.True(set.OnePrOwn);
+        Assert.True((await h.RowAsync(bug.Key)).OnePullRequest);
+        var written = Assert.Single(await h.EventsAsync(bug.Key));
+        Assert.Equal(("inherit", "on"), Sides(written));
+    }
+
+    [Fact]
+    public async Task ABug_IsOffUntilSomebodySaysSo_AndFollowsTheProjectLikeAStory()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "the bug");
+
+        Assert.False(bug.OnePr);
+        Assert.Null(bug.OnePrOwn);
+
+        await h.ProjectDefaultAsync(true);
+
+        var read = await h.ReadAsync(bug.Key);
+        Assert.True(read.OnePr);
+        Assert.Null(read.OnePrOwn);
+        Assert.Null(read.OnePrFrom);
+    }
+
+    [Fact]
+    public async Task ABug_CanBeBornWithIt()
+    {
+        var h = await NewAsync();
+
+        var bug = await h.FileAsync("bug", "the bug", onePr: "on");
+
+        Assert.True((await h.RowAsync(bug.Key)).OnePullRequest);
+        Assert.True((await h.ReadAsync(bug.Key)).OnePrOwn);
     }
 
     [Fact]
@@ -182,9 +225,8 @@ public class IssueOnePrControllerTests
     [Theory]
     [InlineData("epic", "on")]
     [InlineData("task", "on")]
-    [InlineData("bug", "on")]
     [InlineData("task", "inherit")]
-    public async Task BornWithIt_OnlyAStoryTakesIt(string type, string value)
+    public async Task BornWithIt_OnlyAStoryOrABugTakesIt(string type, string value)
     {
         var h = await NewAsync();
         var before = await h.Db.Issues.CountAsync();
@@ -266,6 +308,22 @@ public class IssueOnePrControllerTests
         Assert.Contains($"{task.Key} is in \"in progress\"", conflict.Value!.ToString());
         Assert.True((await h.RowAsync(story.Key)).OnePullRequest);
         Assert.Single(await h.EventsAsync(story.Key));
+    }
+
+    [Fact]
+    public async Task OnceATaskUnderABugIsInTheImplementationColumn_TheBugsSettingIsLocked()
+    {
+        var h = await NewAsync(board: true);
+        var bug = await h.FileAsync("bug", "the bug");
+        var task = await h.FileAsync("task", "the task", bug.Key);
+        await h.SetAsync(bug.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+
+        var refused = await h.OnePr.PutIssueOnePr(bug.Key, new OnePrRequest("off"), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(refused.Result);
+        Assert.Contains($"{task.Key} is in \"in progress\"", conflict.Value!.ToString());
+        Assert.True((await h.RowAsync(bug.Key)).OnePullRequest);
     }
 
     [Fact]
@@ -453,7 +511,27 @@ public class IssueOnePrControllerTests
     }
 
     [Fact]
-    public async Task ATaskUnderABugUnderAStory_FollowsTheStory()
+    public async Task ATaskUnderABug_FollowsTheBug_AndNamesIt()
+    {
+        var h = await NewAsync();
+        var bug = await h.FileAsync("bug", "the bug");
+        var task = await h.FileAsync("task", "the task", bug.Key);
+
+        Assert.False((await h.ReadAsync(task.Key)).OnePr);
+
+        await h.SetAsync(bug.Key, "on");
+        var on = await h.ReadAsync(task.Key);
+
+        Assert.True(on.OnePr);
+        Assert.Null(on.OnePrOwn);
+        Assert.Equal(bug.Key, on.OnePrFrom);
+
+        await h.SetAsync(bug.Key, "off");
+        Assert.False((await h.ReadAsync(task.Key)).OnePr);
+    }
+
+    [Fact]
+    public async Task ATaskUnderABugUnderAStory_FollowsTheBug_NotTheStory()
     {
         var h = await NewAsync();
         var story = await h.FileAsync("story", "the story");
@@ -461,10 +539,12 @@ public class IssueOnePrControllerTests
         var task = await h.FileAsync("task", "the task", bug.Key);
         await h.SetAsync(story.Key, "on");
 
-        var read = await h.ReadAsync(task.Key);
+        var underBug = await h.ReadAsync(task.Key);
+        Assert.False(underBug.OnePr);
+        Assert.Equal(bug.Key, underBug.OnePrFrom);
 
-        Assert.True(read.OnePr);
-        Assert.Equal(story.Key, read.OnePrFrom);
+        await h.SetAsync(bug.Key, "on");
+        Assert.True((await h.ReadAsync(task.Key)).OnePr);
     }
 
     [Fact]

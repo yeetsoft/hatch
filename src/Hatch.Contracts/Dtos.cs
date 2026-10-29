@@ -382,14 +382,14 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// when the effective level is this issue's own, or None.
 /// </param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -580,14 +580,14 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="Landings">What each bound repository holds for this issue's branch - see <see cref="LandingController"/>.</param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -616,6 +616,8 @@ public record IssueClaimDto(
 /// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
 /// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
+/// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>.</param>
+/// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -670,7 +672,9 @@ public record IssueDto(
     IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
     string? DangerousOwn = null,
     string? Dangerous = null,
-    string? DangerousFrom = null)
+    string? DangerousFrom = null,
+    string? NoCode = null,
+    DateTimeOffset? NoCodeAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -1331,6 +1335,14 @@ public record ReviewDto(
 /// an agent's to fix, so a row here is a person's, every time. Defaults to null
 /// so an older client still reads.
 /// </param>
+/// <param name="NoCodeHeld">
+/// The review column's issues that declared they were finished with no code
+/// and are not pre-approved, so no pull request will ever be recorded and the
+/// loop will not close them: each with the reason it gave. Not counted in
+/// <paramref name="InReviewWithoutPullRequest"/>: it is not waiting on a pull
+/// request, a person closes it. A pre-approved one is closed by the board and
+/// is not listed. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="Deadlocked">
 /// Every issue the work queue marks deadlocked - a ring of dependency edges,
 /// or a wait on a parent's gate, that can never clear without a person - judged
@@ -1357,6 +1369,7 @@ public record AttentionDto(
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
+    IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null);
 
@@ -1449,6 +1462,13 @@ public record ApprovedWaitingDto(string Key, string Title, string Type, string? 
 /// </summary>
 /// <param name="Sentence">The judge's own words for why it is held.</param>
 public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One review-column issue that declared it finished with no code and is not
+/// pre-approved, so a person closes it.
+/// </summary>
+/// <param name="Reason">The reason the declaration gave.</param>
+public record NoCodeHeldDto(string Key, string Title, string Type, string Reason);
 
 /// <summary>
 /// One issue the work queue marks deadlocked: waiting, directly or through a
@@ -1814,6 +1834,21 @@ public record DangerousRequest(string? Reason)
 }
 
 /// <summary>
+/// An issue's declaration that it finished with no code. Empty or whitespace
+/// clears it; an absent or null reason is refused, so clearing is something the
+/// caller says.
+/// </summary>
+/// <param name="Reason">Why the issue needed no code. Trimmed before it is stored.</param>
+public record NoCodeRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
+}
+
+/// <summary>
 /// The level to set, by name - <c>"none"</c>, <c>"express"</c> or
 /// <c>"preapproved"</c> - see <see cref="PreApprovalLevels"/>. One required
 /// string rather than a boolean, for the same reason <see cref="PriorityRequest"/>
@@ -1957,16 +1992,16 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="BranchKey">
 /// The key the branch for this dispatch is named for. For a task under a story
-/// that shares one pull request, and with no pull request of its own, the
-/// story's key: every task of that story pushes to the story's branch, and the
-/// story's closeout opens the one pull request. Otherwise the issue's own key.
-/// Decided here and never by the client - whether a story shares is a live,
+/// or bug that shares one pull request, and with no pull request of its own,
+/// the parent's key: every task of that parent pushes to its branch, and the
+/// parent's closeout opens the one pull request. Otherwise the issue's own key.
+/// Decided here and never by the client - whether a parent shares is a live,
 /// inherited fact. A task that already has an open branch of its own on origin
 /// keeps it: that is a fact about git, which only a runner can see, so the
 /// client applies it on top of this. Null from a server that predates it, where
 /// the client reads the issue's own key.
 /// </param>
-/// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
+/// <param name="BranchTitle">The title the branch's slug is cut from: the parent's, where <paramref name="BranchKey"/> is the parent's.</param>
 /// <param name="LastCheckFindings">
 /// The most recent check's findings, when the issue stands in
 /// <c>Columns.Implementation</c> because that check's verdict was a
@@ -2117,7 +2152,7 @@ public static class HopKinds
 
     /// <summary>
     /// A pre-approved issue in review with no pull request, whose children are
-    /// all done - see HA-472.
+    /// all done, or that declared it finished with no code - see HA-472.
     /// </summary>
     public const string Close = "close";
 }
@@ -2270,7 +2305,7 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="BranchKey">
 /// The key the row's branch is named for. The row's own <paramref name="Key"/>
-/// in every row this list holds: a task waiting on its story's pull request has
+/// in every row this list holds: a task waiting on its parent's pull request has
 /// no branch of its own to check and is left out of the list, so the key here is
 /// always the one the poll should look for. Null from a server that predates it,
 /// where the client reads <paramref name="Key"/>.

@@ -41,7 +41,7 @@ without the flag.
 | `start` | No | Yes: moves the ticket |
 | `move` | No | Yes: moves the ticket |
 | `comment` | No | Yes: adds a comment |
-| `pr` | No | Only with a `<url>` or `--clear` |
+| `pr` | No | Only with a `<url>`, `--clear` or `--none "reason"` |
 | `landed` | No: reads git where it stands, or where `--repo` says | Yes: records a sha |
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
@@ -352,15 +352,26 @@ branch is what makes that search short.
 ### pr
 
 ```
-hatch pr AER-12 [<url>|--clear]
+hatch pr AER-12 [<url>|--clear|--none "reason"]
 ```
 
 With one argument it reads: it prints the URL where the ticket is being
 reviewed, and nothing else, so `open "$(hatch pr AER-12)"` is the whole of
-"show me the review". With two it writes.
+"show me the review". A ticket that declared it finished with no code prints
+that declaration instead. With two it writes.
 
 - `<url>` records where the review is, having opened one.
 - `--clear` takes it off the one it has.
+- `--none "reason"` declares the ticket finished with no code, and prints
+  `AER-12: finished with no code - reason`. The reason is required and at
+  most 200 characters; `hatch show` prints it as `no code:`.
+
+A declaration is for work that produced nothing to review, such as an
+investigation. It is refused, with the server's sentence and exit `1`, once the
+ticket has a pull request recorded or a branch on origin. A branch that later
+appears on origin sets the declaration aside, and so does moving the ticket
+left of review. A pre-approved ticket that declared no code closes with no
+person reading anything; one that is not waits in review for a person.
 
 ### landed
 
@@ -430,15 +441,15 @@ the refusal puts as the other issue "is already waiting on this issue".
 hatch one-pr AER-5 [on|off|inherit]
 ```
 
-Whether a story's tasks share the story's branch and one pull request. With
+Whether a story's or a bug's tasks share its branch and one pull request. With
 only the key it reads. With a second argument it writes:
 
 - `on` shares them, whatever the project's default is.
 - `off` does not, whatever the project's default is.
 - `inherit` follows the project's default.
 
-A story only, and it is locked once any task under it has started: set it when
-the story is filed, before its tasks are worked.
+A story or a bug only, and it is locked once any task under it has started:
+set it when it is filed, before its tasks are worked.
 
 ### dangerous
 

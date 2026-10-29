@@ -257,6 +257,43 @@ public class IssueClaimTests
         Assert.NotNull((await h.RowAsync(two)).ClaimToken);
     }
 
+    /// <summary>The lineage a shared branch adds: two tasks under a parent that shares push to one branch, so only one is worked at a time.</summary>
+    [SkippableTheory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task ATakeOnASiblingSharingTheParentsBranch_IsRefusedNamingIt_AndWritesNothing(string type)
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync(type: type, onePr: true);
+        var one = await h.FileAsync(parent, type: "task");
+        var two = await h.FileAsync(parent, type: "task");
+        await h.TakeAsync(one, "somewhere:/checkouts/one");
+
+        var refusal = Conflict(await h.Claims.TakeClaim(two, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Equal(
+            $"Nathan is working {one}, sharing its parent's branch, from somewhere:/checkouts/one, last heard from just now",
+            refusal);
+        Assert.Null((await h.RowAsync(two)).ClaimToken);
+        Assert.Empty(await h.EventKindsAsync(two));
+    }
+
+    [SkippableTheory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task ATakeOnASiblingWhereTheParentDoesNotShare_Succeeds(string type)
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync(type: type, onePr: false);
+        var one = await h.FileAsync(parent, type: "task");
+        var two = await h.FileAsync(parent, type: "task");
+        await h.TakeAsync(one, "somewhere:/checkouts/one");
+
+        Value(await h.Claims.TakeClaim(two, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.NotNull((await h.RowAsync(two)).ClaimToken);
+    }
+
     [SkippableFact]
     public async Task ARelativesExpiredClaim_DoesNotRefuseATake()
     {
@@ -1560,7 +1597,7 @@ public class IssueClaimTests
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<string> FileAsync(
             string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do",
-            bool express = false)
+            bool express = false, string type = "story", bool? onePr = null)
         {
             var number = next++;
             var db = Connect();
@@ -1576,7 +1613,8 @@ public class IssueClaimTests
             {
                 ProjectId = ProjectId,
                 Number = number,
-                Type = "story",
+                Type = type,
+                OnePullRequest = onePr,
                 Title = title,
                 StatusId = StatusId,
                 ParentId = parentId,
