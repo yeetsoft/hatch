@@ -7,6 +7,7 @@ import {
   buildIconWords,
   deadlockedEmptyWords,
   landingHeldEmptyWords,
+  noCodeHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
   trunkBuildEmptyWords,
@@ -141,6 +142,7 @@ export function AttentionHuman({
   const trunkBuilds = attention?.trunkBuilds ?? [];
   const approvedHeld = attention?.approvedHeld ?? [];
   const landingHeld = attention?.landingHeld ?? [];
+  const noCodeHeld = attention?.noCodeHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
   const backup = attention?.backup ?? null;
 
@@ -290,6 +292,28 @@ export function AttentionHuman({
                     <span className="hatch-attention-title">{h.title}</span>
                   </span>
                   <span className="hatch-attention-files">{h.sentence}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Finished with no code</h3>
+
+        {noCodeHeld.length === 0 ? (
+          <p className="hatch-attention-empty">{noCodeHeldEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {noCodeHeld.map((h) => (
+              <li key={h.key}>
+                <Link className="hatch-attention-row" to={`/issues/${h.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{h.key}</span>
+                    <span className="hatch-attention-title">{h.title}</span>
+                  </span>
+                  <span className="hatch-attention-files">{h.reason}</span>
                 </Link>
               </li>
             ))}

@@ -42,6 +42,10 @@ export type AttentionTone = 'rest' | 'asking';
  * `landingHeld` counts for the same reason: nothing dispatches at an issue
  * whose work already reached the trunk, so every row is a person's to finish.
  *
+ * `noCodeHeld` counts for the same reason: a ticket in review that finished
+ * with no code has no pull request to merge and no pre-approval to close it,
+ * so every row is a person's to close.
+ *
  * `deadlocked` counts for the same reason: nothing dispatches into a ring, so
  * every row is a person's to break.
  *
@@ -61,6 +65,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.trunkBuilds?.length ?? 0) +
     (attention.approvedHeld?.length ?? 0) +
     (attention.landingHeld?.length ?? 0) +
+    (attention.noCodeHeld?.length ?? 0) +
     (attention.deadlocked?.length ?? 0) +
     (attention.backup ? 1 : 0)
   );
@@ -70,7 +75,7 @@ export function attentionCount(attention: Attention | null): number {
  * What the bar's attention pills add up to at phone width, where they fold
  * into one count: exactly the four sections that draw a pill - deadlocked,
  * trunk, review and question. Deliberately not `attentionCount`, which also
- * counts `approvedHeld`, `landingHeld` and `backup`: those light the control and have
+ * counts `approvedHeld`, `landingHeld`, `noCodeHeld` and `backup`: those light the control and have
  * a row in the panel, but no pill, so a total that included them would not
  * be the sum of the pills it stands in for.
  */
@@ -210,6 +215,9 @@ export const approvedHeldEmptyWords = (): string => 'Nothing approved has stoppe
 
 /** The empty state of the "Landed, not done" section. */
 export const landingHeldEmptyWords = (): string => 'Nothing landed has stopped short of done.';
+
+/** The empty state of the "Finished with no code" section. */
+export const noCodeHeldEmptyWords = (): string => 'Nothing finished with no code is waiting on you.';
 
 /** The empty state of the "Deadlocked" section. */
 export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';

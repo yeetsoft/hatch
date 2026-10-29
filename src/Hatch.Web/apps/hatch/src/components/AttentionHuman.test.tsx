@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, Review, TrunkBuild } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, TrunkBuild } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -80,6 +80,14 @@ const landingHeld = (over: Partial<LandingHeld> = {}): LandingHeld => ({
   ...over,
 });
 
+const noCodeHeld = (over: Partial<NoCodeHeld> = {}): NoCodeHeld => ({
+  key: 'AER-18',
+  title: 'A task that needed no code',
+  type: 'task',
+  reason: 'The setting was already off.',
+  ...over,
+});
+
 const deadlocked = (over: Partial<Deadlocked> = {}): Deadlocked => ({
   key: 'AER-16',
   title: 'A story stuck in a ring',
@@ -105,6 +113,7 @@ describe('AttentionHuman', () => {
       'Pull requests to review',
       'Approved, not merging',
       'Landed, not done',
+      'Finished with no code',
       'Questions to answer',
     ]);
 
@@ -113,6 +122,7 @@ describe('AttentionHuman', () => {
     const reviewAt = html.indexOf(reviewEmptyWords(null));
     const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
     const landingHeldAt = html.indexOf(landingHeldEmptyWords());
+    const noCodeHeldAt = html.indexOf(noCodeHeldEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
 
     expect(deadlockedAt).toBeGreaterThan(-1);
@@ -120,7 +130,8 @@ describe('AttentionHuman', () => {
     expect(trunkAt).toBeLessThan(reviewAt);
     expect(reviewAt).toBeLessThan(approvedHeldAt);
     expect(approvedHeldAt).toBeLessThan(landingHeldAt);
-    expect(landingHeldAt).toBeLessThan(questionAt);
+    expect(landingHeldAt).toBeLessThan(noCodeHeldAt);
+    expect(noCodeHeldAt).toBeLessThan(questionAt);
   });
 
   it('draws Backups first, above Deadlocked, with the sentence, the last success and a link to Settings', () => {
@@ -220,6 +231,32 @@ describe('AttentionHuman', () => {
     expect(html).toContain(held.key);
     expect(html).toContain(held.title);
     expect(html).toContain(held.sentence);
+    expect(html).toContain(`href="/issues/${held.key}"`);
+  });
+
+  it('shows the empty words when nothing finished with no code is waiting', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ noCodeHeld: [] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(noCodeHeldEmptyWords());
+  });
+
+  it('lists a no-code row’s key, title and reason under Finished with no code, linked to the issue', () => {
+    const held = noCodeHeld();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ noCodeHeld: [held] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(noCodeHeldEmptyWords());
+    expect(html).toContain(held.key);
+    expect(html).toContain(held.title);
+    expect(html).toContain(held.reason);
     expect(html).toContain(`href="/issues/${held.key}"`);
   });
 
