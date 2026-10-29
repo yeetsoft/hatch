@@ -564,7 +564,8 @@ public class WorkController(
             : 0;
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now,
+            await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
@@ -1260,7 +1261,8 @@ public class WorkController(
                 ? await MostRecentVerdictFindingsAsync(issue.Id, ct)
                 : null;
         var (branchKey, branchTitle) = await BranchOfAsync(issue, gate, ct);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+            await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)

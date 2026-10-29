@@ -99,7 +99,10 @@ are seven kinds, and each is a condition and a landing column:
 - **parent** — a child standing in a column ticked **Parent pulls**, whose
   parent has reached the column where code gets written, with no sibling
   already holding the pull and none of its own dependencies unmet. It is
-  carried to the column a session there would have been sent to.
+  carried to the column a session there would have been sent to. Out of the
+  column that feeds the one where code gets written it carries only a task
+  under a story, never a story under an epic, and never a child whose brief is
+  longer than the playbook there allows; those are analysed first.
 - **sendback** — a childless issue standing right of the column that feeds the
   column where code gets written, whose brief is longer than its playbook
   allows. It is carried back to that feeding column.
