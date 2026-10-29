@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bulkBlocked, columnBlocked, moveBlocked } from './protectedColumns';
+import { bulkBlocked, columnBlocked, hasMergeColumn, moveBlocked } from './protectedColumns';
 import type { IssueCard, Project, Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -211,5 +211,24 @@ describe('bulkBlocked', () => {
   it('blocks on a protected column when a result project is absent from the map, the same as a non-approver', () => {
     const projectsByKey = new Map<string, Project>();
     expect(bulkBlocked(PROTECTED_ONLY, [card({ statusId: 99 })], projectsByKey)).toMatch(/approver/i);
+  });
+});
+
+describe('hasMergeColumn', () => {
+  it('is false with no columns', () => {
+    expect(hasMergeColumn([])).toBe(false);
+  });
+
+  it('is false when a column is protected but does not merge the pull request', () => {
+    expect(hasMergeColumn([PROTECTED_ONLY])).toBe(false);
+  });
+
+  it('is false when a column merges the pull request but is not protected', () => {
+    const mergeOnly = status(4, 3, { mergesPullRequest: true });
+    expect(hasMergeColumn([mergeOnly])).toBe(false);
+  });
+
+  it('is true when one column is both protected and merges the pull request', () => {
+    expect(hasMergeColumn([PROTECTED_ONLY, PROTECTED_MERGING])).toBe(true);
   });
 });
