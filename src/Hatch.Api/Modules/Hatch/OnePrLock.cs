@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Whether work under a story has started - the fact that locks its one-PR
-/// setting (<see cref="IssueOnePrController"/>) and that decides which stories
+/// Whether work under a story or bug has started - the fact that locks its one-PR
+/// setting (<see cref="IssueOnePrController"/>) and that decides which stories and bugs
 /// the project's default must stop moving (<see cref="ProjectsController.PutLanding"/>).
 /// </summary>
 /// <remarks>
@@ -13,7 +13,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// column to its right, a terminal one included; a shelved descendant has not
 /// started, and nothing has on a board with no implementation column. Measured
 /// off the board, the way every landmark is (<see cref="Columns"/>). Work begun
-/// on one branch cannot be moved onto the other, so a story's setting - its own,
+/// on one branch cannot be moved onto the other, so a story's or bug's setting - its own,
 /// or the project's it reads - must not change under it.
 /// </remarks>
 public static class OnePrLock
@@ -86,7 +86,7 @@ public static class OnePrLock
             return false;
         }
 
-        var ids = rows.Where(r => r.Type == "story" && r.OnePullRequest is null && Started(r.Id)).Select(r => r.Id).ToList();
+        var ids = rows.Where(r => r.Type is "story" or "bug" && r.OnePullRequest is null && Started(r.Id)).Select(r => r.Id).ToList();
         if (ids.Count == 0) return [];
 
         return await db.Issues.Include(i => i.Events).Where(i => ids.Contains(i.Id)).OrderBy(i => i.Id).ToListAsync(ct);

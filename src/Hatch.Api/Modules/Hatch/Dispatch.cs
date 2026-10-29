@@ -1208,14 +1208,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to is null)
             return new Blocking($"there is no column after \"{from.Name}\", so there is nowhere for this to go", BlockedKinds.Other);
 
-        // A task whose work is pushed to its story's branch has nothing left for
+        // A task whose work is pushed to its parent's branch has nothing left for
         // an agent to do and no pull request of its own to merge: it waits for the
-        // story's. Said ahead of the merges column's judgement and the review
+        // parent's. Said ahead of the merges column's judgement and the review
         // column's conflict and build checks, both of which read a branch named
         // for this issue's own key and would find none.
         if (gate.WaitingOn(issue.Id, statuses) is { } storyKey)
             return new Blocking(
-                $"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request",
+                $"waiting on {storyKey}'s pull request - its work is pushed to its parent's branch, and the parent opens the one pull request",
                 BlockedKinds.Family,
                 gate.SharedStoryOf(issue.Id) is { } storyId ? [storyId] : null);
 
@@ -2231,44 +2231,44 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// Whether the stories' tasks share one branch and pull request, live on
-    /// this issue: the nearest story at or above it, and that story's own
-    /// override if it carries one, else its project's default. An issue with no
-    /// story above it - an epic, or a task filed straight under one - is off,
-    /// because there is no story whose pull request it could share.
+    /// Whether the tasks of a story or a bug share one branch and pull request,
+    /// live on this issue: the nearest story or bug at or above it, and that
+    /// parent's own override if it carries one, else its project's default. An
+    /// issue with no story or bug above it - an epic, or a task filed straight
+    /// under one - is off, because there is no pull request it could share.
     /// </summary>
     /// <remarks>
-    /// <c>Own</c> is this issue's own override, which only a story carries.
-    /// <c>FromKey</c> is the story the value was read from, and is null when
-    /// that is the issue itself or when there is no story at all; with a null
-    /// <c>FromKey</c> and a null <c>Own</c>, a story's value came from its
+    /// <c>Own</c> is this issue's own override, which only a story or a bug
+    /// carries. <c>FromKey</c> is the story or bug the value was read from, and
+    /// is null when that is the issue itself or when there is none at all; with
+    /// a null <c>FromKey</c> and a null <c>Own</c>, the value came from the
     /// project. Derived at read and never copied, the same as
     /// <see cref="EffectivePreApproval"/>.
     /// </remarks>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId)
     {
         _onePr.TryGetValue(issueId, out var self);
-        var own = self.Type == "story" ? self.OnePr : null;
+        var own = self.Type is "story" or "bug" ? self.OnePr : null;
 
-        if (StoryAbove(issueId) is not { } story) return (false, own, null);
+        if (SharerAbove(issueId) is not { } story) return (false, own, null);
 
         var row = _onePr[story];
         return (row.OnePr ?? row.ProjectOnePr, own, story == issueId ? null : _rows[story].Key);
     }
 
     /// <summary>
-    /// The nearest story at or above an issue, or null. The one walk every
-    /// one-PR question is asked through, so they cannot come to pick different
-    /// stories.
+    /// The nearest story or bug at or above an issue, or null. The one walk
+    /// every one-PR question is asked through, so they cannot come to pick
+    /// different parents.
     /// </summary>
-    private long? StoryAbove(long issueId)
+    private long? SharerAbove(long issueId)
     {
         var seen = new HashSet<long>();
         long? at = issueId;
 
         while (at is { } id && seen.Add(id))
         {
-            if (_onePr.TryGetValue(id, out var row) && row.Type == "story") return id;
+            if (_onePr.TryGetValue(id, out var row) && row.Type is "story" or "bug") return id;
 
             at = TryGet(id, out var found) ? found.ParentId : null;
         }
@@ -2277,19 +2277,19 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// The story whose pull request this task is waiting on, or null - a task
-    /// under a story that shares one pull request, that has pushed to the
-    /// story's branch and stands in the review column or past it, with no pull
+    /// The story or bug whose pull request this task is waiting on, or null - a
+    /// task under a story or bug that shares one pull request, that has pushed
+    /// to the parent's branch and stands in the review column or past it, with no pull
     /// request of its own.
     /// </summary>
     /// <remarks>
-    /// Such a task is finished as far as the story is concerned - the next
-    /// sibling is pulled, an edge between siblings clears, and the story moves
+    /// Such a task is finished as far as its parent is concerned - the next
+    /// sibling is pulled, an edge between siblings clears, and the parent moves
     /// on to open the one pull request - and it is not finished as far as the
     /// board is concerned: it ends in a terminal column only when that pull
     /// request merges. A task with a pull request of its own is not waiting on
-    /// the story's, and neither is one that declared itself finished with no
-    /// code (<see cref="NoCode"/>): it has nothing on the story's branch, so it
+    /// the parent's, and neither is one that declared itself finished with no
+    /// code (<see cref="NoCode"/>): it has nothing on the parent's branch, so it
     /// closes on its pre-approval or waits in review on its own. See <see cref="SharedStoryOf"/> for who shares, and
     /// <c>docs/hatch.md</c>, "One pull request".
     /// </remarks>
@@ -2301,7 +2301,7 @@ public sealed class PriorityTree
             : null;
 
     /// <summary>
-    /// Every task waiting on a story's pull request, with that story's key -
+    /// Every task waiting on a story's or bug's pull request, with that parent's key -
     /// <see cref="WaitingOn"/> asked of the whole board, with the column test
     /// worked out once instead of once a task.
     /// </summary>
@@ -2319,8 +2319,8 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// Every task waiting on this story's pull request - see <see cref="WaitingOn"/>.
-    /// What a merged story takes to its own terminal column with it.
+    /// Every task waiting on this story's or bug's pull request - see <see cref="WaitingOn"/>.
+    /// What a merged story or bug takes to its own terminal column with it.
     /// </summary>
     public IReadOnlyList<long> WaitingUnder(long storyId, List<EfHatchStatus> statuses) =>
         !_rows.TryGetValue(storyId, out var story)
@@ -2328,18 +2328,18 @@ public sealed class PriorityTree
             : WaitingIds(statuses).Where(r => r.Value == story.Key).Select(r => r.Key).Order().ToList();
 
     /// <summary>
-    /// The story a task shares the pull request of, by its row and with no
+    /// The story or bug a task shares the pull request of, by its row and with no
     /// regard to where the task stands - the question the claim lineage, the
     /// dependency gate and the branch a dispatch is named for ask about tasks
     /// that are not yet, or no longer, waiting. Null for anything that is not a
-    /// task under a story that shares, for a task that already has a pull
-    /// request of its own, and for a task whose story is in a terminal column:
-    /// that story's pull request has merged, so there is none left to share.
+    /// task under a story or bug that shares, for a task that already has a
+    /// pull request of its own, and for a task whose parent is in a terminal
+    /// column: that parent's pull request has merged, so there is none left to share.
     /// </summary>
     public long? SharedStoryOf(long issueId)
     {
         if (!_onePr.TryGetValue(issueId, out var self) || self.Type != "task" || self.HasPr) return null;
-        if (StoryAbove(issueId) is not { } story) return null;
+        if (SharerAbove(issueId) is not { } story) return null;
 
         var row = _onePr[story];
         return !row.Terminal && (row.OnePr ?? row.ProjectOnePr) ? story : null;
@@ -2396,13 +2396,13 @@ public sealed class DependencyGate
 
         tree ??= await PriorityTree.ForAsync(db, ct);
 
-        // The one exception to "satisfied means done": a task under a story that
-        // shares one pull request, waiting on its pull request, satisfies an
-        // edge from a sibling task under the same story. Building on a
+        // The one exception to "satisfied means done": a task under a story or
+        // bug that shares one pull request, waiting on its pull request,
+        // satisfies an edge from a sibling task under the same parent. Building on a
         // sibling's unmerged commits is the point of a shared branch, and the
         // sibling it waits on can only reach a terminal column once the whole
-        // story does - so holding the edge would hold the story for ever.
-        // Edges to or from anything outside that story stay as strict as ever.
+        // parent does - so holding the edge would hold the parent for ever.
+        // Edges to or from anything outside that parent stay as strict as ever.
         unmet = unmet
             .Where(r => !(tree.WaitingOn(r.DependsOnId, statuses) is not null
                 && tree.SharedStoryOf(r.IssueId) is { } story
@@ -2454,7 +2454,7 @@ public sealed class DependencyGate
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
 
-    /// <summary>Whether one pull request is shared across the story this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
+    /// <summary>Whether one pull request is shared across the story or bug this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
 
     /// <summary>The runner tags live on this issue - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</summary>
@@ -2463,10 +2463,10 @@ public sealed class DependencyGate
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
 
-    /// <summary>The story whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
+    /// <summary>The story or bug whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);
 
-    /// <summary>The story this task shares the branch and pull request of, or null - see <see cref="PriorityTree.SharedStoryOf"/>.</summary>
+    /// <summary>The story or bug this task shares the branch and pull request of, or null - see <see cref="PriorityTree.SharedStoryOf"/>.</summary>
     public long? SharedStoryOf(long issueId) => _tree.SharedStoryOf(issueId);
 }
 
@@ -2550,7 +2550,7 @@ public sealed class FamilyGate
         tree ??= await PriorityTree.ForAsync(db, ct);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
-        // Which tasks share a story's branch, and which story - read off the
+        // Which tasks share a parent's branch, and which parent - read off the
         // same tree, for the fold that keeps two of them off the branch at once.
         var sharedStory = new Dictionary<long, long>();
         foreach (var id in byId.Keys)
@@ -2660,14 +2660,14 @@ public sealed class FamilyGate
     public string KeyOf(long issueId) => _byId[issueId].Key;
 
     /// <summary>
-    /// The key of the first sibling in flight on the story's shared branch, or
+    /// The key of the first sibling in flight on the parent's shared branch, or
     /// null where this issue shares none or no sibling is. In flight is judged
     /// by the sibling's own row: at or past the implementation column, not
-    /// terminal, and not waiting on the story's pull request. Whether the
+    /// terminal, and not waiting on the parent's pull request. Whether the
     /// sibling has a pull request of its own does not matter - this issue is
-    /// the one that would go on the story's branch. This is also the only
+    /// the one that would go on the parent's branch. This is also the only
     /// thing that holds a parent pull (see <see cref="Pulls"/>): under a story
-    /// with sharing off, a bug or an epic there is no shared branch, and
+    /// or bug with sharing off, or an epic, there is no shared branch, and
     /// dependencies order the siblings instead.
     /// </summary>
     public string? SharedBranchSibling(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
@@ -2696,7 +2696,7 @@ public sealed class FamilyGate
 
     /// <summary>The sentence a sibling in flight on the shared branch holds an issue back with.</summary>
     public static string SharedBranchHold(string sibling) =>
-        $"{sibling}, sharing this story's branch, is already in flight - one sibling at a time";
+        $"{sibling}, sharing its parent's branch, is already in flight - one sibling at a time";
 
     /// <summary>
     /// Whether this issue's column may carry it one column right with no

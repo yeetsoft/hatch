@@ -382,14 +382,14 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// when the effective level is this issue's own, or None.
 /// </param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -580,14 +580,14 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="Landings">What each bound repository holds for this issue's branch - see <see cref="LandingController"/>.</param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -1992,16 +1992,16 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="BranchKey">
 /// The key the branch for this dispatch is named for. For a task under a story
-/// that shares one pull request, and with no pull request of its own, the
-/// story's key: every task of that story pushes to the story's branch, and the
-/// story's closeout opens the one pull request. Otherwise the issue's own key.
-/// Decided here and never by the client - whether a story shares is a live,
+/// or bug that shares one pull request, and with no pull request of its own,
+/// the parent's key: every task of that parent pushes to its branch, and the
+/// parent's closeout opens the one pull request. Otherwise the issue's own key.
+/// Decided here and never by the client - whether a parent shares is a live,
 /// inherited fact. A task that already has an open branch of its own on origin
 /// keeps it: that is a fact about git, which only a runner can see, so the
 /// client applies it on top of this. Null from a server that predates it, where
 /// the client reads the issue's own key.
 /// </param>
-/// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
+/// <param name="BranchTitle">The title the branch's slug is cut from: the parent's, where <paramref name="BranchKey"/> is the parent's.</param>
 /// <param name="LastCheckFindings">
 /// The most recent check's findings, when the issue stands in
 /// <c>Columns.Implementation</c> because that check's verdict was a
@@ -2305,7 +2305,7 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="BranchKey">
 /// The key the row's branch is named for. The row's own <paramref name="Key"/>
-/// in every row this list holds: a task waiting on its story's pull request has
+/// in every row this list holds: a task waiting on its parent's pull request has
 /// no branch of its own to check and is left out of the list, so the key here is
 /// always the one the poll should look for. Null from a server that predates it,
 /// where the client reads <paramref name="Key"/>.

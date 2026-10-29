@@ -118,7 +118,7 @@ public class EfHatchProject
     public bool ChecksRequired { get; set; } = true;
 
     /// <summary>
-    /// Whether a story's tasks share the story's branch and one pull request
+    /// Whether a story's or bug's tasks share its branch and one pull request
     /// - the project default, which a story's own
     /// <see cref="EfHatchIssue.OnePullRequest"/> overrides. Off unless a
     /// person turns it on: it changes how every story under the project is
@@ -1028,10 +1028,10 @@ public class EfHatchIssue
     public string RunnerTags { get; set; } = "[]";
 
     /// <summary>
-    /// Whether this story's tasks share the story's branch and one pull
+    /// Whether this story's or bug's tasks share its branch and one pull
     /// request. Null inherits the project's default
     /// (<see cref="EfHatchProject.OnePullRequest"/>), true is on, false is off.
-    /// Meaningful on a story only; <see cref="IssueOnePrController"/> refuses
+    /// Meaningful on a story or a bug only; <see cref="IssueOnePrController"/> refuses
     /// any other type.
     /// </summary>
     /// <remarks>
@@ -1043,7 +1043,7 @@ public class EfHatchIssue
     /// on one branch cannot be moved onto the other.
     ///
     /// Derived at read, never copied: <c>PriorityTree.EffectiveOnePr</c> walks
-    /// to the nearest story at or above an issue and answers with that story's
+    /// to the nearest story or bug at or above an issue and answers with that parent's
     /// own value, else the project's.
     /// </remarks>
     public bool? OnePullRequest { get; set; }

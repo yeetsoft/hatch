@@ -850,14 +850,14 @@ public class WorkController(
             issue.Events.Add(cleared);
         issue.UpdatedAt = now;
 
-        // A story that shares one pull request takes its waiting tasks with it:
+        // A story or bug that shares one pull request takes its waiting tasks with it:
         // their work was pushed to the branch this pull request just merged, and
         // none of them has a pull request of its own to say so. Not done by a
         // person's manual move of the story, which gets the "Closing a subtree"
         // dialog instead - this is the merge's own consequence, so it is the
         // server's. Each task is one event on its own trail, the same status
         // change a merge writes, naming the story.
-        if (issue.Type == "story")
+        if (issue.Type is "story" or "bug")
         {
             var tree = await PriorityTree.ForAsync(db, ct);
             var storyKey = IssueKey.Format(projectKey, number);
@@ -1364,7 +1364,7 @@ public class WorkController(
 
     /// <summary>
     /// The key and title the branch for a dispatch on <paramref name="issue"/>
-    /// is named from: its story's, for a task that shares the story's branch,
+    /// is named from: its parent's, for a task that shares the parent's branch,
     /// and its own otherwise - see <see cref="WorkDto.BranchKey"/>.
     /// </summary>
     private async Task<(string Key, string Title)> BranchOfAsync(EfHatchIssue issue, DependencyGate gate, CancellationToken ct)

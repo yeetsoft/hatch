@@ -1657,12 +1657,14 @@ story done with fewer obstacles: no merge needed between siblings.
 It is answered at two levels. The **project** holds a default
 (`EfHatchProject.OnePullRequest`, off), and a **story** may override it
 (`EfHatchIssue.OnePullRequest`, a nullable bool: null inherits, true is on,
-false is off). Only a story carries an override; any other type is refused.
+false is off). Only a story or a bug carries an override; any other type is
+refused. Everything below says "story" and holds for a bug the same way: a bug's
+tasks share the bug's branch and the bug opens the one pull request.
 
 The effective value is **derived at read and never copied**, the same way
 [pre-approval](#pre-approval) is. `PriorityTree.EffectiveOnePr` walks to the nearest
-story at or above an issue and answers with that story's override, else its
-project's default; an issue with no story above it - an epic, or a task filed
+story or bug at or above an issue and answers with its override, else its
+project's default; an issue with no story or bug above it - an epic, or a task filed
 straight under one - reads off, because there is no story whose pull request it
 could share. Reparenting, or flipping either level, changes what everything
 beneath reads on the next request with no write to the issues beneath.
@@ -1692,6 +1694,12 @@ one `one_pr_changed` event on each, `inherit` to that value. Stories with
 nothing started keep following the default. "Started" is the same test the lock
 uses, so a story fixed this way is locked from then on like any other.
 
+A bug was refused an override until it could carry one, so its tasks were always
+begun on branches of their own. The migration `FreezeBugOnePr` gives every bug
+that already has children an explicit `off`, so a project whose default is on does
+not move that in-flight work onto the bug's branch; a bug with no children keeps
+following the default, as a story does. It writes no events.
+
 **A task waiting on the story's pull request.** With the effective value on, a
 task that has pushed to the story's branch moves to the review column and
 *waits there with no pull request of its own*. Precisely: a task under a story
@@ -1704,9 +1712,9 @@ column to its right, with no pull request recorded on it
   instead of waiting for a merge that cannot come until every sibling is done.
   What holds a parent pull is a shared story's sibling at or past the
   implementation column, not terminal, and not waiting on the story's pull
-  request: the child is folded with "{sibling}, sharing this story's branch, is
-  already in flight - one sibling at a time". Under a story with sharing off, a
-  bug or an epic there is no shared branch and no sibling holds a pull;
+  request: the child is folded with "{sibling}, sharing its parent's branch, is
+  already in flight - one sibling at a time". Under a story or bug with sharing
+  off, or an epic, there is no shared branch and no sibling holds a pull;
   [dependencies](#dependency) order those siblings instead.
 - **Edges between siblings clear** — the exception under
   [Dependency](#dependency).
@@ -1741,7 +1749,7 @@ where they are.
 **One sibling at a time.** Two tasks under a story that shares push to one
 branch, so they may not be worked together. `ClaimLineage` treats them as one
 line: while either holds a live claim the other is folded — *"AER-6, sharing
-this story's branch, is held…"* — and a take that raced is let go by the same
+its parent's branch, is held…"* — and a take that raced is let go by the same
 check as an ancestor's. A task with a pull request of its own is on its own
 branch and is not held. Tasks under different stories stay parallel.
 

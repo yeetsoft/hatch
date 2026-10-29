@@ -93,7 +93,7 @@ caller is not a live owner, 400s on an unknown role or person, and 409s if
 the edit would leave the project with no owner at all - the one state only
 `/claim` escapes. POST `/claim` 409s if the project already has an owner. The
 landing PUT 403s if the caller is not an owner; `landing` is `"pull-request"`
-or `"trunk"`, anything else 400s; a story that has already started work keeps
+or `"trunk"`, anything else 400s; a story or bug that has already started work keeps
 its own `onePullRequest` fixed rather than inheriting a new default. The
 playbooks-source PUT 403s if the caller is not an owner, and 400s if the
 project binds no repository or any playbook row still names it. The
@@ -203,7 +203,7 @@ none of that is re-derived here.
 
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
 `Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority` and
-`PreApproval` - `OnePr` only on a `story`, refused on anything else,
+`PreApproval` - `OnePr` only on a `story` or a `bug`, refused on anything else,
 `inherit`/`on`/`off`; `Priority` and `PreApproval` take the level names the two
 `PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
 born at a level in the one save, with no second event. `IssuePatchRequest`
@@ -255,7 +255,7 @@ not mint an issue number - try again".
 | expedite | PUT | `/issues/{key}/expedite` | **person** | Legacy two-level alias for priority (`expedited`/`normal`) |
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
-| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories only |
+| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
@@ -267,9 +267,9 @@ not mint an issue number - try again".
 
 Several of these are a person's alone; checked one at a time rather than
 assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
-sitting beside five person-only fields: one-pr is the story's own say over its
+sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
-filing the story that way; runner-tags is a statement about which runner may
+filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
 dangerous is the same kind of statement; no-code
 is a statement of fact about the work, with the same reach as recording a pull
@@ -302,7 +302,7 @@ on `""`. `LandingWriteRequest` is `Remote`, `Sha`, an optional `Trunk`,
 **Refusals worth naming.** `assignee` 400s on a kind with no id, or an
 unknown actor. `priority`/`expedite` 400 an unparseable level name - the
 alias is just a two-level write of the same field and the same trail.
-`one-pr` 400s on anything but a story, and 409s once any descendant has
+`one-pr` 400s on anything but a story or a bug, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
 task begun on one branch cannot be moved onto the other. `runner-tags` 400s
 a blank tag, one with a space or comma inside, one over 32 characters, or a

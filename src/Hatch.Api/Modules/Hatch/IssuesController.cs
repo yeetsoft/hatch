@@ -291,8 +291,8 @@ public class IssuesController(
         bool? onePr = null;
         if (request.OnePr is { } onePrText && !IssueOnePrController.TryParse(onePrText, out onePr))
             return BadRequest(IssueOnePrController.UnknownValue(onePrText));
-        if (request.OnePr is not null && request.Type != "story")
-            return BadRequest(IssueOnePrController.NotAStory($"this is a {request.Type}"));
+        if (request.OnePr is not null && request.Type is not ("story" or "bug"))
+            return BadRequest(IssueOnePrController.NotAStoryOrBug($"this is a {request.Type}"));
 
         EfHatchStatus? status;
         if (statusId is { } chosen)
