@@ -1961,9 +1961,10 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
 /// counted back to the first release whose outcome was
-/// <see cref="ClaimOutcomes.Worked"/>, a status change, or an answer a person
-/// wrote - whichever comes first. A release with no outcome, and an answer
-/// written by a lapse, are skipped rather than counted or stopped at. Zero on
+/// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume, or
+/// an answer a person wrote - whichever comes first. A release with no outcome,
+/// a hold, and an answer written by a lapse, are skipped rather than counted or
+/// stopped at. Zero on
 /// a client too old to read it.
 /// </param>
 /// <param name="InReview">

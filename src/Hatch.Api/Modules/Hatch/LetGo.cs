@@ -19,17 +19,17 @@ public static class LetGo
     /// How many increments in a row let this ticket go without moving it: its
     /// releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
     /// counted back to the first release whose outcome was
-    /// <see cref="ClaimOutcomes.Worked"/>, a status change, or an answer a
-    /// person wrote - whichever comes first. A release with no outcome, and
-    /// an answer written by a lapse, are skipped rather than counted or
-    /// stopped at.
+    /// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume,
+    /// or an answer a person wrote - whichever comes first. A release with no
+    /// outcome, a hold, and an answer written by a lapse, are skipped rather
+    /// than counted or stopped at.
     /// </summary>
     public static int Count(IEnumerable<(string Kind, string? Payload)> eventsNewestFirst)
     {
         var letGo = 0;
         foreach (var e in eventsNewestFirst)
         {
-            if (e.Kind == EfHatchIssueEvent.StatusChanged) break;
+            if (e.Kind == EfHatchIssueEvent.StatusChanged || e.Kind == EfHatchIssueEvent.Resumed) break;
 
             if (e.Kind == EfHatchIssueEvent.ClaimReleased)
             {
@@ -87,15 +87,15 @@ public static class LetGo
     /// release with outcome <see cref="ClaimOutcomes.Dropped"/> that names its
     /// runner is the record; the first release that is anything else (worked,
     /// preempted, no outcome), the first status change, or the first answer a
-    /// person wrote means there is none. Takes, lapses, clears and comments
-    /// are stepped over. A drop with no runner - one written before the
-    /// payload carried it - records nothing.
+    /// person wrote, or the first resume, means there is none. Takes, lapses,
+    /// holds, clears and comments are stepped over. A drop with no runner - one
+    /// written before the payload carried it - records nothing.
     /// </summary>
     public static LetGoBy? By(IEnumerable<(string Kind, string? Payload, DateTimeOffset At)> eventsNewestFirst)
     {
         foreach (var e in eventsNewestFirst)
         {
-            if (e.Kind == EfHatchIssueEvent.StatusChanged) return null;
+            if (e.Kind == EfHatchIssueEvent.StatusChanged || e.Kind == EfHatchIssueEvent.Resumed) return null;
 
             if (e.Kind == EfHatchIssueEvent.ClaimReleased)
             {
