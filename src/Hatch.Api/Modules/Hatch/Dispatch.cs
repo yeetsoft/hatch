@@ -1701,6 +1701,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 Effort = row.Effort,
                 Budget = row.Budget,
                 BriefLimit = row.BriefLimit,
+                QuietLimitSeconds = row.QuietLimitSeconds,
                 DeniedTools = EfHatchPlaybook.WriteDeniedTools(row.DeniedTools),
                 IsCheck = row.IsCheck,
                 CreatedAt = file.CheckedAt,

@@ -2,7 +2,7 @@
 title: Playbooks
 section: Concepts
 order: 50
-summary: What a playbook row says, how one is matched to a move, and what its model, effort, budget and brief limit control.
+summary: What a playbook row says, how one is matched to a move, and what its model, effort, budget, brief limit and quiet limit control.
 ---
 
 A playbook is the instruction for one transition — one column to another, for
@@ -59,7 +59,7 @@ agent, and a board with none leaves it sitting rather than guessing.
 does not recognise is one the CLI refuses at spawn time, not one the Playbooks
 page catches first.
 
-## Budget, the brief limit and denied tools
+## Budget, the brief limit, the quiet limit and denied tools
 
 **Budget** is a playbook row's own ceiling on one session, in millions of
 tokens. A session is never told the number it is running against; the first
@@ -76,6 +76,14 @@ it back instead, with no session and nothing spent, to the column that feeds
 the one where code gets written, because a brief that long has not been cut
 into tasks yet. Where the board has no such column to send it back to, the
 move is folded instead, naming the brief's length and the limit it is held to.
+
+**The quiet limit** is the seconds a claim under a row may go without a word
+before it counts as quiet and the board lets go of it. Left blank, a row
+inherits the board's own quiet lapse, five minutes by default; a value is a
+whole number of one or more, in seconds, and clearing it hands the row back to
+the board's. In a repository's `.hatch/playbooks.yaml` it is the
+`quietLimitSeconds` key, held to the same rule, and a value that is not a
+whole number of one or more makes the file invalid, at the line it is on.
 
 **Denied tools** is a list of Claude Code permission rules in deny position on
 a row — a bare tool name such as `Edit`, or a scoped pattern such as
