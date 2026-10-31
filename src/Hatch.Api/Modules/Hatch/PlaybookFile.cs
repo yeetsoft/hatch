@@ -192,7 +192,7 @@ public static class PlaybookFile
     /// The one case where <paramref name="from"/> and <paramref name="to"/> may
     /// be equal: the review column naming itself. Null when they differ, or
     /// when they are the review column's own id. Shared by
-    /// <see cref="PlaybooksController.Refusal"/> (over the table's rows) and
+    /// <see cref="PlaybookPatches.Refusal"/> (over the table's rows) and
     /// <see cref="Parse"/> (over the file's rows), so the two can never
     /// disagree about which transition that is.
     /// </summary>
