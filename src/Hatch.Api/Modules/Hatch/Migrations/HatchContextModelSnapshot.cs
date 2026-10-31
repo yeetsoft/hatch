@@ -751,6 +751,84 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("PlaybookFiles", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Author")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<long?>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId");
+
+                    b.HasIndex("State", "CreatedAt");
+
+                    b.ToTable("PlaybookProposals", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposalChange", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("BasedOnUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Before")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Patch")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int?>("PlaybookId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProposalId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlaybookId");
+
+                    b.HasIndex("ProposalId");
+
+                    b.ToTable("PlaybookProposalChanges", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProject", b =>
                 {
                     b.Property<int>("Id")
@@ -1588,6 +1666,34 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("ToStatus");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposal", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposalChange", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchPlaybook", "Playbook")
+                        .WithMany()
+                        .HasForeignKey("PlaybookId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposal", "Proposal")
+                        .WithMany("Changes")
+                        .HasForeignKey("ProposalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Playbook");
+
+                    b.Navigation("Proposal");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProject", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchStatus", null)
@@ -1706,6 +1812,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Verdicts");
 
                     b.Navigation("WorkLog");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchPlaybookProposal", b =>
+                {
+                    b.Navigation("Changes");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchProject", b =>

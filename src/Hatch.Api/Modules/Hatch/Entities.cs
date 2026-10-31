@@ -1990,6 +1990,12 @@ public class EfHatchIssueEvent
     public const string NoCodeSetAside = "no_code_set_aside";
 
     /// <summary>
+    /// A session proposed changes to playbooks - see <see cref="EfHatchPlaybookProposal"/>.
+    /// The payload is <c>{ proposalId, changes, reason }</c>.
+    /// </summary>
+    public const string PlaybookProposed = "playbook_proposed";
+
+    /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
     /// The payload is <c>{ from, to }</c>, either side null.
     /// </summary>
@@ -2425,6 +2431,101 @@ public class EfHatchPlaybook
 
     /// <summary>
     /// camelCase, matching the wire - the same reason <see cref="Questions"/>
+    /// keeps its own copy rather than sharing one.
+    /// </summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+}
+
+/// <summary>
+/// A request to change playbooks, filed by a session that may not edit them
+/// itself and waiting for a person to decide. The record outlives the ticket
+/// that prompted it (<see cref="IssueId"/> goes null with the ticket) and
+/// carries its changes, each holding what the playbook looked like when the
+/// proposal was made so that a later page can say what was asked for even
+/// after the playbook has moved on.
+/// </summary>
+[Table("PlaybookProposals")]
+[Index(nameof(State), nameof(CreatedAt))]
+public class EfHatchPlaybookProposal
+{
+    public const int MaxStateLength = 10;
+
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+
+    public static readonly string[] States = [Pending, Approved, Rejected];
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public required string Reason { get; set; }
+
+    /// <summary>The ticket the session was working, or null once it is deleted - the proposal stays.</summary>
+    public long? IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    [MaxLength(MaxStateLength)]
+    public required string State { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Null while <see cref="State"/> is <see cref="Pending"/>.</summary>
+    public DateTimeOffset? DecidedAt { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? DecidedBy { get; set; }
+
+    public List<EfHatchPlaybookProposalChange> Changes { get; set; } = [];
+}
+
+/// <summary>
+/// One playbook's share of an <see cref="EfHatchPlaybookProposal"/>: the
+/// playbook as it stood, and the fields the proposal would change. Both are
+/// jsonb, read and written through the helpers below the way
+/// <see cref="EfHatchPlaybook.DeniedTools"/> is.
+/// </summary>
+[Table("PlaybookProposalChanges")]
+[Index(nameof(PlaybookId))]
+[Index(nameof(ProposalId))]
+public class EfHatchPlaybookProposalChange
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public required int ProposalId { get; set; }
+    public EfHatchPlaybookProposal? Proposal { get; set; }
+
+    /// <summary>The playbook proposed against, or null once its row is deleted - the change stays, with <see cref="Before"/> to say what it was.</summary>
+    public int? PlaybookId { get; set; }
+    public EfHatchPlaybook? Playbook { get; set; }
+
+    /// <summary>The playbook as a <see cref="PlaybookDto"/>, as it stood when the proposal was made. Use <see cref="WriteBefore"/> and <see cref="ReadBefore"/>.</summary>
+    public required string Before { get; set; }
+
+    /// <summary>The fields to change, as a <see cref="PlaybookPatchRequest"/>. Use <see cref="WritePatch"/> and <see cref="ReadPatch"/>.</summary>
+    public required string Patch { get; set; }
+
+    /// <summary>The playbook's <c>UpdatedAt</c> at proposal time, so a later edit to it is noticed.</summary>
+    public required DateTimeOffset BasedOnUpdatedAt { get; set; }
+
+    public static string WriteBefore(PlaybookDto before) => JsonSerializer.Serialize(before, Json);
+
+    /// <summary>Throws <see cref="JsonException"/> on corrupt JSON; nothing but <see cref="WriteBefore"/> writes the column.</summary>
+    public static PlaybookDto ReadBefore(string stored) =>
+        JsonSerializer.Deserialize<PlaybookDto>(stored, Json) ?? throw new JsonException("Before is null.");
+
+    public static string WritePatch(PlaybookPatchRequest patch) => JsonSerializer.Serialize(patch, Json);
+
+    /// <summary>Throws <see cref="JsonException"/> on corrupt JSON; nothing but <see cref="WritePatch"/> writes the column.</summary>
+    public static PlaybookPatchRequest ReadPatch(string stored) =>
+        JsonSerializer.Deserialize<PlaybookPatchRequest>(stored, Json) ?? throw new JsonException("Patch is null.");
+
+    /// <summary>
+    /// camelCase, matching the wire - the same reason <see cref="EfHatchPlaybook"/>
     /// keeps its own copy rather than sharing one.
     /// </summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);

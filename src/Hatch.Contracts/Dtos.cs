@@ -1728,6 +1728,80 @@ public record PlaybookPatchRequest(
     bool? IsCheck = null);
 
 /// <summary>
+/// One change in a proposal submission: the playbook, then every field
+/// <see cref="PlaybookPatchRequest"/> takes (null leaves a field alone).
+/// </summary>
+public record PlaybookProposalChangeRequest(
+    int PlaybookId,
+    int? FromStatusId = null,
+    int? ToStatusId = null,
+    IReadOnlyList<string>? Types = null,
+    string? Prompt = null,
+    string? Model = null,
+    string? Effort = null,
+    string? Budget = null,
+    string? BriefLimit = null,
+    string? Shape = null,
+    IReadOnlyList<string>? DeniedTools = null,
+    string? ProjectId = null,
+    bool? IsCheck = null)
+{
+    /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
+    public PlaybookPatchRequest ToPatch() => new(
+        FromStatusId: FromStatusId,
+        ToStatusId: ToStatusId,
+        Types: Types,
+        Prompt: Prompt,
+        Model: Model,
+        Effort: Effort,
+        Budget: Budget,
+        BriefLimit: BriefLimit,
+        Shape: Shape,
+        DeniedTools: DeniedTools,
+        ProjectId: ProjectId,
+        IsCheck: IsCheck);
+
+    /// <summary>Whether any of the twelve patch fields is present - <c>""</c> and an empty list count.</summary>
+    public bool NamesAField =>
+        FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
+        Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
+        Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null;
+}
+
+/// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
+public record PlaybookProposalRequest(
+    string? Reason,
+    string? IssueKey,
+    IReadOnlyList<PlaybookProposalChangeRequest>? Changes);
+
+/// <param name="PlaybookId">Null once the playbook has been deleted; <paramref name="Before"/> still says what it was.</param>
+/// <param name="ChangedFields">
+/// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
+/// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit,
+/// deniedTools, isCheck, projectId</c>.
+/// </param>
+/// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
+public record PlaybookProposalChangeDto(
+    int Id,
+    int? PlaybookId,
+    PlaybookDto Before,
+    PlaybookDto After,
+    IReadOnlyList<string> ChangedFields,
+    bool OutOfDate,
+    string? OutOfDateReason);
+
+public record PlaybookProposalDto(
+    int Id,
+    string Reason,
+    string? IssueKey,
+    string Author,
+    string State,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DecidedAt,
+    string? DecidedBy,
+    IReadOnlyList<PlaybookProposalChangeDto> Changes);
+
+/// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
 /// <c>""</c> hands it back to the playbook, as everywhere else in Hatch; the
 /// two fields are independent, so an issue may carry a model and no effort.
