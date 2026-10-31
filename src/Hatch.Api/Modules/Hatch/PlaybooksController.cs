@@ -1,4 +1,3 @@
-using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Contracts;
@@ -60,7 +59,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         int? projectId = null;
         if (request.ProjectId is not null)
         {
-            var (value, projectIdError) = ParseProjectId(request.ProjectId);
+            var (value, projectIdError) = PlaybookPatches.ParseProjectId(request.ProjectId);
             if (projectIdError is not null) return BadRequest(projectIdError);
             projectId = value;
         }
@@ -75,7 +74,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
                 return BadRequest($"project {project.Key} reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here");
         }
 
-        if (await Refusal(request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
+        if (await PlaybookPatches.Refusal(db, request.FromStatusId, request.ToStatusId, types, shape, projectId, id: null, ct) is { } error)
             return BadRequest(error);
 
         var prompt = request.Prompt?.Trim() ?? "";
@@ -83,7 +82,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
 
         var model = request.Model?.Trim() ?? EfHatchPlaybook.DefaultModel;
         var effort = request.Effort?.Trim() ?? EfHatchPlaybook.DefaultEffort;
-        if (InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
+        if (PlaybookPatches.InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
 
         int? budget = null;
         if (request.Budget is not null)
@@ -136,86 +135,23 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         var playbook = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (playbook is null) return NotFound();
 
-        var from = request.FromStatusId ?? playbook.FromStatusId;
-        var to = request.ToStatusId ?? playbook.ToStatusId;
-        var types = request.Types is null ? playbook.Types : EfHatchPlaybook.NormalizeTypes(request.Types);
-        var shape = request.Shape?.Trim() ?? playbook.Shape;
-        if (PlaybookFile.InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
+        var current = PlaybookState.Of(playbook);
+        if (await PlaybookPatches.RefusalAsync(db, id, current, request, families, ct) is { } error)
+            return BadRequest(error);
 
-        var projectId = playbook.ProjectId;
-        if (request.ProjectId is not null)
-        {
-            var (value, projectIdError) = ParseProjectId(request.ProjectId);
-            if (projectIdError is not null) return BadRequest(projectIdError);
-            projectId = value;
-        }
-        if (projectId is not null)
-        {
-            var project = await db.Projects
-                .Where(p => p.Id == projectId)
-                .Select(p => new { p.Key, p.RepoSourced })
-                .FirstOrDefaultAsync(ct);
-            if (project is null) return BadRequest($"there is no project {projectId}");
-            if (project.RepoSourced)
-                return BadRequest($"project {project.Key} reads its playbooks from .hatch/playbooks.yaml on its trunk, not from a row here");
-        }
-
-        if (await Refusal(from, to, types, shape, projectId, id, ct) is { } error) return BadRequest(error);
-
-        if (request.Prompt is not null)
-        {
-            var prompt = request.Prompt.Trim();
-            if (prompt.Length == 0)
-            {
-                if (playbook.DefaultPrompt is null) return BadRequest(PlaybookFile.InvalidPrompt(prompt));
-                playbook.Prompt = null;
-            }
-            else
-            {
-                if (PlaybookFile.InvalidPrompt(prompt) is { } promptError) return BadRequest(promptError);
-                playbook.Prompt = prompt == playbook.DefaultPrompt ? null : prompt;
-            }
-        }
-
-        var model = request.Model?.Trim() ?? playbook.Model;
-        var effort = request.Effort?.Trim() ?? playbook.Effort;
-        if (InvalidDispatch(model, effort, families) is { } dispatchError) return BadRequest(dispatchError);
-
-        var budget = playbook.Budget;
-        if (request.Budget is not null)
-        {
-            var (value, budgetError) = PlaybookFile.ParseBudget(request.Budget);
-            if (budgetError is not null) return BadRequest(budgetError);
-            budget = value;
-        }
-
-        var briefLimit = playbook.BriefLimit;
-        if (request.BriefLimit is not null)
-        {
-            var (value, briefLimitError) = PlaybookFile.ParseBriefLimit(request.BriefLimit);
-            if (briefLimitError is not null) return BadRequest(briefLimitError);
-            briefLimit = value;
-        }
-
-        var deniedTools = playbook.DeniedTools;
-        if (request.DeniedTools is not null)
-        {
-            var normalized = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
-            if (PlaybookFile.InvalidDeniedTools(normalized) is { } deniedToolsError) return BadRequest(deniedToolsError);
-            deniedTools = EfHatchPlaybook.WriteDeniedTools(normalized);
-        }
-
-        playbook.FromStatusId = from;
-        playbook.ToStatusId = to;
-        playbook.Types = types;
-        playbook.Shape = shape;
-        playbook.Model = model;
-        playbook.Effort = effort;
-        playbook.Budget = budget;
-        playbook.BriefLimit = briefLimit;
-        playbook.DeniedTools = deniedTools;
-        playbook.IsCheck = request.IsCheck ?? playbook.IsCheck;
-        playbook.ProjectId = projectId;
+        var next = PlaybookPatches.Apply(current, request);
+        playbook.FromStatusId = next.FromStatusId;
+        playbook.ToStatusId = next.ToStatusId;
+        playbook.Types = next.Types;
+        playbook.Shape = next.Shape;
+        playbook.Prompt = next.Prompt;
+        playbook.Model = next.Model;
+        playbook.Effort = next.Effort;
+        playbook.Budget = next.Budget;
+        playbook.BriefLimit = next.BriefLimit;
+        playbook.DeniedTools = next.DeniedTools;
+        playbook.IsCheck = next.IsCheck;
+        playbook.ProjectId = next.ProjectId;
         playbook.UpdatedAt = time.GetUtcNow();
 
         await db.SaveChangesAsync(ct);
@@ -232,57 +168,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         db.Playbooks.Remove(playbook);
         await db.SaveChangesAsync(ct);
         return NoContent();
-    }
-
-    // ---- Refusals ----
-
-    /// <summary>
-    /// Everything about a row that is wrong before its prompt is even read: a
-    /// column that does not exist, a transition that goes nowhere, or a
-    /// duplicate of one already filed.
-    /// </summary>
-    /// <remarks>
-    /// A row moves an issue between two columns, with one exception: the review
-    /// column may name itself, and that row is the review playbook - what an
-    /// agent is told when a pull request has stopped merging cleanly or its build
-    /// has failed, an increment that starts and ends in review (<see cref="Columns.Target"/>).
-    /// Which column that is, is measured off the board as it stands and not
-    /// named, the way every other rule about review is.
-    /// </remarks>
-    private async Task<string?> Refusal(int from, int to, string types, string shape, int? projectId, int? id, CancellationToken ct)
-    {
-        var known = await db.Statuses.Where(s => s.Id == from || s.Id == to).Select(s => s.Id).ToListAsync(ct);
-        if (!known.Contains(from)) return $"there is no column {from}";
-        if (!known.Contains(to)) return $"there is no column {to}";
-
-        if (from == to)
-        {
-            var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
-            if (PlaybookFile.ReviewRefusal(from, to, statuses) is { } reviewError) return reviewError;
-        }
-
-        var clash = await db.Playbooks
-            .AnyAsync(p => p.FromStatusId == from && p.ToStatusId == to && p.Types == types &&
-                           p.Shape == shape && p.ProjectId == projectId && p.Id != id, ct);
-
-        return clash
-            ? "there is already a playbook for that transition, those types and that shape"
-            : null;
-    }
-
-    private static string? InvalidDispatch(string model, string effort, ModelFamilies? families = null) =>
-        PlaybookFile.InvalidModel(model, families) ?? PlaybookFile.InvalidEffort(effort);
-
-    /// <summary>The same, for the project this row names - a whole number that still has to name a project, which the caller checks.</summary>
-    private static (int? Value, string? Error) ParseProjectId(string projectId)
-    {
-        var trimmed = projectId.Trim();
-        if (trimmed.Length == 0) return (null, null);
-
-        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
-            return (parsed, null);
-
-        return (null, $"a project is a whole number of one or more - not \"{trimmed}\"");
     }
 
     // ---- Reading back ----
