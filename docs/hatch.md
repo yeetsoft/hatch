@@ -2109,8 +2109,9 @@ exactly what it always has, and an older release has no `runner`. It is what
 lets the dispatcher tell which runner let a ticket go last (see [A marked issue
 folds the dispatcher](#the-dispatcher)): while a `dropped` release naming a
 runner is the issue's newest release, and nothing newer is a release of any
-other outcome (or none), a `status_changed`, or an `answered` event a person
-wrote — claim takes, lapses, clears and comments are stepped over — that
+other outcome (or none), a `status_changed`, a `resumed` event, or an `answered`
+event a person wrote — claim takes, lapses, holds, clears and comments are
+stepped over — that
 runner is the one that let it go.
 
 **A heartbeat may answer that this runner has been preempted.** Ordinarily a
@@ -2625,7 +2626,7 @@ naming the count and the limit: a ticket stuck through that many tries in a
 row is held for a person, not resumed again. Resuming — `PUT .../hold` with
 `held: false` — clears `StalledAt` and `StalledWhy` together, the same
 gesture whether or not anything was ever actually held, so *Resume now*
-always leaves a clean mark behind it.
+always leaves a clean mark behind it, and starts `letGo` over from zero.
 
 **A ticket a runner let go of is left to a different live runner.** When the
 caller names itself (`?runner=<name>` on `work/next` and `work/queue`; `asRunner`
@@ -2657,7 +2658,9 @@ may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped`
 `&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
 `work/next` and a queue row is this issue's releases, newest first, whose
 outcome was `dropped`, counted back to the first of: a release whose outcome
-was `worked`, a `status_changed`, or an `answered` event written by a person.
+was `worked`, a `status_changed`, a `resumed` event (a person's *Resume now*),
+or an `answered` event written by a person. A `held` event is stepped over:
+holding is not resuming.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
 own release from reading as a string of drops. `0` on a client too old to
