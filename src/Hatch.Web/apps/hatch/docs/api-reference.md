@@ -611,7 +611,8 @@ assume the group is uniform.
 `PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
 `ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
-(millions of tokens) and `BriefLimit` (characters), `DeniedTools`, `IsCheck`,
+(millions of tokens), `BriefLimit` (characters) and `QuietLimitSeconds` (seconds a
+claim may go without a word; null inherits the server's quiet lapse), `DeniedTools`, `IsCheck`,
 and `Source` - `"board"` or `"project"`, by whether `ProjectId` names one.
 The create and patch bodies share that shape with the three-state convention
 every optional field in Hatch takes: absent leaves a field alone (patch) or

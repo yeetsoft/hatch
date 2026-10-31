@@ -1649,7 +1649,8 @@ public record PlaybookDto(
     int? ProjectId,
     string? ProjectKey,
     string? ProjectName,
-    string Source = "board");
+    string Source = "board",
+    int? QuietLimitSeconds = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -1668,6 +1669,12 @@ public record PlaybookFileReferenceDto(string Path, string Canonical, string Tru
 /// The brief's limit, in characters. Null means none (on create) or leaves
 /// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null means none
+/// (on create) or leaves it alone (on patch); <c>""</c> or whitespace clears
+/// it; a parsed positive integer sets it - the same three states
+/// <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone on patch; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1690,7 +1697,8 @@ public record PlaybookCreateRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -1705,6 +1713,11 @@ public record PlaybookCreateRequest(
 /// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null leaves it
+/// alone; <c>""</c> or whitespace clears it; a parsed positive integer sets
+/// it - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1725,7 +1738,8 @@ public record PlaybookPatchRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
@@ -3478,13 +3492,15 @@ public record PlaybookFileRequest(
 /// </summary>
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
-    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 /// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
 public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
-    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,

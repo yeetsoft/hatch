@@ -443,6 +443,7 @@ export interface PlaybookFileRow {
   briefLimit: number | null;
   deniedTools: string[];
   isCheck: boolean;
+  quietLimitSeconds: number | null;
 }
 
 /** PlaybookFileRow with its status ids resolved to the board's current names
@@ -461,6 +462,7 @@ export interface PlaybookFileRowDto {
   briefLimit: number | null;
   deniedTools: string[];
   isCheck: boolean;
+  quietLimitSeconds: number | null;
 }
 
 /** Mirrors PlaybookFileDto. */
@@ -1226,6 +1228,8 @@ export interface Playbook {
   /** Empty means every tool. */
   deniedTools: string[];
   isCheck: boolean;
+  /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
+  quietLimitSeconds: number | null;
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
@@ -1242,6 +1246,7 @@ export interface PlaybookCreateRequest {
   effort?: string;
   budget?: string;
   briefLimit?: string;
+  quietLimitSeconds?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
@@ -1262,6 +1267,7 @@ export interface PlaybookPatchRequest {
   effort?: string;
   budget?: string;
   briefLimit?: string;
+  quietLimitSeconds?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
