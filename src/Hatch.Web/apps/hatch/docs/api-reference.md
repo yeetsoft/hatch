@@ -594,7 +594,8 @@ leaves one entry, not a hundred.
 | PUT | `/playbook-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
 
 **A key may read a playbook and may not write one, and the refusal is
-deliberate.** An agent that could widen its own prompt, or raise its own
+deliberate.** Only API-key calls are refused: a request with no key is treated
+as the user and is allowed, as is a browser session. An agent that could widen its own prompt, or raise its own
 model or effort, has no fixed point to settle at, and the failure that
 follows is unbounded spend rather than a wrong answer - the same shape of
 loop the claim's tokenless `DELETE` above and a runner's own `--max-spend`

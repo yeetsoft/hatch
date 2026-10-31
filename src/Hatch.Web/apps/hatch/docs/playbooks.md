@@ -166,9 +166,10 @@ Anyone who can read the issue can see its overrides. Setting one is a person's.
 ## Why an agent cannot edit a playbook
 
 Reading the matrix accepts an API key, because that is how a session is told
-what it was dispatched with. Every write is a person's: creating a row,
-changing one, deleting one, and setting an issue's overrides. A key that tries
-gets a `403`.
+what it was dispatched with. Every write is refused for API-key calls: creating
+a row, changing one, deleting one, and setting an issue's overrides. A key that
+tries gets a `403`. A request with no key is treated as the user and is allowed,
+as is a browser session.
 
 That refusal is deliberate. An agent that could widen its own instructions and
 its own budget is a loop with no end. A session that thinks a row is wrong says

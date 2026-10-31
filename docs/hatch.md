@@ -3032,7 +3032,8 @@ who may make the change.
 
 **Writing a playbook is closed to a key.** The three write verbs on
 `PlaybooksController` carry a plain `[RequireRole(PersonRole.User)]` naming no scope, while the
-read carries the scope like everything else. `DeniedTools` rides the same
+read carries the scope like everything else. Only API-key calls are refused: a
+request with no key is treated as the user and is allowed, as is a browser session. `DeniedTools` rides the same
 three verbs and the same person-only cut — it is not a new edge.
 
 **So is writing an issue's override**, and it is the same edge rather than a
@@ -8515,8 +8516,8 @@ so the trail says who did what without anybody being asked to record it.
   doing at all is the same kind of call, and it is refused the same way: `hatch
   move` will not take a ticket there, and no pass dispatches one out of there.
   If work should be parked, say so on the ticket.
-- **Edit a playbook.** The API refuses it, and the refusal is deliberate; if a
-  playbook is wrong, say so on the ticket and stop.
+- **Edit a playbook.** The API refuses it for a key, and the refusal is
+  deliberate; if a playbook is wrong, say so on the ticket and stop.
 - **Mint and revoke keys**, and everything else behind a plain `[RequireAdmin]`.
 - **Answer a question**, which is the next section.
 
