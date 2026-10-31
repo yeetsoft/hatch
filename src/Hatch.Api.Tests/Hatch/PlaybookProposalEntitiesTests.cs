@@ -186,6 +186,7 @@ public class PlaybookProposalEntitiesTests
         FromStatusId = from,
         ToStatusId = to,
         Types = "",
+        Shape = EfHatchPlaybook.DefaultShape,
         Model = EfHatchPlaybook.DefaultModel,
         Effort = EfHatchPlaybook.DefaultEffort,
         CreatedAt = Now,
