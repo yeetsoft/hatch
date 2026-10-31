@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-one tables.
+/// migration history, twenty-three tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
