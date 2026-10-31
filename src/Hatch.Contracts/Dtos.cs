@@ -763,6 +763,40 @@ public static class ClaimOutcomes
 }
 
 /// <summary>
+/// Why a runner's claim was refused, on the <c>409</c> of a heartbeat or a
+/// release (<see cref="ClaimRefusedDto"/>) - the four shapes a presented
+/// token can be refused in. A release may also name <see cref="Quiet"/> as the
+/// reason it is letting go, and accepts no other.
+/// </summary>
+public static class ClaimLostReasons
+{
+    /// <summary>The runner's own lease, gone quiet for the stall lapse.</summary>
+    public const string Quiet = "quiet";
+
+    /// <summary>The runner's own lease, simply over.</summary>
+    public const string Expired = "expired";
+
+    /// <summary>The row carries no claim: a person cleared it.</summary>
+    public const string Cleared = "cleared";
+
+    /// <summary>The row carries somebody else's token.</summary>
+    public const string Taken = "taken";
+
+    public static bool IsValid(string reason) => reason is Quiet or Expired or Cleared or Taken;
+}
+
+/// <summary>
+/// The <c>409</c> body a heartbeat or a release is refused with -
+/// <c>{ error, reason }</c>, following <c>AuthErrorDto</c>'s <c>{ error }</c>
+/// shape (<c>src/Hatch.Api/Models/Auth/Dtos.cs</c>) so a client can ask why
+/// without parsing prose. <c>HatchClient.Sentence</c> already unwraps
+/// <c>error</c>, so a client that reads only the sentence is unchanged.
+/// </summary>
+/// <param name="Error">The sentence a person reads.</param>
+/// <param name="Reason">One of <see cref="ClaimLostReasons"/>.</param>
+public record ClaimRefusedDto(string Error, string Reason);
+
+/// <summary>
 /// The six levels an issue's priority can sit at, ordered - see
 /// <see cref="EfHatchIssue.Priority"/>.
 /// </summary>

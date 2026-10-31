@@ -142,7 +142,7 @@ public class IssueClaimController(
         var claim = ClaimSnapshot.Of(issue);
 
         if (claim.Token != request.Token || !claims.IsLive(claim, now))
-            return Conflict(Why(claim, request.Token, now));
+            return Conflict(Refused(claim, request.Token, now));
 
         // Normalised, then truncated rather than refused: the field is
         // cosmetic, and killing a live lease because a terminal printed
@@ -153,7 +153,7 @@ public class IssueClaimController(
         // retaken between that read and this write - and it is what actually
         // fences the write, so its answer is the one that decides.
         if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, request.PlaybookId, now, ct))
-            return Conflict(Why(await SnapshotAsync(issue.Id, ct), request.Token, now));
+            return Conflict(Refused(await SnapshotAsync(issue.Id, ct), request.Token, now));
 
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
@@ -212,9 +212,17 @@ public class IssueClaimController(
     /// always has been, which covers the pick's own releases, a restart, and an
     /// older CLI.
     /// </param>
+    /// <param name="reason">
+    /// Why the runner let go - only <see cref="ClaimLostReasons.Quiet"/> for
+    /// now, written beside the outcome on the event. Read only where
+    /// <paramref name="token"/> is given, and written only where
+    /// <paramref name="outcome"/> is too: a reason with no outcome is accepted
+    /// and not written. Absent is accepted as it always has been.
+    /// </param>
     [HttpDelete]
     public async Task<IActionResult> ReleaseClaim(
-        string key, [FromQuery] Guid? token, [FromQuery] string? outcome, CancellationToken ct = default)
+        string key, [FromQuery] Guid? token, [FromQuery] string? outcome, [FromQuery] string? reason = null,
+        CancellationToken ct = default)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
@@ -230,13 +238,22 @@ public class IssueClaimController(
             given = outcome;
         }
 
+        string? why = null;
+        if (token is not null && !string.IsNullOrEmpty(reason))
+        {
+            if (reason != ClaimLostReasons.Quiet)
+                return BadRequest(
+                    $"\"{reason}\" is not a reason - it is \"{ClaimLostReasons.Quiet}\", or nothing at all");
+            why = reason;
+        }
+
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
 
         if (claim.Token is null) return NoContent();
 
         if (token is { } presented && presented != claim.Token)
-            return Conflict(Why(claim, presented, now));
+            return Conflict(Refused(claim, presented, now));
 
         var actor = await caller.ActorNameAsync(ct);
         var holder = Holder(claim.ClaimedBy, claim.Runner);
@@ -264,7 +281,8 @@ public class IssueClaimController(
             null,
             now,
             given,
-            claim.Runner);
+            claim.Runner,
+            why);
 
         await db.SaveChangesAsync(ct);
         return NoContent();
@@ -307,15 +325,18 @@ public class IssueClaimController(
     /// Why a token was refused, in the four shapes a runner can be refused in:
     /// the row carries nothing, the row carries this one but has gone quiet,
     /// the row carries this one and the lease is simply over, or the row
-    /// carries somebody else's.
+    /// carries somebody else's - each with the sentence a person reads and the
+    /// <see cref="ClaimLostReasons"/> a client asks.
     /// </summary>
-    private string Why(ClaimSnapshot claim, Guid presented, DateTimeOffset now) => claim.Token switch
+    private ClaimRefusedDto Refused(ClaimSnapshot claim, Guid presented, DateTimeOffset now) => claim.Token switch
     {
-        null => "this claim was cleared",
+        null => new ClaimRefusedDto("this claim was cleared", ClaimLostReasons.Cleared),
         var held when held == presented => claims.IsQuiet(claim, now)
-            ? $"this claim has gone quiet for {claims.StallLapseSeconds / 60} minutes"
-            : "this claim has expired",
-        _ => claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
+            ? new ClaimRefusedDto($"this claim has gone quiet for {claims.StallLapseSeconds / 60} minutes", ClaimLostReasons.Quiet)
+            : new ClaimRefusedDto("this claim has expired", ClaimLostReasons.Expired),
+        _ => new ClaimRefusedDto(
+            claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
+            ClaimLostReasons.Taken),
     };
 
     // ---- One column for liveness ----
@@ -423,7 +444,7 @@ public class IssueClaimController(
     /// </summary>
     private void Log(
         EfHatchIssue issue, string actor, string kind, string? from, string? to, DateTimeOffset at,
-        string? outcome = null, string? runner = null)
+        string? outcome = null, string? runner = null, string? reason = null)
     {
         issue.Events.Add(new EfHatchIssueEvent
         {
@@ -433,10 +454,13 @@ public class IssueClaimController(
             // serialized as null, so a release that named none writes the
             // same payload it always has. The runner rides along with an
             // outcome only: "from" says "<who> on <runner>" and cannot be
-            // split back apart, and LetGo.By needs the runner by itself.
+            // split back apart, and LetGo.By needs the runner by itself. The
+            // reason rides with an outcome too, and is left out the same way.
             Payload = outcome is null
                 ? JsonSerializer.Serialize(new { from, to })
-                : JsonSerializer.Serialize(new { from, to, outcome, runner }),
+                : reason is null
+                    ? JsonSerializer.Serialize(new { from, to, outcome, runner })
+                    : JsonSerializer.Serialize(new { from, to, outcome, runner, reason }),
             At = at,
         });
 
