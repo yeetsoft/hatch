@@ -221,7 +221,7 @@ public class IssueClaimController(
     /// </param>
     [HttpDelete]
     public async Task<IActionResult> ReleaseClaim(
-        string key, [FromQuery] Guid? token, [FromQuery] string? outcome, [FromQuery] string? reason,
+        string key, [FromQuery] Guid? token, [FromQuery] string? outcome, [FromQuery] string? reason = null,
         CancellationToken ct = default)
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
