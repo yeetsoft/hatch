@@ -15,8 +15,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// open to an API key, because an agent has to be told what it was dispatched
 /// with. Writing is not: <see cref="RequireAdminAttribute"/> with no scope
 /// named refuses a key outright, so the rows that choose an agent's
-/// instructions, its model and its budget can only be changed by a person at a
-/// browser.
+/// instructions, its model and its budget cannot be changed by an API-key
+/// call. A browser session, or any request authenticated as a user - a caller
+/// that sends no key is treated as the user - may change them.
 /// </summary>
 /// <remarks>
 /// That refusal is not a guess about what an agent would do with the write. It

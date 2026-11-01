@@ -109,7 +109,8 @@ below is what the prompt does not carry.
   why, or that it is clear. A column with no playbook looks finished from
   outside and may not be.
 
-A playbook edit is refused by the API on purpose — say so on the ticket
+A playbook edit is refused by the API on purpose for a key's calls (a request
+with no key is treated as the user and is allowed) — say so on the ticket
 instead. Work on the loop itself (`src/Hatch.Cli`, `scripts/hatch.sh`,
 `scripts/hatch.ps1`, `src/Hatch.Contracts`) restarts the loop rather than
 waiting for the next night.
