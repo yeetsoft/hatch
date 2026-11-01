@@ -74,6 +74,87 @@ public class PlaybookFileTests
         Assert.Null(row.IsCheck);
     }
 
+    // ---- quietLimitSeconds ----
+
+    [Fact]
+    public void AQuietLimitSeconds_ParsesIntoTheRow()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                quietLimitSeconds: 1500
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(problem);
+        Assert.Equal("1500", Assert.Single(rows!).QuietLimitSeconds);
+        Assert.Equal(1500, PlaybookFile.Resolve(rows![0]).QuietLimitSeconds);
+    }
+
+    [Fact]
+    public void NoQuietLimitSeconds_LeavesTheRowWithout()
+    {
+        const string yaml = """
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(problem);
+        Assert.Null(Assert.Single(rows!).QuietLimitSeconds);
+        Assert.Null(PlaybookFile.Resolve(rows![0]).QuietLimitSeconds);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("1.5")]
+    public void ABadQuietLimitSeconds_IsAProblemCarryingItsLine(string bad)
+    {
+        var yaml = $"""
+            playbooks:
+              - from: Breakdown
+                to: Backlog
+                quietLimitSeconds: {bad}
+                prompt: hi
+            """;
+
+        var (rows, problem) = Parse(yaml);
+
+        Assert.Null(rows);
+        Assert.Contains($"a quiet limit is a whole number of one or more, in seconds - not \"{bad}\"", problem);
+        Assert.Contains("(line 4)", problem);
+    }
+
+    [Fact]
+    public void AStoredRowWrittenBeforeQuietLimitSeconds_StillReads_WithItNull()
+    {
+        const string stored = """
+            [{"fromStatusId":1,"toStatusId":2,"types":["epic"],"shape":"any","prompt":"hi","model":"sonnet","effort":"high","budget":null,"briefLimit":6000,"deniedTools":[],"isCheck":false}]
+            """;
+
+        var row = Assert.Single(EfHatchPlaybookFile.ReadRows(stored));
+
+        Assert.Equal(6000, row.BriefLimit);
+        Assert.Null(row.QuietLimitSeconds);
+    }
+
+    [Fact]
+    public void AStoredRowCarryingQuietLimitSeconds_ReadsItBack()
+    {
+        var stored = EfHatchPlaybookFile.WriteRows(
+            [new PlaybookFileRow(1, 2, ["epic"], "any", "hi", "sonnet", "high", null, null, [], false, 1500)]);
+
+        Assert.Equal(1500, Assert.Single(EfHatchPlaybookFile.ReadRows(stored)).QuietLimitSeconds);
+    }
+
     [Fact]
     public void TheBlockScalarPrompt_ComesThroughByteForByte()
     {

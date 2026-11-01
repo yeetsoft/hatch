@@ -101,6 +101,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
             briefLimit = value;
         }
 
+        int? quietLimitSeconds = null;
+        if (request.QuietLimitSeconds is not null)
+        {
+            var (value, quietLimitError) = PlaybookFile.ParseQuietLimit(request.QuietLimitSeconds);
+            if (quietLimitError is not null) return BadRequest(quietLimitError);
+            quietLimitSeconds = value;
+        }
+
         var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
         if (PlaybookFile.InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
 
@@ -116,6 +124,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
+            QuietLimitSeconds = quietLimitSeconds,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
             ProjectId = projectId,
@@ -197,6 +206,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
             briefLimit = value;
         }
 
+        var quietLimitSeconds = playbook.QuietLimitSeconds;
+        if (request.QuietLimitSeconds is not null)
+        {
+            var (value, quietLimitError) = PlaybookFile.ParseQuietLimit(request.QuietLimitSeconds);
+            if (quietLimitError is not null) return BadRequest(quietLimitError);
+            quietLimitSeconds = value;
+        }
+
         var deniedTools = playbook.DeniedTools;
         if (request.DeniedTools is not null)
         {
@@ -213,6 +230,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         playbook.Effort = effort;
         playbook.Budget = budget;
         playbook.BriefLimit = briefLimit;
+        playbook.QuietLimitSeconds = quietLimitSeconds;
         playbook.DeniedTools = deniedTools;
         playbook.IsCheck = request.IsCheck ?? playbook.IsCheck;
         playbook.ProjectId = projectId;
@@ -318,5 +336,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         p.ProjectId,
         p.Project?.Key,
         p.Project?.Name,
-        p.ProjectId is not null ? "project" : "board");
+        p.ProjectId is not null ? "project" : "board",
+        p.QuietLimitSeconds);
 }
