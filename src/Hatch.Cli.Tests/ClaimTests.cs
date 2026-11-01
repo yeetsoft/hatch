@@ -290,6 +290,214 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-1636: the refusal's own reason ----
+
+    [Fact]
+    public async Task A_quiet_refusal_names_its_reason_and_is_not_lost_to_others()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim has gone quiet for 15 minutes","reason":"quiet"}""");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await Harness.Eventually(() => claim!.Lost is not null, "the lease to be reported lost");
+        Assert.Equal("this claim has gone quiet for 15 minutes", claim!.Lost);
+        Assert.Equal(ClaimLostReasons.Quiet, claim.LostReason);
+        Assert.False(claim.LostToOthers);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Theory]
+    [InlineData(ClaimLostReasons.Taken)]
+    [InlineData(ClaimLostReasons.Expired)]
+    [InlineData(ClaimLostReasons.Cleared)]
+    public async Task A_refusal_named_anything_but_quiet_is_lost_to_others(string reason)
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            $$"""{"error":"this claim was taken over","reason":"{{reason}}"}""");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await Harness.Eventually(() => claim!.Lost is not null, "the lease to be reported lost");
+        Assert.Equal(reason, claim!.LostReason);
+        Assert.True(claim.LostToOthers);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_legacy_bare_string_refusal_has_no_reason_and_still_reads_as_lost_to_others()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            "\"this claim was taken over\"");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await Harness.Eventually(() => claim!.Lost is not null, "the lease to be reported lost");
+        Assert.Equal("this claim was taken over", claim!.Lost);
+        Assert.Null(claim.LostReason);
+        Assert.True(claim.LostToOthers);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The handler must already see the reason: written before the Signal fires it.</summary>
+    [Fact]
+    public async Task OnLost_sees_the_reason_already_set_when_it_fires()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim has gone quiet for 15 minutes","reason":"quiet"}""");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        string? seen = null;
+        claim!.OnLost = _ => seen = claim.LostReason;
+
+        await Harness.Eventually(() => seen is not null, "the handler to fire with the reason already set");
+        Assert.Equal(ClaimLostReasons.Quiet, seen);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The stall-lapse give-up names no server, so it names no reason either.</summary>
+    [Fact]
+    public async Task A_stallLapse_give_up_leaves_the_reason_null_and_still_reads_as_lost_to_others()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(
+            h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromMilliseconds(80));
+
+        await Harness.Eventually(() => claim!.Lost is not null, "the claim to give up on its own");
+        Assert.Null(claim!.LostReason);
+        Assert.True(claim.LostToOthers);
+
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-1636: TakenAt, StallLapse, Chatter.SaidAt ----
+
+    [Fact]
+    public async Task TakenAt_is_the_clock_at_the_take_and_StallLapse_echoes_the_take()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK,
+            Fixtures.Taken(Token, stallLapseSeconds: 900));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var before = clock.GetUtcNow();
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.Equal(before, claim!.TakenAt);
+        Assert.Equal(TimeSpan.FromSeconds(900), claim.StallLapse);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task Chatter_SaidAt_is_null_until_a_line_is_set_and_then_tracks_the_clock()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.Null(claim!.Chatter.SaidAt);
+
+        var whenSaid = clock.GetUtcNow();
+        claim.Chatter.Line = "x";
+        Assert.Equal(whenSaid, claim.Chatter.SaidAt);
+
+        clock.Advance(TimeSpan.FromSeconds(5));
+        var whenSaidAgain = clock.GetUtcNow();
+        claim.Chatter.Line = "y";
+        Assert.Equal(whenSaidAgain, claim.Chatter.SaidAt);
+
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-1636: Answer.Reason and ReleaseAsync's reason ----
+
+    [Fact]
+    public async Task A_release_sends_both_outcome_and_reason_when_given_both()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.Quiet);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+        Assert.Contains("reason=quiet", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_sends_neither_outcome_nor_reason_when_the_reason_is_given_with_no_outcome()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(null, ClaimLostReasons.Quiet);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.DoesNotContain("outcome", released.Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("reason", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_Answers_Sentence_and_Reason_read_an_object_body()
+    {
+        var answer = new Answer(HttpStatusCode.Conflict,
+            """{"error":"this claim has gone quiet for 15 minutes","reason":"quiet"}""");
+
+        Assert.Equal("this claim has gone quiet for 15 minutes", answer.Sentence);
+        Assert.Equal("quiet", answer.Reason);
+    }
+
+    [Fact]
+    public void An_Answers_Sentence_and_Reason_read_a_bare_string_body_unchanged()
+    {
+        var answer = new Answer(HttpStatusCode.Conflict, "\"this claim was taken over\"");
+
+        Assert.Equal("this claim was taken over", answer.Sentence);
+        Assert.Null(answer.Reason);
+    }
+
+    [Fact]
+    public void An_Answers_Sentence_falls_back_to_the_code_on_an_empty_body()
+    {
+        var answer = new Answer(HttpStatusCode.Conflict, "");
+
+        Assert.Equal("409", answer.Sentence);
+        Assert.Null(answer.Reason);
+    }
+
     /// <summary>
     /// HA-405: a handler attached after the background heartbeat has already
     /// recorded a lost lease still gets called, exactly once, with the sentence
