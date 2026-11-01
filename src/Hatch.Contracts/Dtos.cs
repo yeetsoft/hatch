@@ -763,6 +763,40 @@ public static class ClaimOutcomes
 }
 
 /// <summary>
+/// Why a runner's claim was refused, on the <c>409</c> of a heartbeat or a
+/// release (<see cref="ClaimRefusedDto"/>) - the four shapes a presented
+/// token can be refused in. A release may also name <see cref="Quiet"/> as the
+/// reason it is letting go, and accepts no other.
+/// </summary>
+public static class ClaimLostReasons
+{
+    /// <summary>The runner's own lease, gone quiet for the stall lapse.</summary>
+    public const string Quiet = "quiet";
+
+    /// <summary>The runner's own lease, simply over.</summary>
+    public const string Expired = "expired";
+
+    /// <summary>The row carries no claim: a person cleared it.</summary>
+    public const string Cleared = "cleared";
+
+    /// <summary>The row carries somebody else's token.</summary>
+    public const string Taken = "taken";
+
+    public static bool IsValid(string reason) => reason is Quiet or Expired or Cleared or Taken;
+}
+
+/// <summary>
+/// The <c>409</c> body a heartbeat or a release is refused with -
+/// <c>{ error, reason }</c>, following <c>AuthErrorDto</c>'s <c>{ error }</c>
+/// shape (<c>src/Hatch.Api/Models/Auth/Dtos.cs</c>) so a client can ask why
+/// without parsing prose. <c>HatchClient.Sentence</c> already unwraps
+/// <c>error</c>, so a client that reads only the sentence is unchanged.
+/// </summary>
+/// <param name="Error">The sentence a person reads.</param>
+/// <param name="Reason">One of <see cref="ClaimLostReasons"/>.</param>
+public record ClaimRefusedDto(string Error, string Reason);
+
+/// <summary>
 /// The six levels an issue's priority can sit at, ordered - see
 /// <see cref="EfHatchIssue.Priority"/>.
 /// </summary>
@@ -1649,7 +1683,8 @@ public record PlaybookDto(
     int? ProjectId,
     string? ProjectKey,
     string? ProjectName,
-    string Source = "board");
+    string Source = "board",
+    int? QuietLimitSeconds = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -1668,6 +1703,12 @@ public record PlaybookFileReferenceDto(string Path, string Canonical, string Tru
 /// The brief's limit, in characters. Null means none (on create) or leaves
 /// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null means none
+/// (on create) or leaves it alone (on patch); <c>""</c> or whitespace clears
+/// it; a parsed positive integer sets it - the same three states
+/// <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone on patch; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1690,7 +1731,8 @@ public record PlaybookCreateRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -1705,6 +1747,11 @@ public record PlaybookCreateRequest(
 /// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null leaves it
+/// alone; <c>""</c> or whitespace clears it; a parsed positive integer sets
+/// it - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1725,7 +1772,8 @@ public record PlaybookPatchRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -2035,9 +2083,10 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
 /// counted back to the first release whose outcome was
-/// <see cref="ClaimOutcomes.Worked"/>, a status change, or an answer a person
-/// wrote - whichever comes first. A release with no outcome, and an answer
-/// written by a lapse, are skipped rather than counted or stopped at. Zero on
+/// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume, or
+/// an answer a person wrote - whichever comes first. A release with no outcome,
+/// a hold, and an answer written by a lapse, are skipped rather than counted or
+/// stopped at. Zero on
 /// a client too old to read it.
 /// </param>
 /// <param name="InReview">
@@ -3552,13 +3601,15 @@ public record PlaybookFileRequest(
 /// </summary>
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
-    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 /// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
 public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
-    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,

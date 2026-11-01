@@ -644,6 +644,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(20000)
                         .HasColumnType("character varying(20000)");
 
+                    b.Property<int?>("QuietLimitSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Shape")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

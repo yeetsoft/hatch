@@ -72,6 +72,48 @@ public class LetGoTests
     }
 
     [Fact]
+    public void ANewerResume_ClearsTheRecord_ButAHoldDoesNot()
+    {
+        var runner = $"runner-{Guid.NewGuid():N}";
+        var drop = Release(ClaimOutcomes.Dropped, runner, 5);
+
+        Assert.Null(LetGo.By([Other(EfHatchIssueEvent.Resumed, "{}", 1), drop]));
+        Assert.Equal(runner, LetGo.By([Other(EfHatchIssueEvent.Held, "{}", 1), drop])?.Runner);
+    }
+
+    [Fact]
+    public void ADropNewerThanAResume_IsStillTheRecord()
+    {
+        var runner = $"runner-{Guid.NewGuid():N}";
+
+        var by = LetGo.By([Release(ClaimOutcomes.Dropped, runner, 1), Other(EfHatchIssueEvent.Resumed, "{}", 5)]);
+
+        Assert.Equal(runner, by?.Runner);
+    }
+
+    private static int Count(params (string Kind, string? Payload, DateTimeOffset At)[] newestFirst) =>
+        LetGo.Count(newestFirst.Select(e => (e.Kind, e.Payload)));
+
+    [Fact]
+    public void Count_StopsAtAResume()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var resumed = Other(EfHatchIssueEvent.Resumed, "{}", 0);
+
+        Assert.Equal(1, Count(drop, resumed, drop, drop));
+        Assert.Equal(0, Count(resumed, drop, drop));
+    }
+
+    [Fact]
+    public void Count_StepsOverAHold()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var held = Other(EfHatchIssueEvent.Held, "{}", 0);
+
+        Assert.Equal(2, Count(drop, held, drop));
+    }
+
+    [Fact]
     public void TakesLapsesClearsAndComments_AreSteppedOver()
     {
         var runner = $"runner-{Guid.NewGuid():N}";

@@ -2109,8 +2109,9 @@ exactly what it always has, and an older release has no `runner`. It is what
 lets the dispatcher tell which runner let a ticket go last (see [A marked issue
 folds the dispatcher](#the-dispatcher)): while a `dropped` release naming a
 runner is the issue's newest release, and nothing newer is a release of any
-other outcome (or none), a `status_changed`, or an `answered` event a person
-wrote — claim takes, lapses, clears and comments are stepped over — that
+other outcome (or none), a `status_changed`, a `resumed` event, or an `answered`
+event a person wrote — claim takes, lapses, holds, clears and comments are
+stepped over — that
 runner is the one that let it go.
 
 **A heartbeat may answer that this runner has been preempted.** Ordinarily a
@@ -2486,7 +2487,11 @@ rows the file parsed to, or the one sentence saying why it did not. Like a
 trunk and nobody's issue, so it is not keyed on one. A row's `prompt` is the
 whole of its wording and its `defaultPrompt` is always null: nothing marks it
 as the operator's own, there is nothing to hand it back to, and it changes only
-by a commit to the file.
+by a commit to the file. A row's optional keys are `model`, `effort`, `shape`,
+`types`, `budget`, `briefLimit`, `quietLimitSeconds`, `deniedTools` and
+`isCheck`; `quietLimitSeconds` follows the same rule as `briefLimit` — a whole
+number of one or more, in seconds — and a value that is not one makes the file
+`invalid`, with the line the value is on.
 
 **One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
 reason a trunk build's own key is: two projects may bind one repository with
@@ -2625,7 +2630,7 @@ naming the count and the limit: a ticket stuck through that many tries in a
 row is held for a person, not resumed again. Resuming — `PUT .../hold` with
 `held: false` — clears `StalledAt` and `StalledWhy` together, the same
 gesture whether or not anything was ever actually held, so *Resume now*
-always leaves a clean mark behind it.
+always leaves a clean mark behind it, and starts `letGo` over from zero.
 
 **A ticket a runner let go of is left to a different live runner.** When the
 caller names itself (`?runner=<name>` on `work/next` and `work/queue`; `asRunner`
@@ -2657,7 +2662,9 @@ may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped`
 `&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
 `work/next` and a queue row is this issue's releases, newest first, whose
 outcome was `dropped`, counted back to the first of: a release whose outcome
-was `worked`, a `status_changed`, or an `answered` event written by a person.
+was `worked`, a `status_changed`, a `resumed` event (a person's *Resume now*),
+or an `answered` event written by a person. A `held` event is stepped over:
+holding is not resuming.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
 own release from reading as a string of drops. `0` on a client too old to
@@ -2792,8 +2799,8 @@ matter under a hundred lines of tidying.
 ### Playbook
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
-`DefaultPrompt`, `Model`, `Effort`, `Budget`, `BriefLimit`, `DeniedTools`,
-`IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
+`DefaultPrompt`, `Model`, `Effort`, `Budget`, `BriefLimit`, `QuietLimitSeconds`,
+`DeniedTools`, `IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
@@ -2803,7 +2810,11 @@ else a list of Claude Code permission rules in deny position — a bare tool
 name (`Edit`) or a scoped pattern (`Bash(git push *)`). `ProjectId` is null on
 every row written before the column existed, and null means the row speaks
 for every project on the board; a row naming one project speaks for that
-project alone. See [the dispatcher](#the-dispatcher). `IsCheck` is false by
+project alone. See [the dispatcher](#the-dispatcher). `QuietLimitSeconds` is
+the seconds a claim under the row may go without a word before it counts as
+quiet (see [a claim that has gone quiet](#claim)): null, the default, inherits
+`Hatch:StallLapseMinutes`, and a value is a whole number of one or more,
+written and cleared the way `Budget` and `BriefLimit` are. `IsCheck` is false by
 default and a person's write only — a key's `POST` or `PATCH` of it is refused
 with the rest of the playbook write — and what it means is in [Check](#check).
 
@@ -3264,7 +3275,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck`; a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
