@@ -27,10 +27,60 @@ public readonly record struct Answer(HttpStatusCode? Status, string Body, int? W
     /// <summary>Whether this is the one refusal a claim treats as an answer rather than a fault.</summary>
     public bool Conflict => Status == HttpStatusCode.Conflict;
 
-    /// <summary>The sentence to print, which for Hatch is usually the body: its errors are worth reading.</summary>
-    public string Sentence => Body.Trim().Length > 0
-        ? Body.Trim().Trim('"')
-        : Status is { } code ? $"{(int)code}" : "the origin did not answer";
+    /// <summary>
+    /// The sentence to print, which for Hatch is usually the body: its errors
+    /// are worth reading. A structured body's own sentence, where it has
+    /// one - the WIP <c>409</c>'s <c>{ error, load, limit }</c>, following
+    /// <c>AuthErrorDto</c>'s <c>{ error }</c> shape. Everything else - Hatch's
+    /// ordinary bare-string refusal, an object with no string <c>error</c>,
+    /// anything unparseable - prints exactly as it arrived, the way it
+    /// always has.
+    /// </summary>
+    public string Sentence
+    {
+        get
+        {
+            var trimmed = Body.Trim();
+            if (trimmed.Length == 0)
+                return Status is { } code ? $"{(int)code}" : "the origin did not answer";
+
+            var unquoted = trimmed.Trim('"');
+            try
+            {
+                using var doc = JsonDocument.Parse(trimmed);
+                return doc.RootElement.ValueKind == JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("error", out var error)
+                    && error.ValueKind == JsonValueKind.String
+                    ? error.GetString() ?? unquoted
+                    : unquoted;
+            }
+            catch (JsonException)
+            {
+                return unquoted;
+            }
+        }
+    }
+
+    /// <summary>The object body's own <c>reason</c>, or null for a bare string, an unparseable body, or no <c>reason</c> at all.</summary>
+    public string? Reason
+    {
+        get
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(Body);
+                return doc.RootElement.ValueKind == JsonValueKind.Object
+                    && doc.RootElement.TryGetProperty("reason", out var reason)
+                    && reason.ValueKind == JsonValueKind.String
+                    ? reason.GetString()
+                    : null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+    }
 }
 
 /// <summary>

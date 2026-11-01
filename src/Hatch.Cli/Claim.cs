@@ -13,10 +13,12 @@ namespace Hatch.Cli;
 /// no such trip, and losing the file also loses the truncated-mid-write read it
 /// forced the heartbeat to defend against.
 /// </remarks>
-public sealed class Chatter
+public sealed class Chatter(TimeProvider? clock = null)
 {
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private string? _line;
     private long _said;
+    private long _saidAtTicks;
 
     /// <summary>What the run is inside of right now, or null if it has not said.</summary>
     public string? Line
@@ -26,6 +28,17 @@ public sealed class Chatter
         {
             Volatile.Write(ref _line, value);
             Interlocked.Increment(ref _said);
+            Interlocked.Exchange(ref _saidAtTicks, _clock.GetUtcNow().UtcTicks);
+        }
+    }
+
+    /// <summary>When <see cref="Line"/> was last set, or null if it never has been.</summary>
+    public DateTimeOffset? SaidAt
+    {
+        get
+        {
+            var ticks = Interlocked.Read(ref _saidAtTicks);
+            return ticks == 0 ? null : new DateTimeOffset(ticks, TimeSpan.Zero);
         }
     }
 
@@ -118,7 +131,9 @@ public sealed class Claim : IAsyncDisposable
     private Task? _heartbeat;
     private int _released;
 
-    private Claim(HatchClient client, string key, Guid token, int ttlSeconds, TimeSpan interval, TimeSpan? stallLapse)
+    private Claim(
+        HatchClient client, string key, Guid token, int ttlSeconds, TimeSpan interval, TimeSpan? stallLapse,
+        DateTimeOffset takenAt)
     {
         _client = client;
         _quiet = client.Quiet();
@@ -127,6 +142,8 @@ public sealed class Claim : IAsyncDisposable
         Key = key;
         Token = token;
         TtlSeconds = ttlSeconds;
+        TakenAt = takenAt;
+        Chatter = new Chatter(client.Clock);
     }
 
     /// <summary>The issue this runner holds.</summary>
@@ -139,7 +156,13 @@ public sealed class Claim : IAsyncDisposable
     public int TtlSeconds { get; }
 
     /// <summary>The line the heartbeat carries. Written by whoever is rendering the session.</summary>
-    public Chatter Chatter { get; } = new();
+    public Chatter Chatter { get; }
+
+    /// <summary>The client clock, read just before the take's POST - never later than the server's own <c>ClaimedAt</c>.</summary>
+    public DateTimeOffset TakenAt { get; }
+
+    /// <summary>The window a heartbeat that cannot reach Hatch at all gives up after - see <see cref="BeatAsync"/>.</summary>
+    public TimeSpan? StallLapse => _stallLapse;
 
     private ReadoutState? _readout;
 
@@ -156,6 +179,8 @@ public sealed class Claim : IAsyncDisposable
 
     private readonly Signal<string> _lost = new();
     private readonly Signal<ClaimPreemptedDto> _preempted = new();
+    private long _lostReasonSet;
+    private string? _lostReason;
 
     /// <summary>
     /// The server's sentence, once a heartbeat has been refused - the lease
@@ -163,6 +188,24 @@ public sealed class Claim : IAsyncDisposable
     /// Null while the lease is good.
     /// </summary>
     public string? Lost => _lost.Value;
+
+    /// <summary>
+    /// One of <see cref="ClaimLostReasons"/>, or null for the stall-lapse
+    /// give-up or a legacy bare-string refusal - neither names a reason, and
+    /// both read as <see cref="LostToOthers"/>. Written before <see
+    /// cref="Lost"/> is set, so a handler sees it already in place the
+    /// moment it is called.
+    /// </summary>
+    public string? LostReason => Volatile.Read(ref _lostReasonSet) != 0 ? Volatile.Read(ref _lostReason) : null;
+
+    /// <summary>
+    /// Lost, and not to <see cref="ClaimLostReasons.Quiet"/> - the one reason
+    /// this runner let go of its own lease rather than having it taken. A
+    /// legacy bare-string refusal or the stall-lapse give-up carries no
+    /// reason at all, which reads as true: neither of those is this runner
+    /// going quiet on purpose.
+    /// </summary>
+    public bool LostToOthers => Lost is not null && LostReason != ClaimLostReasons.Quiet;
 
     /// <summary>
     /// What to do the moment the lease goes: stop the session, so that nothing
@@ -212,6 +255,9 @@ public sealed class Claim : IAsyncDisposable
         HatchClient client, string key, string runner, CancellationToken ct, TimeSpan? interval = null,
         TimeSpan? stallLapse = null, int? playbookId = null)
     {
+        // Read just before the POST, so TakenAt is never later than the
+        // server's own ClaimedAt.
+        var takenAt = client.Clock.GetUtcNow();
         var answer = await client.Send(
             HttpMethod.Post, $"/api/hatch/issues/{key}/claim", new ClaimRequest(runner, playbookId), ct);
 
@@ -233,7 +279,8 @@ public sealed class Claim : IAsyncDisposable
 
         var claim = new Claim(
             client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds),
-            stallLapse ?? (taken.StallLapseSeconds > 0 ? TimeSpan.FromSeconds(taken.StallLapseSeconds) : null));
+            stallLapse ?? (taken.StallLapseSeconds > 0 ? TimeSpan.FromSeconds(taken.StallLapseSeconds) : null),
+            takenAt);
         claim._heartbeat = Task.Run(() => claim.BeatAsync(claim._stop.Token), CancellationToken.None);
         return (claim, null);
     }
@@ -358,6 +405,10 @@ public sealed class Claim : IAsyncDisposable
 
             if (answer.Conflict)
             {
+                // Written before Set, because Set fires OnLost synchronously
+                // and a handler must already see the reason.
+                Volatile.Write(ref _lostReason, answer.Reason);
+                Volatile.Write(ref _lostReasonSet, 1);
                 _lost.Set(answer.Sentence);
                 return;
             }
@@ -381,7 +432,13 @@ public sealed class Claim : IAsyncDisposable
     /// said about how the increment went, because none of them ran one to
     /// completion.
     /// </param>
-    public async Task ReleaseAsync(string? outcome = null)
+    /// <param name="reason">
+    /// One of <see cref="ClaimLostReasons"/> - the endpoint accepts only
+    /// <see cref="ClaimLostReasons.Quiet"/> and 400s anything else. Sent only
+    /// alongside an outcome, and only when given, so every release before
+    /// this one - none of which named a reason - is unchanged.
+    /// </param>
+    public async Task ReleaseAsync(string? outcome = null, string? reason = null)
     {
         if (Interlocked.Exchange(ref _released, 1) == 1) return;
 
@@ -413,7 +470,9 @@ public sealed class Claim : IAsyncDisposable
         using var budget = new CancellationTokenSource(ReleaseBudget, _client.Clock);
 
         var path = outcome is { Length: > 0 }
-            ? $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
+            ? reason is { Length: > 0 }
+                ? $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}&reason={Uri.EscapeDataString(reason)}"
+                : $"/api/hatch/issues/{Key}/claim?token={Token}&outcome={Uri.EscapeDataString(outcome)}"
             : $"/api/hatch/issues/{Key}/claim?token={Token}";
 
         try
