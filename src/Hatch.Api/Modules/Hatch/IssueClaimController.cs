@@ -432,9 +432,10 @@ public class IssueClaimController(
             .Where(i => i.Id == issueId)
             .Select(i => new ClaimSnapshot(
                 i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt))
+                i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                i.ClaimQuietLimitSeconds))
             .FirstOrDefaultAsync(ct)
-        ?? new ClaimSnapshot(null, null, null, null, null, null, null);
+        ?? new ClaimSnapshot(null, null, null, null, null, null, null, null);
 
     /// <summary>
     /// The trail row, in <c>DependencyAdded</c>'s <c>{ from, to }</c> shape so
