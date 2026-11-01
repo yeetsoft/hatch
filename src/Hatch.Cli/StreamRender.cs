@@ -52,6 +52,16 @@ public sealed class RunFacts
     public int? HardLimitedAtRequests { get; set; }
 
     /// <summary>
+    /// How long the claim had gone without a word when the quiet watcher in
+    /// <see cref="Increment.SpawnAsync"/> stopped the session - null for a run
+    /// the watcher never had cause to stop.
+    /// </summary>
+    public TimeSpan? QuietStoppedAfter { get; set; }
+
+    /// <summary>The quiet window the watcher was timing against, alongside <see cref="QuietStoppedAfter"/>.</summary>
+    public TimeSpan? QuietLimit { get; set; }
+
+    /// <summary>
     /// The latest <c>rate_limit_event</c>'s windows, out of the session's own
     /// stream - null on a run that never saw one, or a quiet run, where
     /// <see cref="Increment.SpawnAsync"/> never sets this. Read by the usage-limit

@@ -365,6 +365,14 @@ public sealed class Tally
         // this says nothing about whether the last increment actually worked.
         if (report.HardLimited) return;
 
+        // Nor is a quiet stop. The runner stopped the session itself, on
+        // purpose, a beat before the server would have refused its heartbeat
+        // for the same reason - this is the ladder holding the ticket for a
+        // slow or absent session, working exactly as designed, and three of
+        // them in a row on different tickets must not read as systemic
+        // breakage the way three broken increments should.
+        if (report.QuietStopped) return;
+
         // A failed increment on its own is not a reason to stop - a ticket can
         // be wrong, or a test can be flaky, and the next ticket is a different
         // question. Three in a row is something else: whatever is broken is
@@ -1650,6 +1658,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // has nothing to say about the ticket.
         string? releaseOutcome = null;
 
+        // The report's own reason, carried alongside the outcome above - set
+        // only for a quiet stop, dropped or flagged alike.
+        string? releaseReason = null;
+
         try
         {
             // A person's order names the ticket, so the walk over the queue -
@@ -1943,6 +1955,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             tally.Record(report);
             releaseOutcome = report.ReleaseOutcome;
+            releaseReason = report.ReleaseReason;
 
             try
             {
@@ -2048,7 +2061,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason);
         }
     }
 
