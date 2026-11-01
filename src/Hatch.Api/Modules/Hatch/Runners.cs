@@ -188,6 +188,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 i.ClaimHeartbeatAt,
                 i.ClaimChatter,
                 i.ClaimChatterAt,
+                i.ClaimQuietLimitSeconds,
                 Status = i.Status!.Name,
             })
             .ToListAsync(ct);
@@ -198,7 +199,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 Key: IssueKey.Format(i.Key, i.Number),
                 Claim: new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
-                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds),
                 i.Status))
             .Where(i => claims.IsLive(i.Claim, now))
             // A runner holds one ticket at a time by construction, and the most
