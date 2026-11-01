@@ -1004,6 +1004,137 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
     }
 
+    // ---- A claim's own quiet window ----
+
+    /// <summary>HA-1630: a column of 1500 seconds outlives the shipped five-minute global.</summary>
+    [SkippableFact]
+    public async Task AClaimsOwnQuietWindow_IsRefusedOnHeartbeatAt26MinutesButNotAt20()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        // TestClaims.Ttl is 300 seconds and a bare heartbeat carries no
+        // chatter, so the clock steps in four-minute hops, each followed by a
+        // chatter-less heartbeat, to keep the TTL - rather than the quiet
+        // window this test is about - from deciding the outcome.
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal(ClaimLostReasons.Quiet, ConflictReason(refused));
+    }
+
+    [SkippableFact]
+    public async Task AClaimsOwnQuietWindow_IsTakeableByAnotherRunnerAt26MinutesButNotAt20()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        for (var minutes = 4; minutes <= 20; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        // Still live at 20 minutes: a second runner is refused.
+        Assert.NotNull(Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default)));
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        // Quiet at 26 minutes: the second runner's take succeeds.
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+        Assert.NotEqual(Guid.Empty, second.Token);
+    }
+
+    /// <summary>A null column, against the shipped five-minute global - the dispatcher's own fold.</summary>
+    [SkippableFact]
+    public async Task TheLineageFold_IsNotLiveAtSixMinutesWithNoColumnOfItsOwn()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var child = await h.FileAsync(parent: issue);
+        var token = await h.TakeAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var lineage = await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default);
+        Assert.Null(lineage.Holder((await h.RowAsync(child)).Id, null));
+    }
+
+    /// <summary>A column of 1500 seconds, against a global switched off entirely - the column still applies.</summary>
+    [SkippableFact]
+    public async Task TheBoardsRead_IsNotLiveAt26MinutesWithAColumnEvenThoughTheGlobalIsOff()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        Assert.Null(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+    }
+
+    /// <summary>No column at all, against a global switched off entirely - a global of zero still means never quiet.</summary>
+    [SkippableFact]
+    public async Task TheBoardsRead_IsStillLiveAt26MinutesWithNoColumnAndTheGlobalOff()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        Assert.NotNull(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+    }
+
+    /// <summary>A take over a lapsed claim does not inherit the old holder's window - HA-1631 is what writes a real value back.</summary>
+    [SkippableFact]
+    public async Task ATakeOverAQuietClaim_LeavesTheColumnBlank()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        h.Time.Advance(TimeSpan.FromMinutes(26));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietLimitSeconds);
+    }
+
+    private static async Task SetQuietLimitAsync(Harness h, string key, int quietLimitSeconds)
+    {
+        var id = (await h.RowAsync(key)).Id;
+        await h.Connect().Issues.Where(i => i.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.ClaimQuietLimitSeconds, quietLimitSeconds));
+    }
+
     // ---- Taking a claim answers no question ----
 
     [SkippableFact]

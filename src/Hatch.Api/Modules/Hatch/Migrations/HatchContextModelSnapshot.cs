@@ -207,6 +207,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<int?>("ClaimPlaybookId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ClaimQuietLimitSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<string>("ClaimRunner")
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");

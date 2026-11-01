@@ -1194,6 +1194,13 @@ public class EfHatchIssue
     public int? ClaimPlaybookId { get; set; }
 
     /// <summary>
+    /// The quiet window this claim was taken under, in seconds, or null to use
+    /// the board's own - see <see cref="IssueClaims.WindowFor"/>. Set once at
+    /// take time and cleared at release exactly like the other claim columns.
+    /// </summary>
+    public int? ClaimQuietLimitSeconds { get; set; }
+
+    /// <summary>
     /// The person this issue belongs to, or null. At most one of this and
     /// <see cref="AssigneeApiKeyId"/> is ever set - the controller clears the
     /// other on every write, and a check constraint refuses a row wearing both.
