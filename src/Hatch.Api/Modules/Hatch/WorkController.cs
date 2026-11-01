@@ -1201,7 +1201,8 @@ public class WorkController(
                 i.ClosedAt,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds),
             })
             .ToListAsync(ct);
 
