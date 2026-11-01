@@ -179,14 +179,21 @@ public class PlaybookProposalReadsTests
 
     // ---- Harness ----
 
-    private sealed class Harness
+    /// <summary>
+    /// Lifted from private so <see cref="PlaybookProposalsControllerTests"/> can submit against the
+    /// same board rather than keep a second copy - the submission route and the reads it shares
+    /// a projection with should not drift on what a fresh board looks like.
+    /// </summary>
+    internal sealed class Harness
     {
         public required HatchContext Db { get; init; }
         public required PlaybookProposalsController Proposals { get; init; }
+        public required StubCallerIdentity Caller { get; init; }
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
         public required int Review { get; init; }
         public required int ProjectId { get; init; }
+        public required int ProjectRepoSourced { get; init; }
         public required EfHatchPlaybook Playbook { get; init; }
 
         private int nextIssueNumber = 1;
@@ -248,7 +255,7 @@ public class PlaybookProposalReadsTests
             null, null, [], false, Playbook.UpdatedAt, null, null, null);
     }
 
-    private static async Task<Harness> NewAsync()
+    internal static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -257,7 +264,8 @@ public class PlaybookProposalReadsTests
         var inProgress = new EfHatchStatus { Name = "in progress", SortOrder = 30 };
         var review = new EfHatchStatus { Name = "in review", SortOrder = 40 };
         var project = new EfHatchProject { Key = "A", Name = "A", CreatedAt = Now };
-        db.AddRange(todo, inProgress, review, project);
+        var projectRepoSourced = new EfHatchProject { Key = "R", Name = "R", CreatedAt = Now, RepoSourced = true };
+        db.AddRange(todo, inProgress, review, project, projectRepoSourced);
         await db.SaveChangesAsync();
 
         var playbook = new EfHatchPlaybook
@@ -282,10 +290,12 @@ public class PlaybookProposalReadsTests
         {
             Db = db,
             Proposals = new PlaybookProposalsController(db, caller, time),
+            Caller = caller,
             Todo = todo.Id,
             InProgress = inProgress.Id,
             Review = review.Id,
             ProjectId = project.Id,
+            ProjectRepoSourced = projectRepoSourced.Id,
             Playbook = playbook,
         };
     }
@@ -294,7 +304,7 @@ public class PlaybookProposalReadsTests
         result.Value ?? throw new InvalidOperationException($"expected a value, got {result.Result}");
 
     /// <summary>Whoever the test says is holding the phone. Their name is the audit actor.</summary>
-    private sealed class StubCallerIdentity : ICallerIdentity
+    internal sealed class StubCallerIdentity : ICallerIdentity
     {
         public EfPerson? Person { get; set; }
 

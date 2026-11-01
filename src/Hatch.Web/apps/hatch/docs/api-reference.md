@@ -642,8 +642,9 @@ state rather than a stall.
 |---|---|---|---|
 | GET | `/playbook-proposals` | key | The queue for one state, oldest first - pending by default, or `?state=approved`, `rejected` or `all` |
 | GET | `/playbook-proposals/{id}` | key | One proposal, with every change it carries |
+| POST | `/playbook-proposals` | key | Files a proposal - a reason, an optional issue, and one or more changes - and changes nothing live |
 
-A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the change sits for a person to approve or reject instead. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` is not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. There is no `POST` yet to make one.
+A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the change sits for a person to approve or reject instead. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` is not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` checks each change against the live board by the same rules `PATCH /playbooks/{id}` does, and against every other pending proposal naming the same row, before saving anything; a named issue gets a `playbook_proposed` event.
 
 ### Runners and settings
 
