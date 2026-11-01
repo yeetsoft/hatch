@@ -636,6 +636,15 @@ content over the stored cap, and writes no event - there is no issue to
 write one on, and no question, since a bad playbooks file is this row's own
 state rather than a stall.
 
+### Playbook proposals
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/playbook-proposals` | key | The queue for one state, oldest first - pending by default, or `?state=approved`, `rejected` or `all` |
+| GET | `/playbook-proposals/{id}` | key | One proposal, with every change it carries |
+
+A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the change sits for a person to approve or reject instead. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` is not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. There is no `POST` yet to make one.
+
 ### Runners and settings
 
 | Method | Path | Who | What it does |

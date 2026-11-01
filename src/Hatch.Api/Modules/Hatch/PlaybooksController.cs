@@ -193,26 +193,36 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         return ToDto(row);
     }
 
-    internal static PlaybookDto ToDto(EfHatchPlaybook p) => new(
-        p.Id,
-        p.FromStatusId,
-        p.FromStatus?.Name ?? "",
-        p.ToStatusId,
-        p.ToStatus?.Name ?? "",
-        EfHatchPlaybook.SplitTypes(p.Types),
-        p.Shape,
-        p.EffectivePrompt,
-        p.DefaultPrompt,
-        p.Model,
-        p.Effort,
-        p.Budget,
-        p.BriefLimit,
-        EfHatchPlaybook.ReadDeniedTools(p.DeniedTools) ?? [],
-        p.IsCheck,
-        p.UpdatedAt,
-        p.ProjectId,
-        p.Project?.Key,
-        p.Project?.Name,
-        p.ProjectId is not null ? "project" : "board",
-        p.QuietLimitSeconds);
+    internal static PlaybookDto ToDto(EfHatchPlaybook p) =>
+        From(p.Id, PlaybookState.Of(p), p.FromStatus?.Name ?? "", p.ToStatus?.Name ?? "", p.UpdatedAt, p.Project?.Key, p.Project?.Name);
+
+    /// <summary>
+    /// A <see cref="PlaybookDto"/> from a <see cref="PlaybookState"/> rather than a tracked
+    /// row, so a proposal's <c>after</c> can be rendered the same way a live playbook is -
+    /// see <see cref="PlaybookProposalProjection"/>.
+    /// </summary>
+    internal static PlaybookDto From(
+        int id, PlaybookState state, string fromStatusName, string toStatusName,
+        DateTimeOffset updatedAt, string? projectKey, string? projectName) => new(
+        id,
+        state.FromStatusId,
+        fromStatusName,
+        state.ToStatusId,
+        toStatusName,
+        EfHatchPlaybook.SplitTypes(state.Types),
+        state.Shape,
+        state.EffectivePrompt,
+        state.DefaultPrompt,
+        state.Model,
+        state.Effort,
+        state.Budget,
+        state.BriefLimit,
+        EfHatchPlaybook.ReadDeniedTools(state.DeniedTools) ?? [],
+        state.IsCheck,
+        updatedAt,
+        state.ProjectId,
+        projectKey,
+        projectName,
+        state.ProjectId is not null ? "project" : "board",
+        state.QuietLimitSeconds);
 }
