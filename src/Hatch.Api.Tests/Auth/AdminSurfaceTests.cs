@@ -367,12 +367,13 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
 
-        // What a session proposed changing about a playbook, read back -
-        // Hatch-scoped like the read above it, since a session proposing a
-        // change may want to see where it landed. There is no write here yet.
-        // See PlaybookProposalsController.
+        // What a session proposed changing about a playbook, read back, and
+        // the submission that files one - both Hatch-scoped, since the same
+        // key that cannot write to /playbooks directly can still ask for a
+        // change and see where it landed. See PlaybookProposalsController.
         "PlaybookProposalsController.GetProposals",
         "PlaybookProposalsController.GetProposal",
+        "PlaybookProposalsController.SubmitProposal",
 
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
