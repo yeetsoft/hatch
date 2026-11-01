@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-one tables.
+/// migration history, twenty-three tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -21,6 +21,8 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
     public DbSet<EfHatchIssueEvent> IssueEvents => Set<EfHatchIssueEvent>();
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
+    public DbSet<EfHatchPlaybookProposal> PlaybookProposals => Set<EfHatchPlaybookProposal>();
+    public DbSet<EfHatchPlaybookProposalChange> PlaybookProposalChanges => Set<EfHatchPlaybookProposalChange>();
     public DbSet<EfHatchWipLimit> WipLimits => Set<EfHatchWipLimit>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
@@ -176,6 +178,39 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // asks "which rows deny Bash" that is a query against this column
             // rather than a migration.
             e.Property(p => p.DeniedTools).HasColumnType("jsonb");
+        });
+
+        // SetNull on the ticket: a proposal is a record of what was asked for,
+        // and it outlives the issue that prompted it.
+        modelBuilder.Entity<EfHatchPlaybookProposal>(e =>
+        {
+            e.HasOne(p => p.Issue)
+                .WithMany()
+                .HasForeignKey(p => p.IssueId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // A change has no meaning without its proposal, so deleting the
+        // proposal takes them. The playbook is the other way round: deleting
+        // one leaves the change standing with a null PlaybookId, because Before
+        // still says what it was and the proposal should still read afterwards.
+        modelBuilder.Entity<EfHatchPlaybookProposalChange>(e =>
+        {
+            e.HasOne(c => c.Proposal)
+                .WithMany(p => p.Changes)
+                .HasForeignKey(c => c.ProposalId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(c => c.Playbook)
+                .WithMany()
+                .HasForeignKey(c => c.PlaybookId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // jsonb for the reason EfHatchPlaybook.DeniedTools is: the stored
+            // shape is a document, and "which proposals touch the prompt" is a
+            // query against these columns rather than a migration.
+            e.Property(c => c.Before).HasColumnType("jsonb");
+            e.Property(c => c.Patch).HasColumnType("jsonb");
         });
 
         // Cascade from both ends, which is the one place in this module where

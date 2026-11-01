@@ -773,6 +773,7 @@ export type IssueEventKind =
   | 'build_check_changed'
   | 'wip_overridden'
   | 'stalled'
+  | 'playbook_proposed'
   | 'held'
   | 'resumed'
   | 'commented'
