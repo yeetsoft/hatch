@@ -367,6 +367,13 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
 
+        // What a session proposed changing about a playbook, read back -
+        // Hatch-scoped like the read above it, since a session proposing a
+        // change may want to see where it landed. There is no write here yet.
+        // See PlaybookProposalsController.
+        "PlaybookProposalsController.GetProposals",
+        "PlaybookProposalsController.GetProposal",
+
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
         // about the work, not about an agent's budget, so a planning session
