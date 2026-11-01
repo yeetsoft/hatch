@@ -13,7 +13,7 @@ public class PlaybookPatchesTests
     private static PlaybookState State(string? prompt = "custom", string? defaultPrompt = "prescribed") => new(
         FromStatusId: 1, ToStatusId: 2, Types: "task", Shape: "any",
         Prompt: prompt, DefaultPrompt: defaultPrompt, Model: "sonnet", Effort: "medium",
-        Budget: 5, BriefLimit: null, DeniedTools: null, IsCheck: false, ProjectId: null);
+        Budget: 5, BriefLimit: null, QuietLimitSeconds: null, DeniedTools: null, IsCheck: false, ProjectId: null);
 
     private static PlaybookPatchRequest Patch(string? prompt = null, string? model = null) =>
         new(FromStatusId: null, ToStatusId: null, Types: null, Prompt: prompt, Model: model, Effort: null);

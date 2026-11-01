@@ -306,7 +306,8 @@ counts as not moved. Stalls escalate:
   blocks the next dispatch and badges the card. The board resumes the ticket
   by itself after 15 minutes (`0` never resumes it).
 - **Three in a row hold it for a person.** The third stall is marked like the
-  second, and after it the board stops resuming the ticket.
+  second, and after it the board stops resuming the ticket. A person's
+  *Resume now* starts the count over.
 
 An open question on the ticket is itself the flag, so the second stall on a
 ticket that already has one only comments. A session that asked a question is

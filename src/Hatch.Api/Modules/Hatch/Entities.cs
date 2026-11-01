@@ -2319,6 +2319,12 @@ public class EfHatchPlaybook
     public int? BriefLimit { get; set; }
 
     /// <summary>
+    /// The seconds a claim under this row may go without a word, blank
+    /// (inheriting <c>Hatch:StallLapseMinutes</c>) unless a person has set one.
+    /// </summary>
+    public int? QuietLimitSeconds { get; set; }
+
+    /// <summary>
     /// The tool rules this row denies, as a jsonb array - read and written
     /// through <see cref="ReadDeniedTools"/> and <see cref="WriteDeniedTools"/>
     /// rather than directly, the way <see cref="EfHatchComment.Options"/> is.

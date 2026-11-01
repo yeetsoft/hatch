@@ -100,6 +100,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
             briefLimit = value;
         }
 
+        int? quietLimitSeconds = null;
+        if (request.QuietLimitSeconds is not null)
+        {
+            var (value, quietLimitError) = PlaybookFile.ParseQuietLimit(request.QuietLimitSeconds);
+            if (quietLimitError is not null) return BadRequest(quietLimitError);
+            quietLimitSeconds = value;
+        }
+
         var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
         if (PlaybookFile.InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
 
@@ -115,6 +123,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
             Effort = effort,
             Budget = budget,
             BriefLimit = briefLimit,
+            QuietLimitSeconds = quietLimitSeconds,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
             ProjectId = projectId,
@@ -149,6 +158,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         playbook.Effort = next.Effort;
         playbook.Budget = next.Budget;
         playbook.BriefLimit = next.BriefLimit;
+        playbook.QuietLimitSeconds = next.QuietLimitSeconds;
         playbook.DeniedTools = next.DeniedTools;
         playbook.IsCheck = next.IsCheck;
         playbook.ProjectId = next.ProjectId;
@@ -203,5 +213,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
         p.ProjectId,
         p.Project?.Key,
         p.Project?.Name,
-        p.ProjectId is not null ? "project" : "board");
+        p.ProjectId is not null ? "project" : "board",
+        p.QuietLimitSeconds);
 }

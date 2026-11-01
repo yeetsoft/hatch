@@ -34,7 +34,7 @@ public static class PlaybookFile
     internal const int MaxFileBytes = 512 * 1024;
 
     private static readonly string[] EntryKeys =
-        ["from", "to", "types", "shape", "prompt", "model", "effort", "budget", "briefLimit", "deniedTools", "isCheck"];
+        ["from", "to", "types", "shape", "prompt", "model", "effort", "budget", "briefLimit", "deniedTools", "isCheck", "quietLimitSeconds"];
 
     public static (IReadOnlyList<PlaybookCreateRequest>? Rows, string? Problem) Parse(
         byte[] content, IReadOnlyList<EfHatchStatus> statuses, ModelFamilies? families = null)
@@ -157,6 +157,10 @@ public static class PlaybookFile
         if (briefLimitNode is not null && ParseBriefLimit(briefLimitNode.Value ?? "").Error is { } briefLimitError)
             return (null, briefLimitError, briefLimitNode.Start);
 
+        var quietLimitNode = Scalar(entry, "quietLimitSeconds");
+        if (quietLimitNode is not null && ParseQuietLimit(quietLimitNode.Value ?? "").Error is { } quietLimitError)
+            return (null, quietLimitError, quietLimitNode.Start);
+
         var deniedTools = Sequence(entry, "deniedTools");
         var normalizedDeniedTools = EfHatchPlaybook.NormalizeDeniedTools(deniedTools);
         if (InvalidDeniedTools(normalizedDeniedTools) is { } deniedToolsError)
@@ -183,7 +187,8 @@ public static class PlaybookFile
             shape,
             deniedTools,
             ProjectId: null,
-            IsCheck: isCheck);
+            IsCheck: isCheck,
+            QuietLimitSeconds: quietLimitNode?.Value);
 
         return (row, null, null);
     }
@@ -369,13 +374,25 @@ public static class PlaybookFile
         return (null, $"a brief limit is a whole number of one or more, in characters - not \"{trimmed}\"");
     }
 
+    /// <summary>The same, for the seconds a claim may go without a word.</summary>
+    internal static (int? Value, string? Error) ParseQuietLimit(string quietLimit)
+    {
+        var trimmed = quietLimit.Trim();
+        if (trimmed.Length == 0) return (null, null);
+
+        if (int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1)
+            return (parsed, null);
+
+        return (null, $"a quiet limit is a whole number of one or more, in seconds - not \"{trimmed}\"");
+    }
+
     /// <summary>
     /// A parsed <see cref="PlaybookCreateRequest"/> resolved into the stored
     /// row - the same shape/model/effort defaulting and type/denied-tools
     /// normalization <see cref="PlaybooksController.CreatePlaybook"/> applies
     /// before building an <c>EfHatchPlaybook</c>, copied rather than
     /// reinvented. <see cref="Parse"/> already validated every field, so
-    /// <see cref="ParseBudget"/>/<see cref="ParseBriefLimit"/> cannot fail
+    /// <see cref="ParseBudget"/>/<see cref="ParseBriefLimit"/>/<see cref="ParseQuietLimit"/> cannot fail
     /// here - <c>.Value</c> is safe.
     /// </summary>
     internal static PlaybookFileRow Resolve(PlaybookCreateRequest row)
@@ -385,17 +402,19 @@ public static class PlaybookFile
         var effort = row.Effort?.Trim() is { Length: > 0 } e ? e : EfHatchPlaybook.DefaultEffort;
         var budget = row.Budget is null ? (int?)null : ParseBudget(row.Budget).Value;
         var briefLimit = row.BriefLimit is null ? (int?)null : ParseBriefLimit(row.BriefLimit).Value;
+        var quietLimit = row.QuietLimitSeconds is null ? (int?)null : ParseQuietLimit(row.QuietLimitSeconds).Value;
         var types = EfHatchPlaybook.SplitTypes(EfHatchPlaybook.NormalizeTypes(row.Types));
         var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(row.DeniedTools);
 
         return new PlaybookFileRow(
             row.FromStatusId, row.ToStatusId, types, shape, row.Prompt.Trim(), model, effort,
-            budget, briefLimit, deniedTools, row.IsCheck ?? false);
+            budget, briefLimit, deniedTools, row.IsCheck ?? false, quietLimit);
     }
 
     /// <summary>A stored row read back for the wire, its status ids resolved to the board's current names.</summary>
     internal static PlaybookFileRowDto ToDto(PlaybookFileRow row, IReadOnlyDictionary<int, string> names) => new(
         row.FromStatusId, names.GetValueOrDefault(row.FromStatusId, ""),
         row.ToStatusId, names.GetValueOrDefault(row.ToStatusId, ""),
-        row.Types, row.Shape, row.Prompt, row.Model, row.Effort, row.Budget, row.BriefLimit, row.DeniedTools, row.IsCheck);
+        row.Types, row.Shape, row.Prompt, row.Model, row.Effort, row.Budget, row.BriefLimit, row.DeniedTools, row.IsCheck,
+        row.QuietLimitSeconds);
 }
