@@ -171,6 +171,12 @@ method for one issue is what the description is for.
 
 Anyone who can read the issue can see its overrides. Setting one is a person's.
 
+## Proposed changes
+
+A proposal is a session's request to change one or more rows — a reason, and
+the fields it would change — that touches nothing live until a person decides
+it. This page shows them.
+
 ## Why an agent cannot edit a playbook
 
 Reading the matrix accepts an API key, because that is how a session is told
