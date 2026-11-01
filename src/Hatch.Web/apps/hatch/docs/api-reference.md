@@ -521,10 +521,17 @@ make room for an emergency ticket and is the one case a heartbeat answers a
 A live claim refuses a second `POST`, including the same runner's own -
 re-claiming is not a thing a runner does, it heartbeats - and a claim on an
 ancestor or descendant issue refuses it too: one runner per line of the tree.
-The `DELETE` carries an optional `token` (the one the claim was taken with)
-and an optional `outcome` - one of `dropped`, `worked`, `preempted` - read
-only alongside a token. Releasing a claim that holds nothing, or releasing
-twice, is a `204` that writes nothing either way.
+A heartbeat or release refused for its token answers `409` with `{ error,
+reason }` - `error` the sentence a person reads, `reason` one of `quiet`
+(the holder's own token, gone quiet), `expired` (its own token, simply
+lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
+token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
+carries an optional `token` (the one the claim was taken with), an optional
+`outcome` - one of `dropped`, `worked`, `preempted` - and an optional
+`reason` - only `quiet` - both read only alongside a token, and `reason`
+written into the event only beside an `outcome`. Releasing a claim that
+holds nothing, or releasing twice, is a `204` that writes nothing either
+way.
 
 **The one narrowing.** A tokenless `DELETE` is the operator's own clobber -
 clearing another runner's claim by hand - and it refuses a program caller
