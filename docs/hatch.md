@@ -2059,7 +2059,11 @@ to go from one that is fine.
 heartbeat.** *Quiet* here is a hard rule, not the card's amber dot below: the
 later of `ClaimedAt` and `ClaimChatterAt` — the last time anybody said
 anything, or the take itself where nobody ever has — is judged against
-`Hatch:StallLapseMinutes`, five minutes by default.
+`Hatch:StallLapseMinutes`, five minutes by default, or against the claim's own
+`ClaimQuietLimitSeconds` where it carries one — set with the lease. A null or
+non-positive column is exactly as if there were no column at all, falling back
+to the global; a positive one is what every reader judges the claim against
+instead, in place of the global, even where the global is `0`.
 A `--quiet` session sends no chatter at all, so its claim is measured from when
 it was taken. A line the session prints counts as a word every time it is
 printed, even when its text is the same as the last one's - the CLI counts the
@@ -2078,7 +2082,8 @@ else's) - so a client can act on which without parsing prose; a take's own
 …/claim?token=…&outcome=…&reason=quiet` is read only alongside both a
 token and an outcome, and rides into the `claim_released` payload beside
 them. `Hatch:StallLapseMinutes = 0` turns
-this off entirely — every claim is then judged on its TTL alone — and a
+this off entirely for a claim with no window of its own — such a claim is then
+judged on its TTL alone — and a
 negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
 already has. The window rides back with the take as `stallLapseSeconds`, in
 seconds, `0` when lapsing is off — the server is what honours it, so the

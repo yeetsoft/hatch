@@ -130,6 +130,70 @@ public class IssueClaimsTests
         Assert.Equal(600, TestClaims.With(stallLapseMinutes: 10).StallLapseSeconds);
     }
 
+    // ---- A claim's own quiet window ----
+
+    [Fact]
+    public void AClaimsOwnQuietWindow_IsLiveAt20MinutesAndNotLiveAt26_OverAFiveMinuteGlobal()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        ClaimSnapshot Held(DateTimeOffset now) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null, QuietLimitSeconds: 1500);
+
+        Assert.True(claims.IsLive(Held(Now.AddMinutes(20)), Now.AddMinutes(20)));
+        Assert.False(claims.IsLive(Held(Now.AddMinutes(26)), Now.AddMinutes(26)));
+    }
+
+    [Fact]
+    public void AClaimsOwnQuietWindow_TheBoundaryIsInclusive()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        ClaimSnapshot Held(DateTimeOffset now) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null, QuietLimitSeconds: 1500);
+
+        Assert.True(claims.IsLive(Held(Now.AddSeconds(1500)), Now.AddSeconds(1500)));
+        Assert.False(claims.IsLive(Held(Now.AddSeconds(1500).AddTicks(1)), Now.AddSeconds(1500).AddTicks(1)));
+    }
+
+    [Fact]
+    public void AQuietLimitOfZeroOrNegative_FallsBackToTheGlobalWindow()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        Assert.Equal(claims.StallLapseSeconds, claims.WindowFor(WithQuietLimit(0)));
+        Assert.Equal(claims.StallLapseSeconds, claims.WindowFor(WithQuietLimit(-5)));
+    }
+
+    [Fact]
+    public void ANullQuietLimit_IsJudgedAtTheGlobalWindow_IncludingAGlobalOfZero()
+    {
+        Assert.Equal(TestClaims.With(stallLapseMinutes: 5).StallLapseSeconds, TestClaims.With(stallLapseMinutes: 5).WindowFor(WithQuietLimit(null)));
+
+        // A global of zero is "never quiet", not "falls back further" - a null
+        // column inherits that exactly as it inherits any other global value.
+        var neverQuiet = TestClaims.With(stallLapseMinutes: 0);
+        var claim = new ClaimSnapshot(
+            Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, Now.AddDays(1), null, null, QuietLimitSeconds: null);
+
+        Assert.True(neverQuiet.IsLive(claim, Now.AddDays(1)));
+    }
+
+    [Fact]
+    public void APositiveQuietLimit_AppliesEvenWhenTheGlobalIsOff()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 0);
+
+        ClaimSnapshot Held(DateTimeOffset now) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, null, null, QuietLimitSeconds: 1500);
+
+        Assert.True(claims.IsLive(Held(Now.AddMinutes(20)), Now.AddMinutes(20)));
+        Assert.False(claims.IsLive(Held(Now.AddMinutes(26)), Now.AddMinutes(26)));
+    }
+
+    private static ClaimSnapshot WithQuietLimit(int? quietLimitSeconds) => new(
+        Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, Now, null, null, quietLimitSeconds);
+
     // ---- What a client is handed ----
 
     [Fact]
