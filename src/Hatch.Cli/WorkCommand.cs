@@ -371,6 +371,10 @@ public sealed class WorkCommand(Runtime runtime)
         // out, matching every release before this one.
         string? releaseOutcome = null;
 
+        // The report's own reason, carried alongside the outcome above - set
+        // only for a quiet stop, dropped or flagged alike.
+        string? releaseReason = null;
+
         try
         {
             if (key is { Length: > 0 })
@@ -689,11 +693,12 @@ public sealed class WorkCommand(Runtime runtime)
 
                 owned = !report.LostLease;
                 releaseOutcome = report.ReleaseOutcome;
+                releaseReason = report.ReleaseReason;
                 return 0;
             }
             finally
             {
-                owned &= claim.Lost is null;
+                owned &= !claim.LostToOthers;
                 var limit = report?.UsageLimitResetAt is { } resetAt
                     ? new UsageLimitInfo(resetAt, report.UsageLimitResetKnown, report.SessionId, report.UsageLimitPassed)
                     : null;
@@ -753,7 +758,7 @@ public sealed class WorkCommand(Runtime runtime)
         }
         finally
         {
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason);
         }
     }
 

@@ -20,6 +20,20 @@ public sealed class IncrementTests
         return (claim!, h);
     }
 
+    /// <summary>
+    /// The same as <see cref="HoldingAsync"/>, but with a <c>stallLapseSeconds</c>
+    /// on the take - what starts the quiet watcher in <see cref="Increment.SpawnAsync"/>.
+    /// </summary>
+    private static async Task<Claim> HoldingWithLapseAsync(Harness h, string key, Guid token, int stallLapseSeconds)
+    {
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK,
+            Fixtures.Taken(token, stallLapseSeconds: stallLapseSeconds));
+        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, key, "test:/checkout", default, Harness.Beat);
+        return claim!;
+    }
+
     [Fact]
     public async Task An_increment_posts_its_bill_and_asks_the_board_where_the_ticket_ended_up()
     {
@@ -1741,6 +1755,245 @@ public sealed class IncrementTests
         // longer the holder, and asking as one would be a lie about a lease.
         Assert.DoesNotContain("heldToken", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// HA-1637: the claim's own quiet window, raced a beat early by the runner
+    /// itself rather than waited out on the board's own heartbeat refusal. A
+    /// silent session is stopped, and the first time in a row this happens to a
+    /// ticket it is let go of quietly - the same ladder any other stall climbs.
+    /// </summary>
+    [Fact]
+    public async Task A_silent_session_is_stopped_for_quiet_and_let_go_the_first_time()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        // Advances the fake clock past the watcher's own deadline rather than
+        // waiting out the real seconds, the same pattern the lost-lease tests
+        // above use for the retry backoff.
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.QuietStopped);
+        Assert.False(report.LostLease);
+        Assert.True(report.LetGo);
+        Assert.Equal(143, report.ExitCode);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var body = written.Read<CommentCreateRequest>().Body;
+        Assert.Contains("without a word", body, StringComparison.Ordinal);
+        Assert.Contains("claude --resume s-1", body, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The second time in a row, a quiet stop is flagged exactly like any other stall.</summary>
+    [Fact]
+    public async Task A_silent_session_stopped_for_quiet_a_second_time_in_a_row_is_flagged()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.QuietStopped);
+        Assert.False(report.LetGo);
+        Assert.Equal("flagged", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("without a word", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Contains("without a word", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A session that keeps speaking inside every half of the quiet window is never stopped for it.</summary>
+    [Fact]
+    public async Task A_session_that_speaks_every_half_window_is_never_stopped_for_quiet()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            for (var i = 0; i < 5; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(0.8), clock, ct);
+                onLine?.Invoke(Fixtures.ToolUse("Bash", $"step {i}"));
+            }
+
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return new SessionResult(0, "");
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 400 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(report.QuietStopped);
+        Assert.True(report.Moved);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// A heartbeat refused with <c>reason: "quiet"</c> is read the same way a
+    /// locally fired watcher is - here with no local watcher at all
+    /// (<c>stallLapseSeconds</c> defaults to 0, so none is even started), which
+    /// is the server's own quiet-claim rule catching it on its own.
+    /// </summary>
+    [Fact]
+    public async Task A_heartbeat_refused_for_quiet_with_no_local_watcher_reads_the_same_way()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim has gone quiet","reason":"quiet"}""");
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.QuietStopped);
+        Assert.False(report.LostLease);
+        Assert.True(report.LetGo);
+        Assert.Equal(143, report.ExitCode);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("without a word", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// A takeover always wins over a quiet stop, whether or not a local watcher
+    /// is running alongside it: the board's own heartbeat refusal is somebody
+    /// else holding the ticket now, and nothing quiet-related is written on an
+    /// increment that is no longer this runner's to write on.
+    /// </summary>
+    [Fact]
+    public async Task A_takeover_wins_over_a_quiet_watcher_running_alongside_it()
+    {
+        using var h = new Harness();
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 300);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim was taken over","reason":"taken"}""");
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.LostLease);
+        Assert.False(report.QuietStopped);
+        Assert.Contains("the claim was taken", report.Flag!, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A quiet stop that still moved the ticket releases worked, with no reason - the same as any other stall that moved it.</summary>
+    [Fact]
+    public async Task A_quiet_stop_after_the_ticket_already_moved_releases_worked_with_no_reason()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.QuietStopped);
+        Assert.True(report.Moved);
+        Assert.False(report.Stalled);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Null(report.ReleaseReason);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }

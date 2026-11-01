@@ -9,7 +9,8 @@ public sealed class TallyTests
         string key = "AER-1", int exit = 0, decimal? cost = 1m, long? totalTokens = null, bool moved = true, bool lost = false,
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
-        bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null) =>
+        bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
+        bool quietStopped = false) =>
         new()
         {
             Key = key,
@@ -33,6 +34,7 @@ public sealed class TallyTests
             ClampedAtRequests = clamped ? clampedAtRequests : null,
             HardLimitedAtTokens = hardLimited ? hardLimitedAtTokens ?? 7_500_000L : null,
             HardLimitedAtRequests = hardLimited ? hardLimitedAtRequests : null,
+            QuietStopped = quietStopped,
         };
 
     [Fact]
@@ -756,6 +758,25 @@ public sealed class TallyTests
         tally.Record(Report("AER-1", exit: 1, moved: false, hardLimited: true));
         tally.Record(Report("AER-2", exit: 1, moved: false, hardLimited: true));
         tally.Record(Report("AER-3", exit: 1, moved: false, hardLimited: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+    }
+
+    /// <summary>
+    /// HA-1637: a quiet stop does not arm the three-strikes stop either, the
+    /// same reasoning a lost lease and a hard limit both get - the runner
+    /// stopped the session on purpose, and this says nothing about whether the
+    /// last increment actually worked.
+    /// </summary>
+    [Fact]
+    public void Three_quiet_stops_in_a_row_do_not_end_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, moved: false, quietStopped: true));
+        tally.Record(Report("AER-2", exit: 143, moved: false, quietStopped: true));
+        tally.Record(Report("AER-3", exit: 143, moved: false, quietStopped: true));
 
         Assert.False(tally.ShouldStop());
         Assert.Equal(0, tally.Fails);

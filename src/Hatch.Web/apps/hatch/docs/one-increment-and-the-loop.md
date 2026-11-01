@@ -68,13 +68,24 @@ beside the loops rather than being a session nobody can see.
 A claim is a five-minute lease on the ticket, taken before the session spawns
 and refreshed by a heartbeat every `max(5s, ttl/5)` — four heartbeats inside
 one lease, so one missed beat is never the difference between holding it and
-losing it. A `409` on a heartbeat means the lease is already gone — preempted,
-or taken by somebody else's claim — and the runner kills the session and its
-whole process tree at once, writing nothing further for it. Any other
-heartbeat failure is weather and is retried, but one that keeps failing past
-the ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops
-the session itself rather than let it keep working a ticket the board may
-already have handed to somebody else.
+losing it. A `409` on a heartbeat carries a `reason`: `expired` or `cleared`
+(the holder's own token, simply gone) and `taken` (somebody else's token now)
+all mean the lease really is gone, and the runner kills the session and its
+whole process tree at once, writing nothing further for it - the same as a
+legacy bare-string refusal, which names no reason at all.
+
+`quiet` is the one reason that is not a lost lease: the holder's own token,
+refused for going quiet rather than for being gone. The runner races this one
+rather than wait on it - it times the ticket's own quiet window itself, a
+few seconds early, and stops the session on its own before a heartbeat could
+ever be refused this way. Either way the token is still this runner's, and
+the increment reports it as a stall rather than a lost lease, so the usual
+let-go-then-flag ladder ([Stalls](#stalls)) applies to it the same as a
+session that simply ended without moving the ticket. Any other heartbeat
+failure is weather and is retried, but one that keeps failing past the
+ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops the
+session itself rather than let it keep working a ticket the board may already
+have handed to somebody else.
 
 There is no wall-clock cap on an increment beyond that: a session runs as
 long as it has a lease to renew. Ctrl-C waits up to ten seconds for the
@@ -311,10 +322,20 @@ counts as not moved. Stalls escalate:
 
 An open question on the ticket is itself the flag, so the second stall on a
 ticket that already has one only comments. A session that asked a question is
-no stall. Nor is running out of usage, being preempted, losing the lease, or a
-skip with `k`: none counts toward a stall or toward the three failed increments
-below, and a session stopped by a hard limit published what it left.
+no stall. Nor is running out of usage, being preempted, or a skip with `k`:
+none counts toward a stall or toward the three failed increments below, and a
+session stopped by a hard limit published what it left.
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
+
+Losing the lease is the one exception that cuts the other way: a takeover or
+a clear is somebody else's increment now, so it is exempt from the ladder
+above entirely - no comment, no stall, no outcome written. A claim gone quiet
+is not this: the runner stopped its own session, the lease is still held, and
+the stall ladder runs exactly as it would for a session that simply went
+quiet and ended on its own - see [The claim](#the-claim). It is exempt from
+the three failed increments below the same way a hard limit is, though: the
+runner stopped the session on purpose, which says nothing about whether the
+increment itself was going well.
 
 Running out of usage commits and pushes whatever the session left onto the
 issue's own branch, and the runner writes one comment: that it ran out, when
