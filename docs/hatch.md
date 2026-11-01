@@ -2070,7 +2070,14 @@ because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
 refused `409` with `this claim has gone quiet for 5 minutes`, beside the three
 reasons a heartbeat could already be refused, and checked before "expired"
-where a claim happens to qualify as both. `Hatch:StallLapseMinutes = 0` turns
+where a claim happens to qualify as both. The `409` answers `{ error,
+reason }` - `error` the sentence it always printed, `reason` one of
+`quiet`, `expired`, `cleared` (no token on the claim) or `taken` (somebody
+else's) - so a client can act on which without parsing prose; a take's own
+`409`s are unchanged, bare strings. A release may say the same: `DELETE
+…/claim?token=…&outcome=…&reason=quiet` is read only alongside both a
+token and an outcome, and rides into the `claim_released` payload beside
+them. `Hatch:StallLapseMinutes = 0` turns
 this off entirely — every claim is then judged on its TTL alone — and a
 negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
 already has. The window rides back with the take as `stallLapseSeconds`, in
