@@ -718,23 +718,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                  || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
 
     /// <summary>
-    /// Whether a session spawned for this move writes code, and so needs a
-    /// runner advertising the union this issue requires: any move
-    /// <see cref="CodeGated"/> names, or any move out of a column carrying its
-    /// own runner tags.
-    /// </summary>
-    private static bool TagGated(
-        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
-        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
-        CodeGated(issue, from, to, hop, implementation, verdicts, builds)
-        || (!hop && RunnerTagColumn.Read(from.RunnerTags).Count > 0);
-
-    /// <summary>
     /// Why this caller's runner is not the one for the issue: the union of the
     /// project's, its ancestors', its own and <paramref name="from"/>'s own tags
-    /// requires tags the caller did not declare. Null when the scan is
-    /// <see cref="TagDeclaration.Unjudged"/>, when the union is empty, or when
-    /// every tag in it is declared. Names the column by name only when the
+    /// requires tags the caller did not declare. Asked of every move a runner
+    /// is handed, in every column and on every hop - a tag says which runner
+    /// may work the ticket, not only which may write its code. Null when the
+    /// scan is <see cref="TagDeclaration.Unjudged"/>, when the union is empty, or
+    /// when every tag in it is declared. Names the column by name only when the
     /// column's own tags are part of why it folded, so a column with none of
     /// its own reads exactly as it did before this fold existed.
     /// </summary>
@@ -752,7 +742,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var key = IssueKey.Format(issue.Project!.Key, issue.Number);
         return columnTags.Count > 0
             ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
-            : $"{key} is implemented only by a runner advertising {Listed(required)} - this runner advertises {has}";
+            : $"{key} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}";
     }
 
     /// <summary>
@@ -772,10 +762,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// project is outside the list the runner is bound to. Null when
     /// <paramref name="projects"/> is null or empty - a caller that declared
     /// no binding at all - or when the issue's project is in the list.
-    /// Unconditional on <c>hop</c>, unlike <see cref="TagFold"/>: there is no
-    /// "which runner advertises what" question for a project binding to
-    /// answer, so a hop in a project this runner does not drive is folded the
-    /// same as any other move in it.
+    /// Unconditional on <c>hop</c>, as <see cref="TagFold"/> is: a hop in a
+    /// project this runner does not drive is folded the same as any other move
+    /// in it.
     /// </summary>
     private static string? ProjectFold(EfHatchIssue issue, IReadOnlyList<string>? projects)
     {
@@ -1327,9 +1316,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         // Ahead of the repository and tag folds, both of which speak about a
         // project this runner drives - a sentence naming either would mislead
-        // about one it does not. Unconditional on hop, unlike TagGated below:
-        // a hop in a project outside the bound is still none of this runner's
-        // business.
+        // about one it does not. Unconditional on hop, as the tag fold below
+        // is: a hop in a project outside the bound is still none of this
+        // runner's business.
         if (ProjectFold(issue, projects) is { } projectBlock) return new Blocking(projectBlock, BlockedKinds.Other);
 
         // A repository matters wherever a session is spawned, because every
@@ -1346,8 +1335,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             if (RepositoryFold(issue, repos) is { } repoBlock) return new Blocking(repoBlock, BlockedKinds.Other);
         }
 
-        if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
-            && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
+        // Every move, hops included: the scan hands a runner a hop's ticket
+        // whether or not a session is spawned for it. The one exemption is a
+        // review self-move the review judge already folds - nothing is handed
+        // to any runner on that row, and its own sentence says why.
+        var reviewIdle = conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is not null;
+        if (!reviewIdle && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
 
         // After the tag fold, so a runner that is wrong on both hears about the

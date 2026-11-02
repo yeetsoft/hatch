@@ -1239,7 +1239,7 @@ public sealed class GoToWorkTests
     public async Task Rows_folded_for_their_tag_are_grouped_and_counted_on_the_servers_sentence()
     {
         using var h = new Harness();
-        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        const string sentence = "AER-7 is worked only by a runner advertising macos and xcode - this runner advertises linux";
         h.Wire.Json("GET", Queue, new[]
         {
             Fixtures.Row("AER-7", sentence),

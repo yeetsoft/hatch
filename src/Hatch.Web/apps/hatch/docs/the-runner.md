@@ -265,8 +265,9 @@ require. A project that requires `gpu` is only worked by a runner that carries
 `gpu`, and a ticket or an ancestor that requires a tag of its own adds to the
 project's, never away from it - a runner must carry the whole union. A column
 may require tags of its own too, union'd in the same way, and gating every
-move out of it rather than only the move into the column where code gets
-written. **The tags seed the row once.** The first heartbeat to name any
+move out of it. The union gates every move a runner is handed, in every
+column and on every hop - a tag says which runner may work a ticket, not only
+which may write its code. **The tags seed the row once.** The first heartbeat to name any
 writes them onto the row, which is what makes them show on the page
 immediately; every heartbeat after that leaves them alone, whether or not it
 names any of its own. The consequence is worth knowing: once a runner's row
@@ -291,7 +292,7 @@ reads as unset, so a runner that sets nothing advertises nothing.
 
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
-implemented only by a runner advertising macos and xcode - this runner
+worked only by a runner advertising macos and xcode - this runner
 advertises linux"* (*"... advertises none"* for a runner with no tags at all).
 
 ## What a runner refuses
@@ -680,13 +681,14 @@ the lock's detail.
 
 #### Splitting the work by column
 
-A tagged column gates every session spawned *out of* it for a runner that
-does not advertise the union of the project's, its ancestors', the issue's
-and that column's own tags - never the move into an untagged column ahead of
-it. That cuts the other way too: a *project* tag the light runner lacks
-blocks it from a tagged Breakdown column just as it would from the
-implementation column - a project's own tags cannot be used to keep
-implementation off a runner that only does breakdown.
+A tagged column gates every move *out of* it, hops included, for a runner
+that does not advertise the union of the project's, its ancestors', the
+issue's and that column's own tags. A column's own tags never reach the
+column ahead of it. That cuts the other way too: a *project* tag the light
+runner lacks blocks it from every column - a tagged Breakdown column, an
+untagged one and the implementation column alike - so a project's own tags
+cannot be used to keep implementation off a runner that only does breakdown,
+and a runner that lacks one is not handed a ticket of that project at all.
 
 The working recipe:
 
@@ -698,9 +700,11 @@ The working recipe:
    primary runner in `<checkout-a>` advertises `build` alone.
 
 Tags reserve columns; they do not partition the board. An untagged column (To
-Do, In Review on a stock board) is open to both runners, a hop is never
-gated, and a runner advertising a superset of what a column requires
-qualifies same as one advertising exactly that. **Tags seed a runner's row
+Do, In Review on a stock board) is open to both runners, as long as the
+project, the ticket and its ancestors require nothing the runner lacks - a
+hop is gated exactly as any other move is - and a runner advertising a
+superset of what a column requires qualifies same as one advertising exactly
+that. **Tags seed a runner's row
 once** - the first heartbeat naming any writes them onto the board, and
 `--here --tag` typed again after that changes nothing until a `PATCH` on the
 row itself moves them (see [what a runner

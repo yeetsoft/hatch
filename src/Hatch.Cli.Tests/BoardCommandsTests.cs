@@ -357,7 +357,7 @@ public sealed class BoardCommandsTests
     public async Task A_row_folded_for_its_tag_prints_the_servers_sentence_unchanged()
     {
         using var h = new CliHarness();
-        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        const string sentence = "AER-7 is worked only by a runner advertising macos and xcode - this runner advertises linux";
         h.Wire.Json("GET", "/api/hatch/work/queue", new[]
         {
             new QueueEntryDto(

@@ -369,7 +369,7 @@ one pull request, which a story can override either way - see
 rows naming it on the Playbooks page - see [Playbooks](#playbooks)), with
 `RepoSourcedBy` and `RepoSourcedAt` beside it - who set it last and when, a
 name and an instant, null until the first write, and `RunnerTags` (a JSON array
-of strings, `"[]"` default - which runners may implement the project's work,
+of strings, `"[]"` default - which runners may work the project's tickets,
 written through its own route, `PUT /projects/{id}/runner-tags`; they are
 matched against a runner's *own* tags, which may be set from the Runners page
 rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)),
@@ -437,9 +437,9 @@ project. It has no repository or playbook precondition: turning it on for a
 project with no merge column is accepted. A change stamps `CheckApprovesMergeBy`
 and `CheckApprovesMergeAt`; re-sending the value the project already holds
 writes nothing, the stamp included. Nothing reads the flag yet.
-The dispatcher reads the list on every move a session is spawned for out of the
-implementation column, and on the review self-move while it is conflict or build
-work, folding a caller whose runner does not advertise every tag it holds - see
+The dispatcher reads the list on every move a runner is handed - in every
+column, hops included - except a review self-move its own verdict already
+folds, folding a caller whose runner does not advertise every tag it holds - see
 [the dispatcher's ninth refusal](#the-dispatcher). The project's list is the
 floor: an issue's own tags and each of its ancestors' add to it, and never
 subtract from it.
@@ -1204,7 +1204,7 @@ for it, is [its own walkthrough](#a-night-mode-board).
 
 #### Runner tags
 
-**An issue's own say over which runner may implement it.** `RunnerTags` is a
+**An issue's own say over which runner may work it.** `RunnerTags` is a
 jsonb array of strings on the issue, `"[]"` default, the same shape as
 [a project's](#project) - normalised, case folded and deduplicated by
 `RunnerTags.Normalise` in `Hatch.Contracts` before a tag ever reaches the
@@ -3328,7 +3328,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. Nor does it read `?tag=` or `?dangerous=`: a hop is never gated by [runner tags](#project) or by a dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. Nor does it read `?tag=` or `?dangerous=`: the endpoint is the loop's own write and judges neither [runner tags](#project) nor a dangerous flag - the scan has already decided which runner is handed the hop, and a runner is handed one only where it advertises the tags. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -4520,17 +4520,17 @@ missing configuration:
    what it lacks.
 9. The union of the project's, its ancestors' and its own tags, folded in with
    the column being left's own, requires [runner tags](#project) the caller's
-   runner does not fully advertise — on every move a session is spawned for:
-   out of the implementation column (the leaf implementation and the parent
-   verification alike), on the review self-move while it is conflict or build
-   work, and on every move out of a column carrying its own runner tags,
-   whichever column that is. Never a hop. The move into the implementation
-   column is itself exempt, same as ever, unless the column being left carries
-   tags of its own — a fact about that column, not about implementation. Never
-   a review row the verdict below already folds. A caller that sends no
-   `?tag=` has advertised none; a superset of the union qualifies. *"AER-12 is
-   implemented only by a runner advertising macos and xcode - this runner
-   advertises linux"* (*"... advertises none"* when the caller sent no tags),
+   runner does not fully advertise — on every move a runner is handed, in every
+   column and on every hop: out of the implementation column, into it, out of
+   any other, on the review self-move while it is conflict or build work, and
+   on a hop of any kind. A tag says which runner may work the ticket, not only
+   which may write its code, and the scan hands a runner a hop's ticket whether
+   or not a session is spawned for it. Never a review row the verdict below
+   already folds - nothing is handed to any runner on that row, and its own
+   sentence says why. A caller that sends no `?tag=` has advertised none; a
+   superset of the union qualifies. *"AER-12 is worked only by a runner
+   advertising macos and xcode - this runner advertises linux"* (*"...
+   advertises none"* when the caller sent no tags),
    kind `other`. Named by the column only when that column's own tags are part
    of why it folded: *"AER-12 in Breakdown is worked only by a runner
    advertising gpu - this runner advertises none"*. Waits on nobody.
@@ -6452,12 +6452,10 @@ which one it failed is what `work/queue` reports:
     with the column being left's own, requires no runner tag the caller's
     runner lacks.** A caller that sends no `?tag=` has advertised none, so it
     fails a union that requires any; a runner advertising a superset of the
-    union qualifies. Checked on every move a session is spawned for: out of
-    the implementation column (the leaf implementation and the parent
-    verification alike), on the review self-move while it is conflict or build
-    work, and on every move out of a column carrying its own runner tags,
-    whichever column that is — never a hop, and never a review row the verdict
-    below already folds. Kind `other`, and it waits on nobody. See
+    union qualifies. Checked on every move a runner is handed, in every column
+    and on every hop, the move into the implementation column included —
+    never a review row the verdict below already folds. Kind `other`, and it
+    waits on nobody. See
     [the dispatcher](#the-dispatcher) for the exact sentence, named with the
     column when that column's own tags are part of why it folded.
 13. **It is not flagged dangerous, unless the caller's runner takes dangerous
@@ -6536,10 +6534,11 @@ which one it failed is what `work/queue` reports:
     itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
-    child, a full section or an epic at its own limit, only from needing a
+    child, a full section or an epic at its own limit, a required runner tag
+    — the twelfth — only from needing a
     playbook, from [economy's or low's own gate](#expedite) — the seventh and
-    eighth conditions — from a required runner tag or a flagged issue — the twelfth and
-    thirteenth, which a hop never meets — or from the park below — the twenty-second. A clear hop
+    eighth conditions — from a flagged issue — the thirteenth, which a hop
+    never meets — or from the park below — the twenty-second. A clear hop
     is still carried across either way, parked or not; being carried across is
     not an escape from being the first clear row the walk saw, so a clear hop
     in a higher tier still parks the tiers below it.
