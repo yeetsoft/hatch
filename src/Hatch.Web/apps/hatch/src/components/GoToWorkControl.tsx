@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Button } from '@hatch/ui';
+import { Button, Menu } from '@hatch/ui';
 import { message } from '../lib/errors';
-import { applyGoToWork } from '../lib/goToWork';
+import { applyGoToWork, statusText } from '../lib/goToWork';
 import type { GoToWorkPlan, StatusLine } from '../lib/goToWork';
 import { GoToWorkStatus } from './GoToWorkStatus';
 
@@ -87,11 +87,33 @@ export function GoToWorkControl({
           {error}
         </span>
       )}
-      {!isPhone && <GoToWorkStatus status={status} />}
-      {!isPhone && plan.mode === 'none' && (
-        <span className="hatch-go-to-work-note text-muted">
-          <GoToWorkNote plan={plan} />
-        </span>
+      {!isPhone && status.verb !== '' && (
+        /* One word keeps the row on a line; the whole sentence - the ticket link,
+           its column, "and N more", the way out of having no runner - is one
+           press away. The tone still colours the word, so a fault shows. */
+        <Menu
+          label={statusText(status)}
+          hover={false}
+          align="end"
+          trigger={(props) => (
+            <button
+              {...props}
+              className={`hatch-go-to-work-verb hatch-go-to-work-status--${status.tone}`}
+              title={statusText(status)}
+            >
+              {status.verb}
+            </button>
+          )}
+        >
+          <div className="hatch-go-to-work-detail">
+            <GoToWorkStatus status={status} />
+            {plan.mode === 'none' && (
+              <span className="hatch-go-to-work-note text-muted">
+                <GoToWorkNote plan={plan} />
+              </span>
+            )}
+          </div>
+        </Menu>
       )}
     </span>
   );

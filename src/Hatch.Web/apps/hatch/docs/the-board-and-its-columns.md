@@ -80,6 +80,19 @@ across every column and hop above, start to finish.
 
 ## Narrowing the board
 
+On a desktop window the header is one row, left to right: **Search**,
+**Project**, **Types**, **Needs me**, **…** (More filters), the count
+(*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
+the work queue, the flow view and **+** (New issue). **Search** rests narrow
+and widens while you type in it. **Project** shows only its key (or **All**)
+when closed, and its open list keeps the full names. **Needs me** shows the
+cards holding a question nobody has answered. **…** opens the filters kept
+out of the row, today the **Assignee** choice; the button is lit while one of
+them is set, and the count still includes it. **×** returns every filter to
+its default and is drawn only when one is set. On a phone the row folds
+everything past the search box behind **Filters**, where **Assignee** stays
+beside the others.
+
 The **Project** picker is drawn only when Hatch has more than one project,
 and **All projects** is a choice like any other. It and the type filter are
 remembered per browser, in `localStorage`, across pages, reloads and
@@ -107,14 +120,18 @@ when **All projects** is picked; **Pause** pauses the running ones. The
 press alone sets the project — changing the picker afterwards moves nothing
 until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
-With none of yours on, the button is disabled, with a link to start one
-beside a status line that says "No runner".
+With none of yours on, the button is disabled and the status says "No
+runner"; press it to find the link to start one.
 
-A short **status line** sits right after the button (on a phone, a row under
-the bar) and says what your loops are doing: working on a ticket, with its
-link and column; pausing after or stopping after the ticket in hand; out of
-usage; idle, with the project it is bound to; paused; stopping; stopped
-unexpectedly; off; or no runner. When several of your loops are on it names
+A one-word **status** sits right after the button — **Working**, **Pausing**,
+**Stopping**, **Out of usage**, **Idle**, **Paused**, **Stopped**, **Off** or
+**No runner** — coloured by its tone, so a fault shows. On a desktop window,
+hover it for the whole line or press it to open the line with the ticket's
+link and column, the project an idle loop is bound to, and, with none of yours
+on, the **Start one at login** link. On a phone the whole line is a row under
+the bar instead. It says what your loops are doing: working on a ticket;
+pausing after or stopping after the ticket in hand; out of usage; idle;
+paused; stopping; stopped unexpectedly; off; or no runner. When several of your loops are on it names
 the one most worth saying and adds "and N more". It is blank while the runners
 load, and it follows the runners poll (every 20 seconds) and every press. A
 "Stopped unexpectedly" line becomes "No runner" two hours after the loop was
@@ -241,7 +258,7 @@ on a column never counts one. With the setting off, the board draws exactly as
 it always has.
 
 The filter bar finds a carried story through its epic. Searching a carried
-story's key or words from its title, the Waiting switch and the assignee facet
+story's key or words from its title, the **Needs me** switch and the Assignee filter
 each draw the epic whose carried story matches. The Types and Project filters
 judge the epic itself. The story is never drawn as a card.
 

@@ -103,6 +103,10 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             scrollWidth: root.scrollWidth,
             clientWidth: root.clientWidth,
             coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            search: (() => {
+              const search = document.querySelector('.hatch-board-search');
+              return search === null ? null : plain(search.getBoundingClientRect());
+            })(),
             trailing: [...trailing.children].map((element) => ({
               name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
               box: plain(element.getBoundingClientRect()),
@@ -380,8 +384,14 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             read.GetProperty("coarsePointerMatches").GetBoolean(),
             read.GetProperty("trailing").EnumerateArray()
                 .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
-                .ToList());
+                .ToList(),
+            read.GetProperty("search").ValueKind == JsonValueKind.Null ? null : ReadBox(read.GetProperty("search")));
     }
+
+    /// <summary>Resizes the open page, for a case that asks about a width other than the launch profile's.</summary>
+    public Task SetViewportAsync(Deadline deadline, int width, int height) =>
+        deadline.BoundAsync($"resizing the viewport to {width}x{height}", () =>
+            page!.SetViewportSizeAsync(width, height));
 
     /// <summary>The Runners page's card, table and row controls as the page stands; the card is reported inside its 1px border.</summary>
     public async Task<RunnersMeasurement> MeasureRunnersAsync(Deadline deadline)

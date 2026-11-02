@@ -109,6 +109,16 @@ const TOUCH_LIFT_DELAY_MS = 300;
  *  scroll gesture clears it almost immediately. */
 const TOUCH_LIFT_TOLERANCE_PX = 8;
 
+/** The plus the phone's New button and the desktop's New issue button share. */
+function PlusGlyph() {
+  return (
+    <svg className="hatch-board-filing-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="11" y="4" width="2" height="16" rx="1" />
+      <rect x="4" y="11" width="16" height="2" rx="1" />
+    </svg>
+  );
+}
+
 export function BoardPage() {
   const isPhone = usePhone();
   const pinned = pinnedBoard(isPhone, useStandalone());
@@ -683,10 +693,7 @@ export function BoardPage() {
               aria-label="New issue"
               onClick={() => setFiling(true)}
             >
-              <svg className="hatch-board-filing-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <rect x="11" y="4" width="2" height="16" rx="1" />
-                <rect x="4" y="11" width="16" height="2" rx="1" />
-              </svg>
+              <PlusGlyph />
               New
             </Button>
           )
@@ -709,8 +716,14 @@ export function BoardPage() {
                 {stacked ? 'Full board' : 'Stacked view'}
               </button>
             ) : (
-              <Button variant="primary" onClick={() => setFiling(true)}>
-                New issue
+              <Button
+                variant="primary"
+                className="hatch-board-new"
+                aria-label="New issue"
+                title="New issue"
+                onClick={() => setFiling(true)}
+              >
+                <PlusGlyph />
               </Button>
             )}
           </>

@@ -50,37 +50,46 @@ export interface StatusLine {
   after: string;
   tone: 'muted' | 'success' | 'danger' | 'primary';
   more: number;
+  /** The line in one word - what the desktop bar draws, with the whole line
+      behind it (`statusText`). Empty for the empty line. */
+  verb: string;
 }
 
-const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0 };
+const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0, verb: '' };
+
+/** The whole line as plain text: the tooltip and the accessible name of the
+    one-word status. */
+export function statusText(status: StatusLine): string {
+  return `${status.before}${status.key ?? ''}${status.after}${status.more > 0 ? ` and ${status.more} more` : ''}`;
+}
 
 /** One row's line and its rank, 1 the most worth saying. */
 function lineFor(r: Runner, now: Date): { rank: number; line: Omit<StatusLine, 'more'> } {
-  const keyless = (rank: number, before: string, tone: StatusLine['tone']) => ({
+  const keyless = (rank: number, before: string, tone: StatusLine['tone'], verb: string = before) => ({
     rank,
-    line: { before, key: null, after: '', tone },
+    line: { before, key: null, after: '', tone, verb },
   });
 
   // Silence beats state, so a gone row never reads as working or on its way
   // to stopping, whatever it holds.
   if (runnerActivity(r, now) === 'gone') {
-    return r.state === 'running' ? keyless(8, 'Stopped unexpectedly', 'danger') : keyless(9, 'Off', 'muted');
+    return r.state === 'running' ? keyless(8, 'Stopped unexpectedly', 'danger', 'Stopped') : keyless(9, 'Off', 'muted');
   }
 
   if (r.claimKey) {
     const key = r.claimKey;
     if (r.state === 'running') {
       const after = r.claimStatus ? ` · ${r.claimStatus}` : '';
-      return { rank: 1, line: { before: 'Working ', key, after, tone: ACTIVITY_TONES.working } };
+      return { rank: 1, line: { before: 'Working ', key, after, tone: ACTIVITY_TONES.working, verb: 'Working' } };
     }
-    if (r.state === 'paused') return { rank: 2, line: { before: 'Pausing after ', key, after: '', tone: 'primary' } };
-    return { rank: 3, line: { before: 'Stopping after ', key, after: '', tone: 'primary' } };
+    if (r.state === 'paused') return { rank: 2, line: { before: 'Pausing after ', key, after: '', tone: 'primary', verb: 'Pausing' } };
+    return { rank: 3, line: { before: 'Stopping after ', key, after: '', tone: 'primary', verb: 'Stopping' } };
   }
 
-  if (runnerActivity(r, now) === 'exhausted') return keyless(4, activityWords(r, now), ACTIVITY_TONES.exhausted);
+  if (runnerActivity(r, now) === 'exhausted') return keyless(4, activityWords(r, now), ACTIVITY_TONES.exhausted, 'Out of usage');
   if (r.state === 'running') {
     const where = r.projects.length > 0 ? r.projects.join(', ') : 'any project';
-    return keyless(5, `Idle - nothing to do in ${where}`, ACTIVITY_TONES.idle);
+    return keyless(5, `Idle - nothing to do in ${where}`, ACTIVITY_TONES.idle, 'Idle');
   }
   return r.state === 'paused' ? keyless(6, 'Paused', 'primary') : keyless(7, 'Stopping', 'primary');
 }
@@ -97,7 +106,7 @@ export function statusLine(runners: Runner[] | null, now: Date): StatusLine {
   if (runners === null) return EMPTY_LINE;
 
   const mine = runners.filter((r) => r.yours && r.kind === 'loop');
-  if (mine.length === 0) return { ...EMPTY_LINE, before: 'No runner' };
+  if (mine.length === 0) return { ...EMPTY_LINE, before: 'No runner', verb: 'No runner' };
 
   const ranked = mine.map((r) => ({ r, ...lineFor(r, now) }));
   const best = ranked.reduce((a, b) => (b.rank < a.rank ? b : a));
