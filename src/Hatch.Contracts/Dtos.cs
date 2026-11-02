@@ -1849,6 +1849,11 @@ public record PlaybookProposalDto(
     string? DecidedBy,
     IReadOnlyList<PlaybookProposalChangeDto> Changes);
 
+/// <param name="ProposalIds">Every id the caller's page showed as pending; a mismatch against what is actually pending is refused.</param>
+public record PlaybookProposalDecisionRequest(IReadOnlyList<int>? ProposalIds);
+
+public record PlaybookProposalRejectResponse(int Rejected);
+
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
 /// <c>""</c> hands it back to the playbook, as everywhere else in Hatch; the

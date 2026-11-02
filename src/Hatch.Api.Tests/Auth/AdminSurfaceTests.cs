@@ -370,10 +370,13 @@ public class AdminSurfaceTests
         // What a session proposed changing about a playbook, read back, and
         // the submission that files one - both Hatch-scoped, since the same
         // key that cannot write to /playbooks directly can still ask for a
-        // change and see where it landed. See PlaybookProposalsController.
+        // change and see where it landed. Deciding one is a person's own
+        // call, like PATCH /playbooks/{id} - no scope at all.
+        // See PlaybookProposalsController.
         "PlaybookProposalsController.GetProposals",
         "PlaybookProposalsController.GetProposal",
         "PlaybookProposalsController.SubmitProposal",
+        "PlaybookProposalsController.RejectAll",
 
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
@@ -694,6 +697,7 @@ public class AdminSurfaceTests
         "PlaybooksController.CreatePlaybook",
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
+        "PlaybookProposalsController.RejectAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
         "RunnersController.PatchRunner",

@@ -166,4 +166,82 @@ public class PlaybookProposalsController(
 
         return (await PlaybookProposalProjection.ToDtosAsync(db, [row], ct)).Single();
     }
+
+    /// <summary>
+    /// Marks every pending proposal rejected, refusing if the caller's set of ids is not
+    /// exactly what is pending now - the page it read from may be stale.
+    /// </summary>
+    [HttpPost("reject-all")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<PlaybookProposalRejectResponse>> RejectAll(
+        PlaybookProposalDecisionRequest request, CancellationToken ct)
+    {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
+        var (pending, conflict) = await LoadExactPendingAsync(request.ProposalIds, ct);
+        if (conflict is not null) return conflict;
+
+        var now = time.GetUtcNow();
+        var actor = await caller.ActorNameAsync(ct);
+
+        foreach (var proposal in pending)
+        {
+            proposal.State = EfHatchPlaybookProposal.Rejected;
+            proposal.DecidedAt = now;
+            proposal.DecidedBy = actor;
+        }
+
+        await WriteDecisionEventsAsync(pending, EfHatchIssueEvent.PlaybookProposalRejected, now, actor, ct);
+
+        await db.SaveChangesAsync(ct);
+        return new PlaybookProposalRejectResponse(pending.Count);
+    }
+
+    /// <summary>
+    /// Every row still pending, tracked - checked against <paramref name="proposalIds"/> as a set,
+    /// so a caller working from a page that has since changed is refused rather than deciding the
+    /// wrong rows.
+    /// </summary>
+    private async Task<(List<EfHatchPlaybookProposal> Pending, ObjectResult? Conflict)> LoadExactPendingAsync(
+        IReadOnlyList<int>? proposalIds, CancellationToken ct)
+    {
+        var pending = await db.PlaybookProposals.Include(p => p.Changes)
+            .Where(p => p.State == EfHatchPlaybookProposal.Pending)
+            .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
+            .ToListAsync(ct);
+
+        var given = (proposalIds ?? []).ToHashSet();
+        if (!given.SetEquals(pending.Select(p => p.Id)))
+            return (pending, Conflict("the pending proposals have changed since the page was read - reload"));
+
+        return (pending, null);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="kind"/> on the issue each decided proposal still names, in the same
+    /// shape <see cref="SubmitProposal"/> already writes <see cref="EfHatchIssueEvent.PlaybookProposed"/>
+    /// with. Does not save - the caller's own <c>SaveChangesAsync</c> covers this too.
+    /// </summary>
+    private async Task WriteDecisionEventsAsync(
+        IReadOnlyList<EfHatchPlaybookProposal> decided, string kind, DateTimeOffset now, string actor, CancellationToken ct)
+    {
+        var issueIds = decided.Select(p => p.IssueId).Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
+        if (issueIds.Count == 0) return;
+
+        var issues = await db.Issues.Where(i => issueIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
+
+        foreach (var proposal in decided)
+        {
+            if (proposal.IssueId is not { } issueId) continue;
+            if (!issues.TryGetValue(issueId, out var issue)) continue;
+
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = kind,
+                Payload = JsonSerializer.Serialize(new { proposalId = proposal.Id }),
+                At = now,
+            });
+        }
+    }
 }
