@@ -17,6 +17,7 @@ public sealed class Tally
     private readonly List<string> _interrupted;
     private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
+    private readonly List<TokenEntry> _window;
     private readonly DateTimeOffset _started;
     private readonly Action<string>? _log;
 
@@ -36,6 +37,10 @@ public sealed class Tally
         _letGo = [.. carried?.LetGo ?? []];
         _interrupted = [.. carried?.Interrupted ?? []];
         _preempted = [.. carried?.Preempted ?? []];
+
+        var now = clock.GetUtcNow();
+        _window = [.. (carried?.Window ?? []).Where(e => Live(e, now))];
+        PeakHour = carried?.PeakHour ?? 0;
 
         // The night's start and not this process's, so the elapsed time in the
         // morning covers the whole of it. A state file with no start in it is
@@ -192,6 +197,9 @@ public sealed class Tally
     public int? MaxRuns { get; set; }
     public decimal? MaxSpend { get; set; }
     public long? MaxTokens { get; set; }
+
+    /// <summary>Flag-only, never folded from the board: the most tokens any sixty minutes may hold.</summary>
+    public long? MaxTokensPerHour { get; set; }
     public string? Until { get; set; }
     public DateTimeOffset? UntilAt { get; set; }
     public string? StopFile { get; init; }
@@ -300,6 +308,41 @@ public sealed class Tally
         return false;
     }
 
+    private static readonly TimeSpan Hour = TimeSpan.FromMinutes(60);
+
+    /// <summary>An entry exactly sixty minutes old is out.</summary>
+    private static bool Live(TokenEntry entry, DateTimeOffset now) => now - entry.At < Hour;
+
+    /// <summary>The entries the window holds at <paramref name="now"/>, oldest first - the one place a set's combined entries would be gathered.</summary>
+    private List<TokenEntry> LiveEntries(DateTimeOffset now) => [.. _window.Where(e => Live(e, now)).OrderBy(e => e.At)];
+
+    /// <summary>The tokens reported in the sixty minutes before <paramref name="now"/>.</summary>
+    public long WindowTotal(DateTimeOffset now) => LiveEntries(now).Sum(e => e.Tokens);
+
+    /// <summary>
+    /// When the last sixty minutes stop being at or over <see cref="MaxTokensPerHour"/>,
+    /// or null when no cap is set or the window is under it. The entries leave
+    /// oldest first, so the answer is the hour's end of the entry whose leaving
+    /// takes the total below the cap - and one entry larger than the cap waits
+    /// out its own hour. Records nothing and touches no counter.
+    /// </summary>
+    public DateTimeOffset? ThrottledUntil(DateTimeOffset now)
+    {
+        if (MaxTokensPerHour is not { } cap || cap <= 0) return null;
+
+        var live = LiveEntries(now);
+        var total = live.Sum(e => e.Tokens);
+        if (total < cap) return null;
+
+        foreach (var entry in live)
+        {
+            total -= entry.Tokens;
+            if (total < cap) return entry.At + Hour;
+        }
+
+        return null;
+    }
+
     /// <summary>One increment, added to the run's account.</summary>
     public void Record(IncrementReport report)
     {
@@ -308,7 +351,16 @@ public sealed class Tally
         if (report.Unpriced) Unpriced++;
 
         // Before the usage-limit return below: those tokens were spent.
-        if (report.TotalTokens is { } tokens) Tokens += tokens;
+        if (report.TotalTokens is { } tokens)
+        {
+            Tokens += tokens;
+
+            // Kept whether or not a cap is set, so the peak is reported on every night.
+            var now = _clock.GetUtcNow();
+            _window.Add(new TokenEntry(now, tokens));
+            _window.RemoveAll(e => !Live(e, now));
+            PeakHour = Math.Max(PeakHour, WindowTotal(now));
+        }
         else Unreported++;
 
         // The local counters are this slot's cumulative total, carried and new,
@@ -426,6 +478,8 @@ public sealed class Tally
         Unpriced = Unpriced,
         Tokens = Tokens,
         Unreported = Unreported,
+        Window = [.. _window],
+        PeakHour = PeakHour,
         Started = _started,
         Fails = Fails,
         Restarts = Restarts + 1,
@@ -451,6 +505,9 @@ public sealed class Tally
     /// <summary>The tokens reported, always, and how many increments reported none when any did not.</summary>
     public string TokensSuffix => $", {Format.Compact(Tokens)} tokens{(Unreported > 0 ? $", {Unreported} unreported" : "")}";
 
+    /// <summary>The most tokens any sixty minutes of the night has held, carried through a restart.</summary>
+    public long PeakHour { get; private set; }
+
     /// <summary>
     /// What the run came to. Printed on the way out and nowhere else, because
     /// the reasons a loop ends include the ones nobody wrote code for - an
@@ -470,6 +527,7 @@ public sealed class Tally
         say.Line("");
         if (StopWhy is { Length: > 0 } why) say.Line($"hatch: {why}");
         say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{UnpricedSuffix}{TokensSuffix}{restarts}");
+        if (PeakHour > 0) say.Line($"hatch: peak hour {Format.Compact(PeakHour)} tokens");
         if (Unpriced > 0)
             say.Line($"hatch: {Unpriced} increment(s) reported no price and are not in the dollars above"
                 + (MaxSpend is not null ? "; --max-spend counts only priced increments" : ""));

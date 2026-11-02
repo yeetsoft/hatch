@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -311,6 +313,62 @@ public sealed class RestartTests : IDisposable
         Assert.NotNull(back);
         Assert.Equal(0, back.Tokens);
         Assert.Equal(0, back.Unreported);
+    }
+
+    [Fact]
+    public void The_window_and_the_peak_survive_a_restart_through_the_file_and_the_throttle_holds()
+    {
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var first = new Tally(clock) { MaxTokensPerHour = 100 };
+        first.Record(Report(60));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        first.Record(Report(60));
+        var until = first.ThrottledUntil(clock.GetUtcNow());
+        Assert.NotNull(until);
+
+        var path = Path.Combine(_root, "window.json");
+        Assert.True(first.ToState().Write(path));
+        clock.Advance(TimeSpan.FromMinutes(1));
+        var second = new Tally(clock, NightState.Read(path)) { MaxTokensPerHour = 100 };
+
+        Assert.Equal(2, second.ToState().Window.Count);
+        Assert.Equal(until, second.ThrottledUntil(clock.GetUtcNow()));
+        Assert.Equal(120, second.PeakHour);
+    }
+
+    [Fact]
+    public void Entries_older_than_an_hour_in_the_state_are_dropped_on_construction()
+    {
+        var now = new DateTimeOffset(2026, 1, 1, 2, 0, 0, TimeSpan.Zero);
+        var state = new NightState
+        {
+            Window = [new TokenEntry(now - TimeSpan.FromMinutes(61), 500), new TokenEntry(now - TimeSpan.FromMinutes(60), 500), new TokenEntry(now - TimeSpan.FromMinutes(5), 7)],
+            PeakHour = 900,
+        };
+
+        var tally = new Tally(new FakeTimeProvider(now), state);
+
+        var kept = Assert.Single(tally.ToState().Window);
+        Assert.Equal(new TokenEntry(now - TimeSpan.FromMinutes(5), 7), kept);
+        Assert.Equal(900, tally.PeakHour);
+    }
+
+    [Fact]
+    public void A_state_file_from_before_the_window_reads_as_none()
+    {
+        var old = Path.Combine(_root, "before-window.json");
+        File.WriteAllText(old, "{\"Runs\":3,\"Spent\":1.5}");
+
+        var back = NightState.Read(old);
+
+        Assert.NotNull(back);
+        Assert.Equal(0, back.PeakHour);
+
+        // The file may leave the list null, as it does for the other lists: the
+        // Tally is what reads an absent one as none.
+        var tally = new Tally(new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 2, 0, 0, TimeSpan.Zero)), back);
+        Assert.Empty(tally.ToState().Window);
+        Assert.Equal(0, tally.PeakHour);
     }
 
     private static IncrementReport Report(long? totalTokens) => new()
