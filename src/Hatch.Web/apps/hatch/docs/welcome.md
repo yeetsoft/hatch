@@ -25,7 +25,7 @@ deploy time; the repository holds the shape, the operator holds the values.
 That is why these pages write `<your-hatch-origin>` rather than a real
 address — there isn't one the repository can know.
 
-**Docs** in the primary nav always opens here.
+**Docs** in the gear's menu (on a phone, in the main menu) always opens here.
 
 ## Where to go
 
