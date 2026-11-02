@@ -53,6 +53,8 @@ the next heading of the same level and stop.
     kinds of event record it?
   - [Playbook](#playbook) - What is an agent told when an issue moves from
     one column to the next?
+  - [Playbook proposal](#playbook-proposal) - What does a session propose
+    changing about a playbook, before a person decides it?
   - [Verdict](#verdict) - What did a check session conclude about an issue?
   - [Overnight seen](#overnight-seen) - When did a reader last read the
     overnight page?
@@ -2789,7 +2791,9 @@ lapsed }` - `lapsed: true` only on a row written before the stall mark
 replaced lapsing, when taking a claim answered a question itself; nothing
 writes that shape now, but an old one is still skipped rather than counted or
 stopped at, same as `letGo` above, and counted apart from a person's answers
-by the flow report), `imported`.
+by the flow report), `playbook_proposed` (a [playbook proposal](#playbook-proposal)
+was filed naming this issue — payload `{ proposalId, changes, reason }`,
+`changes` the count of changes the proposal carries), `imported`.
 
 Only two kinds are read back. `status_changed` is read by the
 [Timeline](#the-timeline) and by both flow reports ([the cumulative
@@ -2857,6 +2861,31 @@ than it reads — a real run denying `Write` alone did not stop the write it
 named; the session routed around it with a plain `Bash` call instead, because
 the deny list left `Bash` itself untouched (HA-454's own run). A bare-name
 deny removes *that one tool*, not the action everywhere else capable of it.
+
+### Playbook proposal
+
+`EfHatchPlaybookProposal` — `Reason`, `IssueId` (optional, the ticket the session
+was working; null once that issue is deleted — the proposal stays), `Author`,
+`State` (`pending`, `approved` or `rejected`), `CreatedAt`, `DecidedAt`,
+`DecidedBy`. `EfHatchPlaybookProposalChange` — `ProposalId`, `PlaybookId` (null
+once the row it names is deleted — `Before` still says what it was), `Before`
+and `Patch` (jsonb, a `PlaybookDto` and a `PlaybookPatchRequest`, read and
+written through a helper the way `EfHatchPlaybook.DeniedTools` is),
+`BasedOnUpdatedAt`.
+
+What a session proposed changing about one or more [playbook](#playbook) rows,
+without the write a key is refused on the matrix itself. `Before` is the row as
+it stood when the proposal was filed; `Patch` is the fields the change would
+set, in `PlaybookPatchRequest`'s own shape; `BasedOnUpdatedAt` is the row's own
+`UpdatedAt` at that moment, so a later edit to it is noticed. A change is **out
+of date** when the playbook it names is gone (`PlaybookId` null) or its live
+`UpdatedAt` no longer matches `BasedOnUpdatedAt` - edited or deleted since the
+proposal was made - read back as `outOfDateReason`. At most one pending change
+may name a playbook at a time; a second proposal naming a row already pending
+is refused until the first is decided. A decided proposal, approved or
+rejected, is kept rather than deleted, with `DecidedAt` and `DecidedBy` set.
+Filing one that names an issue writes a `playbook_proposed` event there (see
+[Issue event](#issue-event)).
 
 ### Verdict
 
@@ -3288,6 +3317,9 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
+| `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
+| `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
