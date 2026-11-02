@@ -362,8 +362,13 @@ public sealed class RestartTests : IDisposable
         var back = NightState.Read(old);
 
         Assert.NotNull(back);
-        Assert.Empty(back.Window);
         Assert.Equal(0, back.PeakHour);
+
+        // The file may leave the list null, as it does for the other lists: the
+        // Tally is what reads an absent one as none.
+        var tally = new Tally(new FakeTimeProvider(new DateTimeOffset(2026, 1, 1, 2, 0, 0, TimeSpan.Zero)), back);
+        Assert.Empty(tally.ToState().Window);
+        Assert.Equal(0, tally.PeakHour);
     }
 
     private static IncrementReport Report(long? totalTokens) => new()
