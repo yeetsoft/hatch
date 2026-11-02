@@ -235,6 +235,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         IReadOnlyList<CheckoutEntry> checkouts, string key, CancellationToken ct, bool clones = false)
     {
         var parts = DeclareParts(checkouts, clones);
+        parts.AddRange(TagParts());
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
         var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/hop{query}", null, ct);
 
