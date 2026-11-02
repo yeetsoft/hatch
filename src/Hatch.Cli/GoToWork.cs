@@ -252,15 +252,17 @@ public sealed class Tally
             return true;
         }
 
-        // In a set the two bounds are the set's: this runner's own count plus
+        // In a set the three bounds are the set's: this runner's own count plus
         // what its siblings have left in their ledgers. Alone, they are its own.
         var runs = Runs;
         var spent = Spent;
-        if (SetDir is not null && (MaxRuns is not null || MaxSpend is not null))
+        var tokens = Tokens;
+        if (SetDir is not null && (MaxRuns is not null || MaxSpend is not null || MaxTokens is not null))
         {
             var others = RunnerSet.ReadLedgerTotal(SetDir, Slot ?? 1);
             runs += others.Runs;
             spent += others.Spent;
+            tokens += others.Tokens;
         }
 
         if (MaxRuns is { } cap && runs >= cap)
@@ -281,9 +283,11 @@ public sealed class Tally
         }
 
         // Tokens holds reported counts only, so an increment with none never counts here.
-        if (MaxTokens is { } tokenCap && Tokens >= tokenCap)
+        if (MaxTokens is { } tokenCap && tokens >= tokenCap)
         {
-            StopWhy = $"--max-tokens {Format.Compact(tokenCap)} reached at {Format.Compact(Tokens)}";
+            StopWhy = SetDir is null
+                ? $"--max-tokens {Format.Compact(tokenCap)} reached at {Format.Compact(tokens)}"
+                : $"--max-tokens {Format.Compact(tokenCap)} reached across the set at {Format.Compact(tokens)}";
             return true;
         }
 
@@ -309,7 +313,7 @@ public sealed class Tally
 
         // The local counters are this slot's cumulative total, carried and new,
         // so the ledger is a mirror of them for the siblings to read.
-        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent);
+        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent, Tokens);
 
         var before = ExhaustedUntil;
 
@@ -959,7 +963,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // a partial total, which can only under-count - at worst one extra
             // increment, never a premature stop. A fresh start writes zeros.
             if (runtime.SetDir is not null)
-                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent);
+                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent, tally.Tokens);
 
             // Only a fresh start: a restarted incarnation carries the board's
             // own pause or run, and has nothing to announce.

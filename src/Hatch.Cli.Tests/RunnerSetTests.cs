@@ -10,17 +10,17 @@ public sealed class RunnerSetTests
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         try
         {
-            RunnerSet.WriteLedger(dir.FullName, 1, 2, 1.5m);
-            RunnerSet.WriteLedger(dir.FullName, 2, 1, 0.25m);
-            RunnerSet.WriteLedger(dir.FullName, 3, 4, 3m);
+            RunnerSet.WriteLedger(dir.FullName, 1, 2, 1.5m, 100);
+            RunnerSet.WriteLedger(dir.FullName, 2, 1, 0.25m, 20);
+            RunnerSet.WriteLedger(dir.FullName, 3, 4, 3m, 3_000);
 
-            Assert.Equal((6, 4.5m),RunnerSet.ReadLedgerTotal(dir.FullName, 2));
-            Assert.Equal((3, 1.75m), RunnerSet.ReadLedgerTotal(dir.FullName, 3));
-            Assert.Equal((0, 0m), RunnerSet.ReadLedgerTotal(Path.Combine(dir.FullName, "missing"), 1));
+            Assert.Equal((6, 4.5m, 3_100L), RunnerSet.ReadLedgerTotal(dir.FullName, 2));
+            Assert.Equal((3, 1.75m, 120L), RunnerSet.ReadLedgerTotal(dir.FullName, 3));
+            Assert.Equal((0, 0m, 0L), RunnerSet.ReadLedgerTotal(Path.Combine(dir.FullName, "missing"), 1));
 
             // Rewriting a slot replaces it rather than adding to it, and leaves no temp file behind.
-            RunnerSet.WriteLedger(dir.FullName, 1, 3, 2m);
-            Assert.Equal((7, 5m), RunnerSet.ReadLedgerTotal(dir.FullName, 2));
+            RunnerSet.WriteLedger(dir.FullName, 1, 3, 2m, 500);
+            Assert.Equal((7, 5m, 3_500L), RunnerSet.ReadLedgerTotal(dir.FullName, 2));
             Assert.Empty(Directory.GetFiles(dir.FullName, "*.tmp"));
         }
         finally
@@ -38,10 +38,13 @@ public sealed class RunnerSetTests
             File.WriteAllText(Path.Combine(dir.FullName, "ledger.2"), "not a ledger");
             File.WriteAllText(Path.Combine(dir.FullName, "ledger.3"), "");
             File.WriteAllText(Path.Combine(dir.FullName, "ledger.4.tmp"), "9 9");
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.5"), "1 -4");
-            RunnerSet.WriteLedger(dir.FullName, 6, 1, 2m);
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.5"), "1 -4 0");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.7"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.8"), "1 1 -7");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.9"), "1 1 many");
+            RunnerSet.WriteLedger(dir.FullName, 6, 1, 2m, 40);
 
-            Assert.Equal((1, 2m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal((1, 2m, 40L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
         }
         finally
         {
@@ -57,10 +60,10 @@ public sealed class RunnerSetTests
         try
         {
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
-            RunnerSet.WriteLedger(dir.FullName, 2, 1, 1.5m);
+            RunnerSet.WriteLedger(dir.FullName, 2, 1, 1.5m, 1_200);
 
-            Assert.Equal("1 1.5", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
-            Assert.Equal((1, 1.5m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal("1 1.5 1200", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
+            Assert.Equal((1, 1.5m, 1_200L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
         }
         finally
         {

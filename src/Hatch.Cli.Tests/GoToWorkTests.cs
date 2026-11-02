@@ -3217,7 +3217,7 @@ public sealed class GoToWorkTests
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         try
         {
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-spend", "6"], default));
@@ -3239,7 +3239,7 @@ public sealed class GoToWorkTests
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         try
         {
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "3"], default));
@@ -3264,14 +3264,35 @@ public sealed class GoToWorkTests
         {
             // The host recreated the directory, so only the sibling that already
             // re-seeded is in it: 2 + 1 carried is 3, and one more increment is 4.
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "4"], default));
 
             Assert.Single(h.Sessions.Spawned);
             Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 4 reached across the set at 4", StringComparison.Ordinal));
-            Assert.Equal((2, 2m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal((2, 2m, 0L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_restarted_member_puts_the_tokens_it_carried_back_in_the_sets_ledger()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Runs = 1, Tokens = 400_000 });
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
+
+            await new GoToWorkCommand(member).RunAsync(["--max-runs", "1"], default);
+
+            Assert.Equal(400_000L, RunnerSet.ReadLedgerTotal(dir.FullName, 1).Tokens);
         }
         finally
         {

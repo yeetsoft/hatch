@@ -601,12 +601,12 @@ public sealed class TallyTests
         }
     }
 
-    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null)
+    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null, long? maxTokens = null)
     {
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         return (
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend },
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend },
+            new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens },
+            new Tally(TimeProvider.System) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens },
             dir);
     }
 
@@ -650,6 +650,67 @@ public sealed class TallyTests
             Assert.True(first.ShouldStop());
             Assert.True(second.ShouldStop());
             Assert.Equal("--max-spend 5 reached across the set at $6.00", second.StopWhy);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_sharing_a_token_cap_each_stop_at_the_combined_total()
+    {
+        var (first, second, dir) = Pair(maxTokens: 1_000_000);
+        try
+        {
+            first.Record(Report(totalTokens: 600_000));
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+
+            second.Record(Report(totalTokens: 600_000));
+
+            Assert.True(first.ShouldStop());
+            Assert.True(second.ShouldStop());
+            Assert.Equal("--max-tokens 1M reached across the set at 1.2M", first.StopWhy);
+            Assert.Equal("--max-tokens 1M reached across the set at 1.2M", second.StopWhy);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_one_token_short_of_the_cap_neither_stops()
+    {
+        var (first, second, dir) = Pair(maxTokens: 1_000_000);
+        try
+        {
+            first.Record(Report(totalTokens: 500_000));
+            second.Record(Report(totalTokens: 499_999));
+
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_member_seeded_from_carried_state_writes_its_tokens_to_the_ledger()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var carried = new Tally(TimeProvider.System);
+            carried.Record(Report(totalTokens: 400_000));
+
+            var restarted = new Tally(TimeProvider.System, carried.ToState()) { SetDir = dir.FullName, Slot = 2, MaxTokens = 1_000_000 };
+            restarted.Record(Report(totalTokens: 100_000));
+
+            Assert.Equal(500_000L, RunnerSet.ReadLedgerTotal(dir.FullName, 1).Tokens);
         }
         finally
         {
