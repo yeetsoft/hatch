@@ -276,6 +276,54 @@ public sealed class RestartTests : IDisposable
         Assert.Equal(started, tally.ToState().Started);
     }
 
+    [Fact]
+    public void The_token_total_and_the_unreported_count_survive_a_restart_through_the_file()
+    {
+        var first = new Tally(TimeProvider.System) { MaxTokens = 5_000_000 };
+        first.Record(Report(1_200_000));
+        first.Record(Report(null));
+
+        var path = Path.Combine(_root, "tokens.json");
+        Assert.True(first.ToState().Write(path));
+        var second = new Tally(TimeProvider.System, NightState.Read(path));
+
+        Assert.Equal(1_200_000, second.Tokens);
+        Assert.Equal(1, second.Unreported);
+    }
+
+    [Fact]
+    public void A_carried_total_already_at_the_cap_stops_the_first_check()
+    {
+        var tally = new Tally(TimeProvider.System, new NightState { Tokens = 2_000_000 }) { MaxTokens = 2_000_000 };
+
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-tokens 2M reached at 2M", tally.StopWhy);
+    }
+
+    [Fact]
+    public void A_state_file_from_before_tokens_were_counted_reads_as_none()
+    {
+        var old = Path.Combine(_root, "before-tokens.json");
+        File.WriteAllText(old, "{\"Runs\":3,\"Spent\":1.5}");
+
+        var back = NightState.Read(old);
+
+        Assert.NotNull(back);
+        Assert.Equal(0, back.Tokens);
+        Assert.Equal(0, back.Unreported);
+    }
+
+    private static IncrementReport Report(long? totalTokens) => new()
+    {
+        Key = "AER-1",
+        From = "In Progress",
+        To = "In Review",
+        Ended = "In Review",
+        Moved = true,
+        Cost = 1m,
+        TotalTokens = totalTokens,
+    };
+
     public void Dispose()
     {
         try

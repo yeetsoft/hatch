@@ -432,6 +432,117 @@ public sealed class TallyTests
     }
 
     [Fact]
+    public void Reported_tokens_reaching_the_cap_exactly_stop_it()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 2_000_000 };
+
+        tally.Record(Report(totalTokens: 1_999_999));
+        Assert.False(tally.ShouldStop());
+
+        tally.Record(Report(totalTokens: 1));
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-tokens 2M reached at 2M", tally.StopWhy);
+    }
+
+    [Fact]
+    public void Reported_tokens_passing_the_cap_stop_it_and_say_where()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 2_000_000 };
+
+        tally.Record(Report(totalTokens: 2_100_000));
+
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-tokens 2M reached at 2.1M", tally.StopWhy);
+    }
+
+    [Fact]
+    public void An_increment_with_no_token_count_adds_nothing_and_is_counted_unreported()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 100 };
+
+        tally.Record(Report(totalTokens: 60));
+        tally.Record(Report(totalTokens: null));
+
+        Assert.Equal(60, tally.Tokens);
+        Assert.Equal(1, tally.Unreported);
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void Without_a_max_tokens_nothing_stops_it_however_many_it_reports()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report(totalTokens: 900_000_000));
+
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void A_usage_limited_increments_tokens_still_count()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 1_000 };
+
+        tally.Record(Report(totalTokens: 1_500, usageLimitResetAt: DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(1_500, tally.Tokens);
+        Assert.True(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void The_tally_prints_its_tokens_and_says_once_that_unreported_increments_are_outside_them_and_the_cap()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 5_000_000 };
+        tally.Record(Report(totalTokens: 1_200_000));
+        tally.Record(Report(totalTokens: null));
+        tally.Record(Report(totalTokens: null));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("3 increment(s) in", StringComparison.Ordinal) && l.Contains("1.2M tokens, 2 unreported", StringComparison.Ordinal));
+        var line = Assert.Single(say.Said, l => l.Contains("reported no token count", StringComparison.Ordinal));
+        Assert.Contains("2 increment(s) reported no token count and are not in the tokens above", line, StringComparison.Ordinal);
+        Assert.Contains("; --max-tokens counts only reported increments", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_max_tokens_the_unreported_line_does_not_mention_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+        tally.Record(Report(totalTokens: null));
+        tally.Print(say);
+
+        var line = Assert.Single(say.Said, l => l.Contains("reported no token count", StringComparison.Ordinal));
+        Assert.DoesNotContain("--max-tokens", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_night_that_reported_every_count_prints_the_tokens_and_no_unreported_line()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 5_000_000 };
+        tally.Record(Report(totalTokens: 1_000));
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("1k tokens", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("unreported", StringComparison.Ordinal) || l.Contains("reported no token count", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_tokens_and_the_unreported_count_are_in_the_carried_forward_line()
+    {
+        var first = new Tally(TimeProvider.System);
+        first.Record(Report(totalTokens: 2_100_000));
+        first.Record(Report(totalTokens: null));
+
+        var second = new Tally(TimeProvider.System, first.ToState());
+
+        Assert.Contains("2.1M tokens, 1 unreported", second.SoFar(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_hour_that_has_come_ends_it()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero));
