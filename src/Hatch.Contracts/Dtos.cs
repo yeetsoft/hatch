@@ -1854,6 +1854,8 @@ public record PlaybookProposalDecisionRequest(IReadOnlyList<int>? ProposalIds);
 
 public record PlaybookProposalRejectResponse(int Rejected);
 
+public record PlaybookProposalApproveResponse(int Approved, IReadOnlyList<PlaybookDto> Playbooks);
+
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
 /// <c>""</c> hands it back to the playbook, as everywhere else in Hatch; the
