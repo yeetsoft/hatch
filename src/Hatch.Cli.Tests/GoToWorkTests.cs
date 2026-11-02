@@ -2300,6 +2300,33 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_hop_carries_the_tags(bool tagged)
+    {
+        string[] tags = tagged ? ["gpu", "linux"] : [];
+        using var h = new Harness(tags: tags);
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        if (tagged)
+        {
+            Assert.Contains("tag=gpu", call.Query);
+            Assert.Contains("tag=linux", call.Query);
+        }
+        else
+        {
+            Assert.DoesNotContain("tag=", call.Query);
+        }
+    }
+
     [Fact]
     public async Task A_pre_approved_hop_spawns_nothing_and_the_loop_reads_the_board_again()
     {

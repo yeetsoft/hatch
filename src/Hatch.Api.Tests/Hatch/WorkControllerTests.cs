@@ -4709,7 +4709,45 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Hop_InATagRequiringProject_IsCarriedByTheEndpointWhichJudgesNoTags()
+    public async Task Hop_InATagRequiringProject_WithNoTag_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_InATagRequiringProject_WithTheWrongTag_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default, tag: ["linux"]);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
+            response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_InATagRequiringProject_WithTheRightTags_CarriesItAcross()
     {
         var h = await NewAsync();
         await h.RequireTagsAsync("macos", "xcode");
@@ -4718,7 +4756,7 @@ public class WorkControllerTests
         await h.ExpressAsync(issue);
         await h.TickExpressSkipsAsync(h.Todo);
 
-        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default, tag: ["macos", "xcode"]));
         var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
 
         Assert.Equal(h.InProgress, moved.StatusId);

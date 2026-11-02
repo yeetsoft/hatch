@@ -531,9 +531,12 @@ public class WorkController(
         [FromQuery] List<string>? remote = null,
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] List<string>? tag = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
@@ -583,7 +586,8 @@ public class WorkController(
             repos, merged, built, hopKind, statuses,
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
-            landing: landing);
+            landing: landing,
+            tags: tags);
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");

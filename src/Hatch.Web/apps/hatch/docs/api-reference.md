@@ -448,7 +448,7 @@ the second half of this page, after the board's own.
 | GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next` |
-| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session |
+| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags included |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
@@ -470,9 +470,10 @@ holds.
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
 `ancestorKey` to narrow to one corner of the board and `mine` to narrow to
-the caller's own tickets; `next` and `queue` also take `tag`, what the
-caller's runner advertises, and `project`, the project keys it is bound to -
-each repeatable, one value per occurrence (`?project=FIL&project=AER`). An
+the caller's own tickets; `next` and `queue` also take `project`, the project
+keys it is bound to - repeatable, one value per occurrence
+(`?project=FIL&project=AER`). `next`, `queue` and `hop` also take `tag`, what
+the caller's runner advertises, repeatable the same way. An
 absent or empty `project` folds nothing, so a caller that never declared a
 binding sees every project as before; a key no project has is refused with a
 400 naming it on `next`. `{key}` and `next` also take `heldToken`, a claim
