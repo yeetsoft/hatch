@@ -446,7 +446,8 @@ as the way to get restarts back.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it catches the 75, rebuilds and runs the loop again, carrying the
-night's totals forward, so a restart cannot outspend `--max-spend`. A failed
+night's totals forward, so a restart cannot outspend `--max-spend` or re-open
+`--max-tokens`. A failed
 rebuild is never fatal: the supervisor says so and carries on with the binary
 already there rather than ending the night over it. On Windows, the
 PowerShell supervisor runs the loop from a copy of the build made under
