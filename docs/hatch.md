@@ -3087,6 +3087,18 @@ who may make the change.
 read carries the scope like everything else. `DeniedTools` rides the same
 three verbs and the same person-only cut — it is not a new edge.
 
+**That cut only held where the wall was on.** `RoleGate` is dormant with
+the wall off, so on a local install a bare `curl` or `hatch api` call used
+to reach the write as the local person, same as any other call. `PlaybookWrites.cs`
+closes that gap with one guard, in one file, one sentence constant, checked
+in the action on all four writing verbs — the three on `PlaybooksController`
+plus `PATCH /api/hatch/issues/{key}/playbook` — before the row is read. It
+refuses a program outright and, with no branch on the wall's state, any call
+carrying neither a key or runner header nor `Sec-Fetch-Mode`. It does not
+stop a caller forging a browser's headers on purpose — with the wall off
+nothing on a request is a credential, the same as every other local-mode
+guard in Hatch.
+
 **So is writing an issue's override**, and it is the same edge rather than a
 second one: `PATCH /api/hatch/issues/{key}/playbook` sets the model and the
 effort every increment on that ticket runs on, which is a playbook's power
@@ -3316,7 +3328,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
 | `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
 | `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |
