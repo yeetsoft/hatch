@@ -3361,6 +3361,43 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Wire.Calls);
     }
 
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("lots")]
+    [InlineData("1.25M")]
+    public async Task A_bad_max_tokens_per_hour_is_refused_before_any_lock_or_beat(string value)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour", value], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens-per-hour takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_per_hour_flag_with_no_value_is_refused()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens-per-hour takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_per_hour_is_accepted()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour", "200k", "--max-runs", "1"], default));
+
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("takes a token count", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_members_siblings_count_against_the_set_budget()
     {

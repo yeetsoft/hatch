@@ -646,6 +646,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--interval <seconds>] [--merge-interval <seconds>]",
         "                        [--max-runs <n>]",
         "                        [--max-spend <dollars>] [--max-tokens <count>]",
+        "                        [--max-tokens-per-hour <count>]",
         "                        [--until <HH:MM>]",
         "                        [--stop-file <path>] [--no-keys]",
         "                        [--restart-after <minutes> | --no-restart]",
@@ -702,6 +703,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "  --stop-file    stop once this path exists. `touch` it from anywhere: no pid",
         "                 to find, and no signal that could land in the middle of a push",
         "",
+        "  --max-tokens-per-hour <count>  wait, not stop: take no ticket while the last",
+        "                 hour's reported tokens are at or over this - 200k, 1M",
+        "",
         "  --no-keys         read no keys from this terminal - Ctrl-C and --stop-file still work",
         "",
         "  A run also ends on three failed increments in a row, on a workspace that",
@@ -736,6 +740,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         int? maxRuns = null;
         decimal? maxSpend = null;
         long? maxTokens = null;
+        long? maxTokensPerHour = null;
         var repoFlags = new List<string>();
         var projectFlags = new List<string>();
         string? workspaceFlag = null;
@@ -799,6 +804,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     // Bare, so a missing value is refused as this flag's and not
                     // caught below as an unknown one.
                     runtime.Say.Complain($"hatch: --max-tokens takes {TokenCount.Refusal}");
+                    return 1;
+                case "--max-tokens-per-hour" when i + 1 < args.Length:
+                    if (!TokenCount.TryParse(args[++i], out var perHour))
+                    {
+                        runtime.Say.Complain($"hatch: --max-tokens-per-hour takes {TokenCount.Refusal}");
+                        return 1;
+                    }
+
+                    maxTokensPerHour = perHour;
+                    break;
+                case "--max-tokens-per-hour":
+                    // Bare, so a missing value is refused as this flag's and not
+                    // caught below as an unknown one.
+                    runtime.Say.Complain($"hatch: --max-tokens-per-hour takes {TokenCount.Refusal}");
                     return 1;
                 case "--until" when i + 1 < args.Length: until = args[++i]; break;
                 case "--stop-file" when i + 1 < args.Length: stopFile = args[++i]; break;
@@ -1019,6 +1038,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxRuns = maxRuns,
                 MaxSpend = maxSpend,
                 MaxTokens = maxTokens,
+                MaxTokensPerHour = maxTokensPerHour,
                 Until = until,
                 // Carried rather than recomputed, and it is the one bound that
                 // would otherwise be wrong: `--until 23:59` typed at 23:58 and
