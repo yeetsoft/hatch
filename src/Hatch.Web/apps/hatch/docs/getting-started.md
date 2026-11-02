@@ -118,7 +118,7 @@ board knows which repository a project's tickets are about.
 
 ## Your first epic
 
-Press **New issue** on the board, set **Type** to *epic* — it opens on *task* —
+Press **+** (New issue) on the board, set **Type** to *epic* — it opens on *task* —
 and **Project** to the one you just made, give it a **Title**, and press **File
 it**. The server puts it in the leftmost column, **Draft**, and it crosses three
 columns before anything is chosen to be built:

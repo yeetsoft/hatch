@@ -36,4 +36,24 @@ describe('Facet', () => {
     expect(render('', true)).toContain('hatch-facet--lit');
     expect(render('')).not.toContain('hatch-facet--lit');
   });
+
+  it('draws an option\'s short form closed and keeps its full text in the list', () => {
+    const html = renderToStaticMarkup(
+      <Facet
+        label="Project"
+        lit={false}
+        value="HA"
+        options={[
+          { value: '', text: 'All projects', short: 'All' },
+          { value: 'HA', text: 'HA — Hatch', short: 'HA' },
+        ]}
+        onChange={noop}
+      />,
+    );
+
+    const shown = [...html.matchAll(/<span class="hatch-facet__option hatch-facet__option--shown">([^<]*)</g)];
+    expect(shown.map((m) => m[1])).toEqual(['HA']);
+    expect(html).toContain('>HA — Hatch</option>');
+    expect(html).toContain('>All projects</option>');
+  });
 });

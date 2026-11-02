@@ -10,6 +10,7 @@ const line = (over: Partial<StatusLine> = {}): StatusLine => ({
   after: ' · In Progress',
   tone: 'success',
   more: 0,
+  verb: 'Working',
   ...over,
 });
 
