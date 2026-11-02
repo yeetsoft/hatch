@@ -377,6 +377,7 @@ public class AdminSurfaceTests
         "PlaybookProposalsController.GetProposal",
         "PlaybookProposalsController.SubmitProposal",
         "PlaybookProposalsController.RejectAll",
+        "PlaybookProposalsController.ApproveAll",
 
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
@@ -698,6 +699,7 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
         "PlaybookProposalsController.RejectAll",
+        "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
         "RunnersController.PatchRunner",

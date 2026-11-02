@@ -591,6 +591,288 @@ public class PlaybookProposalsControllerTests
         Assert.Equal(PlaybookWrites.Sentence, refused.Value);
     }
 
+    // ---- approve-all ----
+
+    [Fact]
+    public async Task ApproveAll_OnAModelChange_AppliesItLive_AndMarksTheProposalDecided()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.Equal(1, result.Approved);
+        Assert.Equal("opus", Assert.Single(result.Playbooks).Model);
+
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.Equal("opus", row.Model);
+        Assert.Equal(Now.AddMinutes(5), row.UpdatedAt);
+
+        var read = await h.ReadAsync(proposal.Id);
+        Assert.Equal("approved", read.State);
+        Assert.Equal("a person", read.DecidedBy);
+        Assert.Equal(Now.AddMinutes(5), read.DecidedAt);
+    }
+
+    [Fact]
+    public async Task ApproveAll_WithOneRowEditedSince_Is409NamingTheSecondProposal_AndChangesNeither()
+    {
+        var h = await NewAsync();
+        var good = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        var second = new EfHatchPlaybook
+        {
+            FromStatusId = h.Todo, ToStatusId = h.InProgress, Types = "bug", Shape = EfHatchPlaybook.DefaultShape,
+            Model = "sonnet", Effort = "medium", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.Playbooks.Add(second);
+        await h.Db.SaveChangesAsync();
+        var edited = await ProposeForAsync(h, second, new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        second.UpdatedAt = Now.AddHours(1);
+        await h.Db.SaveChangesAsync();
+
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([good.Id, edited.Id]), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var message = conflict.Value!.ToString();
+        Assert.Contains($"proposal {edited.Id}", message);
+        Assert.Contains("was edited since it was proposed", message);
+
+        Assert.Equal(Now, (await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id)).UpdatedAt);
+        Assert.Equal(Now.AddHours(1), (await h.Db.Playbooks.SingleAsync(p => p.Id == second.Id)).UpdatedAt);
+        Assert.Equal("pending", (await h.ReadAsync(good.Id)).State);
+        Assert.Equal("pending", (await h.ReadAsync(edited.Id)).State);
+    }
+
+    [Fact]
+    public async Task ApproveAll_WithOneRowDeletedSince_Is409NamingTheSecondProposal_AndChangesNeither()
+    {
+        var h = await NewAsync();
+        var good = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        var second = new EfHatchPlaybook
+        {
+            FromStatusId = h.Todo, ToStatusId = h.InProgress, Types = "bug", Shape = EfHatchPlaybook.DefaultShape,
+            Model = "sonnet", Effort = "medium", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.Playbooks.Add(second);
+        await h.Db.SaveChangesAsync();
+        var deleted = await ProposeForAsync(h, second, new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        h.Db.Playbooks.Remove(second);
+        await h.Db.SaveChangesAsync();
+
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([good.Id, deleted.Id]), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var message = conflict.Value!.ToString();
+        Assert.Contains($"proposal {deleted.Id}", message);
+        Assert.Contains("was deleted since it was proposed", message);
+
+        Assert.Equal(Now, (await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id)).UpdatedAt);
+        Assert.Equal("pending", (await h.ReadAsync(good.Id)).State);
+        Assert.Equal("pending", (await h.ReadAsync(deleted.Id)).State);
+    }
+
+    [Fact]
+    public async Task ApproveAll_WithALiveClashThatAppearedAfterProposing_Is409WithTheClashSentence_AndAppliesNothing()
+    {
+        var h = await NewAsync();
+        var good = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        var second = new EfHatchPlaybook
+        {
+            FromStatusId = h.Todo, ToStatusId = h.InProgress, Types = "bug", Shape = EfHatchPlaybook.DefaultShape,
+            Model = "sonnet", Effort = "medium", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.Playbooks.Add(second);
+        await h.Db.SaveChangesAsync();
+        var patch = new PlaybookPatchRequest(null, h.Review, null, null, null, null);
+        var bad = await ProposeForAsync(h, second, patch);
+
+        var colliding = new EfHatchPlaybook
+        {
+            FromStatusId = h.Todo, ToStatusId = h.Review, Types = "bug", Shape = EfHatchPlaybook.DefaultShape,
+            Model = "sonnet", Effort = "medium", CreatedAt = Now, UpdatedAt = Now,
+        };
+        h.Db.Playbooks.Add(colliding);
+        await h.Db.SaveChangesAsync();
+
+        var twin = Clone(second, second.FromStatusId, second.ToStatusId);
+        h.Db.Playbooks.Add(twin);
+        await h.Db.SaveChangesAsync();
+        var playbooks = PlaybooksControllerTests.AtTheBrowser(h.Db, new FakeTimeProvider(Now));
+        var expected = Reason((await playbooks.PatchPlaybook(twin.Id, patch, default)).Result);
+
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([good.Id, bad.Id]), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        var message = conflict.Value!.ToString();
+        Assert.Contains($"proposal {bad.Id}", message);
+        Assert.Contains(expected, message);
+
+        Assert.Equal(Now, (await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id)).UpdatedAt);
+        Assert.Equal(Now, (await h.Db.Playbooks.SingleAsync(p => p.Id == second.Id)).UpdatedAt);
+        Assert.Equal("pending", (await h.ReadAsync(good.Id)).State);
+        Assert.Equal("pending", (await h.ReadAsync(bad.Id)).State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ApproveAll_WhenTheGivenSet_DoesNotMatchWhatIsPending_Is409_AndChangesNothing(bool extra)
+    {
+        var h = await NewAsync();
+        var first = await h.ProposeAsync();
+        var second = await h.ProposeAsync();
+        var ids = extra ? new List<int> { first.Id, second.Id, 99999 } : new List<int> { first.Id };
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest(ids), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Equal("the pending proposals have changed since the page was read - reload", conflict.Value);
+        Assert.Equal("pending", (await h.ReadAsync(first.Id)).State);
+        Assert.Equal("pending", (await h.ReadAsync(second.Id)).State);
+    }
+
+    [Fact]
+    public async Task ApproveAll_WithNothingPending_Is200WithZero()
+    {
+        var h = await NewAsync();
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([]), default));
+
+        Assert.Equal(0, result.Approved);
+        Assert.Empty(result.Playbooks);
+    }
+
+    [Fact]
+    public async Task ApproveAll_OnAProposalNamingAnIssue_WritesExactlyOneApprovedEvent()
+    {
+        var h = await NewAsync();
+        var issue = h.FileIssue();
+        await h.Db.SaveChangesAsync();
+        var proposal = await h.ProposeAsync(
+            issueId: issue.Id, patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        var events = await h.Db.IssueEvents.Where(e => e.IssueId == issue.Id).ToListAsync();
+        var one = Assert.Single(events);
+        Assert.Equal(EfHatchIssueEvent.PlaybookProposalApproved, one.Kind);
+        Assert.Contains($"\"proposalId\":{proposal.Id}", one.Payload);
+    }
+
+    [Fact]
+    public async Task ApproveAll_APromptEqualToTheDefault_ComesBackAsNoOverride()
+    {
+        var h = await NewAsync();
+        h.Playbook.DefaultPrompt = "the prescribed text";
+        await h.Db.SaveChangesAsync();
+        var proposal = await h.ProposeAsync(
+            defaultPrompt: "the prescribed text",
+            patch: new PlaybookPatchRequest(null, null, null, "the prescribed text", null, null));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.Equal("the prescribed text", Assert.Single(result.Playbooks).Prompt);
+        Assert.Null((await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id)).Prompt);
+    }
+
+    [Fact]
+    public async Task ApproveAll_AnApiKey_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var caller = new PlaybookProposalReadsTests.StubCallerIdentity
+        {
+            Key = new EfApiKey { Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now },
+        };
+        var proposals = h.Writing(h.Db, caller, browser: true);
+
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    [Fact]
+    public async Task ApproveAll_AKeylessRunner_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var caller = new PlaybookProposalReadsTests.StubCallerIdentity
+        {
+            Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner"),
+        };
+        var proposals = h.Writing(h.Db, caller, browser: true);
+
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    [Fact]
+    public async Task ApproveAll_APersonWithNoSecFetchMode_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var proposals = h.Writing(h.Db, new PlaybookProposalReadsTests.StubCallerIdentity(), browser: false);
+
+        var result = await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    /// <summary>
+    /// Files a pending proposal against an arbitrary playbook row, the way
+    /// <see cref="PlaybookProposalReadsTests.Harness.ProposeAsync"/> does for
+    /// <see cref="PlaybookProposalReadsTests.Harness.Playbook"/> alone - needed here so a test can
+    /// hold two pending proposals against two different rows.
+    /// </summary>
+    private static async Task<EfHatchPlaybookProposal> ProposeForAsync(
+        PlaybookProposalReadsTests.Harness h, EfHatchPlaybook playbook, PlaybookPatchRequest patch, long? issueId = null)
+    {
+        var row = await h.Db.Playbooks.AsNoTracking()
+            .Include(p => p.FromStatus).Include(p => p.ToStatus).Include(p => p.Project)
+            .FirstAsync(p => p.Id == playbook.Id);
+
+        var proposal = new EfHatchPlaybookProposal
+        {
+            Reason = "why",
+            IssueId = issueId,
+            Author = "a-key",
+            State = EfHatchPlaybookProposal.Pending,
+            CreatedAt = Now,
+            Changes =
+            [
+                new EfHatchPlaybookProposalChange
+                {
+                    ProposalId = 0,
+                    PlaybookId = row.Id,
+                    Before = EfHatchPlaybookProposalChange.WriteBefore(PlaybooksController.ToDto(row)),
+                    Patch = EfHatchPlaybookProposalChange.WritePatch(patch),
+                    BasedOnUpdatedAt = row.UpdatedAt,
+                },
+            ],
+        };
+        h.Db.PlaybookProposals.Add(proposal);
+        await h.Db.SaveChangesAsync();
+        return proposal;
+    }
+
     // ---- Harness ----
 
     private static async Task<PlaybookProposalReadsTests.Harness> NewAsync() => await PlaybookProposalReadsTests.NewAsync();

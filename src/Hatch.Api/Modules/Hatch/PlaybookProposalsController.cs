@@ -198,6 +198,98 @@ public class PlaybookProposalsController(
     }
 
     /// <summary>
+    /// Applies every pending proposal's change in one transaction - every change in
+    /// every proposal checked against the live board before any row is touched, so a
+    /// refusal partway through leaves nothing applied, not even the good ones that
+    /// came before it in the pending set.
+    /// </summary>
+    [HttpPost("approve-all")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<PlaybookProposalApproveResponse>> ApproveAll(
+        PlaybookProposalDecisionRequest request, CancellationToken ct)
+    {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
+        var (pending, conflict) = await LoadExactPendingAsync(request.ProposalIds, ct);
+        if (conflict is not null) return conflict;
+
+        var applied = new List<(EfHatchPlaybook Row, PlaybookState Next)>();
+
+        foreach (var proposal in pending)
+        {
+            foreach (var change in proposal.Changes)
+            {
+                var before = EfHatchPlaybookProposalChange.ReadBefore(change.Before);
+                var prefix = ChangePrefix(proposal.Id, before);
+
+                if (change.PlaybookId is not { } playbookId)
+                    return Conflict($"{prefix} was deleted since it was proposed - reject it or have it resubmitted");
+
+                var row = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == playbookId, ct);
+                if (row is null)
+                    return Conflict($"{prefix} was deleted since it was proposed - reject it or have it resubmitted");
+
+                if (row.UpdatedAt != change.BasedOnUpdatedAt)
+                    return Conflict($"{prefix} was edited since it was proposed - reject it or have it resubmitted");
+
+                var current = PlaybookState.Of(row);
+                var patch = EfHatchPlaybookProposalChange.ReadPatch(change.Patch);
+                if (await PlaybookPatches.RefusalAsync(db, playbookId, current, patch, families, ct) is { } error)
+                    return Conflict($"{prefix}: {error}");
+
+                applied.Add((row, PlaybookPatches.Apply(current, patch)));
+            }
+        }
+
+        var now = time.GetUtcNow();
+        var actor = await caller.ActorNameAsync(ct);
+
+        foreach (var (row, next) in applied)
+        {
+            row.FromStatusId = next.FromStatusId;
+            row.ToStatusId = next.ToStatusId;
+            row.Types = next.Types;
+            row.Shape = next.Shape;
+            row.Prompt = next.Prompt;
+            row.Model = next.Model;
+            row.Effort = next.Effort;
+            row.Budget = next.Budget;
+            row.BriefLimit = next.BriefLimit;
+            row.QuietLimitSeconds = next.QuietLimitSeconds;
+            row.DeniedTools = next.DeniedTools;
+            row.IsCheck = next.IsCheck;
+            row.ProjectId = next.ProjectId;
+            row.UpdatedAt = now;
+        }
+
+        foreach (var proposal in pending)
+        {
+            proposal.State = EfHatchPlaybookProposal.Approved;
+            proposal.DecidedAt = now;
+            proposal.DecidedBy = actor;
+        }
+
+        await WriteDecisionEventsAsync(pending, EfHatchIssueEvent.PlaybookProposalApproved, now, actor, ct);
+
+        await db.SaveChangesAsync(ct);
+
+        var ids = applied.Select(a => a.Row.Id).Distinct().OrderBy(id => id).ToList();
+        var rows = await db.Playbooks.AsNoTracking()
+            .Include(p => p.FromStatus).Include(p => p.ToStatus).Include(p => p.Project)
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync(ct);
+        var byId = rows.ToDictionary(p => p.Id);
+        var dtos = ids.Select(id => PlaybooksController.ToDto(byId[id])).ToList();
+
+        return new PlaybookProposalApproveResponse(pending.Count, dtos);
+    }
+
+    /// <summary>The shared prefix <see cref="ApproveAll"/>'s conflict sentences name the change by.</summary>
+    private static string ChangePrefix(int proposalId, PlaybookDto before) =>
+        $"proposal {proposalId}'s change to the {before.FromStatusName} → {before.ToStatusName} playbook " +
+        $"({(before.Types.Count == 0 ? "every type" : string.Join(", ", before.Types))})";
+
+    /// <summary>
     /// Every row still pending, tracked - checked against <paramref name="proposalIds"/> as a set,
     /// so a caller working from a page that has since changed is refused rather than deciding the
     /// wrong rows.
