@@ -288,7 +288,7 @@ public class PlaybookProposalsControllerTests
         h.Db.Playbooks.Add(twin);
         await h.Db.SaveChangesAsync();
         var patch = new PlaybookPatchRequest(null, h.Review, null, null, null, null);
-        var playbooks = new PlaybooksController(h.Db, new FakeTimeProvider(Now));
+        var playbooks = PlaybooksControllerTests.AtTheBrowser(h.Db, new FakeTimeProvider(Now));
         var expected = Reason((await playbooks.PatchPlaybook(twin.Id, patch, default)).Result);
 
         var result = await h.Proposals.SubmitProposal(
@@ -447,7 +447,7 @@ public class PlaybookProposalsControllerTests
         var patch = new PlaybookPatchRequest(null, null, null, "the prescribed text", "opus", null,
             Budget: "9", DeniedTools: ["Bash"]);
 
-        var playbooks = new PlaybooksController(h.Db, new FakeTimeProvider(Now));
+        var playbooks = PlaybooksControllerTests.AtTheBrowser(h.Db, new FakeTimeProvider(Now));
         var expected = Value(await playbooks.PatchPlaybook(twin.Id, patch, default));
 
         var created = Created(await h.Proposals.SubmitProposal(
@@ -487,7 +487,7 @@ public class PlaybookProposalsControllerTests
         h.Db.Playbooks.Add(twin);
         await h.Db.SaveChangesAsync();
 
-        var playbooks = new PlaybooksController(h.Db, new FakeTimeProvider(Now));
+        var playbooks = PlaybooksControllerTests.AtTheBrowser(h.Db, new FakeTimeProvider(Now));
         return Reason((await playbooks.PatchPlaybook(twin.Id, patch, default)).Result);
     }
 

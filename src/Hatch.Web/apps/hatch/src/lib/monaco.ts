@@ -1,7 +1,7 @@
 /* Monaco, and only as much of it as a markdown box needs.
 
    THIS IS THE ONLY MODULE THAT MAY IMPORT `monaco-editor`, and it is only ever
-   reached as `import('../lib/monaco')` from components/MarkdownEditor.tsx and components/PlaybookEditDialog.tsx. That
+   reached as `import('../lib/monaco')` from components/MarkdownEditor.tsx and components/PromptDiff.tsx. That
    dynamic import is what makes Vite give the editor a chunk of its own, so a
    page that has no editor on it never downloads one (HA-56, criterion 14). A
    second importer - static, or dynamic from somewhere else - would drag the
