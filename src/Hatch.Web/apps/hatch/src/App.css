@@ -4100,6 +4100,22 @@ input.hatch-inline-title-input {
   margin-bottom: var(--sp-2);
 }
 
+/* PlaybookProposalCard's own header line: the transition, its types and its
+   shape/project, read the same way PlaybookRow's row does. */
+.hatch-playbook-proposal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+
+/* A before/after cell the proposal actually touches - a tint, not a border,
+   so an unchanged cell beside it still reads as the same table. */
+.hatch-playbook-proposal-cell--changed {
+  background: var(--primary-bg);
+}
+
 /* ---- Questions ----
 
    An unanswered question is the one thing on a board that nothing else can get
