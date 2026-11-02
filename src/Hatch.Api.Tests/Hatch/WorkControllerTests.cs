@@ -12929,7 +12929,13 @@ public class WorkControllerTests
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision())),
-            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
+            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext { Request = { Headers = { ["Sec-Fetch-Mode"] = "navigate" } } },
+                },
+            },
             Caller = caller,
             ProjectId = project.Id,
             Inbox = inbox.Id,
