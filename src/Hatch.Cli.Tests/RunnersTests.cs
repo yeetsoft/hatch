@@ -136,12 +136,13 @@ public sealed class RunnersTests
 
         await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default);
 
-        // Two beats: one before the pass that claims and clones, and one at the
+        // Three beats: one before the pass that claims and clones, one at the
         // top of the next iteration - which is where --max-runs 1 stops the
         // loop, and so is the one that carries what the pass before it grew
-        // the checkouts to.
+        // the checkouts to - and the stop's own last beat, which carries them too.
         var beats = Beats(h);
-        Assert.Equal(2, beats.Count);
+        Assert.Equal(3, beats.Count);
+        Assert.Contains("https://example.test/owner/repo.git", beats[1].Read<RunnerHeartbeatRequest>().Remotes ?? []);
         var last = beats[^1].Read<RunnerHeartbeatRequest>();
         Assert.Contains("https://example.test/owner/repo.git", last.Remotes ?? []);
     }
@@ -235,18 +236,19 @@ public sealed class RunnersTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
 
-        // Three for two increments: one at the top of each pass, and one at the
-        // top of the pass that read the cap and stopped - which is what leaves
-        // the row saying how the night ended rather than what it was doing an
-        // increment ago.
+        // Four for two increments: one at the top of each pass, one at the top
+        // of the pass that read the cap and stopped, and the stop's own last
+        // beat - which is what leaves the row saying how the night ended
+        // rather than what it was doing an increment ago.
         var beats = Beats(h);
-        Assert.Equal(3, beats.Count);
+        Assert.Equal(4, beats.Count);
         Assert.Equal("loop", beats[0].Read<RunnerHeartbeatRequest>().Kind);
 
         // Each beat after the first carries what the pass before it came to, so
         // a page that cannot see a terminal still reads like one.
         Assert.Contains("AER-1", beats[1].Read<RunnerHeartbeatRequest>().Line);
         Assert.Contains("AER-1", beats[2].Read<RunnerHeartbeatRequest>().Line);
+        Assert.Equal("Stopped: --max-runs 2 reached", beats[3].Read<RunnerHeartbeatRequest>().Line);
     }
 
     [Fact]
