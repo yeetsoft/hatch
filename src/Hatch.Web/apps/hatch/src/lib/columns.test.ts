@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { awaitingReview, implementation, isObviated, landingFocus, sendBack, statusChoices } from './columns';
+import {
+  awaitingReview,
+  columnTracks,
+  implementation,
+  isObviated,
+  landingFocus,
+  narrowColumns,
+  sendBack,
+  statusChoices,
+} from './columns';
 import type { Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
@@ -189,5 +198,40 @@ describe('isObviated', () => {
 
   it('is false in an ordinary column', () => {
     expect(isObviated(TODO)).toBe(false);
+  });
+});
+
+describe('narrowColumns', () => {
+  const cols = [status(1, 1), status(2, 2), status(3, 3)];
+
+  it('is every column when nothing is shown', () => {
+    expect([...narrowColumns(cols, [])]).toEqual([1, 2, 3]);
+  });
+
+  it('leaves a column with a shown card out', () => {
+    expect([...narrowColumns(cols, [{ statusId: 2 }])]).toEqual([1, 3]);
+  });
+
+  it('counts a column whose cards the filter hid as narrow', () => {
+    // Cards sit in column 1 on the board, but only column 3's survive the filter.
+    expect(narrowColumns(cols, [{ statusId: 3 }]).has(1)).toBe(true);
+  });
+
+  it('ignores a shown card in no drawn column', () => {
+    expect([...narrowColumns(cols, [{ statusId: 99 }])]).toEqual([1, 2, 3]);
+  });
+});
+
+describe('columnTracks', () => {
+  const cols = [status(1, 1), status(2, 2), status(3, 3)];
+
+  it('names one track per column, in column order', () => {
+    expect(columnTracks(cols, new Set([1, 3]))).toBe(
+      'var(--column-track-narrow) var(--column-track) var(--column-track-narrow)',
+    );
+  });
+
+  it('is empty with no columns', () => {
+    expect(columnTracks([], new Set())).toBe('');
   });
 });

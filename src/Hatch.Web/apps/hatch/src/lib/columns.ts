@@ -28,6 +28,27 @@ import type { Status } from '../types';
 export const boardColumns = (statuses: Status[]): Status[] => statuses.filter((s) => !s.isDeferred);
 
 /**
+ * The drawn columns that show no card: the ids of the columns none of `shown`
+ * sits in. `shown` is the filter's output, so a column whose cards the filter
+ * holds back counts as showing none, exactly like a column with no cards at
+ * all. It is measured before a column's own "+ N waiting" fold, so a column
+ * whose only cards are folded keeps its width - the fold button is work.
+ */
+export function narrowColumns(columns: Status[], shown: readonly { statusId: number }[]): Set<number> {
+  const occupied = new Set(shown.map((c) => c.statusId));
+  return new Set(columns.filter((c) => !occupied.has(c.id)).map((c) => c.id));
+}
+
+/**
+ * The board grid's `grid-template-columns`, one track per drawn column in board
+ * order. The two tracks are custom properties on `.hatch-board` (App.css), so
+ * the 2:1 ratio between a narrow and a full column is stated once, in CSS.
+ */
+export function columnTracks(columns: Status[], narrow: ReadonlySet<number>): string {
+  return columns.map((c) => (narrow.has(c.id) ? 'var(--column-track-narrow)' : 'var(--column-track)')).join(' ');
+}
+
+/**
  * Whether work sitting in this column has stopped: shipped, or shelved.
  *
  * The two are not the same fact and are stored apart - a rollup counts one and
