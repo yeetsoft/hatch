@@ -823,7 +823,7 @@ public class PlaybooksControllerTests
     {
         var h = await NewAsync();
         var row = await h.CreateAsync();
-        var playbooks = Writing(h.Db, new StubCallerIdentity { ApiKey = new EfApiKey() }, browser: true);
+        var playbooks = Writing(h.Db, new StubCallerIdentity { ApiKey = new EfApiKey { Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now } }, browser: true);
 
         var refusal = await playbooks.PatchPlaybook(
             row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, "5"), default);
