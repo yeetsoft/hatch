@@ -1238,6 +1238,32 @@ export interface Playbook {
   projectName: string | null;
 }
 
+/** One row's proposed edit: its before and after, and which fields differ.
+    Mirrors PlaybookProposalChangeDto. */
+export interface PlaybookProposalChange {
+  id: number;
+  playbookId: number | null;
+  before: Playbook;
+  after: Playbook;
+  changedFields: string[];
+  outOfDate: boolean;
+  outOfDateReason: string | null;
+}
+
+/** A batch of row edits proposed together, awaiting an operator's decision.
+    Mirrors PlaybookProposalDto. */
+export interface PlaybookProposal {
+  id: number;
+  reason: string;
+  issueKey: string | null;
+  author: string;
+  state: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  changes: PlaybookProposalChange[];
+}
+
 export interface PlaybookCreateRequest {
   fromStatusId: number;
   toStatusId: number;

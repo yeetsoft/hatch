@@ -46,6 +46,7 @@ import type {
   PlaybookCreateRequest,
   PlaybookFilesDto,
   PlaybookPatchRequest,
+  PlaybookProposal,
   HatchImage,
   Project,
   ProjectCreateRequest,
@@ -254,6 +255,7 @@ export const setStatusRunnerTags = (id: number, request: StatusRunnerTagsWriteRe
 // script. See PlaybooksController.
 
 export const getPlaybooks = () => fetchJson<Playbook[]>('/api/hatch/playbooks');
+export const getPlaybookProposals = () => fetchJson<PlaybookProposal[]>('/api/hatch/playbook-proposals');
 export const createPlaybook = (request: PlaybookCreateRequest) =>
   fetchJson<Playbook>('/api/hatch/playbooks', { method: 'POST', body: JSON.stringify(request) });
 export const patchPlaybook = (id: number, request: PlaybookPatchRequest) =>
