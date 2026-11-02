@@ -214,7 +214,9 @@ Always. The column to stop in, or on a check the pass column and the fail
 column, since a check ends with a verdict. No moves into a terminal column,
 which only the operator makes. An increment that leaves the ticket where it
 found it is recorded as having done nothing. No playbook edits: the API
-refuses them on purpose, and a wrong playbook is said on the ticket instead.
+refuses them on purpose, and the refusal is deliberate. A wrong playbook is
+proposed instead, with `hatch api POST /api/hatch/playbook-proposals`, said
+on the ticket, and left for a person to apply on the Playbooks page.
 
 The prompt then ends with two things that are plain paragraphs, not sections,
 not with a heading of their own: a ticket moving into review may be asked for

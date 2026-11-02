@@ -173,7 +173,9 @@ so the trail says who did what without anybody being asked to record it.
 - **Move work into a protected column.** Only an owner or approver can, by
   hand. A `403` there is that gate working, not a mistake to work around.
 - **Edit a playbook.** The API refuses it, and the refusal is deliberate; if a
-  playbook is wrong, say so on the ticket and stop.
+  playbook is wrong, propose the change instead — `hatch api POST
+  /api/hatch/playbook-proposals` with a reason, the ticket, and the changes —
+  and say so on the ticket. A person applies it on the Playbooks page.
 - **Mint and revoke keys**, and everything else behind a plain `[RequireAdmin]`.
 - **Answer a question**, which is the next section.
 
