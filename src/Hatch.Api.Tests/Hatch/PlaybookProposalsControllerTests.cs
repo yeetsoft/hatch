@@ -2,6 +2,8 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -466,6 +468,127 @@ public class PlaybookProposalsControllerTests
                 ToStatusId = after.ToStatusId, ToStatusName = after.ToStatusName,
             }),
             Json(after));
+    }
+
+    // ---- reject-all ----
+
+    [Fact]
+    public async Task RejectAll_OnAProposalNamingNoIssue_MarksItRejected_AndLeavesThePlaybookAlone()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.RejectAll(new PlaybookProposalDecisionRequest([proposal.Id]), default));
+
+        Assert.Equal(1, result.Rejected);
+        var read = await h.ReadAsync(proposal.Id);
+        Assert.Equal("rejected", read.State);
+        Assert.Equal("a person", read.DecidedBy);
+        Assert.Equal(Now.AddMinutes(5), read.DecidedAt);
+        Assert.Equal(Now, h.Playbook.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task RejectAll_OnAProposalNamingAnIssue_WritesExactlyOneRejectedEvent()
+    {
+        var h = await NewAsync();
+        var issue = h.FileIssue();
+        await h.Db.SaveChangesAsync();
+        var proposal = await h.ProposeAsync(issueId: issue.Id);
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        await proposals.RejectAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        var events = await h.Db.IssueEvents.Where(e => e.IssueId == issue.Id).ToListAsync();
+        var one = Assert.Single(events);
+        Assert.Equal(EfHatchIssueEvent.PlaybookProposalRejected, one.Kind);
+        Assert.Contains($"\"proposalId\":{proposal.Id}", one.Payload);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RejectAll_WhenTheGivenSet_DoesNotMatchWhatIsPending_Is409_AndChangesNothing(bool extra)
+    {
+        var h = await NewAsync();
+        var first = await h.ProposeAsync();
+        var second = await h.ProposeAsync();
+        var ids = extra ? new List<int> { first.Id, second.Id, 99999 } : new List<int> { first.Id };
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = await proposals.RejectAll(new PlaybookProposalDecisionRequest(ids), default);
+
+        var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Equal("the pending proposals have changed since the page was read - reload", conflict.Value);
+        Assert.Equal("pending", (await h.ReadAsync(first.Id)).State);
+        Assert.Equal("pending", (await h.ReadAsync(second.Id)).State);
+    }
+
+    [Fact]
+    public async Task RejectAll_WithNothingPending_Is200WithZero()
+    {
+        var h = await NewAsync();
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        var result = Value(await proposals.RejectAll(new PlaybookProposalDecisionRequest([]), default));
+
+        Assert.Equal(0, result.Rejected);
+    }
+
+    [Fact]
+    public async Task RejectAll_AnApiKey_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var caller = new PlaybookProposalReadsTests.StubCallerIdentity
+        {
+            Key = new EfApiKey { Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now },
+        };
+        var proposals = h.Writing(h.Db, caller, browser: true);
+
+        var result = await proposals.RejectAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    [Fact]
+    public async Task RejectAll_AKeylessRunner_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var caller = new PlaybookProposalReadsTests.StubCallerIdentity
+        {
+            Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner"),
+        };
+        var proposals = h.Writing(h.Db, caller, browser: true);
+
+        var result = await proposals.RejectAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    [Fact]
+    public async Task RejectAll_APersonWithNoSecFetchMode_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync();
+        var proposals = h.Writing(h.Db, new PlaybookProposalReadsTests.StubCallerIdentity(), browser: false);
+
+        var result = await proposals.RejectAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        AssertRefused(result.Result);
+        Assert.Equal("pending", (await h.ReadAsync(proposal.Id)).State);
+    }
+
+    private static void AssertRefused(IActionResult? result)
+    {
+        var refused = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal(PlaybookWrites.Sentence, refused.Value);
     }
 
     // ---- Harness ----

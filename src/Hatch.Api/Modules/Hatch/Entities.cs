@@ -2003,6 +2003,18 @@ public class EfHatchIssueEvent
     public const string PlaybookProposed = "playbook_proposed";
 
     /// <summary>
+    /// A person approved a pending playbook proposal naming this issue - see
+    /// <see cref="EfHatchPlaybookProposal"/>. The payload is <c>{ proposalId }</c>.
+    /// </summary>
+    public const string PlaybookProposalApproved = "playbook_proposal_approved";
+
+    /// <summary>
+    /// A person rejected a pending playbook proposal naming this issue - see
+    /// <see cref="EfHatchPlaybookProposal"/>. The payload is <c>{ proposalId }</c>.
+    /// </summary>
+    public const string PlaybookProposalRejected = "playbook_proposal_rejected";
+
+    /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
     /// The payload is <c>{ from, to }</c>, either side null.
     /// </summary>

@@ -2,6 +2,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -189,6 +190,7 @@ public class PlaybookProposalReadsTests
         public required HatchContext Db { get; init; }
         public required PlaybookProposalsController Proposals { get; init; }
         public required StubCallerIdentity Caller { get; init; }
+        public required FakeTimeProvider Time { get; init; }
         public required int Todo { get; init; }
         public required int InProgress { get; init; }
         public required int Review { get; init; }
@@ -249,6 +251,20 @@ public class PlaybookProposalReadsTests
 
         public async Task<PlaybookProposalDto> ReadAsync(int id) => Value(await Proposals.GetProposal(id, default));
 
+        /// <summary>
+        /// A second controller against the same board and the same clock, for a caller other than
+        /// the harness's own - <see cref="PlaybooksControllerTests.Writing"/> is the pattern.
+        /// </summary>
+        public PlaybookProposalsController Writing(HatchContext db, StubCallerIdentity caller, bool browser)
+        {
+            var http = new DefaultHttpContext();
+            if (browser) http.Request.Headers["Sec-Fetch-Mode"] = "navigate";
+            return new PlaybookProposalsController(db, caller, Time)
+            {
+                ControllerContext = new ControllerContext { HttpContext = http },
+            };
+        }
+
         private PlaybookDto BeforeDto(string? defaultPrompt) => new(
             Playbook.Id, Todo, "todo", InProgress, "in progress", [], EfHatchPlaybook.DefaultShape,
             defaultPrompt ?? Playbook.EffectivePrompt, defaultPrompt, Playbook.Model, Playbook.Effort,
@@ -291,6 +307,7 @@ public class PlaybookProposalReadsTests
             Db = db,
             Proposals = new PlaybookProposalsController(db, caller, time),
             Caller = caller,
+            Time = time,
             Todo = todo.Id,
             InProgress = inProgress.Id,
             Review = review.Id,
