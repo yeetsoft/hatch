@@ -356,6 +356,7 @@ asked for is a run somebody has to go and check on.
 ```
 hatch go-to-work --max-runs 5             stop after five increments
 hatch go-to-work --max-spend 20           stop once the night has cost $20
+hatch go-to-work --max-tokens 2M          stop once the increments have reported two million tokens
 hatch go-to-work --until 08:00            stop at that wall-clock hour (tomorrow, if it has gone by today)
 hatch go-to-work --stop-file /tmp/stop    stop once that path exists
 hatch go-to-work --project FIL --project AER   take only those projects' tickets
@@ -363,7 +364,10 @@ hatch go-to-work --project FIL --project AER   take only those projects' tickets
 
 `--max-runs` and `--max-spend` take at least 0, so `--max-runs 0` stops before
 the first increment. `--max-spend` counts priced increments only, and the
-night's closing tally says how many were unpriced. `--until` takes `HH:MM`.
+night's closing tally says how many were unpriced. `--max-tokens` takes a token
+count - `500k`, `2M`, `1.5M` - and counts reported tokens only, so an increment
+that reported none is not in the total and the tally says how many did not.
+`--until` takes `HH:MM`.
 `--stop-file` is refused if the path already exists, because otherwise an empty
 board and a stale stop file would look identical.
 
