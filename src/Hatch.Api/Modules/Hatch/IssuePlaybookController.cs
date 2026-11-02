@@ -52,6 +52,8 @@ public class IssuePlaybookController(
     public async Task<ActionResult<IssueDto>> PatchIssuePlaybook(
         string key, IssuePlaybookRequest request, CancellationToken ct)
     {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
