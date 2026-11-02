@@ -155,7 +155,7 @@ public sealed class IssueCommands(Cli cli)
             var sources = issue.RunnerTagsFrom.Count > 0
                 ? $" ({string.Join("; ", issue.RunnerTagsFrom.Select(f => $"{Listed(f.Tags)} from {(f.Kind == RunnerTagSourceKinds.Project ? "the project" : f.Key)}"))})"
                 : "";
-            cli.Say.Line($"runner tags:  {Listed(issue.RunnerTags)} - only a runner advertising {needs} is handed this ticket's implementation{sources}");
+            cli.Say.Line($"runner tags:  {Listed(issue.RunnerTags)} - only a runner advertising {needs} is handed this ticket{sources}");
         }
 
         // Said only where the issue is flagged, by itself or by an ancestor,

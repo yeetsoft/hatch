@@ -70,7 +70,7 @@ export interface Project {
   bindsTrackerBy: string | null;
   /** When bindsTracker was last changed on this project, or null until the first write. */
   bindsTrackerAt: string | null;
-  /** Which runners may implement this project's work, normalised - trimmed,
+  /** Which runners may be handed this project's work, normalised - trimmed,
       lower-cased, deduplicated; empty means any runner. Absent from a
       project that predates it. See ProjectDto.RunnerTags. */
   runnerTags?: string[];
@@ -974,7 +974,7 @@ export interface ProjectReflectionWriteRequest {
   cadenceDays: number | null;
 }
 
-/** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
+/** A write to which runners may be handed a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
 export interface ProjectRunnerTagsWriteRequest {
   tags: string[];
 }

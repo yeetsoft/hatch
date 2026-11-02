@@ -1839,7 +1839,7 @@ function IssueRunnerTagsOwnField({ tags, busy, onSave }: { tags: string[]; busy:
     >
       <RunnerTagsField
         label="Runner tags"
-        hint="One tag per line. Only a runner advertising every one of these, and every tag inherited below, is handed this ticket's implementation. Blank adds nothing."
+        hint="One tag per line. Only a runner advertising every one of these, and every tag inherited below, is handed this ticket. Blank adds nothing."
         value={draft}
         busy={busy}
         onChange={setDraft}

@@ -416,7 +416,7 @@ public sealed class IssueCommandsTests
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket's implementation", h.Said);
+        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket", h.Said);
         Assert.DoesNotContain("from the project", h.Said);
     }
 
@@ -440,7 +440,7 @@ public sealed class IssueCommandsTests
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.Contains("runner tags:  gpu, linux and macos - only a runner advertising all of them is handed this ticket's implementation (linux from the project; gpu from HA-12)", h.Said);
+        Assert.Contains("runner tags:  gpu, linux and macos - only a runner advertising all of them is handed this ticket (linux from the project; gpu from HA-12)", h.Said);
     }
 
     [Fact]
@@ -459,7 +459,7 @@ public sealed class IssueCommandsTests
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket's implementation (gpu from HA-12)", h.Said);
+        Assert.Contains("runner tags:  gpu - only a runner advertising it is handed this ticket (gpu from HA-12)", h.Said);
     }
 
     [Fact]
