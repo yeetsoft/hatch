@@ -45,6 +45,8 @@ public sealed class Tally
         Runs = carried?.Runs ?? 0;
         Spent = carried?.Spent ?? 0m;
         Unpriced = carried?.Unpriced ?? 0;
+        Tokens = carried?.Tokens ?? 0;
+        Unreported = carried?.Unreported ?? 0;
         Fails = carried?.Fails ?? 0;
         Restarts = carried?.Restarts ?? 0;
         ExhaustedUntil = carried?.ExhaustedUntil;
@@ -74,6 +76,12 @@ public sealed class Tally
 
     /// <summary>Increments that reported tokens and no price - in neither <see cref="Spent"/> nor the <c>--max-spend</c> cap.</summary>
     public int Unpriced { get; private set; }
+
+    /// <summary>Tokens the increments reported, the total the <c>--max-tokens</c> cap is judged against. Nothing is estimated for an increment that reported none.</summary>
+    public long Tokens { get; private set; }
+
+    /// <summary>Increments that reported no token count - in neither <see cref="Tokens"/> nor the <c>--max-tokens</c> cap.</summary>
+    public int Unreported { get; private set; }
 
     /// <summary>When the night began - carried across a restart, the same as everything else it is judged against.</summary>
     public DateTimeOffset Started => _started;
@@ -183,6 +191,7 @@ public sealed class Tally
     // which is the honest reading of a cap.
     public int? MaxRuns { get; set; }
     public decimal? MaxSpend { get; set; }
+    public long? MaxTokens { get; set; }
     public string? Until { get; set; }
     public DateTimeOffset? UntilAt { get; set; }
     public string? StopFile { get; init; }
@@ -271,6 +280,13 @@ public sealed class Tally
             return true;
         }
 
+        // Tokens holds reported counts only, so an increment with none never counts here.
+        if (MaxTokens is { } tokenCap && Tokens >= tokenCap)
+        {
+            StopWhy = $"--max-tokens {Format.Compact(tokenCap)} reached at {Format.Compact(Tokens)}";
+            return true;
+        }
+
         if (UntilAt is { } hour && _clock.GetUtcNow() >= hour)
         {
             StopWhy = $"--until {Until} has come";
@@ -286,6 +302,10 @@ public sealed class Tally
         Runs++;
         if (report.Cost is { } cost) Spent += cost;
         if (report.Unpriced) Unpriced++;
+
+        // Before the usage-limit return below: those tokens were spent.
+        if (report.TotalTokens is { } tokens) Tokens += tokens;
+        else Unreported++;
 
         // The local counters are this slot's cumulative total, carried and new,
         // so the ledger is a mirror of them for the siblings to read.
@@ -400,6 +420,8 @@ public sealed class Tally
         Runs = Runs,
         Spent = Spent,
         Unpriced = Unpriced,
+        Tokens = Tokens,
+        Unreported = Unreported,
         Started = _started,
         Fails = Fails,
         Restarts = Restarts + 1,
@@ -417,10 +439,13 @@ public sealed class Tally
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
-    public string SoFar() => $"{Runs} increment(s), ${Format.Money(Spent)}{UnpricedSuffix} so far, carried forward";
+    public string SoFar() => $"{Runs} increment(s), ${Format.Money(Spent)}{UnpricedSuffix}{TokensSuffix} so far, carried forward";
 
     /// <summary>The dollars are priced increments only; says how many were left out, or nothing when none were.</summary>
     public string UnpricedSuffix => Unpriced > 0 ? $", {Unpriced} unpriced" : "";
+
+    /// <summary>The tokens reported, always, and how many increments reported none when any did not.</summary>
+    public string TokensSuffix => $", {Format.Compact(Tokens)} tokens{(Unreported > 0 ? $", {Unreported} unreported" : "")}";
 
     /// <summary>
     /// What the run came to. Printed on the way out and nowhere else, because
@@ -440,10 +465,13 @@ public sealed class Tally
 
         say.Line("");
         if (StopWhy is { Length: > 0 } why) say.Line($"hatch: {why}");
-        say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{UnpricedSuffix}{restarts}");
+        say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{UnpricedSuffix}{TokensSuffix}{restarts}");
         if (Unpriced > 0)
             say.Line($"hatch: {Unpriced} increment(s) reported no price and are not in the dollars above"
                 + (MaxSpend is not null ? "; --max-spend counts only priced increments" : ""));
+        if (Unreported > 0)
+            say.Line($"hatch: {Unreported} increment(s) reported no token count and are not in the tokens above"
+                + (MaxTokens is not null ? "; --max-tokens counts only reported increments" : ""));
         say.Lines(_moved);
         say.Lines(_clamped);
         say.Lines(_stalled);
@@ -2010,7 +2038,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 : $"{report.Key} did not move - {report.Outcome}";
 
             runtime.Say.Line("");
-            runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)}{tally.UnpricedSuffix})");
+            runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)}{tally.UnpricedSuffix}{tally.TokensSuffix})");
 
             // What the next heartbeat carries. In-increment chatter rides the
             // claim, so what this row wants is what happened to the last one -

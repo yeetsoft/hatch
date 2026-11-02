@@ -3319,7 +3319,7 @@ public sealed class GoToWorkTests
         // Every increment, the whole spend, and the elapsed time measured from
         // the first incarnation's start rather than this one's.
         Assert.Contains(h.Say.Said, l => l.Contains("3 increment(s) in 2h", StringComparison.Ordinal));
-        Assert.Contains(h.Say.Said, l => l.Contains("$6.50, 1 restart(s)", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("$6.50, 12k tokens, 1 restart(s)", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("moved    AER-9", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
     }
