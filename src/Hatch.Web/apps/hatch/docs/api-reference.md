@@ -262,7 +262,7 @@ not mint an issue number - try again".
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
-| playbook | PATCH | `/issues/{key}/playbook` | **person** | Per-ticket model/effort override, beating every playbook |
+| playbook | PATCH | `/issues/{key}/playbook` | **person, at the browser** | Per-ticket model/effort override, beating every playbook |
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
@@ -594,9 +594,9 @@ leaves one entry, not a hundred.
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/playbooks` | key | Every row, in board order |
-| POST | `/playbooks` | **person** | Creates one |
-| PATCH | `/playbooks/{id}` | **person** | Edits one |
-| DELETE | `/playbooks/{id}` | **person** | Deletes one |
+| POST | `/playbooks` | **person, at the browser** | Creates one |
+| PATCH | `/playbooks/{id}` | **person, at the browser** | Edits one |
+| DELETE | `/playbooks/{id}` | **person, at the browser** | Deletes one |
 | GET | `/playbook-files` | key | Every stored verdict of what a repository's trunk actually carries at `.hatch/playbooks.yaml` |
 | PUT | `/playbook-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
 
@@ -607,6 +607,11 @@ follows is unbounded spend rather than a wrong answer - the same shape of
 loop the claim's tokenless `DELETE` above and a runner's own `--max-spend`
 are cut to prevent. Reading stays open because an agent has to be told what
 it was dispatched with.
+
+Person here means a person at the browser specifically: with the wall off
+these three, and `PATCH /issues/{key}/playbook`, also refuse a call with no
+key, no runner header and no `Sec-Fetch-Mode` header, so a bare `curl` or
+`hatch api` call is refused the same as a key.
 
 `/playbook-files` is not that same edge, despite sitting beside it: it is
 not the matrix above, it is a cache of what a runner's poll actually found
@@ -744,7 +749,7 @@ it is already running as.
 
 `/settings` is Hatch's own configuration, carrying nothing an agent reads:
 it is person-only on both verbs by design, beside `/runners/{name}` and
-`/playbooks`' writes above - an API key that could write here could set the
+`/playbooks`' person-at-the-browser writes above - an API key that could write here could set the
 name every event in the house is signed with, or swap the credential the
 account's headroom is read through. `credentials/{agent}` and
 `claude-token` are the one deliberate exception beside it: **the answer is a
