@@ -611,6 +611,7 @@ hatch go-to-work [--mine] [--under <epic key>] [--project <key>]... [--once] [--
                  [--interval <seconds>] [--merge-interval <seconds>]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
                  [--max-tokens <count>] [--until <HH:MM>] [--stop-file <path>] [--no-keys]
+                 [--max-tokens-per-hour <count>]
                  [--restart-after <minutes> | --no-restart]
                  [--repo <path>]... [--workspace <dir>] [--runners <n>]
 ```

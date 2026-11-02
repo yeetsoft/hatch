@@ -618,6 +618,7 @@ internal partial class Program
         "  hatch go-to-work --under AER-1 --interval 300",
         "  hatch go-to-work --max-runs 5 --max-spend 20 --until 08:00",
         "  hatch go-to-work --max-tokens 2M",
+        "  hatch go-to-work --max-tokens-per-hour 200k   ...wait, not stop, while the last hour is over it",
         "  hatch go-to-work --stop-file /tmp/stop",
         "  hatch go-to-work --restart-after 60   ...coming back as a newer build that often",
         "  hatch go-to-work --restart-after 0    ...only when its own source changed",
