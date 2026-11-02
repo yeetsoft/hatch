@@ -4551,12 +4551,12 @@ public class WorkControllerTests
 
         var none = Only(await h.Work.GetQueue(0, null, default));
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             none.Blocked);
         Assert.Equal(BlockedKinds.Other, none.BlockedKind);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
             Only(await h.Work.GetQueue(0, null, default, tag: ["linux"])).Blocked);
 
         Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, tag: ["macos"])).Blocked);
@@ -4591,16 +4591,16 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_ATagRequiringProjectsStoryInTodo_IsClearForATaglessCaller()
+    public async Task Queue_ATagRequiringProjectsStoryInTodo_IsFoldedForATaglessCaller()
     {
         var h = await NewAsync();
         await h.RequireTagsAsync("macos", "xcode");
-        await h.FileAsync("story", "not yet in progress", h.Todo);
+        var issue = await h.FileAsync("story", "not yet in progress", h.Todo);
 
-        // Todo is not the implementation column, and a move into it is nobody's
-        // to be gated by a runner's tags - the same reason a repository fold
-        // only reaches as far as the implementation column.
-        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
     }
 
     [Fact]
@@ -4613,7 +4613,7 @@ public class WorkControllerTests
         await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
     }
@@ -4629,7 +4629,7 @@ public class WorkControllerTests
 
         var blocked = Only(await h.Work.GetQueue(0, null, default)).Blocked;
         Assert.NotNull(blocked);
-        Assert.DoesNotContain("implemented only by", blocked);
+        Assert.DoesNotContain("worked only by", blocked);
     }
 
     [Fact]
@@ -4653,7 +4653,7 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
         Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, tag: ["macos", "xcode"])).Blocked);
     }
@@ -4709,7 +4709,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Hop_InATagRequiringProject_IsNotFoldedByTheTagSentenceForATaglessCaller()
+    public async Task Hop_InATagRequiringProject_IsCarriedByTheEndpointWhichJudgesNoTags()
     {
         var h = await NewAsync();
         await h.RequireTagsAsync("macos", "xcode");
@@ -4754,13 +4754,13 @@ public class WorkControllerTests
         // The query string's own tags are ignored beside asRunner, even where
         // they disagree with the row's: the row's own declaration is what is read.
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
             Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "linux-box", ["macos", "xcode"])).Blocked);
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "mac-box")).Blocked);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "bare-box")).Blocked);
     }
 
@@ -4847,8 +4847,10 @@ public class WorkControllerTests
     public async Task Queue_ATagFoldedExpeditedRowParksNothingBelowIt()
     {
         var h = await NewAsync();
-        await h.RequireTagsAsync("macos");
+        // The issue's own tag, not the project's: a project's would fold the clear row below it too.
         var hurry = await h.FileAsync("bug", "expedited, tag-gated", h.InProgress);
+        hurry.RunnerTags = RunnerTagColumn.Write(["macos"]);
+        await h.Db.SaveChangesAsync();
         await h.ExpediteAsync(hurry);
         var normal = await h.FileAsync("bug", "normal, otherwise clear", h.Todo);
 

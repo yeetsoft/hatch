@@ -164,13 +164,12 @@ There are nine, and a column carries whichever of them it needs.
 **Runner tags** — a field, not a tenth flag: a list of [runner
 tags](the-runner#what-a-runner-advertises) the column requires, the same way a
 project or an issue can. They union with the project's, the issue's ancestors'
-and the issue's own, the same union that already gates the move into the
-column where code gets written and the review self-move on a conflict or a
-failing build — see the dispatcher's tag fold (`docs/hatch.md`, "The
-dispatcher") for the exact rule. A column with none set changes nothing; one
-with tags of its own gates every move out of it for a runner that does not
-advertise them all, and names the column by name in the sentence it folds
-with. Set it in the **Runner tags** column on the Statuses screen, one tag per
+and the issue's own, the same union that gates every move a runner is
+handed, in every column and on every hop — see the dispatcher's tag fold
+(`docs/hatch.md`, "The dispatcher") for the exact rule. A column with none set
+adds nothing to it; one with tags of its own gates every move out of it, hops
+included, for a runner that does not advertise them all, and names the column
+by name in the sentence it folds with. Set it in the **Runner tags** column on the Statuses screen, one tag per
 line, saved the moment you leave the box; a refusal shows under the box
 rather than at the top of the page. A column with tags draws them small under
 its name on the board; one with none draws nothing.

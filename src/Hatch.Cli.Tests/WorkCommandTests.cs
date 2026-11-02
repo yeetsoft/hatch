@@ -356,7 +356,7 @@ public sealed class WorkCommandTests
     public async Task A_ticket_folded_for_its_tag_prints_the_servers_sentence_and_claims_nothing()
     {
         using var h = new Harness();
-        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        const string sentence = "AER-7 is worked only by a runner advertising macos and xcode - this runner advertises linux";
         h.Wire.Json("GET", "/api/hatch/work/AER-7", Fixtures.Work("AER-7", blocked: sentence));
 
         Assert.Equal(2, await new WorkCommand(h.Runtime).RunAsync(["AER-7"], default));
