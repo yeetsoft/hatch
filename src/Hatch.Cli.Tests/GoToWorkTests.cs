@@ -3237,6 +3237,104 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1M", StringComparison.Ordinal));
     }
 
+    // ---- The last beat of a night that ended on its own bounds ----
+
+    private static bool SaidStopped(RunnerHeartbeatRequest b) =>
+        b.Line?.StartsWith("Stopped:", StringComparison.Ordinal) == true;
+
+    [Fact]
+    public async Task A_loop_stopped_by_max_runs_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Equal("Stopped: --max-runs 1 reached", Beats(h)[^1].Line);
+    }
+
+    [Fact]
+    public async Task A_loop_stopped_by_max_tokens_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace(
+            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Equal("Stopped: --max-tokens 1M reached at 1.2M", Beats(h)[^1].Line);
+    }
+
+    [Fact]
+    public async Task A_nap_ended_by_until_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        Assert.True(new NightState
+        {
+            ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1),
+            UntilAt = DateTimeOffset.UtcNow.AddSeconds(1),
+        }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "1"], default));
+
+        Assert.StartsWith("Stopped: --until", Beats(h)[^1].Line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_once_run_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task A_board_stop_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task A_restart_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var resets = 0;
+        h.Workspace.Watching = () =>
+        {
+            if (++resets == 2) h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+        };
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task An_interrupt_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(() => h.Wire.Count("POST", Beat) >= 1, "the first beat");
+        cts.Cancel();
+        await running;
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("-5")]

@@ -1273,7 +1273,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 runtime.RunnerName, forName, tally.Runs, runtime.Clock.GetUtcNow() - tally.Started, tally.Spent,
                 Bound(tally), tally.Unpriced));
 
-            if (tally.ShouldStop()) return false;
+            if (tally.ShouldStop())
+            {
+                await SayStoppedAsync(line, under, mine, tally, once, ct);
+                return false;
+            }
 
             // A person's order, acted on once: the beat that read it has
             // already cleared it on the board, so a loop that was paused reads
@@ -1356,7 +1360,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // without waiting on a stale board answer, when it is the only
                 // reason this loop is paused.
                 if (!await NapAsync(interval, tally, ct, wake: () => !boardPaused && tally.Controls?.Snapshot() is { Paused: false }))
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
                     return false;
+                }
 
                 Watchdog(printed);
 
@@ -1426,7 +1433,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     }
                 }
 
-                if (!await NapAsync(interval, tally, ct)) return false;
+                if (!await NapAsync(interval, tally, ct))
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
+                    return false;
+                }
 
                 Watchdog(printed);
 
@@ -1472,7 +1483,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // interval is what to do when there was nothing to do. A hop reads
             // the board again straight away, the same as a cleared conflict.
             if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
-            if (!await NapAsync(interval, tally, ct, checkNow: true)) return false;
+            if (!await NapAsync(interval, tally, ct, checkNow: true))
+            {
+                await SayStoppedAsync(line, under, mine, tally, once, ct);
+                return false;
+            }
 
             Watchdog(printed);
         }
@@ -1605,6 +1620,21 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
         return once ? null : beat.Instruction;
+    }
+
+    /// <summary>
+    /// One last beat when the loop's own bounds end the night, saying why. The
+    /// row's <i>Last said</i> is otherwise the last line from before the stop.
+    /// Every other exit (<c>--once</c>, the board's stop, a restart, an
+    /// interrupt) is either already known to the board or has nothing to say,
+    /// and the answer is moot either way.
+    /// </summary>
+    private async Task SayStoppedAsync(
+        Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
+    {
+        if (once || ct.IsCancellationRequested || tally.StopWhy is not { Length: > 0 } why) return;
+        line.Line = $"Stopped: {why}";
+        await BeatAsync(line, under, mine, tally, once, ct);
     }
 
     /// <summary>

@@ -33,7 +33,9 @@ has:
   seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
   zero or less is not believed, and ninety stands. The key in `Working <KEY>`
   is a link to the ticket.
-- **Last said** - the last line it reported.
+- **Last said** - the last line it reported. A loop that stops at one of its
+  own bounds ends on `Stopped: <why>`, for example `Stopped: --max-runs 3
+  reached`.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
   than showing four empty caps. The `under` epic, where set, is a link to its
