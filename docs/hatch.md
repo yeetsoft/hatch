@@ -2887,6 +2887,19 @@ rejected, is kept rather than deleted, with `DecidedAt` and `DecidedBy` set.
 Filing one that names an issue writes a `playbook_proposed` event there (see
 [Issue event](#issue-event)).
 
+A pending proposal is applied or discarded only together with every other one
+pending, through `POST /playbook-proposals/approve-all` and `POST
+/playbook-proposals/reject-all`, each taking `{ proposalIds }` — the exact set
+the caller last read as pending; a `409` naming the reload where that set has
+changed underneath it. Approving applies `PlaybookPatches.Apply` to every
+named row in one `SaveChangesAsync`, exactly as `PATCH /playbooks/{id}` would,
+with the same all-or-nothing rule `POST /playbook-proposals` itself keeps: one
+out-of-date or now-invalid change in the batch and nothing in it is applied,
+named in the `409` with the proposal, the playbook's transition and types,
+and why. Rejecting touches no playbook row. A decided proposal naming an
+issue writes `playbook_proposal_approved` or `playbook_proposal_rejected`
+there, carrying the proposal id.
+
 ### Verdict
 
 `EfHatchVerdict` — `IssueId`, `PlaybookId`, `StatusId`, `Verdict`, `Findings`,
@@ -3332,6 +3345,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
 | `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
 | `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |
+| `/playbook-proposals/approve-all` | POST | Plain `[RequireRole(User)]`, checked again by `PlaybookWrites` the way `/playbooks` POST/PATCH/DELETE are - a person means a person at the browser, not merely a signed-in session with no UI. Applies every [pending proposal](#playbook-proposal)'s change in one transaction, exactly as `PATCH /playbooks/{id}` would, checked against the live board before any row is touched. `{ proposalIds }` — the exact set the caller last read as pending. `409` naming the reload where that set has changed underneath it, and naming the proposal, the playbook's transition and types, and why, for one out-of-date or now-invalid change in the batch — either way nothing in it is applied. A decided proposal naming an issue gets a `playbook_proposal_approved` event |
+| `/playbook-proposals/reject-all` | POST | The same person-only gate as the row above. Marks every [pending proposal](#playbook-proposal) rejected, touching no playbook row. `{ proposalIds }` — the exact set the caller last read as pending. `409` naming the reload where that set has changed underneath it. A decided proposal naming an issue gets a `playbook_proposal_rejected` event |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
