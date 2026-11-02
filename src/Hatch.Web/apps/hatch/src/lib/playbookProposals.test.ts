@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { outOfDateProposalCount, promptChanged, proposalFieldRows, proposalsBannerSentence } from './playbookProposals';
+import {
+  approveAllDisabledHint,
+  approveAllSuccessSentence,
+  outOfDateProposalCount,
+  promptChanged,
+  proposalFieldRows,
+  proposalsBannerSentence,
+  rejectAllSuccessSentence,
+} from './playbookProposals';
 import type { Playbook, PlaybookProposal, PlaybookProposalChange } from '../types';
 
-const change = (outOfDate: boolean): PlaybookProposalChange => ({
+const change = (outOfDate: boolean, before: Partial<Playbook> = {}): PlaybookProposalChange => ({
   id: 1,
   playbookId: 1,
-  before: {} as Playbook,
+  before: before as Playbook,
   after: {} as Playbook,
   changedFields: [],
   outOfDate,
@@ -104,5 +112,58 @@ describe('promptChanged', () => {
 
   it('is false when it is not', () => {
     expect(promptChanged(['model'])).toBe(false);
+  });
+});
+
+const TO_DO_TO_IN_PROGRESS = { fromStatusId: 1, toStatusId: 2, fromStatusName: 'To Do', toStatusName: 'In Progress' };
+const IN_PROGRESS_TO_REVIEW = { fromStatusId: 2, toStatusId: 3, fromStatusName: 'In Progress', toStatusName: 'Review' };
+
+describe('approveAllDisabledHint', () => {
+  it('is null for no proposals', () => {
+    expect(approveAllDisabledHint([])).toBeNull();
+  });
+
+  it('is null when every change is not out of date', () => {
+    expect(approveAllDisabledHint([proposal([change(false)]), proposal([change(false)])])).toBeNull();
+  });
+
+  it('names the out-of-date change and its reason when one is out of date', () => {
+    expect(approveAllDisabledHint([proposal([change(true, TO_DO_TO_IN_PROGRESS)])])).toBe(
+      'To Do to In Progress was the row changed since this was proposed - reject it or have it resubmitted',
+    );
+  });
+
+  it('returns the first out-of-date change, not the second', () => {
+    expect(
+      approveAllDisabledHint([proposal([change(true, TO_DO_TO_IN_PROGRESS), change(true, IN_PROGRESS_TO_REVIEW)])]),
+    ).toBe('To Do to In Progress was the row changed since this was proposed - reject it or have it resubmitted');
+  });
+});
+
+describe('approveAllSuccessSentence', () => {
+  it('says change, singular, for one', () => {
+    expect(approveAllSuccessSentence(1)).toBe('1 change applied');
+  });
+
+  it('says changes, plural, for zero', () => {
+    expect(approveAllSuccessSentence(0)).toBe('0 changes applied');
+  });
+
+  it('says changes, plural, for several', () => {
+    expect(approveAllSuccessSentence(2)).toBe('2 changes applied');
+  });
+});
+
+describe('rejectAllSuccessSentence', () => {
+  it('says proposal, singular, for one', () => {
+    expect(rejectAllSuccessSentence(1)).toBe('1 proposal rejected');
+  });
+
+  it('says proposals, plural, for zero', () => {
+    expect(rejectAllSuccessSentence(0)).toBe('0 proposals rejected');
+  });
+
+  it('says proposals, plural, for several', () => {
+    expect(rejectAllSuccessSentence(2)).toBe('2 proposals rejected');
   });
 });

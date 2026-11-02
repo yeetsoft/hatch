@@ -1264,6 +1264,17 @@ export interface PlaybookProposal {
   changes: PlaybookProposalChange[];
 }
 
+/** Mirrors PlaybookProposalApproveResponse. */
+export interface PlaybookProposalApproveResult {
+  approved: number;
+  playbooks: Playbook[];
+}
+
+/** Mirrors PlaybookProposalRejectResponse. */
+export interface PlaybookProposalRejectResult {
+  rejected: number;
+}
+
 export interface PlaybookCreateRequest {
   fromStatusId: number;
   toStatusId: number;
