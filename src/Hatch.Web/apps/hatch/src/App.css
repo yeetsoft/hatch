@@ -1388,8 +1388,84 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-board-search {
-  flex: 0 1 22rem;
-  min-width: 12rem;
+  flex: 0 1 10rem;
+  min-width: 8rem;
+  transition: flex-basis var(--transition), border-color var(--transition), background var(--transition),
+    box-shadow var(--transition);
+}
+
+/* The desktop row has to fit one line at about 1150px, so the box rests narrow
+   and widens while it is in use: focused, or holding a query it would
+   otherwise cut off. Desktop only - the phone rule below lets it fill its line.
+   The gap and the facet padding tighten here for the same reason; the phone
+   row wraps and keeps its roomier look. */
+@media (min-width: 40.01rem) {
+  .hatch-board-search:focus,
+  .hatch-board-search--lit {
+    flex-basis: 16rem;
+  }
+
+  .hatch-board-filters {
+    gap: var(--sp-2);
+  }
+
+  .hatch-board-filters .hatch-facet {
+    padding: 0 var(--sp-2);
+    gap: var(--sp-1-5);
+  }
+}
+
+/* The icon-only controls at the row's ends. Square at the row's height, like
+   .hatch-queue-control beside them. */
+.hatch-filter-reset,
+.hatch-board-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  height: var(--facet-h);
+  width: var(--facet-h);
+  padding: 0;
+  cursor: pointer;
+}
+
+.hatch-filter-reset {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.hatch-filter-reset:hover {
+  filter: brightness(0.97);
+}
+
+.hatch-filter-reset:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-filter-reset-glyph,
+.hatch-board-new .hatch-board-filing-glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* The "…" button: a facet with only a glyph in it. */
+.hatch-board-filters .hatch-more-filters {
+  justify-content: center;
+  width: var(--facet-h);
+  padding: 0;
+}
+
+.hatch-more-filters-glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 @media (max-width: 40rem) {
@@ -1523,6 +1599,37 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-go-to-work-note .hatch-go-to-work-status {
+  max-width: none;
+  white-space: normal;
+}
+
+/* The desktop status: the one word, pressed to open the whole line. Drawn bare,
+   in its tone's colour, so a fault still shows from across the room. */
+.hatch-go-to-work-verb {
+  padding: 0 var(--sp-1);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--t-small);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hatch-go-to-work-verb:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-go-to-work-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 12rem;
+  max-width: 24rem;
+}
+
+.hatch-go-to-work-detail .hatch-go-to-work-status {
   max-width: none;
   white-space: normal;
 }

@@ -110,7 +110,8 @@ internal sealed record BoardBarMeasurement(
     int ScrollWidth,
     int ClientWidth,
     bool CoarsePointerMatches,
-    IReadOnlyList<(string Name, Box Box)> Trailing)
+    IReadOnlyList<(string Name, Box Box)> Trailing,
+    Box? Search = null)
 {
     public override string ToString()
     {
@@ -122,6 +123,7 @@ internal sealed record BoardBarMeasurement(
             $"document clientWidth: {ClientWidth}",
         };
 
+        if (Search is not null) lines.Add($"search: {Search}");
         lines.AddRange(Trailing.Select(t => $"{t.Name}: {t.Box}"));
 
         return string.Join(Environment.NewLine, lines);
