@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import appSource from '../App.tsx?raw';
-import { NAV, activeGroup, navFor, navRows } from './nav';
+import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, navFor, navRows } from './nav';
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
 // /reports/timeline and /reports/cumulative-flow from the Reports index,
 // and /changelog from the docs Reference section, never the nav; /docs/* is
-// the same page as /docs, for any path under it; /settings and * (the
+// the same page as /docs, for any path under it; / is the logo's and /docs the
+// settings menu's and the phone list's (below), neither a bar entry; /settings and * (the
 // unknown-route fallback) are not pages a menu lists.
 const EXCLUDED_ROUTES = new Set([
+  '/',
+  '/docs',
   '/issues/:key',
   '/reports/timeline',
   '/reports/cumulative-flow',
@@ -40,20 +43,45 @@ describe('NAV', () => {
     for (const route of routes) {
       expect(tos.filter((to) => to === route)).toHaveLength(1);
     }
+    expect(appSource).toContain(`<Route path="${HOME}"`);
+    expect(appSource).toContain('<Route path="/docs"');
     for (const to of tos) {
       expect(routes).toContain(to);
     }
   });
 });
 
-describe('Docs', () => {
-  it('is the last NAV entry, a top-level link after the Manage group', () => {
-    const last = NAV[NAV.length - 1];
-    expect(last).toEqual({ kind: 'link', to: '/docs', label: 'Docs' });
-    expect(NAV[NAV.length - 2]).toMatchObject({ kind: 'group', label: 'Manage' });
+describe('the bar', () => {
+  it('shows Search, Track, Agents and Manage and nothing else, for anybody', () => {
+    for (const isAdmin of [false, true]) {
+      expect(navFor(isAdmin).map((entry) => entry.label)).toEqual(['Search', 'Track', 'Agents', 'Manage']);
+    }
   });
 
+  it('has no Board and no Docs entry: the logo is home and the gear holds Docs', () => {
+    const tos = tosInNav();
+    expect(tos).not.toContain('/');
+    expect(tos).not.toContain('/docs');
+    expect(HOME).toBe('/');
+    expect(HOME_LABEL).toBe('Board');
+  });
+
+  it('puts Plan, Reports and History under Track, in that order', () => {
+    const track = NAV.find((entry) => entry.kind === 'group' && entry.label === 'Track');
+    if (!track || track.kind !== 'group') throw new Error('Track not found');
+    expect(track.rows.map((row) => row.to)).toEqual(['/plan', '/reports', '/history']);
+  });
+
+  it('no longer lists History under Manage', () => {
+    const manage = NAV.find((entry) => entry.kind === 'group' && entry.label === 'Manage');
+    if (!manage || manage.kind !== 'group') throw new Error('Manage not found');
+    expect(manage.rows.map((row) => row.to)).not.toContain('/history');
+  });
+});
+
+describe('Docs on the phone', () => {
   it('is the last row of the phone list, with no group label, for anybody', () => {
+    expect(PHONE_ONLY).toEqual([{ to: '/docs', label: 'Docs' }]);
     for (const isAdmin of [false, true]) {
       const rows = navRows(isAdmin);
       expect(rows[rows.length - 1]).toEqual({ to: '/docs', label: 'Docs', end: undefined, groupLabel: null });
@@ -72,11 +100,15 @@ describe('activeGroup', () => {
     expect(activeGroup('/users')?.label).toBe('Manage');
   });
 
-  it('is null for a top-level link and for a page with no group', () => {
+  it('finds Track from Plan, Reports, History and a report under it', () => {
+    for (const path of ['/plan', '/reports', '/reports/timeline', '/history']) {
+      expect(activeGroup(path)?.label).toBe('Track');
+    }
+  });
+
+  it('is null for the board, a top-level link and a page with no group', () => {
     expect(activeGroup('/')).toBeNull();
-    expect(activeGroup('/plan')).toBeNull();
-    expect(activeGroup('/reports')).toBeNull();
-    expect(activeGroup('/reports/timeline')).toBeNull();
+    expect(activeGroup('/search')).toBeNull();
     expect(activeGroup('/issues/HA-1')).toBeNull();
     expect(activeGroup('/docs')).toBeNull();
     expect(activeGroup('/docs/x')).toBeNull();
@@ -111,12 +143,13 @@ describe('navRows', () => {
     return entries.reduce((sum, entry) => sum + (entry.kind === 'link' ? 1 : entry.rows.length), 0);
   }
 
-  it('puts Board, Plan and Reports first, with no group label', () => {
-    const rows = navRows(false).slice(0, 3);
+  it('puts Search first with no group label, then Track under its heading', () => {
+    const rows = navRows(false).slice(0, 4);
     expect(rows).toEqual([
-      { to: '/', label: 'Board', end: true, groupLabel: null },
-      { to: '/plan', label: 'Plan', groupLabel: null },
-      { to: '/reports', label: 'Reports', groupLabel: null },
+      { to: '/search', label: 'Search', end: undefined, groupLabel: null },
+      { to: '/plan', label: 'Plan', groupLabel: 'Track' },
+      { to: '/reports', label: 'Reports', groupLabel: 'Track' },
+      { to: '/history', label: 'History', groupLabel: 'Track' },
     ]);
   });
 
@@ -137,8 +170,8 @@ describe('navRows', () => {
     expect(tos(navRows(true))).toContain('/api-keys');
   });
 
-  it('flattens to exactly one row per link and per group row, with none dropped or duplicated', () => {
-    expect(navRows(false)).toHaveLength(flatLength(navFor(false)));
-    expect(navRows(true)).toHaveLength(flatLength(navFor(true)));
+  it('flattens to exactly one row per link and per group row plus the phone-only ones, with none dropped or duplicated', () => {
+    expect(navRows(false)).toHaveLength(flatLength(navFor(false)) + PHONE_ONLY.length);
+    expect(navRows(true)).toHaveLength(flatLength(navFor(true)) + PHONE_ONLY.length);
   });
 });

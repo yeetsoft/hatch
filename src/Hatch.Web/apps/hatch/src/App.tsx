@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
 import { AttentionProvider } from './components/AttentionProvider';
@@ -37,7 +37,7 @@ import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
-import { navRows } from './lib/nav';
+import { HOME, HOME_LABEL, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
 
@@ -56,6 +56,7 @@ export function App() {
 function AppShell() {
   const { me, isAdmin } = useMe();
   const isPhone = usePhone();
+  const location = useLocation();
   const pull = usePullToRefresh();
 
   return (
@@ -68,7 +69,11 @@ function AppShell() {
         <PullToRefresh {...pull} />
         <TopBar
           appName="Hatch"
-          homeHref={appHref('/')}
+          homeHref={appHref(HOME)}
+          /* The bar has no Board link: the logo is the way home, so it is
+             named for where it goes and lit on the board. */
+          homeLabel={HOME_LABEL}
+          homeCurrent={location.pathname === HOME}
           width="full"
           /* Below the phone breakpoint PrimaryNav is absent rather than
              hidden by CSS - its triggers must not sit in the tab order when

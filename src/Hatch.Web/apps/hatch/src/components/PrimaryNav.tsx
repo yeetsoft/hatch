@@ -8,9 +8,10 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `hatch-menu__trigger hatch-menu__trigger--accent${isActive ? ' hatch-menu__trigger--active' : ''}`;
 
 /**
- * The app's nav: Board, Plan and Reports as links, Agents and Manage as
- * menus, and Docs as a last link. `lib/nav.ts` is the one place to change what it shows or where a
- * page lives; this component only draws whatever that file returns.
+ * The app's nav: Search as a link, Track, Agents and Manage as menus. The
+ * board is the logo's, and Docs the settings menu's. `lib/nav.ts` is the one
+ * place to change what it shows or where a page lives; this component only
+ * draws whatever that file returns.
  *
  * Rides in the gradient bar's `leading` slot with `tone="accent"` - the
  * component itself does not change, only the tone it is passed and the box it
