@@ -329,4 +329,57 @@ describe('PlaybookProposals', () => {
     const html = renderProposals([proposal({ changes: [change({ outOfDate: true, outOfDateReason: 'edited since it was proposed' })] })]);
     expect(html).toContain('1 proposed change awaiting a decision, 1 out of date');
   });
+
+  it('draws Approve all and Reject all inside the banner card, before the first proposal head', () => {
+    const html = renderProposals([proposal()]);
+    const bannerAt = html.indexOf('hatch-playbook-proposal-banner');
+    const approveAt = html.indexOf('Approve all');
+    const rejectAt = html.indexOf('Reject all');
+    const headAt = html.indexOf('hatch-playbook-proposal-head');
+    expect(bannerAt).toBeGreaterThan(-1);
+    expect(approveAt).toBeGreaterThan(bannerAt);
+    expect(rejectAt).toBeGreaterThan(bannerAt);
+    expect(approveAt).toBeLessThan(headAt);
+    expect(rejectAt).toBeLessThan(headAt);
+  });
+
+  it('disables Approve all with a title naming the out-of-date change, and never disables Reject all', () => {
+    const outOfDate = renderProposals([
+      proposal({ changes: [change({ outOfDate: true, outOfDateReason: 'edited since it was proposed' })] }),
+    ]);
+    expect(outOfDate).toContain('disabled');
+    expect(outOfDate).toContain('title="To Do to In Progress was edited since it was proposed - reject it or have it resubmitted"');
+
+    const upToDate = renderProposals([proposal()]);
+    expect(upToDate).not.toContain('disabled');
+    expect(upToDate).not.toContain('title=');
+  });
+
+  it('renders a notice even when proposals is empty, and nothing when notice is null', () => {
+    const withNotice = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'success', text: '2 changes applied' }} />
+      </MemoryRouter>,
+    );
+    expect(withNotice).toContain('2 changes applied');
+    expect(withNotice).not.toContain('Approve all');
+
+    expect(renderProposals([])).toBe('');
+  });
+
+  it('draws the success tone plain and the danger tone with text-danger', () => {
+    const success = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'success', text: 'applied' }} />
+      </MemoryRouter>,
+    );
+    expect(success).not.toContain('text-danger');
+
+    const danger = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'danger', text: 'conflict' }} />
+      </MemoryRouter>,
+    );
+    expect(danger).toContain('text-danger');
+  });
 });

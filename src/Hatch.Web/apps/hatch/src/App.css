@@ -4122,6 +4122,15 @@ input.hatch-inline-title-input {
   margin-bottom: var(--sp-3);
 }
 
+/* Approve all/Reject all, beside the banner's own counting sentence. */
+.hatch-playbook-proposal-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+}
+
 /* The flattened cards every pending proposal's changes draw into, stacked
    with the same gap the banner leaves above the main table. */
 .hatch-playbook-proposal-list {
