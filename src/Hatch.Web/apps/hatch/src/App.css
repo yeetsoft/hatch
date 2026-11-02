@@ -4116,6 +4116,21 @@ input.hatch-inline-title-input {
   background: var(--primary-bg);
 }
 
+/* PlaybooksPage's own banner, above the cards it introduces - one line per
+   pending proposal below the sentence that counts them. */
+.hatch-playbook-proposal-banner {
+  margin-bottom: var(--sp-3);
+}
+
+/* The flattened cards every pending proposal's changes draw into, stacked
+   with the same gap the banner leaves above the main table. */
+.hatch-playbook-proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
 /* ---- Questions ----
 
    An unanswered question is the one thing on a board that nothing else can get

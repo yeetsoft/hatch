@@ -177,6 +177,27 @@ A proposal is a session's request to change one or more rows — a reason, and
 the fields it would change — that touches nothing live until a person decides
 it. This page shows them.
 
+A pending proposal draws a banner above the table: a sentence counting how
+many proposals are awaiting a decision, and, when any of them carries a
+change the underlying row has since moved past, how many of those are out of
+date. Below the sentence is one line per proposal — its reason, who proposed
+it, a link to the ticket it came from when it has one, and how long ago it
+was made.
+
+Under the banner is one card per changed row, flattened across every pending
+proposal in the order they were made — nothing on a card says which proposal
+it belongs to, since the banner above it already does. Each card is headed
+by the row's identity as it stands today, not as the proposal would leave
+it: its transition, its types, and its shape and project. Below that is a
+before/after table, one row per field the matrix can hold, with the fields
+the proposal actually changes tinted so they stand out from the ones it
+leaves alone. When the change touches the prompt itself, the card also
+carries a diff of the prompt below the table.
+
+A card whose underlying row has changed since the proposal was made carries
+an "out of date" badge next to its header, with the reason the server gives
+for it: "edited since it was proposed", or "deleted since it was proposed".
+
 ## Why an agent cannot edit a playbook
 
 Reading the matrix accepts an API key, because that is how a session is told
