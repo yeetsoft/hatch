@@ -3271,7 +3271,7 @@ public sealed class GoToWorkTests
 
             Assert.Single(h.Sessions.Spawned);
             Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 4 reached across the set at 4", StringComparison.Ordinal));
-            Assert.Equal((2, 2m, 0L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal((2, 2m, 12_345L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
         }
         finally
         {
