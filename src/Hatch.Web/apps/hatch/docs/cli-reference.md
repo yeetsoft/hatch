@@ -610,7 +610,7 @@ has what it prints and every exit code.
 hatch go-to-work [--mine] [--under <epic key>] [--project <key>]... [--once] [--standby] [--quiet]
                  [--interval <seconds>] [--merge-interval <seconds>]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
-                 [--until <HH:MM>] [--stop-file <path>] [--no-keys]
+                 [--max-tokens <count>] [--until <HH:MM>] [--stop-file <path>] [--no-keys]
                  [--restart-after <minutes> | --no-restart]
                  [--repo <path>]... [--workspace <dir>] [--runners <n>]
 ```
@@ -663,6 +663,11 @@ restart appends to the same file and the next night starts a new one.
 - `--max-spend <dollars>` stops once the run has cost that much. With
   `--runners` it is the set's combined spend, and a restart of the set carries it
   forward.
+- `--max-tokens <count>` stops once the increments have reported that many
+  tokens - `500k`, `2M`, `1.5M`. It counts reported tokens only: an increment
+  that reported none is not in the total. With `--runners` it is the set's
+  combined total, and a restart carries it forward. A value that is not a token
+  count is refused at startup, before any lock is taken.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
 - `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
 - `--restart-after <minutes>` comes back as a newer build at least that often.

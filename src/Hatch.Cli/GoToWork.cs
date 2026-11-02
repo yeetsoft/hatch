@@ -587,7 +587,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--once] [--standby] [--quiet]",
         "                        [--interval <seconds>] [--merge-interval <seconds>]",
         "                        [--max-runs <n>]",
-        "                        [--max-spend <dollars>] [--until <HH:MM>]",
+        "                        [--max-spend <dollars>] [--max-tokens <count>]",
+        "                        [--until <HH:MM>]",
         "                        [--stop-file <path>] [--no-keys]",
         "                        [--restart-after <minutes> | --no-restart]",
         "                        [--repo <path>]... [--workspace <dir>] [--runners <n>]",
@@ -638,6 +639,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "",
         "  --max-runs     stop after this many increments",
         "  --max-spend    stop once the run has cost this much, in dollars",
+        "  --max-tokens   stop once the increments have reported this many tokens - 500k, 2M, 1.5M",
         "  --until        stop at this wall-clock hour - tomorrow, if it has gone by",
         "  --stop-file    stop once this path exists. `touch` it from anywhere: no pid",
         "                 to find, and no signal that could land in the middle of a push",
@@ -675,6 +677,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var noRestart = false;
         int? maxRuns = null;
         decimal? maxSpend = null;
+        long? maxTokens = null;
         var repoFlags = new List<string>();
         var projectFlags = new List<string>();
         string? workspaceFlag = null;
@@ -725,6 +728,20 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     maxSpend = spend;
                     break;
+                case "--max-tokens" when i + 1 < args.Length:
+                    if (!TokenCount.TryParse(args[++i], out var tokens))
+                    {
+                        runtime.Say.Complain($"hatch: --max-tokens takes {TokenCount.Refusal}");
+                        return 1;
+                    }
+
+                    maxTokens = tokens;
+                    break;
+                case "--max-tokens":
+                    // Bare, so a missing value is refused as this flag's and not
+                    // caught below as an unknown one.
+                    runtime.Say.Complain($"hatch: --max-tokens takes {TokenCount.Refusal}");
+                    return 1;
                 case "--until" when i + 1 < args.Length: until = args[++i]; break;
                 case "--stop-file" when i + 1 < args.Length: stopFile = args[++i]; break;
                 case "--restart-after" when i + 1 < args.Length:
@@ -943,6 +960,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 MaxRuns = maxRuns,
                 MaxSpend = maxSpend,
+                MaxTokens = maxTokens,
                 Until = until,
                 // Carried rather than recomputed, and it is the one bound that
                 // would otherwise be wrong: `--until 23:59` typed at 23:58 and
@@ -1656,6 +1674,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var parts = new List<string>();
         if (tally.MaxRuns is { } runs) parts.Add($"--max-runs {runs.ToString(CultureInfo.InvariantCulture)}");
         if (tally.MaxSpend is { } spend) parts.Add($"--max-spend {spend.ToString(CultureInfo.InvariantCulture)}");
+        if (tally.MaxTokens is { } tokens) parts.Add($"--max-tokens {Format.Compact(tokens)}");
         if (tally.UntilAt is not null) parts.Add($"--until {tally.Until}");
 
         return parts.Count == 0 ? null : string.Join(", ", parts);

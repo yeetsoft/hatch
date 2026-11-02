@@ -3210,6 +3210,60 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task Max_tokens_stops_the_night_at_the_top_of_the_first_pass_after_the_reported_total_reaches_it()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace(
+            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1.2M", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_restart_cannot_outspend_the_token_cap_by_restarting()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Tokens = 1_000_000, Restarts = 1 });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1M", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("lots")]
+    [InlineData("1.25M")]
+    public async Task A_bad_max_tokens_is_refused_before_any_lock_or_beat(string value)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", value], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_flag_with_no_value_is_refused()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
     public async Task A_members_siblings_count_against_the_set_budget()
     {
         using var h = new Harness();
