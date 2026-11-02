@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { NAV } from './nav';
+import { NAV, PHONE_ONLY } from './nav';
 import { DOC_PAGES, docPage } from './docs';
 import { APP_BASENAME } from './basename';
 
 const SCREENS: Record<string, string> = {
-  '/': 'the-board-and-its-columns',
   '/plan': 'issues',
   '/reports': 'flow-wip-and-the-battery',
+  '/': 'the-board-and-its-columns',
   '/search': 'getting-started',
   '/runners': 'watching-the-loop',
   '/leaderboard': 'watching-the-loop',
@@ -24,10 +24,15 @@ const SCREENS: Record<string, string> = {
 };
 
 // NAV itself, flattened to {to,label}: navFor(isAdmin) drops the admin-only
-// rows (/users, /api-keys) this test must still cover.
-const rows: { to: string; label: string }[] = NAV.flatMap((e) =>
-  e.kind === 'link' ? [{ to: e.to, label: e.label }] : e.rows.map((r) => ({ to: r.to, label: r.label })),
-);
+// rows (/users, /api-keys) this test must still cover. The phone-only rows
+// (Docs) and the logo's board are in the nav too, so they are covered here.
+const rows: { to: string; label: string }[] = [
+  { to: '/', label: 'Board' },
+  ...NAV.flatMap((e) =>
+    e.kind === 'link' ? [{ to: e.to, label: e.label }] : e.rows.map((r) => ({ to: r.to, label: r.label })),
+  ),
+  ...PHONE_ONLY.map((r) => ({ to: r.to, label: r.label })),
+];
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

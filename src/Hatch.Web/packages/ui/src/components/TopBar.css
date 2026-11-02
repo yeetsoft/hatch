@@ -116,6 +116,16 @@
   opacity: 1;
 }
 
+/* Lit the way an active menu trigger is (Menu.css): the wash and the rule. */
+.hatch-topbar__brand[aria-current='page'] {
+  background-color: var(--on-chrome-wash);
+  background-image: linear-gradient(90deg, var(--on-chrome), var(--chrome-glow));
+  background-size: 100% 2px;
+  background-position: bottom;
+  background-repeat: no-repeat;
+  opacity: 1;
+}
+
 /* --chrome-glow rather than --on-chrome: the link sits on the bar's own
    ground, and an --on-chrome ring on --on-chrome ink is an invisible one.
    Resting at opacity: 0.8 is the first thing to fall under 4.5 if light
