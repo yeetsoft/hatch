@@ -623,6 +623,27 @@ public sealed class PromptTests
         Assert.Contains("so move it, or ask, before you", prompt, StringComparison.Ordinal);
     }
 
+    // ---- HA-1644: the ending proposes a playbook change rather than editing one ----
+
+    [Fact]
+    public void The_ending_tells_a_session_to_propose_a_playbook_change_rather_than_edit_one()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        var section = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains(
+            "Do not edit playbooks. The API refuses it, and the refusal is deliberate:",
+            section, StringComparison.Ordinal);
+        Assert.Contains(
+            "an agent that could widen its own instructions and its own budget is a loop",
+            section, StringComparison.Ordinal);
+        Assert.Contains("hatch api POST /api/hatch/playbook-proposals", section, StringComparison.Ordinal);
+        Assert.Contains("\"issueKey\": \"AER-12\"", section, StringComparison.Ordinal);
+        Assert.Contains("Say on AER-12 that it was proposed, and stop.", section, StringComparison.Ordinal);
+        Assert.Contains("A person applies it on the", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("If a playbook is wrong, say so on the ticket and stop.", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_hook_and_the_prompt_say_it_in_the_same_words()
     {
@@ -655,7 +676,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644) ----
 
     [Fact]
     public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
@@ -663,8 +684,8 @@ public sealed class PromptTests
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 5000,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,000.");
+        Assert.True(fixedPart.Length < 5500,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,500.");
     }
 
     [Fact]
