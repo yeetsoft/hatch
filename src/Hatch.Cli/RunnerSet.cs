@@ -223,23 +223,23 @@ public static class RunnerSet
 
     /// <summary>
     /// The prefix of the file each member keeps in <see cref="DirVariable"/>'s
-    /// directory (<c>ledger.2</c>) holding its own cumulative runs and spend, so
-    /// that <c>--max-runs</c> and <c>--max-spend</c> can bound the set's total.
+    /// directory (<c>ledger.2</c>) holding its own cumulative runs, spend and tokens,
+    /// so that <c>--max-runs</c>, <c>--max-spend</c> and <c>--max-tokens</c> can bound the set's total.
     /// </summary>
     public const string LedgerFileName = "ledger";
 
     /// <summary>
-    /// Leaves this member's cumulative <paramref name="runs"/> and
-    /// <paramref name="spent"/> where its siblings can read them. One file per
+    /// Leaves this member's cumulative <paramref name="runs"/>,
+    /// <paramref name="spent"/> and <paramref name="tokens"/> where its siblings can read them. One file per
     /// slot, so two processes never write one path, written beside itself and
     /// moved into place so a sibling never reads half of it.
     /// </summary>
-    public static void WriteLedger(string setDir, int slot, int runs, decimal spent)
+    public static void WriteLedger(string setDir, int slot, int runs, decimal spent, long tokens)
     {
         var path = Path.Combine(setDir, $"{LedgerFileName}.{slot}");
         try
         {
-            File.WriteAllText(path + ".tmp", string.Create(CultureInfo.InvariantCulture, $"{runs} {spent}"));
+            File.WriteAllText(path + ".tmp", string.Create(CultureInfo.InvariantCulture, $"{runs} {spent} {tokens}"));
             File.Move(path + ".tmp", path, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -250,10 +250,11 @@ public static class RunnerSet
     /// that is missing, unreadable or does not parse contributes nothing, so the
     /// total can only under-count - never stop a set early.
     /// </summary>
-    public static (int Runs, decimal Spent) ReadLedgerTotal(string setDir, int exceptSlot)
+    public static (int Runs, decimal Spent, long Tokens) ReadLedgerTotal(string setDir, int exceptSlot)
     {
         var runs = 0;
         var spent = 0m;
+        var tokens = 0L;
         var own = $"{LedgerFileName}.{exceptSlot}";
 
         try
@@ -266,13 +267,15 @@ public static class RunnerSet
                 try
                 {
                     var parts = File.ReadAllText(path).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (parts.Length == 2
+                    if (parts.Length == 3
                         && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var r)
                         && decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var s)
-                        && s >= 0)
+                        && s >= 0
+                        && long.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var t))
                     {
                         runs += r;
                         spent += s;
+                        tokens += t;
                     }
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -280,7 +283,7 @@ public static class RunnerSet
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
 
-        return (runs, spent);
+        return (runs, spent, tokens);
     }
 
     /// <summary>
