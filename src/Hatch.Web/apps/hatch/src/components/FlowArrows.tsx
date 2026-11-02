@@ -88,6 +88,9 @@ export function FlowArrows({ edges }: { edges: readonly ChainEdge[] }) {
     const board = document.querySelector<HTMLElement>('.hatch-board');
     const observer = board ? new ResizeObserver(schedule) : null;
     if (board) observer?.observe(board);
+    // The board's own box does not change when its tracks do: watch each column
+    // too, so a column widening or narrowing moves the arrows with it.
+    board?.querySelectorAll('.hatch-column').forEach((c) => observer?.observe(c));
 
     return () => {
       document.removeEventListener('scroll', schedule, true);

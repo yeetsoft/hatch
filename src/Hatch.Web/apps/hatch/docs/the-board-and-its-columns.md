@@ -86,6 +86,16 @@ remembered per browser, in `localStorage`, across pages, reloads and
 restarts. A `?project=KEY` link opens that project whatever this browser
 remembers, and the browser remembers it afterwards.
 
+A column that shows no card is drawn at half the width of one that does, so
+empty columns stop pushing the busy ones off screen. That covers a column with
+no cards at all and one whose cards the current filters all hide (it still says
+*N hidden by the filter*). It widens again, with no reload, the moment a card
+shows in it: a filter cleared, a card filed, moved or dropped in, a live update.
+A column whose only cards are folded behind **+ N waiting** keeps its full
+width, since the fold is work one click away. A drag does not widen the narrow
+columns; each is still a full-height drop target. The phone's stacked layout
+is unchanged.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It

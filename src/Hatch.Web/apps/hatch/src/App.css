@@ -421,10 +421,39 @@
   min-height: 0;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(10.5rem, 1fr);
+  /* A column that shows no card takes the narrow track - half the full one,
+     in the minimum and in the share both, so the 2:1 ratio holds whether the
+     board overflows or has room to spare. BoardPage sets the inline
+     grid-template-columns choosing one per column; this is the fallback and
+     the one place the two are defined. */
+  --column-track: minmax(10.5rem, 1fr);
+  --column-track-narrow: minmax(5.25rem, 0.5fr);
+  grid-auto-columns: var(--column-track);
   gap: var(--sp-3);
   overflow-x: auto;
   padding-bottom: var(--sp-5);
+  transition: grid-template-columns 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-board {
+    transition: none;
+  }
+}
+
+/* Half width: the name wraps rather than being cut to three letters, and the
+   header's other marks wrap under it rather than overflowing. */
+.hatch-column--narrow .hatch-column-head {
+  flex-wrap: wrap;
+  padding-inline: var(--sp-2);
+}
+
+.hatch-column--narrow .hatch-column-name {
+  /* Sized from its text, not from zero: with flex: 1 a wrapping header would
+     squeeze the name to a letter a line before it ever wrapped the count. */
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* --status-color and --status-ink are set on the element by statusVars()
@@ -466,6 +495,7 @@
   text-align: center;
   text-transform: lowercase;
   pointer-events: none;
+  overflow-wrap: anywhere;
 }
 
 .hatch-column-head {
@@ -781,6 +811,7 @@
 /* Said quietly under a filtered column, because a short column and a filtered
    one look identical and the difference matters. */
 .hatch-column-hidden {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--sp-1) 0;
   font-size: var(--t-micro);

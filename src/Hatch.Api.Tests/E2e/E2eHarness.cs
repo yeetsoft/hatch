@@ -234,13 +234,16 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <paramref name="beforeNavigate"/> runs once the context exists and before
     /// the first request, so a case's routes are in place for it.
     /// </summary>
-    public async Task OpenAsync(Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null)
+    public async Task OpenAsync(
+        Deadline deadline, string baseUrl, string path, Func<IBrowserContext, Task>? beforeNavigate = null, bool reducedMotion = false)
     {
         await deadline.BoundAsync("opening the page", async () =>
         {
             var options = profile is null
                 ? new BrowserNewContextOptions { BaseURL = baseUrl, ViewportSize = new() { Width = ViewportWidth, Height = ViewportHeight } }
                 : new BrowserNewContextOptions(playwright!.Devices[profile.Device]) { BaseURL = baseUrl };
+
+            if (reducedMotion) options.ReducedMotion = ReducedMotion.Reduce;
 
             context = await browser!.NewContextAsync(options);
             await context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true });
@@ -284,6 +287,53 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
 
         if (await columns.CountAsync() == 0)
             throw new InvalidOperationException($"The board said \"{EmptyBoard}\": the module migrations did not run against the scratch database.");
+    }
+
+    /// <summary>
+    /// Waits until exactly the columns at <paramref name="narrowIndices"/> (zero-based, board order)
+    /// carry <c>hatch-column--narrow</c>, then reads every column's drawn width. The wait is on
+    /// the class, which React sets in the render that changes the width; run with reduced motion
+    /// the width follows at once.
+    /// </summary>
+    public async Task<IReadOnlyList<double>> MeasureColumnWidthsAsync(Deadline deadline, IReadOnlyList<int> narrowIndices)
+    {
+        await deadline.BoundAsync($"waiting for narrow columns [{string.Join(", ", narrowIndices)}]", () =>
+            page!.WaitForFunctionAsync(
+                """
+                ([selector, expected]) => {
+                  const narrow = [...document.querySelectorAll(selector)]
+                    .map((c, i) => (c.classList.contains('hatch-column--narrow') ? i : -1))
+                    .filter((i) => i >= 0);
+                  return narrow.length === expected.length && narrow.every((i, n) => i === expected[n]);
+                }
+                """,
+                new object[] { Column, narrowIndices }));
+
+        var read = await deadline.BoundAsync("measuring the columns", () =>
+            page!.EvaluateAsync<JsonElement>(
+                "(selector) => [...document.querySelectorAll(selector)].map((c) => c.getBoundingClientRect().width)", Column));
+
+        return read.EnumerateArray().Select(w => w.GetDouble()).ToList();
+    }
+
+    /// <summary>Types into the board's search box, replacing what is there; empty clears it.</summary>
+    public Task SearchBoardAsync(Deadline deadline, string text) =>
+        deadline.BoundAsync($"searching the board for \"{text}\"", () =>
+            page!.Locator("input[aria-label=\"Search the board\"]").FillAsync(text));
+
+    /// <summary>Whether the <paramref name="index"/>th column (zero-based) is saying "N hidden by the filter".</summary>
+    public Task<bool> ColumnSaysHiddenAsync(Deadline deadline, int index) =>
+        deadline.BoundAsync("reading the column's hidden note", () =>
+            page!.Locator(Column).Nth(index).Locator(".hatch-column-hidden").IsVisibleAsync());
+
+    /// <summary>Saves the page as <c>{label}.png</c> in the case's artifact directory, whether or not the case fails, and returns the path.</summary>
+    public async Task<string> ScreenshotAsync(Deadline deadline, string label)
+    {
+        var directory = ArtifactDirectory();
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, $"{label}.png");
+        await deadline.BoundAsync($"taking the {label} screenshot", () => page!.ScreenshotAsync(new() { Path = path }));
+        return path;
     }
 
     /// <summary>

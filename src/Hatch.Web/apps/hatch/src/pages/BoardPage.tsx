@@ -32,7 +32,7 @@ import { closeOffer } from '../lib/closeSubtree';
 import type { CloseOffer } from '../lib/closeSubtree';
 import { cascadeEntries, dropConfirmation } from '../lib/confirmations';
 import type { CascadeEntry } from '../lib/confirmations';
-import { boardColumns } from '../lib/columns';
+import { boardColumns, columnTracks, narrowColumns } from '../lib/columns';
 import { message } from '../lib/errors';
 import {
   DEFAULT_FILTER,
@@ -343,6 +343,11 @@ export function BoardPage() {
      shelving something, and they are still a click away by key or from their
      parent's Filed under list. */
   const columns = useMemo(() => boardColumns(board?.statuses ?? []), [board?.statuses]);
+  /* A column that shows no card is drawn at half width. Measured over
+     `visible` - after the filter, before Column's own waiting fold - so a
+     column holding only folded cards keeps its width. Recomputed every render
+     the cards or the filter change, which is what makes it live. */
+  const narrow = useMemo(() => narrowColumns(columns, visible), [columns, visible]);
 
   /* Keyed by `row.issue.key`, for Column's BoardCard calls to band a card by
      a lookup rather than a scan - null while flow-viz is off, or before its
@@ -780,12 +785,16 @@ export function BoardPage() {
           onDragEnd={(e) => void onDragEnd(e)}
         >
           <Callout.Group suspended={dragUnderway} onOpenChange={setHoveredKey}>
-            <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
+            <div
+              className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}
+              style={{ gridTemplateColumns: columnTracks(columns, narrow) }}
+            >
               <WipBands runs={zone} section={section} loads={loads} />
               {columns.map((status) => (
                 <Column
                   key={status.id}
                   status={status}
+                  narrow={narrow.has(status.id)}
                   cards={visible.filter((i) => i.statusId === status.id)}
                   hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                   filtering={isFiltering(filter)}
@@ -906,6 +915,7 @@ const terminalOf = (statuses: Status[], statusId: number) =>
  */
 function Column({
   status,
+  narrow,
   cards,
   hidden,
   filtering,
@@ -926,6 +936,8 @@ function Column({
   onToggleEpic,
 }: {
   status: Status;
+  /** The column shows no card and is drawn at half width. */
+  narrow: boolean;
   cards: LineageCard[];
   /** How many of this column's cards the filter is holding back. */
   hidden: number;
@@ -1000,7 +1012,7 @@ function Column({
 
   return (
     <section
-      className={`hatch-column${(dropping || lit) && !blocked ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
+      className={`hatch-column${narrow ? ' hatch-column--narrow' : ''}${(dropping || lit) && !blocked ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
       style={statusVars(status.color)}
       ref={setNodeRef}
     >
