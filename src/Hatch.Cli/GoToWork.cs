@@ -313,8 +313,20 @@ public sealed class Tally
     /// <summary>An entry exactly sixty minutes old is out.</summary>
     private static bool Live(TokenEntry entry, DateTimeOffset now) => now - entry.At < Hour;
 
-    /// <summary>The entries the window holds at <paramref name="now"/>, oldest first - the one place a set's combined entries would be gathered.</summary>
-    private List<TokenEntry> LiveEntries(DateTimeOffset now) => [.. _window.Where(e => Live(e, now)).OrderBy(e => e.At)];
+    /// <summary>
+    /// This member's own entries, and in a set every sibling's from its ledger, still
+    /// inside the hour at <paramref name="now"/>, oldest first - the one place a
+    /// set's combined entries are gathered.
+    /// </summary>
+    private List<TokenEntry> LiveEntries(DateTimeOffset now)
+    {
+        IEnumerable<TokenEntry> all = _window;
+        if (SetDir is not null) all = all.Concat(RunnerSet.ReadLedgerWindow(SetDir, Slot ?? 1));
+        return [.. all.Where(e => Live(e, now)).OrderBy(e => e.At)];
+    }
+
+    /// <summary>This member's own entries, the window its ledger carries.</summary>
+    public IReadOnlyList<TokenEntry> Window => _window;
 
     /// <summary>The tokens reported in the sixty minutes before <paramref name="now"/>.</summary>
     public long WindowTotal(DateTimeOffset now) => LiveEntries(now).Sum(e => e.Tokens);
@@ -351,21 +363,22 @@ public sealed class Tally
         if (report.Unpriced) Unpriced++;
 
         // Before the usage-limit return below: those tokens were spent.
+        var now = _clock.GetUtcNow();
         if (report.TotalTokens is { } tokens)
         {
             Tokens += tokens;
-
-            // Kept whether or not a cap is set, so the peak is reported on every night.
-            var now = _clock.GetUtcNow();
             _window.Add(new TokenEntry(now, tokens));
             _window.RemoveAll(e => !Live(e, now));
-            PeakHour = Math.Max(PeakHour, WindowTotal(now));
         }
         else Unreported++;
 
-        // The local counters are this slot's cumulative total, carried and new,
-        // so the ledger is a mirror of them for the siblings to read.
-        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent, Tokens);
+        // The local counters and window are this slot's cumulative total, carried
+        // and new, so the ledger is a mirror of them for the siblings to read.
+        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent, Tokens, _window);
+
+        // Kept whether or not a cap is set, so the peak is reported on every night.
+        // After the ledger write, so in a set it is the combined hour this entry joined.
+        if (report.TotalTokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
 
         var before = ExhaustedUntil;
 
@@ -380,8 +393,8 @@ public sealed class Tally
         if (before != ExhaustedUntil)
         {
             var was = before is { } o ? o.ToString("O") : "none";
-            var now = ExhaustedUntil is { } n ? n.ToString("O") : "none";
-            _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {now} for {report.Key}");
+            var becomes = ExhaustedUntil is { } n ? n.ToString("O") : "none";
+            _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {becomes} for {report.Key}");
         }
 
         // A third list, because a usage limit is neither: nothing was moved,
@@ -1059,7 +1072,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // a partial total, which can only under-count - at worst one extra
             // increment, never a premature stop. A fresh start writes zeros.
             if (runtime.SetDir is not null)
-                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent, tally.Tokens);
+                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent, tally.Tokens, tally.Window);
 
             // Only a fresh start: a restarted incarnation carries the board's
             // own pause or run, and has nothing to announce.

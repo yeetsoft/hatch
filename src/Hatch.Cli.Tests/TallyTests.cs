@@ -601,12 +601,13 @@ public sealed class TallyTests
         }
     }
 
-    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null, long? maxTokens = null)
+    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null, long? maxTokens = null, long? maxTokensPerHour = null, TimeProvider? clock = null)
     {
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        clock ??= TimeProvider.System;
         return (
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens },
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens },
+            new Tally(clock) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens, MaxTokensPerHour = maxTokensPerHour },
+            new Tally(clock) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens, MaxTokensPerHour = maxTokensPerHour },
             dir);
     }
 
@@ -715,6 +716,148 @@ public sealed class TallyTests
         finally
         {
             dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_over_the_hourly_cap_together_are_both_throttled_until_the_same_instant()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            second.Record(Report(totalTokens: 120_000));
+            var now = clock.GetUtcNow();
+
+            Assert.NotNull(first.ThrottledUntil(now));
+            Assert.Equal(first.ThrottledUntil(now), second.ThrottledUntil(now));
+            Assert.Equal(T0 + TimeSpan.FromMinutes(60), first.ThrottledUntil(now));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_under_the_hourly_cap_together_are_neither_throttled()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 80_000));
+            second.Record(Report(totalTokens: 80_000));
+            var now = clock.GetUtcNow();
+
+            Assert.Null(first.ThrottledUntil(now));
+            Assert.Null(second.ThrottledUntil(now));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_siblings_entry_ages_out_of_the_set_window_on_the_hour()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            clock.Advance(TimeSpan.FromMinutes(10));
+            second.Record(Report(totalTokens: 120_000));
+            var end = T0 + TimeSpan.FromMinutes(60);
+
+            Assert.Equal(end, first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.Equal(end, second.ThrottledUntil(clock.GetUtcNow()));
+
+            clock.SetUtcNow(end - TimeSpan.FromSeconds(1));
+            Assert.NotNull(first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.NotNull(second.ThrottledUntil(clock.GetUtcNow()));
+
+            clock.SetUtcNow(end);
+            Assert.Null(first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.Null(second.ThrottledUntil(clock.GetUtcNow()));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_restarted_member_still_sees_its_siblings_hour_and_puts_its_own_back_in_the_ledger()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var sibling = new Tally(clock) { SetDir = dir.FullName, Slot = 1 };
+            sibling.Record(Report(totalTokens: 120_000));
+
+            var carried = new Tally(clock);
+            carried.Record(Report(totalTokens: 120_000));
+            var restarted = new Tally(clock, carried.ToState()) { SetDir = dir.FullName, Slot = 2, MaxTokensPerHour = 200_000 };
+
+            Assert.NotNull(restarted.ThrottledUntil(clock.GetUtcNow()));
+
+            // What RunAsync does at start-up, before the member has recorded anything.
+            RunnerSet.WriteLedger(dir.FullName, 2, restarted.Runs, restarted.Spent, restarted.Tokens, restarted.Window);
+            Assert.Equal(
+                new TokenEntry[] { new TokenEntry(T0, 120_000) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_peak_hour_in_a_set_is_the_combined_hour_the_recording_member_saw()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            clock.Advance(TimeSpan.FromMinutes(5));
+            second.Record(Report(totalTokens: 120_000));
+
+            Assert.Equal(240_000, second.PeakHour);
+
+            // The first member has not recorded since the second joined its hour.
+            Assert.Equal(120_000, first.PeakHour);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_malformed_or_missing_ledger_never_throttles_a_member()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "garbage");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.3"), "1 1 1 x:y");
+            var tally = new Tally(clock) { SetDir = dir.FullName, Slot = 2, MaxTokensPerHour = 1 };
+
+            Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+
+            dir.Delete(recursive: true);
+            Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+        }
+        finally
+        {
+            if (dir.Exists) dir.Delete(recursive: true);
         }
     }
 
