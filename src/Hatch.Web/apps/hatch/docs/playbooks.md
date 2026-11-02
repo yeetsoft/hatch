@@ -177,14 +177,20 @@ A proposal is a session's request to change one or more rows — a reason, and
 the fields it would change — that touches nothing live until a person decides
 it. This page shows them.
 
-A person applies or discards every pending change together, with one of two
-actions reachable through the API now (the page's own buttons are a later
-ticket): *Approve all* applies every pending change in one step, refusing
-with the server's own sentence and changing nothing if any one change has
-gone stale or no longer validates against the live board; *Reject all*
-discards every pending change and leaves the live playbooks untouched. Both
-act on exactly the set of proposals read as pending, and refuse — asking for
-a reload — if that set has changed underneath them.
+A person applies or discards every pending change together, with *Approve
+all* and *Reject all* live in the banner above the table. *Approve all*
+applies every pending change in one step, refusing with the server's own
+sentence and changing nothing if any one change has gone stale or no longer
+validates against the live board; it is disabled, with a title naming the
+out-of-date change and saying to reject it or have it resubmitted, for as
+long as any shown change is out of date. *Reject all* discards every pending
+change and leaves the live playbooks untouched, and is never disabled. Both
+act on exactly the set of proposals read as pending; a `409` — the set has
+changed, or a change no longer applies — is shown next to the banner as the
+server's own sentence, and only the proposal list reloads, leaving the table
+as it was. Otherwise the banner and its buttons go, the table reloads with
+the new values, and one line says how many changes were applied or
+proposals rejected.
 
 A pending proposal draws a banner above the table: a sentence counting how
 many proposals are awaiting a decision, and, when any of them carries a
