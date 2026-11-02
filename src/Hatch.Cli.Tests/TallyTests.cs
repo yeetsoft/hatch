@@ -953,4 +953,170 @@ public sealed class TallyTests
         Assert.False(tally.ShouldStop());
         Assert.Equal(0, tally.Fails);
     }
+
+    private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static (FakeTimeProvider Clock, Tally Tally) Hourly(long? cap)
+    {
+        var clock = new FakeTimeProvider(T0);
+        return (clock, new Tally(clock) { MaxTokensPerHour = cap });
+    }
+
+    [Fact]
+    public void An_empty_window_has_no_total_and_no_throttle()
+    {
+        var (clock, tally) = Hourly(100);
+
+        Assert.Equal(0, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void Under_the_hourly_cap_is_not_throttled_and_at_it_exactly_is()
+    {
+        var (clock, tally) = Hourly(100);
+
+        tally.Record(Report(totalTokens: 99));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        tally.Record(Report(totalTokens: 1));
+        Assert.NotNull(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void No_cap_means_no_throttle_however_much_the_window_holds()
+    {
+        var (clock, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 10_000_000));
+
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+        Assert.Equal(10_000_000, tally.WindowTotal(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void The_wait_ends_when_enough_of_the_oldest_entries_age_out_not_an_hour_after_the_last()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 60));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        var now = clock.GetUtcNow();
+
+        // 120 now; without the first it is 60, under the cap.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), tally.ThrottledUntil(now));
+
+        // Past the first: 60 left, under the cap, so no wait at all.
+        clock.Advance(TimeSpan.FromMinutes(41));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void The_wait_is_the_first_entrys_hour_when_it_alone_clears_the_cap_and_the_seconds_when_it_takes_two()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 60));
+
+        // 120 now; removing only the first leaves 90, under the cap: its hour.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), tally.ThrottledUntil(clock.GetUtcNow()));
+
+        var (clock2, tally2) = Hourly(70);
+        tally2.Record(Report(totalTokens: 30));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        tally2.Record(Report(totalTokens: 30));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        tally2.Record(Report(totalTokens: 60));
+
+        // 120; minus 30 is 90, minus 30 more is 60 < 70: the second's hour.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(70), tally2.ThrottledUntil(clock2.GetUtcNow()));
+
+        // The first has aged out; the answer moves to the second's hour and then to none.
+        clock2.Advance(TimeSpan.FromMinutes(41));
+        Assert.Equal(T0 + TimeSpan.FromMinutes(70), tally2.ThrottledUntil(clock2.GetUtcNow()));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        Assert.Null(tally2.ThrottledUntil(clock2.GetUtcNow()));
+    }
+
+    [Fact]
+    public void One_entry_larger_than_the_cap_waits_out_its_own_hour()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 500));
+
+        var until = tally.ThrottledUntil(clock.GetUtcNow());
+
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), until);
+        Assert.Equal(0, tally.WindowTotal(until!.Value));
+    }
+
+    [Fact]
+    public void An_entry_exactly_sixty_minutes_old_does_not_count()
+    {
+        var (_, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 80));
+
+        Assert.Equal(80, tally.WindowTotal(T0 + TimeSpan.FromMinutes(59.99)));
+        Assert.Equal(0, tally.WindowTotal(T0 + TimeSpan.FromMinutes(60)));
+    }
+
+    [Fact]
+    public void A_usage_limited_reports_tokens_count_and_one_with_no_count_adds_no_entry()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 70, usageLimitResetAt: T0 + TimeSpan.FromHours(3)));
+        tally.Record(Report(totalTokens: null));
+
+        Assert.Equal(70, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Single(tally.ToState().Window);
+    }
+
+    [Fact]
+    public void Throttled_until_is_pure()
+    {
+        var (clock, tally) = Hourly(10);
+        tally.Record(Report(totalTokens: 50));
+        var before = (tally.Runs, tally.Fails, tally.Tokens, tally.Unreported, tally.ToState().Window.Count);
+
+        _ = tally.ThrottledUntil(clock.GetUtcNow());
+
+        Assert.Equal(before, (tally.Runs, tally.Fails, tally.Tokens, tally.Unreported, tally.ToState().Window.Count));
+    }
+
+    [Fact]
+    public void The_window_is_kept_without_a_cap_and_the_peak_is_the_largest_total_at_any_record()
+    {
+        var (clock, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 400));
+        clock.Advance(TimeSpan.FromMinutes(30));
+        tally.Record(Report(totalTokens: 300));
+        Assert.Equal(700, tally.PeakHour);
+
+        // The first leaves the window; the peak does not fall.
+        clock.Advance(TimeSpan.FromMinutes(40));
+        tally.Record(Report(totalTokens: 50));
+        Assert.Equal(350, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Equal(700, tally.PeakHour);
+    }
+
+    [Fact]
+    public void The_tally_prints_the_peak_hour_and_says_nothing_when_no_tokens_were_reported()
+    {
+        var say = new Transcript();
+        var (_, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 1_200_000));
+        tally.Print(say);
+        Assert.Contains("hatch: peak hour 1.2M tokens", say.Said);
+
+        var quiet = new Transcript();
+        var (_, none) = Hourly(null);
+        none.Record(Report(totalTokens: null));
+        none.Print(quiet);
+        Assert.DoesNotContain(quiet.Said, l => l.Contains("peak hour", StringComparison.Ordinal));
+    }
 }

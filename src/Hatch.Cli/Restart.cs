@@ -143,6 +143,9 @@ public sealed class LoopSource(string root) : ISelf
     private static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 }
 
+/// <summary>One increment's reported tokens and the instant it ended, an entry of the rolling sixty-minute window.</summary>
+public sealed record TokenEntry(DateTimeOffset At, long Tokens);
+
 /// <summary>
 /// What one incarnation of the loop hands to the next: everything a bound is
 /// measured against, so a restart cannot be a way of starting the night over.
@@ -167,6 +170,12 @@ public sealed record NightState
 
     /// <summary>The tokens the increments reported, so a restart neither forgets them nor re-opens a <c>--max-tokens</c> cap. Absent in an older state file, which reads as none.</summary>
     public long Tokens { get; init; }
+
+    /// <summary>The increments of the last sixty minutes that reported tokens, so a restart neither forgets an hour's spending nor re-opens a <c>--max-tokens-per-hour</c> wait. Absent in an older state file, which reads as none.</summary>
+    public IReadOnlyList<TokenEntry> Window { get; init; } = [];
+
+    /// <summary>The most tokens any sixty minutes of the night has held, so the morning's report is the whole night's. Absent in an older state file, which reads as none.</summary>
+    public long PeakHour { get; init; }
 
     /// <summary>How many increments reported no token count, so a restart does not forget them. Absent in an older state file, which reads as none.</summary>
     public int Unreported { get; init; }
