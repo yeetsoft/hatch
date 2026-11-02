@@ -1,5 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/playbooks")]
-public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamilies? families = null) : ControllerBase
+public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIdentity caller, ModelFamilies? families = null) : ControllerBase
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>
     [HttpGet]
@@ -52,6 +53,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
     [RequireRole(PersonRole.User)]
     public async Task<ActionResult<PlaybookDto>> CreatePlaybook(PlaybookCreateRequest request, CancellationToken ct)
     {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
         var types = EfHatchPlaybook.NormalizeTypes(request.Types);
         var shape = request.Shape?.Trim() ?? EfHatchPlaybook.DefaultShape;
         if (PlaybookFile.InvalidShape(shape) is { } shapeError) return BadRequest(shapeError);
@@ -141,6 +144,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
     [RequireRole(PersonRole.User)]
     public async Task<ActionResult<PlaybookDto>> PatchPlaybook(int id, PlaybookPatchRequest request, CancellationToken ct)
     {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
         var playbook = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (playbook is null) return NotFound();
 
@@ -172,6 +177,8 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ModelFamili
     [RequireRole(PersonRole.User)]
     public async Task<IActionResult> DeletePlaybook(int id, CancellationToken ct)
     {
+        if (await PlaybookWrites.Refusal(caller, Request, ct) is { } refusal) return refusal;
+
         var playbook = await db.Playbooks.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (playbook is null) return NotFound();
 
