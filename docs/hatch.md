@@ -7896,6 +7896,11 @@ except the last one:
 - `--max-spend USD` — measured from what the increments reported, not
   estimated; an increment whose agent reports no price is not in that sum, so
   it cannot bind one.
+- `--max-tokens N` — `500k`, `2M` or `1.5M`, or a plain whole number; measured
+  from what the increments reported, not estimated. An increment that reports
+  no token count is not in that sum, so it cannot bind one, and the closing
+  tally says how many reported none. A usage-limited increment's tokens do
+  count, since they were spent.
 - `--until HH:MM` — wall clock. `--until 06:00` typed at eleven at night means
   the morning, because the alternative reading is a loop that stops seventeen
   hours before it started.
@@ -7957,11 +7962,13 @@ the ticket was both:
   it restarts as is the trunk's, and not whichever branch the last session left.
 
 What survives the restart is what was typed and what has been spent.
-`--max-runs`, `--max-spend`, `--until`, `--under`, `--interval`, `--quiet` and
-`--stop-file` are all still in argv, which the supervisor re-runs verbatim; the
-increments, the spend, the failure streak, the night's start and the two lists
-the tally prints travel in a state file the supervisor names once per night. So
-a restart cannot outspend `--max-spend` or outrun `--max-runs` by starting over,
+`--max-runs`, `--max-spend`, `--max-tokens`, `--until`, `--under`, `--interval`,
+`--quiet` and `--stop-file` are all still in argv, which the supervisor re-runs
+verbatim; the increments, the spend, the tokens (and how many increments
+reported none), the failure streak, the night's start and the two lists the
+tally prints travel in a state file the supervisor names once per night. So
+a restart cannot outspend `--max-spend`, re-open `--max-tokens` or outrun
+`--max-runs` by starting over,
 and the tally at the end covers the whole night and says how many times the loop
 came back. `--until` is carried as the instant it resolved to rather than
 re-read, which is the one bound that would otherwise be wrong: `--until 23:59`
@@ -8166,6 +8173,10 @@ row, which never drew controls at all and says so by kind already.
 loop before the stop conditions are asked, so a cap lowered from a page stops
 that loop at its very next pass. `until` on a row is always an instant, never a
 bare date: "stop by the 12th" is a midnight in a timezone nobody named.
+
+**`--max-tokens` is a flag-only bound for now.** It stops the loop, but it is
+not on the row, so nobody can raise or lower it from the page until the page
+controls it.
 
 **The flags seed the row once.** The first heartbeat a name is ever seen under
 writes the four bounds from what the process actually started with, which is
