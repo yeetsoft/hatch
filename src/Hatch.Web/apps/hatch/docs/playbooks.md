@@ -201,12 +201,31 @@ for it: "edited since it was proposed", or "deleted since it was proposed".
 ## Why an agent cannot edit a playbook
 
 Reading the matrix accepts an API key, because that is how a session is told
-what it was dispatched with. Every write is a person's: creating a row,
-changing one, deleting one, and setting an issue's overrides. A key that tries
-gets a `403`.
+what it was dispatched with. Writing one — creating a row, changing one,
+deleting one, or setting an issue's own override — is a person's, at a
+browser, and a key that tries gets a `403`.
+
+The guard refuses a program outright: a key, or a keyless runner naming
+itself with `X-Hatch-Runner`. With no branch on whether the wall is on or
+off, it also refuses any call carrying neither of those but no
+`Sec-Fetch-Mode` header either — the mark a real browser sets on every
+request it makes, navigation or `fetch()`, and that a bare `curl` or a
+script never sends. The refusal holds the same whichever way the wall is
+set.
+
+**What this promises, and what it does not.** With the wall on, the lock is
+real: a key is refused, a keyless call never reaches the app, and only a
+signed-in person's browser gets through. With the wall off, nothing on a
+request is a credential — `LocalCaller`'s own remarks say the same of local
+mode generally ("Nothing here is a credential") — so a caller that sets out
+to forge a browser's headers is not stopped. What the guard closes is the
+door a session walks through by accident or on instruction, the bare `curl`
+and the `hatch api` call.
 
 That refusal is deliberate. An agent that could widen its own instructions and
-its own budget is a loop with no end. A session that thinks a row is wrong says
-so on the ticket and stops. What a key may and may not do is in [people, roles
-and keys](people-roles-and-keys#api-keys), and [what a session is
-told](what-a-session-is-told) shows the same rule from the prompt's side.
+its own budget is a loop with no end. A session that thinks a row is wrong
+proposes the change instead, through [proposed changes](#proposed-changes) —
+`POST /api/hatch/playbook-proposals` — and says so on the ticket. What a
+key may and may not do is in [people, roles and keys](people-roles-and-keys#api-keys),
+and [what a session is told](what-a-session-is-told) shows the same rule
+from the prompt's side.
