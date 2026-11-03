@@ -193,7 +193,8 @@ public class ReportsController(
             result.To,
             result.Step,
             result.Columns,
-            result.Points.Select(p => new CumulativeFlowPointDto(p.At, p.Counts)).ToList(),
+            result.Projects,
+            result.Points.Select(p => new CumulativeFlowPointDto(p.At, p.Counts, p.ProjectCounts)).ToList(),
             result.Unresolved);
     }
 

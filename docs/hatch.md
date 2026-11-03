@@ -3359,7 +3359,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -4229,24 +4229,31 @@ project, as it always has. A key no project has is a `400` naming it. There
 is still no `createdBy`: a column's count is not a fact about any one
 creator.
 
-It answers `{ from, to, step, columns, points, unresolved }`. `columns` is the
-board's own columns in board order — every status that is not deferred, so a
-deferred column contributes to no band. `points` is one `{ at, counts }` per
-grid step from `from` to `to`, oldest first, `counts` parallel to `columns`;
-on a board with no issues it is `[]`. The grid's step is the finest of hour,
-day or week whose point count stays at or under the 1,000-point cap
-`/work-log/history` already uses, falling back to week rather than refusing a
-range that outgrows even that. `from` is clamped forward to the first issue's
-creation, the same as the timeline's own `ClampStart`, so a range reaching
-back before anything existed does not draw an empty stretch. `unresolved`
-counts stretches the same way the timeline's does: a stretch naming a column
-no longer on the board, because it was renamed since and the event predates
-the ids — see [the rebuild, and its one hole](#the-rebuild-and-its-one-hole).
-A terminal column — the board's flag, never a name — counts only what closed
-inside the window: a stretch there that was already open before `from`
-contributes nothing, so the done band starts at zero at the chart's left edge
-and grows only as issues close inside it, rather than opening already full of
-work finished long before the range being asked about.
+It answers `{ from, to, step, columns, projects, points, unresolved }`.
+`columns` is the board's own columns in board order — every status that is
+not deferred, so a deferred column contributes to no band. `projects` is the
+project keys in scope — every project with an issue the sweep counted when
+unscoped, or only those named by `project` when scoped — in the same order
+`/api/hatch/projects` lists them. `points` is one `{ at, counts,
+projectCounts }` per grid step from `from` to `to`, oldest first, `counts`
+parallel to `columns` and `projectCounts` parallel to `projects`; on a board
+with no issues both are `[]`. The two cuts of the same sweep always agree: at
+every point `projectCounts` sums to the same total `counts` does, the
+terminal-column baseline below applying to both alike since both come off the
+same stretches. The grid's step is the finest of hour, day or week whose
+point count stays at or under the 1,000-point cap `/work-log/history` already
+uses, falling back to week rather than refusing a range that outgrows even
+that. `from` is clamped forward to the first issue's creation, the same as
+the timeline's own `ClampStart`, so a range reaching back before anything
+existed does not draw an empty stretch. `unresolved` counts stretches the
+same way the timeline's does: a stretch naming a column no longer on the
+board, because it was renamed since and the event predates the ids — see
+[the rebuild, and its one hole](#the-rebuild-and-its-one-hole). A terminal
+column — the board's flag, never a name — counts only what closed inside the
+window: a stretch there that was already open before `from` contributes
+nothing, so the done band starts at zero at the chart's left edge and grows
+only as issues close inside it, rather than opening already full of work
+finished long before the range being asked about.
 
 The page is at `/reports/cumulative-flow`: one band per column, stacked
 bottom-up with the board's last column at the baseline, each in its column's
