@@ -1558,15 +1558,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // next one. Behind the usage wait, so an account out of usage says
             // so first.
             var cap = tally.MaxTokensPerHour ?? 0;
-            if (tally.ThrottledUntil(now) is { } until)
+            if (tally.ThrottledUntil(now) is { } throttledUntil)
             {
                 idle.Clear();
                 busy.Clear();
-                var clock = UsageLimit.Clock(until, known: false, runtime.Clock);
+                var clock = UsageLimit.Clock(throttledUntil, known: false, runtime.Clock);
                 line.Line = $"over {Format.Compact(cap)} tokens/hour until {clock}";
 
                 if (await SayQuietlyAsync(throttled, now, interval, once,
-                    digest: $"throttled:{until:O}",
+                    digest: $"throttled:{throttledUntil:O}",
                     still: $"hatch: still over {Format.Compact(cap)} tokens/hour",
                     inFull: () =>
                     {
