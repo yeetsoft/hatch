@@ -3363,7 +3363,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
-| `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
+| `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
 
 Two of the filters are worth knowing: `ancestorKey` returns everything below an
 issue at any depth — an epic's stories and their tasks in one request — and
@@ -8179,27 +8179,33 @@ the three controls and the bounds form only where `CanControl` is true; a
 row it cannot control draws a sentence naming `For` instead, except a `once`
 row, which never drew controls at all and says so by kind already.
 
-**And the four bounds** `go-to-work` takes on the command line — `--under`,
-`--max-runs`, `--max-spend` and `--until` — are on the row too, folded into the
-loop before the stop conditions are asked, so a cap lowered from a page stops
-that loop at its very next pass. `until` on a row is always an instant, never a
-bare date: "stop by the 12th" is a midnight in a timezone nobody named.
+**And the six bounds** `go-to-work` takes on the command line — `--under`,
+`--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour` and
+`--until` — are on the row too, folded into the loop before the stop conditions
+are asked, so a cap lowered from a page stops that loop at its very next pass.
+The loop folds both token bounds wholesale, and says so when the board changed
+one: `hatch: the board set --max-tokens 2M`, or `--max-tokens off` when the
+board cleared it. `until` on a row is always an instant, never a bare date:
+"stop by the 12th" is a midnight in a timezone nobody named.
 
-**`--max-tokens` and `--max-tokens-per-hour` are flag-only bounds for now.**
-The first stops the loop and the second waits and does not stop; neither is on
-the row, so nobody can raise or lower them from the page until the page controls
-them. The runner reports `throttledUntil` on its beat, but the server only keeps
-it once HA-1672 lands and the page only shows it once HA-1673 does, so the page
-does not show a waiting runner yet.
+**`--max-tokens` and `--max-tokens-per-hour` are on the row and folded.** The
+first stops the loop and the second waits and does not stop. Both are held,
+read and set as a token count (`500k`, `2M`) like the other bounds; the server
+also keeps what the runner reports beside them, `tokensUsed`, `tokensLastHour`
+and `throttledUntil`. The page does not draw any of it until HA-1673 does, so
+the page does not show a waiting runner yet.
 
-**The flags seed the row once.** The first heartbeat a name is ever seen under
-writes the four bounds from what the process actually started with, which is
-what makes them show on the page immediately; every heartbeat after that leaves
-them alone. That rule is what stops the loop's own half-hourly
-[restart](#what-it-stops-for) — which sends the same argv again — from quietly
-undoing an edit somebody made at midnight. The consequence is worth knowing:
-once a runner has a row, **the row is where its bounds live**, and a flag typed
-at a checkout that already has one seeds nothing.
+**A fresh start writes the row's bounds.** The first heartbeat of every *fresh*
+loop start — one typed by hand, or the supervisor's first start, but never a
+supervisor restart that carries the night's state and never a `once` beat —
+writes the six bounds from what the process actually started with, including
+their absence: a flag not given clears what the row held. That is what makes
+them show on the page immediately, and what lets a person who types a new start
+at a checkout overwrite the row. Every other heartbeat leaves them alone, and
+that is what stops the loop's own half-hourly [restart](#what-it-stops-for) —
+which sends the same argv again — from quietly undoing an edit somebody made at
+midnight. The consequence is worth knowing: while a loop runs, **the row is
+where its bounds live**, and only a new hand-typed start replaces them.
 
 **The Max spend field counts only priced increments** — its hint on the page
 says so once ("it counts only sessions whose agent reports a price, so it
@@ -8248,8 +8254,9 @@ never a person's to set.** A loop whose last sixty minutes of reported tokens ar
 at or over that cap waits rather than stops, and every beat while it does carries
 the instant it expects to be under the cap; a beat from a runner that is under
 it, or has no cap, carries null. The runner reads it fresh at the top of every
-pass, so the beat is never a pass behind. The server does not yet keep it: the
-column is HA-1672, and until then the field is read by nobody.
+pass, so the beat is never a pass behind. The server keeps it on the row, written
+by every `loop` beat (so a null clears it) and left alone by a `once` beat; the
+page draws it with HA-1673.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and

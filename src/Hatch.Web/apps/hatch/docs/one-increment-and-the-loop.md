@@ -404,7 +404,7 @@ in on the next heartbeat, including being cleared (*Watching the loop*).
 
 From the loop's side, a bound reaches that row when the loop starts fresh: a
 loop started by hand, or the supervisor's first start. Its first heartbeat
-writes the five bounds it was started with - the four above and `--project` -
+writes the seven bounds it was started with - `--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour`, `--until`, `--under` and `--project` -
 and clears any the row held for a flag it was not given, so restarting by hand with `--max-runs` dropped leaves
 no limit on the row rather than the old one. The supervisor's own restart
 (exit 75, which carries the night in) writes none and keeps what the row
