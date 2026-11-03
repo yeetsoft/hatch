@@ -427,3 +427,39 @@ export function tokenFieldOf(refusal: string | null): 'maxTokens' | 'maxTokensPe
   if (refusal.includes('--max-tokens-per-hour')) return 'maxTokensPerHour';
   return refusal.includes('--max-tokens') ? 'maxTokens' : null;
 }
+
+/** A token box as it reads once left: grouped with commas (`2M` becomes
+    `2,000,000`) where it holds a count, and exactly as typed where it is empty
+    or not one - the problem line says what is wrong with it, and rewriting it
+    would take the evidence away. */
+export function groupedTokens(text: string): string {
+  const count = parseTokenCount(tokensWire(text));
+  return count === null ? text : thousands(count);
+}
+
+/** The last press a runner's row was refused, and which row it was. `routed`
+    is true for a bounds save, the one press the form can show a refusal
+    under; any other press has no form open to show it in. */
+export interface Refusal {
+  runner: string;
+  text: string;
+  routed: boolean;
+}
+
+/** The refusal the top of the page draws: all of them, except a bounds save's
+    that names a token flag, which the form draws under its field instead. */
+export function topRefusal(failure: Refusal | null): string | null {
+  if (failure === null) return null;
+  return failure.routed && tokenFieldOf(failure.text) !== null ? null : failure.text;
+}
+
+/** The refusal one runner's form draws under a token field, or null where
+    the refusal was another runner's, another flag's, or not a bounds save's. */
+export function formRefusal(
+  failure: Refusal | null,
+  runner: string,
+): { text: string; field: 'maxTokens' | 'maxTokensPerHour' } | null {
+  if (failure === null || !failure.routed || failure.runner !== runner) return null;
+  const field = tokenFieldOf(failure.text);
+  return field === null ? null : { text: failure.text, field };
+}

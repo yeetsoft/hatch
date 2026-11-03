@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { BoundsSummary, Row, RunnerDetails, RunnersPage } from './RunnersPage';
+import { BoundsForm, BoundsSummary, HostTotal, Row, RunnerDetails, RunnersPage, TokenBudget } from './RunnersPage';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 const listed = vi.hoisted(() => ({ runners: [] as unknown[] }));
@@ -302,6 +302,129 @@ describe('RunnersPage RunnerDetails', () => {
 
   it('draws nothing for a build when revision is null', () => {
     expect(renderDetails(runner({ revision: null }))).not.toContain('dev build');
+  });
+});
+
+const renderBudget = (r: Runner) => renderToStaticMarkup(<TokenBudget runner={r} />);
+
+describe('RunnersPage TokenBudget', () => {
+  it('says so where neither cap is set, even when a total was reported', () => {
+    const html = renderBudget(runner({ tokensUsed: 900_000 }));
+    expect(html).toContain('No token budget');
+    expect(html).not.toContain('hatch-usage-bar-track');
+  });
+
+  it('draws each window against its cap, with a bar filled to its share', () => {
+    const html = renderBudget(
+      runner({ maxTokens: 2_000_000, tokensUsed: 1_200_000, maxTokensPerHour: 200_000, tokensLastHour: 140_000 }),
+    );
+    expect(html).toContain('1.2M / 2M tokens');
+    expect(html).toContain('140k / 200k per hour');
+    expect(html).toContain('--usage-color:var(--success);width:60%');
+    expect(html).toContain('--usage-color:var(--success);width:70%');
+    expect(html).toContain('role="img" aria-label="1.2M / 2M tokens"');
+  });
+
+  it('turns the fill to warn at 80% and danger at 100%', () => {
+    const warn = renderBudget(runner({ maxTokens: 1_000_000, tokensUsed: 800_000 }));
+    expect(warn).toContain('--usage-color:var(--warn);width:80%');
+
+    const danger = renderBudget(runner({ maxTokens: 1_000_000, tokensUsed: 1_000_000 }));
+    expect(danger).toContain('--usage-color:var(--danger);width:100%');
+  });
+
+  it('draws a window with no cap as its figure alone, with no bar', () => {
+    const html = renderBudget(runner({ maxTokensPerHour: 200_000, tokensUsed: 1_200_000 }));
+    expect(html).toContain('1.2M tokens, no cap');
+    expect(html.match(/hatch-usage-bar-track/g)?.length).toBe(1);
+  });
+});
+
+describe('RunnersPage token bounds', () => {
+  it('names the caps in the bounds summary, only when set', () => {
+    const html = renderBounds(runner({ maxTokens: 2_000_000, maxTokensPerHour: 200_000 }));
+    expect(html).toContain('2M tokens, 200k tokens/hour');
+    expect(renderBounds(runner())).toContain('no bounds');
+  });
+
+  it('badges a throttled row with the cap it is over, and draws what it last said', () => {
+    const html = renderRow(
+      runner({
+        maxTokensPerHour: 200_000,
+        throttledUntil: at(1_800_000),
+        line: 'Stopped: --max-tokens 2M reached',
+      }),
+    );
+    expect(html).toContain('Over 200k tokens/hour until');
+    expect(html).toContain('Stopped: --max-tokens 2M reached');
+  });
+
+  it('draws the budget cell on the row, and spans seven columns under it', () => {
+    const closed = renderRow(runner());
+    expect(closed).toContain('No token budget');
+
+    const total = renderToStaticMarkup(
+      <table>
+        <tbody>
+          <HostTotal group={{ host: 'box', runners: [], totalRuns: 1, totalSpent: 1 }} />
+        </tbody>
+      </table>,
+    );
+    expect(total).toContain('colSpan="7"');
+  });
+
+  it('draws the Token budget column in the page header', () => {
+    listed.runners = [runner()];
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <RunnersPage />
+      </MemoryRouter>,
+    );
+    expect(html).toContain('<th>Token budget</th>');
+  });
+
+  it('keeps the form out of a closed row, controllable or not', () => {
+    for (const r of [runner(), runner({ canControl: false }), runner({ kind: 'once' })]) {
+      expect(renderRow(r)).not.toContain('Save bounds');
+    }
+  });
+});
+
+const renderForm = (props: { refusal?: string; refusalField?: 'maxTokens' | 'maxTokensPerHour' } = {}) =>
+  renderToStaticMarkup(
+    <MemoryRouter>
+      <BoundsForm runner={runner({ maxTokens: 2_000_000 })} onSave={noop} {...props} />
+    </MemoryRouter>,
+  );
+
+describe('RunnersPage BoundsForm', () => {
+  const fieldOf = (html: string, label: string) => {
+    const start = html.indexOf(label);
+    return html.slice(html.lastIndexOf('<div class="hatch-field', start), html.indexOf('</div>', start));
+  };
+
+  it('draws both token boxes, the saved cap grouped and the other empty, each with the hint', () => {
+    const html = renderForm();
+    expect(html).toContain('Max tokens this run');
+    expect(html).toContain('Max tokens per hour');
+    expect(html).toContain('value="2,000,000"');
+    expect(html.match(/A token count, like 500k or 2M\. Empty is no cap\./g)?.length).toBe(2);
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it('draws a refusal naming a token flag under its own field, as an alert, once', () => {
+    const text = '--max-tokens-per-hour takes a token count, like 500k or 2M - not "x"';
+    const html = renderForm({ refusal: text, refusalField: 'maxTokensPerHour' });
+
+    expect(html.match(/role="alert"/g)?.length).toBe(1);
+    expect(fieldOf(html, 'Max tokens per hour')).toContain('role="alert"');
+    expect(fieldOf(html, 'Max tokens per hour')).toContain('--max-tokens-per-hour takes a token count');
+    expect(fieldOf(html, 'Max tokens this run')).not.toContain('role="alert"');
+    expect(fieldOf(html, 'Max tokens this run')).toContain('A token count');
+  });
+
+  it('draws no problem line for a clean runner', () => {
+    expect(renderForm()).not.toContain('text-danger');
   });
 });
 
