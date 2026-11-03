@@ -3,6 +3,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.DeviceMapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -1735,6 +1736,207 @@ public class RunnersControllerTests
         Assert.Equal("runner", row.MaxTokensPerHourSource);
     }
 
+    // ---- The site defaults, read by every route that answers ----
+
+    [Fact]
+    public async Task ASiteDefault_ReachesARunnerWithNoCap_OnItsBeatAndItsRow()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000, defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal(300_000, instruction.MaxTokens);
+        Assert.Equal(1_000_000, instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Equal(300_000, row.MaxTokens);
+        Assert.Equal(1_000_000, row.MaxTokensPerHour);
+        Assert.Equal("default", row.MaxTokensSource);
+        Assert.Equal("default", row.MaxTokensPerHourSource);
+
+        // Read, never written: the row still has no cap of its own.
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task ARunnersOwnCap_BeatsTheSiteDefault()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000, defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500k", MaxTokensPerHour: "2M"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal(500_000, instruction.MaxTokens);
+        Assert.Equal(2_000_000, instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Equal(500_000, row.MaxTokens);
+        Assert.Equal(2_000_000, row.MaxTokensPerHour);
+        Assert.Equal("runner", row.MaxTokensSource);
+        Assert.Equal("runner", row.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public async Task NeitherADefaultNorACap_IsNoCap()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Null(instruction.MaxTokens);
+        Assert.Null(instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Null(row.MaxTokens);
+        Assert.Null(row.MaxTokensPerHour);
+        Assert.Equal("none", row.MaxTokensSource);
+        Assert.Equal("none", row.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task OneFieldOwnAndTheOtherDefaulted_AnswersMixedSources()
+    {
+        var h = await NewAsync(defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500k"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal(500_000, instruction.MaxTokens);
+        Assert.Equal(1_000_000, instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Equal(500_000, row.MaxTokens);
+        Assert.Equal(1_000_000, row.MaxTokensPerHour);
+        Assert.Equal("runner", row.MaxTokensSource);
+        Assert.Equal("default", row.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Equal(500_000, stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task OnlyAPerHourDefault_LeavesTheOtherFieldUncapped()
+    {
+        var h = await NewAsync(defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Null(instruction.MaxTokens);
+        Assert.Equal(1_000_000, instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Null(row.MaxTokens);
+        Assert.Equal(1_000_000, row.MaxTokensPerHour);
+        Assert.Equal("none", row.MaxTokensSource);
+        Assert.Equal("default", row.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task ClearingTheDefault_TakesTheCapOffAtTheNextBeat_WithTheRowsUnwritten()
+    {
+        var site = new MutableSiteSettings { MaxTokens = 300_000, MaxTokensPerHour = 1_000_000 };
+        var h = await NewAsync(siteSettings: site);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var under = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal(300_000, under.MaxTokens);
+        Assert.Equal(1_000_000, under.MaxTokensPerHour);
+
+        site.MaxTokens = null;
+        site.MaxTokensPerHour = null;
+
+        var after = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Null(after.MaxTokens);
+        Assert.Null(after.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Null(row.MaxTokens);
+        Assert.Null(row.MaxTokensPerHour);
+        Assert.Equal("none", row.MaxTokensSource);
+        Assert.Equal("none", row.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task ClearingARunnersOwnCap_HandsItBackToTheDefault_ItDoesNotUncapIt()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000, defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500k", MaxTokensPerHour: "2M"));
+
+        var cleared = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "", MaxTokensPerHour: ""));
+
+        Assert.Equal(300_000, cleared.MaxTokens);
+        Assert.Equal(1_000_000, cleared.MaxTokensPerHour);
+        Assert.Equal("default", cleared.MaxTokensSource);
+        Assert.Equal("default", cleared.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task PatchRunner_AnswersTheDefaultOnARunnerWithNoCap()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Equal(300_000, patched.MaxTokens);
+        Assert.Equal("default", patched.MaxTokensSource);
+        Assert.Null(patched.MaxTokensPerHour);
+        Assert.Equal("none", patched.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public async Task PostRunnerOrder_AnswersTheDefaultOnItsRow()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000, defaultMaxTokensPerHour: 1_000_000);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var ordered = await h.OrderAsync(Runner, new RunnerOrderRequest("pass"));
+
+        Assert.Equal(300_000, ordered.MaxTokens);
+        Assert.Equal(1_000_000, ordered.MaxTokensPerHour);
+        Assert.Equal("default", ordered.MaxTokensSource);
+        Assert.Equal("default", ordered.MaxTokensPerHourSource);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task TheFirstEverBeat_AnswersTheDefault()
+    {
+        var h = await NewAsync(defaultMaxTokens: 300_000, defaultMaxTokensPerHour: 1_000_000);
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal(300_000, instruction.MaxTokens);
+        Assert.Equal(1_000_000, instruction.MaxTokensPerHour);
+
+        var stored = await h.RowAsync();
+        Assert.Null(stored.MaxTokens);
+        Assert.Null(stored.MaxTokensPerHour);
+    }
+
     [Fact]
     public async Task AnAbsentTokenFieldLeavesOneAloneAndAnEmptyOneTakesItOff()
     {
@@ -2480,7 +2682,8 @@ public class RunnersControllerTests
 
     private static async Task<Harness> NewAsync(
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
-        PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null)
+        PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null,
+        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null)
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -2520,7 +2723,8 @@ public class RunnersControllerTests
 
         return new Harness
         {
-            Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall })),
+            Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour)),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
@@ -2528,6 +2732,21 @@ public class RunnersControllerTests
             Actors = actors,
             PersonId = id,
         };
+    }
+
+    /// <summary>Site defaults a test can take away between two answers - what the settings page does.</summary>
+    private sealed class MutableSiteSettings : ISiteSettingsService
+    {
+        public long? MaxTokens { get; set; }
+
+        public long? MaxTokensPerHour { get; set; }
+
+        public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) =>
+            new StubSiteSettings(runnerDefaultMaxTokens: MaxTokens, runnerDefaultMaxTokensPerHour: MaxTokensPerHour).GetAsync(ct);
+
+        public void Invalidate()
+        {
+        }
     }
 
     /// <summary>Whoever is holding the phone: a person, or the key an agent carries.</summary>
