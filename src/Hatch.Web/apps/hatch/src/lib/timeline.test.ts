@@ -11,6 +11,7 @@ import {
   makeScale,
   resolveCreator,
   resolveProject,
+  resolveProjects,
   segmentStyle,
   segmentTitle,
   tickUnit,
@@ -19,6 +20,7 @@ import {
   toggled,
   unresolvedPhrase,
   withFilter,
+  withProjects,
   xOf,
 } from './timeline';
 import {
@@ -492,6 +494,66 @@ describe('resolveProject', () => {
 
   it('never reads an id as a key', () => {
     expect(resolveProject(params('project=1'), projects)).toBeNull();
+  });
+});
+
+describe('resolveProjects', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+    { id: 3, key: 'PYC' },
+  ] as Project[];
+
+  it('finds the projects named by repeated keys, in projects order', () => {
+    expect(resolveProjects(params('project=PYC&project=HA'), projects)).toEqual([projects[0], projects[2]]);
+  });
+
+  it('drops an unknown key silently, keeping a known one alongside it', () => {
+    expect(resolveProjects(params('project=HA&project=ZZ'), projects)).toEqual([projects[0]]);
+  });
+
+  it('is every project when every key given is unknown', () => {
+    expect(resolveProjects(params('project=ZZ&project=YY'), projects)).toEqual(projects);
+  });
+
+  it('is every project when there is no project param at all', () => {
+    expect(resolveProjects(params(''), projects)).toEqual(projects);
+  });
+
+  it('dedupes a repeated key', () => {
+    expect(resolveProjects(params('project=HA&project=HA'), projects)).toEqual([projects[0]]);
+  });
+});
+
+describe('withProjects', () => {
+  const allKeys = ['HA', 'AER', 'PYC'];
+
+  it('writes one project param per key, in allKeys order', () => {
+    expect(withProjects(params(''), ['PYC', 'HA'], allKeys).getAll('project')).toEqual(['HA', 'PYC']);
+  });
+
+  it('replaces whatever project params were already there', () => {
+    expect(withProjects(params('project=ZZ&project=HA'), ['AER'], allKeys).getAll('project')).toEqual(['AER']);
+  });
+
+  it('writes no project param at all when every key is chosen - the All round trip', () => {
+    const written = withProjects(params('project=HA'), allKeys, allKeys);
+
+    expect(written.has('project')).toBe(false);
+    expect(resolveProjects(written, allKeys.map((key, i) => ({ id: i, key }) as Project))).toEqual(
+      allKeys.map((key, i) => ({ id: i, key })),
+    );
+  });
+
+  it('keeps every other param', () => {
+    expect(withProjects(params('from=a&to=b'), ['HA'], allKeys).get('from')).toBe('a');
+  });
+
+  it('does not mutate its input', () => {
+    const input = params('project=HA');
+    withProjects(input, ['AER'], allKeys);
+
+    expect(input.toString()).toBe('project=HA');
   });
 });
 
