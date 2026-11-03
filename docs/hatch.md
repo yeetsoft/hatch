@@ -8207,8 +8207,9 @@ to the default rather than uncapping it; clearing the default writes no row and
 takes the cap off every runner that was inheriting it, at that runner's next
 beat (Settings is cached up to 30 seconds, so another replica can take that
 long to notice). **Only an admin sets the default** — with the wall off, anyone
-at the keyboard; never a key or a runner. The page does not draw the defaults
-either: HA-1675 owns that.
+at the keyboard; never a key or a runner. The Runners page marks an inherited
+cap `(default)` in both places it shows one, and Settings is where the two
+defaults are set and cleared.
 
 **A fresh start writes the row's bounds.** The first heartbeat of every *fresh*
 loop start — one typed by hand, or the supervisor's first start, but never a
