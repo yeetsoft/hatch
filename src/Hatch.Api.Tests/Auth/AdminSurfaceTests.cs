@@ -262,6 +262,10 @@ public class AdminSurfaceTests
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
 
+        // Closed top-level epics, bucketed over a range rather than split by
+        // day; Hatch-scoped and open to a person, like GetTimeline.
+        "ReportsController.GetChangelogReport",
+
         // When the work happened, read off the status history: the epics active
         // in a range and the stretches beneath them. Hatch-scoped and open to a
         // person like WorkLogController's reads - it says what the trail
