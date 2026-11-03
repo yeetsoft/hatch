@@ -27,19 +27,34 @@ has:
   never mean the same thing, and either, both or neither can be true of one
   row; a runner started outside a checkout holding Hatch's source never shows
   **Rebuild**.
-- **Doing** - `Gone`, `Out of usage until …`, `Paused`, `Stopping`, `Working
-  <KEY>` or `Idle`. Silence beats everything else: a runner that has stopped
+- **Doing** - `Gone`, `Out of usage until …`, `Over … tokens/hour until …`,
+  `Paused`, `Stopping`, `Working <KEY>` or `Idle`. Silence beats everything
+  else: a runner that has stopped
   answering reads `Gone` whatever it was last asked to do. Silence is ninety
   seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
   zero or less is not believed, and ninety stands. The key in `Working <KEY>`
-  is a link to the ticket.
+  is a link to the ticket. `Over 200k tokens/hour until 3:40am` sits below
+  `Gone` and `Out of usage` and above `Paused`. It means the loop is waiting
+  out its hourly token cap and resumes by itself when the time passes. A row
+  that holds no hourly cap reads `Over its hourly token cap until …`.
 - **Last said** - the last line it reported. A loop that stops at one of its
   own bounds ends on `Stopped: <why>`, for example `Stopped: --max-runs 3
   reached`.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
+<<<<<<< HEAD
   than showing four empty caps. The `under` epic, where set, is a link to its
   ticket too. `Refuses dangerous work` is one of the bounds shown, when set.
+=======
+  than showing empty caps. The two token caps read `2M tokens` and `200k
+  tokens/hour` where set. The `under` epic, where set, is a link to its
+  ticket too.
+- **Token budget** - `used / cap tokens` for the night and `used / cap per
+  hour` for the last hour, each with a bar. The bar is green under 80% of the
+  cap, amber from 80%, and red at the cap. A window with no cap reads `…
+  tokens, no cap`, with no bar. A row with neither cap set reads `No token
+  budget`.
+>>>>>>> refs/remotes/origin/main
 
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
@@ -63,8 +78,13 @@ A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, its build - a short sha and how long ago, or
 `dev build` for one that hasn't been stamped - what it drives, and the
+<<<<<<< HEAD
 repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
 not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert** - and an Order
+=======
+repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
+not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), with **Save bounds** and **Revert** - and an Order
+>>>>>>> refs/remotes/origin/main
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. **Refuse dangerous work** stops
 the board handing that runner an issue flagged dangerous (see
@@ -83,6 +103,11 @@ runners and heartbeat as one, but never set a bound or a control, since an
 agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
+
+The two token boxes take a token count, like `500k` or `2M`, and show it back
+as `500,000` when you leave the box. Empty clears the cap. A value that is not
+a token count blocks **Save bounds**. When the board refuses a value, the
+refusal appears under the field it names.
 
 **Tags** seed from the loop's first heartbeat only; after that the row is
 the board's, and editing them here - or a `PATCH` on the row - is what

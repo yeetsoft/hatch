@@ -3351,7 +3351,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
-| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it |
+| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key or a keyless runner, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
 | `/settings/credentials/{agent}` | GET | The same kind of route, generalised past Claude: `{agent}` is `claude`, `codex` or `grok`, else `404`. Wrapped with the same `SecretProtector`, taken by a key or a keyless runner the same way, and refused outright wherever the wall is up — all exactly as `/settings/claude-token`'s row above. `204` when that agent's credential is unset |
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
@@ -8192,8 +8192,23 @@ board cleared it. `until` on a row is always an instant, never a bare date:
 first stops the loop and the second waits and does not stop. Both are held,
 read and set as a token count (`500k`, `2M`) like the other bounds; the server
 also keeps what the runner reports beside them, `tokensUsed`, `tokensLastHour`
-and `throttledUntil`. The page does not draw any of it until HA-1673 does, so
-the page does not show a waiting runner yet.
+and `throttledUntil`. The page's Token budget column draws `tokensUsed` and
+`tokensLastHour` against the two caps, and a row over its hourly cap reads
+*Over 200k tokens/hour until 3:40am*.
+
+**A cap comes from the row, else the site default, else nowhere.** The row
+holds it when a fresh start gave the flag or a person's `PATCH` set it; failing
+that, the site default on Settings (`defaultMaxTokens`,
+`defaultMaxTokensPerHour`) stands in; failing that, there is no bound. The
+heartbeat hands the *effective* cap down, so a runner with none of its own runs
+under the default, and each row says which it is with a `maxTokensSource` of
+`runner`, `default` or `none`. Clearing a runner's own cap in `PATCH` returns it
+to the default rather than uncapping it; clearing the default writes no row and
+takes the cap off every runner that was inheriting it, at that runner's next
+beat (Settings is cached up to 30 seconds, so another replica can take that
+long to notice). **Only an admin sets the default** — with the wall off, anyone
+at the keyboard; never a key or a runner. The page does not draw the defaults
+either: HA-1675 owns that.
 
 **A fresh start writes the row's bounds.** The first heartbeat of every *fresh*
 loop start — one typed by hand, or the supervisor's first start, but never a
@@ -8256,7 +8271,8 @@ the instant it expects to be under the cap; a beat from a runner that is under
 it, or has no cap, carries null. The runner reads it fresh at the top of every
 pass, so the beat is never a pass behind. The server keeps it on the row, written
 by every `loop` beat (so a null clears it) and left alone by a `once` beat; the
-page draws it with HA-1673.
+page draws it as the throttled status, ranked below *Gone* and *Out of usage*
+and above *Paused*, in the viewer's own time zone like *Out of usage until*.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
