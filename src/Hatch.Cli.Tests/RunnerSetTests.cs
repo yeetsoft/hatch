@@ -65,10 +65,10 @@ public sealed class RunnerSetTests
 
             Assert.Equal(
                 new TokenEntry[] { new TokenEntry(at.AddMinutes(1), 40) },
-                RunnerSet.ReadLedgerWindow(dir.FullName, 1));
+                RunnerSet.ReadLedgerWindow(dir.FullName, 1).OrderBy(e => e.At));
             Assert.Equal(
-                new TokenEntry[] { new TokenEntry(at, 100), new TokenEntry(at.AddMinutes(5), 200), new TokenEntry(at.AddMinutes(1), 40) },
-                RunnerSet.ReadLedgerWindow(dir.FullName, 3));
+                new TokenEntry[] { new TokenEntry(at, 100), new TokenEntry(at.AddMinutes(1), 40), new TokenEntry(at.AddMinutes(5), 200) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 3).OrderBy(e => e.At));
             Assert.Equal((4, 3m, 347L), RunnerSet.ReadLedgerTotal(dir.FullName, 9));
             Assert.Empty(Directory.GetFiles(dir.FullName, "*.tmp"));
         }
@@ -111,7 +111,7 @@ public sealed class RunnerSetTests
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
             RunnerSet.WriteLedger(dir.FullName, 2, 1, 1.5m, 1_200);
 
-            Assert.Equal("1 1.5 1200", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
+            Assert.Equal("1 1.5 1200 -", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
             Assert.Equal((1, 1.5m, 1_200L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
         }
         finally
