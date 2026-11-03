@@ -928,9 +928,11 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
 All five a key's. `timeline` takes `from`, `to` (default the ninety days
-ending now), `projectId` and `createdBy`; `cumulative-flow` takes only
-`from`/`to`, the same ninety-day default; `flow` takes `from`/`to` the same
-way, plus `projectId` and `type`, and 400s an unknown `type` or `projectId`.
+ending now), `projectId` and `createdBy`; `cumulative-flow` takes `from`/`to`,
+the same ninety-day default, plus a repeatable `project`, and 400s an unknown
+key the same way `flow` 400s an unknown `projectId`; `flow` takes `from`/`to`
+the same way, plus `projectId` and `type`, and 400s an unknown `type` or
+`projectId`.
 None of the three queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
