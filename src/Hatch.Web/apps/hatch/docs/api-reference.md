@@ -666,8 +666,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
 | GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
-| GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name |
-| PUT | `/settings` | **person** | Edits them |
+| GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, and the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`) |
+| PUT | `/settings` | **person** | Edits them - the two default token caps only for an admin, or for anyone at the keyboard with the wall off |
 | GET | `/settings/credentials/{agent}` | key | One agent's credential, unprotected, for the container runner to start it with |
 | GET | `/settings/claude-token` | key | The same, kept for an older container; `credentials/claude` is its successor |
 | GET | `/backup` | key | The backup folder's truth and the last attempt's: configured, path, keep-days, copies, and the last outcome |
@@ -760,10 +760,23 @@ between increments.
 Each row also carries the token side of the bounds: `maxTokens` and
 `maxTokensPerHour`, each with a `...Source` word beside it (`maxTokensSource`,
 `maxTokensPerHourSource`) saying where the number came from - `runner` when the
-row holds it, `none` when there is no such bound; `default` is part of the
-vocabulary, and nothing produces it yet - then `tokensUsed` and `tokensLastHour`,
-the loop's own running counts, and `throttledUntil`, the instant a waiting loop
-expects to be under its hourly cap, or null.
+row holds it, `default` when it comes from the site default on `/settings`,
+`none` when there is no such bound anywhere - then `tokensUsed` and
+`tokensLastHour`, the loop's own running counts, and `throttledUntil`, the
+instant a waiting loop expects to be under its hourly cap, or null.
+`maxTokens` and `maxTokensPerHour` are the effective cap in either of the first
+two cases, so a row never makes the reader add the two together.
+
+A cap comes from the row, else from the site default, else from nowhere. The
+heartbeat's `RunnerInstructionDto` carries the effective cap, so a runner with
+none of its own runs under the default, and a fresh start that gave no flag
+clears the row's own cap and so falls back to the default rather than running
+uncapped. The same holds for a person's `PATCH`: clearing a runner's own cap
+with `""` returns it to the default, it does not uncap it. Clearing the default
+on `/settings` writes no row - it takes the cap off every runner that was
+inheriting it, read at each runner's next beat. `/settings` is cached for up to
+30 seconds, a backstop for another replica, so a changed default can take that
+long to reach a beat answered there.
 
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
@@ -786,6 +799,16 @@ nowhere else to read it from, the container entrypoint's own
 and [cli-reference](cli-reference). Both refuse outright wherever the wall
 is up - a credential that crosses a network Hatch does not own is a
 different question from one handed to a container on the same laptop.
+
+The two defaults, `defaultMaxTokens` and `defaultMaxTokensPerHour`, are the one
+write on `/settings` that is **admin-only** inside a person-only route: with the
+wall up a person who is not an admin is a 403, with the wall off anyone at the
+keyboard may set them, and a key or a keyless runner never may. A `PUT` that
+carries only the name or the credentials is unaffected, so a person who is not
+an admin still writes those. On the wire they are strings in the runner
+`PATCH`'s notation - a whole number, or `500k`, `2M` - where absent leaves the
+default alone, `""` clears it, and zero or anything unreadable is a 400. `GET`
+answers each as a number, or null while unset. The page does not draw them yet.
 
 `/backup` answers a `BackupStatusDto`: `configured` and `path` (the
 operator's own setting, or `false`/`null` when there is none), `keepDays`,
@@ -825,7 +848,13 @@ naming an issue that does not exist; 409s a `once` runner, a `stopping`
 runner, and a runner that already holds an order, naming the kind and key
 held and saying to withdraw it first. `credentials/{agent}` 404s an agent it
 does not know and 403s wherever the wall is up; a credential that is unset or
-blank answers `204` rather than either refusal.
+blank answers `204` rather than either refusal. `PUT /settings` 400s a default
+token cap that is not a token count, naming the field - `the default max tokens
+takes a token count, like 500k or 2M - not "x"`, or `the default max tokens per
+hour ...` for the other - and writes nothing, not even a name sent in the same
+request. When either default is present it also 403s a caller who is not an
+admin with the wall up (`the default token budget is an admin's to set`), a
+key, and a keyless runner.
 
 ### What a night left behind
 
