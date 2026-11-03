@@ -9,12 +9,14 @@ import {
   peakLabel,
   pinAfter,
   pointIndexAt,
+  projectsSummary,
   slots,
   stackAt,
   tallestTotal,
+  toggleProject,
 } from './cumulativeFlow';
 import { statusVars } from './color';
-import type { CumulativeFlow, CumulativeFlowPoint, Status } from '../types';
+import type { CumulativeFlow, CumulativeFlowPoint, Project, Status } from '../types';
 
 const scale = { from: 0, to: 100 };
 
@@ -273,5 +275,53 @@ describe('isEmpty', () => {
 
   it('is false when any count anywhere is non-zero', () => {
     expect(isEmpty(answer())).toBe(false);
+  });
+});
+
+const projects = [
+  { id: 1, key: 'HA', name: 'Hatch' },
+  { id: 2, key: 'AER', name: 'Aerie' },
+  { id: 3, key: 'PYC', name: 'Pycnic' },
+] as Project[];
+const allKeys = projects.map((p) => p.key);
+
+describe('toggleProject', () => {
+  it('adds a key that is absent, ordered by allKeys', () => {
+    expect(toggleProject(['HA'], 'PYC', allKeys)).toEqual(['HA', 'PYC']);
+  });
+
+  it('removes a key that is present', () => {
+    expect(toggleProject(['HA', 'AER'], 'HA', allKeys)).toEqual(['AER']);
+  });
+
+  it('leaves the last one checked unchanged, never emptying the chosen set', () => {
+    expect(toggleProject(['HA'], 'HA', allKeys)).toEqual(['HA']);
+  });
+
+  it('adds one back after it was toggled off', () => {
+    const one = toggleProject(allKeys, 'AER', allKeys);
+    expect(one).toEqual(['HA', 'PYC']);
+
+    expect(toggleProject(one, 'AER', allKeys)).toEqual(allKeys);
+  });
+});
+
+describe('projectsSummary', () => {
+  it('is All when every project is chosen', () => {
+    expect(projectsSummary(allKeys, projects)).toBe('All');
+  });
+
+  it('names the one missing when all but one is chosen', () => {
+    expect(projectsSummary(['HA', 'PYC'], projects)).toBe('All but AER');
+  });
+
+  it('joins the chosen keys when several, but not all but one, are chosen', () => {
+    expect(projectsSummary(['PYC', 'HA'], [...projects, { id: 4, key: 'SL', name: 'Sail' } as Project])).toBe(
+      'HA, PYC',
+    );
+  });
+
+  it('names the one key when only one is chosen', () => {
+    expect(projectsSummary(['AER'], projects)).toBe('AER');
   });
 });

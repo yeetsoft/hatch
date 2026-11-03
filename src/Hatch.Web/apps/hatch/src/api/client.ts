@@ -705,16 +705,18 @@ export interface TimelineQuery {
 }
 
 /** How many issues sat in each board column over time, read off the same
-    status history as `getTimeline`. The route takes no `projectId` or
-    `createdBy`: a column's count is a fact about the board, not about any one
-    project or creator.
+    status history as `getTimeline`. The route takes no `createdBy`: a column's
+    count is a fact about the board, not about any one creator. `project` scopes
+    it to a set of projects, repeated once per key.
 
     Anything null or undefined is left out rather than sent empty, as
     `getTimeline` does. */
 export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, v);
+    else params.set(name, String(value));
   }
   const qs = params.toString();
   return fetchJson<CumulativeFlow>('/api/hatch/reports/cumulative-flow' + (qs ? '?' + qs : ''));
@@ -725,6 +727,9 @@ export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
 export interface CumulativeFlowQuery {
   from?: string | null;
   to?: string | null;
+  /** Narrows the read to these projects' issues; every project when null,
+      undefined or empty. */
+  project?: string[] | null;
 }
 
 export interface WorkLogSessionQuery {

@@ -181,7 +181,11 @@ goes into one of these rows in the first place.
 History, and opens on a card per report. **Timeline** answers when each top-level epic was in flight,
 and how long its work sat in each column, drawn in the board's own column
 colours; **Cumulative flow** shows how much work sat in each column over time,
-and where it is piling up. A ticket counts as in flight while it stands in any
+and where it is piling up. Cumulative flow carries its own **Projects**
+control (drawn only where there is more than one project) - a checkbox per
+project rather than the Timeline's one at a time - so the scope can be
+narrowed to some of the projects, not just none or all. A ticket counts as in
+flight while it stands in any
 column after the first that is neither done nor parked - the first column is
 where work waits, a done column is where it ended, and a parked one is a
 siding, so a stretch in any of the three is a gap in the drawing.

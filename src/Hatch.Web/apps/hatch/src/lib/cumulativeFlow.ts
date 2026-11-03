@@ -14,7 +14,7 @@
 
 import { CHART_UNITS, type Scale, xOf } from './timeline';
 import { statusVars } from './color';
-import type { Status } from '../types';
+import type { Project, Status } from '../types';
 import type { CumulativeFlow, CumulativeFlowPoint } from '../types';
 
 /** One band's vertical extent at one instant, bottom-up: `lower` is its
@@ -195,4 +195,31 @@ export function pinAfter(pin: number | null, count: number, action: PinAction): 
     case 'step':
       return pin === null ? count - 1 : Math.min(count - 1, Math.max(0, pin + action.delta));
   }
+}
+
+/** Adds or removes one project's key, which is what a list of checkboxes
+    does to the chosen set - `toggleType` (lib/filter.ts), over project keys.
+    Unticking the only one left returns `chosen` unchanged, so the control can
+    never empty the chart itself. */
+export function toggleProject(chosen: string[], key: string, allKeys: string[]): string[] {
+  const next = chosen.includes(key) ? chosen.filter((k) => k !== key) : [...chosen, key];
+  if (next.length === 0) return chosen;
+
+  return allKeys.filter((k) => next.includes(k));
+}
+
+/** What the Projects control says: `All`, `All but AE` for all but one, else
+    the chosen keys joined with `, ` - `typesSummary`'s own shape, shorter for
+    having no plural to look up. */
+export function projectsSummary(chosen: string[], projects: Project[]): string {
+  if (chosen.length >= projects.length) return 'All';
+  if (chosen.length === projects.length - 1) {
+    const missing = projects.find((project) => !chosen.includes(project.key));
+    if (missing) return `All but ${missing.key}`;
+  }
+
+  return projects
+    .filter((project) => chosen.includes(project.key))
+    .map((project) => project.key)
+    .join(', ');
 }
