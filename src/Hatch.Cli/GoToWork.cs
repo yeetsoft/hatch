@@ -198,7 +198,7 @@ public sealed class Tally
     public decimal? MaxSpend { get; set; }
     public long? MaxTokens { get; set; }
 
-    /// <summary>Flag-only, never folded from the board: the most tokens any sixty minutes may hold.</summary>
+    /// <summary>The most tokens any sixty minutes may hold; a flag, and a control on the page like the others.</summary>
     public long? MaxTokensPerHour { get; set; }
     public string? Until { get; set; }
     public DateTimeOffset? UntilAt { get; set; }
@@ -1712,7 +1712,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// all.
     /// </summary>
     /// <remarks>
-    /// The four bounds are sent on every beat and read on none. The server
+    /// The six bounds are sent on every beat and read on none. The server
     /// writes them only on a fresh loop's first beat, so what somebody set at
     /// midnight survives the loop's own half-hourly restart: a restart carries
     /// night state in and is never fresh. <see cref="Tally.Fresh"/> stays true
@@ -1742,6 +1742,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Under: under,
                 MaxRuns: tally.MaxRuns,
                 MaxSpend: tally.MaxSpend,
+                MaxTokens: tally.MaxTokens,
+                MaxTokensPerHour: tally.MaxTokensPerHour,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
@@ -1755,6 +1757,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // tally's zeros would blank the loop's totals, so it names host only.
                 Runs: once ? null : tally.Runs,
                 Spent: once ? null : tally.Spent,
+                // The tokens follow the same rule, and the hour is the very
+                // number ThrottledUntil judges, so the page's figure explains the wait.
+                TokensUsed: once ? null : tally.Tokens,
+                TokensLastHour: once ? null : tally.WindowTotal(runtime.Clock.GetUtcNow()),
                 Host: Checkout.Host(),
                 Agent: runtime.Adapter.Id,
                 Revision: runtime.CliRevision.Revision,
@@ -1810,7 +1816,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// <remarks>
     /// Wholesale, including the absences: the row holds this process's flags
     /// from its fresh beat, or a person's edit, so a field that is empty on it
-    /// is a field somebody cleared. Reading an absence as "leave the flag alone" would
+    /// is a field somebody cleared - the token bounds included, so a Hatch too
+    /// old to answer them clears a loop's <c>--max-tokens</c>, as it does the
+    /// others. Reading an absence as "leave the flag alone" would
     /// make a cap impossible to take off from the page that set it. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
@@ -1830,6 +1838,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (scope != under) moved.Add($"--under {scope ?? "off"}");
         if (told.MaxRuns != tally.MaxRuns) moved.Add($"--max-runs {told.MaxRuns?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
         if (told.MaxSpend != tally.MaxSpend) moved.Add($"--max-spend {told.MaxSpend?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
+        if (told.MaxTokens != tally.MaxTokens) moved.Add($"--max-tokens {(told.MaxTokens is { } t ? Format.Compact(t) : "off")}");
+        if (told.MaxTokensPerHour != tally.MaxTokensPerHour) moved.Add($"--max-tokens-per-hour {(told.MaxTokensPerHour is { } h ? Format.Compact(h) : "off")}");
         if (told.UntilAt != tally.UntilAt) moved.Add($"--until {told.UntilAt?.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) ?? "off"}");
         if (told.Tags is { } tags && !tags.SequenceEqual(runtime.Board.Tags))
         {
@@ -1853,6 +1863,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         tally.MaxRuns = told.MaxRuns;
         tally.MaxSpend = told.MaxSpend;
+        tally.MaxTokens = told.MaxTokens;
+        tally.MaxTokensPerHour = told.MaxTokensPerHour;
         tally.UntilAt = told.UntilAt;
 
         // The hour as somebody would have typed it, because it is printed in
