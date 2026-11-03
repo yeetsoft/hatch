@@ -92,6 +92,8 @@ public sealed class RunnersCommand(Cli cli)
         if (row.Host is { Length: > 0 } host) parts.Add($"on {host}");
         if (row.Runs is { } runs) parts.Add($"{runs} runs");
         if (row.Spent is { } spent) parts.Add(string.Create(CultureInfo.InvariantCulture, $"${spent:F2}"));
+        if (row.TokensUsed is { } used)
+            parts.Add($"{Format.Compact(used)} tokens" + (row.TokensLastHour is { } lastHour ? $" ({Format.Compact(lastHour)} last hour)" : ""));
         return parts.Count > 0 ? "  " + string.Join(" ", parts) : "";
     }
 

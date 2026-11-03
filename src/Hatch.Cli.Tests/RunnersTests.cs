@@ -37,8 +37,8 @@ public sealed class RunnersTests
     /// <summary>What the board answers a heartbeat with, when it has anything to say.</summary>
     private static void Instructs(
         Harness h, string state, string? under = null, int? maxRuns = null,
-        decimal? maxSpend = null, DateTimeOffset? untilAt = null) =>
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, under, maxRuns, maxSpend, untilAt));
+        decimal? maxSpend = null, DateTimeOffset? untilAt = null, long? maxTokens = null, long? maxTokensPerHour = null) =>
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, under, maxRuns, maxSpend, untilAt, MaxTokens: maxTokens, MaxTokensPerHour: maxTokensPerHour));
 
     private static IReadOnlyList<Call> Beats(Harness h) => h.Wire.To("POST", Beat);
 
@@ -225,6 +225,43 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_carries_the_token_bounds_it_started_with()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(
+            ["--once", "--max-tokens", "2M", "--max-tokens-per-hour", "200k"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(2_000_000, beat.MaxTokens);
+        Assert.Equal(200_000, beat.MaxTokensPerHour);
+
+        // A once beat shares its name with the loop's row, and a fresh tally
+        // would blank the totals the loop has reported.
+        Assert.Null(beat.TokensUsed);
+        Assert.Null(beat.TokensLastHour);
+    }
+
+    [Fact]
+    public async Task A_loop_beat_carries_the_tokens_it_has_used_and_the_hour_it_is_judged_on()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxRuns: 1, maxTokens: 5_000_000);
+        Assert.True(new NightState { Tokens = 1_200_000, Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 150_000)] }
+            .Write(h.Supervised.NightStatePath));
+
+        await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1", "--max-tokens", "5M"], default);
+
+        var first = Beats(h)[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal("loop", first.Kind);
+        Assert.Equal(1_200_000, first.TokensUsed);
+        Assert.Equal(150_000, first.TokensLastHour);
+    }
+
+    [Fact]
     public async Task Every_pass_says_it_is_here_and_says_what_it_last_did()
     {
         using var h = new Harness();
@@ -401,7 +438,7 @@ public sealed class RunnersTests
     {
         using var h = new Harness();
         OneTicket(h);
-        Instructs(h, "running");
+        Instructs(h, "running", maxTokensPerHour: 200_000);
 
         var at = DateTimeOffset.UtcNow.AddMinutes(-1);
         Assert.True(new NightState { Window = [new TokenEntry(at, 200_000)] }.Write(h.Supervised.NightStatePath));
