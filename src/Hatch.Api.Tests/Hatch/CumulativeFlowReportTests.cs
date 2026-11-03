@@ -49,11 +49,11 @@ public class CumulativeFlowReportTests
     private static CumulativeFlowReport.Result Fold(
         TimelineReport.Row[] rows, TimelineReport.Change[]? changes = null,
         DateTimeOffset? from = null, DateTimeOffset? to = null, DateTimeOffset? now = null,
-        List<EfHatchStatus>? board = null)
+        List<EfHatchStatus>? board = null, IReadOnlySet<string>? projectKeys = null)
     {
         var resolvedTo = to ?? Day(5);
         return CumulativeFlowReport.Fold(
-            rows, changes ?? [], board ?? Board(), from ?? Day(-5), resolvedTo, now ?? resolvedTo);
+            rows, changes ?? [], board ?? Board(), from ?? Day(-5), resolvedTo, now ?? resolvedTo, projectKeys);
     }
 
     [Fact]
@@ -252,6 +252,22 @@ public class CumulativeFlowReportTests
     }
 
     [Fact]
+    public void ScopedToAProjectKey_CountsOnlyThatProjectsIssues()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-10), key: "HA"),
+            Issue(2, "story", 3, Day(-10), key: "AER", project: 2),
+        };
+
+        var unscoped = Fold(rows, from: Day(-9), to: Day(0), now: Day(0));
+        Assert.Equal(2, unscoped.Points.Last().Counts[2]);
+
+        var scoped = Fold(rows, from: Day(-9), to: Day(0), now: Day(0), projectKeys: new HashSet<string> { "HA" });
+        Assert.Equal(1, scoped.Points.Last().Counts[2]);
+    }
+
+    [Fact]
     public void EveryType_Counts_EpicStoryAndTask()
     {
         var rows = new[]
@@ -431,17 +447,20 @@ public class CumulativeFlowControllerTests
         public required HatchContext Db { get; init; }
         public required ReportsController Reports { get; init; }
         public required int ProjectId { get; init; }
+        public required int OtherProjectId { get; init; }
     }
 
-    /// <summary>One project, and a board of five columns: first, two active, terminal, deferred.</summary>
+    /// <summary>Two projects, and a board of five columns: first, two active, terminal, deferred.</summary>
     private static async Task<Harness> NewAsync()
     {
         var db = new HatchContext(
             new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
         var project = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
+        var other = new EfHatchProject { Key = "OTHER", Name = "Other", CreatedAt = Now };
         db.AddRange(
             project,
+            other,
             new EfHatchStatus { Name = "backlog", SortOrder = 10 },
             new EfHatchStatus { Name = "todo", SortOrder = 20 },
             new EfHatchStatus { Name = "doing", SortOrder = 30 },
@@ -455,6 +474,7 @@ public class CumulativeFlowControllerTests
             Reports = new ReportsController(
                 db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
             ProjectId = project.Id,
+            OtherProjectId = other.Id,
         };
     }
 
@@ -464,12 +484,14 @@ public class CumulativeFlowControllerTests
     private static string Refusal<T>(ActionResult<T> result) =>
         Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
 
-    private static async Task<EfHatchIssue> AddIssueAsync(Harness h, int statusId, DateTimeOffset createdAt)
+    private static async Task<EfHatchIssue> AddIssueAsync(
+        Harness h, int statusId, DateTimeOffset createdAt, int? projectId = null)
     {
+        var project = projectId ?? h.ProjectId;
         var issue = new EfHatchIssue
         {
-            ProjectId = h.ProjectId,
-            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == h.ProjectId) + 1,
+            ProjectId = project,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == project) + 1,
             Type = "epic", Title = "epic", Description = "", StatusId = statusId, Rank = 1024,
             CreatedBy = "ann", CreatedAt = createdAt, UpdatedAt = createdAt,
         };
@@ -493,7 +515,7 @@ public class CumulativeFlowControllerTests
     {
         var h = await NewAsync();
 
-        var flow = Value(await h.Reports.GetCumulativeFlow(null, null, default));
+        var flow = Value(await h.Reports.GetCumulativeFlow(null, null, null, default));
 
         Assert.Equal(Now, flow.To);
         Assert.Equal(Now - Ninety, flow.From);
@@ -506,7 +528,7 @@ public class CumulativeFlowControllerTests
         var h = await NewAsync();
         var from = Now.AddDays(-5);
 
-        var flow = Value(await h.Reports.GetCumulativeFlow(from.ToString("O"), null, default));
+        var flow = Value(await h.Reports.GetCumulativeFlow(from.ToString("O"), null, null, default));
 
         Assert.Equal(from, flow.From);
         Assert.Equal(Now, flow.To);
@@ -518,7 +540,7 @@ public class CumulativeFlowControllerTests
         var h = await NewAsync();
         var to = Now.AddDays(-10);
 
-        var flow = Value(await h.Reports.GetCumulativeFlow(null, to.ToString("O"), default));
+        var flow = Value(await h.Reports.GetCumulativeFlow(null, to.ToString("O"), null, default));
 
         Assert.Equal(to, flow.To);
         Assert.Equal(to - Ninety, flow.From);
@@ -529,7 +551,7 @@ public class CumulativeFlowControllerTests
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetCumulativeFlow(Now.ToString("O"), Now.AddDays(-1).ToString("O"), default);
+        var result = await h.Reports.GetCumulativeFlow(Now.ToString("O"), Now.AddDays(-1).ToString("O"), null, default);
 
         Assert.Equal("a range ends before it begins", Refusal(result));
     }
@@ -541,9 +563,35 @@ public class CumulativeFlowControllerTests
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetCumulativeFlow(from, to, default);
+        var result = await h.Reports.GetCumulativeFlow(from, to, null, default);
 
         Assert.Equal(RangeBounds.NotAnInstant(from ?? to), Refusal(result));
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectKey_IsRefusedByName()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetCumulativeFlow(null, null, new List<string> { "NOPE" }, default);
+
+        Assert.Equal("there is no project NOPE", Refusal(result));
+    }
+
+    [Fact]
+    public async Task ScopedToAProject_CountsOnlyThatProjectsIssues()
+    {
+        var h = await NewAsync();
+        await AddIssueAsync(h, statusId: 1, createdAt: Now.AddDays(-20));
+        await AddIssueAsync(h, statusId: 1, createdAt: Now.AddDays(-20), projectId: h.OtherProjectId);
+
+        var scoped = Value(await h.Reports.GetCumulativeFlow(
+            Now.AddDays(-15).ToString("O"), Now.ToString("O"), new List<string> { "AER" }, default));
+        Assert.Equal(1, scoped.Points.Last().Counts[0]);
+
+        var unscoped = Value(await h.Reports.GetCumulativeFlow(
+            Now.AddDays(-15).ToString("O"), Now.ToString("O"), null, default));
+        Assert.Equal(2, unscoped.Points.Last().Counts[0]);
     }
 
     [Fact]
@@ -553,7 +601,7 @@ public class CumulativeFlowControllerTests
         var issue = await AddIssueAsync(h, statusId: 1, createdAt: Now.AddDays(-20));
         await MoveAsync(h, issue.Id, "{\"from\":\"backlog\",\"to\":\"doing\",\"fromId\":1,\"toId\":3}", 10);
 
-        var flow = Value(await h.Reports.GetCumulativeFlow(Now.AddDays(-15).ToString("O"), Now.ToString("O"), default));
+        var flow = Value(await h.Reports.GetCumulativeFlow(Now.AddDays(-15).ToString("O"), Now.ToString("O"), null, default));
 
         Assert.Equal([1, 2, 3, 4], flow.Columns);
         Assert.Equal(0, flow.Unresolved);

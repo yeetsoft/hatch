@@ -164,18 +164,29 @@ public class ReportsController(
     /// </summary>
     /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="project">Narrows every count to these projects' issues, repeatable; every project when absent or empty.</param>
     [HttpGet("cumulative-flow")]
     public async Task<ActionResult<CumulativeFlowDto>> GetCumulativeFlow(
-        [FromQuery] string? from, [FromQuery] string? to, CancellationToken ct)
+        [FromQuery] string? from, [FromQuery] string? to,
+        [FromQuery] List<string>? project, CancellationToken ct)
     {
         var now = time.GetUtcNow();
 
         if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
             return BadRequest(refusal);
 
+        var keys = WorkController.ProjectKeys(project);
+        if (keys.Count > 0)
+        {
+            var known = await db.Projects.Select(p => p.Key).ToListAsync(ct);
+            var unknown = keys.Where(k => !known.Contains(k)).ToList();
+            if (unknown.Count > 0) return BadRequest($"there is no project {string.Join(", ", unknown)}");
+        }
+
         var (statuses, rows, changes) = await LoadHistoryAsync(ct);
 
-        var result = CumulativeFlowReport.Fold(rows, changes, statuses, start, end, now);
+        var result = CumulativeFlowReport.Fold(
+            rows, changes, statuses, start, end, now, keys.Count > 0 ? keys.ToHashSet() : null);
 
         return new CumulativeFlowDto(
             result.From,

@@ -3359,7 +3359,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
@@ -4216,15 +4216,18 @@ which is the [API surface](#api-surface)'s row for it.
 ### The cumulative flow
 
 ```
-GET /api/hatch/reports/cumulative-flow?from=&to=
+GET /api/hatch/reports/cumulative-flow?from=&to=&project=
 ```
 
 The same question the timeline answers about one issue at a time, asked about
 the whole board instead: **how many issues sat in each column, at each
 instant**. `from` and `to` are the timeline's own bounds — instants, the 90
 days ending now by default, the same `400`s for an unparseable or inverted
-range. There is no `projectId` or `createdBy`: a column's count is a fact
-about the board, not about any one project or creator.
+range. `project` narrows every count to one or more projects' issues —
+repeatable, so two keys answer over both; absent or empty counts every
+project, as it always has. A key no project has is a `400` naming it. There
+is still no `createdBy`: a column's count is not a fact about any one
+creator.
 
 It answers `{ from, to, step, columns, points, unresolved }`. `columns` is the
 board's own columns in board order — every status that is not deferred, so a
