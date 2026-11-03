@@ -32,7 +32,8 @@ public static class UsageWindowExtensions
 
 /// <summary>Whose runner this is, and how its night is going.</summary>
 public sealed record RunnerSnapshot(
-    string RunnerName, string? ForName, int NightRuns, TimeSpan NightElapsed, decimal NightSpent, string? Bound, int NightUnpriced = 0)
+    string RunnerName, string? ForName, int NightRuns, TimeSpan NightElapsed, decimal NightSpent, string? Bound, int NightUnpriced = 0,
+    string? Waiting = null)
 {
     public static readonly RunnerSnapshot Empty = new("", null, 0, TimeSpan.Zero, 0m, null);
 }
@@ -228,6 +229,7 @@ public static class Readout
         var who = runner.RunnerName.Length == 0 ? "" : runner.ForName is { Length: > 0 } f ? $"{runner.RunnerName} for {f}" : runner.RunnerName;
         var night = $"{runner.NightRuns} increment(s) in {Format.Duration((long)runner.NightElapsed.TotalSeconds)}, {Format.Spent(runner.NightSpent)} spent{(runner.NightUnpriced > 0 ? $", {runner.NightUnpriced} unpriced" : "")}";
         var bound = runner.Bound is { Length: > 0 } b ? $", stops at {b}" : "";
+        if (runner.Waiting is { Length: > 0 } waiting) bound += $", waiting: {waiting}";
         return who.Length == 0 ? $"{night}{bound}" : $"{who} — {night}{bound}";
     }
 

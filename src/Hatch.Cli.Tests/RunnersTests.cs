@@ -397,6 +397,44 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_loop_over_its_hourly_cap_beats_the_instant_it_expects_to_be_under_it_and_null_otherwise()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        Assert.True(new NightState { Window = [new TokenEntry(at, 200_000)] }.Write(h.Supervised.NightStatePath));
+
+        using var interrupting = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "1", "--max-tokens-per-hour", "200k", "--restart-after", "0"], interrupting.Token);
+
+        await Harness.Eventually(() => Beats(h).Count >= 2, "a throttled runner to heartbeat more than once");
+        await interrupting.CancelAsync();
+        await running;
+
+        Assert.All(
+            Beats(h).Select(b => b.Read<RunnerHeartbeatRequest>()),
+            b => Assert.Equal(at + TimeSpan.FromHours(1), b.ThrottledUntil));
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_hourly_cap_beats_no_throttle()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxRuns: 1);
+
+        Assert.True(new NightState { Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)] }
+            .Write(h.Supervised.NightStatePath));
+
+        await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default);
+
+        Assert.All(Beats(h).Select(b => b.Read<RunnerHeartbeatRequest>()), b => Assert.Null(b.ThrottledUntil));
+    }
+
+    [Fact]
     public async Task An_exhausted_loop_takes_a_ticket_again_once_the_clock_passes_the_reset()
     {
         using var h = new Harness();

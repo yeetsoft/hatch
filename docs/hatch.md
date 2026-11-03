@@ -8229,6 +8229,14 @@ beats every other fact about a row. Nothing sweeps this either — a reset that
 has passed is arithmetic against `ExhaustedUntil` at the moment somebody asks,
 the same lazy expiry the horizons above use.
 
+**`throttledUntil` is a fact a runner reports about its own `--max-tokens-per-hour`,
+never a person's to set.** A loop whose last sixty minutes of reported tokens are
+at or over that cap waits rather than stops, and every beat while it does carries
+the instant it expects to be under the cap; a beat from a runner that is under
+it, or has no cap, carries null. The runner reads it fresh at the top of every
+pass, so the beat is never a pass behind. The server does not yet keep it: the
+column is HA-1672, and until then the field is read by nobody.
+
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
 [when an increment does nothing](#when-an-increment-does-nothing) for what

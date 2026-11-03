@@ -2131,6 +2131,74 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
     }
 
+    // ---- HA-1685: over --max-tokens-per-hour the loop waits, it does not stop ----
+
+    [Fact]
+    public async Task A_loop_restarted_over_its_hourly_cap_still_waits_on_the_window_it_carried()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        Carrying(h, new NightState { Window = [new TokenEntry(at, 200_000)] });
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "1", "--max-tokens-per-hour", "200k", "--restart-after", "0"], cts.Token);
+
+        await Harness.Eventually(
+            () => Beats(h).Count >= 2 && Beats(h)[^1].Line?.StartsWith("over 200k tokens/hour until", StringComparison.Ordinal) == true,
+            "a beat saying why nothing is taken");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(Claims(h));
+        Assert.Contains(h.Say.Said, l => l.Contains("this runner is over 200k tokens/hour - taking no tickets until", StringComparison.Ordinal));
+        Assert.Equal(at + TimeSpan.FromHours(1), Beats(h)[^1].ThrottledUntil);
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_spends_an_order_with_a_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-2");
+        Carrying(h, new NightState { Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)] });
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "3600", "--max-tokens-per-hour", "200k"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("order spent - over 200k tokens/hour until", StringComparison.Ordinal)),
+            "the sentence the order was spent with");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_night_capped_by_max_tokens_stops_at_it_rather_than_waiting_out_the_hourly_cap()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState
+        {
+            Tokens = 5_000_000,
+            Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)],
+        });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--max-tokens", "1M", "--max-tokens-per-hour", "200k"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_skipped_increment_is_followed_immediately_by_the_next_queued_ticket()
     {
@@ -2884,6 +2952,77 @@ public sealed class GoToWorkTests
         // nowhere near reached, is only possible through the clamp.
         Assert.Single(fake.Inner.Spawned);
         Assert.Contains(h.Say.Said, l => l.Contains("back within Claude usage", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A loop carrying <paramref name="window"/> against <c>--max-tokens-per-hour 200k</c> and one
+    /// ticket, driven a minute at a time through the hour until its one allowed increment has run.
+    /// </summary>
+    private static async Task<(FakeTimeProvider Clock, DateTimeOffset Start, FakeProbingSessions Fake)> RunThroughTheHourAsync(
+        Harness h, Func<DateTimeOffset, TokenEntry[]> window, int fails = 0)
+    {
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, new NightState { Window = window(start), Fails = fails });
+
+        var clock = new FakeTimeProvider(start);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(
+            ["--interval", "1", "--max-runs", "1", "--restart-after", "0", "--max-tokens-per-hour", "200k"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(0, await run);
+        return (clock, start, fake);
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_resumes_by_itself_when_the_hour_has_passed()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var (_, _, fake) = await RunThroughTheHourAsync(h, start => [new TokenEntry(start.AddMinutes(-1), 200_000)]);
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("back under 200k tokens/hour - taking tickets again", StringComparison.Ordinal));
+
+        // The last beat that said so, and a later one that no longer does.
+        var beats = Beats(h);
+        var lastThrottled = beats.ToList().FindLastIndex(b => b.ThrottledUntil is not null);
+        Assert.True(lastThrottled >= 0, "no beat carried ThrottledUntil");
+        Assert.True(lastThrottled < beats.Count - 1, "no beat after the wait said it was over");
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_on_two_entries_resumes_when_the_first_leaves_the_window()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        TokenEntry[] entries = [];
+
+        var (clock, start, fake) = await RunThroughTheHourAsync(h, t0 =>
+            entries = [new TokenEntry(t0.AddMinutes(-40), 100_000), new TokenEntry(t0.AddMinutes(-20), 100_000)]);
+
+        // Either alone is under the cap; together they are not, until the older one is an hour old.
+        Assert.Single(fake.Inner.Spawned);
+        Assert.All(
+            Beats(h).Where(b => b.ThrottledUntil is not null),
+            b => Assert.Equal(entries[0].At + TimeSpan.FromHours(1), b.ThrottledUntil));
+        Assert.True(clock.GetUtcNow() - start < TimeSpan.FromMinutes(40), "the wait ran to the second entry's hour");
+    }
+
+    [Fact]
+    public async Task A_wait_over_the_hourly_cap_does_not_count_as_a_failure()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var (_, _, fake) = await RunThroughTheHourAsync(
+            h, start => [new TokenEntry(start.AddMinutes(-1), 200_000)], fails: 2);
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
     }
 
     [Fact]
