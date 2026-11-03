@@ -3149,6 +3149,56 @@ public record ChangelogEntryDto(
 /// <summary>One calendar month and how many issues closed in it - the jump control's own count.</summary>
 public record ChangelogMonthDto(string Month, int Count);
 
+// ---- Changelog report ----
+
+/// <summary>
+/// Closed top-level epics, bucketed over a range - see <c>ChangelogReport.Fold</c>
+/// for how a bucket is cut. A different shape from <see cref="ChangelogDto"/>,
+/// which is the changelog feed's own answer, not this report's.
+/// </summary>
+/// <param name="Level">The depth this report groups at - always <c>"epic"</c> for now.</param>
+/// <param name="Loose">Whether work under no epic rides alongside the buckets - always false for now.</param>
+public record ChangelogReportDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    string Bucket,
+    string Level,
+    bool Loose,
+    IReadOnlyList<ChangelogReportBucketDto> Buckets);
+
+/// <summary>One bucket: the window it covers, the epics closed inside it, and the loose work beside them.</summary>
+/// <param name="Groups">One entry per epic closed in this bucket.</param>
+/// <param name="Loose">Work under no epic, closed in this bucket - always empty until a later story fills it in.</param>
+public record ChangelogReportBucketDto(
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    IReadOnlyList<ChangelogReportGroupDto> Groups,
+    IReadOnlyList<ChangelogReportEntryDto> Loose);
+
+/// <summary>One closed epic, as a bucket draws it, with the work beneath it.</summary>
+/// <param name="ClosedHere">Whether the epic itself closed in this bucket - always true for now.</param>
+/// <param name="DescendantCount">Every issue below this epic, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
+/// <param name="Stories">The epic's own closed children - always empty until a later story fills it in.</param>
+public record ChangelogReportGroupDto(
+    IssueCardDto Epic,
+    bool ClosedHere,
+    int DescendantCount,
+    IReadOnlyList<ChangelogReportEntryDto> Stories);
+
+/// <summary>
+/// One closed issue, as a group's <c>Stories</c> or a bucket's <c>Loose</c> will
+/// draw it - settled here, on this task, though neither list is filled in until
+/// the story that reads children does.
+/// </summary>
+public record ChangelogReportEntryDto(
+    string Key,
+    string Title,
+    string Type,
+    string ProjectKey,
+    string? ReleaseNote,
+    DateTimeOffset ClosedAt,
+    string Priority);
+
 // ---- Runners ----
 
 /// <summary>

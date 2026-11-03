@@ -22,6 +22,9 @@ public class ReportsController(
     /// <summary>The range when a caller names neither bound: the ninety days ending now.</summary>
     private static readonly TimeSpan DefaultRange = TimeSpan.FromDays(90);
 
+    /// <summary>The range when a caller names neither bound, on this report alone: the changelog feed's own fourteen days.</summary>
+    private static readonly TimeSpan DefaultChangelogRange = TimeSpan.FromDays(14);
+
     /// <summary>
     /// When the work happened: the top-level epics active in a range, and the
     /// work beneath each, as stretches in the board's active columns.
@@ -335,6 +338,185 @@ public class ReportsController(
                 result.Window.Sessions,
                 result.Window.SessionErrors),
             result.Unresolved);
+    }
+
+    /// <summary>
+    /// What shipped, a window at a time, bucketed rather than split by day -
+    /// wires <see cref="ChangelogReport.Fold"/> to the database and decorates
+    /// what it answers with cards, the way <see cref="GetTimeline"/> does.
+    /// </summary>
+    /// <param name="from">The start of the range; fourteen days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="projectId">Narrows the closed epics to these projects' own, repeatable; every project when absent or empty.</param>
+    /// <param name="bucket">One of <c>hour</c>, <c>day</c>, <c>week</c>, <c>month</c>; day when absent.</param>
+    /// <param name="offsetMinutes">Minutes east of UTC, so local is UTC plus this - aligns a bucket to the reader's own wall clock.</param>
+    /// <param name="level">The depth this report groups at; only <c>epic</c> for now.</param>
+    /// <param name="loose">Whether work under no epic rides alongside the buckets; always answered empty for now.</param>
+    [HttpGet("changelog")]
+    public async Task<ActionResult<ChangelogReportDto>> GetChangelogReport(
+        [FromQuery] string? from, [FromQuery] string? to, [FromQuery] List<int>? projectId,
+        [FromQuery] string? bucket, [FromQuery] int offsetMinutes = 0,
+        [FromQuery] string? level = null, [FromQuery] bool loose = false, CancellationToken ct = default)
+    {
+        var now = time.GetUtcNow();
+
+        if (RangeBounds.Resolve(from, to, now, DefaultChangelogRange, out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        if (offsetMinutes is < -1440 or > 1440)
+            return BadRequest($"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
+
+        var trimmed = bucket?.Trim();
+        ChangelogReport.ChangelogBucketSize size;
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            size = ChangelogReport.ChangelogBucketSize.Day;
+        }
+        else if (string.Equals(trimmed, "hour", StringComparison.OrdinalIgnoreCase))
+        {
+            size = ChangelogReport.ChangelogBucketSize.Hour;
+        }
+        else if (string.Equals(trimmed, "day", StringComparison.OrdinalIgnoreCase))
+        {
+            size = ChangelogReport.ChangelogBucketSize.Day;
+        }
+        else if (string.Equals(trimmed, "week", StringComparison.OrdinalIgnoreCase))
+        {
+            size = ChangelogReport.ChangelogBucketSize.Week;
+        }
+        else if (string.Equals(trimmed, "month", StringComparison.OrdinalIgnoreCase))
+        {
+            size = ChangelogReport.ChangelogBucketSize.Month;
+        }
+        else
+        {
+            return BadRequest($"a bucket is hour, day, week or month - not \"{bucket}\"");
+        }
+
+        if (!string.IsNullOrEmpty(level) && level != "epic")
+            return BadRequest($"a level is epic - not \"{level}\"");
+
+        var ids = (projectId ?? []).Distinct().ToList();
+        foreach (var id in ids)
+            if (!await db.Projects.AnyAsync(p => p.Id == id, ct))
+                return BadRequest($"there is no project {id}");
+
+        var first = await db.Issues.AsNoTracking()
+            .OrderBy(i => i.CreatedAt)
+            .Select(i => (DateTimeOffset?)i.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        start = RangeBounds.ClampStart(start, end, first);
+
+        var closed = db.Issues.AsNoTracking()
+            .Where(i => i.Type == "epic" && i.Status!.IsTerminal && i.ClosedAt != null);
+
+        if (ids.Count > 0) closed = closed.Where(i => ids.Contains(i.ProjectId));
+
+        var rows = (await closed
+                .Select(i => new
+                {
+                    i.Id,
+                    ParentType = i.Parent == null ? null : i.Parent.Type,
+                    i.Type,
+                    ClosedAt = i.ClosedAt!.Value,
+                })
+                .ToListAsync(ct))
+            .Select(i => new ChangelogReport.Row(i.Id, i.ParentType, i.Type, i.ClosedAt))
+            .ToList();
+
+        var buckets = ChangelogReport.Fold(rows, start, end, size, offsetMinutes);
+
+        var epicIds = buckets.SelectMany(b => b.EpicIds).ToHashSet();
+        var cards = new Dictionary<long, IssueCardDto>();
+        Rollup.Tree? tree = null;
+
+        if (epicIds.Count > 0)
+        {
+            var priorities = await PriorityTree.ForAsync(db, ct);
+            tree = await Rollup.LoadAsync(db, ct);
+
+            var issues = await db.Issues.AsNoTracking()
+                .Where(i => epicIds.Contains(i.Id))
+                .Select(i => new
+                {
+                    i.Id,
+                    ProjectKey = i.Project!.Key,
+                    i.Number,
+                    i.Type,
+                    i.Title,
+                    i.StatusId,
+                    i.Rank,
+                    ParentProjectKey = i.Parent == null ? null : i.Parent.Project!.Key,
+                    ParentNumber = i.Parent == null ? (int?)null : i.Parent.Number,
+                    i.ReadyAt,
+                    i.ReadyAtHasTime,
+                    i.DueAt,
+                    i.DueAtHasTime,
+                    i.AssigneePersonId,
+                    i.AssigneeApiKeyId,
+                    i.Priority,
+                    i.PreApproval,
+                    i.StalledAt,
+                    i.StalledWhy,
+                    i.Held,
+                    i.PullRequestUrl,
+                    i.ClosedAt,
+                    Claim = new ClaimSnapshot(
+                        i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
+                        i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                        i.ClaimQuietLimitSeconds),
+                })
+                .ToListAsync(ct);
+
+            var assignees = new Dictionary<long, AssigneeDto?>();
+            foreach (var i in issues)
+                assignees[i.Id] = await IssueProjection.ToAssigneeAsync(actors, i.AssigneePersonId, i.AssigneeApiKeyId, ct);
+
+            foreach (var i in issues)
+            {
+                var (effectivePreApproval, effectivePreApprovalFrom) = priorities.EffectivePreApproval(i.Id);
+                var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
+
+                cards[i.Id] = new IssueCardDto(
+                    IssueKey.Format(i.ProjectKey, i.Number),
+                    i.ProjectKey,
+                    i.Type,
+                    i.Title,
+                    i.StatusId,
+                    i.Rank,
+                    i.ParentNumber is { } n ? IssueKey.Format(i.ParentProjectKey!, n) : null,
+                    IssueMoment.Format(i.ReadyAt, i.ReadyAtHasTime),
+                    IssueMoment.Format(i.DueAt, i.DueAtHasTime),
+                    Assignee: assignees[i.Id],
+                    Claim: claims.Project(i.Claim, now),
+                    Expedited: i.Priority >= PriorityLevels.Expedited,
+                    Express: effectivePreApproval >= PreApprovalLevels.Express,
+                    Priority: PriorityLevels.Name(i.Priority),
+                    PreApproval: PreApprovalLevels.Name(effectivePreApproval),
+                    PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),
+                    PreApprovalFrom: effectivePreApprovalFrom,
+                    StalledAt: i.StalledAt,
+                    StalledWhy: i.StalledWhy,
+                    Held: i.Held,
+                    PullRequestUrl: i.PullRequestUrl,
+                    OnePr: onePr,
+                    OnePrOwn: onePrOwn,
+                    OnePrFrom: onePrFrom,
+                    ClosedAt: i.ClosedAt);
+            }
+        }
+
+        var bucketDtos = buckets
+            .Select(b => new ChangelogReportBucketDto(
+                b.Start,
+                b.End,
+                b.EpicIds
+                    .Select(id => new ChangelogReportGroupDto(cards[id], ClosedHere: true, tree!.DescendantCount(id), Stories: []))
+                    .ToList(),
+                Loose: []))
+            .ToList();
+
+        return new ChangelogReportDto(start, end, ChangelogReport.Name(size), "epic", loose, bucketDtos);
     }
 
     /// <summary>The card the loose work is drawn under: no issue, so nothing on it is real.</summary>
