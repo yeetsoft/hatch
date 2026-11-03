@@ -7923,6 +7923,11 @@ except the last one:
   [when an increment does nothing](#when-an-increment-does-nothing) — and
   neither is [the wait that follows one](#runners-on-the-board): the loop is
   spending nothing while it waits, so there is nothing there to fail.
+- **A workspace that cannot be made current** — the other one nobody asks for,
+  and the only condition that ends a night without an increment having failed. A
+  tree that will not reset is a tree every ticket would be built wrong on, and
+  the loop has no way to make it right. A fetch that merely did not answer is
+  not this: that is a wait, and the next pass tries again.
 
 What it **waits** for is not a stop, and not one of the three failures.
 `--max-tokens-per-hour N` takes the same counts as `--max-tokens`; while the
@@ -7933,11 +7938,6 @@ out. The loop does not end, so there is no closing tally for it, and the wait
 records no increment, no failure and no token. One increment bigger than the
 count puts the loop over on its own until that increment ages out; the tally's
 `peak hour` line is the number to size it from.
-- **A workspace that cannot be made current** — the other one nobody asks for,
-  and the only condition that ends a night without an increment having failed. A
-  tree that will not reset is a tree every ticket would be built wrong on, and
-  the loop has no way to make it right. A fetch that merely did not answer is
-  not this: that is a wait, and the next pass tries again.
 
 One thing that looks like a stop is not: **a restart**. A loop that spends the
 night improving this repository is running the version it started with, and
