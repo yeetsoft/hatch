@@ -43,17 +43,20 @@ public static class CumulativeFlowReport
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<TimelineReport.Row> rows, IReadOnlyList<TimelineReport.Change> changes,
-        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset to, DateTimeOffset now)
+        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset to, DateTimeOffset now,
+        IReadOnlySet<string>? projectKeys = null)
     {
         var ordered = statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
         var columns = Columns.Board(ordered).Select(s => s.Id).ToList();
         var slot = new Dictionary<int, int>();
         for (var i = 0; i < columns.Count; i++) slot[columns[i]] = i;
 
+        var scoped = projectKeys is null ? rows : rows.Where(r => projectKeys.Contains(r.ProjectKey)).ToList();
+
         var end = to < now ? to : now;
         var step = StepOf(start, end);
 
-        DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
+        DateTimeOffset? first = scoped.Count > 0 ? scoped.Min(r => r.CreatedAt) : null;
         if (first is not { } firstCreatedAt || firstCreatedAt > end)
             return new Result(start, to, step, columns, [], 0);
 
@@ -67,7 +70,7 @@ public static class CumulativeFlowReport
         var unresolved = 0;
         var deltas = new List<(DateTimeOffset At, int Slot, int Delta)>();
 
-        foreach (var row in rows)
+        foreach (var row in scoped)
         {
             var issueChanges = changesByIssue[row.Id].OrderBy(c => c.At).ThenBy(c => c.EventId).ToList();
             var stretches = TimelineReport.StretchesOf(row, issueChanges, board)
