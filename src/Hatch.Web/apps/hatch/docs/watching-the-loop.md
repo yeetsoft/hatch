@@ -43,13 +43,15 @@ has:
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
   than showing empty caps. The two token caps read `2M tokens` and `200k
-  tokens/hour` where set. The `under` epic, where set, is a link to its
-  ticket too.
+  tokens/hour` where set, each followed by `(default)` where the runner holds
+  no cap of its own and is reading the site default instead of one it set.
+  The `under` epic, where set, is a link to its ticket too.
 - **Token budget** - `used / cap tokens` for the night and `used / cap per
   hour` for the last hour, each with a bar. The bar is green under 80% of the
   cap, amber from 80%, and red at the cap. A window with no cap reads `…
   tokens, no cap`, with no bar. A row with neither cap set reads `No token
-  budget`.
+  budget`. A cap inherited from the site default carries the same
+  `(default)` marker here as it does in Bounds.
 
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
@@ -94,6 +96,12 @@ The two token boxes take a token count, like `500k` or `2M`, and show it back
 as `500,000` when you leave the box. Empty clears the cap. A value that is not
 a token count blocks **Save bounds**. When the board refuses a value, the
 refusal appears under the field it names.
+
+A box reading the site default rather than a cap of its own shows empty, not
+the number it inherits - saving with no edit leaves it inheriting, rather
+than locking that figure in as the runner's own. Its hint names the figure it
+is inheriting instead of the usual token-count wording, so the empty box is
+never mistaken for an unset cap.
 
 **Tags** seed from the loop's first heartbeat only; after that the row is
 the board's, and editing them here - or a `PATCH` on the row - is what

@@ -29,13 +29,14 @@ import {
   tagsLabel,
   projectsLabel,
   tokenBudget,
+  tokenFieldHint,
   topRefusal,
   type Refusal,
   type RunnerBounds,
   type RunnerHostGroup,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
-import { compactTokens, moneyPhrase, TOKEN_FIELD_HINT } from '../lib/workLog';
+import { compactTokens, moneyPhrase } from '../lib/workLog';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 /**
@@ -304,8 +305,10 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
     projectsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
-    runner.maxTokens !== null && `${compactTokens(runner.maxTokens)} tokens`,
-    runner.maxTokensPerHour !== null && `${compactTokens(runner.maxTokensPerHour)} tokens/hour`,
+    runner.maxTokens !== null &&
+      `${compactTokens(runner.maxTokens)} tokens${runner.maxTokensSource === 'default' ? ' (default)' : ''}`,
+    runner.maxTokensPerHour !== null &&
+      `${compactTokens(runner.maxTokensPerHour)} tokens/hour${runner.maxTokensPerHourSource === 'default' ? ' (default)' : ''}`,
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
   ].filter(Boolean);
 
@@ -389,7 +392,7 @@ export function BoundsForm({
         </Field>
         <Field
           label="Max tokens this run"
-          hint={TOKEN_FIELD_HINT}
+          hint={tokenFieldHint(runner, 'maxTokens')}
           error={refusalField === 'maxTokens' ? refusal : undefined}
         >
           <input
@@ -400,7 +403,7 @@ export function BoundsForm({
         </Field>
         <Field
           label="Max tokens per hour"
-          hint={TOKEN_FIELD_HINT}
+          hint={tokenFieldHint(runner, 'maxTokensPerHour')}
           error={refusalField === 'maxTokensPerHour' ? refusal : undefined}
         >
           <input
