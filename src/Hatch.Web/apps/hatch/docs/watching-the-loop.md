@@ -42,19 +42,14 @@ has:
   reached`.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
-<<<<<<< HEAD
-  than showing four empty caps. The `under` epic, where set, is a link to its
-  ticket too. `Refuses dangerous work` is one of the bounds shown, when set.
-=======
   than showing empty caps. The two token caps read `2M tokens` and `200k
   tokens/hour` where set. The `under` epic, where set, is a link to its
-  ticket too.
+  ticket too. `Refuses dangerous work` is one of the bounds shown, when set.
 - **Token budget** - `used / cap tokens` for the night and `used / cap per
   hour` for the last hour, each with a bar. The bar is green under 80% of the
   cap, amber from 80%, and red at the cap. A window with no cap reads `…
   tokens, no cap`, with no bar. A row with neither cap set reads `No token
   budget`.
->>>>>>> refs/remotes/origin/main
 
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
@@ -78,13 +73,8 @@ A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, its build - a short sha and how long ago, or
 `dev build` for one that hasn't been stamped - what it drives, and the
-<<<<<<< HEAD
-repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Until** (an hour,
-not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert** - and an Order
-=======
 repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
-not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), with **Save bounds** and **Revert** - and an Order
->>>>>>> refs/remotes/origin/main
+not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert** - and an Order
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. **Refuse dangerous work** stops
 the board handing that runner an issue flagged dangerous (see
