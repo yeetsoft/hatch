@@ -139,7 +139,14 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Spent,
             runner.Host,
             claim?.Status,
-            runner.RefusesDangerous ?? false);
+            runner.RefusesDangerous ?? false,
+            runner.MaxTokens,
+            runner.MaxTokensPerHour,
+            runner.MaxTokens is not null ? "runner" : "none",
+            runner.MaxTokensPerHour is not null ? "runner" : "none",
+            runner.TokensUsed,
+            runner.TokensLastHour,
+            runner.ThrottledUntil);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
@@ -163,7 +170,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
             runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
             runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            runner.RefusesDangerous ?? false);
+            runner.RefusesDangerous ?? false,
+            runner.MaxTokens, runner.MaxTokensPerHour);
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is

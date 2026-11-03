@@ -131,7 +131,7 @@ public class RunnersController(
     /// reads back what the board would like.
     /// </summary>
     /// <remarks>
-    /// <para>The five bounds in the body are what this process started with,
+    /// <para>The seven bounds in the body are what this process started with,
     /// and they are written <em>when the row is created</em> and by a
     /// <c>loop</c> beat that says it is <c>Fresh</c> - never by any other beat.
     /// That is the one subtle thing in this file: a loop restarting overnight
@@ -326,6 +326,8 @@ public class RunnersController(
 
         if (Number(request.MaxRuns, out var maxRuns) is { } runsError) return BadRequest(runsError);
         if (Money(request.MaxSpend, out var maxSpend) is { } spendError) return BadRequest(spendError);
+        if (Tokens(request.MaxTokens, "--max-tokens", out var maxTokens) is { } tokensError) return BadRequest(tokensError);
+        if (Tokens(request.MaxTokensPerHour, "--max-tokens-per-hour", out var maxTokensPerHour) is { } tokensPerHourError) return BadRequest(tokensPerHourError);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
         // A key is judged here, on the one write a person makes - a heartbeat
@@ -356,6 +358,8 @@ public class RunnersController(
         if (request.Under is not null) row.Under = under;
         if (request.MaxRuns is not null) row.MaxRuns = maxRuns;
         if (request.MaxSpend is not null) row.MaxSpend = maxSpend;
+        if (request.MaxTokens is not null) row.MaxTokens = maxTokens;
+        if (request.MaxTokensPerHour is not null) row.MaxTokensPerHour = maxTokensPerHour;
         if (request.UntilAt is not null) row.UntilAt = untilAt;
 
         // "" clears the board, never null - the whole of how PATCH's clear is
@@ -572,7 +576,7 @@ public class RunnersController(
     // ---- The rows ----
 
     /// <summary>
-    /// The five bounds, from what the flags said, so the row shows the bounds
+    /// The seven bounds, from what the flags said, so the row shows the bounds
     /// it is actually running under rather than reading as unbounded until
     /// somebody sets something. One place for a new row and a fresh beat, so
     /// the two cannot drift.
@@ -584,6 +588,8 @@ public class RunnersController(
         row.Under = Fits(request.Under, EfHatchRunner.MaxUnderLength);
         row.MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null;
         row.MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null;
+        row.MaxTokens = request.MaxTokens is > 0 ? request.MaxTokens : null;
+        row.MaxTokensPerHour = request.MaxTokensPerHour is > 0 ? request.MaxTokensPerHour : null;
         row.UntilAt = request.UntilAt;
     }
 
@@ -613,6 +619,8 @@ public class RunnersController(
             Where = Fits(request.Where, EfHatchRunner.MaxNameLength),
             Runs = request.Runs,
             Spent = request.Spent,
+            TokensUsed = request.TokensUsed,
+            TokensLastHour = request.TokensLastHour,
             Host = Fits(request.Host, EfHatchRunner.MaxHostLength),
             Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
             Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength),
@@ -623,6 +631,7 @@ public class RunnersController(
             Tags = tags,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            ThrottledUntil = request.ThrottledUntil,
             ForPersonId = forPersonId,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
@@ -636,7 +645,7 @@ public class RunnersController(
     /// A row that already exists: kind, last seen, line, and the two facts
     /// about what it serves. The state is the operator's, with one exception: a
     /// fresh <c>loop</c> beat that says <c>Standby</c> writes it <c>paused</c>.
-    /// The five bounds are the flags' at a fresh start - a <c>loop</c> beat that
+    /// The seven bounds are the flags' at a fresh start - a <c>loop</c> beat that
     /// says so - and the operator's after: any other beat writing one would be
     /// the runner having the last word on what it may spend.
     /// </summary>
@@ -670,6 +679,8 @@ public class RunnersController(
         if (request.Where is not null) row.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
         if (request.Runs is not null) row.Runs = request.Runs;
         if (request.Spent is not null) row.Spent = request.Spent;
+        if (request.TokensUsed is not null) row.TokensUsed = request.TokensUsed;
+        if (request.TokensLastHour is not null) row.TokensLastHour = request.TokensLastHour;
         if (request.Host is not null) row.Host = Fits(request.Host, EfHatchRunner.MaxHostLength);
         if (request.Agent is not null) row.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
         if (request.Revision is not null) row.Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength);
@@ -699,8 +710,16 @@ public class RunnersController(
         if (request.Exhausted == true) row.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) row.ExhaustedUntil = null;
 
+        // Written on every loop beat, null clearing it the moment the runner
+        // says it is no longer throttled - not a tri-state like Exhausted,
+        // since there is no separate flag to carry "not throttled" apart from
+        // the value itself. Not a `once` beat: it shares the loop's row name
+        // (the same reasoning as ForPersonId below) and sending null must not
+        // clear the loop's own wait.
+        if (kind == EfHatchRunner.LoopKind) row.ThrottledUntil = request.ThrottledUntil;
+
         // Whose key this is can change on the API Keys page, so this is
-        // written every beat like Where and Remotes, unlike the five bounds,
+        // written every beat like Where and Remotes, unlike the seven bounds,
         // which only a fresh loop's first beat writes. Not a `once` beat:
         // `hatch work` shares a runner name with a loop in the same checkout,
         // and its flagless beat must not clear the loop's budget.
@@ -747,6 +766,19 @@ public class RunnersController(
             return $"--max-runs takes a count - not \"{sent.Trim()}\"";
 
         count = runs;
+        return null;
+    }
+
+    /// <summary>The same, as a token count - <see cref="TokenCount.TryParse"/>'s own notation.</summary>
+    private static string? Tokens(string? sent, string flag, out long? count)
+    {
+        count = null;
+        if (sent is null || sent.Trim().Length == 0) return null;
+
+        if (!TokenCount.TryParse(sent.Trim(), out var n))
+            return $"{flag} takes {TokenCount.Refusal} - not \"{sent.Trim()}\"";
+
+        count = n;
         return null;
     }
 
