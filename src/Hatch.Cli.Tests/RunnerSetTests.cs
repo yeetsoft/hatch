@@ -53,6 +53,55 @@ public sealed class RunnerSetTests
     }
 
     [Fact]
+    public void A_ledger_window_holds_every_slots_entries_but_the_one_asking()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var at = new DateTimeOffset(2026, 3, 1, 12, 0, 0, TimeSpan.Zero);
+            RunnerSet.WriteLedger(dir.FullName, 1, 2, 1m, 300, [new TokenEntry(at, 100), new TokenEntry(at.AddMinutes(5), 200)]);
+            RunnerSet.WriteLedger(dir.FullName, 2, 1, 1m, 40, [new TokenEntry(at.AddMinutes(1), 40)]);
+            RunnerSet.WriteLedger(dir.FullName, 3, 1, 1m, 7);
+
+            Assert.Equal(
+                new TokenEntry[] { new TokenEntry(at.AddMinutes(1), 40) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 1).OrderBy(e => e.At));
+            Assert.Equal(
+                new TokenEntry[] { new TokenEntry(at, 100), new TokenEntry(at.AddMinutes(1), 40), new TokenEntry(at.AddMinutes(5), 200) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 3).OrderBy(e => e.At));
+            Assert.Equal((4, 3m, 347L), RunnerSet.ReadLedgerTotal(dir.FullName, 9));
+            Assert.Empty(Directory.GetFiles(dir.FullName, "*.tmp"));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_ledger_without_a_window_or_with_a_bad_pair_still_totals_and_never_over_counts_the_window()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.2"), "2 1.5 100");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.3"), "2 1.5 100 abc,5:7,9:x,-");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.4"), "1 1 1 -3:5,5:-1,1:2:3,99999999999999:1");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.5"), "garbage");
+
+            Assert.Equal((5, 4m, 201L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal(
+                new TokenEntry[] { new TokenEntry(DateTimeOffset.FromUnixTimeSeconds(5), 7) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 1));
+            Assert.Empty(RunnerSet.ReadLedgerWindow(Path.Combine(dir.FullName, "missing"), 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void A_ledger_decimal_is_written_and_read_the_same_in_any_culture()
     {
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
@@ -62,7 +111,7 @@ public sealed class RunnerSetTests
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
             RunnerSet.WriteLedger(dir.FullName, 2, 1, 1.5m, 1_200);
 
-            Assert.Equal("1 1.5 1200", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
+            Assert.Equal("1 1.5 1200 -", File.ReadAllText(Path.Combine(dir.FullName, "ledger.2")));
             Assert.Equal((1, 1.5m, 1_200L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
         }
         finally

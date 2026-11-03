@@ -3490,6 +3490,36 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_restarted_member_puts_the_last_hour_it_carried_back_in_the_sets_ledger()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var now = new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero);
+        var clock = new FakeTimeProvider(now);
+        var recent = new TokenEntry(now - TimeSpan.FromMinutes(10), 400_000);
+        Carrying(h, new NightState
+        {
+            Runs = 1,
+            Tokens = 500_000,
+            Window = [new TokenEntry(now - TimeSpan.FromMinutes(70), 100_000), recent],
+        });
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2, Clock = clock };
+
+            await new GoToWorkCommand(member).RunAsync(["--max-runs", "1"], default);
+
+            // The entry an hour and ten minutes old is already out of the window.
+            Assert.Equal(new TokenEntry[] { recent }, RunnerSet.ReadLedgerWindow(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task The_hour_a_night_was_given_is_the_hour_it_was_given_and_not_one_re_read_after_midnight()
     {
         using var h = new Harness();
