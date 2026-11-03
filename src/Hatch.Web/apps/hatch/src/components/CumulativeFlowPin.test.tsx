@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CumulativeFlowPin } from './CumulativeFlowPin';
-import type { CumulativeFlowPoint, Status } from '../types';
+import type { CumulativeFlowPoint, Project, Status } from '../types';
 
 const statuses = [
   { id: 1, name: 'To Do', color: '#3366cc' },
@@ -9,13 +9,26 @@ const statuses = [
   { id: 3, name: 'Done', color: '#33cc66' },
 ] as Status[];
 
+const projects = [
+  { id: 1, key: 'HA', name: 'Hatch', color: '#112233' },
+  { id: 2, key: 'AER', name: 'Aerie', color: '#cc9933' },
+] as Project[];
+
 // Noon UTC, as lib/cumulativeFlow.test.ts's own momentLabel fixtures are: the
 // day is the same one regardless of which zone the test runs in.
-const point: CumulativeFlowPoint = { at: '2026-10-12T12:00:00.000Z', counts: [3, 1, 2] };
+const point: CumulativeFlowPoint = { at: '2026-10-12T12:00:00.000Z', counts: [3, 1, 2], projectCounts: [4, 2] };
 
 const render = (p: CumulativeFlowPoint | null) =>
   renderToStaticMarkup(
-    <CumulativeFlowPin point={p} columns={[1, 2, 3]} statuses={statuses} step="day" locale="en-GB" />,
+    <CumulativeFlowPin
+      point={p}
+      keys={[1, 2, 3]}
+      by="column"
+      statuses={statuses}
+      projects={projects}
+      step="day"
+      locale="en-GB"
+    />,
   );
 
 describe('CumulativeFlowPin', () => {

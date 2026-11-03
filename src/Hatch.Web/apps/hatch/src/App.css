@@ -5410,7 +5410,7 @@ button.hatch-option.chosen {
 }
 
 .hatch-timeline-segment {
-  fill: var(--status-color);
+  fill: var(--mark-color, var(--status-color));
 }
 
 /* Other is not a column's work but a hull of whatever was loose, so it takes
@@ -5576,7 +5576,7 @@ button.hatch-option.chosen {
   width: var(--sp-2);
   height: var(--sp-2);
   border-radius: var(--r-ctl);
-  background: var(--status-color);
+  background: var(--mark-color, var(--status-color, var(--muted)));
 }
 
 /* The chart's own hover card, in place of a native <title>: position: fixed

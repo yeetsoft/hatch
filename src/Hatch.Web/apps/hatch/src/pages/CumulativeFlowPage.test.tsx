@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CumulativeFlowBody } from './CumulativeFlowPage';
-import type { CumulativeFlow, Status } from '../types';
+import type { ColourBy } from '../lib/cumulativeFlow';
+import type { CumulativeFlow, Project, Status } from '../types';
 
 /* No DOM runner, so `useLoaded` is not driven: the body is rendered from
    props, the way TimelinePage.test.tsx renders TimelineBody. */
@@ -11,20 +12,22 @@ const FOOTNOTE = 'hatch-timeline-footnote';
 const UNPINNED = 'Click the chart to pin a moment.';
 
 const statuses = [{ id: 1, name: 'To Do', color: '#3366cc' }] as Status[];
+const projects = [{ id: 1, key: 'HA', name: 'Hatch', color: '#112233' }] as Project[];
 
 const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
   from: '2026-10-01T00:00:00.000Z',
   to: '2026-10-11T00:00:00.000Z',
   step: 'day',
   columns: [1],
-  points: [{ at: '2026-10-02T00:00:00.000Z', counts: [4] }],
+  projects: [],
+  points: [{ at: '2026-10-02T00:00:00.000Z', counts: [4], projectCounts: [] }],
   unresolved: 0,
   ...over,
 });
 
-const render = (data: CumulativeFlow): string =>
+const render = (data: CumulativeFlow, by: ColourBy = 'column'): string =>
   renderToStaticMarkup(
-    <CumulativeFlowBody answer={data} statuses={statuses} offsetMinutes={0} now={NOW} />,
+    <CumulativeFlowBody answer={data} statuses={statuses} by={by} projects={projects} offsetMinutes={0} now={NOW} />,
   );
 
 describe('CumulativeFlowBody', () => {
@@ -45,7 +48,7 @@ describe('CumulativeFlowBody', () => {
   });
 
   it('says there is nothing to show when every count everywhere is zero', () => {
-    const html = render(answer({ points: [{ at: '2026-10-02T00:00:00.000Z', counts: [0] }] }));
+    const html = render(answer({ points: [{ at: '2026-10-02T00:00:00.000Z', counts: [0], projectCounts: [] }] }));
 
     expect(html).toContain(EMPTY);
     expect(html).not.toContain('hatch-cumulative-flow"');
