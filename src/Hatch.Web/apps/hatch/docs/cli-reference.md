@@ -275,8 +275,11 @@ prints one sentence saying so. It writes nothing.
 - `--json` prints the endpoint's own answer and nothing else.
 
 A runner that has reported its own process adds `  on HOST`, `N runs` and
-`$X.XX` (the machine, the increments run and the dollars spent) before any
-projects, each only where it has said so.
+`$X.XX` (the machine, the increments run and the dollars spent), then the
+tokens, before any projects, each only where it has said so. The tokens read
+`2.4M tokens (180k last hour)`: the total, and the last hour in brackets only
+where the runner reported one. A runner that reported only an hour prints no
+tokens at all.
 
 A runner bound to some projects (`go-to-work --project FIL --project AER`, or
 the Projects field on the Runners page) closes its line with `  projects FIL AER`,

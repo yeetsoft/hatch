@@ -661,7 +661,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, tags, projects, and `refusesDangerous` |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -677,24 +677,33 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
 clones, `mine`, `standing`, where it runs, which agent spawned it, and
-`host`, `runs` and `spent`, the machine's short name and the increments run and
-dollars spent so far, running totals the loop keeps (written every beat, with
-none of the gating the bounds have; an absent one leaves the row alone, and a
-`once` beat sends only `host`) - and
+`host`, `runs`, `spent`, `tokensUsed` and `tokensLastHour`, the machine's short
+name, the increments run, the dollars spent and the tokens used so far, and the
+tokens used in the last sixty minutes - running totals the loop keeps (written
+every beat, with none of the gating the bounds have; an absent one leaves the
+row alone, and a `once` beat sends only `host`) - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
-stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
-running within, and `Projects`, the project keys it is bound to. Those four
+stop, and the six bounds (`Under`, `MaxRuns`, `MaxSpend`, `MaxTokens`,
+`MaxTokensPerHour`, `UntilAt`) it is
+running within, and `Projects`, the project keys it is bound to. Those six
 bounds are written by a fresh loop's first beat
 (`Fresh: true`, a `loop` beat only), which also clears any the row held for a
 flag the loop was not given, and otherwise only by a person's `PATCH` -
 a supervisor restart sending its original `--max-runs` again never undoes an
 operator's midnight edit, a `once` beat never writes them, and a running agent
 cannot raise its own budget: only a new process started with flags can, which
-is the failure the bounds exist to prevent. `Projects` follows the same
-fresh-beat rule as the four - the CLI sends it on every heartbeat, but only a
+is the failure the bounds exist to prevent. The two token bounds are longs on
+the beat (`MaxTokens`, `MaxTokensPerHour`); a value of zero or less, or an
+absent one, writes none. Their `PATCH` fields are strings in the same
+notation the flags take - a whole number, or `500k`, `2M`, `1.5M` (one decimal
+digit, on `M` only), at least one token: blank clears the bound, absent leaves
+it, and zero or anything unreadable is a 400 reading `--max-tokens takes a
+token count, like 500k or 2M - not "x"` (`--max-tokens-per-hour` for the other).
+`Projects` follows the same
+fresh-beat rule as the six - the CLI sends it on every heartbeat, but only a
 fresh `loop` beat writes it, so a supervisor restart never undoes a person's
 edit of it - while its `PATCH` payload is list-shaped like `tags`, not scalar
-like the four: absent leaves the row's projects as they are, `[]` clears them,
+like the six: absent leaves the row's projects as they are, `[]` clears them,
 and a list sets them. (Tags differ on the first axis: they are seeded once
 ever, and a fresh beat never re-seeds a row that already has them.) The
 `state` is a person's too, with one exception: a fresh `loop` beat that also sends `standby: true` writes the
@@ -705,6 +714,12 @@ a single increment first. `standby` is read on that beat alone: without
 fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
+
+`throttledUntil` is a fact the runner reports about its own
+`--max-tokens-per-hour`, never a person's to set: it is the instant the loop
+expects to be back under that cap while it waits, written on every `loop` beat
+(so a beat that carries null clears it) and left alone by a `once` beat. It has
+no `PATCH` field.
 
 `refusesDangerous` follows the tags rule: the first heartbeat a name is seen
 under that carries it (true or false) seeds the row, a later beat with another
@@ -741,6 +756,14 @@ every row with the wall off, while `CanControl` is also true on others' rows for
 an admin and on rows that belong to nobody. `ClaimKey` is the ticket the runner
 holds and `ClaimStatus` the name of that ticket's column now; both are null
 between increments.
+
+Each row also carries the token side of the bounds: `maxTokens` and
+`maxTokensPerHour`, each with a `...Source` word beside it (`maxTokensSource`,
+`maxTokensPerHourSource`) saying where the number came from - `runner` when the
+row holds it, `none` when there is no such bound; `default` is part of the
+vocabulary, and nothing produces it yet - then `tokensUsed` and `tokensLastHour`,
+the loop's own running counts, and `throttledUntil`, the instant a waiting loop
+expects to be under its hourly cap, or null.
 
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
