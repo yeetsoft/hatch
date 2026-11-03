@@ -8,11 +8,25 @@ import { backupState, canRunNow, errorWords, folderWords, keptWords, lastSuccess
 import { LIFETIME_CHOICES, readLifetime, writeLifetime } from '../lib/confirmationLifetime';
 import type { Lifetime } from '../lib/confirmationLifetime';
 import { message } from '../lib/errors';
-import { credentialClear, credentialIsSet, credentialPlaceholder, credentialSave, nameSave } from '../lib/hatchSettings';
-import type { CredentialField } from '../lib/hatchSettings';
+import {
+  credentialClear,
+  credentialIsSet,
+  credentialPlaceholder,
+  credentialSave,
+  defaultTokensChanged,
+  defaultTokensOf,
+  defaultTokensProblem,
+  defaultTokensSave,
+  nameSave,
+  tokenBudgetEditable,
+} from '../lib/hatchSettings';
+import type { CredentialField, DefaultTokenField } from '../lib/hatchSettings';
 import { announceLocalPersonChanged } from '../lib/localPerson';
+import { groupedTokens } from '../lib/runners';
 import { useAttentionContext } from '../lib/useAttentionContext';
 import { useLoaded } from '../lib/useLoaded';
+import { useMe } from '../lib/useMe';
+import { compactTokens, TOKEN_FIELD_HINT } from '../lib/workLog';
 import type { BackupStatus, HatchSettings, HatchSettingsWriteRequest } from '../types';
 
 /** One agent's credential card: what it is called, and how an operator gets one. */
@@ -134,14 +148,19 @@ const AGENT_CREDENTIALS: {
  */
 export function SettingsPage() {
   const { data: settings, setData, error, setError } = useLoaded<HatchSettings>(getHatchSettings);
+  const { me, isAdmin } = useMe();
+  const editable = tokenBudgetEditable(me, isAdmin);
   const [drafts, setDrafts] = useState<Record<CredentialField, string>>({
     claudeSubscriptionToken: '',
     codexApiKey: '',
     xaiApiKey: '',
   });
   const [name, setName] = useState<string | null>(null);
+  const [tokenDraft, setTokenDraft] = useState<Record<DefaultTokenField, string> | null>(null);
+  const tokenDraftValue =
+    tokenDraft ?? (settings ? defaultTokensOf(settings) : { defaultMaxTokens: '', defaultMaxTokensPerHour: '' });
   // Which button is mid-request, so one card's Save does not spin the other's.
-  const [busy, setBusy] = useState<CredentialField | 'name' | null>(null);
+  const [busy, setBusy] = useState<CredentialField | 'name' | 'defaultTokens' | null>(null);
   const [lifetime, setLifetime] = useState<Lifetime>(readLifetime);
   // Its own load, not `settings`: the card is drawn whichever of the two fails.
   const {
@@ -172,14 +191,15 @@ export function SettingsPage() {
     }
   }
 
-  async function save(what: CredentialField | 'name', request: HatchSettingsWriteRequest) {
+  async function save(what: CredentialField | 'name' | 'defaultTokens', request: HatchSettingsWriteRequest) {
     setBusy(what);
     try {
       // The response is the settings as they now read, so there is nothing to
       // reload - and that card's input is emptied rather than filled with what
       // came back, which is dots.
       setData(await putHatchSettings(request));
-      if (what !== 'name') setDrafts((d) => ({ ...d, [what]: '' }));
+      if (what !== 'name' && what !== 'defaultTokens') setDrafts((d) => ({ ...d, [what]: '' }));
+      if (what === 'defaultTokens') setTokenDraft(null);
       setError(null);
       // The bar is mounted alongside this page and a route change here is
       // not a page load, so it is told rather than left to find out.
@@ -304,6 +324,17 @@ export function SettingsPage() {
         )}
       </Card>
 
+      {settings && (
+        <TokenBudgetCard
+          settings={settings}
+          editable={editable}
+          draft={tokenDraftValue}
+          busy={busy}
+          onChange={(field, value) => setTokenDraft({ ...tokenDraftValue, [field]: value })}
+          onSave={() => void save('defaultTokens', defaultTokensSave(tokenDraftValue))}
+        />
+      )}
+
       <Card>
         <h2 className="hatch-section-title">Confirmations</h2>
         <Field
@@ -332,3 +363,63 @@ export function SettingsPage() {
 
 /** An option's value: a select's values are strings, and Never is null. */
 const choiceOf = (value: Lifetime): string => (value === null ? 'never' : String(value));
+
+export function TokenBudgetCard({
+  settings,
+  editable,
+  draft,
+  busy,
+  onChange,
+  onSave,
+}: {
+  settings: HatchSettings;
+  editable: boolean;
+  draft: Record<DefaultTokenField, string>;
+  busy: CredentialField | 'name' | 'defaultTokens' | null;
+  onChange: (field: DefaultTokenField, value: string) => void;
+  onSave: () => void;
+}) {
+  const problem = defaultTokensProblem(draft);
+  return (
+    <Card>
+      <h2 className="hatch-section-title">Runner token budget</h2>
+      {editable ? (
+        <>
+          <Field label="Default max tokens per run" hint={TOKEN_FIELD_HINT}>
+            <input
+              value={draft.defaultMaxTokens}
+              onChange={(e) => onChange('defaultMaxTokens', e.target.value)}
+              onBlur={(e) => onChange('defaultMaxTokens', groupedTokens(e.target.value))}
+            />
+          </Field>
+          <Field label="Default max tokens per hour" hint={TOKEN_FIELD_HINT}>
+            <input
+              value={draft.defaultMaxTokensPerHour}
+              onChange={(e) => onChange('defaultMaxTokensPerHour', e.target.value)}
+              onBlur={(e) => onChange('defaultMaxTokensPerHour', groupedTokens(e.target.value))}
+            />
+          </Field>
+          {problem && <p className="text-danger">{problem}</p>}
+          <div className="hatch-form-actions">
+            <Button
+              variant="primary"
+              loading={busy === 'defaultTokens'}
+              disabled={busy !== null || !defaultTokensChanged(draft, settings) || problem !== null}
+              onClick={onSave}
+            >
+              Save
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p>Default max tokens per run: {tokenWords(settings.defaultMaxTokens)}</p>
+          <p>Default max tokens per hour: {tokenWords(settings.defaultMaxTokensPerHour)}</p>
+          <p className="text-muted">Admins only.</p>
+        </>
+      )}
+    </Card>
+  );
+}
+
+const tokenWords = (n: number | null): string => (n === null ? 'No cap' : `${compactTokens(n)} tokens`);
