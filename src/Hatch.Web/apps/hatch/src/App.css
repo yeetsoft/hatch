@@ -6895,6 +6895,20 @@ button.hatch-option.chosen {
   overflow-wrap: anywhere;
 }
 
+/* One window of a runner's token budget: its words over a bar. min-width keeps
+   the bar long enough to read; overflow-wrap lets the cell narrow rather than
+   widen the row when the words are long. Spacing copied from .hatch-usage-bars. */
+.hatch-token-budget-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 10rem;
+}
+
+.hatch-token-budget-line span {
+  overflow-wrap: anywhere;
+}
+
 /* The bounds, unfolded under their row - the same shape the playbook prompt
    takes, for the same reason: what is being edited is worth its own width, and
    folded away it costs nothing on a page being scanned. */
