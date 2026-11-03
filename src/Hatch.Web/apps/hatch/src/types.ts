@@ -2167,6 +2167,20 @@ export interface Runner {
   agent: string | null;
   maxRuns: number | null;
   maxSpend: number | null;
+  /** The most tokens this runner may spend in all, as the board folds it. Null is no cap. */
+  maxTokens: number | null;
+  /** The most tokens this runner may spend in any rolling hour. Null is no cap. */
+  maxTokensPerHour: number | null;
+  /** Where `maxTokens` came from: `none` or `runner` today. */
+  maxTokensSource: string;
+  /** Where `maxTokensPerHour` came from: `none` or `runner` today. */
+  maxTokensPerHourSource: string;
+  /** Tokens this runner has spent so far. Null from a CLI that has not sent usage yet. */
+  tokensUsed: number | null;
+  /** Tokens this runner has spent in the last hour. Null from a CLI that has not sent usage yet. */
+  tokensLastHour: number | null;
+  /** When the hourly cap lifts and the runner resumes on its own. Null when it is not held back. */
+  throttledUntil: string | null;
   untilAt: string | null;
   /** How long a runner may go unheard from before it is gone - the server's own
       Hatch:RunnerGoneAfterSeconds, carried the way a claim carries its TTL, so
@@ -2216,6 +2230,10 @@ export interface RunnerPatchRequest {
   under?: string;
   maxRuns?: string;
   maxSpend?: string;
+  /** A token count (`500k`, `2M`): `''` clears the cap, absent leaves it alone. */
+  maxTokens?: string;
+  /** A token count per rolling hour: `''` clears the cap, absent leaves it alone. */
+  maxTokensPerHour?: string;
   /** An instant (`2026-09-12T17:00:00Z`). Never a bare date: "stop by the 12th"
       would be a midnight in a timezone nobody named. */
   untilAt?: string;

@@ -42,6 +42,44 @@ export function compactTokens(n: number): string {
   return `${Math.round(n)}`;
 }
 
+const WHOLE_TOKENS = /^[0-9]+$/;
+const THOUSAND_TOKENS = /^[0-9]+[kK]$/;
+const MILLION_TOKENS = /^([0-9]+)(?:\.([0-9]))?[mM]$/;
+
+/**
+ * The twin of the C# `TokenCount.TryParse`: `500000`, `500k`, `2M`, `1.5M`,
+ * always at least one token. No trimming, no sign, ASCII digits only - the
+ * same grammar the CLI flag and the PATCH read, so the form never accepts what
+ * the server would refuse. Millions are counted in tenths so `1.5M` is exact.
+ *
+ * The ceiling is `Number.MAX_SAFE_INTEGER`, narrower than C#'s `long`: a count
+ * past it cannot be held exactly here, so it is refused.
+ */
+export function parseTokenCount(text: string): number | null {
+  let count: number;
+  const million = MILLION_TOKENS.exec(text);
+
+  if (WHOLE_TOKENS.test(text)) {
+    count = Number(text);
+  } else if (THOUSAND_TOKENS.test(text)) {
+    count = Number(text.slice(0, -1)) * 1_000;
+  } else if (million) {
+    count = (Number(million[1]) * 10 + Number(million[2] ?? '0')) * 100_000;
+  } else {
+    return null;
+  }
+
+  return count >= 1 && Number.isSafeInteger(count) ? count : null;
+}
+
+/** A count with thousands separators (`500000` -> `500,000`), the form's
+    on-blur display. A fixed locale on purpose: the box is read back by
+    `parseTokenCount`'s grammar, not the viewer's. */
+export const thousands = (n: number): string => new Intl.NumberFormat('en-US').format(n);
+
+/** The hint under a token-cap field. */
+export const TOKEN_FIELD_HINT = 'A token count, like 500k or 2M. Empty is no cap.';
+
 /** `compactTokens`, or a dash for a figure no run ever reported - an older
     runner's row, or one from a `--quiet` run. */
 export const compactTokensOrDash = (n: number | null): string => (n === null ? '—' : compactTokens(n));
