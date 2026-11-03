@@ -288,6 +288,12 @@ public static class SiteSettingKeys
     /// error.
     /// </summary>
     public const string XaiApiKey = "XaiApiKey";
+
+    /// <summary>A site-wide cap on tokens a runner with none of its own runs under.</summary>
+    public const string RunnerDefaultMaxTokens = "RunnerDefaultMaxTokens";
+
+    /// <summary>A site-wide cap on tokens per hour a runner with none of its own runs under.</summary>
+    public const string RunnerDefaultMaxTokensPerHour = "RunnerDefaultMaxTokensPerHour";
 }
 
 /// <summary>A single numeric sample from a DeviceChannel. Replaces the wide EfEnvironmentReading table - every sample is "channel X had value V at time T."</summary>

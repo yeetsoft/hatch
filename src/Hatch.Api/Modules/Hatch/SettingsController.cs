@@ -199,7 +199,9 @@ public class SettingsController(
             LocalPersonNameApplies: !authOptions.Value.Enabled,
             LocalPersonName: settings.LocalPersonName ?? "",
             CodexApiKey: RedactedIfSet(settings.CodexApiKey),
-            XaiApiKey: RedactedIfSet(settings.XaiApiKey));
+            XaiApiKey: RedactedIfSet(settings.XaiApiKey),
+            DefaultMaxTokens: settings.RunnerDefaultMaxTokens,
+            DefaultMaxTokensPerHour: settings.RunnerDefaultMaxTokensPerHour);
     }
 
     private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
@@ -219,12 +221,16 @@ public class SettingsController(
 /// <param name="LocalPersonName">The name as stored, or empty. Not a secret, so it is handed back to be edited.</param>
 /// <param name="CodexApiKey">Dots when one is set, empty when none is - the same answer as the token, for the same reason.</param>
 /// <param name="XaiApiKey">Dots when one is set, empty when none is.</param>
+/// <param name="DefaultMaxTokens">The site-wide cap on tokens a runner with none of its own runs under, or null when none is set.</param>
+/// <param name="DefaultMaxTokensPerHour">The site-wide cap on tokens per hour a runner with none of its own runs under, or null when none is set.</param>
 public record HatchSettingsDto(
     string ClaudeSubscriptionToken,
     bool LocalPersonNameApplies,
     string LocalPersonName,
     string CodexApiKey,
-    string XaiApiKey);
+    string XaiApiKey,
+    long? DefaultMaxTokens,
+    long? DefaultMaxTokensPerHour);
 
 /// <summary>
 /// An edit to any of the settings, or several. Null - or omitted - leaves one

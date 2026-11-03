@@ -98,6 +98,48 @@ public class SettingsControllerTests
         Assert.Equal("set-by-the-admin-page", await fixture.Credential.GetAsync("claude", default));
     }
 
+    // ---- The site's default token caps ----
+
+    [Fact]
+    public async Task DefaultTokenCaps_NothingSet_AreNull()
+    {
+        var settings = await NewFixture().Controller.GetHatchSettings(default);
+
+        Assert.Null(settings.DefaultMaxTokens);
+        Assert.Null(settings.DefaultMaxTokensPerHour);
+    }
+
+    [Fact]
+    public async Task DefaultTokenCaps_Stored_ReadBackAsLongs()
+    {
+        var fixture = NewFixture(
+            (SiteSettingKeys.RunnerDefaultMaxTokens, "2000000"),
+            (SiteSettingKeys.RunnerDefaultMaxTokensPerHour, "200000"));
+
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.Equal(2_000_000L, settings.DefaultMaxTokens);
+        Assert.Equal(200_000L, settings.DefaultMaxTokensPerHour);
+    }
+
+    /// <summary>A cleared default is stored as the empty string, and a hand-edited row can say anything: both read as unset, never as a cap of zero.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("x")]
+    [InlineData("-5")]
+    public async Task DefaultTokenCaps_ClearedOrJunk_ReadAsUnset(string stored)
+    {
+        var fixture = NewFixture(
+            (SiteSettingKeys.RunnerDefaultMaxTokens, stored),
+            (SiteSettingKeys.RunnerDefaultMaxTokensPerHour, stored));
+
+        var settings = await fixture.Controller.GetHatchSettings(default);
+
+        Assert.Null(settings.DefaultMaxTokens);
+        Assert.Null(settings.DefaultMaxTokensPerHour);
+    }
+
     // ---- The agent keys, held exactly as the token is ----
 
     private static HatchSettingsWriteRequest Write(string key, string? value) => key switch
