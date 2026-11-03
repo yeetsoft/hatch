@@ -3361,6 +3361,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
+| `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (accepted, answered empty for now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4074,11 +4075,11 @@ holds only the present column of every issue.
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
 per report, each stating the question it answers. There are two reports with a
-card each: the Timeline and the Cumulative flow. A **third read, the
-[flow](#the-flow), has no page and no index card** — it is for a program, not a
-person at a screen. A new report with a page is one more entry in that index
-and a route; neither report gets a nav entry of its own, and the index card
-stays the only way in.
+card each: the Timeline and the Cumulative flow. **Two further reads, the
+[flow](#the-flow) and the [changelog report](#the-changelog-report), have no
+page and no index card** — they are for a program, not a person at a screen. A
+new report with a page is one more entry in that index and a route; neither
+report gets a nav entry of its own, and the index card stays the only way in.
 
 ### The timeline
 
@@ -4357,6 +4358,72 @@ session reads is the whole answer and cannot be widened by a parameter. There is
 **no page** and **no CLI subcommand**; a script reaches it with
 `hatch api GET /api/hatch/reports/flow?...`, which is the
 [API surface](#api-surface)'s row for it.
+
+### The changelog report
+
+```
+GET /api/hatch/reports/changelog?from=&to=&projectId=&bucket=&offsetMinutes=&level=&loose=
+```
+
+`GET /api/hatch/changelog` (`ChangelogController`) answers what shipped as a
+page, before and after a cursor. This route answers the same question —
+**what closed, in the reader's own time buckets** — as a report rather than a
+paged feed: closed top-level epics, grouped into buckets aligned to the
+reader's wall clock rather than split one day at a time. It is **for a
+program**, like [the flow](#the-flow): counts and cards only, with no page and
+no index card.
+
+`from` and `to` are instants, defaulting to the **fourteen days ending now**
+rather than the other reports' ninety — the changelog feed's own window — with
+the same `400`s for an unparseable or inverted bound, and `from` clamped
+forward to the first issue's creation the way the timeline's is. `projectId`
+is repeatable, narrowing to those projects' epics; an id naming no project is
+a `400`. `bucket` is `hour`, `day`, `week` or `month`, case-insensitive and
+trimmed; absent or blank is `day`; anything else is a `400` naming the four.
+`offsetMinutes` is minutes east of UTC — local is UTC plus this — aligning
+every bucket to the reader's own clock rather than UTC's; outside -1440..1440
+is a `400`. `level` is absent, blank, or `epic`; anything else, `story`
+included, is a `400` naming `epic`. `loose` is a bool, default `false`,
+accepted and echoed back. The route is open to a person or to a key with the
+`hatch` scope, and the `400`s above come in that order — bound, offset,
+bucket, level, project.
+
+It answers `{ from, to, bucket, level, loose, buckets }`. `from`, `to`,
+`bucket`, `level` and `loose` are the request as the server resolved it.
+`buckets` is newest first, one `{ start, end, groups, loose }` per bucket that
+closed at least one epic — `start` and `end` are the bucket's own UTC
+instants. Each entry in `groups` is `{ epic, closedHere, descendantCount,
+stories }`, newest `closedAt` first within the bucket: `epic` is a card,
+`closedHere` is always `true`, `descendantCount` counts everything below the
+epic at any depth, and `stories` is `[]` for now. Every bucket's own `loose`
+is `[]` for now as well.
+
+#### The rules
+
+- **Closed is the board's own flag** (`Type == "epic"`, the status's
+  `IsTerminal`, and `ClosedAt` set), never a rebuild off the `status_changed`
+  trail — unlike [the rebuild, and its one hole](#the-rebuild-and-its-one-hole),
+  so there is no `unresolved` count here and no renamed-column hole to fall
+  into.
+- **The window is half-open**, `[from, to)`, the same as the flow's.
+- **Only top-level epics** — an epic whose parent is not itself an epic — are
+  grouped; a story or task closing underneath one is not read at this level.
+- **Buckets align to the reader**, via `offsetMinutes`: an hour, a day, or a
+  calendar month on the reader's own clock, floored and then shifted back out
+  to UTC for the wire — weeks start on **Monday**, the same as
+  [the timeline's axis](#the-drawing).
+- **Buckets are sparse.** An empty bucket is never emitted — no dense grid and
+  no point cap, unlike [the cumulative flow](#the-cumulative-flow)'s.
+- **`level=epic` is the only level for now** — `story` is a `400` naming
+  `epic` until a later story widens it, so a reader hitting it today should
+  not read it as broken.
+- **`stories` and `loose` answer empty for now**, on every group and every
+  bucket alike, until a later story fills them in.
+
+**There is no page, no index card and no CLI subcommand** for it yet; a script
+reaches the same answer with `hatch api GET /api/hatch/reports/changelog?...`,
+which is the [API surface](#api-surface)'s row for it. A later story gives it
+a page.
 
 ## The overnight
 
