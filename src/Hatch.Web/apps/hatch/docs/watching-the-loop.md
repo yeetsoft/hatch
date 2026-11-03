@@ -97,6 +97,12 @@ as `500,000` when you leave the box. Empty clears the cap. A value that is not
 a token count blocks **Save bounds**. When the board refuses a value, the
 refusal appears under the field it names.
 
+**The two defaults a runner inherits when it holds no cap of its own** are
+set on Settings, by an admin only - with the wall off, anyone at the
+keyboard. A runner with none of its own runs under them, which is the
+`(default)` marker in Bounds and Token budget above, and the empty, hinted
+field below.
+
 A box reading the site default rather than a cap of its own shows empty, not
 the number it inherits - saving with no edit leaves it inheriting, rather
 than locking that figure in as the runner's own. Its hint names the figure it
