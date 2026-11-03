@@ -1,5 +1,6 @@
 import { bandStyle, breakdown, momentLabel } from '../lib/cumulativeFlow';
-import type { CumulativeFlow, CumulativeFlowPoint, Status } from '../types';
+import type { ColourBy } from '../lib/cumulativeFlow';
+import type { CumulativeFlow, CumulativeFlowPoint, Project, Status } from '../types';
 
 /**
  * The pinned moment, beside (or under, on a phone) the chart: the same rows
@@ -9,14 +10,18 @@ import type { CumulativeFlow, CumulativeFlowPoint, Status } from '../types';
  */
 export function CumulativeFlowPin({
   point,
-  columns,
+  keys,
+  by,
   statuses,
+  projects,
   step,
   locale,
 }: {
   point: CumulativeFlowPoint | null;
-  columns: number[];
+  keys: (number | string)[];
+  by: ColourBy;
   statuses: Status[];
+  projects: Project[];
   step: CumulativeFlow['step'];
   locale?: string;
 }) {
@@ -28,15 +33,15 @@ export function CumulativeFlowPin({
     );
   }
 
-  const { rows, total } = breakdown(point, columns, statuses);
+  const { rows, total } = breakdown(point, keys, by, statuses);
 
   return (
     <aside className="hatch-cumulative-flow-pin" aria-live="polite">
       <div className="hatch-cumulative-flow-card-moment">{momentLabel(point.at, step, locale)}</div>
 
       {rows.map((row) => (
-        <div key={row.columnId} className="hatch-cumulative-flow-card-row">
-          <span className="hatch-cumulative-flow-swatch" style={bandStyle(statuses, row.columnId)} />
+        <div key={row.key} className="hatch-cumulative-flow-card-row">
+          <span className="hatch-cumulative-flow-swatch" style={bandStyle(by, row.key, statuses, projects)} />
           {row.name} {row.count}
         </div>
       ))}

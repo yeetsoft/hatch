@@ -54,8 +54,8 @@ describe('the timeline styles', () => {
     expect(seen).toBeGreaterThan(10);
   });
 
-  it('fills a segment from its status, and Other from a neutral token', () => {
-    expect(declarationsIn(css, '.hatch-timeline-segment')['fill']).toBe('var(--status-color)');
+  it('fills a segment from its project if one is set, else its status, and Other from a neutral token', () => {
+    expect(declarationsIn(css, '.hatch-timeline-segment')['fill']).toBe('var(--mark-color, var(--status-color))');
     expect(declarationsIn(css, '.hatch-timeline-segment--other')['fill']).toBe('var(--line-strong)');
   });
 

@@ -3,8 +3,10 @@ import { useSearchParams } from 'react-router-dom';
 import { EmptyState, PageHeader } from '@hatch/ui';
 import { getCumulativeFlow, getProjects, getStatuses } from '../api/client';
 import { CumulativeFlowChart } from '../components/CumulativeFlowChart';
+import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
-import { isEmpty } from '../lib/cumulativeFlow';
+import { isEmpty, resolveColourBy, withColourBy } from '../lib/cumulativeFlow';
+import type { ColourBy } from '../lib/cumulativeFlow';
 import { makeScale, resolveProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { useLoaded } from '../lib/useLoaded';
@@ -23,6 +25,8 @@ interface CumulativeFlowView {
 interface BodyProps {
   answer: CumulativeFlow;
   statuses: Status[];
+  by: ColourBy;
+  projects: Project[];
   offsetMinutes: number;
   now: Date;
   locale?: string;
@@ -36,7 +40,7 @@ interface BodyProps {
  * Pure of the load and of the URL, so a test can render it from props - there
  * is no DOM runner to drive `useLoaded`.
  */
-export function CumulativeFlowBody({ answer, statuses, offsetMinutes, now, locale }: BodyProps) {
+export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinutes, now, locale }: BodyProps) {
   const unresolved = unresolvedPhrase(answer.unresolved);
 
   return (
@@ -49,6 +53,8 @@ export function CumulativeFlowBody({ answer, statuses, offsetMinutes, now, local
         <CumulativeFlowChart
           answer={answer}
           statuses={statuses}
+          by={by}
+          projects={projects}
           scale={makeScale(answer.from, answer.to)}
           offsetMinutes={offsetMinutes}
           now={now}
@@ -103,10 +109,15 @@ export function CumulativeFlowPage() {
     setParams(withProjects(params, keys, (data?.projects ?? []).map((p) => p.key)), { replace: true });
   }
 
+  function chooseBy(value: string) {
+    setParams(withColourBy(params, value === 'project' ? 'project' : 'column'), { replace: true });
+  }
+
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
   const chosen = resolveProjects(params, data.projects);
+  const by = resolveColourBy(params);
 
   return (
     <div className="hatch-page">
@@ -130,6 +141,16 @@ export function CumulativeFlowPage() {
                   chosen={chosen.map((p) => p.key)}
                   onChange={chooseProjects}
                 />
+                <Facet
+                  label="Colour by"
+                  lit={by === 'project'}
+                  value={by}
+                  options={[
+                    { value: 'column', text: 'Column' },
+                    { value: 'project', text: 'Project' },
+                  ]}
+                  onChange={chooseBy}
+                />
               </div>
             )}
           </>
@@ -138,7 +159,14 @@ export function CumulativeFlowPage() {
 
       {error && <p className="text-danger">{error}</p>}
 
-      <CumulativeFlowBody answer={data.answer} statuses={data.statuses} offsetMinutes={offsetMinutes} now={now} />
+      <CumulativeFlowBody
+        answer={data.answer}
+        statuses={data.statuses}
+        by={by}
+        projects={data.projects}
+        offsetMinutes={offsetMinutes}
+        now={now}
+      />
     </div>
   );
 }
