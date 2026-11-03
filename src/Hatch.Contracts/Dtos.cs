@@ -2625,10 +2625,11 @@ public record TimelineDto(
     IReadOnlyList<string> Creators,
     int Unresolved);
 
-/// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column then.</summary>
+/// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column, and in each project, then.</summary>
 /// <param name="At">The grid point, in <see cref="CumulativeFlowDto.Step"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
 /// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>. A terminal column counts only what closed inside the window, so it starts at zero at the grid's first point rather than at whatever it already held.</param>
-public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts);
+/// <param name="ProjectCounts">Parallel to <see cref="CumulativeFlowDto.Projects"/>: how many issues sat in each project at <paramref name="At"/>, cut from the same stretches as <paramref name="Counts"/> and so summing to the same total.</param>
+public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts, IReadOnlyList<int> ProjectCounts);
 
 /// <summary>
 /// How many issues sat in each board column over time: one point per grid
@@ -2638,6 +2639,7 @@ public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Count
 /// <param name="To">The end of the range the answer covers, as resolved.</param>
 /// <param name="Step">The grid's bucket size: <c>hour</c>, <c>day</c> or <c>week</c>.</param>
 /// <param name="Columns">The board's columns, in board order, deferred columns excluded — parallel to each point's <see cref="CumulativeFlowPointDto.Counts"/>.</param>
+/// <param name="Projects">The project keys in scope, in <c>/api/hatch/projects</c>'s own order — parallel to each point's <see cref="CumulativeFlowPointDto.ProjectCounts"/>.</param>
 /// <param name="Points">One per grid step, oldest first.</param>
 /// <param name="Unresolved">Stretches in the range that named a column no longer on the board and were left out.</param>
 public record CumulativeFlowDto(
@@ -2645,6 +2647,7 @@ public record CumulativeFlowDto(
     DateTimeOffset To,
     string Step,
     IReadOnlyList<int> Columns,
+    IReadOnlyList<string> Projects,
     IReadOnlyList<CumulativeFlowPointDto> Points,
     int Unresolved);
 

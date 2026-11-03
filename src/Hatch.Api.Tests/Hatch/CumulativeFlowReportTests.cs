@@ -268,6 +268,46 @@ public class CumulativeFlowReportTests
     }
 
     [Fact]
+    public void Projects_AreDistinctKeysInScope_SortedOrdinal()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-10), key: "HA"),
+            Issue(2, "story", 3, Day(-10), key: "AER", project: 2),
+        };
+
+        var unscoped = Fold(rows, from: Day(-9), to: Day(0), now: Day(0));
+        Assert.Equal(["AER", "HA"], unscoped.Projects);
+
+        var scoped = Fold(rows, from: Day(-9), to: Day(0), now: Day(0), projectKeys: new HashSet<string> { "HA" });
+        Assert.Equal(["HA"], scoped.Projects);
+    }
+
+    [Fact]
+    public void ProjectCounts_SumToTheSameTotalAsCounts_IncludingATerminalColumn()
+    {
+        var rows = new[]
+        {
+            Issue(1, "epic", 3, Day(-10), key: "HA"),
+            Issue(2, "story", 3, Day(-10), key: "AER", project: 2),
+        };
+        var changes = new[] { Move(1, 1, Day(-2), 3, 5) };
+
+        var result = Fold(rows, changes, from: Day(-5), to: Day(0), now: Day(0));
+
+        Assert.NotEmpty(result.Points);
+        Assert.All(result.Points, p => Assert.Equal(p.Counts.Sum(), p.ProjectCounts.Sum()));
+    }
+
+    [Fact]
+    public void NoRows_AnswersProjectsEmpty()
+    {
+        var result = Fold([], from: Day(-9), to: Day(0), now: Day(0));
+
+        Assert.Empty(result.Projects);
+    }
+
+    [Fact]
     public void EveryType_Counts_EpicStoryAndTask()
     {
         var rows = new[]
@@ -520,6 +560,7 @@ public class CumulativeFlowControllerTests
         Assert.Equal(Now, flow.To);
         Assert.Equal(Now - Ninety, flow.From);
         Assert.Empty(flow.Points);
+        Assert.Empty(flow.Projects);
     }
 
     [Fact]
@@ -588,10 +629,12 @@ public class CumulativeFlowControllerTests
         var scoped = Value(await h.Reports.GetCumulativeFlow(
             Now.AddDays(-15).ToString("O"), Now.ToString("O"), new List<string> { "AER" }, default));
         Assert.Equal(1, scoped.Points.Last().Counts[0]);
+        Assert.Equal(["AER"], scoped.Projects);
 
         var unscoped = Value(await h.Reports.GetCumulativeFlow(
             Now.AddDays(-15).ToString("O"), Now.ToString("O"), null, default));
         Assert.Equal(2, unscoped.Points.Last().Counts[0]);
+        Assert.Equal(["AER", "OTHER"], unscoped.Projects);
     }
 
     [Fact]
