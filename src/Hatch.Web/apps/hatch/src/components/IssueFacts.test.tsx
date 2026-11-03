@@ -98,6 +98,13 @@ const render = (i: Issue, p: Project | null = project(), stopped = false) =>
   );
 
 describe('IssueFacts', () => {
+  it('says a ticket finished with no code, and why, only when it carries the declaration', () => {
+    expect(render(issue({ noCode: 'The setting was already off.' }))).toContain(
+      'Finished with no code: The setting was already off.',
+    );
+    expect(render(issue())).not.toContain('Finished with no code');
+  });
+
   it('draws every field it has, and holds nothing that can write', () => {
     const html = render(
       issue({

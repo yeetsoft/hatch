@@ -382,14 +382,14 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// when the effective level is this issue's own, or None.
 /// </param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -580,14 +580,14 @@ public record IssueClaimDto(
 /// </param>
 /// <param name="Landings">What each bound repository holds for this issue's branch - see <see cref="LandingController"/>.</param>
 /// <param name="OnePr">
-/// Whether this issue's story shares one branch and one pull request across
-/// its tasks - walked live, at read, to the nearest story at or above this
-/// issue, whose own override wins and whose project's default fills in where
-/// it has none; never stored or copied. False where no story sits above. See
+/// Whether this issue's story or bug shares one branch and one pull request
+/// across its tasks - walked live, at read, to the nearest story or bug at or
+/// above this issue, whose own override wins and whose project's default fills
+/// in where it has none; never stored or copied. False where none sits above. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>. Trailing and defaulted for the
 /// reason <paramref name="OpenQuestions"/> is.
 /// </param>
-/// <param name="OnePrOwn">The override this story's own row carries - true, false, or null for "inherit the project's default". Always null on anything but a story.</param>
+/// <param name="OnePrOwn">The override this row itself carries - true, false, or null for "inherit the project's default". Always null on anything but a story or a bug.</param>
 /// <param name="OnePrFrom">
 /// The story <paramref name="OnePr"/> was read from, or null when the value is
 /// this issue's own, comes from its project, or does not exist.
@@ -616,6 +616,8 @@ public record IssueClaimDto(
 /// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
 /// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
+/// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>.</param>
+/// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -670,7 +672,9 @@ public record IssueDto(
     IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
     string? DangerousOwn = null,
     string? Dangerous = null,
-    string? DangerousFrom = null)
+    string? DangerousFrom = null,
+    string? NoCode = null,
+    DateTimeOffset? NoCodeAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -757,6 +761,40 @@ public static class ClaimOutcomes
 
     public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted;
 }
+
+/// <summary>
+/// Why a runner's claim was refused, on the <c>409</c> of a heartbeat or a
+/// release (<see cref="ClaimRefusedDto"/>) - the four shapes a presented
+/// token can be refused in. A release may also name <see cref="Quiet"/> as the
+/// reason it is letting go, and accepts no other.
+/// </summary>
+public static class ClaimLostReasons
+{
+    /// <summary>The runner's own lease, gone quiet for the stall lapse.</summary>
+    public const string Quiet = "quiet";
+
+    /// <summary>The runner's own lease, simply over.</summary>
+    public const string Expired = "expired";
+
+    /// <summary>The row carries no claim: a person cleared it.</summary>
+    public const string Cleared = "cleared";
+
+    /// <summary>The row carries somebody else's token.</summary>
+    public const string Taken = "taken";
+
+    public static bool IsValid(string reason) => reason is Quiet or Expired or Cleared or Taken;
+}
+
+/// <summary>
+/// The <c>409</c> body a heartbeat or a release is refused with -
+/// <c>{ error, reason }</c>, following <c>AuthErrorDto</c>'s <c>{ error }</c>
+/// shape (<c>src/Hatch.Api/Models/Auth/Dtos.cs</c>) so a client can ask why
+/// without parsing prose. <c>HatchClient.Sentence</c> already unwraps
+/// <c>error</c>, so a client that reads only the sentence is unchanged.
+/// </summary>
+/// <param name="Error">The sentence a person reads.</param>
+/// <param name="Reason">One of <see cref="ClaimLostReasons"/>.</param>
+public record ClaimRefusedDto(string Error, string Reason);
 
 /// <summary>
 /// The six levels an issue's priority can sit at, ordered - see
@@ -1331,6 +1369,14 @@ public record ReviewDto(
 /// an agent's to fix, so a row here is a person's, every time. Defaults to null
 /// so an older client still reads.
 /// </param>
+/// <param name="NoCodeHeld">
+/// The review column's issues that declared they were finished with no code
+/// and are not pre-approved, so no pull request will ever be recorded and the
+/// loop will not close them: each with the reason it gave. Not counted in
+/// <paramref name="InReviewWithoutPullRequest"/>: it is not waiting on a pull
+/// request, a person closes it. A pre-approved one is closed by the board and
+/// is not listed. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="Deadlocked">
 /// Every issue the work queue marks deadlocked - a ring of dependency edges,
 /// or a wait on a parent's gate, that can never clear without a person - judged
@@ -1357,6 +1403,7 @@ public record AttentionDto(
     IReadOnlyList<ApprovedHeldDto>? ApprovedHeld = null,
     IReadOnlyList<ApprovedWaitingDto>? ApprovedWaiting = null,
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
+    IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null);
 
@@ -1449,6 +1496,13 @@ public record ApprovedWaitingDto(string Key, string Title, string Type, string? 
 /// </summary>
 /// <param name="Sentence">The judge's own words for why it is held.</param>
 public record LandingHeldDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One review-column issue that declared it finished with no code and is not
+/// pre-approved, so a person closes it.
+/// </summary>
+/// <param name="Reason">The reason the declaration gave.</param>
+public record NoCodeHeldDto(string Key, string Title, string Type, string Reason);
 
 /// <summary>
 /// One issue the work queue marks deadlocked: waiting, directly or through a
@@ -1629,7 +1683,8 @@ public record PlaybookDto(
     int? ProjectId,
     string? ProjectKey,
     string? ProjectName,
-    string Source = "board");
+    string Source = "board",
+    int? QuietLimitSeconds = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -1648,6 +1703,12 @@ public record PlaybookFileReferenceDto(string Path, string Canonical, string Tru
 /// The brief's limit, in characters. Null means none (on create) or leaves
 /// it alone (on patch); <c>""</c> or whitespace clears it; a parsed positive
 /// integer sets it - the same three states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null means none
+/// (on create) or leaves it alone (on patch); <c>""</c> or whitespace clears
+/// it; a parsed positive integer sets it - the same three states
+/// <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone on patch; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1670,7 +1731,8 @@ public record PlaybookCreateRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -1685,6 +1747,11 @@ public record PlaybookCreateRequest(
 /// The brief's limit, in characters. Null leaves it alone; <c>""</c> or
 /// whitespace clears it; a parsed positive integer sets it - the same three
 /// states <paramref name="Budget"/> carries.
+/// </param>
+/// <param name="QuietLimitSeconds">
+/// The seconds a claim under this row may go without a word. Null leaves it
+/// alone; <c>""</c> or whitespace clears it; a parsed positive integer sets
+/// it - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="DeniedTools">Empty means every tool. Null leaves it alone; <c>[]</c> clears it.</param>
 /// <param name="ProjectId">
@@ -1705,7 +1772,89 @@ public record PlaybookPatchRequest(
     string? Shape = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
-    bool? IsCheck = null);
+    bool? IsCheck = null,
+    string? QuietLimitSeconds = null);
+
+/// <summary>
+/// One change in a proposal submission: the playbook, then every field
+/// <see cref="PlaybookPatchRequest"/> takes (null leaves a field alone).
+/// </summary>
+public record PlaybookProposalChangeRequest(
+    int PlaybookId,
+    int? FromStatusId = null,
+    int? ToStatusId = null,
+    IReadOnlyList<string>? Types = null,
+    string? Prompt = null,
+    string? Model = null,
+    string? Effort = null,
+    string? Budget = null,
+    string? BriefLimit = null,
+    string? Shape = null,
+    IReadOnlyList<string>? DeniedTools = null,
+    string? ProjectId = null,
+    bool? IsCheck = null)
+{
+    /// <summary>The fields alone, in <see cref="PlaybookPatchRequest"/>'s own shape.</summary>
+    public PlaybookPatchRequest ToPatch() => new(
+        FromStatusId: FromStatusId,
+        ToStatusId: ToStatusId,
+        Types: Types,
+        Prompt: Prompt,
+        Model: Model,
+        Effort: Effort,
+        Budget: Budget,
+        BriefLimit: BriefLimit,
+        Shape: Shape,
+        DeniedTools: DeniedTools,
+        ProjectId: ProjectId,
+        IsCheck: IsCheck);
+
+    /// <summary>Whether any of the twelve patch fields is present - <c>""</c> and an empty list count.</summary>
+    public bool NamesAField =>
+        FromStatusId is not null || ToStatusId is not null || Types is not null || Prompt is not null ||
+        Model is not null || Effort is not null || Budget is not null || BriefLimit is not null ||
+        Shape is not null || DeniedTools is not null || ProjectId is not null || IsCheck is not null;
+}
+
+/// <summary>A session's proposal: why, the ticket it was working, and the changes.</summary>
+public record PlaybookProposalRequest(
+    string? Reason,
+    string? IssueKey,
+    IReadOnlyList<PlaybookProposalChangeRequest>? Changes);
+
+/// <param name="PlaybookId">Null once the playbook has been deleted; <paramref name="Before"/> still says what it was.</param>
+/// <param name="ChangedFields">
+/// Which fields differ between <paramref name="Before"/> and <paramref name="After"/>, from a fixed vocabulary
+/// in this order: <c>fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit,
+/// deniedTools, isCheck, projectId</c>.
+/// </param>
+/// <param name="OutOfDate">Whether the playbook has changed since the proposal was made.</param>
+public record PlaybookProposalChangeDto(
+    int Id,
+    int? PlaybookId,
+    PlaybookDto Before,
+    PlaybookDto After,
+    IReadOnlyList<string> ChangedFields,
+    bool OutOfDate,
+    string? OutOfDateReason);
+
+public record PlaybookProposalDto(
+    int Id,
+    string Reason,
+    string? IssueKey,
+    string Author,
+    string State,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? DecidedAt,
+    string? DecidedBy,
+    IReadOnlyList<PlaybookProposalChangeDto> Changes);
+
+/// <param name="ProposalIds">Every id the caller's page showed as pending; a mismatch against what is actually pending is refused.</param>
+public record PlaybookProposalDecisionRequest(IReadOnlyList<int>? ProposalIds);
+
+public record PlaybookProposalRejectResponse(int Rejected);
+
+public record PlaybookProposalApproveResponse(int Approved, IReadOnlyList<PlaybookDto> Playbooks);
 
 /// <summary>
 /// What one issue overrides its playbooks with. Null leaves a field alone and
@@ -1805,6 +1954,21 @@ public record ReleaseNoteRequest(string? Note)
 /// </summary>
 /// <param name="Reason">Why running the issue is dangerous. Trimmed before it is stored.</param>
 public record DangerousRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
+}
+
+/// <summary>
+/// An issue's declaration that it finished with no code. Empty or whitespace
+/// clears it; an absent or null reason is refused, so clearing is something the
+/// caller says.
+/// </summary>
+/// <param name="Reason">Why the issue needed no code. Trimmed before it is stored.</param>
+public record NoCodeRequest(string? Reason)
 {
     /// <summary>
     /// The longest reason the server will accept, measured after trimming. Here
@@ -1926,9 +2090,10 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
 /// counted back to the first release whose outcome was
-/// <see cref="ClaimOutcomes.Worked"/>, a status change, or an answer a person
-/// wrote - whichever comes first. A release with no outcome, and an answer
-/// written by a lapse, are skipped rather than counted or stopped at. Zero on
+/// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume, or
+/// an answer a person wrote - whichever comes first. A release with no outcome,
+/// a hold, and an answer written by a lapse, are skipped rather than counted or
+/// stopped at. Zero on
 /// a client too old to read it.
 /// </param>
 /// <param name="InReview">
@@ -1957,16 +2122,16 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// </param>
 /// <param name="BranchKey">
 /// The key the branch for this dispatch is named for. For a task under a story
-/// that shares one pull request, and with no pull request of its own, the
-/// story's key: every task of that story pushes to the story's branch, and the
-/// story's closeout opens the one pull request. Otherwise the issue's own key.
-/// Decided here and never by the client - whether a story shares is a live,
+/// or bug that shares one pull request, and with no pull request of its own,
+/// the parent's key: every task of that parent pushes to its branch, and the
+/// parent's closeout opens the one pull request. Otherwise the issue's own key.
+/// Decided here and never by the client - whether a parent shares is a live,
 /// inherited fact. A task that already has an open branch of its own on origin
 /// keeps it: that is a fact about git, which only a runner can see, so the
 /// client applies it on top of this. Null from a server that predates it, where
 /// the client reads the issue's own key.
 /// </param>
-/// <param name="BranchTitle">The title the branch's slug is cut from: the story's, where <paramref name="BranchKey"/> is the story's.</param>
+/// <param name="BranchTitle">The title the branch's slug is cut from: the parent's, where <paramref name="BranchKey"/> is the parent's.</param>
 /// <param name="LastCheckFindings">
 /// The most recent check's findings, when the issue stands in
 /// <c>Columns.Implementation</c> because that check's verdict was a
@@ -2117,7 +2282,7 @@ public static class HopKinds
 
     /// <summary>
     /// A pre-approved issue in review with no pull request, whose children are
-    /// all done - see HA-472.
+    /// all done, or that declared it finished with no code - see HA-472.
     /// </summary>
     public const string Close = "close";
 }
@@ -2270,7 +2435,7 @@ public record QueueEntryDto(
 /// </param>
 /// <param name="BranchKey">
 /// The key the row's branch is named for. The row's own <paramref name="Key"/>
-/// in every row this list holds: a task waiting on its story's pull request has
+/// in every row this list holds: a task waiting on its parent's pull request has
 /// no branch of its own to check and is left out of the list, so the key here is
 /// always the one the poll should look for. Null from a server that predates it,
 /// where the client reads <paramref name="Key"/>.
@@ -3443,13 +3608,15 @@ public record PlaybookFileRequest(
 /// </summary>
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
-    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 /// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
 public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
-    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck);
+    int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
+    int? QuietLimitSeconds = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
@@ -3668,7 +3835,14 @@ public record RunnerDto(
     decimal? Spent = null,
     string? Host = null,
     string? ClaimStatus = null,
-    bool RefusesDangerous = false)
+    bool RefusesDangerous = false,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    string MaxTokensSource = "none",
+    string MaxTokensPerHourSource = "none",
+    long? TokensUsed = null,
+    long? TokensLastHour = null,
+    DateTimeOffset? ThrottledUntil = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -3695,7 +3869,7 @@ public enum RunnerBoardDrift
 /// itself.
 /// </summary>
 /// <remarks>
-/// The five bounds are <em>reported</em>, not requested: they are what this
+/// The seven bounds are <em>reported</em>, not requested: they are what this
 /// process started with, and they are written only when the row is being
 /// created. A restart of the same loop sends them again and the server ignores
 /// them, which is what stops a restart from undoing an operator's edit.
@@ -3764,7 +3938,7 @@ public enum RunnerBoardDrift
 /// <param name="Fresh">
 /// True only on the first answered beat of a loop process that carried no
 /// night state, i.e. one typed by hand or the first start under a supervisor:
-/// the five bounds in this body are then the flags it was started with, and
+/// the seven bounds in this body are then the flags it was started with, and
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
@@ -3789,6 +3963,15 @@ public enum RunnerBoardDrift
 /// <see cref="Tags"/>: the first beat that says writes it onto the row, and
 /// from then on only <c>PATCH</c> moves it. Absent says nothing.
 /// </param>
+/// <param name="ThrottledUntil">
+/// This runner is over its own <c>--max-tokens-per-hour</c> and expects to be
+/// under it at this instant; null otherwise. A fact the runner reports about
+/// itself, never a person's to set.
+/// </param>
+/// <param name="MaxTokens">The cap on tokens for the whole run, read only on a fresh <c>loop</c> beat, with the other bounds.</param>
+/// <param name="MaxTokensPerHour">The cap on tokens per hour, on the same terms as <see cref="MaxTokens"/>.</param>
+/// <param name="TokensUsed">The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</param>
+/// <param name="TokensLastHour">The tokens used in the last hour, on the terms <see cref="Runs"/> has.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3818,7 +4001,12 @@ public record RunnerHeartbeatRequest(
     int? Runs = null,
     decimal? Spent = null,
     string? Host = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    DateTimeOffset? ThrottledUntil = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    long? TokensUsed = null,
+    long? TokensLastHour = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -3844,7 +4032,7 @@ public record RunnerUsageWindowDto(
 /// and read by nobody else.
 /// </summary>
 /// <remarks>
-/// The loop folds all six into its bounds before its next pick, so a person
+/// The loop folds all seven into its bounds before its next pick, so a person
 /// editing a row changes what that loop does from the next ticket onward -
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
@@ -3892,7 +4080,9 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Tags = null,
     RunnerOrderDto? Order = null,
     IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -3930,7 +4120,9 @@ public record RunnerPatchRequest(
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
     IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    string? MaxTokens = null,
+    string? MaxTokensPerHour = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.

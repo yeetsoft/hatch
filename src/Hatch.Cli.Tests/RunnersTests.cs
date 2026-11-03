@@ -37,8 +37,8 @@ public sealed class RunnersTests
     /// <summary>What the board answers a heartbeat with, when it has anything to say.</summary>
     private static void Instructs(
         Harness h, string state, string? under = null, int? maxRuns = null,
-        decimal? maxSpend = null, DateTimeOffset? untilAt = null) =>
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, under, maxRuns, maxSpend, untilAt));
+        decimal? maxSpend = null, DateTimeOffset? untilAt = null, long? maxTokens = null, long? maxTokensPerHour = null) =>
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, under, maxRuns, maxSpend, untilAt, MaxTokens: maxTokens, MaxTokensPerHour: maxTokensPerHour));
 
     private static IReadOnlyList<Call> Beats(Harness h) => h.Wire.To("POST", Beat);
 
@@ -136,12 +136,13 @@ public sealed class RunnersTests
 
         await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default);
 
-        // Two beats: one before the pass that claims and clones, and one at the
+        // Three beats: one before the pass that claims and clones, one at the
         // top of the next iteration - which is where --max-runs 1 stops the
         // loop, and so is the one that carries what the pass before it grew
-        // the checkouts to.
+        // the checkouts to - and the stop's own last beat, which carries them too.
         var beats = Beats(h);
-        Assert.Equal(2, beats.Count);
+        Assert.Equal(3, beats.Count);
+        Assert.Contains("https://example.test/owner/repo.git", beats[1].Read<RunnerHeartbeatRequest>().Remotes ?? []);
         var last = beats[^1].Read<RunnerHeartbeatRequest>();
         Assert.Contains("https://example.test/owner/repo.git", last.Remotes ?? []);
     }
@@ -224,6 +225,43 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_carries_the_token_bounds_it_started_with()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(
+            ["--once", "--max-tokens", "2M", "--max-tokens-per-hour", "200k"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(2_000_000, beat.MaxTokens);
+        Assert.Equal(200_000, beat.MaxTokensPerHour);
+
+        // A once beat shares its name with the loop's row, and a fresh tally
+        // would blank the totals the loop has reported.
+        Assert.Null(beat.TokensUsed);
+        Assert.Null(beat.TokensLastHour);
+    }
+
+    [Fact]
+    public async Task A_loop_beat_carries_the_tokens_it_has_used_and_the_hour_it_is_judged_on()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxRuns: 1, maxTokens: 5_000_000);
+        Assert.True(new NightState { Tokens = 1_200_000, Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 150_000)] }
+            .Write(h.Supervised.NightStatePath));
+
+        await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1", "--max-tokens", "5M"], default);
+
+        var first = Beats(h)[0].Read<RunnerHeartbeatRequest>();
+        Assert.Equal("loop", first.Kind);
+        Assert.Equal(1_200_000, first.TokensUsed);
+        Assert.Equal(150_000, first.TokensLastHour);
+    }
+
+    [Fact]
     public async Task Every_pass_says_it_is_here_and_says_what_it_last_did()
     {
         using var h = new Harness();
@@ -235,18 +273,19 @@ public sealed class RunnersTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
 
-        // Three for two increments: one at the top of each pass, and one at the
-        // top of the pass that read the cap and stopped - which is what leaves
-        // the row saying how the night ended rather than what it was doing an
-        // increment ago.
+        // Four for two increments: one at the top of each pass, one at the top
+        // of the pass that read the cap and stopped, and the stop's own last
+        // beat - which is what leaves the row saying how the night ended
+        // rather than what it was doing an increment ago.
         var beats = Beats(h);
-        Assert.Equal(3, beats.Count);
+        Assert.Equal(4, beats.Count);
         Assert.Equal("loop", beats[0].Read<RunnerHeartbeatRequest>().Kind);
 
         // Each beat after the first carries what the pass before it came to, so
         // a page that cannot see a terminal still reads like one.
         Assert.Contains("AER-1", beats[1].Read<RunnerHeartbeatRequest>().Line);
         Assert.Contains("AER-1", beats[2].Read<RunnerHeartbeatRequest>().Line);
+        Assert.Equal("Stopped: --max-runs 2 reached", beats[3].Read<RunnerHeartbeatRequest>().Line);
     }
 
     [Fact]
@@ -392,6 +431,44 @@ public sealed class RunnersTests
         var last = Beats(h)[^1].Read<RunnerHeartbeatRequest>();
         Assert.True(last.Exhausted);
         Assert.NotNull(last.ExhaustedUntil);
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_beats_the_instant_it_expects_to_be_under_it_and_null_otherwise()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxTokensPerHour: 200_000);
+
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        Assert.True(new NightState { Window = [new TokenEntry(at, 200_000)] }.Write(h.Supervised.NightStatePath));
+
+        using var interrupting = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "1", "--max-tokens-per-hour", "200k", "--restart-after", "0"], interrupting.Token);
+
+        await Harness.Eventually(() => Beats(h).Count >= 2, "a throttled runner to heartbeat more than once");
+        await interrupting.CancelAsync();
+        await running;
+
+        Assert.All(
+            Beats(h).Select(b => b.Read<RunnerHeartbeatRequest>()),
+            b => Assert.Equal(at + TimeSpan.FromHours(1), b.ThrottledUntil));
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_hourly_cap_beats_no_throttle()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running", maxRuns: 1);
+
+        Assert.True(new NightState { Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)] }
+            .Write(h.Supervised.NightStatePath));
+
+        await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default);
+
+        Assert.All(Beats(h).Select(b => b.Read<RunnerHeartbeatRequest>()), b => Assert.Null(b.ThrottledUntil));
     }
 
     [Fact]

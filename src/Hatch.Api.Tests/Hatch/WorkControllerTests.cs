@@ -1385,6 +1385,130 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
+    // ---- Parent pulls out of the column that feeds implementation (AR-52) ----
+    //
+    // That column's playbook is the analysis that cuts a story into tasks and
+    // plans a task, so a pull carries only what was already planned: a task
+    // under a story, not a story under an epic, and not a child too long to
+    // stay in the implementation column once it got there.
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_CarriesATaskUnderARunningStory()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "planned by its story", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Parent, entry.HopKind);
+
+        var moved = Value(await h.Work.HopWork(Key(task), null, null, null, default));
+        Assert.Equal(h.InProgress, moved.StatusId);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_DoesNotCarryAStoryUnderARunningEpic()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "story", "opus"));
+        await h.TickParentPullsAsync(h.Todo);
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "not yet cut into tasks", h.Todo, parentId: epic.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
+
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+        Assert.Equal("opus", Value(await h.Work.GetWork(Key(story), null, default)).Playbook!.Model);
+
+        var result = await h.Work.HopWork(Key(story), null, null, null, default);
+        Assert.NotEqual(StatusCodes.Status200OK, (result.Result as ObjectResult)?.StatusCode ?? StatusCodes.Status200OK);
+        Assert.Equal(h.Todo, (await h.Db.Issues.FirstAsync(i => i.Id == story.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfBacklog_StillCarriesAStoryUnderARunningEpic_AndATaskOverTheLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        var story = await h.FileAsync("story", "pulled off the backlog as ever", h.Inbox, parentId: epic.Id);
+        var parentStory = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "long", h.Inbox, parentId: parentStory.Id);
+        task.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Inbox);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+
+        foreach (var key in new[] { Key(story), Key(task) })
+        {
+            var entry = queue.Single(e => e.Issue.Key == key);
+            Assert.Null(entry.Blocked);
+            Assert.True(entry.Hop);
+            Assert.Equal(HopKinds.Parent, entry.HopKind);
+        }
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_DoesNotCarryATaskOverTheImplementationColumnsBriefLimit()
+    {
+        var h = await NewAsync();
+        h.Db.Add(Playbook(h.Todo, h.InProgress, "task", "opus"));
+        h.Db.Add(Playbook(h.InProgress, h.Review, "task", "sonnet", briefLimit: 1000));
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var task = await h.FileAsync("task", "too long to stay in progress", h.Todo, parentId: story.Id);
+        task.Description = new string('x', 1001);
+        await h.Db.SaveChangesAsync();
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+    }
+
+    [Fact]
+    public async Task ParentPull_OutOfTheFeederColumn_StillFoldsOnAnUnmetDependency()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var t1 = await h.FileAsync("task", "first", h.Todo, parentId: story.Id);
+        var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+        await h.DependsAsync(t2, t1);
+
+        var second = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(t2));
+
+        Assert.Equal(BlockedKinds.Dependency, second.BlockedKind);
+        Assert.False(second.Hop);
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task ParentPull_OutOfTheFeederColumn_StillFoldsOnASiblingHoldingTheSharedBranch(string type)
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync(type, "the story", h.InProgress);
+        await h.OnePrAsync(story, true);
+        var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
+        var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
+        await h.TickParentPullsAsync(h.Todo);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
+
+        Assert.Equal(SharedBranchHold(first), entry.Blocked);
+        Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
+        Assert.False(entry.Hop);
+    }
+
     // ---- WorkDto.NextBriefLimit ----
     //
     // The matched row's BriefLimit out of (destination column -> the column
@@ -4427,12 +4551,12 @@ public class WorkControllerTests
 
         var none = Only(await h.Work.GetQueue(0, null, default));
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             none.Blocked);
         Assert.Equal(BlockedKinds.Other, none.BlockedKind);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
             Only(await h.Work.GetQueue(0, null, default, tag: ["linux"])).Blocked);
 
         Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, tag: ["macos"])).Blocked);
@@ -4467,16 +4591,16 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Queue_ATagRequiringProjectsStoryInTodo_IsClearForATaglessCaller()
+    public async Task Queue_ATagRequiringProjectsStoryInTodo_IsFoldedForATaglessCaller()
     {
         var h = await NewAsync();
         await h.RequireTagsAsync("macos", "xcode");
-        await h.FileAsync("story", "not yet in progress", h.Todo);
+        var issue = await h.FileAsync("story", "not yet in progress", h.Todo);
 
-        // Todo is not the implementation column, and a move into it is nobody's
-        // to be gated by a runner's tags - the same reason a repository fold
-        // only reaches as far as the implementation column.
-        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
     }
 
     [Fact]
@@ -4489,7 +4613,7 @@ public class WorkControllerTests
         await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Only(await h.Work.GetQueue(0, null, default)).Blocked);
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode"])).Blocked);
     }
@@ -4505,7 +4629,7 @@ public class WorkControllerTests
 
         var blocked = Only(await h.Work.GetQueue(0, null, default)).Blocked;
         Assert.NotNull(blocked);
-        Assert.DoesNotContain("implemented only by", blocked);
+        Assert.DoesNotContain("worked only by", blocked);
     }
 
     [Fact]
@@ -4529,7 +4653,7 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
         Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default, tag: ["macos", "xcode"])).Blocked);
     }
@@ -4585,7 +4709,45 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task Hop_InATagRequiringProject_IsNotFoldedByTheTagSentenceForATaglessCaller()
+    public async Task Hop_InATagRequiringProject_WithNoTag_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_InATagRequiringProject_WithTheWrongTag_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default, tag: ["linux"]);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
+            response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+    }
+
+    [Fact]
+    public async Task Hop_InATagRequiringProject_WithTheRightTags_CarriesItAcross()
     {
         var h = await NewAsync();
         await h.RequireTagsAsync("macos", "xcode");
@@ -4594,7 +4756,7 @@ public class WorkControllerTests
         await h.ExpressAsync(issue);
         await h.TickExpressSkipsAsync(h.Todo);
 
-        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default, tag: ["macos", "xcode"]));
         var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
 
         Assert.Equal(h.InProgress, moved.StatusId);
@@ -4630,13 +4792,13 @@ public class WorkControllerTests
         // The query string's own tags are ignored beside asRunner, even where
         // they disagree with the row's: the row's own declaration is what is read.
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises linux",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
             Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "linux-box", ["macos", "xcode"])).Blocked);
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "mac-box")).Blocked);
 
         Assert.Equal(
-            $"{Key(issue)} is implemented only by a runner advertising macos and xcode - this runner advertises none",
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
             Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "bare-box")).Blocked);
     }
 
@@ -4723,8 +4885,10 @@ public class WorkControllerTests
     public async Task Queue_ATagFoldedExpeditedRowParksNothingBelowIt()
     {
         var h = await NewAsync();
-        await h.RequireTagsAsync("macos");
+        // The issue's own tag, not the project's: a project's would fold the clear row below it too.
         var hurry = await h.FileAsync("bug", "expedited, tag-gated", h.InProgress);
+        hurry.RunnerTags = RunnerTagColumn.Write(["macos"]);
+        await h.Db.SaveChangesAsync();
         await h.ExpediteAsync(hurry);
         var normal = await h.FileAsync("bug", "normal, otherwise clear", h.Todo);
 
@@ -5683,6 +5847,145 @@ public class WorkControllerTests
         Assert.Contains("no runner has checked its branch", entry.Blocked);
     }
 
+    // ---- A ticket finished with no code (AR-54) ----
+    //
+    // The declaration is a claim that the work needed no branch. A
+    // pre-approved declared row is the close hop's whether or not anything is
+    // filed under it; one that is not stands in review for a person.
+
+    [Fact]
+    public async Task Queue_ListsAPreApprovedChildlessReviewRowThatDeclaredNoCodeAsACloseHopToDone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task HopWork_OnADeclaredNoCodeRow_ClosesItAndSaysSoOnTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Closed by its pre-approval on its own row: finished with no code - the setting was already right.",
+            comment.Body);
+        var e = Assert.Single(row.Events, ev => ev.Kind == EfHatchIssueEvent.StatusChanged);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("preapproved").GetBoolean());
+        Assert.True(payload.GetProperty("nocode").GetBoolean());
+    }
+
+    [Fact]
+    public async Task HopWork_OnADeclaredNoCodeRow_NamesTheAncestorWhosePreApprovalCarriedIt()
+    {
+        var h = await NewAsync();
+        var grandparent = await h.FileAsync("story", "the pre-approval's own row", h.Todo);
+        await h.PreApproveAsync(grandparent);
+        var issue = await h.FileAsync("task", "needed no change", h.Review, parentId: grandparent.Id);
+        await h.DeclareNoCodeAsync(issue, "already done upstream");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed by its pre-approval from {Key(grandparent)}: finished with no code - already done upstream.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task ATaskThatDependsOnADeclaredNoCodeRow_IsDispatchedOnceTheCloseHopIsTaken()
+    {
+        var h = await NewAsync();
+        var first = await h.FileAsync("task", "needed no change", h.Review, rank: 1024);
+        await h.PreApprovedAsync(first);
+        await h.DeclareNoCodeAsync(first, "the setting was already right");
+        var second = await h.FileAsync("task", "waits on the first", h.Todo, rank: 1024);
+        await h.DependsAsync(second, first);
+
+        var waiting = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
+        Assert.NotNull(waiting.Blocked);
+
+        await h.Work.HopWork(Key(first), null, null, null, default);
+
+        Assert.Equal(Key(second), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnExpressOnlyReviewRowThatDeclaredNoCode_IsFoldedForAPersonToClose()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.ExpressAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(NoCode.Sentence, entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeRowWithAnOpenChild_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "declared, but not finished", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the children are the work");
+        await h.FileAsync("task", "still open", h.Todo, parentId: issue.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ADeclaredNoCodeTask_IsNotWaitingOnTheStorysPullRequest(string type)
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrParentAsync(h, type);
+        await h.DeclareNoCodeAsync(task, "nothing to push");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.DoesNotContain("waiting on", entry.Blocked);
+        Assert.Equal(NoCode.Sentence, entry.Blocked);
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_APreApprovedDeclaredNoCodeTask_IsACloseHop(string type)
+    {
+        var h = await NewAsync();
+        var (_, task) = await OnePrParentAsync(h, type);
+        await h.PreApprovedAsync(task);
+        await h.DeclareNoCodeAsync(task, "nothing to push");
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Null(entry.Blocked);
+    }
+
     [Fact]
     public async Task APreApprovedParentWithADoneChildButAPullRequest_IsNotACloseHop()
     {
@@ -6080,11 +6383,13 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, second.HopKind);
     }
 
-    [Fact]
-    public async Task Queue_AParentPulledChild_IsPulledOnceItsDependencyWaitsOnTheSharedStorysPullRequest()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task Queue_AParentPulledChild_IsPulledOnceItsDependencyWaitsOnTheSharedStorysPullRequest(string type)
     {
         var h = await NewAsync();
-        var (story, t1) = await OnePrStoryAsync(h);
+        var (story, t1) = await OnePrParentAsync(h, type);
         var t2 = await h.FileAsync("task", "second, after the first", h.Todo, parentId: story.Id);
         await h.TickParentPullsAsync(h.Todo);
         await h.DependsAsync(t2, t1);
@@ -7857,11 +8162,13 @@ public class WorkControllerTests
         Assert.Equal(new[] { inside.Id, insideToo.Id }.Order(), row.WaitsOn!.Order());
     }
 
-    [Fact]
-    public async Task BlockingIds_ASiblingInFlightOnTheSharedBranch_IsWhatItWaitsOn()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task BlockingIds_ASiblingInFlightOnTheSharedBranch_IsWhatItWaitsOn(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
         var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
@@ -7872,11 +8179,13 @@ public class WorkControllerTests
         Assert.False(row.AnyOf);
     }
 
-    [Fact]
-    public async Task BlockingIds_ATaskWaitingOnItsStorysPullRequest_WaitsOnTheStory()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task BlockingIds_ATaskWaitingOnItsStorysPullRequest_WaitsOnTheStory(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
 
         var row = await ScanRowAsync(h, waiting);
 
@@ -11061,44 +11370,51 @@ public class WorkControllerTests
     // takes the waiting tasks to Done with it. With it off, every one of these
     // is exactly as it was - the paired assertions below are that.
 
-    private static async Task<(EfHatchIssue Story, EfHatchIssue Waiting)> OnePrStoryAsync(Harness h, bool on = true)
+    /// <summary>A parent of <paramref name="type"/> - a story or a bug - with one waiting task under it.</summary>
+    private static async Task<(EfHatchIssue Story, EfHatchIssue Waiting)> OnePrParentAsync(Harness h, string type, bool on = true)
     {
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         if (on) await h.OnePrAsync(story, true);
         var waiting = await h.FileAsync("task", "pushed and waiting", h.Review, parentId: story.Id);
         return (story, waiting);
     }
 
-    [Fact]
-    public async Task OnePr_AWaitingTask_IsFoldedNamingTheStorysPullRequest()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AWaitingTask_IsFoldedNamingTheStorysPullRequest(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(waiting));
 
         Assert.Equal(
-            $"waiting on {Key(story)}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request",
+            $"waiting on {Key(story)}'s pull request - its work is pushed to its parent's branch, and the parent opens the one pull request",
             entry.Blocked);
         Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
     }
 
-    [Fact]
-    public async Task OnePr_Off_ATaskInReviewIsFoldedAsItAlwaysWas()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_ATaskInReviewIsFoldedAsItAlwaysWas(string type)
     {
         var h = await NewAsync();
-        var (_, task) = await OnePrStoryAsync(h, on: false);
+        var (_, task) = await OnePrParentAsync(h, type, on: false);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
 
         Assert.DoesNotContain("waiting on", entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_IsNotWaiting()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_IsNotWaiting(string type)
     {
         var h = await NewAsync();
-        var (_, task) = await OnePrStoryAsync(h);
+        var (_, task) = await OnePrParentAsync(h, type);
         await h.SetPullRequestAsync(task, "https://example.com/o/r/pull/9");
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(task));
@@ -11106,11 +11422,13 @@ public class WorkControllerTests
         Assert.DoesNotContain("waiting on", entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_ATaskWhoseStoryHasAlreadyShipped_IsNotWaiting_AndIsNamedForItself()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATaskWhoseStoryHasAlreadyShipped_IsNotWaiting_AndIsNamedForItself(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.Done);
+        var story = await h.FileAsync(type, "the story", h.Done);
         await h.OnePrAsync(story, true);
         var late = await h.FileAsync("task", "arrived after the merge", h.Review, parentId: story.Id);
 
@@ -11121,11 +11439,13 @@ public class WorkControllerTests
         Assert.Equal(Key(late), work.BranchKey);
     }
 
-    [Fact]
-    public async Task OnePr_ATaskStillBeingWritten_IsNotWaiting()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATaskStillBeingWritten_IsNotWaiting(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var task = await h.FileAsync("task", "still in progress", h.InProgress, parentId: story.Id);
 
@@ -11134,11 +11454,13 @@ public class WorkControllerTests
         Assert.DoesNotContain("waiting on", entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_AWaitingSibling_DoesNotHoldBackTheNextChildBeingPulled()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AWaitingSibling_DoesNotHoldBackTheNextChildBeingPulled(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
         await h.TickParentPullsAsync(h.Inbox);
 
@@ -11149,11 +11471,13 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
-    [Fact]
-    public async Task OnePr_Off_ASiblingInReview_DoesNotHoldBackTheNextChild()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_ASiblingInReview_DoesNotHoldBackTheNextChild(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h, on: false);
+        var (story, _) = await OnePrParentAsync(h, type, on: false);
         var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
         await h.TickParentPullsAsync(h.Inbox);
 
@@ -11164,11 +11488,13 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
-    [Fact]
-    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillHoldsBackTheNextChild()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillHoldsBackTheNextChild(string type)
     {
         var h = await NewAsync();
-        var (story, sibling) = await OnePrStoryAsync(h);
+        var (story, sibling) = await OnePrParentAsync(h, type);
         await h.SetPullRequestAsync(sibling, "https://example.com/o/r/pull/9");
         var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
         await h.TickParentPullsAsync(h.Inbox);
@@ -11180,13 +11506,15 @@ public class WorkControllerTests
     }
 
     private static string SharedBranchHold(EfHatchIssue sibling) =>
-        $"{Key(sibling)}, sharing this story's branch, is already in flight - one sibling at a time";
+        $"{Key(sibling)}, sharing its parent's branch, is already in flight - one sibling at a time";
 
-    [Fact]
-    public async Task OnePr_ASiblingInProgress_FoldsTheMoveIntoImplementation()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingInProgress_FoldsTheMoveIntoImplementation(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
         var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
@@ -11198,11 +11526,13 @@ public class WorkControllerTests
         Assert.False(entry.Hop);
     }
 
-    [Fact]
-    public async Task OnePr_AWaitingSibling_DoesNotFoldTheMoveIntoImplementation()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AWaitingSibling_DoesNotFoldTheMoveIntoImplementation(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(next));
@@ -11223,11 +11553,13 @@ public class WorkControllerTests
         Assert.Null(entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillFoldsTheMoveIntoImplementation()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillFoldsTheMoveIntoImplementation(string type)
     {
         var h = await NewAsync();
-        var (story, sibling) = await OnePrStoryAsync(h);
+        var (story, sibling) = await OnePrParentAsync(h, type);
         await h.SetPullRequestAsync(sibling, "https://example.com/o/r/pull/9");
         var next = await h.FileAsync("task", "the next one", h.Todo, parentId: story.Id);
 
@@ -11237,22 +11569,26 @@ public class WorkControllerTests
         Assert.Equal(BlockedKinds.Family, entry.BlockedKind);
     }
 
-    [Fact]
-    public async Task OnePr_AnEdgeToAWaitingSibling_IsSatisfied()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AnEdgeToAWaitingSibling_IsSatisfied(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
         var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
         await h.DependsAsync(next, waiting);
 
         Assert.Null(Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_Off_AnEdgeToASiblingInReview_IsStillUnmet()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_AnEdgeToASiblingInReview_IsStillUnmet(string type)
     {
         var h = await NewAsync();
-        var (story, inReview) = await OnePrStoryAsync(h, on: false);
+        var (story, inReview) = await OnePrParentAsync(h, type, on: false);
         var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
         await h.DependsAsync(next, inReview);
 
@@ -11261,11 +11597,13 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_AnEdgeToATaskUnderAnotherStory_IsStillUnmet()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AnEdgeToATaskUnderAnotherStory_IsStillUnmet(string type)
     {
         var h = await NewAsync();
-        var (_, waiting) = await OnePrStoryAsync(h);
+        var (_, waiting) = await OnePrParentAsync(h, type);
         var other = await h.FileAsync("story", "another story", h.InProgress);
         await h.OnePrAsync(other, true);
         var next = await h.FileAsync("task", "waits on a task elsewhere", h.Todo, parentId: other.Id);
@@ -11276,11 +11614,13 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_AnEdgeToASiblingStillBeingWritten_IsStillUnmet()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AnEdgeToASiblingStillBeingWritten_IsStillUnmet(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "still in progress", h.InProgress, parentId: story.Id);
         var next = await h.FileAsync("task", "builds on the first", h.Todo, parentId: story.Id);
@@ -11291,11 +11631,13 @@ public class WorkControllerTests
             Value(await h.Work.GetWork(Key(next), null, default)).Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_AStoryWhoseChildrenAreAllWaiting_IsNotFoldedForItsChildren()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AStoryWhoseChildrenAreAllWaiting_IsNotFoldedForItsChildren(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         await h.FileAsync("task", "also waiting", h.Review, parentId: story.Id);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
@@ -11303,11 +11645,13 @@ public class WorkControllerTests
         Assert.Null(entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_AStoryWithAChildStillToWrite_IsStillFoldedForItsChildren()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AStoryWithAChildStillToWrite_IsStillFoldedForItsChildren(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         await h.FileAsync("task", "not pushed yet", h.Todo, parentId: story.Id);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
@@ -11315,22 +11659,26 @@ public class WorkControllerTests
         Assert.Equal("its children are the work, and some are still open", entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_Off_AStoryWhoseChildrenAreInReview_IsStillFoldedForItsChildren()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_AStoryWhoseChildrenAreInReview_IsStillFoldedForItsChildren(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h, on: false);
+        var (story, _) = await OnePrParentAsync(h, type, on: false);
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story));
 
         Assert.Equal("its children are the work, and some are still open", entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_APreApprovedStoryInReview_IsNotClosedOverTasksThatHaveNotMerged()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_APreApprovedStoryInReview_IsNotClosedOverTasksThatHaveNotMerged(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         story.StatusId = h.Review;
         await h.PreApprovedAsync(story);
 
@@ -11339,15 +11687,17 @@ public class WorkControllerTests
         Assert.NotEqual(HopKinds.Close, entry.HopKind);
     }
 
-    [Fact]
-    public async Task OnePr_AWaitingTaskInTheMergesColumn_IsNotTheHeadOfTheTrain()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AWaitingTaskInTheMergesColumn_IsNotTheHeadOfTheTrain(string type)
     {
         var h = await NewAsync();
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
         h.Db.Add(approved);
         await h.Db.SaveChangesAsync();
 
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var waiting = await h.FileAsync("task", "got in somehow", approved.Id, rank: 1024, parentId: story.Id);
         var real = await h.FileAsync("story", "a real pull request", approved.Id, rank: 2048);
@@ -11363,11 +11713,13 @@ public class WorkControllerTests
 
     // ---- One pull request: the branch a dispatch is named for ----
 
-    [Fact]
-    public async Task OnePr_ATasksDispatch_IsNamedForItsStory()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATasksDispatch_IsNamedForItsStory(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var story = await h.FileAsync(type, "the story title", h.InProgress);
         await h.OnePrAsync(story, true);
         var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
 
@@ -11377,11 +11729,13 @@ public class WorkControllerTests
         Assert.Equal("the story title", work.BranchTitle);
     }
 
-    [Fact]
-    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_KeepsItsOwnBranch()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATaskWithAPullRequestOfItsOwn_KeepsItsOwnBranch(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var story = await h.FileAsync(type, "the story title", h.InProgress);
         await h.OnePrAsync(story, true);
         var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
         await h.SetPullRequestAsync(task, "https://example.com/o/r/pull/9");
@@ -11404,11 +11758,13 @@ public class WorkControllerTests
         Assert.Equal(Key(task), work.BranchKey);
     }
 
-    [Fact]
-    public async Task OnePr_TheStorysOwnDispatch_IsNamedForItself()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_TheStorysOwnDispatch_IsNamedForItself(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var story = await h.FileAsync(type, "the story title", h.InProgress);
         await h.OnePrAsync(story, true);
 
         var work = Value(await h.Work.GetWork(Key(story), null, default));
@@ -11416,22 +11772,26 @@ public class WorkControllerTests
         Assert.Equal(Key(story), work.BranchKey);
     }
 
-    [Fact]
-    public async Task OnePr_TheProjectsDefault_NamesTheBranchToo()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_TheProjectsDefault_NamesTheBranchToo(string type)
     {
         var h = await NewAsync();
         await h.ProjectOnePrAsync(true);
-        var story = await h.FileAsync("story", "the story title", h.InProgress);
+        var story = await h.FileAsync(type, "the story title", h.InProgress);
         var task = await h.FileAsync("task", "the task title", h.Todo, parentId: story.Id);
 
         Assert.Equal(Key(story), Value(await h.Work.GetWork(Key(task), null, default)).BranchKey);
     }
 
-    [Fact]
-    public async Task OnePr_TheReviewPoll_LeavesOutAWaitingTaskAndKeepsTheStory()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_TheReviewPoll_LeavesOutAWaitingTaskAndKeepsTheStory(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
         story.StatusId = h.Review;
         await h.SetPullRequestAsync(story, "https://example.com/o/r/pull/3");
 
@@ -11443,11 +11803,13 @@ public class WorkControllerTests
         Assert.DoesNotContain(rows, r => r.Key == Key(waiting));
     }
 
-    [Fact]
-    public async Task OnePr_Off_TheReviewPoll_StillListsATaskInReview()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_TheReviewPoll_StillListsATaskInReview(string type)
     {
         var h = await NewAsync();
-        var (_, task) = await OnePrStoryAsync(h, on: false);
+        var (_, task) = await OnePrParentAsync(h, type, on: false);
 
         var rows = Value(await h.Work.GetReview(null, true, default));
 
@@ -11507,11 +11869,13 @@ public class WorkControllerTests
         AssertChainedByDependencies(Value(await h.Work.GetQueue(0, null, default)), t1, t2, t3);
     }
 
-    [Fact]
-    public async Task OnePr_ASiblingInProgress_FoldsTheParentPullNamingIt()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingInProgress_FoldsTheParentPullNamingIt(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
         var next = await h.FileAsync("task", "the next one", h.Inbox, parentId: story.Id);
@@ -11540,11 +11904,13 @@ public class WorkControllerTests
         Assert.Equal(HopKinds.Parent, entry.HopKind);
     }
 
-    [Fact]
-    public async Task OnePr_ASiblingsClaim_FoldsTheOtherTask()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingsClaim_FoldsTheOtherTask(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "being written", h.InProgress, rank: 1024, parentId: story.Id);
         var second = await h.FileAsync("task", "next", h.Todo, rank: 2048, parentId: story.Id);
@@ -11552,7 +11918,7 @@ public class WorkControllerTests
 
         var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second));
 
-        Assert.Equal($"{From()} {Key(first)}, sharing this story's branch, {Where}", entry.Blocked);
+        Assert.Equal($"{From()} {Key(first)}, sharing its parent's branch, {Where}", entry.Blocked);
     }
 
     [Fact]
@@ -11569,11 +11935,13 @@ public class WorkControllerTests
         Assert.Null(entry.Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillHoldsTheMoveIntoImplementation_WhateverItsClaim()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ASiblingWithItsOwnPullRequest_StillHoldsTheMoveIntoImplementation_WhateverItsClaim(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var first = await h.FileAsync("task", "its own branch", h.InProgress, rank: 1024, parentId: story.Id);
         await h.SetPullRequestAsync(first, "https://example.com/o/r/pull/9");
@@ -11600,29 +11968,33 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(second)).Blocked);
     }
 
-    [Fact]
-    public async Task OnePr_ATasksOwnClaim_IsNotHeldAgainstItself()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_ATasksOwnClaim_IsNotHeldAgainstItself(string type)
     {
         var h = await NewAsync();
-        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var story = await h.FileAsync(type, "the story", h.InProgress);
         await h.OnePrAsync(story, true);
         var task = await h.FileAsync("task", "being written", h.InProgress, parentId: story.Id);
         var token = await h.ClaimAsync(task);
 
         var work = Value(await h.Work.GetWork(Key(task), token, default));
 
-        Assert.DoesNotContain("sharing this story's branch", work.Blocked);
+        Assert.DoesNotContain("sharing its parent's branch", work.Blocked);
     }
 
     // ---- One pull request: the story's merge takes its waiting tasks with it ----
 
     private const string StoryPr = "https://example.com/o/r/pull/3";
 
-    [Fact]
-    public async Task OnePr_AMergedStory_TakesItsWaitingTasksToDone()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AMergedStory_TakesItsWaitingTasksToDone(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
         var alsoWaiting = await h.FileAsync("task", "also waiting", h.Review, parentId: story.Id);
         story.StatusId = h.Review;
         await h.SetPullRequestAsync(story, StoryPr);
@@ -11634,11 +12006,13 @@ public class WorkControllerTests
             Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == id)).StatusId);
     }
 
-    [Fact]
-    public async Task OnePr_AMergedStory_StampsClosedAtOnItselfAndOnEveryTaskItCarries()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AMergedStory_StampsClosedAtOnItselfAndOnEveryTaskItCarries(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
         story.StatusId = h.Review;
         await h.SetPullRequestAsync(story, StoryPr);
 
@@ -11653,11 +12027,13 @@ public class WorkControllerTests
         }
     }
 
-    [Fact]
-    public async Task OnePr_EachTaskTheMergeMoves_GetsAStatusChangedEventNamingTheStory()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_EachTaskTheMergeMoves_GetsAStatusChangedEventNamingTheStory(string type)
     {
         var h = await NewAsync();
-        var (story, waiting) = await OnePrStoryAsync(h);
+        var (story, waiting) = await OnePrParentAsync(h, type);
         story.StatusId = h.Review;
         await h.SetPullRequestAsync(story, StoryPr);
 
@@ -11675,11 +12051,13 @@ public class WorkControllerTests
         AssertColumns(e, h.Review, h.Done);
     }
 
-    [Fact]
-    public async Task OnePr_AMergedStory_LeavesWhatIsNotWaitingWhereItWas()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_AMergedStory_LeavesWhatIsNotWaitingWhereItWas(string type)
     {
         var h = await NewAsync();
-        var (story, _) = await OnePrStoryAsync(h);
+        var (story, _) = await OnePrParentAsync(h, type);
         var ownPr = await h.FileAsync("task", "its own pull request", h.Review, parentId: story.Id);
         await h.SetPullRequestAsync(ownPr, "https://example.com/o/r/pull/9");
         var unwritten = await h.FileAsync("task", "never pushed", h.Todo, parentId: story.Id);
@@ -11697,11 +12075,13 @@ public class WorkControllerTests
         Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == elsewhere.Id)).StatusId);
     }
 
-    [Fact]
-    public async Task OnePr_Off_AMergedStory_MovesOnlyItself()
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task OnePr_Off_AMergedStory_MovesOnlyItself(string type)
     {
         var h = await NewAsync();
-        var (story, task) = await OnePrStoryAsync(h, on: false);
+        var (story, task) = await OnePrParentAsync(h, type, on: false);
         story.StatusId = h.Review;
         await h.SetPullRequestAsync(story, StoryPr);
 
@@ -11713,7 +12093,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task OnePr_ATaskUnderABugUnderTheStory_IsTakenToo()
+    public async Task OnePr_ATaskUnderABugUnderAStory_ReadsTheBugsSetting_NotTheStorys()
     {
         var h = await NewAsync();
         var story = await h.FileAsync("story", "the story", h.Review);
@@ -11723,6 +12103,22 @@ public class WorkControllerTests
         await h.SetPullRequestAsync(story, StoryPr);
 
         await h.Work.MergedWork(Key(story), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
+
+        h.Db.ChangeTracker.Clear();
+        Assert.Equal(h.Review, (await h.Db.Issues.FirstAsync(i => i.Id == deep.Id)).StatusId);
+    }
+
+    [Fact]
+    public async Task OnePr_ATaskUnderABugThatSharesUnderAStory_IsTakenByTheBugsMerge()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story", h.InProgress);
+        var bug = await h.FileAsync("bug", "a bug", h.Review, parentId: story.Id);
+        await h.OnePrAsync(bug, true);
+        var deep = await h.FileAsync("task", "under the bug", h.Review, parentId: bug.Id);
+        await h.SetPullRequestAsync(bug, StoryPr);
+
+        await h.Work.MergedWork(Key(bug), new PullRequestMergedRequest(StoryPr, "somewhere:/checkouts/one"), default);
 
         h.Db.ChangeTracker.Clear();
         Assert.Equal(h.Done, (await h.Db.Issues.FirstAsync(i => i.Id == deep.Id)).StatusId);
@@ -12030,6 +12426,18 @@ public class WorkControllerTests
         public async Task PreApproveAsync(EfHatchIssue issue)
         {
             issue.PreApproval = PreApprovalLevels.PreApproved;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// The no-code declaration, written straight onto the row - what the
+        /// route that writes it accepts and refuses is
+        /// <see cref="IssueNoCodeControllerTests"/>'s business.
+        /// </summary>
+        public async Task DeclareNoCodeAsync(EfHatchIssue issue, string reason)
+        {
+            issue.NoCode = reason;
+            issue.NoCodeAt = Now;
             await Db.SaveChangesAsync();
         }
 
@@ -12561,7 +12969,13 @@ public class WorkControllerTests
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision())),
-            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now)),
+            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext { Request = { Headers = { ["Sec-Fetch-Mode"] = "navigate" } } },
+                },
+            },
             Caller = caller,
             ProjectId = project.Id,
             Inbox = inbox.Id,

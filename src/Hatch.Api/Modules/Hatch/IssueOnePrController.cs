@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Whether a story's tasks share the story's branch and one pull request -
-/// the story's own say, over its project's default. See
+/// Whether a story's or a bug's tasks share its branch and one pull request -
+/// its own say, over its project's default. See
 /// <see cref="EfHatchIssue.OnePullRequest"/>.
 /// </summary>
 /// <remarks>
@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// and which gates it may pass unattended, so a key that could set them could
 /// advance its own ticket. This decides only how a story is branched, which is
 /// the author of the story's call and gives a key nothing it could not already
-/// do - it is the project's default, which changes how every story is worked,
+/// do - it is the project's default, which changes how every story and bug is worked,
 /// that is an owner's (<see cref="ProjectsController.PutLanding"/>).</para>
 ///
 /// <para>Locked once any work under the story has started. A task begun on its
@@ -42,7 +42,7 @@ public class IssueOnePrController(
 
     /// <summary>
     /// Set the override by name - <c>on</c>, <c>off</c> or <c>inherit</c> (the
-    /// project's default) - see <see cref="OnePrRequest"/>. Stories only.
+    /// project's default) - see <see cref="OnePrRequest"/>. Stories and bugs only.
     /// </summary>
     /// <remarks>
     /// Setting the value the story already holds writes nothing and does not
@@ -61,8 +61,8 @@ public class IssueOnePrController(
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
-        if (issue.Type != "story")
-            return BadRequest(NotAStory($"{key} is a {issue.Type}"));
+        if (issue.Type is not ("story" or "bug"))
+            return BadRequest(NotAStoryOrBug($"{key} is a {issue.Type}"));
 
         if (value != issue.OnePullRequest)
         {
@@ -111,9 +111,9 @@ public class IssueOnePrController(
         $"\"{value}\" is not a one-PR setting - {On}, {Off} or {Inherit}";
 
     /// <summary>
-    /// The refusal for an issue that is not a story; <paramref name="what"/>
+    /// The refusal for an issue that is neither a story nor a bug; <paramref name="what"/>
     /// names it - by key where one exists, "this" where it is still being filed.
     /// </summary>
-    internal static string NotAStory(string what) =>
-        $"only a story shares one pull request across its tasks - {what}";
+    internal static string NotAStoryOrBug(string what) =>
+        $"only a story or a bug carries an override for sharing one pull request across its tasks - {what}";
 }

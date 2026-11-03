@@ -64,3 +64,51 @@ describe('the board header at phone width', () => {
     expect(declarationsWithin('max-width: 40rem', '.hatch-board-view-toggle')['height']).toBe('var(--facet-h)');
   });
 });
+
+/** The declarations of `selector` among the top-level rules alone (not inside
+    any `@media`), by blanking every `@media` block first. */
+function topLevel(selector: string): Record<string, string> {
+  let flat = css;
+  for (let start = flat.indexOf('@media'); start !== -1; start = flat.indexOf('@media')) {
+    const open = flat.indexOf('{', start);
+    let depth = 0;
+    let end = open;
+    for (; end < flat.length; end++) {
+      if (flat[end] === '{') depth++;
+      else if (flat[end] === '}' && --depth === 0) break;
+    }
+    flat = flat.slice(0, start) + flat.slice(end + 1);
+  }
+  const props: Record<string, string> = {};
+  for (const [, selectors, body] of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!selectors.split(',').some((x) => x.trim() === selector)) continue;
+    for (const statement of body.split(';')) {
+      const colon = statement.indexOf(':');
+      if (colon === -1) continue;
+      props[statement.slice(0, colon).trim()] = statement.slice(colon + 1).trim().replace(/\s+/g, ' ');
+    }
+  }
+  return props;
+}
+
+describe('the board header at desktop width', () => {
+  it('rests the search box narrow, so the row fits one line at about 1150px', () => {
+    const search = topLevel('.hatch-board-search');
+    expect(search['flex']).toBe('0 1 10rem');
+    expect(search['min-width']).toBe('8rem');
+  });
+
+  it('widens the search box while focused or holding a query, on desktop only', () => {
+    const focused = declarationsWithin('min-width: 40.01rem', '.hatch-board-search:focus');
+    expect(focused['flex-basis']).toBe('16rem');
+    expect(declarationsWithin('min-width: 40.01rem', '.hatch-board-search--lit')['flex-basis']).toBe('16rem');
+  });
+
+  it('makes Reset and New issue square at the row height', () => {
+    for (const selector of ['.hatch-filter-reset', '.hatch-board-new']) {
+      const rule = topLevel(selector);
+      expect(rule['height']).toBe('var(--facet-h)');
+      expect(rule['width']).toBe('var(--facet-h)');
+    }
+  });
+});

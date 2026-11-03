@@ -367,6 +367,18 @@ public class AdminSurfaceTests
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
 
+        // What a session proposed changing about a playbook, read back, and
+        // the submission that files one - both Hatch-scoped, since the same
+        // key that cannot write to /playbooks directly can still ask for a
+        // change and see where it landed. Deciding one is a person's own
+        // call, like PATCH /playbooks/{id} - no scope at all.
+        // See PlaybookProposalsController.
+        "PlaybookProposalsController.GetProposals",
+        "PlaybookProposalsController.GetProposal",
+        "PlaybookProposalsController.SubmitProposal",
+        "PlaybookProposalsController.RejectAll",
+        "PlaybookProposalsController.ApproveAll",
+
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
         // about the work, not about an agent's budget, so a planning session
@@ -503,6 +515,11 @@ public class AdminSurfaceTests
         // statement about the ticket, open to a key for the same reason.
         // IssueDangerousController.
         "IssueDangerousController.PutIssueDangerous",
+
+        // That an issue finished with no code, and why - a statement of fact
+        // about the work with the reach of recording a pull request through
+        // PATCH, which is key-open too. IssueNoCodeController.
+        "IssueNoCodeController.PutIssueNoCode",
 
         // A release note, open to a key only under the issue's live claim: the
         // claim check is in the action, not the attribute, so a key can write the
@@ -681,6 +698,8 @@ public class AdminSurfaceTests
         "PlaybooksController.CreatePlaybook",
         "PlaybooksController.PatchPlaybook",
         "PlaybooksController.DeletePlaybook",
+        "PlaybookProposalsController.RejectAll",
+        "PlaybookProposalsController.ApproveAll",
         "IssuePlaybookController.PatchIssuePlaybook",
         "IssueWipLimitController.PatchIssueWipLimit",
         "RunnersController.PatchRunner",

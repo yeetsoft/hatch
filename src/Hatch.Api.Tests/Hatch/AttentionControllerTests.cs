@@ -143,6 +143,54 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_ListsADeclaredNoCodeRowInNoCodeHeld_NotInReviewsOrTheWithoutPullRequestCount()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        issue.NoCode = "the setting was already right";
+        issue.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.NoCodeHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("needed no change", row.Title);
+        Assert.Equal("task", row.Type);
+        Assert.Equal("the setting was already right", row.Reason);
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesAPreApprovedDeclaredNoCodeRowOutOfNoCodeHeld_ItIsTheCloseHops()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        issue.PreApproval = PreApprovalLevels.PreApproved;
+        issue.NoCode = "the setting was already right";
+        issue.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.NoCodeHeld!);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_StillCountsAnUndeclaredRowWithNoPullRequest_AndListsNoNoCodeHeld()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "no declaration", h.Review);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.NoCodeHeld!);
+        Assert.Equal(1, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
     public async Task Attention_CountsAChildlessPreApprovedRowWithNoPullRequest()
     {
         var h = await NewAsync();

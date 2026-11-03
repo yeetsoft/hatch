@@ -317,7 +317,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
+                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+                        status.ParentPulls ? ImplementationPlaybook(candidatePlaybooks, statuses, issue, family) : null);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
@@ -717,23 +718,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                  || (to.Id == from.Id && ReviewWork.Judge(issue, verdicts, builds).Fold is null));
 
     /// <summary>
-    /// Whether a session spawned for this move writes code, and so needs a
-    /// runner advertising the union this issue requires: any move
-    /// <see cref="CodeGated"/> names, or any move out of a column carrying its
-    /// own runner tags.
-    /// </summary>
-    private static bool TagGated(
-        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, bool hop, EfHatchStatus? implementation,
-        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds) =>
-        CodeGated(issue, from, to, hop, implementation, verdicts, builds)
-        || (!hop && RunnerTagColumn.Read(from.RunnerTags).Count > 0);
-
-    /// <summary>
     /// Why this caller's runner is not the one for the issue: the union of the
     /// project's, its ancestors', its own and <paramref name="from"/>'s own tags
-    /// requires tags the caller did not declare. Null when the scan is
-    /// <see cref="TagDeclaration.Unjudged"/>, when the union is empty, or when
-    /// every tag in it is declared. Names the column by name only when the
+    /// requires tags the caller did not declare. Asked of every move a runner
+    /// is handed, in every column and on every hop - a tag says which runner
+    /// may work the ticket, not only which may write its code. Null when the
+    /// scan is <see cref="TagDeclaration.Unjudged"/>, when the union is empty, or
+    /// when every tag in it is declared. Names the column by name only when the
     /// column's own tags are part of why it folded, so a column with none of
     /// its own reads exactly as it did before this fold existed.
     /// </summary>
@@ -751,7 +742,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var key = IssueKey.Format(issue.Project!.Key, issue.Number);
         return columnTags.Count > 0
             ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
-            : $"{key} is implemented only by a runner advertising {Listed(required)} - this runner advertises {has}";
+            : $"{key} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}";
     }
 
     /// <summary>
@@ -771,10 +762,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// project is outside the list the runner is bound to. Null when
     /// <paramref name="projects"/> is null or empty - a caller that declared
     /// no binding at all - or when the issue's project is in the list.
-    /// Unconditional on <c>hop</c>, unlike <see cref="TagFold"/>: there is no
-    /// "which runner advertises what" question for a project binding to
-    /// answer, so a hop in a project this runner does not drive is folded the
-    /// same as any other move in it.
+    /// Unconditional on <c>hop</c>, as <see cref="TagFold"/> is: a hop in a
+    /// project this runner does not drive is folded the same as any other move
+    /// in it.
     /// </summary>
     private static string? ProjectFold(EfHatchIssue issue, IReadOnlyList<string>? projects)
     {
@@ -1207,14 +1197,14 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (to is null)
             return new Blocking($"there is no column after \"{from.Name}\", so there is nowhere for this to go", BlockedKinds.Other);
 
-        // A task whose work is pushed to its story's branch has nothing left for
+        // A task whose work is pushed to its parent's branch has nothing left for
         // an agent to do and no pull request of its own to merge: it waits for the
-        // story's. Said ahead of the merges column's judgement and the review
+        // parent's. Said ahead of the merges column's judgement and the review
         // column's conflict and build checks, both of which read a branch named
         // for this issue's own key and would find none.
         if (gate.WaitingOn(issue.Id, statuses) is { } storyKey)
             return new Blocking(
-                $"waiting on {storyKey}'s pull request - its work is pushed to the story's branch, and the story opens the one pull request",
+                $"waiting on {storyKey}'s pull request - its work is pushed to its parent's branch, and the parent opens the one pull request",
                 BlockedKinds.Family,
                 gate.SharedStoryOf(issue.Id) is { } storyId ? [storyId] : null);
 
@@ -1326,9 +1316,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         // Ahead of the repository and tag folds, both of which speak about a
         // project this runner drives - a sentence naming either would mislead
-        // about one it does not. Unconditional on hop, unlike TagGated below:
-        // a hop in a project outside the bound is still none of this runner's
-        // business.
+        // about one it does not. Unconditional on hop, as the tag fold below
+        // is: a hop in a project outside the bound is still none of this
+        // runner's business.
         if (ProjectFold(issue, projects) is { } projectBlock) return new Blocking(projectBlock, BlockedKinds.Other);
 
         // A repository matters wherever a session is spawned, because every
@@ -1345,8 +1335,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             if (RepositoryFold(issue, repos) is { } repoBlock) return new Blocking(repoBlock, BlockedKinds.Other);
         }
 
-        if (TagGated(issue, from, to, hop, implementation, verdicts, builds)
-            && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
+        // Every move, hops included: the scan hands a runner a hop's ticket
+        // whether or not a session is spawned for it. The one exemption is a
+        // review self-move the review judge already folds - nothing is handed
+        // to any runner on that row, and its own sentence says why.
+        var reviewIdle = conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is not null;
+        if (!reviewIdle && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
 
         // After the tag fold, so a runner that is wrong on both hears about the
@@ -1495,7 +1489,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// carried by the second arm only on the move that lands it in the
     /// implementation column, so the move off the backlog stays a person's
     /// (HA-1069); a sub-epic whose parent is not a running epic is never carried
-    /// by it (HA-202). The order
+    /// by it (HA-202). Beside the merge arm stands the close arm (HA-472): a
+    /// pre-approved issue in review with no pull request and a column to close
+    /// to, whose children are all done, or that declared it finished with no
+    /// code (<see cref="NoCode"/>) - a declared issue with open children still
+    /// waits for them. The order
     /// matters only where a board ticks both ExpressSkips and ParentPulls on
     /// the same column and an epic stands exactly in the implementation
     /// column - see HA-113's own decision on the overlap. Never on a move that
@@ -1506,7 +1504,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
         List<EfHatchStatus> statuses, WipSection? wip, FamilyGate.Parent? parent,
         EfHatchPlaybook? playbook, int sendBackStreak, int sendBackStreakLimit, int effectivePreApproval,
-        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now)
+        IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
+        EfHatchPlaybook? implementationPlaybook = null)
     {
         var crosses = to is not null && to.Id != from.Id;
 
@@ -1530,7 +1529,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 return HopKinds.Under;
         }
 
-        if (from.ParentPulls && family.Pulls(issue, statuses)) return HopKinds.Parent;
+        if (from.ParentPulls && family.Pulls(issue, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook))
+            return HopKinds.Parent;
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
             return HopKinds.SendBack;
@@ -1549,7 +1549,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             && Columns.Closes(statuses, from) is not null
             && effectivePreApproval == PreApprovalLevels.PreApproved
             && issue.PullRequestUrl is not { Length: > 0 }
-            && family.Children(issue.Id).Count > 0
+            && (family.Children(issue.Id).Count > 0 || NoCode.Declared(issue))
             && (IssueTypeKinds.RunsChildren(issue.Type)
                 ? family.EpicFold(issue.Id, statuses) is null
                 : family.OpenChildren(issue.Id).Count == 0))
@@ -1557,6 +1557,41 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         return null;
     }
+
+    /// <summary>
+    /// Whether a column ticked ParentPulls, being asked about a child it could
+    /// otherwise pull, holds it back for a session instead. Only the column that
+    /// feeds the implementation column (<see cref="Columns.SendBack"/>) ever
+    /// does: the analysis that column's playbook runs is what cuts a story into
+    /// tasks and plans a task, and a pull skips it. So a story under a running
+    /// epic is analysed, not carried (a task under a story was already planned
+    /// by that story's own pass); and so is a child whose brief is over the
+    /// limit that would send it straight back from the implementation column,
+    /// which a pull would only carry it into and out of again. Every other
+    /// ParentPulls column pulls as it always has.
+    /// </summary>
+    private static bool PullWithheld(
+        EfHatchIssue issue, EfHatchStatus from, FamilyGate.Parent? parent, FamilyGate family,
+        List<EfHatchStatus> statuses, EfHatchPlaybook? implementationPlaybook)
+    {
+        if (Columns.SendBack(statuses)?.Id != from.Id) return false;
+        if (parent is { } p && IssueTypeKinds.RunsChildren(p.Type)) return true;
+
+        return Columns.Implementation(statuses) is { } implementation
+            && SendBackEligible(issue, implementation, family, statuses, implementationPlaybook);
+    }
+
+    /// <summary>
+    /// The playbook the implementation column's own move would run for this
+    /// issue - the one whose <see cref="EfHatchPlaybook.BriefLimit"/>
+    /// <see cref="SendBackEligible"/> reads once the issue stands there. Null
+    /// where the board has no implementation column, or nothing covers it.
+    /// </summary>
+    public static EfHatchPlaybook? ImplementationPlaybook(
+        List<EfHatchPlaybook> playbooks, List<EfHatchStatus> statuses, EfHatchIssue issue, FamilyGate family) =>
+        Columns.Implementation(statuses) is { } implementation && Columns.Target(statuses, implementation) is { } onward
+            ? Match(playbooks, implementation.Id, onward.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId)
+            : null;
 
     /// <summary>
     /// Whether this issue, standing in <paramref name="from"/>, is the one
@@ -1659,6 +1694,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 Effort = row.Effort,
                 Budget = row.Budget,
                 BriefLimit = row.BriefLimit,
+                QuietLimitSeconds = row.QuietLimitSeconds,
                 DeniedTools = EfHatchPlaybook.WriteDeniedTools(row.DeniedTools),
                 IsCheck = row.IsCheck,
                 CreatedAt = file.CheckedAt,
@@ -1708,6 +1744,17 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var playbook = Match(fileRows.Concat(tableRows).ToList(), from, to, type, isParent, projectId);
         return new PlaybookMatch(playbook, SourceOf(playbook), file);
     }
+
+    /// <summary>
+    /// <see cref="ImplementationPlaybook"/> for one issue, read the way
+    /// <see cref="MatchAsync"/> reads a playbook, and only asked where a parent
+    /// pull could ever consult it: out of a ParentPulls column.
+    /// </summary>
+    public async Task<EfHatchPlaybook?> ImplementationPlaybookAsync(
+        List<EfHatchStatus> statuses, EfHatchStatus from, EfHatchIssue issue, FamilyGate family, CancellationToken ct) =>
+        from.ParentPulls && Columns.Implementation(statuses) is { } implementation && Columns.Target(statuses, implementation) is { } onward
+            ? (await MatchAsync(implementation.Id, onward.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId, ct))?.Playbook
+            : null;
 
     /// <summary>
     /// The layer a matched row came from, decided from the row itself rather
@@ -2046,7 +2093,7 @@ public sealed class PriorityTree
             {
                 i.Id, i.ParentId, i.Priority, i.PreApproval, ProjectKey = i.Project!.Key, i.Number,
                 i.Type, i.OnePullRequest, ProjectOnePr = i.Project!.OnePullRequest,
-                i.StatusId, HasPr = i.PullRequestUrl != null && i.PullRequestUrl != "", Terminal = i.Status!.IsTerminal,
+                i.StatusId, HasPr = (i.PullRequestUrl != null && i.PullRequestUrl != "") || (i.NoCode != null && i.NoCode != ""), Terminal = i.Status!.IsTerminal,
                 i.RunnerTags, ProjectRunnerTags = i.Project!.RunnerTags, i.Dangerous,
             })
             .ToListAsync(ct);
@@ -2178,44 +2225,44 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// Whether the stories' tasks share one branch and pull request, live on
-    /// this issue: the nearest story at or above it, and that story's own
-    /// override if it carries one, else its project's default. An issue with no
-    /// story above it - an epic, or a task filed straight under one - is off,
-    /// because there is no story whose pull request it could share.
+    /// Whether the tasks of a story or a bug share one branch and pull request,
+    /// live on this issue: the nearest story or bug at or above it, and that
+    /// parent's own override if it carries one, else its project's default. An
+    /// issue with no story or bug above it - an epic, or a task filed straight
+    /// under one - is off, because there is no pull request it could share.
     /// </summary>
     /// <remarks>
-    /// <c>Own</c> is this issue's own override, which only a story carries.
-    /// <c>FromKey</c> is the story the value was read from, and is null when
-    /// that is the issue itself or when there is no story at all; with a null
-    /// <c>FromKey</c> and a null <c>Own</c>, a story's value came from its
+    /// <c>Own</c> is this issue's own override, which only a story or a bug
+    /// carries. <c>FromKey</c> is the story or bug the value was read from, and
+    /// is null when that is the issue itself or when there is none at all; with
+    /// a null <c>FromKey</c> and a null <c>Own</c>, the value came from the
     /// project. Derived at read and never copied, the same as
     /// <see cref="EffectivePreApproval"/>.
     /// </remarks>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId)
     {
         _onePr.TryGetValue(issueId, out var self);
-        var own = self.Type == "story" ? self.OnePr : null;
+        var own = self.Type is "story" or "bug" ? self.OnePr : null;
 
-        if (StoryAbove(issueId) is not { } story) return (false, own, null);
+        if (SharerAbove(issueId) is not { } story) return (false, own, null);
 
         var row = _onePr[story];
         return (row.OnePr ?? row.ProjectOnePr, own, story == issueId ? null : _rows[story].Key);
     }
 
     /// <summary>
-    /// The nearest story at or above an issue, or null. The one walk every
-    /// one-PR question is asked through, so they cannot come to pick different
-    /// stories.
+    /// The nearest story or bug at or above an issue, or null. The one walk
+    /// every one-PR question is asked through, so they cannot come to pick
+    /// different parents.
     /// </summary>
-    private long? StoryAbove(long issueId)
+    private long? SharerAbove(long issueId)
     {
         var seen = new HashSet<long>();
         long? at = issueId;
 
         while (at is { } id && seen.Add(id))
         {
-            if (_onePr.TryGetValue(id, out var row) && row.Type == "story") return id;
+            if (_onePr.TryGetValue(id, out var row) && row.Type is "story" or "bug") return id;
 
             at = TryGet(id, out var found) ? found.ParentId : null;
         }
@@ -2224,18 +2271,20 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// The story whose pull request this task is waiting on, or null - a task
-    /// under a story that shares one pull request, that has pushed to the
-    /// story's branch and stands in the review column or past it, with no pull
+    /// The story or bug whose pull request this task is waiting on, or null - a
+    /// task under a story or bug that shares one pull request, that has pushed
+    /// to the parent's branch and stands in the review column or past it, with no pull
     /// request of its own.
     /// </summary>
     /// <remarks>
-    /// Such a task is finished as far as the story is concerned - the next
-    /// sibling is pulled, an edge between siblings clears, and the story moves
+    /// Such a task is finished as far as its parent is concerned - the next
+    /// sibling is pulled, an edge between siblings clears, and the parent moves
     /// on to open the one pull request - and it is not finished as far as the
     /// board is concerned: it ends in a terminal column only when that pull
     /// request merges. A task with a pull request of its own is not waiting on
-    /// the story's. See <see cref="SharedStoryOf"/> for who shares, and
+    /// the parent's, and neither is one that declared itself finished with no
+    /// code (<see cref="NoCode"/>): it has nothing on the parent's branch, so it
+    /// closes on its pre-approval or waits in review on its own. See <see cref="SharedStoryOf"/> for who shares, and
     /// <c>docs/hatch.md</c>, "One pull request".
     /// </remarks>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) =>
@@ -2246,7 +2295,7 @@ public sealed class PriorityTree
             : null;
 
     /// <summary>
-    /// Every task waiting on a story's pull request, with that story's key -
+    /// Every task waiting on a story's or bug's pull request, with that parent's key -
     /// <see cref="WaitingOn"/> asked of the whole board, with the column test
     /// worked out once instead of once a task.
     /// </summary>
@@ -2264,8 +2313,8 @@ public sealed class PriorityTree
     }
 
     /// <summary>
-    /// Every task waiting on this story's pull request - see <see cref="WaitingOn"/>.
-    /// What a merged story takes to its own terminal column with it.
+    /// Every task waiting on this story's or bug's pull request - see <see cref="WaitingOn"/>.
+    /// What a merged story or bug takes to its own terminal column with it.
     /// </summary>
     public IReadOnlyList<long> WaitingUnder(long storyId, List<EfHatchStatus> statuses) =>
         !_rows.TryGetValue(storyId, out var story)
@@ -2273,18 +2322,18 @@ public sealed class PriorityTree
             : WaitingIds(statuses).Where(r => r.Value == story.Key).Select(r => r.Key).Order().ToList();
 
     /// <summary>
-    /// The story a task shares the pull request of, by its row and with no
+    /// The story or bug a task shares the pull request of, by its row and with no
     /// regard to where the task stands - the question the claim lineage, the
     /// dependency gate and the branch a dispatch is named for ask about tasks
     /// that are not yet, or no longer, waiting. Null for anything that is not a
-    /// task under a story that shares, for a task that already has a pull
-    /// request of its own, and for a task whose story is in a terminal column:
-    /// that story's pull request has merged, so there is none left to share.
+    /// task under a story or bug that shares, for a task that already has a
+    /// pull request of its own, and for a task whose parent is in a terminal
+    /// column: that parent's pull request has merged, so there is none left to share.
     /// </summary>
     public long? SharedStoryOf(long issueId)
     {
         if (!_onePr.TryGetValue(issueId, out var self) || self.Type != "task" || self.HasPr) return null;
-        if (StoryAbove(issueId) is not { } story) return null;
+        if (SharerAbove(issueId) is not { } story) return null;
 
         var row = _onePr[story];
         return !row.Terminal && (row.OnePr ?? row.ProjectOnePr) ? story : null;
@@ -2341,13 +2390,13 @@ public sealed class DependencyGate
 
         tree ??= await PriorityTree.ForAsync(db, ct);
 
-        // The one exception to "satisfied means done": a task under a story that
-        // shares one pull request, waiting on its pull request, satisfies an
-        // edge from a sibling task under the same story. Building on a
+        // The one exception to "satisfied means done": a task under a story or
+        // bug that shares one pull request, waiting on its pull request,
+        // satisfies an edge from a sibling task under the same parent. Building on a
         // sibling's unmerged commits is the point of a shared branch, and the
         // sibling it waits on can only reach a terminal column once the whole
-        // story does - so holding the edge would hold the story for ever.
-        // Edges to or from anything outside that story stay as strict as ever.
+        // parent does - so holding the edge would hold the parent for ever.
+        // Edges to or from anything outside that parent stay as strict as ever.
         unmet = unmet
             .Where(r => !(tree.WaitingOn(r.DependsOnId, statuses) is not null
                 && tree.SharedStoryOf(r.IssueId) is { } story
@@ -2399,7 +2448,7 @@ public sealed class DependencyGate
     /// <summary>The pre-approval live on this issue - see <see cref="PriorityTree.EffectivePreApproval"/>.</summary>
     public (int Level, string? FromKey) EffectivePreApproval(long issueId) => _tree.EffectivePreApproval(issueId);
 
-    /// <summary>Whether one pull request is shared across the story this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
+    /// <summary>Whether one pull request is shared across the story or bug this issue sits under - see <see cref="PriorityTree.EffectiveOnePr"/>.</summary>
     public (bool OnePr, bool? Own, string? FromKey) EffectiveOnePr(long issueId) => _tree.EffectiveOnePr(issueId);
 
     /// <summary>The runner tags live on this issue - see <see cref="PriorityTree.EffectiveRunnerTags"/>.</summary>
@@ -2408,10 +2457,10 @@ public sealed class DependencyGate
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
 
-    /// <summary>The story whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
+    /// <summary>The story or bug whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);
 
-    /// <summary>The story this task shares the branch and pull request of, or null - see <see cref="PriorityTree.SharedStoryOf"/>.</summary>
+    /// <summary>The story or bug this task shares the branch and pull request of, or null - see <see cref="PriorityTree.SharedStoryOf"/>.</summary>
     public long? SharedStoryOf(long issueId) => _tree.SharedStoryOf(issueId);
 }
 
@@ -2495,7 +2544,7 @@ public sealed class FamilyGate
         tree ??= await PriorityTree.ForAsync(db, ct);
         var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
 
-        // Which tasks share a story's branch, and which story - read off the
+        // Which tasks share a parent's branch, and which parent - read off the
         // same tree, for the fold that keeps two of them off the branch at once.
         var sharedStory = new Dictionary<long, long>();
         foreach (var id in byId.Keys)
@@ -2605,14 +2654,14 @@ public sealed class FamilyGate
     public string KeyOf(long issueId) => _byId[issueId].Key;
 
     /// <summary>
-    /// The key of the first sibling in flight on the story's shared branch, or
+    /// The key of the first sibling in flight on the parent's shared branch, or
     /// null where this issue shares none or no sibling is. In flight is judged
     /// by the sibling's own row: at or past the implementation column, not
-    /// terminal, and not waiting on the story's pull request. Whether the
+    /// terminal, and not waiting on the parent's pull request. Whether the
     /// sibling has a pull request of its own does not matter - this issue is
-    /// the one that would go on the story's branch. This is also the only
+    /// the one that would go on the parent's branch. This is also the only
     /// thing that holds a parent pull (see <see cref="Pulls"/>): under a story
-    /// with sharing off, a bug or an epic there is no shared branch, and
+    /// or bug with sharing off, or an epic, there is no shared branch, and
     /// dependencies order the siblings instead.
     /// </summary>
     public string? SharedBranchSibling(EfHatchIssue issue, List<EfHatchStatus> statuses) =>
@@ -2641,7 +2690,7 @@ public sealed class FamilyGate
 
     /// <summary>The sentence a sibling in flight on the shared branch holds an issue back with.</summary>
     public static string SharedBranchHold(string sibling) =>
-        $"{sibling}, sharing this story's branch, is already in flight - one sibling at a time";
+        $"{sibling}, sharing its parent's branch, is already in flight - one sibling at a time";
 
     /// <summary>
     /// Whether this issue's column may carry it one column right with no

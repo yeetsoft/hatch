@@ -421,10 +421,39 @@
   min-height: 0;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(10.5rem, 1fr);
+  /* A column that shows no card takes the narrow track - half the full one,
+     in the minimum and in the share both, so the 2:1 ratio holds whether the
+     board overflows or has room to spare. BoardPage sets the inline
+     grid-template-columns choosing one per column; this is the fallback and
+     the one place the two are defined. */
+  --column-track: minmax(10.5rem, 1fr);
+  --column-track-narrow: minmax(5.25rem, 0.5fr);
+  grid-auto-columns: var(--column-track);
   gap: var(--sp-3);
   overflow-x: auto;
   padding-bottom: var(--sp-5);
+  transition: grid-template-columns 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-board {
+    transition: none;
+  }
+}
+
+/* Half width: the name wraps rather than being cut to three letters, and the
+   header's other marks wrap under it rather than overflowing. */
+.hatch-column--narrow .hatch-column-head {
+  flex-wrap: wrap;
+  padding-inline: var(--sp-2);
+}
+
+.hatch-column--narrow .hatch-column-name {
+  /* Sized from its text, not from zero: with flex: 1 a wrapping header would
+     squeeze the name to a letter a line before it ever wrapped the count. */
+  flex: 1 1 auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* --status-color and --status-ink are set on the element by statusVars()
@@ -466,6 +495,7 @@
   text-align: center;
   text-transform: lowercase;
   pointer-events: none;
+  overflow-wrap: anywhere;
 }
 
 .hatch-column-head {
@@ -781,6 +811,7 @@
 /* Said quietly under a filtered column, because a short column and a filtered
    one look identical and the difference matters. */
 .hatch-column-hidden {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--sp-1) 0;
   font-size: var(--t-micro);
@@ -1388,8 +1419,84 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-board-search {
-  flex: 0 1 22rem;
-  min-width: 12rem;
+  flex: 0 1 10rem;
+  min-width: 8rem;
+  transition: flex-basis var(--transition), border-color var(--transition), background var(--transition),
+    box-shadow var(--transition);
+}
+
+/* The desktop row has to fit one line at about 1150px, so the box rests narrow
+   and widens while it is in use: focused, or holding a query it would
+   otherwise cut off. Desktop only - the phone rule below lets it fill its line.
+   The gap and the facet padding tighten here for the same reason; the phone
+   row wraps and keeps its roomier look. */
+@media (min-width: 40.01rem) {
+  .hatch-board-search:focus,
+  .hatch-board-search--lit {
+    flex-basis: 16rem;
+  }
+
+  .hatch-board-filters {
+    gap: var(--sp-2);
+  }
+
+  .hatch-board-filters .hatch-facet {
+    padding: 0 var(--sp-2);
+    gap: var(--sp-1-5);
+  }
+}
+
+/* The icon-only controls at the row's ends. Square at the row's height, like
+   .hatch-queue-control beside them. */
+.hatch-filter-reset,
+.hatch-board-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  height: var(--facet-h);
+  width: var(--facet-h);
+  padding: 0;
+  cursor: pointer;
+}
+
+.hatch-filter-reset {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.hatch-filter-reset:hover {
+  filter: brightness(0.97);
+}
+
+.hatch-filter-reset:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-filter-reset-glyph,
+.hatch-board-new .hatch-board-filing-glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+/* The "…" button: a facet with only a glyph in it. */
+.hatch-board-filters .hatch-more-filters {
+  justify-content: center;
+  width: var(--facet-h);
+  padding: 0;
+}
+
+.hatch-more-filters-glyph {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 @media (max-width: 40rem) {
@@ -1523,6 +1630,37 @@ button.hatch-card-stories:focus-visible {
 }
 
 .hatch-go-to-work-note .hatch-go-to-work-status {
+  max-width: none;
+  white-space: normal;
+}
+
+/* The desktop status: the one word, pressed to open the whole line. Drawn bare,
+   in its tone's colour, so a fault still shows from across the room. */
+.hatch-go-to-work-verb {
+  padding: 0 var(--sp-1);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--t-small);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hatch-go-to-work-verb:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hatch-go-to-work-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  min-width: 12rem;
+  max-width: 24rem;
+}
+
+.hatch-go-to-work-detail .hatch-go-to-work-status {
   max-width: none;
   white-space: normal;
 }
@@ -4098,6 +4236,46 @@ input.hatch-inline-title-input {
   align-items: baseline;
   flex-wrap: wrap;
   margin-bottom: var(--sp-2);
+}
+
+/* PlaybookProposalCard's own header line: the transition, its types and its
+   shape/project, read the same way PlaybookRow's row does. */
+.hatch-playbook-proposal-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+
+/* A before/after cell the proposal actually touches - a tint, not a border,
+   so an unchanged cell beside it still reads as the same table. */
+.hatch-playbook-proposal-cell--changed {
+  background: var(--primary-bg);
+}
+
+/* PlaybooksPage's own banner, above the cards it introduces - one line per
+   pending proposal below the sentence that counts them. */
+.hatch-playbook-proposal-banner {
+  margin-bottom: var(--sp-3);
+}
+
+/* Approve all/Reject all, beside the banner's own counting sentence. */
+.hatch-playbook-proposal-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-2);
+}
+
+/* The flattened cards every pending proposal's changes draw into, stacked
+   with the same gap the banner leaves above the main table. */
+.hatch-playbook-proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
 }
 
 /* ---- Questions ----

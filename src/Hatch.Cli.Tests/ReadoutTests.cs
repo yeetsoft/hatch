@@ -169,6 +169,33 @@ public sealed class ReadoutTests
     }
 
     [Fact]
+    public void TheRunnerRow_NamesTheTokenCapAsABound()
+    {
+        var runner = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3), 4.82m, "--max-tokens 2M");
+        var snapshot = new ReadoutSnapshot(null, null, runner, [], null, NoControls);
+
+        var row = Readout.Draw(snapshot, Now, 200, color: false)[0];
+
+        Assert.Contains("stops at --max-tokens 2M", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRunnerRow_SaysItIsWaitingOnTheHourlyCapOnlyWhileItIs()
+    {
+        var bound = "--max-tokens-per-hour 200k";
+        var waiting = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3), 4.82m, bound,
+            Waiting: "over 200k tokens/hour until 3:40am");
+        var under = new RunnerSnapshot("Chrissy", "Nathan", 7, TimeSpan.FromHours(3), 4.82m, bound);
+
+        var waitingRow = Readout.Draw(new ReadoutSnapshot(null, null, waiting, [], null, NoControls), Now, 200, color: false)[0];
+        var underRow = Readout.Draw(new ReadoutSnapshot(null, null, under, [], null, NoControls), Now, 200, color: false)[0];
+
+        Assert.Contains("stops at --max-tokens-per-hour 200k, waiting: over 200k tokens/hour until 3:40am", waitingRow, StringComparison.Ordinal);
+        Assert.Contains("stops at --max-tokens-per-hour 200k", underRow, StringComparison.Ordinal);
+        Assert.DoesNotContain("waiting", underRow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheRunnerRow_CountsUnpricedIncrementsOnlyWhereThereAreSome()
     {
         var some = new RunnerSnapshot("Chrissy", null, 3, TimeSpan.Zero, 1m, null, NightUnpriced: 2);

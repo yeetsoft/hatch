@@ -9,7 +9,8 @@ public sealed class TallyTests
         string key = "AER-1", int exit = 0, decimal? cost = 1m, long? totalTokens = null, bool moved = true, bool lost = false,
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
-        bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null) =>
+        bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
+        bool quietStopped = false) =>
         new()
         {
             Key = key,
@@ -33,6 +34,7 @@ public sealed class TallyTests
             ClampedAtRequests = clamped ? clampedAtRequests : null,
             HardLimitedAtTokens = hardLimited ? hardLimitedAtTokens ?? 7_500_000L : null,
             HardLimitedAtRequests = hardLimited ? hardLimitedAtRequests : null,
+            QuietStopped = quietStopped,
         };
 
     [Fact]
@@ -430,6 +432,117 @@ public sealed class TallyTests
     }
 
     [Fact]
+    public void Reported_tokens_reaching_the_cap_exactly_stop_it()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 2_000_000 };
+
+        tally.Record(Report(totalTokens: 1_999_999));
+        Assert.False(tally.ShouldStop());
+
+        tally.Record(Report(totalTokens: 1));
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-tokens 2M reached at 2M", tally.StopWhy);
+    }
+
+    [Fact]
+    public void Reported_tokens_passing_the_cap_stop_it_and_say_where()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 2_000_000 };
+
+        tally.Record(Report(totalTokens: 2_100_000));
+
+        Assert.True(tally.ShouldStop());
+        Assert.Equal("--max-tokens 2M reached at 2.1M", tally.StopWhy);
+    }
+
+    [Fact]
+    public void An_increment_with_no_token_count_adds_nothing_and_is_counted_unreported()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 100 };
+
+        tally.Record(Report(totalTokens: 60));
+        tally.Record(Report(totalTokens: null));
+
+        Assert.Equal(60, tally.Tokens);
+        Assert.Equal(1, tally.Unreported);
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void Without_a_max_tokens_nothing_stops_it_however_many_it_reports()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report(totalTokens: 900_000_000));
+
+        Assert.False(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void A_usage_limited_increments_tokens_still_count()
+    {
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 1_000 };
+
+        tally.Record(Report(totalTokens: 1_500, usageLimitResetAt: DateTimeOffset.UtcNow.AddHours(1)));
+
+        Assert.Equal(1_500, tally.Tokens);
+        Assert.True(tally.ShouldStop());
+    }
+
+    [Fact]
+    public void The_tally_prints_its_tokens_and_says_once_that_unreported_increments_are_outside_them_and_the_cap()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 5_000_000 };
+        tally.Record(Report(totalTokens: 1_200_000));
+        tally.Record(Report(totalTokens: null));
+        tally.Record(Report(totalTokens: null));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("3 increment(s) in", StringComparison.Ordinal) && l.Contains("1.2M tokens, 2 unreported", StringComparison.Ordinal));
+        var line = Assert.Single(say.Said, l => l.Contains("reported no token count", StringComparison.Ordinal));
+        Assert.Contains("2 increment(s) reported no token count and are not in the tokens above", line, StringComparison.Ordinal);
+        Assert.Contains("; --max-tokens counts only reported increments", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_max_tokens_the_unreported_line_does_not_mention_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+        tally.Record(Report(totalTokens: null));
+        tally.Print(say);
+
+        var line = Assert.Single(say.Said, l => l.Contains("reported no token count", StringComparison.Ordinal));
+        Assert.DoesNotContain("--max-tokens", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_night_that_reported_every_count_prints_the_tokens_and_no_unreported_line()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System) { MaxTokens = 5_000_000 };
+        tally.Record(Report(totalTokens: 1_000));
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("1k tokens", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("unreported", StringComparison.Ordinal) || l.Contains("reported no token count", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_tokens_and_the_unreported_count_are_in_the_carried_forward_line()
+    {
+        var first = new Tally(TimeProvider.System);
+        first.Record(Report(totalTokens: 2_100_000));
+        first.Record(Report(totalTokens: null));
+
+        var second = new Tally(TimeProvider.System, first.ToState());
+
+        Assert.Contains("2.1M tokens, 1 unreported", second.SoFar(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_hour_that_has_come_ends_it()
     {
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero));
@@ -488,12 +601,13 @@ public sealed class TallyTests
         }
     }
 
-    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null)
+    private static (Tally First, Tally Second, DirectoryInfo Dir) Pair(int? maxRuns = null, decimal? maxSpend = null, long? maxTokens = null, long? maxTokensPerHour = null, TimeProvider? clock = null)
     {
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        clock ??= TimeProvider.System;
         return (
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend },
-            new Tally(TimeProvider.System) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend },
+            new Tally(clock) { SetDir = dir.FullName, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens, MaxTokensPerHour = maxTokensPerHour },
+            new Tally(clock) { SetDir = dir.FullName, Slot = 2, MaxRuns = maxRuns, MaxSpend = maxSpend, MaxTokens = maxTokens, MaxTokensPerHour = maxTokensPerHour },
             dir);
     }
 
@@ -541,6 +655,209 @@ public sealed class TallyTests
         finally
         {
             dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_sharing_a_token_cap_each_stop_at_the_combined_total()
+    {
+        var (first, second, dir) = Pair(maxTokens: 1_000_000);
+        try
+        {
+            first.Record(Report(totalTokens: 600_000));
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+
+            second.Record(Report(totalTokens: 600_000));
+
+            Assert.True(first.ShouldStop());
+            Assert.True(second.ShouldStop());
+            Assert.Equal("--max-tokens 1M reached across the set at 1.2M", first.StopWhy);
+            Assert.Equal("--max-tokens 1M reached across the set at 1.2M", second.StopWhy);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_one_token_short_of_the_cap_neither_stops()
+    {
+        var (first, second, dir) = Pair(maxTokens: 1_000_000);
+        try
+        {
+            first.Record(Report(totalTokens: 500_000));
+            second.Record(Report(totalTokens: 499_999));
+
+            Assert.False(first.ShouldStop());
+            Assert.False(second.ShouldStop());
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_member_seeded_from_carried_state_writes_its_tokens_to_the_ledger()
+    {
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var carried = new Tally(TimeProvider.System);
+            carried.Record(Report(totalTokens: 400_000));
+
+            var restarted = new Tally(TimeProvider.System, carried.ToState()) { SetDir = dir.FullName, Slot = 2, MaxTokens = 1_000_000 };
+            restarted.Record(Report(totalTokens: 100_000));
+
+            Assert.Equal(500_000L, RunnerSet.ReadLedgerTotal(dir.FullName, 1).Tokens);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_over_the_hourly_cap_together_are_both_throttled_until_the_same_instant()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            second.Record(Report(totalTokens: 120_000));
+            var now = clock.GetUtcNow();
+
+            Assert.NotNull(first.ThrottledUntil(now));
+            Assert.Equal(first.ThrottledUntil(now), second.ThrottledUntil(now));
+            Assert.Equal(T0 + TimeSpan.FromMinutes(60), first.ThrottledUntil(now));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Two_members_under_the_hourly_cap_together_are_neither_throttled()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 80_000));
+            second.Record(Report(totalTokens: 80_000));
+            var now = clock.GetUtcNow();
+
+            Assert.Null(first.ThrottledUntil(now));
+            Assert.Null(second.ThrottledUntil(now));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_siblings_entry_ages_out_of_the_set_window_on_the_hour()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(maxTokensPerHour: 200_000, clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            clock.Advance(TimeSpan.FromMinutes(10));
+            second.Record(Report(totalTokens: 120_000));
+            var end = T0 + TimeSpan.FromMinutes(60);
+
+            Assert.Equal(end, first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.Equal(end, second.ThrottledUntil(clock.GetUtcNow()));
+
+            clock.SetUtcNow(end - TimeSpan.FromSeconds(1));
+            Assert.NotNull(first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.NotNull(second.ThrottledUntil(clock.GetUtcNow()));
+
+            clock.SetUtcNow(end);
+            Assert.Null(first.ThrottledUntil(clock.GetUtcNow()));
+            Assert.Null(second.ThrottledUntil(clock.GetUtcNow()));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_restarted_member_still_sees_its_siblings_hour_and_puts_its_own_back_in_the_ledger()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var sibling = new Tally(clock) { SetDir = dir.FullName, Slot = 1 };
+            sibling.Record(Report(totalTokens: 120_000));
+
+            var carried = new Tally(clock);
+            carried.Record(Report(totalTokens: 120_000));
+            var restarted = new Tally(clock, carried.ToState()) { SetDir = dir.FullName, Slot = 2, MaxTokensPerHour = 200_000 };
+
+            Assert.NotNull(restarted.ThrottledUntil(clock.GetUtcNow()));
+
+            // What RunAsync does at start-up, before the member has recorded anything.
+            RunnerSet.WriteLedger(dir.FullName, 2, restarted.Runs, restarted.Spent, restarted.Tokens, restarted.Window);
+            Assert.Equal(
+                new TokenEntry[] { new TokenEntry(T0, 120_000) },
+                RunnerSet.ReadLedgerWindow(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void The_peak_hour_in_a_set_is_the_combined_hour_the_recording_member_saw()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var (first, second, dir) = Pair(clock: clock);
+        try
+        {
+            first.Record(Report(totalTokens: 120_000));
+            clock.Advance(TimeSpan.FromMinutes(5));
+            second.Record(Report(totalTokens: 120_000));
+
+            Assert.Equal(240_000, second.PeakHour);
+
+            // The first member has not recorded since the second joined its hour.
+            Assert.Equal(120_000, first.PeakHour);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_malformed_or_missing_ledger_never_throttles_a_member()
+    {
+        var clock = new FakeTimeProvider(T0);
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "garbage");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.3"), "1 1 1 x:y");
+            var tally = new Tally(clock) { SetDir = dir.FullName, Slot = 2, MaxTokensPerHour = 1 };
+
+            Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+
+            dir.Delete(recursive: true);
+            Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+        }
+        finally
+        {
+            if (dir.Exists) dir.Delete(recursive: true);
         }
     }
 
@@ -759,5 +1076,190 @@ public sealed class TallyTests
 
         Assert.False(tally.ShouldStop());
         Assert.Equal(0, tally.Fails);
+    }
+
+    /// <summary>
+    /// HA-1637: a quiet stop does not arm the three-strikes stop either, the
+    /// same reasoning a lost lease and a hard limit both get - the runner
+    /// stopped the session on purpose, and this says nothing about whether the
+    /// last increment actually worked.
+    /// </summary>
+    [Fact]
+    public void Three_quiet_stops_in_a_row_do_not_end_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 143, moved: false, quietStopped: true));
+        tally.Record(Report("AER-2", exit: 143, moved: false, quietStopped: true));
+        tally.Record(Report("AER-3", exit: 143, moved: false, quietStopped: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+    }
+
+    private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static (FakeTimeProvider Clock, Tally Tally) Hourly(long? cap)
+    {
+        var clock = new FakeTimeProvider(T0);
+        return (clock, new Tally(clock) { MaxTokensPerHour = cap });
+    }
+
+    [Fact]
+    public void An_empty_window_has_no_total_and_no_throttle()
+    {
+        var (clock, tally) = Hourly(100);
+
+        Assert.Equal(0, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void Under_the_hourly_cap_is_not_throttled_and_at_it_exactly_is()
+    {
+        var (clock, tally) = Hourly(100);
+
+        tally.Record(Report(totalTokens: 99));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+
+        clock.Advance(TimeSpan.FromMinutes(1));
+        tally.Record(Report(totalTokens: 1));
+        Assert.NotNull(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void No_cap_means_no_throttle_however_much_the_window_holds()
+    {
+        var (clock, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 10_000_000));
+
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+        Assert.Equal(10_000_000, tally.WindowTotal(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void The_wait_ends_when_enough_of_the_oldest_entries_age_out_not_an_hour_after_the_last()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 60));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        var now = clock.GetUtcNow();
+
+        // 120 now; without the first it is 60, under the cap.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), tally.ThrottledUntil(now));
+
+        // Past the first: 60 left, under the cap, so no wait at all.
+        clock.Advance(TimeSpan.FromMinutes(41));
+        Assert.Null(tally.ThrottledUntil(clock.GetUtcNow()));
+    }
+
+    [Fact]
+    public void The_wait_is_the_first_entrys_hour_when_it_alone_clears_the_cap_and_the_seconds_when_it_takes_two()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 30));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        tally.Record(Report(totalTokens: 60));
+
+        // 120 now; removing only the first leaves 90, under the cap: its hour.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), tally.ThrottledUntil(clock.GetUtcNow()));
+
+        var (clock2, tally2) = Hourly(70);
+        tally2.Record(Report(totalTokens: 30));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        tally2.Record(Report(totalTokens: 30));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        tally2.Record(Report(totalTokens: 60));
+
+        // 120; minus 30 is 90, minus 30 more is 60 < 70: the second's hour.
+        Assert.Equal(T0 + TimeSpan.FromMinutes(70), tally2.ThrottledUntil(clock2.GetUtcNow()));
+
+        // The first has aged out; the answer moves to the second's hour and then to none.
+        clock2.Advance(TimeSpan.FromMinutes(41));
+        Assert.Equal(T0 + TimeSpan.FromMinutes(70), tally2.ThrottledUntil(clock2.GetUtcNow()));
+        clock2.Advance(TimeSpan.FromMinutes(10));
+        Assert.Null(tally2.ThrottledUntil(clock2.GetUtcNow()));
+    }
+
+    [Fact]
+    public void One_entry_larger_than_the_cap_waits_out_its_own_hour()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 500));
+
+        var until = tally.ThrottledUntil(clock.GetUtcNow());
+
+        Assert.Equal(T0 + TimeSpan.FromMinutes(60), until);
+        Assert.Equal(0, tally.WindowTotal(until!.Value));
+    }
+
+    [Fact]
+    public void An_entry_exactly_sixty_minutes_old_does_not_count()
+    {
+        var (_, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 80));
+
+        Assert.Equal(80, tally.WindowTotal(T0 + TimeSpan.FromMinutes(59.99)));
+        Assert.Equal(0, tally.WindowTotal(T0 + TimeSpan.FromMinutes(60)));
+    }
+
+    [Fact]
+    public void A_usage_limited_reports_tokens_count_and_one_with_no_count_adds_no_entry()
+    {
+        var (clock, tally) = Hourly(100);
+        tally.Record(Report(totalTokens: 70, usageLimitResetAt: T0 + TimeSpan.FromHours(3)));
+        tally.Record(Report(totalTokens: null));
+
+        Assert.Equal(70, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Single(tally.ToState().Window);
+    }
+
+    [Fact]
+    public void Throttled_until_is_pure()
+    {
+        var (clock, tally) = Hourly(10);
+        tally.Record(Report(totalTokens: 50));
+        var before = (tally.Runs, tally.Fails, tally.Tokens, tally.Unreported, tally.ToState().Window.Count);
+
+        _ = tally.ThrottledUntil(clock.GetUtcNow());
+
+        Assert.Equal(before, (tally.Runs, tally.Fails, tally.Tokens, tally.Unreported, tally.ToState().Window.Count));
+    }
+
+    [Fact]
+    public void The_window_is_kept_without_a_cap_and_the_peak_is_the_largest_total_at_any_record()
+    {
+        var (clock, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 400));
+        clock.Advance(TimeSpan.FromMinutes(30));
+        tally.Record(Report(totalTokens: 300));
+        Assert.Equal(700, tally.PeakHour);
+
+        // The first leaves the window; the peak does not fall.
+        clock.Advance(TimeSpan.FromMinutes(40));
+        tally.Record(Report(totalTokens: 50));
+        Assert.Equal(350, tally.WindowTotal(clock.GetUtcNow()));
+        Assert.Equal(700, tally.PeakHour);
+    }
+
+    [Fact]
+    public void The_tally_prints_the_peak_hour_and_says_nothing_when_no_tokens_were_reported()
+    {
+        var say = new Transcript();
+        var (_, tally) = Hourly(null);
+        tally.Record(Report(totalTokens: 1_200_000));
+        tally.Print(say);
+        Assert.Contains("hatch: peak hour 1.2M tokens", say.Said);
+
+        var quiet = new Transcript();
+        var (_, none) = Hourly(null);
+        none.Record(Report(totalTokens: null));
+        none.Print(quiet);
+        Assert.DoesNotContain(quiet.Said, l => l.Contains("peak hour", StringComparison.Ordinal));
     }
 }

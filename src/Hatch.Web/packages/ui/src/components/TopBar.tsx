@@ -18,6 +18,13 @@ export interface TopBarProps {
       the address that survives an app moving; an app mounted under a path
       passes its own root. */
   homeHref?: string;
+  /** The logo link's accessible name, when "what the link goes to" is a better
+      name than the app's own. Omitted, the visible name speaks for itself. */
+  homeLabel?: string;
+  /** Lights the logo link (`aria-current="page"`) when the page showing is the
+      one it goes to - the bar is where "you are home" is said once the home
+      page has no nav entry of its own. */
+  homeCurrent?: boolean;
   /** `measure` caps the bar at `--measure` and centres it, which is every
       app's default. `full` runs it to the window's edges - the hatch app
       passes this because the board under it does too, and carries its
@@ -71,6 +78,8 @@ export interface TopBarProps {
 export function TopBar({
   appName,
   homeHref = '/',
+  homeLabel,
+  homeCurrent,
   width = 'measure',
   leading,
   trailing,
@@ -87,7 +96,12 @@ export function TopBar({
         <div className="hatch-topbar__side">
           {/* An <a>, so middle-click and "copy link address" work. The mark is
               decoration: the name beside it is the link's accessible name. */}
-          <a className="hatch-topbar__brand" href={homeHref}>
+          <a
+            className="hatch-topbar__brand"
+            href={homeHref}
+            aria-label={homeLabel}
+            aria-current={homeCurrent ? 'page' : undefined}
+          >
             <HatchMark size={28} />
             <span className="hatch-topbar__name">{appName}</span>
           </a>

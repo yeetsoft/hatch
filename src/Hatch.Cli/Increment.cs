@@ -67,6 +67,39 @@ public sealed class IncrementReport
     public string? ReleaseOutcome { get; set; }
 
     /// <summary>
+    /// One of <see cref="ClaimLostReasons"/>, carried onto <see cref="ReleaseOutcome"/> -
+    /// <see cref="ClaimLostReasons.Quiet"/> for a quiet stop, dropped or flagged alike, and
+    /// null for every other release this increment can give.
+    /// </summary>
+    public string? ReleaseReason { get; set; }
+
+    /// <summary>
+    /// The runner stopped the session itself, a beat before the server's own
+    /// heartbeat refusal would have, or the heartbeat answered quiet first. Not
+    /// <see cref="LostLease"/>: this runner's lease is still good, and the ticket
+    /// is still this runner's to write a stall comment on - the stall guard below
+    /// counts it exactly like any other stall, through the same <c>LetGo</c>/flag
+    /// ladder.
+    /// </summary>
+    public bool QuietStopped { get; set; }
+
+    /// <summary>How long the claim had gone without a word when it stopped, for <see cref="QuietWhy"/>.</summary>
+    public TimeSpan? QuietAfter { get; set; }
+
+    /// <summary>The quiet window itself, for the same sentence.</summary>
+    public TimeSpan? QuietLimit { get; set; }
+
+    /// <summary>
+    /// The sentence a quiet stop is reported in - the stall comment, the
+    /// <c>FlagStallAsync</c> body, and <see cref="Outcome"/> all read it rather
+    /// than composing their own.
+    /// </summary>
+    public string QuietWhy =>
+        QuietLimit is { } limit
+            ? $"stopped after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)} without a word; the quiet limit is {(long)limit.TotalSeconds}s"
+            : $"stopped after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)} without a word";
+
+    /// <summary>
     /// A conflict increment, and origin's branch merges with the trunk now. Not a
     /// stall, and not a move either: the ticket stays in review and that is the
     /// right place for it.
@@ -278,6 +311,7 @@ public sealed class IncrementReport
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : HardLimited ? $"the hard limit was hit at {Format.Compact(HardLimitedAtTokens!.Value)} tokens"
             + (Filed.Count > 0 ? $", filed {Filed.Count} under it" : ", its continuation could not be filed")
+        : QuietStopped ? $"stopped for quiet after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : CheckReason is { Length: > 0 } cr ? $"{cr}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : (NoWorkLog || ResultErrored) && Done.Length > 0 ? $"the session {Cause}, and it {Done}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
@@ -496,19 +530,38 @@ public sealed class Increment(
             // work log is a write onto somebody else's increment.
             if (claim.Lost is { } gone)
             {
-                report.LostLease = true;
-                report.Flag = $"the claim was taken - {gone}";
-                say.Complain($"hatch: {report.Key} - {gone}");
-                say.Complain("hatch:   the session was stopped; nothing further was written there");
+                if (claim.LostToOthers)
+                {
+                    report.LostLease = true;
+                    report.Flag = $"the claim was taken - {gone}";
+                    say.Complain($"hatch: {report.Key} - {gone}");
+                    say.Complain("hatch:   the session was stopped; nothing further was written there");
+                }
+                else
+                {
+                    // LostReason is Quiet: the heartbeat answered quiet before, or
+                    // instead of, the watcher below getting to fire. Either way the
+                    // token is still this runner's - nothing here is somebody
+                    // else's increment.
+                    report.QuietStopped = true;
+                    report.QuietAfter = facts.QuietStoppedAfter ?? _clock.GetUtcNow() - (claim.Chatter.SaidAt ?? claim.TakenAt);
+                    report.QuietLimit = facts.QuietLimit ?? claim.StallLapse;
+                }
+            }
+            else if (facts.QuietStoppedAfter is { } quietAfter)
+            {
+                report.QuietStopped = true;
+                report.QuietAfter = quietAfter;
+                report.QuietLimit = facts.QuietLimit;
             }
 
-            if (report.Clamped && claim.Lost is null)
+            if (report.Clamped && !claim.LostToOthers)
                 await Clamp.CommentAsync(board, say, report.Key, report.ClampedAtTokens!.Value, report.ClampedAtRequests, ct);
 
             // The note goes up before the bill, so a failure further down cannot
             // lose it - and never after the lease has gone, since it is a write
             // onto the ticket, unlike the meter reading.
-            if (claim.Lost is null && facts.ReleaseNote is { } note)
+            if (!claim.LostToOthers && facts.ReleaseNote is { } note)
                 await PostReleaseNoteAsync(report.Key, note, claim.Token, ct);
 
             // Before the board is asked anything, so a row exists even when the
@@ -536,7 +589,7 @@ public sealed class Increment(
                 : null;
 
             var endedAt = _clock.GetUtcNow();
-            if (claim.Lost is null && claim.Preempted is null && adapter.RecogniseLimit(said, endedAt) is { } hit)
+            if (!claim.LostToOthers && claim.Preempted is null && adapter.RecogniseLimit(said, endedAt) is { } hit)
             {
                 if (facts.Usage?.FirstOrDefault(w => w.Window == hit.Window) is { ResetsAt: { } resetsAt } && resetsAt > endedAt)
                 {
@@ -588,7 +641,7 @@ public sealed class Increment(
                 // board can see just as well as a move.
                 try
                 {
-                    var later = await board.WorkAsync(checkouts, report.Key, claim.Lost is null ? claim.Token : null, ct);
+                    var later = await board.WorkAsync(checkouts, report.Key, !claim.LostToOthers ? claim.Token : null, ct);
                     report.Ended = later?.FromStatus.Name ?? report.From;
                     report.EndedInReview = later?.InReview ?? false;
                     report.Filed = later?.Children.Select(c => c.Key).Except(work.Children.Select(c => c.Key)).ToList() ?? [];
@@ -616,12 +669,12 @@ public sealed class Increment(
                 // board is told about its branch is theirs to say. Never on a
                 // usage limit either: there is no fix to judge, only a session
                 // that did not finish.
-                if (conflict is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted) await JudgeAsync(report, conflict, ct);
+                if (conflict is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted) await JudgeAsync(report, conflict, ct);
 
                 // The same for a build increment, and the same reason: what it
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
-                if (build is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted) await JudgeBuildAsync(report, build, ct);
+                if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted) await JudgeBuildAsync(report, build, ct);
 
                 // The verdict on a check increment: the tree first - a check
                 // that left anything uncommitted or moved HEAD is not one
@@ -629,7 +682,7 @@ public sealed class Increment(
                 // itself. Same guards as the other two judgments, plus
                 // HardLimited: a check that was stopped for crossing its hard
                 // limit has nothing finished to apply either.
-                if (checkTreeUnchanged is not null && claim.Lost is null && !report.UsageLimited && !report.Preempted && !report.HardLimited)
+                if (checkTreeUnchanged is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                     await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
 
                 // A plain increment's session may have written no work-log
@@ -715,7 +768,9 @@ public sealed class Increment(
                         // The ticket goes straight back onto the board, free
                         // for the next pass to try again - one comment saying
                         // why, and what to resume, and nothing that blocks it.
-                        var why = said is { Length: > 0 }
+                        var why = report.QuietStopped
+                            ? report.QuietWhy
+                            : said is { Length: > 0 }
                             ? $"the session ended with an error - \"{said}\""
                             : "the session ended without moving it";
 
@@ -723,6 +778,7 @@ public sealed class Increment(
                         report.LetGo = true;
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
+                        if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
                         say.Line("");
                         say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
                     }
@@ -734,6 +790,7 @@ public sealed class Increment(
                         // exactly as every stall used to be, before this ticket.
                         await FlagStallAsync(report, open, work.LetGo, ct);
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
+                        if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
                     }
                 }
 
@@ -960,6 +1017,17 @@ public sealed class Increment(
     {
         var ct = stopping.Token;
 
+        // Races the server's own quiet-claim rule to the same deadline, a
+        // margin early, so the session is stopped by the runner that is
+        // actually watching it rather than by a heartbeat refused out from
+        // under a process still running. Covers both the streamed and the
+        // --quiet path alike, since neither one otherwise learns the claim
+        // has gone quiet until its next heartbeat - which a --quiet session
+        // never sends at all.
+        await using var quietWatch = claim.StallLapse is { } lapse && lapse > TimeSpan.Zero
+            ? new Probing(ct2 => WatchQuietAsync(work.Issue.Key, facts, claim, lapse, stopping, ct2), ct)
+            : null;
+
         // The hooks a message sent while this runs reaches the session by. Made
         // for this increment and deleted with it, in a directory of its own.
         using var hooks = adapter.WriteHooks(_temp, work.Issue.Key, SessionHooks.Binary(Environment.ProcessPath),
@@ -1156,6 +1224,57 @@ public sealed class Increment(
         ReadClamp();
         ReadOutputLastMessage();
         return streamed;
+    }
+
+    /// <summary>
+    /// Stops the session itself the moment the claim's own quiet window is
+    /// about to run out with no word from it - a beat before the server's
+    /// own heartbeat refusal would, so the runner that is actually watching
+    /// the process is the one that stops it rather than finding out secondhand
+    /// on the next heartbeat (which a <c>--quiet</c> session never sends at all).
+    /// </summary>
+    /// <remarks>
+    /// The deadline is read fresh on every wake, since a word said while this
+    /// was asleep moves it - <see cref="Chatter.Line"/> is the only thing that
+    /// counts as one; <see cref="Pulse"/>'s own lines are not carried onto it.
+    /// Margin is the smaller of ten seconds or a tenth of the lapse, so a test
+    /// driving the lapse in milliseconds still gets a watcher that fires inside
+    /// its own window rather than one that rounds the margin away to nothing.
+    /// </remarks>
+    private async Task WatchQuietAsync(
+        string key, RunFacts facts, Claim claim, TimeSpan lapse, CancellationTokenSource stopping, CancellationToken ct)
+    {
+        var margin = TimeSpan.FromTicks(Math.Min(TimeSpan.FromSeconds(10).Ticks, lapse.Ticks / 10));
+
+        while (!ct.IsCancellationRequested)
+        {
+            var last = claim.Chatter.SaidAt ?? claim.TakenAt;
+            var deadline = last + lapse - margin;
+            var remaining = deadline - _clock.GetUtcNow();
+            if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+
+            try
+            {
+                await Task.Delay(remaining, _clock, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            // A word said while this slept moves the deadline - re-read before
+            // deciding the window actually ran out, rather than trusting the
+            // delay alone to have waited the right amount.
+            if ((claim.Chatter.SaidAt ?? claim.TakenAt) != last) continue;
+
+            var after = _clock.GetUtcNow() - last;
+            facts.QuietStoppedAfter = after;
+            facts.QuietLimit = lapse;
+            say.Line("");
+            say.Line($"hatch: {key} - no word for {Format.Duration((long)after.TotalSeconds)}; stopping the session");
+            stopping.Cancel();
+            return;
+        }
     }
 
     /// <summary>
@@ -1380,7 +1499,12 @@ public sealed class Increment(
             return;
         }
 
-        var body = report.StillFailing.Count > 0
+        var body = report.QuietStopped
+            ? $"""
+              An unattended increment ran here, and the runner stopped the session itself rather
+              than wait for the board to: {report.QuietWhy}.
+              """
+            : report.StillFailing.Count > 0
             ? $"""
               An unattended increment ran here to fix this branch's failing build, and the branch
               on origin has not moved: {report.BuildBranch} is still at {report.BuildSha}, and the build on it
@@ -1443,7 +1567,9 @@ public sealed class Increment(
 
             if (waiting == 0)
             {
-                var why = report.StillFailing.Count > 0
+                var why = report.QuietStopped
+                    ? report.QuietWhy
+                    : report.StillFailing.Count > 0
                     ? $"the build on {report.BuildBranch} still fails"
                     : report.StillConflicting.Count > 0
                     ? $"the branch still conflicts with {report.ConflictTrunk}"

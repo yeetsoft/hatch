@@ -92,6 +92,19 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_CLAUDE_BIN"));
     }
 
+    [Fact]
+    public void The_claude_tool_list_is_read_from_the_environment_and_is_null_when_unset()
+    {
+        var checkout = Write("checkout.env", "HATCH_BASE=https://this-repository");
+        var user = Write("user.config", "HATCH_BASE=https://mine");
+
+        Assert.True(Settings.TryLoad(checkout, Env(("HATCH_CLAUDE_TOOLS", "Bash,Read")), out var set, out _, user));
+        Assert.Equal("Bash,Read", set.ClaudeTools);
+
+        Assert.True(Settings.TryLoad(checkout, Env(), out var unset, out _, user));
+        Assert.Null(unset.ClaudeTools);
+    }
+
     /// <summary>The same three layers <c>HATCH_CLAUDE_BIN</c> reads through, for the other known agent.</summary>
     [Fact]
     public void Grok_bin_reads_from_the_same_three_layers()

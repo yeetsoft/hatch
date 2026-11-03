@@ -17,6 +17,7 @@ public sealed class Tally
     private readonly List<string> _interrupted;
     private readonly List<string> _preempted;
     private readonly List<string> _failed = [];
+    private readonly List<TokenEntry> _window;
     private readonly DateTimeOffset _started;
     private readonly Action<string>? _log;
 
@@ -37,6 +38,10 @@ public sealed class Tally
         _interrupted = [.. carried?.Interrupted ?? []];
         _preempted = [.. carried?.Preempted ?? []];
 
+        var now = clock.GetUtcNow();
+        _window = [.. (carried?.Window ?? []).Where(e => Live(e, now))];
+        PeakHour = carried?.PeakHour ?? 0;
+
         // The night's start and not this process's, so the elapsed time in the
         // morning covers the whole of it. A state file with no start in it is
         // taken as starting now rather than in the year zero.
@@ -45,6 +50,8 @@ public sealed class Tally
         Runs = carried?.Runs ?? 0;
         Spent = carried?.Spent ?? 0m;
         Unpriced = carried?.Unpriced ?? 0;
+        Tokens = carried?.Tokens ?? 0;
+        Unreported = carried?.Unreported ?? 0;
         Fails = carried?.Fails ?? 0;
         Restarts = carried?.Restarts ?? 0;
         ExhaustedUntil = carried?.ExhaustedUntil;
@@ -74,6 +81,12 @@ public sealed class Tally
 
     /// <summary>Increments that reported tokens and no price - in neither <see cref="Spent"/> nor the <c>--max-spend</c> cap.</summary>
     public int Unpriced { get; private set; }
+
+    /// <summary>Tokens the increments reported, the total the <c>--max-tokens</c> cap is judged against. Nothing is estimated for an increment that reported none.</summary>
+    public long Tokens { get; private set; }
+
+    /// <summary>Increments that reported no token count - in neither <see cref="Tokens"/> nor the <c>--max-tokens</c> cap.</summary>
+    public int Unreported { get; private set; }
 
     /// <summary>When the night began - carried across a restart, the same as everything else it is judged against.</summary>
     public DateTimeOffset Started => _started;
@@ -183,6 +196,10 @@ public sealed class Tally
     // which is the honest reading of a cap.
     public int? MaxRuns { get; set; }
     public decimal? MaxSpend { get; set; }
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The most tokens any sixty minutes may hold; a flag, and a control on the page like the others.</summary>
+    public long? MaxTokensPerHour { get; set; }
     public string? Until { get; set; }
     public DateTimeOffset? UntilAt { get; set; }
     public string? StopFile { get; init; }
@@ -243,15 +260,17 @@ public sealed class Tally
             return true;
         }
 
-        // In a set the two bounds are the set's: this runner's own count plus
+        // In a set the three bounds are the set's: this runner's own count plus
         // what its siblings have left in their ledgers. Alone, they are its own.
         var runs = Runs;
         var spent = Spent;
-        if (SetDir is not null && (MaxRuns is not null || MaxSpend is not null))
+        var tokens = Tokens;
+        if (SetDir is not null && (MaxRuns is not null || MaxSpend is not null || MaxTokens is not null))
         {
             var others = RunnerSet.ReadLedgerTotal(SetDir, Slot ?? 1);
             runs += others.Runs;
             spent += others.Spent;
+            tokens += others.Tokens;
         }
 
         if (MaxRuns is { } cap && runs >= cap)
@@ -271,6 +290,15 @@ public sealed class Tally
             return true;
         }
 
+        // Tokens holds reported counts only, so an increment with none never counts here.
+        if (MaxTokens is { } tokenCap && tokens >= tokenCap)
+        {
+            StopWhy = SetDir is null
+                ? $"--max-tokens {Format.Compact(tokenCap)} reached at {Format.Compact(tokens)}"
+                : $"--max-tokens {Format.Compact(tokenCap)} reached across the set at {Format.Compact(tokens)}";
+            return true;
+        }
+
         if (UntilAt is { } hour && _clock.GetUtcNow() >= hour)
         {
             StopWhy = $"--until {Until} has come";
@@ -280,6 +308,53 @@ public sealed class Tally
         return false;
     }
 
+    private static readonly TimeSpan Hour = TimeSpan.FromMinutes(60);
+
+    /// <summary>An entry exactly sixty minutes old is out.</summary>
+    private static bool Live(TokenEntry entry, DateTimeOffset now) => now - entry.At < Hour;
+
+    /// <summary>
+    /// This member's own entries, and in a set every sibling's from its ledger, still
+    /// inside the hour at <paramref name="now"/>, oldest first - the one place a
+    /// set's combined entries are gathered.
+    /// </summary>
+    private List<TokenEntry> LiveEntries(DateTimeOffset now)
+    {
+        IEnumerable<TokenEntry> all = _window;
+        if (SetDir is not null) all = all.Concat(RunnerSet.ReadLedgerWindow(SetDir, Slot ?? 1));
+        return [.. all.Where(e => Live(e, now)).OrderBy(e => e.At)];
+    }
+
+    /// <summary>This member's own entries, the window its ledger carries.</summary>
+    public IReadOnlyList<TokenEntry> Window => _window;
+
+    /// <summary>The tokens reported in the sixty minutes before <paramref name="now"/>.</summary>
+    public long WindowTotal(DateTimeOffset now) => LiveEntries(now).Sum(e => e.Tokens);
+
+    /// <summary>
+    /// When the last sixty minutes stop being at or over <see cref="MaxTokensPerHour"/>,
+    /// or null when no cap is set or the window is under it. The entries leave
+    /// oldest first, so the answer is the hour's end of the entry whose leaving
+    /// takes the total below the cap - and one entry larger than the cap waits
+    /// out its own hour. Records nothing and touches no counter.
+    /// </summary>
+    public DateTimeOffset? ThrottledUntil(DateTimeOffset now)
+    {
+        if (MaxTokensPerHour is not { } cap || cap <= 0) return null;
+
+        var live = LiveEntries(now);
+        var total = live.Sum(e => e.Tokens);
+        if (total < cap) return null;
+
+        foreach (var entry in live)
+        {
+            total -= entry.Tokens;
+            if (total < cap) return entry.At + Hour;
+        }
+
+        return null;
+    }
+
     /// <summary>One increment, added to the run's account.</summary>
     public void Record(IncrementReport report)
     {
@@ -287,9 +362,23 @@ public sealed class Tally
         if (report.Cost is { } cost) Spent += cost;
         if (report.Unpriced) Unpriced++;
 
-        // The local counters are this slot's cumulative total, carried and new,
-        // so the ledger is a mirror of them for the siblings to read.
-        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent);
+        // Before the usage-limit return below: those tokens were spent.
+        var now = _clock.GetUtcNow();
+        if (report.TotalTokens is { } tokens)
+        {
+            Tokens += tokens;
+            _window.Add(new TokenEntry(now, tokens));
+            _window.RemoveAll(e => !Live(e, now));
+        }
+        else Unreported++;
+
+        // The local counters and window are this slot's cumulative total, carried
+        // and new, so the ledger is a mirror of them for the siblings to read.
+        if (SetDir is not null) RunnerSet.WriteLedger(SetDir, Slot ?? 1, Runs, Spent, Tokens, _window);
+
+        // Kept whether or not a cap is set, so the peak is reported on every night.
+        // After the ledger write, so in a set it is the combined hour this entry joined.
+        if (report.TotalTokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
 
         var before = ExhaustedUntil;
 
@@ -304,8 +393,8 @@ public sealed class Tally
         if (before != ExhaustedUntil)
         {
             var was = before is { } o ? o.ToString("O") : "none";
-            var now = ExhaustedUntil is { } n ? n.ToString("O") : "none";
-            _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {now} for {report.Key}");
+            var becomes = ExhaustedUntil is { } n ? n.ToString("O") : "none";
+            _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {becomes} for {report.Key}");
         }
 
         // A third list, because a usage limit is neither: nothing was moved,
@@ -365,6 +454,14 @@ public sealed class Tally
         // this says nothing about whether the last increment actually worked.
         if (report.HardLimited) return;
 
+        // Nor is a quiet stop. The runner stopped the session itself, on
+        // purpose, a beat before the server would have refused its heartbeat
+        // for the same reason - this is the ladder holding the ticket for a
+        // slow or absent session, working exactly as designed, and three of
+        // them in a row on different tickets must not read as systemic
+        // breakage the way three broken increments should.
+        if (report.QuietStopped) return;
+
         // A failed increment on its own is not a reason to stop - a ticket can
         // be wrong, or a test can be flaky, and the next ticket is a different
         // question. Three in a row is something else: whatever is broken is
@@ -392,6 +489,10 @@ public sealed class Tally
         Runs = Runs,
         Spent = Spent,
         Unpriced = Unpriced,
+        Tokens = Tokens,
+        Unreported = Unreported,
+        Window = [.. _window],
+        PeakHour = PeakHour,
         Started = _started,
         Fails = Fails,
         Restarts = Restarts + 1,
@@ -409,10 +510,16 @@ public sealed class Tally
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
-    public string SoFar() => $"{Runs} increment(s), ${Format.Money(Spent)}{UnpricedSuffix} so far, carried forward";
+    public string SoFar() => $"{Runs} increment(s), ${Format.Money(Spent)}{UnpricedSuffix}{TokensSuffix} so far, carried forward";
 
     /// <summary>The dollars are priced increments only; says how many were left out, or nothing when none were.</summary>
     public string UnpricedSuffix => Unpriced > 0 ? $", {Unpriced} unpriced" : "";
+
+    /// <summary>The tokens reported, always, and how many increments reported none when any did not.</summary>
+    public string TokensSuffix => $", {Format.Compact(Tokens)} tokens{(Unreported > 0 ? $", {Unreported} unreported" : "")}";
+
+    /// <summary>The most tokens any sixty minutes of the night has held, carried through a restart.</summary>
+    public long PeakHour { get; private set; }
 
     /// <summary>
     /// What the run came to. Printed on the way out and nowhere else, because
@@ -432,10 +539,14 @@ public sealed class Tally
 
         say.Line("");
         if (StopWhy is { Length: > 0 } why) say.Line($"hatch: {why}");
-        say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{UnpricedSuffix}{restarts}");
+        say.Line($"hatch: {Runs} increment(s) in {Format.Duration(elapsed)}, ${Format.Money(Spent)}{UnpricedSuffix}{TokensSuffix}{restarts}");
+        if (PeakHour > 0) say.Line($"hatch: peak hour {Format.Compact(PeakHour)} tokens");
         if (Unpriced > 0)
             say.Line($"hatch: {Unpriced} increment(s) reported no price and are not in the dollars above"
                 + (MaxSpend is not null ? "; --max-spend counts only priced increments" : ""));
+        if (Unreported > 0)
+            say.Line($"hatch: {Unreported} increment(s) reported no token count and are not in the tokens above"
+                + (MaxTokens is not null ? "; --max-tokens counts only reported increments" : ""));
         say.Lines(_moved);
         say.Lines(_clamped);
         say.Lines(_stalled);
@@ -547,7 +658,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                        [--once] [--standby] [--quiet]",
         "                        [--interval <seconds>] [--merge-interval <seconds>]",
         "                        [--max-runs <n>]",
-        "                        [--max-spend <dollars>] [--until <HH:MM>]",
+        "                        [--max-spend <dollars>] [--max-tokens <count>]",
+        "                        [--max-tokens-per-hour <count>]",
+        "                        [--until <HH:MM>]",
         "                        [--stop-file <path>] [--no-keys]",
         "                        [--restart-after <minutes> | --no-restart]",
         "                        [--repo <path>]... [--workspace <dir>] [--runners <n>]",
@@ -598,9 +711,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "",
         "  --max-runs     stop after this many increments",
         "  --max-spend    stop once the run has cost this much, in dollars",
+        "  --max-tokens   stop once the increments have reported this many tokens - 500k, 2M, 1.5M",
         "  --until        stop at this wall-clock hour - tomorrow, if it has gone by",
         "  --stop-file    stop once this path exists. `touch` it from anywhere: no pid",
         "                 to find, and no signal that could land in the middle of a push",
+        "",
+        "  --max-tokens-per-hour <count>  wait, not stop: take no ticket while the last",
+        "                 hour's reported tokens are at or over this - 200k, 1M",
         "",
         "  --no-keys         read no keys from this terminal - Ctrl-C and --stop-file still work",
         "",
@@ -635,6 +752,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var noRestart = false;
         int? maxRuns = null;
         decimal? maxSpend = null;
+        long? maxTokens = null;
+        long? maxTokensPerHour = null;
         var repoFlags = new List<string>();
         var projectFlags = new List<string>();
         string? workspaceFlag = null;
@@ -685,6 +804,34 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
                     maxSpend = spend;
                     break;
+                case "--max-tokens" when i + 1 < args.Length:
+                    if (!TokenCount.TryParse(args[++i], out var tokens))
+                    {
+                        runtime.Say.Complain($"hatch: --max-tokens takes {TokenCount.Refusal}");
+                        return 1;
+                    }
+
+                    maxTokens = tokens;
+                    break;
+                case "--max-tokens":
+                    // Bare, so a missing value is refused as this flag's and not
+                    // caught below as an unknown one.
+                    runtime.Say.Complain($"hatch: --max-tokens takes {TokenCount.Refusal}");
+                    return 1;
+                case "--max-tokens-per-hour" when i + 1 < args.Length:
+                    if (!TokenCount.TryParse(args[++i], out var perHour))
+                    {
+                        runtime.Say.Complain($"hatch: --max-tokens-per-hour takes {TokenCount.Refusal}");
+                        return 1;
+                    }
+
+                    maxTokensPerHour = perHour;
+                    break;
+                case "--max-tokens-per-hour":
+                    // Bare, so a missing value is refused as this flag's and not
+                    // caught below as an unknown one.
+                    runtime.Say.Complain($"hatch: --max-tokens-per-hour takes {TokenCount.Refusal}");
+                    return 1;
                 case "--until" when i + 1 < args.Length: until = args[++i]; break;
                 case "--stop-file" when i + 1 < args.Length: stopFile = args[++i]; break;
                 case "--restart-after" when i + 1 < args.Length:
@@ -903,6 +1050,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             {
                 MaxRuns = maxRuns,
                 MaxSpend = maxSpend,
+                MaxTokens = maxTokens,
+                MaxTokensPerHour = maxTokensPerHour,
                 Until = until,
                 // Carried rather than recomputed, and it is the one bound that
                 // would otherwise be wrong: `--until 23:59` typed at 23:58 and
@@ -923,7 +1072,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // a partial total, which can only under-count - at worst one extra
             // increment, never a premature stop. A fresh start writes zeros.
             if (runtime.SetDir is not null)
-                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent);
+                RunnerSet.WriteLedger(runtime.SetDir, runtime.Slot ?? 1, tally.Runs, tally.Spent, tally.Tokens, tally.Window);
 
             // Only a fresh start: a restarted incarnation carries the board's
             // own pause or run, and has nothing to announce.
@@ -1084,6 +1233,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var busy = new SaidOnce();
         var paused = new SaidOnce();
         var exhausted = new SaidOnce();
+        var throttled = new SaidOnce();
         var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
 
@@ -1213,9 +1363,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             runtime.Readout.SetRunner(new RunnerSnapshot(
                 runtime.RunnerName, forName, tally.Runs, runtime.Clock.GetUtcNow() - tally.Started, tally.Spent,
-                Bound(tally), tally.Unpriced));
+                Bound(tally), tally.Unpriced,
+                tally.ThrottledUntil(runtime.Clock.GetUtcNow()) is { } waitingUntil
+                    ? $"over {Format.Compact(tally.MaxTokensPerHour ?? 0)} tokens/hour until {UsageLimit.Clock(waitingUntil, known: false, runtime.Clock)}"
+                    : null));
 
-            if (tally.ShouldStop()) return false;
+            if (tally.ShouldStop())
+            {
+                await SayStoppedAsync(line, under, mine, tally, once, ct);
+                return false;
+            }
 
             // A person's order, acted on once: the beat that read it has
             // already cleared it on the board, so a loop that was paused reads
@@ -1235,6 +1392,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 {
                     // A spawn would only fail, and the order is spent already.
                     line.Line = $"order spent - out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(limit, tally.ExhaustedKnown, runtime.Clock)}";
+                    runtime.Say.Line($"hatch: {line.Line}");
+                    printed.At = runtime.Clock.GetUtcNow();
+                    continue;
+                }
+
+                if (tally.ThrottledUntil(orderedAt) is { } throttle)
+                {
+                    // Spent the same way: the hour's own cap is no more to be
+                    // spent past by an order than the account's is.
+                    var orderCap = Format.Compact(tally.MaxTokensPerHour ?? 0);
+                    line.Line = $"order spent - over {orderCap} tokens/hour until {UsageLimit.Clock(throttle, known: false, runtime.Clock)}";
                     runtime.Say.Line($"hatch: {line.Line}");
                     printed.At = runtime.Clock.GetUtcNow();
                     continue;
@@ -1298,7 +1466,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // without waiting on a stale board answer, when it is the only
                 // reason this loop is paused.
                 if (!await NapAsync(interval, tally, ct, wake: () => !boardPaused && tally.Controls?.Snapshot() is { Paused: false }))
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
                     return false;
+                }
 
                 Watchdog(printed);
 
@@ -1356,19 +1527,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // the fetch-for-nothing the workspace's own remarks already
                 // rule out, so this is timed on its own, independently of
                 // --interval, at the same ten minutes a quiet reminder waits.
-                if (now - checkedSelfAt >= StillNothing)
+                if (SelfChanged(now, ref checkedSelfAt, restart, tally)) return true;
+
+                if (!await NapAsync(interval, tally, ct))
                 {
-                    checkedSelfAt = now;
-                    runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
-
-                    if (Changed(restart) is { Count: > 0 } changed)
-                    {
-                        SayChanged(changed, tally);
-                        return true;
-                    }
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
+                    return false;
                 }
-
-                if (!await NapAsync(interval, tally, ct)) return false;
 
                 Watchdog(printed);
 
@@ -1386,6 +1551,53 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             exhausted.Clear();
             tally.ClearExhausted();
+
+            // The loop's own hourly cap, which is a wait and not a stop: it
+            // records nothing, so no counter, no failure streak and no ledger
+            // entry moves, and the first pass the window allows is simply the
+            // next one. Behind the usage wait, so an account out of usage says
+            // so first.
+            var cap = tally.MaxTokensPerHour ?? 0;
+            if (tally.ThrottledUntil(now) is { } throttledUntil)
+            {
+                idle.Clear();
+                busy.Clear();
+                var clock = UsageLimit.Clock(throttledUntil, known: false, runtime.Clock);
+                line.Line = $"over {Format.Compact(cap)} tokens/hour until {clock}";
+
+                if (await SayQuietlyAsync(throttled, now, interval, once,
+                    digest: $"throttled:{throttledUntil:O}",
+                    still: $"hatch: still over {Format.Compact(cap)} tokens/hour",
+                    inFull: () =>
+                    {
+                        runtime.Say.Line(
+                            $"hatch: this runner is over {Format.Compact(cap)} tokens/hour - taking no tickets until {clock}");
+                        return Task.CompletedTask;
+                    }))
+                    printed.At = runtime.Clock.GetUtcNow();
+
+                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+
+                if (SelfChanged(now, ref checkedSelfAt, restart, tally)) return true;
+
+                if (!await NapAsync(interval, tally, ct))
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
+                    return false;
+                }
+
+                Watchdog(printed);
+                continue;
+            }
+
+            if (throttled.Running)
+            {
+                runtime.Say.Line("");
+                runtime.Say.Line($"hatch: back under {Format.Compact(cap)} tokens/hour - taking tickets again");
+                printed.At = runtime.Clock.GetUtcNow();
+            }
+
+            throttled.Clear();
 
             // Between the heartbeat and the pass, and on every iteration - an
             // idle loop and a busy one alike - so a pull request that stopped
@@ -1414,13 +1626,36 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // interval is what to do when there was nothing to do. A hop reads
             // the board again straight away, the same as a cleared conflict.
             if (pass is Pass.Worked or Pass.Asked or Pass.Cleared or Pass.Hopped) continue;
-            if (!await NapAsync(interval, tally, ct, checkNow: true)) return false;
+            if (!await NapAsync(interval, tally, ct, checkNow: true))
+            {
+                await SayStoppedAsync(line, under, mine, tally, once, ct);
+                return false;
+            }
 
             Watchdog(printed);
         }
 
         if (ct.IsCancellationRequested) tally.StopWhy ??= "interrupted";
         return false;
+    }
+
+    /// <summary>
+    /// The ten-minute check a wait runs on its own clock: make the loop's own
+    /// checkout current and answer whether its source changed, which is a
+    /// restart. Shared by the usage wait and the throttle wait, since both
+    /// would otherwise sit on a stale trunk for as long as they last.
+    /// </summary>
+    private bool SelfChanged(DateTimeOffset now, ref DateTimeOffset checkedSelfAt, Restarts restart, Tally tally)
+    {
+        if (now - checkedSelfAt < StillNothing) return false;
+
+        checkedSelfAt = now;
+        runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
+
+        if (Changed(restart) is not { Count: > 0 } changed) return false;
+
+        SayChanged(changed, tally);
+        return true;
     }
 
     private enum Pass
@@ -1477,7 +1712,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// all.
     /// </summary>
     /// <remarks>
-    /// The four bounds are sent on every beat and read on none. The server
+    /// The six bounds are sent on every beat and read on none. The server
     /// writes them only on a fresh loop's first beat, so what somebody set at
     /// midnight survives the loop's own half-hourly restart: a restart carries
     /// night state in and is never fresh. <see cref="Tally.Fresh"/> stays true
@@ -1507,6 +1742,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Under: under,
                 MaxRuns: tally.MaxRuns,
                 MaxSpend: tally.MaxSpend,
+                MaxTokens: tally.MaxTokens,
+                MaxTokensPerHour: tally.MaxTokensPerHour,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
@@ -1520,6 +1757,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // tally's zeros would blank the loop's totals, so it names host only.
                 Runs: once ? null : tally.Runs,
                 Spent: once ? null : tally.Spent,
+                // The tokens follow the same rule, and the hour is the very
+                // number ThrottledUntil judges, so the page's figure explains the wait.
+                TokensUsed: once ? null : tally.Tokens,
+                TokensLastHour: once ? null : tally.WindowTotal(runtime.Clock.GetUtcNow()),
                 Host: Checkout.Host(),
                 Agent: runtime.Adapter.Id,
                 Revision: runtime.CliRevision.Revision,
@@ -1529,6 +1770,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SourceSequence: source?.Sequence,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
+                // Read here rather than carried from the last pass, so the beat
+                // at the top of a pass is never one pass behind the window.
+                ThrottledUntil: tally.ThrottledUntil(runtime.Clock.GetUtcNow()),
                 // Absent before this loop's first rate_limit_event - a restart
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
@@ -1550,6 +1794,21 @@ public sealed class GoToWorkCommand(Runtime runtime)
     }
 
     /// <summary>
+    /// One last beat when the loop's own bounds end the night, saying why. The
+    /// row's <i>Last said</i> is otherwise the last line from before the stop.
+    /// Every other exit (<c>--once</c>, the board's stop, a restart, an
+    /// interrupt) is either already known to the board or has nothing to say,
+    /// and the answer is moot either way.
+    /// </summary>
+    private async Task SayStoppedAsync(
+        Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
+    {
+        if (once || ct.IsCancellationRequested || tally.StopWhy is not { Length: > 0 } why) return;
+        line.Line = $"Stopped: {why}";
+        await BeatAsync(line, under, mine, tally, once, ct);
+    }
+
+    /// <summary>
     /// The board's bounds, folded into this loop's - and its scope, which is
     /// the one that comes back rather than being set. Answers the epic to stay
     /// inside, or null for the whole board.
@@ -1557,7 +1816,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// <remarks>
     /// Wholesale, including the absences: the row holds this process's flags
     /// from its fresh beat, or a person's edit, so a field that is empty on it
-    /// is a field somebody cleared. Reading an absence as "leave the flag alone" would
+    /// is a field somebody cleared - the token bounds included, so a Hatch too
+    /// old to answer them clears a loop's <c>--max-tokens</c>, as it does the
+    /// others. Reading an absence as "leave the flag alone" would
     /// make a cap impossible to take off from the page that set it. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
@@ -1577,6 +1838,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (scope != under) moved.Add($"--under {scope ?? "off"}");
         if (told.MaxRuns != tally.MaxRuns) moved.Add($"--max-runs {told.MaxRuns?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
         if (told.MaxSpend != tally.MaxSpend) moved.Add($"--max-spend {told.MaxSpend?.ToString(CultureInfo.InvariantCulture) ?? "off"}");
+        if (told.MaxTokens != tally.MaxTokens) moved.Add($"--max-tokens {(told.MaxTokens is { } t ? Format.Compact(t) : "off")}");
+        if (told.MaxTokensPerHour != tally.MaxTokensPerHour) moved.Add($"--max-tokens-per-hour {(told.MaxTokensPerHour is { } h ? Format.Compact(h) : "off")}");
         if (told.UntilAt != tally.UntilAt) moved.Add($"--until {told.UntilAt?.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture) ?? "off"}");
         if (told.Tags is { } tags && !tags.SequenceEqual(runtime.Board.Tags))
         {
@@ -1600,6 +1863,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         tally.MaxRuns = told.MaxRuns;
         tally.MaxSpend = told.MaxSpend;
+        tally.MaxTokens = told.MaxTokens;
+        tally.MaxTokensPerHour = told.MaxTokensPerHour;
         tally.UntilAt = told.UntilAt;
 
         // The hour as somebody would have typed it, because it is printed in
@@ -1616,6 +1881,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var parts = new List<string>();
         if (tally.MaxRuns is { } runs) parts.Add($"--max-runs {runs.ToString(CultureInfo.InvariantCulture)}");
         if (tally.MaxSpend is { } spend) parts.Add($"--max-spend {spend.ToString(CultureInfo.InvariantCulture)}");
+        if (tally.MaxTokens is { } tokens) parts.Add($"--max-tokens {Format.Compact(tokens)}");
+        if (tally.MaxTokensPerHour is { } perHour) parts.Add($"--max-tokens-per-hour {Format.Compact(perHour)}");
         if (tally.UntilAt is not null) parts.Add($"--until {tally.Until}");
 
         return parts.Count == 0 ? null : string.Join(", ", parts);
@@ -1649,6 +1916,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // other way out: a claim that was never spent on a finished increment
         // has nothing to say about the ticket.
         string? releaseOutcome = null;
+
+        // The report's own reason, carried alongside the outcome above - set
+        // only for a quiet stop, dropped or flagged alike.
+        string? releaseReason = null;
 
         try
         {
@@ -1943,6 +2214,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             tally.Record(report);
             releaseOutcome = report.ReleaseOutcome;
+            releaseReason = report.ReleaseReason;
 
             try
             {
@@ -1997,7 +2269,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 : $"{report.Key} did not move - {report.Outcome}";
 
             runtime.Say.Line("");
-            runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)}{tally.UnpricedSuffix})");
+            runtime.Say.Line($"hatch: {said}  ({tally.Runs} increment(s), ${Format.Money(tally.Spent)}{tally.UnpricedSuffix}{tally.TokensSuffix})");
 
             // What the next heartbeat carries. In-increment chatter rides the
             // claim, so what this row wants is what happened to the last one -
@@ -2048,7 +2320,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             // The lease covers the bookkeeping too, and this is the door every
             // path out of a pass goes through.
-            if (claim is not null) await claim.ReleaseAsync(releaseOutcome);
+            if (claim is not null) await claim.ReleaseAsync(releaseOutcome, releaseReason);
         }
     }
 

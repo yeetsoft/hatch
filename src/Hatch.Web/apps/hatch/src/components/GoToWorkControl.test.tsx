@@ -33,6 +33,13 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   host: null,
   maxRuns: null,
   maxSpend: null,
+  maxTokens: null,
+  maxTokensPerHour: null,
+  maxTokensSource: 'none',
+  maxTokensPerHourSource: 'none',
+  tokensUsed: null,
+  tokensLastHour: null,
+  throttledUntil: null,
   untilAt: null,
   goneAfterSeconds: 90,
   exhaustedUntil: null,
@@ -48,8 +55,8 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   ...over,
 });
 
-const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0 };
-const WORKING: StatusLine = { before: 'Working ', key: 'FIL-97', after: ' · In Progress', tone: 'success', more: 0 };
+const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0, verb: '' };
+const WORKING: StatusLine = { before: 'Working ', key: 'FIL-97', after: ' · In Progress', tone: 'success', more: 0, verb: 'Working' };
 
 const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: StatusLine = EMPTY_LINE) =>
   renderToStaticMarkup(
@@ -57,6 +64,8 @@ const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: Statu
       <GoToWorkControl plan={plan} status={status} project={project} reload={async () => {}} isPhone={isPhone} />
     </MemoryRouter>,
   );
+
+const NO_RUNNER: StatusLine = { before: 'No runner', key: null, after: '', tone: 'muted', more: 0, verb: 'No runner' };
 
 const go = planGoToWork([runner({ state: 'paused' })], NOW);
 const pause = planGoToWork([runner({ state: 'running' })], NOW);
@@ -70,7 +79,7 @@ describe('GoToWorkControl', () => {
   });
 
   it('is disabled with a way to start one when no runner of the viewer is on', () => {
-    const html = render({ mode: 'none' });
+    const html = render({ mode: 'none' }, '', false, NO_RUNNER);
 
     expect(html).toContain('disabled=""');
     expect(html).toContain('Start one at login');
@@ -85,9 +94,30 @@ describe('GoToWorkControl', () => {
     expect(html).not.toContain('hatch-go-to-work-note');
   });
 
-  it('draws the status line beside the button on desktop, and not in the bar on a phone', () => {
+  it('draws only the status verb in the bar on desktop, the whole line in its tooltip and name', () => {
+    const html = render(pause, '', false, WORKING);
+
+    expect(html).toContain('>Working<');
+    expect(html).toContain('title="Working FIL-97 · In Progress"');
+    expect(html).toContain('aria-label="Working FIL-97 · In Progress"');
+    expect(html).toContain('hatch-go-to-work-status--success');
+  });
+
+  it('keeps the ticket link and the column behind the verb, in the panel', () => {
     expect(render(pause, '', false, WORKING)).toContain('href="/issues/FIL-97"');
+  });
+
+  it('keeps the way to start one at login in the panel, not beside the button', () => {
+    const html = render({ mode: 'none' }, '', false, NO_RUNNER);
+
+    expect(html).toContain('Start one at login');
+    expect(html).toContain('hatch-go-to-work-detail');
+    expect(html).not.toMatch(/<\/button><span class="hatch-go-to-work-note/);
+  });
+
+  it('draws no status in the bar on a phone', () => {
     expect(render(pause, '', true, WORKING)).not.toContain('hatch-go-to-work-status');
+    expect(render(pause, '', true, WORKING)).not.toContain('hatch-go-to-work-verb');
   });
 
   it('draws nothing for the empty status line', () => {

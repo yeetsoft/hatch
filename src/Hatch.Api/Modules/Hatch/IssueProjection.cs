@@ -250,7 +250,9 @@ public static class IssueProjection
                 effectiveRunnerTagsFrom,
                 issue.Dangerous,
                 dangerous,
-                dangerousFrom);
+                dangerousFrom,
+                issue.NoCode,
+                issue.NoCodeAt);
         });
     }
 

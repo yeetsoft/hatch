@@ -156,15 +156,15 @@ export function NewIssueDialog({
               </select>
             </Field>
 
-            {type === 'story' && (
+            {(type === 'story' || type === 'bug') && (
               <Field
                 label="One pull request"
                 as="div"
-                hint="Whether this story's tasks share its branch and open one pull request, merged once, instead of one each."
+                hint={`Whether this ${type}'s tasks share its branch and open one pull request, merged once, instead of one each.`}
               >
                 <OnePrSteps
                   value={onePr}
-                  label="Set the new story's one pull request setting"
+                  label={`Set the new ${type}'s one pull request setting`}
                   busy={saving}
                   onChange={setOnePr}
                 />

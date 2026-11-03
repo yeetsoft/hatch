@@ -107,7 +107,10 @@ hatch_ak_…`.
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
   way. Among them: a ticket's assignee, priority, hold and pre-approval; its
-  WIP limit and the WIP section; playbooks, per project and per ticket; a
+  WIP limit and the WIP section; playbooks, per project and per ticket — the
+  one entry here that also refuses a call with no key, no runner header and
+  no browser's `Sec-Fetch-Mode` mark, so "person" means a person at the
+  browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
   record; image upload; marking the overnight view seen; running a backup.

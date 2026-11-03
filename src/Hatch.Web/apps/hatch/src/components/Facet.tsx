@@ -10,7 +10,10 @@ export function Caret() {
   );
 }
 
-export type FacetOption = { value: string; text: string };
+/** `short`, when given, is what the closed facet draws for this option; the open
+    list (the `<option>` elements) keeps `text`. The board's Project chooser
+    uses it to close on the key alone. */
+export type FacetOption = { value: string; text: string; short?: string };
 
 /** A native `<select>` wearing the bar's look. The select is laid over the whole
     box, transparent, so a press anywhere inside the border opens the browser's
@@ -42,7 +45,7 @@ export function Facet({
               option.value === value ? 'hatch-facet__option hatch-facet__option--shown' : 'hatch-facet__option'
             }
           >
-            {option.text}
+            {option.short ?? option.text}
           </span>
         ))}
       </span>

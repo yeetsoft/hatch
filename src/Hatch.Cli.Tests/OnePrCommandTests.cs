@@ -43,7 +43,29 @@ public sealed class OnePrCommandTests
         Assert.Equal(
             "one-pr:   on (inherited from AER-5)",
             OnePrCommand.Draw(Fixtures.Issue("AER-6") with { OnePr = true, OnePrFrom = "AER-5" }));
-        Assert.Equal("one-pr:   off (not under a story)", OnePrCommand.Draw(Fixtures.Issue("AER-7")));
+        Assert.Equal("one-pr:   off (not under a story or bug)", OnePrCommand.Draw(Fixtures.Issue("AER-7")));
+    }
+
+    [Fact]
+    public void A_bug_is_read_and_explained_as_a_story_is()
+    {
+        var bug = Fixtures.Issue("AER-8", type: "bug");
+
+        Assert.Equal("one-pr:   on (set on this bug)", OnePrCommand.Draw(bug with { OnePr = true, OnePrOwn = true }));
+        Assert.Equal("one-pr:   off (set on this bug)", OnePrCommand.Draw(bug with { OnePr = false, OnePrOwn = false }));
+        Assert.Equal("one-pr:   off (the project's default)", OnePrCommand.Draw(bug));
+    }
+
+    [Fact]
+    public async Task A_bug_takes_the_setting_put_to_the_one_pr_route()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-8/one-pr",
+            Fixtures.Issue("AER-8", type: "bug") with { OnePr = true, OnePrOwn = true });
+
+        Assert.Equal(0, await new OnePrCommand(h.Cli).RunAsync(["AER-8", "on"], default));
+
+        Assert.Equal("one-pr:   on (set on this bug)", h.Said.Trim());
     }
 
     [Fact]

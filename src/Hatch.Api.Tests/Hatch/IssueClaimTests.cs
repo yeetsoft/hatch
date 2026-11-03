@@ -257,6 +257,43 @@ public class IssueClaimTests
         Assert.NotNull((await h.RowAsync(two)).ClaimToken);
     }
 
+    /// <summary>The lineage a shared branch adds: two tasks under a parent that shares push to one branch, so only one is worked at a time.</summary>
+    [SkippableTheory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task ATakeOnASiblingSharingTheParentsBranch_IsRefusedNamingIt_AndWritesNothing(string type)
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync(type: type, onePr: true);
+        var one = await h.FileAsync(parent, type: "task");
+        var two = await h.FileAsync(parent, type: "task");
+        await h.TakeAsync(one, "somewhere:/checkouts/one");
+
+        var refusal = Conflict(await h.Claims.TakeClaim(two, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Equal(
+            $"Nathan is working {one}, sharing its parent's branch, from somewhere:/checkouts/one, last heard from just now",
+            refusal);
+        Assert.Null((await h.RowAsync(two)).ClaimToken);
+        Assert.Empty(await h.EventKindsAsync(two));
+    }
+
+    [SkippableTheory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task ATakeOnASiblingWhereTheParentDoesNotShare_Succeeds(string type)
+    {
+        await using var h = await NewAsync();
+        var parent = await h.FileAsync(type: type, onePr: false);
+        var one = await h.FileAsync(parent, type: "task");
+        var two = await h.FileAsync(parent, type: "task");
+        await h.TakeAsync(one, "somewhere:/checkouts/one");
+
+        Value(await h.Claims.TakeClaim(two, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.NotNull((await h.RowAsync(two)).ClaimToken);
+    }
+
     [SkippableFact]
     public async Task ARelativesExpiredClaim_DoesNotRefuseATake()
     {
@@ -374,9 +411,11 @@ public class IssueClaimTests
         await h.TakeAsync(issue, "somewhere:/checkouts/one");
 
         h.Time.Advance(TimeSpan.FromSeconds(30));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(Guid.NewGuid(), null), default);
         Assert.Equal(
             "Nathan is working this from somewhere:/checkouts/one, last heard from 30 seconds ago",
-            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(Guid.NewGuid(), null), default)));
+            Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Taken, ConflictReason(refused));
     }
 
     [SkippableFact]
@@ -388,9 +427,9 @@ public class IssueClaimTests
 
         Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, default));
 
-        Assert.Equal(
-            "this claim was cleared",
-            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal("this claim was cleared", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Cleared, ConflictReason(refused));
     }
 
     [SkippableFact]
@@ -410,9 +449,9 @@ public class IssueClaimTests
         // over anyway. A late heartbeat does not resurrect one.
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
 
-        Assert.Equal(
-            "this claim has expired",
-            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal("this claim has expired", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Expired, ConflictReason(refused));
     }
 
     [SkippableFact]
@@ -566,9 +605,11 @@ public class IssueClaimTests
         var held = await h.TakeAsync(issue, "somewhere:/checkouts/one");
 
         h.Time.Advance(TimeSpan.FromSeconds(30));
+        var refused = await h.Claims.ReleaseClaim(issue, Guid.NewGuid(), default);
         Assert.Equal(
             "Nathan is working this from somewhere:/checkouts/one, last heard from 30 seconds ago",
-            Conflict(await h.Claims.ReleaseClaim(issue, Guid.NewGuid(), default)));
+            Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Taken, ConflictReason(refused));
 
         Assert.Equal(held, (await h.RowAsync(issue)).ClaimToken);
     }
@@ -762,6 +803,77 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithAReason_RecordsItBesideTheOutcome()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Quiet, default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal(ClaimOutcomes.Dropped, payload.GetProperty("outcome").GetString());
+        Assert.Equal(ClaimLostReasons.Quiet, payload.GetProperty("reason").GetString());
+        Assert.True(payload.TryGetProperty("runner", out _));
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithNoReason_WritesTheSamePayloadAsBefore()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("reason", out _));
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithABogusReason_IsRefusedAndClearsNothing()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.Equal(
+            "\"expired\" is not a reason - it is \"quiet\", or nothing at all",
+            BadRequest(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Expired, default)));
+
+        Assert.Equal(token, (await h.RowAsync(issue)).ClaimToken);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithAReasonAndNoOutcome_IsAcceptedAndWritesNoReason()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, ClaimLostReasons.Quiet, default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.False(payload.TryGetProperty("reason", out _));
+    }
+
+    [SkippableFact]
+    public async Task AnOperatorsTokenlessClear_TakesNoReason()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+
+        // Named on a tokenless clear, and not refused for it - the same as
+        // an outcome, which it is not read beside.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, "dropped", "quiet", default));
+
+        var cleared = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimCleared);
+        Assert.False(cleared.Payload!.Value.TryGetProperty("reason", out _));
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithPreemptedOutcome_RecordsItOnTheEvent()
     {
         await using var h = await NewAsync();
@@ -859,9 +971,9 @@ public class IssueClaimTests
         // Never a word - a --quiet session - so the clock runs from the take.
         h.Time.Advance(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1));
 
-        Assert.Equal(
-            "this claim has gone quiet for 5 minutes",
-            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal("this claim has gone quiet for 5 minutes", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Quiet, ConflictReason(refused));
     }
 
     [SkippableFact]
@@ -890,6 +1002,137 @@ public class IssueClaimTests
 
         h.Time.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(59));
         Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+    }
+
+    // ---- A claim's own quiet window ----
+
+    /// <summary>HA-1630: a column of 1500 seconds outlives the shipped five-minute global.</summary>
+    [SkippableFact]
+    public async Task AClaimsOwnQuietWindow_IsRefusedOnHeartbeatAt26MinutesButNotAt20()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        // TestClaims.Ttl is 300 seconds and a bare heartbeat carries no
+        // chatter, so the clock steps in four-minute hops, each followed by a
+        // chatter-less heartbeat, to keep the TTL - rather than the quiet
+        // window this test is about - from deciding the outcome.
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal(ClaimLostReasons.Quiet, ConflictReason(refused));
+    }
+
+    [SkippableFact]
+    public async Task AClaimsOwnQuietWindow_IsTakeableByAnotherRunnerAt26MinutesButNotAt20()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        for (var minutes = 4; minutes <= 20; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        // Still live at 20 minutes: a second runner is refused.
+        Assert.NotNull(Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default)));
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        // Quiet at 26 minutes: the second runner's take succeeds.
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+        Assert.NotEqual(Guid.Empty, second.Token);
+    }
+
+    /// <summary>A null column, against the shipped five-minute global - the dispatcher's own fold.</summary>
+    [SkippableFact]
+    public async Task TheLineageFold_IsNotLiveAtSixMinutesWithNoColumnOfItsOwn()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var child = await h.FileAsync(parent: issue);
+        var token = await h.TakeAsync(issue);
+
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        var lineage = await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default);
+        Assert.Null(lineage.Holder((await h.RowAsync(child)).Id, null));
+    }
+
+    /// <summary>A column of 1500 seconds, against a global switched off entirely - the column still applies.</summary>
+    [SkippableFact]
+    public async Task TheBoardsRead_IsNotLiveAt26MinutesWithAColumnEvenThoughTheGlobalIsOff()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetQuietLimitAsync(h, issue, 1500);
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        Assert.Null(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+    }
+
+    /// <summary>No column at all, against a global switched off entirely - a global of zero still means never quiet.</summary>
+    [SkippableFact]
+    public async Task TheBoardsRead_IsStillLiveAt26MinutesWithNoColumnAndTheGlobalOff()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+
+        for (var minutes = 4; minutes <= 24; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)).Result);
+        }
+
+        h.Time.Advance(TimeSpan.FromMinutes(2));
+        Assert.NotNull(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+    }
+
+    /// <summary>A take over a lapsed claim does not inherit the old holder's window - HA-1631 is what writes a real value back.</summary>
+    [SkippableFact]
+    public async Task ATakeOverAQuietClaim_LeavesTheColumnBlank()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue, "somewhere:/checkouts/one");
+        await SetQuietLimitAsync(h, issue, 1500);
+
+        h.Time.Advance(TimeSpan.FromMinutes(26));
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietLimitSeconds);
+    }
+
+    private static async Task SetQuietLimitAsync(Harness h, string key, int quietLimitSeconds)
+    {
+        var id = (await h.RowAsync(key)).Id;
+        await h.Connect().Issues.Where(i => i.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.ClaimQuietLimitSeconds, quietLimitSeconds));
     }
 
     // ---- Taking a claim answers no question ----
@@ -1406,6 +1649,80 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(42), Now)).Result);
     }
 
+    // ---- Who let go of what ----
+    //
+    // LetGo.ByAsync's prefilter reads the release payload, a jsonb column:
+    // `LIKE` is not an operator Postgres has for it, and a cast to text would
+    // match nothing, since it prints `"key": "value"`. LetGoTests covers the
+    // fold; these cover the read, which EF's in-memory provider cannot.
+
+    private static async Task<long> OnlyIssueIdAsync(Harness h) =>
+        (await h.Connect().Issues.AsNoTracking().SingleAsync()).Id;
+
+    private static async Task DropAsync(Harness h, string issue, string runner) =>
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, await h.TakeAsync(issue, runner), ClaimOutcomes.Dropped, default));
+
+    [SkippableFact]
+    public async Task ADropByARunner_IsFoldedForThatRunnerAndNoOther()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        var id = await OnlyIssueIdAsync(h);
+
+        var byA = await LetGo.ByAsync(h.Connect(), "host:/a", default);
+        var byB = await LetGo.ByAsync(h.Connect(), "host:/b", default);
+
+        Assert.Equal(id, Assert.Single(byA).Key);
+        Assert.Equal("host:/a", byA[id].Runner);
+        Assert.Empty(byB);
+    }
+
+    [SkippableFact]
+    public async Task ANewerDropByAnotherRunner_MovesTheRecordToThem()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await DropAsync(h, issue, "host:/b");
+        var id = await OnlyIssueIdAsync(h);
+
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), "host:/a", default));
+        Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), "host:/b", default)).Key);
+    }
+
+    [SkippableFact]
+    public async Task AStatusChangeSinceTheDrop_ClearsTheRecord()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await DropAsync(h, issue, "host:/a");
+        var id = await OnlyIssueIdAsync(h);
+
+        var db = h.Connect();
+        db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = id, Actor = "ann", Kind = EfHatchIssueEvent.StatusChanged, At = Now.AddMinutes(5),
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await LetGo.ByAsync(h.Connect(), "host:/a", default));
+    }
+
+    [SkippableFact]
+    public async Task ARunnerNameNeedingEscapes_IsStillFound()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        const string runner = "host:/a \"b\"";
+        await DropAsync(h, issue, runner);
+        var id = await OnlyIssueIdAsync(h);
+
+        Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), runner, default)).Key);
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
@@ -1486,7 +1803,7 @@ public class IssueClaimTests
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<string> FileAsync(
             string? parent = null, int priority = PriorityLevels.Normal, string title = "a thing to do",
-            bool express = false)
+            bool express = false, string type = "story", bool? onePr = null)
         {
             var number = next++;
             var db = Connect();
@@ -1502,7 +1819,8 @@ public class IssueClaimTests
             {
                 ProjectId = ProjectId,
                 Number = number,
-                Type = "story",
+                Type = type,
+                OnePullRequest = onePr,
                 Title = title,
                 StatusId = StatusId,
                 ParentId = parentId,
@@ -1750,10 +2068,18 @@ public class IssueClaimTests
         result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");
 
     private static string? Conflict<T>(ActionResult<T> result) =>
-        Assert.IsType<ConflictObjectResult>(result.Result).Value?.ToString();
+        Sentence(Assert.IsType<ConflictObjectResult>(result.Result).Value);
 
     private static string? Conflict(IActionResult result) =>
-        Assert.IsType<ConflictObjectResult>(result).Value?.ToString();
+        Sentence(Assert.IsType<ConflictObjectResult>(result).Value);
+
+    private static string? Sentence(object? value) => value is ClaimRefusedDto r ? r.Error : value?.ToString();
+
+    private static string ConflictReason<T>(ActionResult<T> result) =>
+        Assert.IsType<ClaimRefusedDto>(Assert.IsType<ConflictObjectResult>(result.Result).Value).Reason;
+
+    private static string ConflictReason(IActionResult result) =>
+        Assert.IsType<ClaimRefusedDto>(Assert.IsType<ConflictObjectResult>(result).Value).Reason;
 
     private static string? BadRequest<T>(ActionResult<T> result) =>
         Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString();

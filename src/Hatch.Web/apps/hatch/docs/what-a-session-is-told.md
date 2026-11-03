@@ -141,8 +141,8 @@ its plan.
 ### Reaching Hatch
 
 Always. The `hatch` commands a session makes, to be run from the repository
-root: `comments`, `start`, `move`, `comment`, `ask`, `dangerous`, and `api` for everything
-else. The key is already in the environment, and the brief above is already
+root: `comments`, `start`, `move`, `comment`, `ask`, `depends`, `dangerous`, and `api` for
+everything else. The key is already in the environment, and the brief above is already
 current, so there is no `show`. Two things change it:
 
 - On a check's column, `hatch verdict` stands where `start` and `move` would,
@@ -152,8 +152,12 @@ current, so there is no `show`. Two things change it:
   column. On any other, the section says the claim is the marker and the ticket
   moves once, at the end, to the column named under *Where this increment
   ends*.
-- On a check's prompt, the `hatch dangerous` line and the sentence on when to
-  use it are absent: a check records a verdict and does not flag work.
+- Beside the paragraph on filing through `api`, a sentence says that work which
+  cannot start until another issue lands is declared with `hatch depends`, one
+  call per edge, because filing issues in order does not order them.
+- On a check's prompt, the `hatch dangerous` and `hatch depends` lines and the
+  sentences on them are absent: a check records a verdict and does not flag or
+  file work.
 
 ### Landing on the trunk
 
@@ -210,7 +214,9 @@ Always. The column to stop in, or on a check the pass column and the fail
 column, since a check ends with a verdict. No moves into a terminal column,
 which only the operator makes. An increment that leaves the ticket where it
 found it is recorded as having done nothing. No playbook edits: the API
-refuses them on purpose, and a wrong playbook is said on the ticket instead.
+refuses them on purpose, and the refusal is deliberate. A wrong playbook is
+proposed instead, with `hatch api POST /api/hatch/playbook-proposals`, said
+on the ticket, and left for a person to apply on the Playbooks page.
 
 The prompt then ends with two things that are plain paragraphs, not sections,
 not with a heading of their own: a ticket moving into review may be asked for
@@ -235,6 +241,11 @@ The prompt is one half of it; the other is how the agent CLI is started. For
 - Each repository other than the primary is added to the session as a
   directory, so it can read and edit the sibling checkouts.
 - Each tool the playbook denies is passed as a denied tool, one per entry.
+- An unattended `claude` session gets a reduced toolset (`Bash`, `Read`, `Edit`,
+  `Write`, `Grep`, `Glob`, `Monitor`, `TaskStop`) rather than Claude Code's full
+  one, since every request re-reads its starting context from cache and the
+  unused tool definitions were most of it; `HATCH_CLAUDE_TOOLS` widens it. A
+  `claude` CLI too old to know the flag is spawned without it, with one warning.
 - `hatch` is first on its `PATH`, is the same binary that spawned it, and
   inherits `HATCH_BASE`, `HATCH_KEY` and `HATCH_RUNNER` from it - already
   pointed at the same board, with the key it holds, and named as the runner

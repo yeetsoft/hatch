@@ -33,7 +33,9 @@ has:
   seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
   zero or less is not believed, and ninety stands. The key in `Working <KEY>`
   is a link to the ticket.
-- **Last said** - the last line it reported.
+- **Last said** - the last line it reported. A loop that stops at one of its
+  own bounds ends on `Stopped: <why>`, for example `Stopped: --max-runs 3
+  reached`.
 - **Heard from** - how long ago its last heartbeat was.
 - **Bounds** - only the ones actually set; a row with none says so rather
   than showing four empty caps. The `under` epic, where set, is a link to its
@@ -150,8 +152,8 @@ goes into one of these rows in the first place.
 
 ## Reports
 
-**Reports** is a link in the nav bar, beside Board and Plan, and opens on a
-card per report. **Timeline** answers when each top-level epic was in flight,
+**Reports** is a row of the **Track** menu in the nav bar, beside Plan and
+History, and opens on a card per report. **Timeline** answers when each top-level epic was in flight,
 and how long its work sat in each column, drawn in the board's own column
 colours; **Cumulative flow** shows how much work sat in each column over time,
 and where it is piling up. A ticket counts as in flight while it stands in any
@@ -169,7 +171,7 @@ for anybody else looking at the same board.
 
 ## History and the work log
 
-These are two different things. **Manage → History** is every event across
+These are two different things. **Track → History** is every event across
 every project, newest first, a hundred to a page, each one naming when it
 happened, the issue, what happened, who did it and what changed.
 [People, roles and keys](people-roles-and-keys) says who a key or a person

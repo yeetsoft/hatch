@@ -11,6 +11,7 @@ import {
   deadlockedEmptyWords,
   failingBuildEmptyWords,
   landingHeldEmptyWords,
+  noCodeHeldEmptyWords,
   pillCount,
   questionEmptyWords,
   resetWords,
@@ -22,7 +23,7 @@ import {
   trunkIconWords,
   waitedWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, Question, Review, TrunkBuild } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, TrunkBuild } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -67,6 +68,14 @@ const approvedHeld = (over: Partial<ApprovedHeld> = {}): ApprovedHeld => ({
   type: 'story',
   pullRequestUrl: 'https://forge.example/pulls/17',
   sentence: 'Conflicts with main.',
+  ...over,
+});
+
+const noCodeHeld = (over: Partial<NoCodeHeld> = {}): NoCodeHeld => ({
+  key: 'AER-18',
+  title: 'A task that needed no code',
+  type: 'task',
+  reason: 'The setting was already off.',
   ...over,
 });
 
@@ -173,6 +182,12 @@ describe('attentionCount', () => {
     expect(
       attentionCount(attention({ approvedHeld: [approvedHeld()], approvedWaiting: [approvedWaiting()] })),
     ).toBe(1);
+  });
+
+  it('counts a noCodeHeld row, adds it to the other sources, and counts an absent field as zero', () => {
+    expect(attentionCount(attention({}))).toBe(0);
+    expect(attentionCount(attention({ noCodeHeld: [noCodeHeld()] }))).toBe(1);
+    expect(attentionCount(attention({ reviews: [review()], noCodeHeld: [noCodeHeld()] }))).toBe(2);
   });
 
   it('counts a landingHeld row, adds it to the other sources, and counts an absent field as zero', () => {
@@ -445,6 +460,12 @@ describe('approvedHeldEmptyWords', () => {
 describe('deadlockedEmptyWords', () => {
   it('says nothing is deadlocked', () => {
     expect(deadlockedEmptyWords()).toBe('Nothing is deadlocked.');
+  });
+});
+
+describe('noCodeHeldEmptyWords', () => {
+  it('says nothing finished with no code is waiting', () => {
+    expect(noCodeHeldEmptyWords()).toBe('Nothing finished with no code is waiting on you.');
   });
 });
 

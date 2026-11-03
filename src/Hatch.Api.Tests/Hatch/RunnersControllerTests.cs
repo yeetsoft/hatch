@@ -725,19 +725,23 @@ public class RunnersControllerTests
     {
         var h = await NewAsync();
 
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Runs: 3, Spent: 1.25m, Host: "Fry"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Runs: 3, Spent: 1.25m, Host: "Fry", TokensUsed: 500_000, TokensLastHour: 50_000));
 
         var row = await h.OneAsync();
         Assert.Equal(3, row.Runs);
         Assert.Equal(1.25m, row.Spent);
         Assert.Equal("Fry", row.Host);
+        Assert.Equal(500_000, row.TokensUsed);
+        Assert.Equal(50_000, row.TokensLastHour);
     }
 
     [Fact]
     public async Task RunsSpentAndHost_AbsentOnALaterBeat_LeaveTheRowAlone()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Runs: 3, Spent: 1.25m, Host: "Fry"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Runs: 3, Spent: 1.25m, Host: "Fry", TokensUsed: 500_000, TokensLastHour: 50_000));
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
@@ -745,20 +749,43 @@ public class RunnersControllerTests
         Assert.Equal(3, row.Runs);
         Assert.Equal(1.25m, row.Spent);
         Assert.Equal("Fry", row.Host);
+        Assert.Equal(500_000, row.TokensUsed);
+        Assert.Equal(50_000, row.TokensLastHour);
     }
 
     [Fact]
     public async Task RunsSpentAndHost_OnALaterBeat_OverwriteWithNoFresh()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Runs: 3, Spent: 1.25m, Host: "Fry"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Runs: 3, Spent: 1.25m, Host: "Fry", TokensUsed: 500_000, TokensLastHour: 50_000));
 
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Runs: 4, Spent: 2.5m, Host: "Leela"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Runs: 4, Spent: 2.5m, Host: "Leela", TokensUsed: 900_000, TokensLastHour: 90_000));
 
         var row = await h.OneAsync();
         Assert.Equal(4, row.Runs);
         Assert.Equal(2.5m, row.Spent);
         Assert.Equal("Leela", row.Host);
+        Assert.Equal(900_000, row.TokensUsed);
+        Assert.Equal(90_000, row.TokensLastHour);
+    }
+
+    [Fact]
+    public async Task ThrottledUntil_IsWrittenAndClearedByALoopBeat_AndLeftAloneByAOnceBeat()
+    {
+        var h = await NewAsync();
+        var until = Now.AddMinutes(30);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", ThrottledUntil: until));
+        Assert.Equal(until, (await h.RowAsync()).ThrottledUntil);
+
+        // A `once` beat shares the loop's row name and must not clear the wait.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once"));
+        Assert.Equal(until, (await h.RowAsync()).ThrottledUntil);
+
+        // A loop beat that says it is not throttled clears it at once.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", ThrottledUntil: null));
+        Assert.Null((await h.RowAsync()).ThrottledUntil);
     }
 
     [Fact]
@@ -1344,13 +1371,16 @@ public class RunnersControllerTests
         var h = await NewAsync();
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
-            Kind: "loop", Under: "AER-930", MaxRuns: 12, MaxSpend: 40m, UntilAt: Now.AddHours(6)));
+            Kind: "loop", Under: "AER-930", MaxRuns: 12, MaxSpend: 40m, UntilAt: Now.AddHours(6),
+            MaxTokens: 2_000_000, MaxTokensPerHour: 200_000));
 
         var runner = await h.OneAsync();
         Assert.Equal("AER-930", runner.Under);
         Assert.Equal(12, runner.MaxRuns);
         Assert.Equal(40m, runner.MaxSpend);
         Assert.Equal(Now.AddHours(6), runner.UntilAt);
+        Assert.Equal(2_000_000, runner.MaxTokens);
+        Assert.Equal(200_000, runner.MaxTokensPerHour);
     }
 
     [Fact]
@@ -1399,6 +1429,21 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task AFreshLoopBeat_OverwritesWhatAPersonSet_TokenBounds()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500000", MaxTokensPerHour: "50000"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", MaxTokens: 2_000_000, MaxTokensPerHour: 200_000, Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(2_000_000, runner.MaxTokens);
+        Assert.Equal(200_000, runner.MaxTokensPerHour);
+    }
+
+    [Fact]
     public async Task AFreshLoopBeat_WithNoBounds_ClearsAllFour()
     {
         var h = await NewAsync();
@@ -1412,6 +1457,20 @@ public class RunnersControllerTests
         Assert.Null(runner.MaxRuns);
         Assert.Null(runner.MaxSpend);
         Assert.Null(runner.UntilAt);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeat_WithNoBounds_ClearsTheTokenBoundsToo()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", MaxTokens: 2_000_000, MaxTokensPerHour: 200_000));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxTokens: 0, MaxTokensPerHour: -1, Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Null(runner.MaxTokens);
+        Assert.Null(runner.MaxTokensPerHour);
     }
 
     [Theory]
@@ -1431,6 +1490,24 @@ public class RunnersControllerTests
         Assert.Equal(5m, runner.MaxSpend);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    public async Task ALoopBeat_ThatIsNotFresh_LeavesWhatAPersonSetAlone_TokenBounds(bool? fresh)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxTokens: 2_000_000, MaxTokensPerHour: 200_000));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500000", MaxTokensPerHour: "50000"));
+
+        // A supervisor restart: the same flags again, and no word that it is new.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", MaxTokens: 2_000_000, MaxTokensPerHour: 200_000, Fresh: fresh));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(500_000, runner.MaxTokens);
+        Assert.Equal(50_000, runner.MaxTokensPerHour);
+    }
+
     [Fact]
     public async Task AOnceBeat_EvenIfFresh_LeavesTheBoundsAlone()
     {
@@ -1443,6 +1520,20 @@ public class RunnersControllerTests
         var runner = await h.OneAsync();
         Assert.Equal(12, runner.MaxRuns);
         Assert.Equal(40m, runner.MaxSpend);
+    }
+
+    [Fact]
+    public async Task AOnceBeat_EvenIfFresh_LeavesTheTokenBoundsAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", MaxTokens: 2_000_000, MaxTokensPerHour: 200_000));
+
+        // `hatch work` shares the loop's runner name and carries no flags.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Fresh: true));
+
+        var runner = await h.OneAsync();
+        Assert.Equal(2_000_000, runner.MaxTokens);
+        Assert.Equal(200_000, runner.MaxTokensPerHour);
     }
 
     [Fact]
@@ -1626,6 +1717,43 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task TheTokenBounds_AreFoldedIntoWhatTheLoopReadsBack()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500k", MaxTokensPerHour: "2M"));
+
+        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(500_000, instruction.MaxTokens);
+        Assert.Equal(2_000_000, instruction.MaxTokensPerHour);
+
+        var row = await h.OneAsync();
+        Assert.Equal(500_000, row.MaxTokens);
+        Assert.Equal(2_000_000, row.MaxTokensPerHour);
+        Assert.Equal("runner", row.MaxTokensSource);
+        Assert.Equal("runner", row.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public async Task AnAbsentTokenFieldLeavesOneAloneAndAnEmptyOneTakesItOff()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "500k", MaxTokensPerHour: "2M"));
+
+        var still = await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+        Assert.Equal(500_000, still.MaxTokens);
+        Assert.Equal(2_000_000, still.MaxTokensPerHour);
+
+        var cleared = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxTokens: "", MaxTokensPerHour: ""));
+        Assert.Null(cleared.MaxTokens);
+        Assert.Null(cleared.MaxTokensPerHour);
+        Assert.Equal("none", cleared.MaxTokensSource);
+        Assert.Equal("none", cleared.MaxTokensPerHourSource);
+    }
+
+    [Fact]
     public async Task ARefusedFieldWritesNothingAtAll()
     {
         var h = await NewAsync();
@@ -1637,6 +1765,40 @@ public class RunnersControllerTests
         Assert.Contains("--max-spend takes an amount", Reason(refusal.Result), StringComparison.Ordinal);
 
         // The good half of a bad request is not half-applied.
+        Assert.Equal("running", (await h.OneAsync()).State);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("lots")]
+    public async Task ARefusedMaxTokens_WritesNothingAtAll(string sent)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var refusal = await h.Runners.PatchRunner(
+            Runner, new RunnerPatchRequest(State: "paused", MaxTokens: sent), default);
+
+        Assert.Contains(
+            $"--max-tokens takes a token count, like 500k or 2M - not \"{sent}\"",
+            Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Equal("running", (await h.OneAsync()).State);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("lots")]
+    public async Task ARefusedMaxTokensPerHour_WritesNothingAtAll(string sent)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var refusal = await h.Runners.PatchRunner(
+            Runner, new RunnerPatchRequest(State: "paused", MaxTokensPerHour: sent), default);
+
+        Assert.Contains(
+            $"--max-tokens-per-hour takes a token count, like 500k or 2M - not \"{sent}\"",
+            Reason(refusal.Result), StringComparison.Ordinal);
         Assert.Equal("running", (await h.OneAsync()).State);
     }
 
@@ -2136,6 +2298,18 @@ public class RunnersControllerTests
 
         Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
         Assert.Null((await h.OneAsync()).MaxSpend);
+    }
+
+    [Fact]
+    public async Task SettingWhatARunnerMayTokenSpend_IsClosedToAKey()
+    {
+        var h = await NewAsync(program: true);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxTokens: "2M"), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Null((await h.OneAsync()).MaxTokens);
     }
 
     [Fact]

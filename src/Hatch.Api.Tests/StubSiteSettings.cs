@@ -28,7 +28,9 @@ internal sealed class StubSiteSettings(
     string? claudeSubscriptionToken = null,
     string? codexApiKey = null,
     string? xaiApiKey = null,
-    string? localPersonName = null) : ISiteSettingsService
+    string? localPersonName = null,
+    long? runnerDefaultMaxTokens = null,
+    long? runnerDefaultMaxTokensPerHour = null) : ISiteSettingsService
 {
     public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(new SiteSettingsSnapshot(
         TimeZone: timeZone,
@@ -55,7 +57,9 @@ internal sealed class StubSiteSettings(
         ClaudeSubscriptionToken: claudeSubscriptionToken,
         CodexApiKey: codexApiKey,
         XaiApiKey: xaiApiKey,
-        LocalPersonName: localPersonName));
+        LocalPersonName: localPersonName,
+        RunnerDefaultMaxTokens: runnerDefaultMaxTokens,
+        RunnerDefaultMaxTokensPerHour: runnerDefaultMaxTokensPerHour));
 
     /// <summary>Counted rather than ignored: SettingsController is supposed to call it on every write.</summary>
     public int Invalidations { get; private set; }

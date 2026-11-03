@@ -1,6 +1,9 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -223,6 +226,106 @@ public class PlaybooksControllerTests
 
         Assert.Equal(
             "a brief limit is a whole number of one or more, in characters - not \"abc\"",
+            Reason(refusal.Result));
+    }
+
+    // ---- QuietLimitSeconds: setting, changing, clearing ----
+
+    [Fact]
+    public async Task AQuietLimit_IsNullByDefault_OnTheWire()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        Assert.Null(row.QuietLimitSeconds);
+        Assert.Null((await h.ReadAsync(row.Id)).QuietLimitSeconds);
+    }
+
+    [Fact]
+    public async Task AQuietLimit_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, quietLimitSeconds: "1500");
+
+        Assert.Equal(1500, patched.QuietLimitSeconds);
+        Assert.Equal(1500, (await h.ReadAsync(row.Id)).QuietLimitSeconds);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task AQuietLimit_ABlankValue_ClearsIt(string blank)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, quietLimitSeconds: "1500");
+
+        var cleared = await h.SetAsync(row.Id, quietLimitSeconds: blank);
+
+        Assert.Null(cleared.QuietLimitSeconds);
+    }
+
+    [Fact]
+    public async Task PatchingSomethingElse_WithQuietLimitOmitted_LeavesItUnchanged()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, quietLimitSeconds: "1500");
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal("a new prompt", patched.Prompt);
+        Assert.Equal(1500, patched.QuietLimitSeconds);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("1.5")]
+    public async Task AQuietLimit_ABadValue_IsRefused_AndWritesNothing(string bad)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, QuietLimitSeconds: bad), default);
+
+        Assert.Equal(
+            $"a quiet limit is a whole number of one or more, in seconds - not \"{bad}\"",
+            Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).QuietLimitSeconds);
+    }
+
+    // ---- QuietLimitSeconds: create ----
+
+    [Fact]
+    public async Task AQuietLimit_CanBeSetOnCreate()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync(quietLimitSeconds: "1500");
+
+        Assert.Equal(1500, created.QuietLimitSeconds);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("1.5")]
+    public async Task ABadQuietLimitOnCreate_IsRefused(string bad)
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", QuietLimitSeconds: bad), default);
+
+        Assert.Equal(
+            $"a quiet limit is a whole number of one or more, in seconds - not \"{bad}\"",
             Reason(refusal.Result));
     }
 
@@ -713,6 +816,71 @@ public class PlaybooksControllerTests
         Assert.Null((await h.Db.Playbooks.SingleAsync(p => p.Id == row.Id)).Prompt);
     }
 
+    // ---- Who may write ----
+
+    [Fact]
+    public async Task AnApiKey_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var playbooks = Writing(h.Db, new StubCallerIdentity { ApiKey = new EfApiKey { Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now } }, browser: true);
+
+        var refusal = await playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, "5"), default);
+
+        AssertRefused(refusal.Result);
+        Assert.Null((await h.ReadAsync(row.Id)).Budget);
+    }
+
+    [Fact]
+    public async Task AKeylessRunner_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var runner = new StubCallerIdentity { Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner") };
+        var playbooks = Writing(h.Db, runner, browser: true);
+
+        var refusal = await playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, "5"), default);
+
+        AssertRefused(refusal.Result);
+        Assert.Null((await h.ReadAsync(row.Id)).Budget);
+    }
+
+    [Fact]
+    public async Task APersonWithNoSecFetchMode_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var playbooks = Writing(h.Db, new StubCallerIdentity(), browser: false);
+
+        var refusal = await playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, "5"), default);
+
+        AssertRefused(refusal.Result);
+        Assert.Null((await h.ReadAsync(row.Id)).Budget);
+    }
+
+    [Fact]
+    public async Task APersonAtTheBrowser_MayWrite()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        var playbooks = Writing(h.Db, new StubCallerIdentity(), browser: true);
+
+        var patched = Value(await playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, "5"), default));
+
+        Assert.Equal(5, patched.Budget);
+    }
+
+    private static void AssertRefused(IActionResult? result)
+    {
+        var refused = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal(PlaybookWrites.Sentence, refused.Value);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
@@ -728,17 +896,17 @@ public class PlaybooksControllerTests
 
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null) =>
+            bool? isCheck = null, string? quietLimitSeconds = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds), default));
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? prompt = null) =>
+            bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds), default));
 
         /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
         public async Task SetDefaultPromptAsync(int id)
@@ -766,11 +934,26 @@ public class PlaybooksControllerTests
         return new Harness
         {
             Db = db,
-            Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), families),
+            Playbooks = AtTheBrowser(db, new FakeTimeProvider(Now), families),
             Todo = todo.Id,
             InProgress = doing.Id,
             ProjectA = projectA.Id,
             ProjectRepoSourced = projectRepoSourced.Id,
+        };
+    }
+
+    /// <summary>A controller whose caller is a plain person, at a browser - what every write below is made by unless a test says otherwise.</summary>
+    internal static PlaybooksController AtTheBrowser(HatchContext db, TimeProvider time, ModelFamilies? families = null) =>
+        Writing(db, new StubCallerIdentity(), browser: true, time, families);
+
+    private static PlaybooksController Writing(
+        HatchContext db, StubCallerIdentity caller, bool browser, TimeProvider? time = null, ModelFamilies? families = null)
+    {
+        var http = new DefaultHttpContext();
+        if (browser) http.Request.Headers["Sec-Fetch-Mode"] = "navigate";
+        return new PlaybooksController(db, time ?? new FakeTimeProvider(Now), caller, families)
+        {
+            ControllerContext = new ControllerContext { HttpContext = http },
         };
     }
 

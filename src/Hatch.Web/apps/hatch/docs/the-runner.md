@@ -189,6 +189,8 @@ These are the settings `hatch --help` lists, with their defaults:
 HATCH_BASE           the origin of your Hatch
 HATCH_KEY            hatch_ak_...; optional against a Hatch with its wall off
 HATCH_CLAUDE_BIN     the claude CLI, if it is not on PATH
+HATCH_CLAUDE_TOOLS   the tools an unattended claude session starts with (default: Bash,Read,
+                     Edit,Write,Grep,Glob,Monitor,TaskStop; `default` is claude's full set)
 HATCH_CODEX_BIN      the codex CLI, if it is not on PATH
 HATCH_GROK_BIN       the grok CLI, if it is not on PATH
 HATCH_AGENT          claude, codex, grok or ollama (default: claude)
@@ -263,8 +265,9 @@ require. A project that requires `gpu` is only worked by a runner that carries
 `gpu`, and a ticket or an ancestor that requires a tag of its own adds to the
 project's, never away from it - a runner must carry the whole union. A column
 may require tags of its own too, union'd in the same way, and gating every
-move out of it rather than only the move into the column where code gets
-written. **The tags seed the row once.** The first heartbeat to name any
+move out of it. The union gates every move a runner is handed, in every
+column and on every hop - a tag says which runner may work a ticket, not only
+which may write its code. **The tags seed the row once.** The first heartbeat to name any
 writes them onto the row, which is what makes them show on the page
 immediately; every heartbeat after that leaves them alone, whether or not it
 names any of its own. The consequence is worth knowing: once a runner's row
@@ -289,7 +292,7 @@ reads as unset, so a runner that sets nothing advertises nothing.
 
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
-implemented only by a runner advertising macos and xcode - this runner
+worked only by a runner advertising macos and xcode - this runner
 advertises linux"* (*"... advertises none"* for a runner with no tags at all).
 
 ## What a runner refuses
@@ -592,6 +595,7 @@ HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
 HATCH_CLAUDE_BIN:  <unset>
+HATCH_CLAUDE_TOOLS:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>
@@ -620,6 +624,7 @@ HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_CLAUDE_BIN:  <unset>
+HATCH_CLAUDE_TOOLS:  <unset>
 HATCH_CODEX_BIN:   <unset>
 HATCH_GROK_BIN:    <unset>
 HATCH_OLLAMA_HOST: <unset>
@@ -676,13 +681,14 @@ the lock's detail.
 
 #### Splitting the work by column
 
-A tagged column gates every session spawned *out of* it for a runner that
-does not advertise the union of the project's, its ancestors', the issue's
-and that column's own tags - never the move into an untagged column ahead of
-it. That cuts the other way too: a *project* tag the light runner lacks
-blocks it from a tagged Breakdown column just as it would from the
-implementation column - a project's own tags cannot be used to keep
-implementation off a runner that only does breakdown.
+A tagged column gates every move *out of* it, hops included, for a runner
+that does not advertise the union of the project's, its ancestors', the
+issue's and that column's own tags. A column's own tags never reach the
+column ahead of it. That cuts the other way too: a *project* tag the light
+runner lacks blocks it from every column - a tagged Breakdown column, an
+untagged one and the implementation column alike - so a project's own tags
+cannot be used to keep implementation off a runner that only does breakdown,
+and a runner that lacks one is not handed a ticket of that project at all.
 
 The working recipe:
 
@@ -694,9 +700,11 @@ The working recipe:
    primary runner in `<checkout-a>` advertises `build` alone.
 
 Tags reserve columns; they do not partition the board. An untagged column (To
-Do, In Review on a stock board) is open to both runners, a hop is never
-gated, and a runner advertising a superset of what a column requires
-qualifies same as one advertising exactly that. **Tags seed a runner's row
+Do, In Review on a stock board) is open to both runners, as long as the
+project, the ticket and its ancestors require nothing the runner lacks - a
+hop is gated exactly as any other move is - and a runner advertising a
+superset of what a column requires qualifies same as one advertising exactly
+that. **Tags seed a runner's row
 once** - the first heartbeat naming any writes them onto the board, and
 `--here --tag` typed again after that changes nothing until a `PATCH` on the
 row itself moves them (see [what a runner
@@ -741,11 +749,13 @@ others gets:
   workspace lock](#the-workspace-lock)).
 
 Ctrl-C and `--stop-file` stop all of them, each after the increment it is in,
-and the output of each line is prefixed `[n]`. `--max-runs` and `--max-spend`
-bound the set's combined total, not each runner's own: each runner checks the
-sum of what the set has done, between its increments, and a restart of the set
-carries that sum forward. A second `--runners` set started
-over the same workspaces is refused: runner 1 meets the checkout lock (`a
+and the output of each line is prefixed `[n]`. `--max-runs`, `--max-spend`
+and `--max-tokens` bound the set's combined total, not each runner's own: each
+runner checks the sum of what the set has done, between its increments, and a
+restart of the set carries that sum forward. `--max-tokens-per-hour` is a wait
+and not a stop, and it judges the set's combined last hour: each runner reads
+the others' entries from the set's ledger and waits on its own. A second
+`--runners` set started over the same workspaces is refused: runner 1 meets the checkout lock (`a
 go-to-work is already running in <path>`) and the others meet the workspace
 lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `--runners` needs a workspace, so `--workspace off` is refused, and

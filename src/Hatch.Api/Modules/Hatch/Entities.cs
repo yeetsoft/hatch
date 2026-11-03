@@ -118,7 +118,7 @@ public class EfHatchProject
     public bool ChecksRequired { get; set; } = true;
 
     /// <summary>
-    /// Whether a story's tasks share the story's branch and one pull request
+    /// Whether a story's or bug's tasks share its branch and one pull request
     /// - the project default, which a story's own
     /// <see cref="EfHatchIssue.OnePullRequest"/> overrides. Off unless a
     /// person turns it on: it changes how every story under the project is
@@ -1028,10 +1028,10 @@ public class EfHatchIssue
     public string RunnerTags { get; set; } = "[]";
 
     /// <summary>
-    /// Whether this story's tasks share the story's branch and one pull
+    /// Whether this story's or bug's tasks share its branch and one pull
     /// request. Null inherits the project's default
     /// (<see cref="EfHatchProject.OnePullRequest"/>), true is on, false is off.
-    /// Meaningful on a story only; <see cref="IssueOnePrController"/> refuses
+    /// Meaningful on a story or a bug only; <see cref="IssueOnePrController"/> refuses
     /// any other type.
     /// </summary>
     /// <remarks>
@@ -1043,7 +1043,7 @@ public class EfHatchIssue
     /// on one branch cannot be moved onto the other.
     ///
     /// Derived at read, never copied: <c>PriorityTree.EffectiveOnePr</c> walks
-    /// to the nearest story at or above an issue and answers with that story's
+    /// to the nearest story or bug at or above an issue and answers with that parent's
     /// own value, else the project's.
     /// </remarks>
     public bool? OnePullRequest { get; set; }
@@ -1069,6 +1069,19 @@ public class EfHatchIssue
     /// <c>PriorityTree.EffectiveDangerous</c>.
     /// </summary>
     public string? Dangerous { get; set; }
+
+    /// <summary>
+    /// Why this issue finished with no code, or null where it has not declared
+    /// that - there is no separate boolean. Trimmed. Written only by
+    /// <see cref="IssueNoCodeController"/>, and cleared by the rules in
+    /// <see cref="NoCode"/>; <c>IssuePatchRequest</c>, create and the bulk
+    /// endpoint carry no field for it. The cap is the API's
+    /// (<c>NoCodeRequest.MaxLength</c>), not the column's.
+    /// </summary>
+    public string? NoCode { get; set; }
+
+    /// <summary>When <see cref="NoCode"/> was declared; null exactly when it is.</summary>
+    public DateTimeOffset? NoCodeAt { get; set; }
 
     /// <summary>
     /// When an increment last left this ticket where it found it. Null for
@@ -1179,6 +1192,13 @@ public class EfHatchIssue
     /// the shape of the rest of this row.
     /// </summary>
     public int? ClaimPlaybookId { get; set; }
+
+    /// <summary>
+    /// The quiet window this claim was taken under, in seconds, or null to use
+    /// the board's own - see <see cref="IssueClaims.WindowFor"/>. Set once at
+    /// take time and cleared at release exactly like the other claim columns.
+    /// </summary>
+    public int? ClaimQuietLimitSeconds { get; set; }
 
     /// <summary>
     /// The person this issue belongs to, or null. At most one of this and
@@ -1963,6 +1983,38 @@ public class EfHatchIssueEvent
     public const string DangerousChanged = "dangerous_changed";
 
     /// <summary>
+    /// An issue's no-code declaration changed - see <see cref="EfHatchIssue.NoCode"/>.
+    /// The payload is <c>{ from, to }</c>, either side null, and <c>moved</c>
+    /// names the column when a move into one left of review cleared it.
+    /// </summary>
+    public const string NoCodeChanged = "no_code_changed";
+
+    /// <summary>
+    /// A branch or a pull request appeared and the no-code declaration was
+    /// cleared - see <see cref="NoCode.SetAside"/>. The payload is
+    /// <c>{ reason, ... }</c>: the reason that was set aside, and what set it aside.
+    /// </summary>
+    public const string NoCodeSetAside = "no_code_set_aside";
+
+    /// <summary>
+    /// A session proposed changes to playbooks - see <see cref="EfHatchPlaybookProposal"/>.
+    /// The payload is <c>{ proposalId, changes, reason }</c>.
+    /// </summary>
+    public const string PlaybookProposed = "playbook_proposed";
+
+    /// <summary>
+    /// A person approved a pending playbook proposal naming this issue - see
+    /// <see cref="EfHatchPlaybookProposal"/>. The payload is <c>{ proposalId }</c>.
+    /// </summary>
+    public const string PlaybookProposalApproved = "playbook_proposal_approved";
+
+    /// <summary>
+    /// A person rejected a pending playbook proposal naming this issue - see
+    /// <see cref="EfHatchPlaybookProposal"/>. The payload is <c>{ proposalId }</c>.
+    /// </summary>
+    public const string PlaybookProposalRejected = "playbook_proposal_rejected";
+
+    /// <summary>
     /// An issue's release note changed - see <see cref="EfHatchIssue.ReleaseNote"/>.
     /// The payload is <c>{ from, to }</c>, either side null.
     /// </summary>
@@ -2292,6 +2344,12 @@ public class EfHatchPlaybook
     public int? BriefLimit { get; set; }
 
     /// <summary>
+    /// The seconds a claim under this row may go without a word, blank
+    /// (inheriting <c>Hatch:StallLapseMinutes</c>) unless a person has set one.
+    /// </summary>
+    public int? QuietLimitSeconds { get; set; }
+
+    /// <summary>
     /// The tool rules this row denies, as a jsonb array - read and written
     /// through <see cref="ReadDeniedTools"/> and <see cref="WriteDeniedTools"/>
     /// rather than directly, the way <see cref="EfHatchComment.Options"/> is.
@@ -2398,6 +2456,101 @@ public class EfHatchPlaybook
 
     /// <summary>
     /// camelCase, matching the wire - the same reason <see cref="Questions"/>
+    /// keeps its own copy rather than sharing one.
+    /// </summary>
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+}
+
+/// <summary>
+/// A request to change playbooks, filed by a session that may not edit them
+/// itself and waiting for a person to decide. The record outlives the ticket
+/// that prompted it (<see cref="IssueId"/> goes null with the ticket) and
+/// carries its changes, each holding what the playbook looked like when the
+/// proposal was made so that a later page can say what was asked for even
+/// after the playbook has moved on.
+/// </summary>
+[Table("PlaybookProposals")]
+[Index(nameof(State), nameof(CreatedAt))]
+public class EfHatchPlaybookProposal
+{
+    public const int MaxStateLength = 10;
+
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+    public const string Rejected = "rejected";
+
+    public static readonly string[] States = [Pending, Approved, Rejected];
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public required string Reason { get; set; }
+
+    /// <summary>The ticket the session was working, or null once it is deleted - the proposal stays.</summary>
+    public long? IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    [MaxLength(MaxStateLength)]
+    public required string State { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Null while <see cref="State"/> is <see cref="Pending"/>.</summary>
+    public DateTimeOffset? DecidedAt { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? DecidedBy { get; set; }
+
+    public List<EfHatchPlaybookProposalChange> Changes { get; set; } = [];
+}
+
+/// <summary>
+/// One playbook's share of an <see cref="EfHatchPlaybookProposal"/>: the
+/// playbook as it stood, and the fields the proposal would change. Both are
+/// jsonb, read and written through the helpers below the way
+/// <see cref="EfHatchPlaybook.DeniedTools"/> is.
+/// </summary>
+[Table("PlaybookProposalChanges")]
+[Index(nameof(PlaybookId))]
+[Index(nameof(ProposalId))]
+public class EfHatchPlaybookProposalChange
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    public required int ProposalId { get; set; }
+    public EfHatchPlaybookProposal? Proposal { get; set; }
+
+    /// <summary>The playbook proposed against, or null once its row is deleted - the change stays, with <see cref="Before"/> to say what it was.</summary>
+    public int? PlaybookId { get; set; }
+    public EfHatchPlaybook? Playbook { get; set; }
+
+    /// <summary>The playbook as a <see cref="PlaybookDto"/>, as it stood when the proposal was made. Use <see cref="WriteBefore"/> and <see cref="ReadBefore"/>.</summary>
+    public required string Before { get; set; }
+
+    /// <summary>The fields to change, as a <see cref="PlaybookPatchRequest"/>. Use <see cref="WritePatch"/> and <see cref="ReadPatch"/>.</summary>
+    public required string Patch { get; set; }
+
+    /// <summary>The playbook's <c>UpdatedAt</c> at proposal time, so a later edit to it is noticed.</summary>
+    public required DateTimeOffset BasedOnUpdatedAt { get; set; }
+
+    public static string WriteBefore(PlaybookDto before) => JsonSerializer.Serialize(before, Json);
+
+    /// <summary>Throws <see cref="JsonException"/> on corrupt JSON; nothing but <see cref="WriteBefore"/> writes the column.</summary>
+    public static PlaybookDto ReadBefore(string stored) =>
+        JsonSerializer.Deserialize<PlaybookDto>(stored, Json) ?? throw new JsonException("Before is null.");
+
+    public static string WritePatch(PlaybookPatchRequest patch) => JsonSerializer.Serialize(patch, Json);
+
+    /// <summary>Throws <see cref="JsonException"/> on corrupt JSON; nothing but <see cref="WritePatch"/> writes the column.</summary>
+    public static PlaybookPatchRequest ReadPatch(string stored) =>
+        JsonSerializer.Deserialize<PlaybookPatchRequest>(stored, Json) ?? throw new JsonException("Patch is null.");
+
+    /// <summary>
+    /// camelCase, matching the wire - the same reason <see cref="EfHatchPlaybook"/>
     /// keeps its own copy rather than sharing one.
     /// </summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -2824,6 +2977,12 @@ public class EfHatchRunner
     /// <summary>The cap on dollars, on the same terms.</summary>
     public decimal? MaxSpend { get; set; }
 
+    /// <summary>The cap on tokens for the whole run, on the same terms as <see cref="MaxSpend"/>.</summary>
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The cap on tokens per hour, on the same terms as <see cref="MaxSpend"/>.</summary>
+    public long? MaxTokensPerHour { get; set; }
+
     /// <summary>
     /// When to stop, always as an instant. The command line takes a wall clock
     /// (<c>--until 06:00</c>) because somebody is typing it at a terminal in a
@@ -2880,6 +3039,12 @@ public class EfHatchRunner
 
     /// <summary>The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</summary>
     public decimal? Spent { get; set; }
+
+    /// <summary>The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</summary>
+    public long? TokensUsed { get; set; }
+
+    /// <summary>The tokens used in the last hour, on the terms <see cref="Runs"/> has.</summary>
+    public long? TokensLastHour { get; set; }
 
     /// <summary>The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</summary>
     [MaxLength(MaxHostLength)]
@@ -2952,6 +3117,15 @@ public class EfHatchRunner
     /// time, the same lazy expiry the rest of this table uses.
     /// </summary>
     public DateTimeOffset? ExhaustedUntil { get; set; }
+
+    /// <summary>
+    /// When this runner expects its token throttle to lift - a fact about the
+    /// process, on the same terms as <see cref="ExhaustedUntil"/>: a loop
+    /// heartbeat writes it, and a loop heartbeat that says it is not throttled
+    /// clears it, which is the only way it ever clears other than expiring by
+    /// arithmetic at read time. A <c>once</c> beat leaves it alone either way.
+    /// </summary>
+    public DateTimeOffset? ThrottledUntil { get; set; }
 
     /// <summary>
     /// The account's usage windows, as this runner's own session last read

@@ -93,7 +93,7 @@ caller is not a live owner, 400s on an unknown role or person, and 409s if
 the edit would leave the project with no owner at all - the one state only
 `/claim` escapes. POST `/claim` 409s if the project already has an owner. The
 landing PUT 403s if the caller is not an owner; `landing` is `"pull-request"`
-or `"trunk"`, anything else 400s; a story that has already started work keeps
+or `"trunk"`, anything else 400s; a story or bug that has already started work keeps
 its own `onePullRequest` fixed rather than inheriting a new default. The
 playbooks-source PUT 403s if the caller is not an owner, and 400s if the
 project binds no repository or any playbook row still names it. The
@@ -203,7 +203,7 @@ none of that is re-derived here.
 
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
 `Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority` and
-`PreApproval` - `OnePr` only on a `story`, refused on anything else,
+`PreApproval` - `OnePr` only on a `story` or a `bug`, refused on anything else,
 `inherit`/`on`/`off`; `Priority` and `PreApproval` take the level names the two
 `PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
 born at a level in the one save, with no second event. `IssuePatchRequest`
@@ -255,22 +255,25 @@ not mint an issue number - try again".
 | expedite | PUT | `/issues/{key}/expedite` | **person** | Legacy two-level alias for priority (`expedited`/`normal`) |
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
-| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories only |
+| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
+| no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
-| playbook | PATCH | `/issues/{key}/playbook` | **person** | Per-ticket model/effort override, beating every playbook |
+| playbook | PATCH | `/issues/{key}/playbook` | **person, at the browser** | Per-ticket model/effort override, beating every playbook |
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous` and `landing` are key-open despite
-sitting beside five person-only fields: one-pr is the story's own say over its
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
+sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
-filing the story that way; runner-tags is a statement about which runner may
+filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
-dangerous is the same kind of statement; landing
+dangerous is the same kind of statement; no-code
+is a statement of fact about the work, with the same reach as recording a pull
+request through `PATCH`, which is also key-open; landing
 is a fact a session or a poll reports about a repository and a sha, not a
 power over the board. `stall` carries no
 `[RequireRole]` at all, on the method or the class - it is reachable by
@@ -299,14 +302,20 @@ on `""`. `LandingWriteRequest` is `Remote`, `Sha`, an optional `Trunk`,
 **Refusals worth naming.** `assignee` 400s on a kind with no id, or an
 unknown actor. `priority`/`expedite` 400 an unparseable level name - the
 alias is just a two-level write of the same field and the same trail.
-`one-pr` 400s on anything but a story, and 409s once any descendant has
+`one-pr` 400s on anything but a story or a bug, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
 task begun on one branch cannot be moved onto the other. `runner-tags` 400s
 a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one
 over 200 characters after trimming; `404` for no such key; re-sending the reason
-it already holds writes nothing. `pre-approval` and
+it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
+clear) and one over 200 characters after trimming, 409s while a pull request is
+recorded or a counted merge check found a branch, and `404` for no such key;
+re-sending the reason it already holds writes nothing. A later branch-finding
+merge check or a recorded pull request clears the declaration with a
+`no_code_set_aside` event, and a move into a column left of review clears it
+with a `no_code_changed` one. `pre-approval` and
 `express` gate by what is being set: raising to or lowering from
 `preapproved` needs an owner or approver, 403 otherwise, since that is the
 approve press given in advance; every other transition is gated like an
@@ -439,7 +448,7 @@ the second half of this page, after the board's own.
 | GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next` |
-| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session |
+| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags included |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
@@ -461,9 +470,10 @@ holds.
 `next`, `queue` and `{key}` take `remote`, `standing`, `clones` to declare a
 caller's checkouts (any one opts into the repository fold), plus
 `ancestorKey` to narrow to one corner of the board and `mine` to narrow to
-the caller's own tickets; `next` and `queue` also take `tag`, what the
-caller's runner advertises, and `project`, the project keys it is bound to -
-each repeatable, one value per occurrence (`?project=FIL&project=AER`). An
+the caller's own tickets; `next` and `queue` also take `project`, the project
+keys it is bound to - repeatable, one value per occurrence
+(`?project=FIL&project=AER`). `next`, `queue` and `hop` also take `tag`, what
+the caller's runner advertises, repeatable the same way. An
 absent or empty `project` folds nothing, so a caller that never declared a
 binding sees every project as before; a key no project has is refused with a
 400 naming it on `next`. `{key}` and `next` also take `heldToken`, a claim
@@ -512,10 +522,17 @@ make room for an emergency ticket and is the one case a heartbeat answers a
 A live claim refuses a second `POST`, including the same runner's own -
 re-claiming is not a thing a runner does, it heartbeats - and a claim on an
 ancestor or descendant issue refuses it too: one runner per line of the tree.
-The `DELETE` carries an optional `token` (the one the claim was taken with)
-and an optional `outcome` - one of `dropped`, `worked`, `preempted` - read
-only alongside a token. Releasing a claim that holds nothing, or releasing
-twice, is a `204` that writes nothing either way.
+A heartbeat or release refused for its token answers `409` with `{ error,
+reason }` - `error` the sentence a person reads, `reason` one of `quiet`
+(the holder's own token, gone quiet), `expired` (its own token, simply
+lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
+token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
+carries an optional `token` (the one the claim was taken with), an optional
+`outcome` - one of `dropped`, `worked`, `preempted` - and an optional
+`reason` - only `quiet` - both read only alongside a token, and `reason`
+written into the event only beside an `outcome`. Releasing a claim that
+holds nothing, or releasing twice, is a `204` that writes nothing either
+way.
 
 **The one narrowing.** A tokenless `DELETE` is the operator's own clobber -
 clearing another runner's claim by hand - and it refuses a program caller
@@ -578,9 +595,9 @@ leaves one entry, not a hundred.
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/playbooks` | key | Every row, in board order |
-| POST | `/playbooks` | **person** | Creates one |
-| PATCH | `/playbooks/{id}` | **person** | Edits one |
-| DELETE | `/playbooks/{id}` | **person** | Deletes one |
+| POST | `/playbooks` | **person, at the browser** | Creates one |
+| PATCH | `/playbooks/{id}` | **person, at the browser** | Edits one |
+| DELETE | `/playbooks/{id}` | **person, at the browser** | Deletes one |
 | GET | `/playbook-files` | key | Every stored verdict of what a repository's trunk actually carries at `.hatch/playbooks.yaml` |
 | PUT | `/playbook-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
 
@@ -592,6 +609,11 @@ loop the claim's tokenless `DELETE` above and a runner's own `--max-spend`
 are cut to prevent. Reading stays open because an agent has to be told what
 it was dispatched with.
 
+Person here means a person at the browser specifically: with the wall off
+these three, and `PATCH /issues/{key}/playbook`, also refuse a call with no
+key, no runner header and no `Sec-Fetch-Mode` header, so a bare `curl` or
+`hatch api` call is refused the same as a key.
+
 `/playbook-files` is not that same edge, despite sitting beside it: it is
 not the matrix above, it is a cache of what a runner's poll actually found
 on disk at a repository-sourced project's trunk - a fact a key reports about
@@ -602,7 +624,8 @@ assume the group is uniform.
 `PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
 `ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
-(millions of tokens) and `BriefLimit` (characters), `DeniedTools`, `IsCheck`,
+(millions of tokens), `BriefLimit` (characters) and `QuietLimitSeconds` (seconds a
+claim may go without a word; null inherits the server's quiet lapse), `DeniedTools`, `IsCheck`,
 and `Source` - `"board"` or `"project"`, by whether `ProjectId` names one.
 The create and patch bodies share that shape with the three-state convention
 every optional field in Hatch takes: absent leaves a field alone (patch) or
@@ -619,6 +642,18 @@ content over the stored cap, and writes no event - there is no issue to
 write one on, and no question, since a bad playbooks file is this row's own
 state rather than a stall.
 
+### Playbook proposals
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/playbook-proposals` | key | The queue for one state, oldest first - pending by default, or `?state=approved`, `rejected` or `all` |
+| GET | `/playbook-proposals/{id}` | key | One proposal, with every change it carries |
+| POST | `/playbook-proposals` | key | Files a proposal - a reason, an optional issue, and one or more changes - and changes nothing live |
+| POST | `/playbook-proposals/reject-all` | **person, at the browser** | Marks every row named in `{ proposalIds }` rejected, naming an issue's events; `409` naming the reload where that set is not exactly what is pending |
+| POST | `/playbook-proposals/approve-all` | **person, at the browser** | Applies every row named in `{ proposalIds }` in one transaction; `409` naming the reload, the out-of-date change, or the live-board refusal, applying nothing |
+
+A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the body is `{ reason, issueKey?, changes: [{ playbookId, ...PATCH's fields }] }`, each change naming a playbook and at least one field `PATCH /playbooks/{id}` takes - and the change sits for a person to decide on the Playbooks page, not anything live. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` is not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` 400s a blank reason, an empty `changes` list, a change naming no field, the same sentences `PATCH /playbooks/{id}` gives against the live board, and a change naming a project that reads its playbooks from its own repository rather than from rows here at all; a playbook already named by a pending proposal refuses a second, naming it - one pending change per row at a time. An `issueKey` naming no issue is `404`. A named issue gets a `playbook_proposed` event.
+
 ### Runners and settings
 
 | Method | Path | Who | What it does |
@@ -626,7 +661,7 @@ state rather than a stall.
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, until, tags, projects, and `refusesDangerous` |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -642,24 +677,33 @@ state rather than a stall.
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
 clones, `mine`, `standing`, where it runs, which agent spawned it, and
-`host`, `runs` and `spent`, the machine's short name and the increments run and
-dollars spent so far, running totals the loop keeps (written every beat, with
-none of the gating the bounds have; an absent one leaves the row alone, and a
-`once` beat sends only `host`) - and
+`host`, `runs`, `spent`, `tokensUsed` and `tokensLastHour`, the machine's short
+name, the increments run, the dollars spent and the tokens used so far, and the
+tokens used in the last sixty minutes - running totals the loop keeps (written
+every beat, with none of the gating the bounds have; an absent one leaves the
+row alone, and a `once` beat sends only `host`) - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
-stop, and the four bounds (`Under`, `MaxRuns`, `MaxSpend`, `UntilAt`) it is
-running within, and `Projects`, the project keys it is bound to. Those four
+stop, and the six bounds (`Under`, `MaxRuns`, `MaxSpend`, `MaxTokens`,
+`MaxTokensPerHour`, `UntilAt`) it is
+running within, and `Projects`, the project keys it is bound to. Those six
 bounds are written by a fresh loop's first beat
 (`Fresh: true`, a `loop` beat only), which also clears any the row held for a
 flag the loop was not given, and otherwise only by a person's `PATCH` -
 a supervisor restart sending its original `--max-runs` again never undoes an
 operator's midnight edit, a `once` beat never writes them, and a running agent
 cannot raise its own budget: only a new process started with flags can, which
-is the failure the bounds exist to prevent. `Projects` follows the same
-fresh-beat rule as the four - the CLI sends it on every heartbeat, but only a
+is the failure the bounds exist to prevent. The two token bounds are longs on
+the beat (`MaxTokens`, `MaxTokensPerHour`); a value of zero or less, or an
+absent one, writes none. Their `PATCH` fields are strings in the same
+notation the flags take - a whole number, or `500k`, `2M`, `1.5M` (one decimal
+digit, on `M` only), at least one token: blank clears the bound, absent leaves
+it, and zero or anything unreadable is a 400 reading `--max-tokens takes a
+token count, like 500k or 2M - not "x"` (`--max-tokens-per-hour` for the other).
+`Projects` follows the same
+fresh-beat rule as the six - the CLI sends it on every heartbeat, but only a
 fresh `loop` beat writes it, so a supervisor restart never undoes a person's
 edit of it - while its `PATCH` payload is list-shaped like `tags`, not scalar
-like the four: absent leaves the row's projects as they are, `[]` clears them,
+like the six: absent leaves the row's projects as they are, `[]` clears them,
 and a list sets them. (Tags differ on the first axis: they are seeded once
 ever, and a fresh beat never re-seeds a row that already has them.) The
 `state` is a person's too, with one exception: a fresh `loop` beat that also sends `standby: true` writes the
@@ -670,6 +714,12 @@ a single increment first. `standby` is read on that beat alone: without
 fresh beat without it leaves the state as it was. There is no
 `DELETE` on the row itself: it ages out of `GET /runners` on its own once
 nothing has heard from it in a while.
+
+`throttledUntil` is a fact the runner reports about its own
+`--max-tokens-per-hour`, never a person's to set: it is the instant the loop
+expects to be back under that cap while it waits, written on every `loop` beat
+(so a beat that carries null clears it) and left alone by a `once` beat. It has
+no `PATCH` field.
 
 `refusesDangerous` follows the tags rule: the first heartbeat a name is seen
 under that carries it (true or false) seeds the row, a later beat with another
@@ -707,6 +757,14 @@ an admin and on rows that belong to nobody. `ClaimKey` is the ticket the runner
 holds and `ClaimStatus` the name of that ticket's column now; both are null
 between increments.
 
+Each row also carries the token side of the bounds: `maxTokens` and
+`maxTokensPerHour`, each with a `...Source` word beside it (`maxTokensSource`,
+`maxTokensPerHourSource`) saying where the number came from - `runner` when the
+row holds it, `none` when there is no such bound; `default` is part of the
+vocabulary, and nothing produces it yet - then `tokensUsed` and `tokensLastHour`,
+the loop's own running counts, and `throttledUntil`, the instant a waiting loop
+expects to be under its hourly cap, or null.
+
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
 
@@ -717,7 +775,7 @@ it is already running as.
 
 `/settings` is Hatch's own configuration, carrying nothing an agent reads:
 it is person-only on both verbs by design, beside `/runners/{name}` and
-`/playbooks`' writes above - an API key that could write here could set the
+`/playbooks`' person-at-the-browser writes above - an API key that could write here could set the
 name every event in the house is signed with, or swap the credential the
 account's headroom is read through. `credentials/{agent}` and
 `claude-token` are the one deliberate exception beside it: **the answer is a
@@ -857,6 +915,8 @@ from, since two polls a poll interval apart would show a lit control beside
 an empty list. It answers an `AttentionDto`: open questions waiting on
 somebody, pull requests in review split into plain reviews, conflicts, and
 failing builds, how many sit in review with no pull request at all, the
+issues in review that declared they were finished with no code and wait for a
+person to close them (`noCodeHeld`), the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly

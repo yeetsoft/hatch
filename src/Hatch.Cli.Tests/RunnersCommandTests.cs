@@ -13,14 +13,16 @@ public sealed class RunnersCommandTests
     private static RunnerDto ARunner(
         string name = "runner-1", string? claimKey = null, DateTimeOffset? lastSeenAt = null,
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
-        IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null) =>
+        IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null,
+        long? tokensUsed = null, long? tokensLastHour = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
             ClaimKey: claimKey, Line: null, LineAt: null, State: state, Under: null,
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
-            ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host);
+            ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
+            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -71,6 +73,25 @@ public sealed class RunnersCommandTests
         var lines = h.Said.Split('\n');
         Assert.EndsWith("  projects FIL AER", lines.Single(l => l.StartsWith("bound", StringComparison.Ordinal)));
         Assert.DoesNotContain("projects", lines.Single(l => l.StartsWith("free", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_reporting_its_tokens_prints_them_after_the_spend_with_the_hour_where_it_has_one()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "both", runs: 3, spent: 1.25m, host: "Fry", tokensUsed: 2_400_000, tokensLastHour: 180_000),
+            ARunner(name: "total", tokensUsed: 950_000),
+            ARunner(name: "older", runs: 3, spent: 1.25m, host: "Fry"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  on Fry 3 runs $1.25 2.4M tokens (180k last hour)", lines.Single(l => l.StartsWith("both", StringComparison.Ordinal)));
+        Assert.EndsWith("  950k tokens", lines.Single(l => l.StartsWith("total", StringComparison.Ordinal)));
+        Assert.DoesNotContain("tokens", lines.Single(l => l.StartsWith("older", StringComparison.Ordinal)));
     }
 
     [Fact]

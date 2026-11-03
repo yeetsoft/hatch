@@ -1,7 +1,17 @@
 import { useMemo, useState } from 'react';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
-import { deletePlaybook, getPlaybookFiles, getPlaybooks, getStatuses } from '../api/client';
+import { Link } from 'react-router-dom';
+import {
+  approveAllPlaybookProposals,
+  deletePlaybook,
+  getPlaybookFiles,
+  getPlaybookProposals,
+  getPlaybooks,
+  getStatuses,
+  rejectAllPlaybookProposals,
+} from '../api/client';
 import { PlaybookEditDialog } from '../components/PlaybookEditDialog';
+import { PlaybookProposalCard } from '../components/PlaybookProposalCard';
 import { PlaybookRow } from '../components/PlaybookRow';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
@@ -29,10 +39,24 @@ import {
   stateLabel,
   visibleFiles,
 } from '../lib/playbookFiles';
+import {
+  approveAllDisabledHint,
+  approveAllSuccessSentence,
+  proposalsBannerSentence,
+  rejectAllSuccessSentence,
+} from '../lib/playbookProposals';
 import { pullRequestWords } from '../lib/pullRequest';
 import { useLoaded } from '../lib/useLoaded';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
-import type { Playbook, PlaybookFileDto, PlaybookFileRowDto, PlaybookFilesDto, Project, Status } from '../types';
+import type {
+  Playbook,
+  PlaybookFileDto,
+  PlaybookFileRowDto,
+  PlaybookFilesDto,
+  PlaybookProposal,
+  Project,
+  Status,
+} from '../types';
 
 /**
  * The matrix an agent is dispatched by, and the only place it can be changed.
@@ -44,15 +68,24 @@ import type { Playbook, PlaybookFileDto, PlaybookFileRowDto, PlaybookFilesDto, P
  * right effort for a transition is not something anybody guesses correctly the
  * first time, it is something they retune after watching a run go badly.
  */
+
+/** The notice line Approve all/Reject all leave in the proposals banner. */
+export interface PlaybookProposalNotice {
+  tone: 'success' | 'danger';
+  text: string;
+}
+
 export function PlaybooksPage() {
   const { data: playbooks, error, setError, reload } = useLoaded<Playbook[]>(getPlaybooks);
   const { data: statuses } = useLoaded<Status[]>(getStatuses);
   const { data: files } = useLoaded<PlaybookFilesDto>(getPlaybookFiles);
+  const { data: proposals, reload: reloadProposals } = useLoaded<PlaybookProposal[]>(getPlaybookProposals);
   const { projects } = useProjects();
   const [projectFilter, setProjectFilter] = useState('');
   const [showOverridden, setShowOverridden] = useState(false);
   const [editing, setEditing] = useState<Playbook | null>(null);
   const [creating, setCreating] = useState(false);
+  const [proposalNotice, setProposalNotice] = useState<PlaybookProposalNotice | null>(null);
 
   const bound = useMemo(() => boundCanonicals(projects), [projects]);
   const visibleFileList = files && sortedFiles(visibleFiles(files.files, bound));
@@ -61,13 +94,39 @@ export function PlaybooksPage() {
   // judges "read how long ago" against the same instant.
   const now = new Date();
 
+  const reloadAll = () => Promise.all([reload(), reloadProposals()]);
+
   async function act(action: () => Promise<unknown>) {
     try {
       await action();
-      await reload();
+      await reloadAll();
       setError(null);
     } catch (err) {
       setError(message(err));
+    }
+  }
+
+  async function approveAll() {
+    if (!proposals) return;
+    try {
+      const result = await approveAllPlaybookProposals(proposals.map((p) => p.id));
+      await reloadAll();
+      setProposalNotice({ tone: 'success', text: approveAllSuccessSentence(result.playbooks.length) });
+    } catch (err) {
+      await reloadProposals();
+      setProposalNotice({ tone: 'danger', text: message(err) });
+    }
+  }
+
+  async function rejectAll() {
+    if (!proposals) return;
+    try {
+      const result = await rejectAllPlaybookProposals(proposals.map((p) => p.id));
+      await reloadAll();
+      setProposalNotice({ tone: 'success', text: rejectAllSuccessSentence(result.rejected) });
+    } catch (err) {
+      await reloadProposals();
+      setProposalNotice({ tone: 'danger', text: message(err) });
     }
   }
 
@@ -102,6 +161,15 @@ export function PlaybooksPage() {
       />
 
       {error && <p className="text-danger">{error}</p>}
+
+      <PlaybookProposals
+        proposals={proposals}
+        statuses={statuses ?? []}
+        now={now}
+        notice={proposalNotice}
+        onApproveAll={() => void approveAll()}
+        onRejectAll={() => void rejectAll()}
+      />
 
       {playbooks?.length === 0 && (activeFile?.rows.length ?? 0) === 0 && (
         <EmptyState message="No playbooks yet. Without one, a transition dispatches nothing at all - hatch.sh work says so rather than guessing." />
@@ -192,9 +260,82 @@ export function PlaybooksPage() {
           setEditing(null);
           setCreating(false);
         }}
-        onSaved={() => void reload()}
+        onSaved={() => void reloadAll()}
       />
     </div>
+  );
+}
+
+/**
+ * The banner and the cards a session's pending proposals draw above the main
+ * table - nothing at all when there are none (criterion 1: no empty banner).
+ * A card carries no proposal of its own, so every change across every
+ * pending proposal is flattened into one list, in proposal order, and the
+ * banner's own line per proposal is where its reason, author, ticket and age
+ * are read.
+ *
+ * Pure of the load, so a test can render it from props - there is no DOM
+ * runner to drive `useLoaded`.
+ */
+export function PlaybookProposals({
+  proposals,
+  statuses,
+  now,
+  notice = null,
+  onApproveAll = () => {},
+  onRejectAll = () => {},
+}: {
+  proposals: PlaybookProposal[] | null;
+  statuses: Status[];
+  now: Date;
+  notice?: PlaybookProposalNotice | null;
+  onApproveAll?: () => void;
+  onRejectAll?: () => void;
+}) {
+  const list = proposals ?? [];
+  if (list.length === 0 && !notice) return null;
+
+  const disabledHint = approveAllDisabledHint(list);
+
+  return (
+    <>
+      <Card className="hatch-playbook-proposal-banner">
+        {list.length > 0 && (
+          <>
+            <div className="hatch-playbook-proposal-actions">
+              <strong>{proposalsBannerSentence(list)}</strong>
+              <Button variant="primary" disabled={disabledHint !== null} title={disabledHint ?? undefined} onClick={onApproveAll}>
+                Approve all
+              </Button>
+              <Button variant="secondary" onClick={onRejectAll}>
+                Reject all
+              </Button>
+            </div>
+            {list.map((p) => (
+              <Text key={p.id} tone="muted" as="p">
+                {p.reason} — {p.author}
+                {p.issueKey !== null && (
+                  <>
+                    {' '}
+                    &middot; <Link to={`/issues/${p.issueKey}`}>{p.issueKey}</Link>
+                  </>
+                )}
+                {' '}
+                &middot; {agoPhrase(p.createdAt, now)}
+              </Text>
+            ))}
+          </>
+        )}
+        {notice && <p className={notice.tone === 'danger' ? 'text-danger' : undefined}>{notice.text}</p>}
+      </Card>
+      {list.length > 0 && (
+        <div className="hatch-playbook-proposal-list">
+          {list.flatMap((p) => p.changes).map((c) => (
+            <PlaybookProposalCard key={c.id} change={c} statuses={statuses} />
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

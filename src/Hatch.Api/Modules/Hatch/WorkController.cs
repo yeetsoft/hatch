@@ -531,9 +531,12 @@ public class WorkController(
         [FromQuery] List<string>? remote = null,
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] List<string>? tag = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
+
+        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
@@ -564,7 +567,8 @@ public class WorkController(
             : 0;
         var gate = await DependencyGate.ForAsync(db, statuses, ct);
         var (preApprovalLevel, preApprovalFromKey) = gate.EffectivePreApproval(issue.Id);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, parent, playbook, sendBackStreak, claims.StallResumeLimit, preApprovalLevel, merged, built, now,
+            await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
@@ -582,7 +586,8 @@ public class WorkController(
             repos, merged, built, hopKind, statuses,
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
-            landing: landing);
+            landing: landing,
+            tags: tags);
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
@@ -599,6 +604,7 @@ public class WorkController(
                 from, target, ("sendback", true),
                 ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
             HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            HopKinds.Close when NoCode.Declared(issue) => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
             HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
             _ => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("express", true))),
         };
@@ -634,9 +640,13 @@ public class WorkController(
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = preApprovalFromKey is null
-                    ? "Closed by its pre-approval on its own row: every child is done."
-                    : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
+                Body = NoCode.Declared(issue)
+                    ? preApprovalFromKey is null
+                        ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
+                        : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
+                    : preApprovalFromKey is null
+                        ? "Closed by its pre-approval on its own row: every child is done."
+                        : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }
@@ -644,6 +654,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(target.Id, ct);
         issue.StatusId = target.Id;
         issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -713,6 +725,8 @@ public class WorkController(
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+                issue.Events.Add(cleared);
         }
         else if (priorFails == 0)
         {
@@ -727,6 +741,8 @@ public class WorkController(
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
+            if (NoCode.ClearOnMove(issue, target, statuses, actor, now) is { } cleared)
+                issue.Events.Add(cleared);
         }
         else
         {
@@ -834,16 +850,18 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
 
-        // A story that shares one pull request takes its waiting tasks with it:
+        // A story or bug that shares one pull request takes its waiting tasks with it:
         // their work was pushed to the branch this pull request just merged, and
         // none of them has a pull request of its own to say so. Not done by a
         // person's manual move of the story, which gets the "Closing a subtree"
         // dialog instead - this is the merge's own consequence, so it is the
         // server's. Each task is one event on its own trail, the same status
         // change a merge writes, naming the story.
-        if (issue.Type == "story")
+        if (issue.Type is "story" or "bug")
         {
             var tree = await PriorityTree.ForAsync(db, ct);
             var storyKey = IssueKey.Format(projectKey, number);
@@ -875,6 +893,8 @@ public class WorkController(
                     task.Rank = issue.Rank + RankService.Gap * ++below;
                     task.StatusId = to.Id;
                     task.ClosedAt = Columns.ClosedAt(taskFrom, to, now, task.ClosedAt);
+                    if (NoCode.ClearOnMove(task, to, statuses, actor, now) is { } taskCleared)
+                        task.Events.Add(taskCleared);
                     task.UpdatedAt = now;
                 }
             }
@@ -969,6 +989,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(review.Id, ct);
         issue.StatusId = review.Id;
         issue.ClosedAt = Columns.ClosedAt(from, review, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, review, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -1049,6 +1071,8 @@ public class WorkController(
         issue.Rank = await ranks.BottomAsync(to.Id, ct);
         issue.StatusId = to.Id;
         issue.ClosedAt = Columns.ClosedAt(from, to, now, issue.ClosedAt);
+        if (NoCode.ClearOnMove(issue, to, statuses, actor, now) is { } cleared)
+            issue.Events.Add(cleared);
         issue.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
@@ -1181,7 +1205,8 @@ public class WorkController(
                 i.ClosedAt,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds),
             })
             .ToListAsync(ct);
 
@@ -1260,7 +1285,8 @@ public class WorkController(
                 ? await MostRecentVerdictFindingsAsync(issue.Id, ct)
                 : null;
         var (branchKey, branchTitle) = await BranchOfAsync(issue, gate, ct);
-        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now);
+        var hopKind = to is null ? null : Dispatch.HopKind(issue, from, to, family, statuses, wip, hopParent, playbook, sendBackStreak, claims.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+            await _dispatch.ImplementationPlaybookAsync(statuses, from, issue, family, ct));
         var hop = hopKind is not null;
         var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, from)
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
@@ -1343,7 +1369,7 @@ public class WorkController(
 
     /// <summary>
     /// The key and title the branch for a dispatch on <paramref name="issue"/>
-    /// is named from: its story's, for a task that shares the story's branch,
+    /// is named from: its parent's, for a task that shares the parent's branch,
     /// and its own otherwise - see <see cref="WorkDto.BranchKey"/>.
     /// </summary>
     private async Task<(string Key, string Title)> BranchOfAsync(EfHatchIssue issue, DependencyGate gate, CancellationToken ct)

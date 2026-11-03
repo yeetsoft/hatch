@@ -70,7 +70,7 @@ export interface Project {
   bindsTrackerBy: string | null;
   /** When bindsTracker was last changed on this project, or null until the first write. */
   bindsTrackerAt: string | null;
-  /** Which runners may implement this project's work, normalised - trimmed,
+  /** Which runners may be handed this project's work, normalised - trimmed,
       lower-cased, deduplicated; empty means any runner. Absent from a
       project that predates it. See ProjectDto.RunnerTags. */
   runnerTags?: string[];
@@ -443,6 +443,7 @@ export interface PlaybookFileRow {
   briefLimit: number | null;
   deniedTools: string[];
   isCheck: boolean;
+  quietLimitSeconds: number | null;
 }
 
 /** PlaybookFileRow with its status ids resolved to the board's current names
@@ -461,6 +462,7 @@ export interface PlaybookFileRowDto {
   briefLimit: number | null;
   deniedTools: string[];
   isCheck: boolean;
+  quietLimitSeconds: number | null;
 }
 
 /** Mirrors PlaybookFileDto. */
@@ -627,6 +629,10 @@ export interface Issue {
   dangerous: string | null;
   /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** Why the issue finished with no code, or absent. See IssueDto.NoCode. */
+  noCode?: string | null;
+  /** When noCode was declared. See IssueDto.NoCodeAt. */
+  noCodeAt?: string | null;
   /** See IssueCard.onePr and IssueDto.OnePr. */
   onePr: boolean;
   /** See IssueCard.onePrOwn and IssueDto.OnePrOwn. */
@@ -767,6 +773,7 @@ export type IssueEventKind =
   | 'build_check_changed'
   | 'wip_overridden'
   | 'stalled'
+  | 'playbook_proposed'
   | 'held'
   | 'resumed'
   | 'commented'
@@ -967,7 +974,7 @@ export interface ProjectReflectionWriteRequest {
   cadenceDays: number | null;
 }
 
-/** A write to which runners may implement a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
+/** A write to which runners may be handed a project's work. See ProjectRunnerTagsWriteRequest (Hatch.Contracts). */
 export interface ProjectRunnerTagsWriteRequest {
   tags: string[];
 }
@@ -983,6 +990,11 @@ export interface RunnerTagSource {
 /** Mirrors IssueRunnerTagsWriteRequest. */
 export interface IssueRunnerTagsWriteRequest {
   tags: string[];
+}
+
+/** Mirrors NoCodeRequest. */
+export interface NoCodeRequest {
+  reason: string | null;
 }
 
 /** Mirrors DangerousRequest. */
@@ -1217,11 +1229,50 @@ export interface Playbook {
   /** Empty means every tool. */
   deniedTools: string[];
   isCheck: boolean;
+  /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
+  quietLimitSeconds: number | null;
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
   projectKey: string | null;
   projectName: string | null;
+}
+
+/** One row's proposed edit: its before and after, and which fields differ.
+    Mirrors PlaybookProposalChangeDto. */
+export interface PlaybookProposalChange {
+  id: number;
+  playbookId: number | null;
+  before: Playbook;
+  after: Playbook;
+  changedFields: string[];
+  outOfDate: boolean;
+  outOfDateReason: string | null;
+}
+
+/** A batch of row edits proposed together, awaiting an operator's decision.
+    Mirrors PlaybookProposalDto. */
+export interface PlaybookProposal {
+  id: number;
+  reason: string;
+  issueKey: string | null;
+  author: string;
+  state: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  changes: PlaybookProposalChange[];
+}
+
+/** Mirrors PlaybookProposalApproveResponse. */
+export interface PlaybookProposalApproveResult {
+  approved: number;
+  playbooks: Playbook[];
+}
+
+/** Mirrors PlaybookProposalRejectResponse. */
+export interface PlaybookProposalRejectResult {
+  rejected: number;
 }
 
 export interface PlaybookCreateRequest {
@@ -1233,6 +1284,7 @@ export interface PlaybookCreateRequest {
   effort?: string;
   budget?: string;
   briefLimit?: string;
+  quietLimitSeconds?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
@@ -1253,6 +1305,7 @@ export interface PlaybookPatchRequest {
   effort?: string;
   budget?: string;
   briefLimit?: string;
+  quietLimitSeconds?: string;
   shape?: PlaybookShape;
   deniedTools?: string[];
   isCheck?: boolean;
@@ -1568,6 +1621,15 @@ export interface LandingHeld {
   sentence: string;
 }
 
+/** An issue in review that declared it was finished with no code and is not
+    pre-approved, so a person closes it. Mirrors NoCodeHeldDto. */
+export interface NoCodeHeld {
+  key: string;
+  title: string;
+  type: string;
+  reason: string;
+}
+
 /** An issue the board has deadlocked, with the judge's own sentence saying
     why. Mirrors DeadlockedDto. */
 export interface Deadlocked {
@@ -1637,6 +1699,7 @@ export interface Attention {
       the judge's own sentence saying why - a person's to fix, every time.
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
+  noCodeHeld?: NoCodeHeld[];
   /** The issues the board has deadlocked, with the judge's own sentence saying
       why - a person's to fix, every time. Absent from a board that predates it. */
   deadlocked?: Deadlocked[];
@@ -2108,6 +2171,20 @@ export interface Runner {
   agent: string | null;
   maxRuns: number | null;
   maxSpend: number | null;
+  /** The most tokens this runner may spend in all, as the board folds it. Null is no cap. */
+  maxTokens: number | null;
+  /** The most tokens this runner may spend in any rolling hour. Null is no cap. */
+  maxTokensPerHour: number | null;
+  /** Where `maxTokens` came from: `none` or `runner` today. */
+  maxTokensSource: string;
+  /** Where `maxTokensPerHour` came from: `none` or `runner` today. */
+  maxTokensPerHourSource: string;
+  /** Tokens this runner has spent so far. Null from a CLI that has not sent usage yet. */
+  tokensUsed: number | null;
+  /** Tokens this runner has spent in the last hour. Null from a CLI that has not sent usage yet. */
+  tokensLastHour: number | null;
+  /** When the hourly cap lifts and the runner resumes on its own. Null when it is not held back. */
+  throttledUntil: string | null;
   untilAt: string | null;
   /** How long a runner may go unheard from before it is gone - the server's own
       Hatch:RunnerGoneAfterSeconds, carried the way a claim carries its TTL, so
@@ -2157,6 +2234,10 @@ export interface RunnerPatchRequest {
   under?: string;
   maxRuns?: string;
   maxSpend?: string;
+  /** A token count (`500k`, `2M`): `''` clears the cap, absent leaves it alone. */
+  maxTokens?: string;
+  /** A token count per rolling hour: `''` clears the cap, absent leaves it alone. */
+  maxTokensPerHour?: string;
   /** An instant (`2026-09-12T17:00:00Z`). Never a bare date: "stop by the 12th"
       would be a midnight in a timezone nobody named. */
   untilAt?: string;

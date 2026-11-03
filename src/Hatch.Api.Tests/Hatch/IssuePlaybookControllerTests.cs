@@ -2,6 +2,7 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -286,12 +287,84 @@ public class IssuePlaybookControllerTests
         Assert.Equal("max", read.EffortOverride);
     }
 
+    // ---- Who may write ----
+
+    [Fact]
+    public async Task AnApiKey_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var caller = new StubCallerIdentity { Key = new EfApiKey { Name = "Claude", Prefix = "hatch_ak_abc", Hash = [], CreatedAt = Now } };
+        var playbook = Writing(h.Db, caller, browser: true, h.Time);
+
+        var refusal = await playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("opus", null), default);
+
+        AssertRefused(refusal.Result);
+        var after = await h.ReadAsync(issue.Key);
+        Assert.Null(after.ModelOverride);
+        Assert.Null(after.EffortOverride);
+        Assert.Empty(await h.EventsAsync(issue.Key));
+    }
+
+    [Fact]
+    public async Task AKeylessRunner_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var caller = new StubCallerIdentity { Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner") };
+        var playbook = Writing(h.Db, caller, browser: true, h.Time);
+
+        var refusal = await playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("opus", null), default);
+
+        AssertRefused(refusal.Result);
+        var after = await h.ReadAsync(issue.Key);
+        Assert.Null(after.ModelOverride);
+        Assert.Null(after.EffortOverride);
+        Assert.Empty(await h.EventsAsync(issue.Key));
+    }
+
+    [Fact]
+    public async Task APersonWithNoSecFetchMode_IsRefused_AndChangesNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = Writing(h.Db, new StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } }, browser: false, h.Time);
+
+        var refusal = await playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("opus", null), default);
+
+        AssertRefused(refusal.Result);
+        var after = await h.ReadAsync(issue.Key);
+        Assert.Null(after.ModelOverride);
+        Assert.Null(after.EffortOverride);
+        Assert.Empty(await h.EventsAsync(issue.Key));
+    }
+
+    [Fact]
+    public async Task APersonAtTheBrowser_MayWrite()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = Writing(h.Db, new StubCallerIdentity { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } }, browser: true, h.Time);
+
+        var patched = Value(await playbook.PatchIssuePlaybook(issue.Key, new IssuePlaybookRequest("opus", null), default));
+
+        Assert.Equal("opus", patched.ModelOverride);
+    }
+
+    private static void AssertRefused(IActionResult? result)
+    {
+        var refused = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal(PlaybookWrites.Sentence, refused.Value);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
 
     private sealed class Harness
     {
+        public required HatchContext Db { get; init; }
         public required IssuePlaybookController Playbook { get; init; }
         public required IssuesController Issues { get; init; }
         public required IssueThreadController Thread { get; init; }
@@ -329,11 +402,24 @@ public class IssuePlaybookControllerTests
 
         return new Harness
         {
-            Playbook = new IssuePlaybookController(db, new StubActorDirectory(), TestClaims.With(), caller, time, families),
+            Db = db,
+            Playbook = Writing(db, caller, browser: true, time, families),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), TestClaims.With(), caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Thread = new IssueThreadController(db, caller, time),
             Time = time,
             ProjectId = hatch.Id,
+        };
+    }
+
+    /// <summary>A controller whose caller is a person at a browser, unless the test says otherwise.</summary>
+    private static IssuePlaybookController Writing(
+        HatchContext db, StubCallerIdentity caller, bool browser, TimeProvider time, ModelFamilies? families = null)
+    {
+        var http = new DefaultHttpContext();
+        if (browser) http.Request.Headers["Sec-Fetch-Mode"] = "navigate";
+        return new IssuePlaybookController(db, new StubActorDirectory(), TestClaims.With(), caller, time, families)
+        {
+            ControllerContext = new ControllerContext { HttpContext = http },
         };
     }
 

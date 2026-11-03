@@ -24,7 +24,7 @@ public static class AuthChallenge
     /// <summary>The grant's label, same path. Eventually what logs./status. read as a proxy-authenticated user (docs/auth-architecture.md, Deferred).</summary>
     public const string LabelHeader = "X-Hatch-Label";
 
-    private const string SecFetchMode = "Sec-Fetch-Mode";
+    internal const string SecFetchMode = "Sec-Fetch-Mode";
     private const string RequestedWith = "X-Requested-With";
 
     /// <summary>Whether this caller can see a 302 - i.e. whether it is a browser navigating to a document.</summary>

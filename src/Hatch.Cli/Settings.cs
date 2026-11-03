@@ -28,7 +28,7 @@ public sealed partial record Settings
     /// <summary>Everything a settings file may carry. A line naming anything else is skipped, loudly.</summary>
     public static readonly string[] FileNames =
     [
-        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
+        "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
         "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS",
     ];
@@ -73,6 +73,14 @@ public sealed partial record Settings
 
     /// <summary>The claude CLI, if it is not simply on PATH.</summary>
     public string? ClaudeBin { get; init; }
+
+    /// <summary>
+    /// The tools an unattended claude session is spawned with: null for the
+    /// default list, a comma-separated list to replace it, or the word
+    /// <c>default</c> for Claude Code's own full set. See
+    /// <see cref="ClaudeAdapter.DefaultTools"/>.
+    /// </summary>
+    public string? ClaudeTools { get; init; }
 
     /// <summary>The codex CLI, if it is not simply on PATH.</summary>
     public string? CodexBin { get; init; }
@@ -391,6 +399,7 @@ public sealed partial record Settings
         var origin = Read("HATCH_BASE");
         var key = Read("HATCH_KEY");
         var claudeBin = Read("HATCH_CLAUDE_BIN");
+        var claudeTools = Read("HATCH_CLAUDE_TOOLS");
         var codexBin = Read("HATCH_CODEX_BIN");
         var grokBin = Read("HATCH_GROK_BIN");
         var ollamaHostRaw = Read("HATCH_OLLAMA_HOST");
@@ -470,6 +479,7 @@ public sealed partial record Settings
             Base = origin.TrimEnd('/'),
             Key = key?.Trim() ?? "",
             ClaudeBin = claudeBin,
+            ClaudeTools = claudeTools,
             CodexBin = codexBin,
             GrokBin = grokBin,
             OllamaHost = Hatch.Cli.OllamaHost.Resolve(

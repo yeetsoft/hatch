@@ -124,7 +124,7 @@ ticket](the-lifecycle-of-a-ticket) calls the hop.
 
 ## Runner tags
 
-A ticket's own say over which runner may implement it — a project may
+A ticket's own say over which runner may work it — a project may
 require tags too, the same shape. What a runner is actually held to is the
 union of all three: the project's own, every ancestor's own, and the
 ticket's own, rather than whichever is nearest. By default nothing is

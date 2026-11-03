@@ -1,11 +1,30 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Hatch.Cli;
 
 /// <summary>The claude CLI, behind <see cref="IAgentAdapter"/>.</summary>
-public sealed class ClaudeAdapter(string? configured = null, Action<string>? warn = null) : IAgentAdapter, IUsageProbe
+public sealed class ClaudeAdapter(
+    string? configured = null, Action<string>? warn = null, string? tools = null,
+    Func<string, string?>? help = null) : IAgentAdapter, IUsageProbe
 {
+    /// <summary>
+    /// The tools an unattended session is spawned with. Every request a session
+    /// makes re-reads its whole context from cache, and Claude Code's full set of
+    /// tool definitions is most of what a session starts with before it has done
+    /// anything; these are the ones the loop's sessions actually call.
+    /// <c>HATCH_CLAUDE_TOOLS</c> widens or replaces them.
+    /// </summary>
+    public const string DefaultTools = "Bash,Read,Edit,Write,Grep,Glob,Monitor,TaskStop";
+
+    /// <summary>The value of <c>HATCH_CLAUDE_TOOLS</c> that asks for Claude Code's own full set.</summary>
+    public const string FullToolSet = "default";
+
+    private const string ToolsFlag = "--tools";
+
+    private const string StableSystemPromptFlag = "--exclude-dynamic-system-prompt-sections";
+
     /// <summary>How long a probe is given before it is killed the way a lost lease is.</summary>
     private static readonly TimeSpan ProbeCeiling = TimeSpan.FromSeconds(30);
 
@@ -19,6 +38,12 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
     /// what that one mistake can cost.
     /// </summary>
     private bool _probeCostly;
+
+    /// <summary>Whether the CLI's <c>--help</c> names <c>--tools</c>. False until <see cref="CanSpawn"/> has looked.</summary>
+    private bool _knowsTools;
+
+    /// <summary>Whether the CLI's <c>--help</c> names <c>--exclude-dynamic-system-prompt-sections</c>.</summary>
+    private bool _knowsStablePrompt;
 
     public string Id => "claude";
 
@@ -39,7 +64,77 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
         if (!TryFind(configured, out var found, out refusal)) return false;
 
         _bin = found;
+        DetectFlags(found);
         return true;
+    }
+
+    /// <summary>
+    /// Asks the CLI once which of the spawn flags this adapter adds it knows. An
+    /// unknown option fails the spawn, and a spawn that fails every time ends the
+    /// night, so a flag the CLI does not list is left off and said so once.
+    /// </summary>
+    private void DetectFlags(string bin)
+    {
+        var text = (help ?? RunHelp)(bin);
+        _knowsTools = Lists(text, ToolsFlag);
+        _knowsStablePrompt = Lists(text, StableSystemPromptFlag);
+
+        var missing = new List<string>();
+        if (!_knowsTools) missing.Add(ToolsFlag);
+        if (!_knowsStablePrompt) missing.Add(StableSystemPromptFlag);
+        if (missing.Count > 0)
+            warn?.Invoke($"hatch: this claude CLI does not list {string.Join(" or ", missing)} - spawning without it, so sessions start with a larger context. Update the CLI.");
+    }
+
+    /// <summary>Whether <paramref name="flag"/> is an option the help text defines, rather than a word in a description.</summary>
+    private static bool Lists(string? help, string flag) =>
+        help is not null && Regex.IsMatch(
+            help, $@"^\s*(-\w,\s*)?{Regex.Escape(flag)}(?=[\s<\[,]|$)", RegexOptions.Multiline);
+
+    /// <summary>Null when it could not be run, which reads as a CLI that knows neither flag.</summary>
+    private static string? RunHelp(string bin)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = bin,
+                ArgumentList = { "--help" },
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+            if (process is null) return null;
+
+            process.StandardInput.Close();
+            var output = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(TimeSpan.FromSeconds(15)))
+            {
+                Stop(process);
+                return null;
+            }
+
+            return output.Wait(TimeSpan.FromSeconds(5)) ? output.Result : null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The <c>--tools</c> argument, or null for none: the configured list when
+    /// there is one, the default otherwise, and nothing at all when it is the
+    /// word <c>default</c>.
+    /// </summary>
+    private string? ToolsArgument()
+    {
+        if (string.IsNullOrWhiteSpace(tools)) return DefaultTools;
+
+        var list = tools.Trim();
+        return string.Equals(list, FullToolSet, StringComparison.OrdinalIgnoreCase) ? null : list;
     }
 
     public ProcessStartInfo BuildHeadless(SessionRequest request)
@@ -53,6 +148,19 @@ public sealed class ClaudeAdapter(string? configured = null, Action<string>? war
         start.ArgumentList.Add("-p");
         start.ArgumentList.Add("--permission-mode");
         start.ArgumentList.Add("bypassPermissions");
+
+        // Only the tools a session calls, so the starting context is not mostly
+        // definitions it never uses - see DefaultTools. Not in Base: an operator
+        // is present at BuildAttached and may want any of them.
+        if (_knowsTools && ToolsArgument() is { } toolList)
+        {
+            start.ArgumentList.Add(ToolsFlag);
+            start.ArgumentList.Add(toolList);
+        }
+
+        // Keeps the system prompt identical from one session to the next, so it
+        // is read from cache rather than written again.
+        if (_knowsStablePrompt) start.ArgumentList.Add(StableSystemPromptFlag);
 
         // Read from a file the runner wrote outside the tree, so that wiring the
         // hooks in leaves the checkout exactly as the session changed it.

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -102,19 +103,66 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now) && !IsQuiet(claim, now);
 
     /// <summary>
+    /// The quiet window this claim is judged against, in seconds: its own
+    /// <see cref="ClaimSnapshot.QuietLimitSeconds"/> where it carries a positive
+    /// one, or <see cref="StallLapseSeconds"/> otherwise - a null or
+    /// non-positive column falls back to the global exactly as no column at
+    /// all would, and a positive column applies even where the global is off.
+    /// </summary>
+    public int WindowFor(ClaimSnapshot claim) =>
+        claim.QuietLimitSeconds is { } own && own > 0 ? own : StallLapseSeconds;
+
+    /// <summary>
     /// Whether a live-looking claim has gone quiet: the later of its
     /// <see cref="ClaimSnapshot.ClaimedAt"/> and <see cref="ClaimSnapshot.ChatterAt"/>
-    /// is older than <see cref="StallLapseSeconds"/>. A bare heartbeat does not
+    /// is older than <see cref="WindowFor"/>. A bare heartbeat does not
     /// count - it says a process is still alive, not that anybody is still
     /// looking at this ticket, and a runner that never sends a line at all
     /// (<c>--quiet</c>) is measured from when it was claimed.
     /// </summary>
     public bool IsQuiet(ClaimSnapshot claim, DateTimeOffset now)
     {
-        if (StallLapseSeconds <= 0 || claim.ClaimedAt is not { } claimedAt) return false;
+        var window = WindowFor(claim);
+        if (window <= 0 || claim.ClaimedAt is not { } claimedAt) return false;
 
         var last = claim.ChatterAt is { } chatter && chatter > claimedAt ? chatter : claimedAt;
-        return last < now.AddSeconds(-StallLapseSeconds);
+        return last < now.AddSeconds(-window);
+    }
+
+    /// <summary>
+    /// A row holding a live claim at <paramref name="now"/> - the SQL shape of
+    /// <see cref="IsLive"/>, for a query EF can translate. EF will not
+    /// translate <c>Expression.Invoke</c> or a <c>!</c> over an
+    /// <c>Expression&lt;Func&lt;&gt;&gt;</c>, so this and <see cref="Takeable"/>
+    /// are two whole expressions rather than one negating the other - each
+    /// comment below names the exact comparison <see cref="Takeable"/> flips.
+    /// </summary>
+    private Expression<Func<EfHatchIssue, bool>> Live(DateTimeOffset now)
+    {
+        var cutoff = Cutoff(now);
+        var globalCutoff = QuietCutoff(now);
+
+        return i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
+            && (i.ClaimQuietLimitSeconds > 0
+                ? (i.ClaimChatterAt ?? i.ClaimedAt) >= now.AddSeconds(-i.ClaimQuietLimitSeconds.Value)
+                : (globalCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= globalCutoff));
+    }
+
+    /// <summary>
+    /// A row with no live claim at <paramref name="now"/> - the exact negation
+    /// of <see cref="Live"/>, written out rather than derived from it: every
+    /// <c>&gt;=</c> becomes <c>&lt;</c>, every <c>== null</c> becomes
+    /// <c>!= null</c> and back.
+    /// </summary>
+    private Expression<Func<EfHatchIssue, bool>> Takeable(DateTimeOffset now)
+    {
+        var cutoff = Cutoff(now);
+        var globalCutoff = QuietCutoff(now);
+
+        return i => i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff
+            || (i.ClaimQuietLimitSeconds > 0
+                ? (i.ClaimChatterAt ?? i.ClaimedAt) < now.AddSeconds(-i.ClaimQuietLimitSeconds.Value)
+                : (globalCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < globalCutoff));
     }
 
     /// <summary>
@@ -182,23 +230,20 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// </remarks>
     public async Task<ClaimLineage> LineageAsync(HatchContext db, DateTimeOffset now, CancellationToken ct, PriorityTree? priorities = null)
     {
-        var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
-
         var tree = await db.Issues.AsNoTracking()
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number })
             .ToListAsync(ct);
 
         var live = await db.Issues.AsNoTracking()
-            .Where(i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
-                && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff))
+            .Where(Live(now))
             .Select(i => new
             {
                 i.Id,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds),
             })
             .ToListAsync(ct);
 
@@ -221,7 +266,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             siblings.Add(row.Id);
         }
 
-        // Which tasks share a story's branch, and which story: two of them
+        // Which tasks share a parent's branch, and which parent: two of them
         // working at once push to the same branch. Read only when something
         // holds a claim at all - a lineage with nobody in it never asks.
         var shared = new Dictionary<long, long>();
@@ -276,13 +321,9 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, Guid token, string actor, string runner, int? playbookId,
         DateTimeOffset now, CancellationToken ct)
     {
-        var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
-
         return await db.Issues
-            .Where(i => i.Id == issueId
-                && (i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff
-                    || (quietCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < quietCutoff)))
+            .Where(i => i.Id == issueId)
+            .Where(Takeable(now))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimToken, token)
                 .SetProperty(i => i.ClaimedBy, actor)
@@ -291,7 +332,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
-                .SetProperty(i => i.ClaimPlaybookId, playbookId), ct) == 1;
+                .SetProperty(i => i.ClaimPlaybookId, playbookId)
+                .SetProperty(i => i.ClaimQuietLimitSeconds, (int?)null), ct) == 1;
     }
 
     /// <summary>
@@ -314,10 +356,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, Guid token, string? chatter, int? playbookId, DateTimeOffset now,
         CancellationToken ct)
     {
-        var cutoff = Cutoff(now);
-        var quietCutoff = QuietCutoff(now);
-        var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token && i.ClaimHeartbeatAt >= cutoff
-            && (quietCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= quietCutoff));
+        var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token).Where(Live(now));
 
         var written = (chatter, playbookId) switch
         {
@@ -369,7 +408,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, CancellationToken ct) =>
         await Clear(db.Issues.Where(i => i.Id == issueId && i.ClaimToken != null), ct) == 1;
 
-    /// <summary>The eight columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
+    /// <summary>The nine columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
     private static Task<int> Clear(IQueryable<EfHatchIssue> rows, CancellationToken ct) =>
         rows.ExecuteUpdateAsync(s => s
             .SetProperty(i => i.ClaimToken, (Guid?)null)
@@ -379,11 +418,12 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             .SetProperty(i => i.ClaimHeartbeatAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimChatter, (string?)null)
             .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
-            .SetProperty(i => i.ClaimPlaybookId, (int?)null), ct);
+            .SetProperty(i => i.ClaimPlaybookId, (int?)null)
+            .SetProperty(i => i.ClaimQuietLimitSeconds, (int?)null), ct);
 }
 
 /// <summary>
-/// An issue's seven claim columns, lifted off the row so that everything
+/// An issue's eight claim columns, lifted off the row so that everything
 /// judging a claim - a controller with an entity in hand, a scan with a
 /// projection, a board read that never materialised an entity at all - asks the
 /// same question of the same shape.
@@ -395,7 +435,8 @@ public sealed record ClaimSnapshot(
     DateTimeOffset? ClaimedAt,
     DateTimeOffset? HeartbeatAt,
     string? Chatter,
-    DateTimeOffset? ChatterAt)
+    DateTimeOffset? ChatterAt,
+    int? QuietLimitSeconds = null)
 {
     public static ClaimSnapshot Of(EfHatchIssue issue) => new(
         issue.ClaimToken,
@@ -404,7 +445,8 @@ public sealed record ClaimSnapshot(
         issue.ClaimedAt,
         issue.ClaimHeartbeatAt,
         issue.ClaimChatter,
-        issue.ClaimChatterAt);
+        issue.ClaimChatterAt,
+        issue.ClaimQuietLimitSeconds);
 }
 
 
@@ -496,8 +538,8 @@ public sealed class ClaimLineage
             generation = next;
         }
 
-        // Then sideways, for a task whose story shares one branch: a sibling
-        // under the same story that somebody is working would be pushing to the
+        // Then sideways, for a task whose parent shares one branch: a sibling
+        // under the same parent that somebody is working would be pushing to the
         // very branch this one would. Claimed ones only, in the order they were filed, so the
         // sentence names the same sibling on every pass.
         if (_sharedStory.TryGetValue(issueId, out var story))
@@ -505,7 +547,7 @@ public sealed class ClaimLineage
             foreach (var id in _live.Keys.Where(id => id != issueId && _sharedStory.GetValueOrDefault(id, -1) == story)
                          .Order())
             {
-                if (Named(id, heldToken, "sharing this story's branch") is { } beside) return beside;
+                if (Named(id, heldToken, "sharing its parent's branch") is { } beside) return beside;
             }
         }
 

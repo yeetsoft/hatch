@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
-import { UNASSIGNED, assigneeToken } from '../lib/assignee';
 import { DEFAULT_FILTER, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
 import { TypesFacet } from './TypesFacet';
+import { MoreFilters, assigneeOptions } from './MoreFilters';
 import { hasMultipleProjects } from '../lib/useProjects';
 
 /**
  * What the board is showing: a search box, a project, the types, a switch and
- * an assignee, all in one look (see `.hatch-facet`). A control holding its
+ * an assignee (behind "…" on a desktop), all in one look (see `.hatch-facet`). A control holding its
  * default sits at rest and one holding anything else is tinted, so the bar reads
  * as "what have I changed" and not as three-of-four-lit.
  *
@@ -75,8 +75,12 @@ export function BoardFilters({
           lit={filter.project !== ''}
           value={filter.project}
           options={[
-            { value: '', text: 'All projects' },
-            ...projects.map((project) => ({ value: project.key, text: `${project.key} — ${project.name}` })),
+            { value: '', text: 'All projects', short: 'All' },
+            ...projects.map((project) => ({
+              value: project.key,
+              text: `${project.key} — ${project.name}`,
+              short: project.key,
+            })),
           ]}
           onChange={(project) => onChange({ ...filter, project })}
         />
@@ -94,28 +98,23 @@ export function BoardFilters({
         title="Cards holding a question nobody has answered"
         onClick={() => onChange(toggleWaiting(filter))}
       >
-        Waiting on me
+        Needs me
       </button>
 
-      {/* A native <select> and not IssuePicker, deliberately: that component
-          exists because prefix typeahead fails over sixty options that all
-          start with the same project key, and neither half of that is true of
-          a household's worth of names.
-
-          "Unassigned" is its own row above the identities rather than derived
-          from the cards, because it is the one choice that is a fact about
-          absence - assigneeFacets can only report who is there. */}
-      <Facet
-        label="Assignee"
-        lit={filter.assignee !== ''}
-        value={filter.assignee}
-        options={[
-          { value: '', text: '— anyone —' },
-          { value: UNASSIGNED, text: 'Unassigned' },
-          ...assignees.map((assignee) => ({ value: assigneeToken(assignee), text: assignee.name })),
-        ]}
-        onChange={(assignee) => onChange({ ...filter, assignee })}
-      />
+      {/* Assignee is the rarely used filter, so on the desktop row it sits behind
+          "…" (MoreFilters) to keep the row on one line. The phone row has the
+          room inside its Filters disclosure and keeps it inline. */}
+      {collapsed ? (
+        <Facet
+          label="Assignee"
+          lit={filter.assignee !== ''}
+          value={filter.assignee}
+          options={assigneeOptions(assignees)}
+          onChange={(assignee) => onChange({ ...filter, assignee })}
+        />
+      ) : (
+        <MoreFilters filter={filter} assignees={assignees} onChange={onChange} />
+      )}
 
       {filtering && (
         <span className="hatch-filter-count">
@@ -123,8 +122,16 @@ export function BoardFilters({
         </span>
       )}
       {filtering && (
-        <button type="button" className="hatch-filter-clear" onClick={() => onChange({ ...DEFAULT_FILTER })}>
-          Reset
+        <button
+          type="button"
+          className="hatch-filter-reset"
+          aria-label="Reset filters"
+          title="Reset filters"
+          onClick={() => onChange({ ...DEFAULT_FILTER })}
+        >
+          <svg className="hatch-filter-reset-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
         </button>
       )}
     </>
@@ -137,7 +144,7 @@ export function BoardFilters({
         type="search"
         className={`hatch-board-search${filter.query.trim() !== '' ? ' hatch-board-search--lit' : ''}`}
         value={filter.query}
-        placeholder="Search titles, keys, parents…"
+        placeholder="Search…"
         aria-label="Search the board"
         onChange={(e) => onChange({ ...filter, query: e.target.value })}
       />

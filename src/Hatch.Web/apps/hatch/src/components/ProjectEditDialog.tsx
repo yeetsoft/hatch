@@ -484,7 +484,7 @@ export function ProjectEditDialog({
             )}
             <RunnerTagsField
               label="Runner tags"
-              hint="One tag per line. Only a runner advertising every one of these is handed this project's implementation work. Blank means any runner."
+              hint="One tag per line. Only a runner advertising every one of these is handed this project's work. Blank means any runner."
               value={draft.runnerTags}
               onChange={(next) => setDraft((d) => d && { ...d, runnerTags: next })}
             />

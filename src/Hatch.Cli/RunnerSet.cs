@@ -223,23 +223,29 @@ public static class RunnerSet
 
     /// <summary>
     /// The prefix of the file each member keeps in <see cref="DirVariable"/>'s
-    /// directory (<c>ledger.2</c>) holding its own cumulative runs and spend, so
-    /// that <c>--max-runs</c> and <c>--max-spend</c> can bound the set's total.
+    /// directory (<c>ledger.2</c>) holding its own cumulative runs, spend and tokens,
+    /// so that <c>--max-runs</c>, <c>--max-spend</c> and <c>--max-tokens</c> can bound the set's total.
     /// </summary>
     public const string LedgerFileName = "ledger";
 
     /// <summary>
-    /// Leaves this member's cumulative <paramref name="runs"/> and
-    /// <paramref name="spent"/> where its siblings can read them. One file per
-    /// slot, so two processes never write one path, written beside itself and
-    /// moved into place so a sibling never reads half of it.
+    /// Leaves this member's cumulative <paramref name="runs"/>,
+    /// <paramref name="spent"/> and <paramref name="tokens"/>, and the
+    /// <paramref name="entries"/> of its last hour, where its siblings can read
+    /// them. One file per slot, so two processes never write one path, written
+    /// beside itself and moved into place so a sibling never reads half of it.
+    /// The caller passes only entries still inside the hour; the fourth field
+    /// is <c>unixSeconds:tokens</c> pairs joined by commas, or <c>-</c> for none.
     /// </summary>
-    public static void WriteLedger(string setDir, int slot, int runs, decimal spent)
+    public static void WriteLedger(string setDir, int slot, int runs, decimal spent, long tokens, IReadOnlyList<TokenEntry>? entries = null)
     {
         var path = Path.Combine(setDir, $"{LedgerFileName}.{slot}");
+        var window = entries is { Count: > 0 }
+            ? string.Join(',', entries.Select(e => string.Create(CultureInfo.InvariantCulture, $"{e.At.ToUnixTimeSeconds()}:{e.Tokens}")))
+            : "-";
         try
         {
-            File.WriteAllText(path + ".tmp", string.Create(CultureInfo.InvariantCulture, $"{runs} {spent}"));
+            File.WriteAllText(path + ".tmp", string.Create(CultureInfo.InvariantCulture, $"{runs} {spent} {tokens} {window}"));
             File.Move(path + ".tmp", path, overwrite: true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -250,10 +256,11 @@ public static class RunnerSet
     /// that is missing, unreadable or does not parse contributes nothing, so the
     /// total can only under-count - never stop a set early.
     /// </summary>
-    public static (int Runs, decimal Spent) ReadLedgerTotal(string setDir, int exceptSlot)
+    public static (int Runs, decimal Spent, long Tokens) ReadLedgerTotal(string setDir, int exceptSlot)
     {
         var runs = 0;
         var spent = 0m;
+        var tokens = 0L;
         var own = $"{LedgerFileName}.{exceptSlot}";
 
         try
@@ -266,13 +273,15 @@ public static class RunnerSet
                 try
                 {
                     var parts = File.ReadAllText(path).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    if (parts.Length == 2
+                    if (parts.Length is 3 or 4
                         && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var r)
                         && decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var s)
-                        && s >= 0)
+                        && s >= 0
+                        && long.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var t))
                     {
                         runs += r;
                         spent += s;
+                        tokens += t;
                     }
                 }
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
@@ -280,7 +289,48 @@ public static class RunnerSet
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
 
-        return (runs, spent);
+        return (runs, spent, tokens);
+    }
+
+    /// <summary>
+    /// The token entries every member but <paramref name="exceptSlot"/> has left in
+    /// its ledger. A file that is missing, unreadable or lacks the fourth field
+    /// contributes nothing, and a pair that does not parse is skipped on its own,
+    /// so the window can only under-count - never throttle a set for nothing.
+    /// </summary>
+    public static IReadOnlyList<TokenEntry> ReadLedgerWindow(string setDir, int exceptSlot)
+    {
+        var entries = new List<TokenEntry>();
+        var own = $"{LedgerFileName}.{exceptSlot}";
+
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(setDir, LedgerFileName + ".*"))
+            {
+                var name = Path.GetFileName(path);
+                if (name == own || name.EndsWith(".tmp", StringComparison.Ordinal)) continue;
+
+                try
+                {
+                    var parts = File.ReadAllText(path).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (parts.Length != 4) continue;
+
+                    foreach (var pair in parts[3].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                    {
+                        var halves = pair.Split(':');
+                        if (halves.Length == 2
+                            && long.TryParse(halves[0], NumberStyles.None, CultureInfo.InvariantCulture, out var at)
+                            && at <= DateTimeOffset.MaxValue.ToUnixTimeSeconds()
+                            && long.TryParse(halves[1], NumberStyles.None, CultureInfo.InvariantCulture, out var t))
+                            entries.Add(new TokenEntry(DateTimeOffset.FromUnixTimeSeconds(at), t));
+                    }
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+
+        return entries;
     }
 
     /// <summary>

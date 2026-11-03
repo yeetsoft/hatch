@@ -68,13 +68,24 @@ beside the loops rather than being a session nobody can see.
 A claim is a five-minute lease on the ticket, taken before the session spawns
 and refreshed by a heartbeat every `max(5s, ttl/5)` — four heartbeats inside
 one lease, so one missed beat is never the difference between holding it and
-losing it. A `409` on a heartbeat means the lease is already gone — preempted,
-or taken by somebody else's claim — and the runner kills the session and its
-whole process tree at once, writing nothing further for it. Any other
-heartbeat failure is weather and is retried, but one that keeps failing past
-the ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops
-the session itself rather than let it keep working a ticket the board may
-already have handed to somebody else.
+losing it. A `409` on a heartbeat carries a `reason`: `expired` or `cleared`
+(the holder's own token, simply gone) and `taken` (somebody else's token now)
+all mean the lease really is gone, and the runner kills the session and its
+whole process tree at once, writing nothing further for it - the same as a
+legacy bare-string refusal, which names no reason at all.
+
+`quiet` is the one reason that is not a lost lease: the holder's own token,
+refused for going quiet rather than for being gone. The runner races this one
+rather than wait on it - it times the ticket's own quiet window itself, a
+few seconds early, and stops the session on its own before a heartbeat could
+ever be refused this way. Either way the token is still this runner's, and
+the increment reports it as a stall rather than a lost lease, so the usual
+let-go-then-flag ladder ([Stalls](#stalls)) applies to it the same as a
+session that simply ended without moving the ticket. Any other heartbeat
+failure is weather and is retried, but one that keeps failing past the
+ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops the
+session itself rather than let it keep working a ticket the board may already
+have handed to somebody else.
 
 There is no wall-clock cap on an increment beyond that: a session runs as
 long as it has a lease to renew. Ctrl-C waits up to ten seconds for the
@@ -306,14 +317,25 @@ counts as not moved. Stalls escalate:
   blocks the next dispatch and badges the card. The board resumes the ticket
   by itself after 15 minutes (`0` never resumes it).
 - **Three in a row hold it for a person.** The third stall is marked like the
-  second, and after it the board stops resuming the ticket.
+  second, and after it the board stops resuming the ticket. A person's
+  *Resume now* starts the count over.
 
 An open question on the ticket is itself the flag, so the second stall on a
 ticket that already has one only comments. A session that asked a question is
-no stall. Nor is running out of usage, being preempted, losing the lease, or a
-skip with `k`: none counts toward a stall or toward the three failed increments
-below, and a session stopped by a hard limit published what it left.
+no stall. Nor is running out of usage, being preempted, or a skip with `k`:
+none counts toward a stall or toward the three failed increments below, and a
+session stopped by a hard limit published what it left.
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
+
+Losing the lease is the one exception that cuts the other way: a takeover or
+a clear is somebody else's increment now, so it is exempt from the ladder
+above entirely - no comment, no stall, no outcome written. A claim gone quiet
+is not this: the runner stopped its own session, the lease is still held, and
+the stall ladder runs exactly as it would for a session that simply went
+quiet and ended on its own - see [The claim](#the-claim). It is exempt from
+the three failed increments below the same way a hard limit is, though: the
+runner stopped the session on purpose, which says nothing about whether the
+increment itself was going well.
 
 Running out of usage commits and pushes whatever the session left onto the
 issue's own branch, and the runner writes one comment: that it ran out, when
@@ -334,6 +356,8 @@ asked for is a run somebody has to go and check on.
 ```
 hatch go-to-work --max-runs 5             stop after five increments
 hatch go-to-work --max-spend 20           stop once the night has cost $20
+hatch go-to-work --max-tokens 2M          stop once the increments have reported two million tokens
+hatch go-to-work --max-tokens-per-hour 200k   wait, not stop, while the last hour is over 200k tokens
 hatch go-to-work --until 08:00            stop at that wall-clock hour (tomorrow, if it has gone by today)
 hatch go-to-work --stop-file /tmp/stop    stop once that path exists
 hatch go-to-work --project FIL --project AER   take only those projects' tickets
@@ -341,9 +365,27 @@ hatch go-to-work --project FIL --project AER   take only those projects' tickets
 
 `--max-runs` and `--max-spend` take at least 0, so `--max-runs 0` stops before
 the first increment. `--max-spend` counts priced increments only, and the
-night's closing tally says how many were unpriced. `--until` takes `HH:MM`.
+night's closing tally says how many were unpriced. `--max-tokens` takes a token
+count - `500k`, `2M`, `1.5M` - and counts reported tokens only, so an increment
+that reported none is not in the total and the tally says how many did not.
+`--until` takes `HH:MM`.
 `--stop-file` is refused if the path already exists, because otherwise an empty
 board and a stale stop file would look identical.
+
+`--max-tokens-per-hour` is the one bound here that **waits** and does not stop.
+It takes the same token counts, and while the tokens reported by increments
+that ended in the last sixty minutes are at or over it, the loop takes no
+ticket, spawns nothing and keeps heartbeating. The terminal says `hatch: this
+runner is over 200k tokens/hour - taking no tickets until 3:40am`, reminds you
+with `hatch: still over 200k tokens/hour`, and when the oldest entries have aged
+out, `hatch: back under 200k tokens/hour - taking tickets again`. An order sent
+from the Runners page during the wait is spent (`order spent - over 200k
+tokens/hour until 3:40am`) and nothing is claimed. It is not one of the three
+failures: the wait records no increment, no failure and no token, so it moves no
+other bound. One increment bigger than the count puts the loop over on its own
+until that increment is an hour old, and the closing tally's `peak hour` line is
+the number to size the count from. A value that is not a token count, `0`
+included, is refused at startup.
 
 They are checked between increments and through every wait, so the increment
 in flight always finishes, is committed and is pushed. `--stop-file` is the one
@@ -362,7 +404,7 @@ in on the next heartbeat, including being cleared (*Watching the loop*).
 
 From the loop's side, a bound reaches that row when the loop starts fresh: a
 loop started by hand, or the supervisor's first start. Its first heartbeat
-writes the five bounds it was started with - the four above and `--project` -
+writes the seven bounds it was started with - `--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour`, `--until`, `--under` and `--project` -
 and clears any the row held for a flag it was not given, so restarting by hand with `--max-runs` dropped leaves
 no limit on the row rather than the old one. The supervisor's own restart
 (exit 75, which carries the night in) writes none and keeps what the row
@@ -420,7 +462,8 @@ as the way to get restarts back.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it catches the 75, rebuilds and runs the loop again, carrying the
-night's totals forward, so a restart cannot outspend `--max-spend`. A failed
+night's totals forward, so a restart cannot outspend `--max-spend`, re-open
+`--max-tokens` or forget the last hour's tokens. A failed
 rebuild is never fatal: the supervisor says so and carries on with the binary
 already there rather than ending the night over it. On Windows, the
 PowerShell supervisor runs the loop from a copy of the build made under

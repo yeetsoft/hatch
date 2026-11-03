@@ -86,7 +86,8 @@ public class BoardController(
         i.ClosedAt,
         new ClaimSnapshot(
             i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
-            i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt));
+            i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+            i.ClaimQuietLimitSeconds));
 
     [HttpGet]
     public async Task<ActionResult<BoardDto>> GetBoard(CancellationToken ct)

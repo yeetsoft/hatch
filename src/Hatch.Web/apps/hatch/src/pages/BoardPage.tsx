@@ -32,7 +32,7 @@ import { closeOffer } from '../lib/closeSubtree';
 import type { CloseOffer } from '../lib/closeSubtree';
 import { cascadeEntries, dropConfirmation } from '../lib/confirmations';
 import type { CascadeEntry } from '../lib/confirmations';
-import { boardColumns } from '../lib/columns';
+import { boardColumns, columnTracks, narrowColumns } from '../lib/columns';
 import { message } from '../lib/errors';
 import {
   DEFAULT_FILTER,
@@ -108,6 +108,16 @@ const TOUCH_LIFT_DELAY_MS = 300;
  *  hold. Loose enough for a finger's natural wobble, tight enough that a
  *  scroll gesture clears it almost immediately. */
 const TOUCH_LIFT_TOLERANCE_PX = 8;
+
+/** The plus the phone's New button and the desktop's New issue button share. */
+function PlusGlyph() {
+  return (
+    <svg className="hatch-board-filing-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="11" y="4" width="2" height="16" rx="1" />
+      <rect x="4" y="11" width="16" height="2" rx="1" />
+    </svg>
+  );
+}
 
 export function BoardPage() {
   const isPhone = usePhone();
@@ -343,6 +353,11 @@ export function BoardPage() {
      shelving something, and they are still a click away by key or from their
      parent's Filed under list. */
   const columns = useMemo(() => boardColumns(board?.statuses ?? []), [board?.statuses]);
+  /* A column that shows no card is drawn at half width. Measured over
+     `visible` - after the filter, before Column's own waiting fold - so a
+     column holding only folded cards keeps its width. Recomputed every render
+     the cards or the filter change, which is what makes it live. */
+  const narrow = useMemo(() => narrowColumns(columns, visible), [columns, visible]);
 
   /* Keyed by `row.issue.key`, for Column's BoardCard calls to band a card by
      a lookup rather than a scan - null while flow-viz is off, or before its
@@ -678,10 +693,7 @@ export function BoardPage() {
               aria-label="New issue"
               onClick={() => setFiling(true)}
             >
-              <svg className="hatch-board-filing-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <rect x="11" y="4" width="2" height="16" rx="1" />
-                <rect x="4" y="11" width="16" height="2" rx="1" />
-              </svg>
+              <PlusGlyph />
               New
             </Button>
           )
@@ -704,8 +716,14 @@ export function BoardPage() {
                 {stacked ? 'Full board' : 'Stacked view'}
               </button>
             ) : (
-              <Button variant="primary" onClick={() => setFiling(true)}>
-                New issue
+              <Button
+                variant="primary"
+                className="hatch-board-new"
+                aria-label="New issue"
+                title="New issue"
+                onClick={() => setFiling(true)}
+              >
+                <PlusGlyph />
               </Button>
             )}
           </>
@@ -780,12 +798,16 @@ export function BoardPage() {
           onDragEnd={(e) => void onDragEnd(e)}
         >
           <Callout.Group suspended={dragUnderway} onOpenChange={setHoveredKey}>
-            <div className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}>
+            <div
+              className={`hatch-board${zone.length ? ' hatch-board--wip' : ''}`}
+              style={{ gridTemplateColumns: columnTracks(columns, narrow) }}
+            >
               <WipBands runs={zone} section={section} loads={loads} />
               {columns.map((status) => (
                 <Column
                   key={status.id}
                   status={status}
+                  narrow={narrow.has(status.id)}
                   cards={visible.filter((i) => i.statusId === status.id)}
                   hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                   filtering={isFiltering(filter)}
@@ -906,6 +928,7 @@ const terminalOf = (statuses: Status[], statusId: number) =>
  */
 function Column({
   status,
+  narrow,
   cards,
   hidden,
   filtering,
@@ -926,6 +949,8 @@ function Column({
   onToggleEpic,
 }: {
   status: Status;
+  /** The column shows no card and is drawn at half width. */
+  narrow: boolean;
   cards: LineageCard[];
   /** How many of this column's cards the filter is holding back. */
   hidden: number;
@@ -1000,7 +1025,7 @@ function Column({
 
   return (
     <section
-      className={`hatch-column${(dropping || lit) && !blocked ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
+      className={`hatch-column${narrow ? ' hatch-column--narrow' : ''}${(dropping || lit) && !blocked ? ' dropping' : ''}${tint ? ` hatch-column--wip hatch-wip-${tint}` : ''}`}
       style={statusVars(status.color)}
       ref={setNodeRef}
     >

@@ -2,7 +2,7 @@
 title: Playbooks
 section: Concepts
 order: 50
-summary: What a playbook row says, how one is matched to a move, and what its model, effort, budget and brief limit control.
+summary: What a playbook row says, how one is matched to a move, and what its model, effort, budget, brief limit and quiet limit control.
 ---
 
 A playbook is the instruction for one transition — one column to another, for
@@ -59,7 +59,7 @@ agent, and a board with none leaves it sitting rather than guessing.
 does not recognise is one the CLI refuses at spawn time, not one the Playbooks
 page catches first.
 
-## Budget, the brief limit and denied tools
+## Budget, the brief limit, the quiet limit and denied tools
 
 **Budget** is a playbook row's own ceiling on one session, in millions of
 tokens. A session is never told the number it is running against; the first
@@ -76,6 +76,14 @@ it back instead, with no session and nothing spent, to the column that feeds
 the one where code gets written, because a brief that long has not been cut
 into tasks yet. Where the board has no such column to send it back to, the
 move is folded instead, naming the brief's length and the limit it is held to.
+
+**The quiet limit** is the seconds a claim under a row may go without a word
+before it counts as quiet and the board lets go of it. Left blank, a row
+inherits the board's own quiet lapse, five minutes by default; a value is a
+whole number of one or more, in seconds, and clearing it hands the row back to
+the board's. In a repository's `.hatch/playbooks.yaml` it is the
+`quietLimitSeconds` key, held to the same rule, and a value that is not a
+whole number of one or more makes the file invalid, at the line it is on.
 
 **Denied tools** is a list of Claude Code permission rules in deny position on
 a row — a bare tool name such as `Edit`, or a scoped pattern such as
@@ -163,15 +171,76 @@ method for one issue is what the description is for.
 
 Anyone who can read the issue can see its overrides. Setting one is a person's.
 
+## Proposed changes
+
+A proposal is a session's request to change one or more rows — a reason, and
+the fields it would change — that touches nothing live until a person decides
+it. This page shows them.
+
+A person applies or discards every pending change together, with *Approve
+all* and *Reject all* live in the banner above the table. *Approve all*
+applies every pending change in one step, refusing with the server's own
+sentence and changing nothing if any one change has gone stale or no longer
+validates against the live board; it is disabled, with a title naming the
+out-of-date change and saying to reject it or have it resubmitted, for as
+long as any shown change is out of date. *Reject all* discards every pending
+change and leaves the live playbooks untouched, and is never disabled. Both
+act on exactly the set of proposals read as pending; a `409` — the set has
+changed, or a change no longer applies — is shown next to the banner as the
+server's own sentence, and only the proposal list reloads, leaving the table
+as it was. Otherwise the banner and its buttons go, the table reloads with
+the new values, and one line says how many changes were applied or
+proposals rejected.
+
+A pending proposal draws a banner above the table: a sentence counting how
+many proposals are awaiting a decision, and, when any of them carries a
+change the underlying row has since moved past, how many of those are out of
+date. Below the sentence is one line per proposal — its reason, who proposed
+it, a link to the ticket it came from when it has one, and how long ago it
+was made.
+
+Under the banner is one card per changed row, flattened across every pending
+proposal in the order they were made — nothing on a card says which proposal
+it belongs to, since the banner above it already does. Each card is headed
+by the row's identity as it stands today, not as the proposal would leave
+it: its transition, its types, and its shape and project. Below that is a
+before/after table, one row per field the matrix can hold, with the fields
+the proposal actually changes tinted so they stand out from the ones it
+leaves alone. When the change touches the prompt itself, the card also
+carries a diff of the prompt below the table.
+
+A card whose underlying row has changed since the proposal was made carries
+an "out of date" badge next to its header, with the reason the server gives
+for it: "edited since it was proposed", or "deleted since it was proposed".
+
 ## Why an agent cannot edit a playbook
 
 Reading the matrix accepts an API key, because that is how a session is told
-what it was dispatched with. Every write is a person's: creating a row,
-changing one, deleting one, and setting an issue's overrides. A key that tries
-gets a `403`.
+what it was dispatched with. Writing one — creating a row, changing one,
+deleting one, or setting an issue's own override — is a person's, at a
+browser, and a key that tries gets a `403`.
+
+The guard refuses a program outright: a key, or a keyless runner naming
+itself with `X-Hatch-Runner`. With no branch on whether the wall is on or
+off, it also refuses any call carrying neither of those but no
+`Sec-Fetch-Mode` header either — the mark a real browser sets on every
+request it makes, navigation or `fetch()`, and that a bare `curl` or a
+script never sends. The refusal holds the same whichever way the wall is
+set.
+
+**What this promises, and what it does not.** With the wall on, the lock is
+real: a key is refused, a keyless call never reaches the app, and only a
+signed-in person's browser gets through. With the wall off, nothing on a
+request is a credential — `LocalCaller`'s own remarks say the same of local
+mode generally ("Nothing here is a credential") — so a caller that sets out
+to forge a browser's headers is not stopped. What the guard closes is the
+door a session walks through by accident or on instruction, the bare `curl`
+and the `hatch api` call.
 
 That refusal is deliberate. An agent that could widen its own instructions and
-its own budget is a loop with no end. A session that thinks a row is wrong says
-so on the ticket and stops. What a key may and may not do is in [people, roles
-and keys](people-roles-and-keys#api-keys), and [what a session is
-told](what-a-session-is-told) shows the same rule from the prompt's side.
+its own budget is a loop with no end. A session that thinks a row is wrong
+proposes the change instead, through [proposed changes](#proposed-changes) —
+`POST /api/hatch/playbook-proposals` — and says so on the ticket. What a
+key may and may not do is in [people, roles and keys](people-roles-and-keys#api-keys),
+and [what a session is told](what-a-session-is-told) shows the same rule
+from the prompt's side.

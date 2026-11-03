@@ -1,8 +1,10 @@
+using System.Globalization;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.DeviceMapping;
+using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -23,12 +25,18 @@ namespace Hatch.Api.Modules.Hatch;
 /// held exactly as the token is: protected at rest, dots on read, <c>""</c>
 /// clears.
 ///
-/// The two routes that read and write them carry plain <c>[RequireAdmin]</c>
-/// with no <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
+/// The two routes that read and write them are <c>[RequireRole(User)]</c> with
+/// no <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
 /// <see cref="LocalPersonController"/> beside them: those are reads an agent has
 /// a use for, and these are not. An API key that could write here could set the
 /// name every event in the house is signed with, or swap the credential the
 /// account's headroom is read through. A person, at a browser, or nobody.
+///
+/// The site's default token caps are written from the same <c>PUT</c> but are
+/// held to more than the rest of it: an admin's to set, never a key's or a
+/// runner's, because they bound what every runner without a cap of its own may
+/// spend. That is checked in the action, not only the attribute - see
+/// <see cref="PutHatchSettings"/>.
 ///
 /// No class-level attribute even so, and that is the third time this split has
 /// been drawn (<see cref="RunnersController"/>, <see cref="AssigneeController"/>,
@@ -46,7 +54,8 @@ public class SettingsController(
     AppDbContext db,
     ISiteSettingsService siteSettings,
     IAgentCredential credentials,
-    IOptions<AuthOptions> authOptions) : ControllerBase
+    IOptions<AuthOptions> authOptions,
+    ICallerIdentity caller) : ControllerBase
 {
     /// <summary>What is stood in for a secret that is set. The admin app's SettingsController redacts to the same string, because it is the same answer.</summary>
     private const string Redacted = "••••••••";
@@ -128,10 +137,54 @@ public class SettingsController(
     /// exactly like one nobody ever set and <see cref="IAgentCredential"/>
     /// answers null for both.
     /// </summary>
+    /// <remarks>
+    /// <para>The default token caps are the same convention with a count in
+    /// place of a secret: left out leaves one, <c>""</c> clears it, a value
+    /// (<see cref="TokenCount.TryParse"/>'s notation) sets it.</para>
+    ///
+    /// <para>The order of the body is the guarantee that a refusal writes
+    /// nothing, the way <c>RunnersController.PatchRunner</c> documents it: gate,
+    /// then parse every present field, then write. The gate answers before the
+    /// parse so that a caller who may not set a default learns nothing about
+    /// what would have been accepted. It is checked here as well as by the
+    /// attribute, for <c>RunnersController.NotAPerson</c>'s reason: the role
+    /// gate is dormant wherever the wall is off. A request that carries neither
+    /// default is not gated by it, so a non-admin's name-only <c>PUT</c> is
+    /// unchanged.</para>
+    /// </remarks>
     [HttpPut]
     [RequireRole(PersonRole.User)]
-    public async Task<HatchSettingsDto> PutHatchSettings(HatchSettingsWriteRequest request, CancellationToken ct)
+    public async Task<ActionResult<HatchSettingsDto>> PutHatchSettings(HatchSettingsWriteRequest request, CancellationToken ct)
     {
+        if (request.DefaultMaxTokens is not null || request.DefaultMaxTokensPerHour is not null)
+        {
+            if (await NotAnAdmin(ct) is { } refusal) return refusal;
+        }
+
+        var tokenWrites = new List<(string Key, string Stored)>();
+        foreach (var (key, label, sent) in new (string, string, string?)[]
+        {
+            (SiteSettingKeys.RunnerDefaultMaxTokens, "the default max tokens", request.DefaultMaxTokens),
+            (SiteSettingKeys.RunnerDefaultMaxTokensPerHour, "the default max tokens per hour", request.DefaultMaxTokensPerHour),
+        })
+        {
+            if (sent is null) continue;
+
+            var trimmed = sent.Trim();
+            if (trimmed.Length == 0)
+            {
+                tokenWrites.Add((key, ""));
+            }
+            else if (TokenCount.TryParse(trimmed, out var count))
+            {
+                tokenWrites.Add((key, count.ToString(CultureInfo.InvariantCulture)));
+            }
+            else
+            {
+                return BadRequest($"{label} takes {TokenCount.Refusal} - not \"{trimmed}\"");
+            }
+        }
+
         var wrote = false;
 
         (string Key, string? Value)[] secrets =
@@ -161,6 +214,12 @@ public class SettingsController(
             wrote = true;
         }
 
+        foreach (var (key, stored) in tokenWrites)
+        {
+            await UpsertAsync(key, stored, ct);
+            wrote = true;
+        }
+
         // Before the read below, for the reason the admin controller gives:
         // somebody who saves a setting and is immediately shown something
         // derived from it should not be told the old answer for the length of
@@ -169,6 +228,24 @@ public class SettingsController(
         if (wrote) siteSettings.Invalidate();
 
         return await ReadAsync(ct);
+    }
+
+    /// <summary>
+    /// The default caps are an admin's: refused to a key or a keyless runner
+    /// whether the wall is up or not, and with the wall up to anybody who is
+    /// not an admin. With the wall off there are no roles, so a caller that is
+    /// not a program is the operator at their own machine.
+    /// </summary>
+    private async Task<ObjectResult?> NotAnAdmin(CancellationToken ct)
+    {
+        const string Sentence = "the default token budget is an admin's to set";
+
+        var refused = await caller.IsProgramAsync(ct)
+            || (authOptions.Value.Enabled && (await caller.PersonAsync(ct))?.Role is not >= PersonRole.Admin);
+
+        return refused
+            ? new ObjectResult(Sentence) { StatusCode = StatusCodes.Status403Forbidden }
+            : null;
     }
 
     private async Task UpsertAsync(string key, string value, CancellationToken ct)
@@ -199,7 +276,9 @@ public class SettingsController(
             LocalPersonNameApplies: !authOptions.Value.Enabled,
             LocalPersonName: settings.LocalPersonName ?? "",
             CodexApiKey: RedactedIfSet(settings.CodexApiKey),
-            XaiApiKey: RedactedIfSet(settings.XaiApiKey));
+            XaiApiKey: RedactedIfSet(settings.XaiApiKey),
+            DefaultMaxTokens: settings.RunnerDefaultMaxTokens,
+            DefaultMaxTokensPerHour: settings.RunnerDefaultMaxTokensPerHour);
     }
 
     private static string RedactedIfSet(string? secret) => string.IsNullOrWhiteSpace(secret) ? "" : Redacted;
@@ -219,20 +298,28 @@ public class SettingsController(
 /// <param name="LocalPersonName">The name as stored, or empty. Not a secret, so it is handed back to be edited.</param>
 /// <param name="CodexApiKey">Dots when one is set, empty when none is - the same answer as the token, for the same reason.</param>
 /// <param name="XaiApiKey">Dots when one is set, empty when none is.</param>
+/// <param name="DefaultMaxTokens">The site-wide cap on tokens a runner with none of its own runs under, or null when none is set.</param>
+/// <param name="DefaultMaxTokensPerHour">The site-wide cap on tokens per hour a runner with none of its own runs under, or null when none is set.</param>
 public record HatchSettingsDto(
     string ClaudeSubscriptionToken,
     bool LocalPersonNameApplies,
     string LocalPersonName,
     string CodexApiKey,
-    string XaiApiKey);
+    string XaiApiKey,
+    long? DefaultMaxTokens,
+    long? DefaultMaxTokensPerHour);
 
 /// <summary>
 /// An edit to any of the settings, or several. Null - or omitted - leaves one
-/// alone; <c>""</c> clears it. The two agent keys trail with defaults, so a
-/// request that names only the first two behaves as it did before they existed.
+/// alone; <c>""</c> clears it. The two agent keys and the two default token
+/// caps trail with defaults, so a request that names only the first two behaves
+/// as it did before they existed. The caps take <see cref="TokenCount"/>'s
+/// notation, as text, and are an admin's alone.
 /// </summary>
 public record HatchSettingsWriteRequest(
     string? ClaudeSubscriptionToken,
     string? LocalPersonName,
     string? CodexApiKey = null,
-    string? XaiApiKey = null);
+    string? XaiApiKey = null,
+    string? DefaultMaxTokens = null,
+    string? DefaultMaxTokensPerHour = null);

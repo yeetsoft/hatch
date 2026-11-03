@@ -41,7 +41,7 @@ without the flag.
 | `start` | No | Yes: moves the ticket |
 | `move` | No | Yes: moves the ticket |
 | `comment` | No | Yes: adds a comment |
-| `pr` | No | Only with a `<url>` or `--clear` |
+| `pr` | No | Only with a `<url>`, `--clear` or `--none "reason"` |
 | `landed` | No: reads git where it stands, or where `--repo` says | Yes: records a sha |
 | `verdict` | No | Yes: records a verdict |
 | `depends` | No | Only with a second key |
@@ -275,8 +275,11 @@ prints one sentence saying so. It writes nothing.
 - `--json` prints the endpoint's own answer and nothing else.
 
 A runner that has reported its own process adds `  on HOST`, `N runs` and
-`$X.XX` (the machine, the increments run and the dollars spent) before any
-projects, each only where it has said so.
+`$X.XX` (the machine, the increments run and the dollars spent), then the
+tokens, before any projects, each only where it has said so. The tokens read
+`2.4M tokens (180k last hour)`: the total, and the last hour in brackets only
+where the runner reported one. A runner that reported only an hour prints no
+tokens at all.
 
 A runner bound to some projects (`go-to-work --project FIL --project AER`, or
 the Projects field on the Runners page) closes its line with `  projects FIL AER`,
@@ -352,15 +355,26 @@ branch is what makes that search short.
 ### pr
 
 ```
-hatch pr AER-12 [<url>|--clear]
+hatch pr AER-12 [<url>|--clear|--none "reason"]
 ```
 
 With one argument it reads: it prints the URL where the ticket is being
 reviewed, and nothing else, so `open "$(hatch pr AER-12)"` is the whole of
-"show me the review". With two it writes.
+"show me the review". A ticket that declared it finished with no code prints
+that declaration instead. With two it writes.
 
 - `<url>` records where the review is, having opened one.
 - `--clear` takes it off the one it has.
+- `--none "reason"` declares the ticket finished with no code, and prints
+  `AER-12: finished with no code - reason`. The reason is required and at
+  most 200 characters; `hatch show` prints it as `no code:`.
+
+A declaration is for work that produced nothing to review, such as an
+investigation. It is refused, with the server's sentence and exit `1`, once the
+ticket has a pull request recorded or a branch on origin. A branch that later
+appears on origin sets the declaration aside, and so does moving the ticket
+left of review. A pre-approved ticket that declared no code closes with no
+person reading anything; one that is not waits in review for a person.
 
 ### landed
 
@@ -430,15 +444,15 @@ the refusal puts as the other issue "is already waiting on this issue".
 hatch one-pr AER-5 [on|off|inherit]
 ```
 
-Whether a story's tasks share the story's branch and one pull request. With
+Whether a story's or a bug's tasks share its branch and one pull request. With
 only the key it reads. With a second argument it writes:
 
 - `on` shares them, whatever the project's default is.
 - `off` does not, whatever the project's default is.
 - `inherit` follows the project's default.
 
-A story only, and it is locked once any task under it has started: set it when
-the story is filed, before its tasks are worked.
+A story or a bug only, and it is locked once any task under it has started:
+set it when it is filed, before its tasks are worked.
 
 ### dangerous
 
@@ -599,7 +613,8 @@ has what it prints and every exit code.
 hatch go-to-work [--mine] [--under <epic key>] [--project <key>]... [--once] [--standby] [--quiet]
                  [--interval <seconds>] [--merge-interval <seconds>]
                  [--agent <id>] [--max-runs <n>] [--max-spend <dollars>]
-                 [--until <HH:MM>] [--stop-file <path>] [--no-keys]
+                 [--max-tokens <count>] [--until <HH:MM>] [--stop-file <path>] [--no-keys]
+                 [--max-tokens-per-hour <count>]
                  [--restart-after <minutes> | --no-restart]
                  [--repo <path>]... [--workspace <dir>] [--runners <n>]
 ```
@@ -652,6 +667,33 @@ restart appends to the same file and the next night starts a new one.
 - `--max-spend <dollars>` stops once the run has cost that much. With
   `--runners` it is the set's combined spend, and a restart of the set carries it
   forward.
+- `--max-tokens <count>` stops once the increments have reported that many
+  tokens - `500k`, `2M`, `1.5M`. It counts reported tokens only: an increment
+  that reported none is not in the total. With `--runners` it is the set's
+  combined total, and a restart carries it forward. A value that is not a token
+  count is refused at startup, before any lock is taken.
+- `--max-tokens-per-hour <count>` waits, rather than stops, while the tokens
+  reported by increments that ended in the last sixty minutes are at or over
+  that count - `500k`, `2M`. The
+  loop takes no ticket, spawns nothing and keeps heartbeating, and says so once
+  (`hatch: this runner is over 200k tokens/hour - taking no tickets until 3:40am`,
+  then `hatch: still over 200k tokens/hour` as a reminder). The beat's line and
+  the runner row read `over 200k tokens/hour until 3:40am`, and the beat carries
+  `throttledUntil`, the instant the window is expected to be under the count.
+  The hour's own entries age out oldest first, so the loop resumes by itself the
+  moment the total is under, saying `hatch: back under 200k tokens/hour - taking
+  tickets again`. The wait records nothing: no increment, no failure and no
+  token is counted, so it never moves the three-failures stop or any other
+  bound. An order from the Runners page during the wait is spent with
+  `order spent - over 200k tokens/hour until 3:40am`, and nothing is claimed.
+  Usage limits win when both hold, a paused runner stays paused, and
+  `--max-tokens` and `--until` still end the night. With `--runners` the window
+  is the set's combined last hour, and a restart carries it forward. One
+  increment bigger than the count puts the loop over on its own, until that
+  increment is an hour old, so size the count above the biggest increment; the
+  closing tally's `hatch: peak hour 340k tokens` line is the number to size it
+  from. A value that is not a token count, `0` included, is refused at startup,
+  before any lock is taken.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
 - `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
 - `--restart-after <minutes>` comes back as a newer build at least that often.

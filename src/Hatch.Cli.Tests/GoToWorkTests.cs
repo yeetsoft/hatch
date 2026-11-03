@@ -381,6 +381,76 @@ public sealed class GoToWorkTests
         return h;
     }
 
+    /// <summary>
+    /// One pass of a loop started with <paramref name="started"/>, answered with
+    /// the token bounds <paramref name="maxTokens"/> and <paramref name="maxTokensPerHour"/>.
+    /// </summary>
+    private static async Task<Harness> OnePassTokensTold(string[] started, long? maxTokens, long? maxTokensPerHour)
+    {
+        var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat,
+            new RunnerInstructionDto("running", null, 1, null, null, MaxTokens: maxTokens, MaxTokensPerHour: maxTokensPerHour));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1", .. started], default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_setting_a_token_cap_the_loop_started_without_says_so()
+    {
+        using var h = await OnePassTokensTold([], 2_000_000, null);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --max-tokens 2M");
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_token_cap_says_off()
+    {
+        using var h = await OnePassTokensTold(["--max-tokens", "2M"], null, null);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --max-tokens off");
+    }
+
+    [Fact]
+    public async Task The_board_setting_an_hourly_token_cap_the_loop_started_without_says_so()
+    {
+        using var h = await OnePassTokensTold([], null, 200_000);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --max-tokens-per-hour 200k");
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_hourly_token_cap_says_off()
+    {
+        using var h = await OnePassTokensTold(["--max-tokens-per-hour", "200k"], null, null);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set --max-tokens-per-hour off");
+    }
+
+    [Fact]
+    public async Task Token_bounds_the_board_answers_with_as_the_loop_has_them_say_nothing()
+    {
+        using var h = await OnePassTokensTold(["--max-tokens", "2M", "--max-tokens-per-hour", "200k"], 2_000_000, 200_000);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.StartsWith("hatch: the board set", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_token_cap_the_board_lowers_below_what_the_night_has_used_stops_that_same_pass()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Tokens = 1_200_000, Restarts = 1 });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, null, null, null, MaxTokens: 1_000_000));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-tokens", "5M"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l == "hatch: the board set --max-tokens 1M");
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1.2M", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task The_board_s_tags_replace_the_loops_own_and_the_next_read_carries_them()
     {
@@ -1239,7 +1309,7 @@ public sealed class GoToWorkTests
     public async Task Rows_folded_for_their_tag_are_grouped_and_counted_on_the_servers_sentence()
     {
         using var h = new Harness();
-        const string sentence = "AER-7 is implemented only by a runner advertising macos and xcode - this runner advertises linux";
+        const string sentence = "AER-7 is worked only by a runner advertising macos and xcode - this runner advertises linux";
         h.Wire.Json("GET", Queue, new[]
         {
             Fixtures.Row("AER-7", sentence),
@@ -1973,14 +2043,15 @@ public sealed class GoToWorkTests
     /// with the same state and no order - which is what the real server does, since it clears an order
     /// in the beat that reads it. Registered in that order because the wire matches rules first-added-first.
     /// </summary>
-    private static void Ordering(Harness h, string state, RunnerOrderDto order, int? maxRuns = null, int times = 1)
+    private static void Ordering(
+        Harness h, string state, RunnerOrderDto order, int? maxRuns = null, int times = 1, long? maxTokensPerHour = null)
     {
         for (var i = 0; i < times; i++)
             h.Wire.Once("POST", Beat, HttpStatusCode.OK,
                 System.Text.Json.JsonSerializer.Serialize(
-                    new RunnerInstructionDto(state, null, maxRuns, null, null, Order: order), Fixtures.Json));
+                    new RunnerInstructionDto(state, null, maxRuns, null, null, Order: order, MaxTokensPerHour: maxTokensPerHour), Fixtures.Json));
 
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, null, maxRuns, null, null));
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto(state, null, maxRuns, null, null, MaxTokensPerHour: maxTokensPerHour));
     }
 
     private static string[] Claims(Harness h) =>
@@ -2102,7 +2173,7 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h, "AER-1");
         OneTicket(h, "AER-2");
-        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), maxTokensPerHour: 200_000);
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
@@ -2115,7 +2186,7 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h, "AER-2");
         Carrying(h, new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddDays(1) });
-        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), maxTokensPerHour: 200_000);
 
         using var cts = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "3600"], cts.Token);
@@ -2129,6 +2200,74 @@ public sealed class GoToWorkTests
 
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
         Assert.Empty(h.Sessions.Spawned);
+    }
+
+    // ---- HA-1685: over --max-tokens-per-hour the loop waits, it does not stop ----
+
+    [Fact]
+    public async Task A_loop_restarted_over_its_hourly_cap_still_waits_on_the_window_it_carried()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var at = DateTimeOffset.UtcNow.AddMinutes(-1);
+        Carrying(h, new NightState { Window = [new TokenEntry(at, 200_000)] });
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "1", "--max-tokens-per-hour", "200k", "--restart-after", "0"], cts.Token);
+
+        await Harness.Eventually(
+            () => Beats(h).Count >= 2 && Beats(h)[^1].Line?.StartsWith("over 200k tokens/hour until", StringComparison.Ordinal) == true,
+            "a beat saying why nothing is taken");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Empty(Claims(h));
+        Assert.Contains(h.Say.Said, l => l.Contains("this runner is over 200k tokens/hour - taking no tickets until", StringComparison.Ordinal));
+        Assert.Equal(at + TimeSpan.FromHours(1), Beats(h)[^1].ThrottledUntil);
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_spends_an_order_with_a_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-2");
+        Carrying(h, new NightState { Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)] });
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), maxTokensPerHour: 200_000);
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--interval", "3600", "--max-tokens-per-hour", "200k"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("order spent - over 200k tokens/hour until", StringComparison.Ordinal)),
+            "the sentence the order was spent with");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_night_capped_by_max_tokens_stops_at_it_rather_than_waiting_out_the_hourly_cap()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState
+        {
+            Tokens = 5_000_000,
+            Window = [new TokenEntry(DateTimeOffset.UtcNow.AddMinutes(-1), 200_000)],
+        });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(
+            ["--max-tokens", "1M", "--max-tokens-per-hour", "200k"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2298,6 +2437,33 @@ public sealed class GoToWorkTests
         Assert.Equal(2, h.Wire.Count("GET", Queue));
         Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_hop_carries_the_tags(bool tagged)
+    {
+        string[] tags = tagged ? ["gpu", "linux"] : [];
+        using var h = new Harness(tags: tags);
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        if (tagged)
+        {
+            Assert.Contains("tag=gpu", call.Query);
+            Assert.Contains("tag=linux", call.Query);
+        }
+        else
+        {
+            Assert.DoesNotContain("tag=", call.Query);
+        }
     }
 
     [Fact]
@@ -2859,6 +3025,77 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("back within Claude usage", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A loop carrying <paramref name="window"/> against <c>--max-tokens-per-hour 200k</c> and one
+    /// ticket, driven a minute at a time through the hour until its one allowed increment has run.
+    /// </summary>
+    private static async Task<(FakeTimeProvider Clock, DateTimeOffset Start, FakeProbingSessions Fake)> RunThroughTheHourAsync(
+        Harness h, Func<DateTimeOffset, TokenEntry[]> window, int fails = 0)
+    {
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, new NightState { Window = window(start), Fails = fails });
+
+        var clock = new FakeTimeProvider(start);
+        var fake = new FakeProbingSessions { Behaviour = () => null };
+        var runtime = h.Supervised with { Clock = clock, Sessions = fake };
+
+        var run = new GoToWorkCommand(runtime).RunAsync(
+            ["--interval", "1", "--max-runs", "1", "--restart-after", "0", "--max-tokens-per-hour", "200k"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(0, await run);
+        return (clock, start, fake);
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_resumes_by_itself_when_the_hour_has_passed()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var (_, _, fake) = await RunThroughTheHourAsync(h, start => [new TokenEntry(start.AddMinutes(-1), 200_000)]);
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("back under 200k tokens/hour - taking tickets again", StringComparison.Ordinal));
+
+        // The last beat that said so, and a later one that no longer does.
+        var beats = Beats(h);
+        var lastThrottled = beats.ToList().FindLastIndex(b => b.ThrottledUntil is not null);
+        Assert.True(lastThrottled >= 0, "no beat carried ThrottledUntil");
+        Assert.True(lastThrottled < beats.Count - 1, "no beat after the wait said it was over");
+    }
+
+    [Fact]
+    public async Task A_loop_over_its_hourly_cap_on_two_entries_resumes_when_the_first_leaves_the_window()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        TokenEntry[] entries = [];
+
+        var (clock, start, fake) = await RunThroughTheHourAsync(h, t0 =>
+            entries = [new TokenEntry(t0.AddMinutes(-40), 100_000), new TokenEntry(t0.AddMinutes(-20), 100_000)]);
+
+        // Either alone is under the cap; together they are not, until the older one is an hour old.
+        Assert.Single(fake.Inner.Spawned);
+        Assert.All(
+            Beats(h).Where(b => b.ThrottledUntil is not null),
+            b => Assert.Equal(entries[0].At + TimeSpan.FromHours(1), b.ThrottledUntil));
+        Assert.True(clock.GetUtcNow() - start < TimeSpan.FromMinutes(40), "the wait ran to the second entry's hour");
+    }
+
+    [Fact]
+    public async Task A_wait_over_the_hourly_cap_does_not_count_as_a_failure()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var (_, _, fake) = await RunThroughTheHourAsync(
+            h, start => [new TokenEntry(start.AddMinutes(-1), 200_000)], fails: 2);
+
+        Assert.Single(fake.Inner.Spawned);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_refusal_a_minute_after_the_named_reset_retries_in_minutes_and_not_a_day()
     {
@@ -3183,6 +3420,195 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task Max_tokens_stops_the_night_at_the_top_of_the_first_pass_after_the_reported_total_reaches_it()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace(
+            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Single(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1.2M", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_restart_cannot_outspend_the_token_cap_by_restarting()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Tokens = 1_000_000, Restarts = 1 });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Empty(h.Sessions.Spawned);
+        Assert.Contains(h.Say.Said, l => l.Contains("--max-tokens 1M reached at 1M", StringComparison.Ordinal));
+    }
+
+    // ---- The last beat of a night that ended on its own bounds ----
+
+    private static bool SaidStopped(RunnerHeartbeatRequest b) =>
+        b.Line?.StartsWith("Stopped:", StringComparison.Ordinal) == true;
+
+    [Fact]
+    public async Task A_loop_stopped_by_max_runs_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Equal("Stopped: --max-runs 1 reached", Beats(h)[^1].Line);
+    }
+
+    [Fact]
+    public async Task A_loop_stopped_by_max_tokens_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace(
+            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
+
+        Assert.Equal("Stopped: --max-tokens 1M reached at 1.2M", Beats(h)[^1].Line);
+    }
+
+    [Fact]
+    public async Task A_nap_ended_by_until_ends_on_a_beat_saying_why()
+    {
+        using var h = new Harness();
+        Assert.True(new NightState
+        {
+            ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1),
+            UntilAt = DateTimeOffset.UtcNow.AddSeconds(1),
+        }.Write(h.Supervised.NightStatePath));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "1"], default));
+
+        Assert.StartsWith("Stopped: --until", Beats(h)[^1].Line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_once_run_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task A_board_stop_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task A_restart_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var resets = 0;
+        h.Workspace.Watching = () =>
+        {
+            if (++resets == 2) h.Self.Print = FakeSelf.Of(("src/Hatch.Cli/GoToWork.cs", "after"));
+        };
+
+        Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Fact]
+    public async Task An_interrupt_sends_no_stopped_beat()
+    {
+        using var h = new Harness();
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(() => h.Wire.Count("POST", Beat) >= 1, "the first beat");
+        cts.Cancel();
+        await running;
+
+        Assert.DoesNotContain(Beats(h), SaidStopped);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("lots")]
+    [InlineData("1.25M")]
+    public async Task A_bad_max_tokens_is_refused_before_any_lock_or_beat(string value)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", value], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_flag_with_no_value_is_refused()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("lots")]
+    [InlineData("1.25M")]
+    public async Task A_bad_max_tokens_per_hour_is_refused_before_any_lock_or_beat(string value)
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour", value], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens-per-hour takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_per_hour_flag_with_no_value_is_refused()
+    {
+        using var h = new Harness();
+
+        Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour"], default));
+
+        Assert.Contains(h.Say.Complained, l => l.Contains("--max-tokens-per-hour takes a token count, like 500k or 2M", StringComparison.Ordinal));
+        Assert.Empty(h.Wire.Calls);
+    }
+
+    [Fact]
+    public async Task A_max_tokens_per_hour_is_accepted()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens-per-hour", "200k", "--max-runs", "1"], default));
+
+        Assert.DoesNotContain(h.Say.Complained, l => l.Contains("takes a token count", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_members_siblings_count_against_the_set_budget()
     {
         using var h = new Harness();
@@ -3190,7 +3616,7 @@ public sealed class GoToWorkTests
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         try
         {
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-spend", "6"], default));
@@ -3212,7 +3638,7 @@ public sealed class GoToWorkTests
         var dir = Directory.CreateTempSubdirectory("hatch-set-");
         try
         {
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "3"], default));
@@ -3237,14 +3663,65 @@ public sealed class GoToWorkTests
         {
             // The host recreated the directory, so only the sibling that already
             // re-seeded is in it: 2 + 1 carried is 3, and one more increment is 4.
-            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5");
+            File.WriteAllText(Path.Combine(dir.FullName, "ledger.1"), "2 5 0");
             var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
 
             Assert.Equal(0, await new GoToWorkCommand(member).RunAsync(["--max-runs", "4"], default));
 
             Assert.Single(h.Sessions.Spawned);
             Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 4 reached across the set at 4", StringComparison.Ordinal));
-            Assert.Equal((2, 2m), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+            Assert.Equal((2, 2m, 12_345L), RunnerSet.ReadLedgerTotal(dir.FullName, 1));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_restarted_member_puts_the_tokens_it_carried_back_in_the_sets_ledger()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Runs = 1, Tokens = 400_000 });
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2 };
+
+            await new GoToWorkCommand(member).RunAsync(["--max-runs", "1"], default);
+
+            Assert.Equal(400_000L, RunnerSet.ReadLedgerTotal(dir.FullName, 1).Tokens);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task A_restarted_member_puts_the_last_hour_it_carried_back_in_the_sets_ledger()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var now = new DateTimeOffset(2026, 9, 8, 2, 0, 0, TimeSpan.Zero);
+        var clock = new FakeTimeProvider(now);
+        var recent = new TokenEntry(now - TimeSpan.FromMinutes(10), 400_000);
+        Carrying(h, new NightState
+        {
+            Runs = 1,
+            Tokens = 500_000,
+            Window = [new TokenEntry(now - TimeSpan.FromMinutes(70), 100_000), recent],
+        });
+        var dir = Directory.CreateTempSubdirectory("hatch-set-");
+        try
+        {
+            var member = h.Supervised with { SetDir = dir.FullName, Slot = 2, Clock = clock };
+
+            await new GoToWorkCommand(member).RunAsync(["--max-runs", "1"], default);
+
+            // The entry an hour and ten minutes old is already out of the window.
+            Assert.Equal(new TokenEntry[] { recent }, RunnerSet.ReadLedgerWindow(dir.FullName, 1));
         }
         finally
         {
@@ -3292,7 +3769,7 @@ public sealed class GoToWorkTests
         // Every increment, the whole spend, and the elapsed time measured from
         // the first incarnation's start rather than this one's.
         Assert.Contains(h.Say.Said, l => l.Contains("3 increment(s) in 2h", StringComparison.Ordinal));
-        Assert.Contains(h.Say.Said, l => l.Contains("$6.50, 1 restart(s)", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("$6.50, 12k tokens, 1 restart(s)", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("moved    AER-9", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
     }

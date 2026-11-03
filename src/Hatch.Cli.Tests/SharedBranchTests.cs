@@ -236,6 +236,7 @@ public sealed class SharedBranchTests
         Assert.Contains("do not run `hatch pr AER-6`", prompt, StringComparison.Ordinal);
         Assert.Contains("titled with the story's key, not", prompt, StringComparison.Ordinal);
         Assert.Contains("then move AER-6 to \"In Review\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("hatch pr AER-6 --none", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -286,6 +287,18 @@ public sealed class SharedBranchTests
         Assert.Contains("This story's tasks share its branch, and none of them opens a pull request of its", prompt, StringComparison.Ordinal);
         Assert.Contains("the one pull request for all of them is yours to open", prompt, StringComparison.Ordinal);
         Assert.Contains("**Title:** `AER-5 ` and then", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_bug_that_shares_is_told_the_one_pull_request_is_its_to_open()
+    {
+        var bug = Fixtures.Issue(Story, type: "bug") with { OnePr = true };
+
+        var prompt = Prompt.Compose(Fixtures.Work(Story, issue: bug));
+
+        Assert.Contains("This bug's tasks share its branch, and none of them opens a pull request of its", prompt, StringComparison.Ordinal);
+        Assert.Contains("If this increment is the bug's closeout", prompt, StringComparison.Ordinal);
+        Assert.Contains("the one pull request for all of them is yours to open", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

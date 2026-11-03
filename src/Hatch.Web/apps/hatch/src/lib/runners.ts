@@ -17,10 +17,11 @@ import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { runnerProjectsDraft, runnerProjectsRequest, sameProjects } from './runnerProjects';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
+import { compactTokens, parseTokenCount, thousands } from './workLog';
 import type { Runner, RunnerPatchRequest } from '../types';
 
-/** The six states a row can be in, in the order they are decided. */
-export type RunnerActivity = 'gone' | 'exhausted' | 'paused' | 'stopping' | 'working' | 'idle';
+/** The seven states a row can be in, in the order they are decided. */
+export type RunnerActivity = 'gone' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
 
 /** The Max spend field's hint, naming the one thing the cap cannot do: bind an
     agent whose session reports no price at all. */
@@ -40,6 +41,10 @@ export const MAX_SPEND_HINT =
  * read the same way `gone`'s heartbeat is, though: a reset time only counts
  * while it is still ahead of `now` - once it has passed, it is no longer a
  * fact about the account, the same as a heartbeat old enough to be silence.
+ * `throttledUntil` is read the same way, future-only, and ranks just below
+ * `exhausted` and above `paused`: a runner over its own hourly token cap is
+ * waiting on the clock whatever a person asked of it, but its account still
+ * having usage left makes it a lesser fact than being out of usage.
  * Below that, what it was asked to do beats what it is holding - a loop
  * finishing its last increment is `stopping`, and that is the thing somebody
  * watching wants to see.
@@ -52,6 +57,7 @@ export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
   if (Number.isNaN(beat) || now.getTime() - beat > runner.goneAfterSeconds * 1000) return 'gone';
 
   if (runner.exhaustedUntil !== null && Date.parse(runner.exhaustedUntil) > now.getTime()) return 'exhausted';
+  if (runner.throttledUntil !== null && Date.parse(runner.throttledUntil) > now.getTime()) return 'throttled';
   if (runner.state === 'paused') return 'paused';
   if (runner.state === 'stopping') return 'stopping';
 
@@ -67,6 +73,11 @@ export function activityWords(runner: Runner, now: Date): string {
     case 'exhausted': {
       const words = resetClockWords(new Date(runner.exhaustedUntil as string), now);
       return `Out of usage until ${words ?? 'an unknown time'}`;
+    }
+    case 'throttled': {
+      const words = resetClockWords(new Date(runner.throttledUntil as string), now);
+      const over = runner.maxTokensPerHour === null ? 'its hourly token cap' : `${compactTokens(runner.maxTokensPerHour)} tokens/hour`;
+      return `Over ${over} until ${words ?? 'an unknown time'}`;
     }
     case 'paused':
       return 'Paused';
@@ -96,6 +107,7 @@ export const ACTIVITY_TONES: Record<RunnerActivity, 'muted' | 'success' | 'dange
   stopping: 'primary',
   paused: 'primary',
   exhausted: 'danger',
+  throttled: 'danger',
   gone: 'danger',
   idle: 'muted',
 };
@@ -255,6 +267,54 @@ export function orderSentence(order: NonNullable<Runner['order']>, now: Date): s
     server does the real parse. */
 export const isIssueKeyShape = (text: string): boolean => /^[A-Za-z][A-Za-z0-9]*-\d+$/.test(text.trim());
 
+/** The share of a token cap at which its line turns to a warning. Its own
+    bands, not `rampColor`'s: a cap is a ceiling a run is stopped at, so the
+    interesting question is how close it is, not how busy the machine is. */
+export const TOKEN_WARN_PERCENT = 80;
+
+/** How loudly a token line says how much of its cap is spent. */
+export function budgetTone(percent: number): 'success' | 'warn' | 'danger' {
+  if (percent >= 100) return 'danger';
+  return percent >= TOKEN_WARN_PERCENT ? 'warn' : 'success';
+}
+
+/** One line of a runner's token budget, already worded and measured. */
+export interface TokenBudgetLine {
+  text: string;
+  /** How much of the cap is spent, 0-100, or null where there is no cap. */
+  percent: number | null;
+  tone: 'success' | 'warn' | 'danger' | null;
+}
+
+/** One window's line: the figure against its cap (an unreported figure counts
+    as 0), or the figure alone where the cap is unset - or nothing, where the
+    cap is unset and no run reported a figure. */
+function budgetLine(used: number | null, cap: number | null, window: string): TokenBudgetLine | null {
+  if (cap === null) {
+    return used === null ? null : { text: `${compactTokens(used)} ${window}, no cap`, percent: null, tone: null };
+  }
+  const spent = used ?? 0;
+  const percent = cap > 0 ? Math.min(100, (spent / cap) * 100) : 100;
+  return { text: `${compactTokens(spent)} / ${compactTokens(cap)} ${window}`, percent, tone: budgetTone(percent) };
+}
+
+/**
+ * The token budget a row says: the night's line, then the hour's.
+ *
+ * Neither cap set is no budget at all, and says nothing even where a total was
+ * reported - the cell words that as `No token budget`. Otherwise each window
+ * speaks for itself: against its cap where it has one, and as a bare figure
+ * where it has none but a run reported one. The percent comes from the raw
+ * numbers, never a rounded `compactTokens` figure, so 79.9 stays a success.
+ */
+export function tokenBudget(runner: Runner): TokenBudgetLine[] {
+  if (runner.maxTokens === null && runner.maxTokensPerHour === null) return [];
+
+  const night = budgetLine(runner.tokensUsed, runner.maxTokens, 'tokens');
+  const hour = budgetLine(runner.tokensLastHour, runner.maxTokensPerHour, 'per hour');
+  return [night, hour].filter((line): line is TokenBudgetLine => line !== null);
+}
+
 /** The bounds as the form holds them: strings, because that is what inputs are
     and what the wire takes - all but `refusesDangerous`, a boolean because a
     checkbox is. */
@@ -262,6 +322,9 @@ export interface RunnerBounds {
   under: string;
   maxRuns: string;
   maxSpend: string;
+  /** Grouped with commas once the box is left (`2,000,000`), or as typed. */
+  maxTokens: string;
+  maxTokensPerHour: string;
   /** The wire form, or `''` - what MomentField hands back. */
   untilAt: string;
   tags: string;
@@ -275,6 +338,8 @@ export function boundsOf(runner: Runner): RunnerBounds {
     under: runner.under ?? '',
     maxRuns: runner.maxRuns === null ? '' : String(runner.maxRuns),
     maxSpend: runner.maxSpend === null ? '' : String(runner.maxSpend),
+    maxTokens: runner.maxTokens === null ? '' : thousands(runner.maxTokens),
+    maxTokensPerHour: runner.maxTokensPerHour === null ? '' : thousands(runner.maxTokensPerHour),
     untilAt: runner.untilAt ?? '',
     tags: runnerTagsDraft(runner.tags),
     projects: runnerProjectsDraft(runner.projects),
@@ -282,11 +347,28 @@ export function boundsOf(runner: Runner): RunnerBounds {
   };
 }
 
+/** A token box as the wire takes it: trimmed, and with the commas of the
+    on-blur grouping taken out - but only when they are exactly a grouping, so
+    `2,000,000` still parses and `2,5` is left for the grammar to refuse. */
+export function tokensWire(text: string): string {
+  const trimmed = text.trim();
+  return /^\d{1,3}(,\d{3})+$/.test(trimmed) ? trimmed.replaceAll(',', '') : trimmed;
+}
+
+/** Whether a token box holds something other than the saved one. Compared as
+    counts where both parse, so `2M` against a saved `2,000,000` is no change. */
+function tokensDiffer(draft: string, saved: string): boolean {
+  const a = parseTokenCount(tokensWire(draft));
+  const b = parseTokenCount(tokensWire(saved));
+  return a !== null && b !== null ? a !== b : draft.trim() !== saved.trim();
+}
+
 /** Whether the form is holding anything the row is not. */
 export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
   const saved = boundsOf(runner);
   return (
     (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim()) ||
+    (['maxTokens', 'maxTokensPerHour'] as const).some((f) => tokensDiffer(draft[f], saved[f])) ||
     !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
     !sameProjects(runnerProjectsRequest(draft.projects), runner.projects) ||
     draft.refusesDangerous !== saved.refusesDangerous
@@ -302,15 +384,24 @@ export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
  * a control that offered them the empty time box in the first place.
  */
 export function boundsProblem(draft: RunnerBounds): string | null {
-  return draft.untilAt.trim() !== '' && !draft.untilAt.includes('T')
-    ? 'An until is an hour, not just a day - set a time beside the date.'
-    : null;
+  if (draft.untilAt.trim() !== '' && !draft.untilAt.includes('T')) {
+    return 'An until is an hour, not just a day - set a time beside the date.';
+  }
+  if (!tokensParse(draft.maxTokens)) return 'Max tokens this run takes a token count, like 500k or 2M.';
+  if (!tokensParse(draft.maxTokensPerHour)) return 'Max tokens per hour takes a token count, like 500k or 2M.';
+  return null;
 }
+
+/** Whether a token box is empty or holds a count - the only two it can be saved in. */
+const tokensParse = (text: string): boolean => {
+  const wire = tokensWire(text);
+  return wire === '' || parseTokenCount(wire) !== null;
+};
 
 /**
  * The form as a request: every field, trimmed, including the empty ones.
  *
- * Sending all four rather than only what changed is the point of the tri-state:
+ * Sending every field rather than only what changed is the point of the tri-state:
  * `''` is how a cap comes off, and a field left out would mean "leave it", so a
  * cleared box that was not sent would silently keep the cap it was clearing.
  */
@@ -319,9 +410,20 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     under: draft.under.trim(),
     maxRuns: draft.maxRuns.trim(),
     maxSpend: draft.maxSpend.trim(),
+    maxTokens: tokensWire(draft.maxTokens),
+    maxTokensPerHour: tokensWire(draft.maxTokensPerHour),
     untilAt: draft.untilAt.trim(),
     tags: runnerTagsRequest(draft.tags),
     projects: runnerProjectsRequest(draft.projects),
     refusesDangerous: draft.refusesDangerous,
   };
+}
+
+/** Which token box a server refusal is about, so the form can mark it - or
+    null for a refusal about anything else. `--max-tokens-per-hour` is asked
+    first because it contains `--max-tokens`. */
+export function tokenFieldOf(refusal: string | null): 'maxTokens' | 'maxTokensPerHour' | null {
+  if (refusal === null) return null;
+  if (refusal.includes('--max-tokens-per-hour')) return 'maxTokensPerHour';
+  return refusal.includes('--max-tokens') ? 'maxTokens' : null;
 }

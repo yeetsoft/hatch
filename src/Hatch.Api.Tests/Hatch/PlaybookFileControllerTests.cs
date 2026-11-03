@@ -36,6 +36,7 @@ public class PlaybookFileControllerTests
             effort: max
             budget: 5
             briefLimit: 6000
+            quietLimitSeconds: 1500
             prompt: |
               You are turning a captured idea into an epic...
         """;
@@ -259,6 +260,17 @@ public class PlaybookFileControllerTests
 
         var row = Assert.Single(Assert.Single(answer.Files).Rows);
         Assert.Equal("Shaping", row.FromStatusName);
+    }
+
+    [Fact]
+    public async Task AParsedRow_ReadsBackItsQuietLimitSeconds()
+    {
+        var h = await NewAsync();
+
+        await h.PutAsync(Request(Good, Sha1));
+
+        var row = Assert.Single(Assert.Single(Value(await h.GetAsync()).Files).Rows);
+        Assert.Equal(1500, row.QuietLimitSeconds);
     }
 
     // ---- Harness ----

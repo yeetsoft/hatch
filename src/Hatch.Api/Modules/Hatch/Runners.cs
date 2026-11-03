@@ -94,8 +94,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     public RunnerDto Project(
         EfHatchRunner runner, (string Key, ClaimSnapshot Claim, string? Status)? claim, IReadOnlyList<string>? drives = null,
         string? forName = null, bool canControl = true, RunnerOrderDto? order = null,
-        bool yours = false)
+        bool yours = false, long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null)
     {
+        var maxTokens = Effective(runner.MaxTokens, defaultMaxTokens);
+        var maxTokensPerHour = Effective(runner.MaxTokensPerHour, defaultMaxTokensPerHour);
         var drift = RevisionComparison.Compare(revision.Revision, revision.Sequence, runner.Revision ?? "", runner.Sequence ?? 0);
         // Reference and client swapped on purpose: the reference here is the
         // runner's own checkout, not the board.
@@ -139,7 +141,14 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Spent,
             runner.Host,
             claim?.Status,
-            runner.RefusesDangerous ?? false);
+            runner.RefusesDangerous ?? false,
+            maxTokens.Cap,
+            maxTokensPerHour.Cap,
+            maxTokens.Source,
+            maxTokensPerHour.Source,
+            runner.TokensUsed,
+            runner.TokensLastHour,
+            runner.ThrottledUntil);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
@@ -151,7 +160,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     };
 
     /// <summary>
-    /// What the loop reads back off its own heartbeat: the row's operator half,
+    /// What the loop reads back off its own heartbeat: the operator's half of
+    /// the row - or, for a token cap the row leaves unset, the site default -
     /// plus who it works for - a fact about the caller and not about the row,
     /// so it is handed in rather than read off <paramref name="runner"/>. The
     /// order is a pure projection too - the caller decides whether this beat
@@ -159,11 +169,25 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// has usually already been cleared by the time this is called.
     /// </summary>
     public static RunnerInstructionDto Instruct(
-        EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null, RunnerOrderDto? order = null) =>
+        EfHatchRunner runner, string? forName, IReadOnlyList<string>? drives = null, RunnerOrderDto? order = null,
+        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
             runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
             runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            runner.RefusesDangerous ?? false);
+            runner.RefusesDangerous ?? false,
+            Effective(runner.MaxTokens, defaultMaxTokens).Cap,
+            Effective(runner.MaxTokensPerHour, defaultMaxTokensPerHour).Cap);
+
+    /// <summary>
+    /// A token cap as the row's own value, else the site default, else none,
+    /// with which of the three it was. <see cref="Instruct"/> and
+    /// <see cref="Project"/> both go through it, so the beat the loop obeys and
+    /// the row the operator reads cannot disagree.
+    /// </summary>
+    private static (long? Cap, string Source) Effective(long? own, long? site) =>
+        own is not null ? (own, "runner")
+        : site is not null ? (site, "default")
+        : (null, "none");
 
     /// <summary>
     /// Every live claim, by the runner holding it. The key is
@@ -188,6 +212,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 i.ClaimHeartbeatAt,
                 i.ClaimChatter,
                 i.ClaimChatterAt,
+                i.ClaimQuietLimitSeconds,
                 Status = i.Status!.Name,
             })
             .ToListAsync(ct);
@@ -198,7 +223,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 Key: IssueKey.Format(i.Key, i.Number),
                 Claim: new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
-                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt),
+                    i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
+                    i.ClaimQuietLimitSeconds),
                 i.Status))
             .Where(i => claims.IsLive(i.Claim, now))
             // A runner holds one ticket at a time by construction, and the most

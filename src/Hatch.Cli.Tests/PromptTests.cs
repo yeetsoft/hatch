@@ -31,6 +31,15 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_pull_request_section_tells_a_session_that_changed_nothing_to_declare_it_not_push_an_empty_branch()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch pr AER-12 --none", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_trunk_landing_project_is_told_to_land_rather_than_open_a_pull_request()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk));
@@ -94,6 +103,7 @@ public sealed class PromptTests
         Assert.DoesNotContain("## Opening a pull request", prompt, StringComparison.Ordinal);
         Assert.Contains("This row's playbook denies git writes", prompt, StringComparison.Ordinal);
         Assert.Contains("## No pull request from this row", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("--none", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -613,6 +623,27 @@ public sealed class PromptTests
         Assert.Contains("so move it, or ask, before you", prompt, StringComparison.Ordinal);
     }
 
+    // ---- HA-1644: the ending proposes a playbook change rather than editing one ----
+
+    [Fact]
+    public void The_ending_tells_a_session_to_propose_a_playbook_change_rather_than_edit_one()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        var section = prompt[prompt.IndexOf("## Where this increment ends", StringComparison.Ordinal)..];
+        Assert.Contains(
+            "Do not edit playbooks. The API refuses it, and the refusal is deliberate:",
+            section, StringComparison.Ordinal);
+        Assert.Contains(
+            "an agent that could widen its own instructions and its own budget is a loop",
+            section, StringComparison.Ordinal);
+        Assert.Contains("hatch api POST /api/hatch/playbook-proposals", section, StringComparison.Ordinal);
+        Assert.Contains("\"issueKey\": \"AER-12\"", section, StringComparison.Ordinal);
+        Assert.Contains("Say on AER-12 that it was proposed, and stop.", section, StringComparison.Ordinal);
+        Assert.Contains("A person applies it on the", section, StringComparison.Ordinal);
+        Assert.DoesNotContain("If a playbook is wrong, say so on the ticket and stop.", prompt, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_hook_and_the_prompt_say_it_in_the_same_words()
     {
@@ -645,16 +676,16 @@ public sealed class PromptTests
         Assert.DoesNotContain("hatch ask", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605) ----
+    // ---- HA-377: the prompt's fixed part has a character budget (4,000, raised to 4,500 for the dangerous call, HA-1605, and to 5,000 for the depends call, AR-51, and to 5,500 for the playbook-proposals call, HA-1644) ----
 
     [Fact]
-    public void The_fixed_part_of_the_prompt_stays_under_forty_five_hundred_characters()
+    public void The_fixed_part_of_the_prompt_stays_under_five_thousand_characters()
     {
         var fixedPart = string.Join('\n', Prompt.Tail(
             "AER-12", "In Review", "https://hatch.example.test/apps/hatch/issues/AER-12", null, preApproval: PreApprovalLevels.NoneName));
 
-        Assert.True(fixedPart.Length < 4500,
-            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 4,500.");
+        Assert.True(fixedPart.Length < 5500,
+            $"The prompt's fixed part is {fixedPart.Length} characters - trim it back under 5,500.");
     }
 
     [Fact]
@@ -686,6 +717,25 @@ public sealed class PromptTests
 
         Assert.Contains("hatch dangerous AER-12 \"why\"", prompt, StringComparison.Ordinal);
         Assert.Contains("load testing", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_work_prompt_tells_a_session_that_files_work_to_declare_what_must_land_first()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch depends AER-12 <waited-on>", prompt, StringComparison.Ordinal);
+        Assert.Contains("`hatch depends <waiting> <waited-on>`, one call per edge. Filing issues in", prompt, StringComparison.Ordinal);
+        Assert.Contains("order does not order them.", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_check_s_prompt_does_not_carry_the_depends_call_or_its_paragraph()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", isCheck: true));
+
+        Assert.DoesNotContain("hatch depends", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("order does not order them", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

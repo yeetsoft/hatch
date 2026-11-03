@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PlaybooksTable } from './PlaybooksPage';
-import type { Playbook, PlaybookFileDto, PlaybookFileRowDto, Project, Status } from '../types';
+import { MemoryRouter } from 'react-router-dom';
+import { PlaybookProposals, PlaybooksTable } from './PlaybooksPage';
+import type {
+  Playbook,
+  PlaybookFileDto,
+  PlaybookFileRowDto,
+  PlaybookProposal,
+  PlaybookProposalChange,
+  Project,
+  Status,
+} from '../types';
 
 // PlaybooksPage pulls in PlaybookEditDialog, whose Prompt field's
 // MarkdownEditor reaches lib/clientLogger, which reads `window` at import,
@@ -25,6 +34,7 @@ const BASE: Playbook = {
   briefLimit: null,
   deniedTools: [],
   isCheck: false,
+  quietLimitSeconds: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -208,6 +218,7 @@ describe('PlaybooksTable', () => {
         briefLimit: null,
         deniedTools: [],
         isCheck: false,
+        quietLimitSeconds: null,
       },
     ]);
 
@@ -243,5 +254,132 @@ describe('PlaybooksTable', () => {
     expect(shown).toContain('Hide 2 overridden');
     expect(shown).toContain('overridden by the file');
     expect(shown).toContain('not read while AER reads its file');
+  });
+});
+
+const NOW = new Date('2026-01-02T00:00:00Z');
+
+function change(over: Partial<PlaybookProposalChange> = {}): PlaybookProposalChange {
+  return {
+    id: 1,
+    playbookId: 1,
+    before: BASE,
+    after: { ...BASE, model: 'opus' },
+    changedFields: ['model'],
+    outOfDate: false,
+    outOfDateReason: null,
+    ...over,
+  };
+}
+
+function proposal(over: Partial<PlaybookProposal> = {}): PlaybookProposal {
+  return {
+    id: 1,
+    reason: 'the review playbook never caught a half-finished rewrite',
+    issueKey: 'AER-12',
+    author: 'Nathan-PC_1',
+    state: 'pending',
+    createdAt: '2026-01-01T00:00:00Z',
+    decidedAt: null,
+    decidedBy: null,
+    changes: [change()],
+    ...over,
+  };
+}
+
+function renderProposals(proposals: PlaybookProposal[] | null) {
+  return renderToStaticMarkup(
+    <MemoryRouter>
+      <PlaybookProposals proposals={proposals} statuses={STATUSES} now={NOW} />
+    </MemoryRouter>,
+  );
+}
+
+describe('PlaybookProposals', () => {
+  it('draws nothing when there is nothing pending', () => {
+    expect(renderProposals(null)).toBe('');
+    expect(renderProposals([])).toBe('');
+  });
+
+  it('draws the banner sentence, the reason/author/age line and one card for one proposal', () => {
+    const html = renderProposals([proposal()]);
+    expect(html).toContain('1 proposed change awaiting a decision');
+    expect(html).toContain('the review playbook never caught a half-finished rewrite');
+    expect(html).toContain('Nathan-PC_1');
+    expect(html).toContain('AER-12');
+    expect(html).toContain('href="/issues/AER-12"');
+    expect(html).toContain('hatch-playbook-proposal-head');
+  });
+
+  it('draws no link when a proposal has no issueKey', () => {
+    const html = renderProposals([proposal({ issueKey: null })]);
+    expect(html).not.toContain('<a ');
+    expect(html).not.toContain('href=');
+  });
+
+  it('draws one card per change, flattened across proposals in order', () => {
+    const first = proposal({ id: 1, changes: [change({ id: 1 })] });
+    const second = proposal({ id: 2, issueKey: null, changes: [change({ id: 2 }), change({ id: 3 })] });
+    const html = renderProposals([first, second]);
+    expect(html).toContain('2 proposed changes awaiting a decision');
+    expect(html.split('hatch-playbook-proposal-head').length - 1).toBe(3);
+  });
+
+  it('reflects an out-of-date change in the banner count', () => {
+    const html = renderProposals([proposal({ changes: [change({ outOfDate: true, outOfDateReason: 'edited since it was proposed' })] })]);
+    expect(html).toContain('1 proposed change awaiting a decision, 1 out of date');
+  });
+
+  it('draws Approve all and Reject all inside the banner card, before the first proposal head', () => {
+    const html = renderProposals([proposal()]);
+    const bannerAt = html.indexOf('hatch-playbook-proposal-banner');
+    const approveAt = html.indexOf('Approve all');
+    const rejectAt = html.indexOf('Reject all');
+    const headAt = html.indexOf('hatch-playbook-proposal-head');
+    expect(bannerAt).toBeGreaterThan(-1);
+    expect(approveAt).toBeGreaterThan(bannerAt);
+    expect(rejectAt).toBeGreaterThan(bannerAt);
+    expect(approveAt).toBeLessThan(headAt);
+    expect(rejectAt).toBeLessThan(headAt);
+  });
+
+  it('disables Approve all with a title naming the out-of-date change, and never disables Reject all', () => {
+    const outOfDate = renderProposals([
+      proposal({ changes: [change({ outOfDate: true, outOfDateReason: 'edited since it was proposed' })] }),
+    ]);
+    expect(outOfDate).toContain('disabled');
+    expect(outOfDate).toContain('title="To Do to In Progress was edited since it was proposed - reject it or have it resubmitted"');
+
+    const upToDate = renderProposals([proposal()]);
+    expect(upToDate).not.toContain('disabled');
+    expect(upToDate).not.toContain('title=');
+  });
+
+  it('renders a notice even when proposals is empty, and nothing when notice is null', () => {
+    const withNotice = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'success', text: '2 changes applied' }} />
+      </MemoryRouter>,
+    );
+    expect(withNotice).toContain('2 changes applied');
+    expect(withNotice).not.toContain('Approve all');
+
+    expect(renderProposals([])).toBe('');
+  });
+
+  it('draws the success tone plain and the danger tone with text-danger', () => {
+    const success = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'success', text: 'applied' }} />
+      </MemoryRouter>,
+    );
+    expect(success).not.toContain('text-danger');
+
+    const danger = renderToStaticMarkup(
+      <MemoryRouter>
+        <PlaybookProposals proposals={[]} statuses={STATUSES} now={NOW} notice={{ tone: 'danger', text: 'conflict' }} />
+      </MemoryRouter>,
+    );
+    expect(danger).toContain('text-danger');
   });
 });

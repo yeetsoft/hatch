@@ -1,17 +1,17 @@
 namespace Hatch.Cli;
 
 /// <summary>
-/// Whether a story's tasks share the story's branch and one pull request, read
-/// and set.
+/// Whether a story's or a bug's tasks share its branch and one pull request,
+/// read and set.
 /// </summary>
 /// <remarks>
 /// <para>The project holds a default, and an owner sets it in the browser. This
-/// is the story's own say over it: <c>on</c> or <c>off</c> overrides the
+/// is the story's or bug's own say over it: <c>on</c> or <c>off</c> overrides the
 /// default, <c>inherit</c> goes back to following it. Open to a key, because it
-/// decides how a story is branched and nothing the loop could use to advance its
+/// decides how a story or a bug is branched and nothing the loop could use to advance its
 /// own ticket - see <c>IssueOnePrController</c>.</para>
 ///
-/// <para>Locked once work under the story has started: the server refuses a
+/// <para>Locked once work under it has started: the server refuses a
 /// change then, naming the task, because work begun on one branch cannot be moved
 /// onto the other.</para>
 /// </remarks>
@@ -21,13 +21,13 @@ public sealed class OnePrCommand(Cli cli)
     [
         "usage: hatch one-pr AER-5 [on|off|inherit]",
         "",
-        "  hatch one-pr AER-5          whether its tasks share the story's branch and one PR",
+        "  hatch one-pr AER-5          whether its tasks share its branch and one PR",
         "  hatch one-pr AER-5 on       ...share them, whatever the project's default is",
         "  hatch one-pr AER-5 off      ...do not, whatever the project's default is",
         "  hatch one-pr AER-5 inherit  ...follow the project's default",
         "",
-        "  A story only, and locked once any task under it has started - set it when",
-        "  the story is filed, before its tasks are worked.",
+        "  A story or a bug only, and locked once any task under it has started - set it",
+        "  when it is filed, before its tasks are worked.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
@@ -72,10 +72,10 @@ public sealed class OnePrCommand(Cli cli)
     public static string Draw(IssueDto issue)
     {
         var value = issue.OnePr ? "on" : "off";
-        var source = issue.OnePrOwn is not null ? "set on this story"
+        var source = issue.OnePrOwn is not null ? $"set on this {issue.Type}"
             : issue.OnePrFrom is { Length: > 0 } from ? $"inherited from {from}"
-            : issue.Type == "story" ? "the project's default"
-            : "not under a story";
+            : issue.Type is "story" or "bug" ? "the project's default"
+            : "not under a story or bug";
 
         return $"one-pr:   {value} ({source})";
     }

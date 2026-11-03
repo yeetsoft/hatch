@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyGoToWork, goToWorkBody, planGoToWork, statusLine } from './goToWork';
+import { applyGoToWork, goToWorkBody, planGoToWork, statusLine, statusText } from './goToWork';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
@@ -33,6 +33,13 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   host: null,
   maxRuns: null,
   maxSpend: null,
+  maxTokens: null,
+  maxTokensPerHour: null,
+  maxTokensSource: 'none',
+  maxTokensPerHourSource: 'none',
+  tokensUsed: null,
+  tokensLastHour: null,
+  throttledUntil: null,
   untilAt: null,
   goneAfterSeconds: GONE_AFTER,
   exhaustedUntil: null,
@@ -175,11 +182,18 @@ describe('statusLine', () => {
   const quiet = { lastSeenAt: at(-(GONE_AFTER + 10) * 1000) };
 
   it('is empty until the runners read has answered', () => {
-    expect(statusLine(null, NOW)).toEqual({ before: '', key: null, after: '', tone: 'muted', more: 0 });
+    expect(statusLine(null, NOW)).toEqual({ before: '', key: null, after: '', tone: 'muted', more: 0, verb: '' });
   });
 
   it('says No runner when none of the rows are yours loops', () => {
-    expect(statusLine([], NOW)).toEqual({ before: 'No runner', key: null, after: '', tone: 'muted', more: 0 });
+    expect(statusLine([], NOW)).toEqual({
+      before: 'No runner',
+      key: null,
+      after: '',
+      tone: 'muted',
+      more: 0,
+      verb: 'No runner',
+    });
     expect(statusLine([runner({ kind: 'once' }), runner({ yours: false })], NOW).before).toBe('No runner');
   });
 
@@ -190,6 +204,7 @@ describe('statusLine', () => {
       after: ' · In Progress',
       tone: 'success',
       more: 0,
+      verb: 'Working',
     });
   });
 
@@ -209,6 +224,7 @@ describe('statusLine', () => {
       after: '',
       tone: 'primary',
       more: 0,
+      verb: 'Pausing',
     });
   });
 
@@ -219,13 +235,14 @@ describe('statusLine', () => {
       after: '',
       tone: 'primary',
       more: 0,
+      verb: 'Stopping',
     });
   });
 
   it('reads out of usage for a row with no claim and a reset time ahead', () => {
     const line = statusLine([runner({ exhaustedUntil: at(3_600_000) })], NOW);
     expect(line.before).toMatch(/^Out of usage until /);
-    expect(line).toMatchObject({ key: null, after: '', tone: 'danger' });
+    expect(line).toMatchObject({ key: null, after: '', tone: 'danger', verb: 'Out of usage' });
   });
 
   it('does not count an exhausted time in the past', () => {
@@ -236,24 +253,25 @@ describe('statusLine', () => {
     expect(statusLine([runner({ projects: ['FIL'] })], NOW)).toMatchObject({
       before: 'Idle - nothing to do in FIL',
       tone: 'muted',
+      verb: 'Idle',
     });
     expect(statusLine([runner({ projects: ['FIL', 'HA'] })], NOW).before).toBe('Idle - nothing to do in FIL, HA');
     expect(statusLine([runner()], NOW).before).toBe('Idle - nothing to do in any project');
   });
 
   it('reads paused and stopping for rows with no claim', () => {
-    expect(statusLine([runner({ state: 'paused' })], NOW)).toMatchObject({ before: 'Paused', tone: 'primary' });
-    expect(statusLine([runner({ state: 'stopping' })], NOW)).toMatchObject({ before: 'Stopping', tone: 'primary' });
+    expect(statusLine([runner({ state: 'paused' })], NOW)).toMatchObject({ before: 'Paused', tone: 'primary', verb: 'Paused' });
+    expect(statusLine([runner({ state: 'stopping' })], NOW)).toMatchObject({ before: 'Stopping', tone: 'primary', verb: 'Stopping' });
   });
 
   it('reads stopped unexpectedly for a gone row that was running, claim or not', () => {
-    const expected = { before: 'Stopped unexpectedly', key: null, after: '', tone: 'danger', more: 0 };
+    const expected = { before: 'Stopped unexpectedly', key: null, after: '', tone: 'danger', more: 0, verb: 'Stopped' };
     expect(statusLine([runner(quiet)], NOW)).toEqual(expected);
     expect(statusLine([runner({ ...quiet, claimKey: 'AER-12', claimStatus: 'In Progress' })], NOW)).toEqual(expected);
   });
 
   it('reads off for a gone row that was paused or stopping, whatever it holds', () => {
-    const expected = { before: 'Off', key: null, after: '', tone: 'muted', more: 0 };
+    const expected = { before: 'Off', key: null, after: '', tone: 'muted', more: 0, verb: 'Off' };
     expect(statusLine([runner({ ...quiet, state: 'paused' })], NOW)).toEqual(expected);
     expect(statusLine([runner({ ...quiet, state: 'stopping', claimKey: 'AER-12' })], NOW)).toEqual(expected);
   });
@@ -281,5 +299,25 @@ describe('statusLine', () => {
   it('ignores a once row and another person row', () => {
     const line = statusLine([runner({ kind: 'once', claimKey: 'AER-9' }), runner({ yours: false, claimKey: 'AER-8' }), runner()], NOW);
     expect(line).toMatchObject({ before: expect.stringMatching(/^Idle/), more: 0 });
+  });
+});
+
+describe('statusText', () => {
+  it('is nothing for the empty line', () => {
+    expect(statusText(statusLine(null, NOW))).toBe('');
+  });
+
+  it('joins the words, the key and the column into the whole sentence', () => {
+    const line = statusLine([runner({ claimKey: 'AER-12', claimStatus: 'In Progress' })], NOW);
+    expect(statusText(line)).toBe('Working AER-12 · In Progress');
+  });
+
+  it('says how many more loops the line leaves out', () => {
+    const rows = [runner({ name: 'a', claimKey: 'AER-1' }), runner({ name: 'b', claimKey: 'AER-2' })];
+    expect(statusText(statusLine(rows, NOW))).toBe('Working AER-1 and 1 more');
+  });
+
+  it('keeps the long words a one-word verb drops', () => {
+    expect(statusText(statusLine([runner({ lastSeenAt: at(-(GONE_AFTER + 10) * 1000) })], NOW))).toBe('Stopped unexpectedly');
   });
 });

@@ -5,7 +5,7 @@ order: 10
 summary: The seven columns a stock board ships with, and who moves work out of each.
 ---
 
-This is the stock board, which is what **Board** in the primary nav draws. An
+This is the stock board, which is what the **Hatch** logo at the left of the bar opens: the board is the home page, and the bar has no Board link of its own. An
 operator may rename its columns, add more and reorder them, so nothing below
 depends on a name: each column is described by what happens in it, and the
 names are only what a fresh install calls them.
@@ -60,25 +60,54 @@ The hops the board makes are:
   on, with no session, while its parent epic stands in the column where code
   gets written.
 - **Parent pulls** — a child is carried on, out of a column ticked **Parent
-  pulls**, while its parent stands in the column where code gets written.
+  pulls**, while its parent stands in the column where code gets written. Out
+  of the column that feeds it, only a child its parent already planned is
+  carried: a task under a story, not a story under an epic (whose analysis cuts
+  it into tasks), and not a child too long to stay in the column where code
+  gets written. Those are analysed as usual.
 - **Sendback** — a childless issue whose brief is too long for its playbook is
   carried back to the column that feeds the column where code gets written. It
   is the one hop that moves a ticket left.
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
-- **Close** — a pre-approved parent in review with every child done goes into
-  the first Done column to its right.
+- **Close** — a pre-approved parent in review with every child done, or a
+  pre-approved ticket that declared it was finished with no code, goes into the
+  first Done column to its right. A declared ticket that is not pre-approved
+  waits in review for a person to close it.
 
 [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
 across every column and hop above, start to finish.
 
 ## Narrowing the board
 
+On a desktop window the header is one row, left to right: **Search**,
+**Project**, **Types**, **Needs me**, **…** (More filters), the count
+(*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
+the work queue, the flow view and **+** (New issue). **Search** rests narrow
+and widens while you type in it. **Project** shows only its key (or **All**)
+when closed, and its open list keeps the full names. **Needs me** shows the
+cards holding a question nobody has answered. **…** opens the filters kept
+out of the row, today the **Assignee** choice; the button is lit while one of
+them is set, and the count still includes it. **×** returns every filter to
+its default and is drawn only when one is set. On a phone the row folds
+everything past the search box behind **Filters**, where **Assignee** stays
+beside the others.
+
 The **Project** picker is drawn only when Hatch has more than one project,
 and **All projects** is a choice like any other. It and the type filter are
 remembered per browser, in `localStorage`, across pages, reloads and
 restarts. A `?project=KEY` link opens that project whatever this browser
 remembers, and the browser remembers it afterwards.
+
+A column that shows no card is drawn at half the width of one that does, so
+empty columns stop pushing the busy ones off screen. That covers a column with
+no cards at all and one whose cards the current filters all hide (it still says
+*N hidden by the filter*). It widens again, with no reload, the moment a card
+shows in it: a filter cleared, a card filed, moved or dropped in, a live update.
+A column whose only cards are folded behind **+ N waiting** keeps its full
+width, since the fold is work one click away. A drag does not widen the narrow
+columns; each is still a full-height drop target. The phone's stacked layout
+is unchanged.
 
 ## Go to Work and Pause
 
@@ -91,14 +120,18 @@ when **All projects** is picked; **Pause** pauses the running ones. The
 press alone sets the project — changing the picker afterwards moves nothing
 until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
-With none of yours on, the button is disabled, with a link to start one
-beside a status line that says "No runner".
+With none of yours on, the button is disabled and the status says "No
+runner"; press it to find the link to start one.
 
-A short **status line** sits right after the button (on a phone, a row under
-the bar) and says what your loops are doing: working on a ticket, with its
-link and column; pausing after or stopping after the ticket in hand; out of
-usage; idle, with the project it is bound to; paused; stopping; stopped
-unexpectedly; off; or no runner. When several of your loops are on it names
+A one-word **status** sits right after the button — **Working**, **Pausing**,
+**Stopping**, **Out of usage**, **Idle**, **Paused**, **Stopped**, **Off** or
+**No runner** — coloured by its tone, so a fault shows. On a desktop window,
+hover it for the whole line or press it to open the line with the ticket's
+link and column, the project an idle loop is bound to, and, with none of yours
+on, the **Start one at login** link. On a phone the whole line is a row under
+the bar instead. It says what your loops are doing: working on a ticket;
+pausing after or stopping after the ticket in hand; out of usage; idle;
+paused; stopping; stopped unexpectedly; off; or no runner. When several of your loops are on it names
 the one most worth saying and adds "and N more". It is blank while the runners
 load, and it follows the runners poll (every 20 seconds) and every press. A
 "Stopped unexpectedly" line becomes "No runner" two hours after the loop was
@@ -158,13 +191,12 @@ There are nine, and a column carries whichever of them it needs.
 **Runner tags** — a field, not a tenth flag: a list of [runner
 tags](the-runner#what-a-runner-advertises) the column requires, the same way a
 project or an issue can. They union with the project's, the issue's ancestors'
-and the issue's own, the same union that already gates the move into the
-column where code gets written and the review self-move on a conflict or a
-failing build — see the dispatcher's tag fold (`docs/hatch.md`, "The
-dispatcher") for the exact rule. A column with none set changes nothing; one
-with tags of its own gates every move out of it for a runner that does not
-advertise them all, and names the column by name in the sentence it folds
-with. Set it in the **Runner tags** column on the Statuses screen, one tag per
+and the issue's own, the same union that gates every move a runner is
+handed, in every column and on every hop — see the dispatcher's tag fold
+(`docs/hatch.md`, "The dispatcher") for the exact rule. A column with none set
+adds nothing to it; one with tags of its own gates every move out of it, hops
+included, for a runner that does not advertise them all, and names the column
+by name in the sentence it folds with. Set it in the **Runner tags** column on the Statuses screen, one tag per
 line, saved the moment you leave the box; a refusal shows under the box
 rather than at the top of the page. A column with tags draws them small under
 its name on the board; one with none draws nothing.
@@ -226,7 +258,7 @@ on a column never counts one. With the setting off, the board draws exactly as
 it always has.
 
 The filter bar finds a carried story through its epic. Searching a carried
-story's key or words from its title, the Waiting switch and the assignee facet
+story's key or words from its title, the **Needs me** switch and the Assignee filter
 each draw the epic whose carried story matches. The Types and Project filters
 judge the epic itself. The story is never drawn as a card.
 

@@ -112,7 +112,7 @@ public class RunnersTests
     }
 
     [Fact]
-    public void TheInstruction_IsTheOperatorsHalfOfTheRowAndNothingElse()
+    public void TheInstruction_IsWhatTheOperatorSet_OnTheRowOrInSettings()
     {
         var row = Row();
         row.State = EfHatchRunner.Paused;
@@ -120,8 +120,10 @@ public class RunnersTests
         row.MaxRuns = 12;
         row.MaxSpend = 40m;
         row.UntilAt = Now.AddHours(6);
+        row.MaxTokens = 500_000;
+        row.MaxTokensPerHour = 90_000;
 
-        var instruction = Runners.Instruct(row, "Nathan");
+        var instruction = Runners.Instruct(row, "Nathan", defaultMaxTokens: 2_000_000, defaultMaxTokensPerHour: 300_000);
 
         Assert.Equal(EfHatchRunner.Paused, instruction.State);
         Assert.Equal("AER-930", instruction.Under);
@@ -129,6 +131,89 @@ public class RunnersTests
         Assert.Equal(40m, instruction.MaxSpend);
         Assert.Equal(Now.AddHours(6), instruction.UntilAt);
         Assert.Equal("Nathan", instruction.For);
+        Assert.Equal(500_000, instruction.MaxTokens);
+        Assert.Equal(90_000, instruction.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public void TheInstruction_TakesTheSiteDefault_WhenTheRowSetsNoCap()
+    {
+        var instruction = Runners.Instruct(Row(), null, defaultMaxTokens: 2_000_000, defaultMaxTokensPerHour: 300_000);
+
+        Assert.Equal(2_000_000, instruction.MaxTokens);
+        Assert.Equal(300_000, instruction.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public void TheInstruction_HasNoCap_WhenNeitherTheRowNorSettingsSetOne()
+    {
+        var instruction = Runners.Instruct(Row(), null);
+
+        Assert.Null(instruction.MaxTokens);
+        Assert.Null(instruction.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public void TheInstruction_ResolvesEachCapOnItsOwn()
+    {
+        var row = Row();
+        row.MaxTokens = 500_000;
+
+        var instruction = Runners.Instruct(row, null, defaultMaxTokensPerHour: 300_000);
+
+        Assert.Equal(500_000, instruction.MaxTokens);
+        Assert.Equal(300_000, instruction.MaxTokensPerHour);
+    }
+
+    [Fact]
+    public void TheRow_NamesTheRunnersOwnCap_AndIgnoresTheDefault()
+    {
+        var row = Row();
+        row.MaxTokens = 500_000;
+        row.MaxTokensPerHour = 90_000;
+
+        var projected = With().Project(row, null, defaultMaxTokens: 2_000_000, defaultMaxTokensPerHour: 300_000);
+
+        Assert.Equal(500_000, projected.MaxTokens);
+        Assert.Equal("runner", projected.MaxTokensSource);
+        Assert.Equal(90_000, projected.MaxTokensPerHour);
+        Assert.Equal("runner", projected.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public void TheRow_NamesTheSiteDefault_WhenItSetsNoCap()
+    {
+        var projected = With().Project(Row(), null, defaultMaxTokens: 2_000_000, defaultMaxTokensPerHour: 300_000);
+
+        Assert.Equal(2_000_000, projected.MaxTokens);
+        Assert.Equal("default", projected.MaxTokensSource);
+        Assert.Equal(300_000, projected.MaxTokensPerHour);
+        Assert.Equal("default", projected.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public void TheRow_NamesNone_WhenNeitherSetsACap()
+    {
+        var projected = With().Project(Row(), null);
+
+        Assert.Null(projected.MaxTokens);
+        Assert.Equal("none", projected.MaxTokensSource);
+        Assert.Null(projected.MaxTokensPerHour);
+        Assert.Equal("none", projected.MaxTokensPerHourSource);
+    }
+
+    [Fact]
+    public void TheRow_NamesEachCapsSourceOnItsOwn()
+    {
+        var row = Row();
+        row.MaxTokensPerHour = 90_000;
+
+        var projected = With().Project(row, null, defaultMaxTokens: 2_000_000);
+
+        Assert.Equal(2_000_000, projected.MaxTokens);
+        Assert.Equal("default", projected.MaxTokensSource);
+        Assert.Equal(90_000, projected.MaxTokensPerHour);
+        Assert.Equal("runner", projected.MaxTokensPerHourSource);
     }
 
     // ---- The line ----
