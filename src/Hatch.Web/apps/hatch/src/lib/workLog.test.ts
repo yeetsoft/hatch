@@ -12,11 +12,13 @@ import {
   modelEffortPhrase,
   moneyPhrase,
   ownPhrase,
+  parseTokenCount,
   playbookFileShowCommand,
   playbookSourcePhrase,
   readsLabel,
   resumeCommand,
   showsWorkLog,
+  thousands,
   totalsPhrase,
   transitionPhrase,
   UNPRICED_TITLE,
@@ -113,6 +115,73 @@ const log = (over: Partial<WorkLog> = {}): WorkLog => ({
   own: totals(),
   entries: [entry()],
   ...over,
+});
+
+describe('parseTokenCount', () => {
+  it('accepts every stated form', () => {
+    expect(parseTokenCount('500000')).toBe(500_000);
+    expect(parseTokenCount('007')).toBe(7);
+    expect(parseTokenCount('500k')).toBe(500_000);
+    expect(parseTokenCount('500K')).toBe(500_000);
+    expect(parseTokenCount('2k')).toBe(2_000);
+    expect(parseTokenCount('2M')).toBe(2_000_000);
+    expect(parseTokenCount('2m')).toBe(2_000_000);
+    expect(parseTokenCount('1.5M')).toBe(1_500_000);
+    expect(parseTokenCount('0.5M')).toBe(500_000);
+    expect(parseTokenCount('1.0M')).toBe(1_000_000);
+  });
+
+  it('refuses everything else, exactly as the C# twin does', () => {
+    for (const text of [
+      '',
+      ' 500k',
+      '500k ',
+      ' 5',
+      '5 ',
+      '0',
+      '0k',
+      '0.0M',
+      '-5',
+      '+5',
+      '1.5k',
+      '1.25M',
+      '.5M',
+      '1.M',
+      '1e6',
+      '1,000',
+      '500kk',
+      '5kk',
+      '2MM',
+      '2 M',
+      'lots',
+      'M',
+      'k',
+      '٥٠٠',
+      '٥٠٠k',
+      '12345678901234567890',
+    ]) {
+      expect(parseTokenCount(text), JSON.stringify(text)).toBeNull();
+    }
+  });
+
+  it('refuses a count too large to hold exactly, without throwing', () => {
+    expect(parseTokenCount('99999999999999999M')).toBeNull();
+    expect(parseTokenCount('99999999999999999999M')).toBeNull();
+    expect(parseTokenCount('99999999999999999k')).toBeNull();
+  });
+
+  it('reads back what compactTokens says', () => {
+    for (const n of [140_000, 200_000, 500_000, 1_200_000, 2_000_000]) {
+      expect(parseTokenCount(compactTokens(n))).toBe(n);
+    }
+  });
+});
+
+describe('thousands', () => {
+  it('separates with commas whatever the viewer locale', () => {
+    expect(thousands(500_000)).toBe('500,000');
+    expect(thousands(2_000_000)).toBe('2,000,000');
+  });
 });
 
 describe('compactTokens', () => {
