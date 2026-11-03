@@ -8,7 +8,9 @@ import {
   boundsRequest,
   budgetTone,
   drivesLabel,
+  formRefusal,
   groupByHost,
+  groupedTokens,
   isIssueKeyShape,
   orderSentence,
   isControllable,
@@ -20,6 +22,7 @@ import {
   runnerStrip,
   tagsLabel,
   projectsLabel,
+  topRefusal,
   tokenBudget,
   tokenFieldOf,
   tokensWire,
@@ -579,6 +582,59 @@ describe('tokenFieldOf', () => {
   it('is null for any other refusal, and for none', () => {
     expect(tokenFieldOf('--max-runs takes a whole number')).toBeNull();
     expect(tokenFieldOf(null)).toBeNull();
+  });
+});
+
+describe('groupedTokens', () => {
+  it('groups a count the way the box shows it once left', () => {
+    expect(groupedTokens('2M')).toBe('2,000,000');
+    expect(groupedTokens('500k')).toBe('500,000');
+    expect(groupedTokens(' 2M ')).toBe('2,000,000');
+  });
+
+  it('leaves a grouped count, an empty box and an unparseable one as typed', () => {
+    expect(groupedTokens('2,000,000')).toBe('2,000,000');
+    expect(groupedTokens('')).toBe('');
+    expect(groupedTokens('abc')).toBe('abc');
+    expect(groupedTokens('2,5')).toBe('2,5');
+  });
+});
+
+describe('refusal routing', () => {
+  const perHour = '--max-tokens-per-hour takes a token count, like 500k or 2M - not "x"';
+  const failure = (text: string, over: { runner?: string; routed?: boolean } = {}) => ({
+    runner: 'a',
+    text,
+    routed: true,
+    ...over,
+  });
+
+  it('routes a bounds save naming a token flag to that field on that runner, and off the top', () => {
+    const f = failure(perHour);
+    expect(topRefusal(f)).toBeNull();
+    expect(formRefusal(f, 'a')).toEqual({ text: perHour, field: 'maxTokensPerHour' });
+    expect(formRefusal(failure('--max-tokens takes a token count'), 'a')?.field).toBe('maxTokens');
+  });
+
+  it('gives another runner\'s form nothing', () => {
+    expect(formRefusal(failure(perHour), 'b')).toBeNull();
+  });
+
+  it('keeps any other refusal at the top, with no form refusal', () => {
+    const f = failure('--max-runs takes a whole number');
+    expect(topRefusal(f)).toBe('--max-runs takes a whole number');
+    expect(formRefusal(f, 'a')).toBeNull();
+  });
+
+  it('keeps a token-flag refusal of a press other than a bounds save at the top', () => {
+    const f = failure(perHour, { routed: false });
+    expect(topRefusal(f)).toBe(perHour);
+    expect(formRefusal(f, 'a')).toBeNull();
+  });
+
+  it('is null both ways for no refusal', () => {
+    expect(topRefusal(null)).toBeNull();
+    expect(formRefusal(null, 'a')).toBeNull();
   });
 });
 

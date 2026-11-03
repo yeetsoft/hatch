@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
 import { orderRunner, patchRunner, withdrawOrder } from '../api/client';
@@ -15,7 +15,9 @@ import {
   boundsProblem,
   boundsRequest,
   drivesLabel,
+  formRefusal,
   groupByHost,
+  groupedTokens,
   isControllable,
   isIssueKeyShape,
   MAX_SPEND_HINT,
@@ -26,11 +28,14 @@ import {
   runnerBuildLabel,
   tagsLabel,
   projectsLabel,
+  tokenBudget,
+  topRefusal,
+  type Refusal,
   type RunnerBounds,
   type RunnerHostGroup,
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
-import { moneyPhrase } from '../lib/workLog';
+import { compactTokens, moneyPhrase, TOKEN_FIELD_HINT } from '../lib/workLog';
 import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
 
 /**
@@ -47,14 +52,16 @@ import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
  */
 export function RunnersPage() {
   const { runners, error, reload } = useRunners();
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Refusal | null>(null);
 
-  async function act(action: () => Promise<unknown>) {
+  // `routed` is a bounds save: the one press whose refusal a token field can
+  // show under itself, so the top of the page leaves it there.
+  async function act(runnerName: string, action: () => Promise<unknown>, routed = false) {
     try {
       await action();
       setFailure(null);
     } catch (err) {
-      setFailure(message(err));
+      setFailure({ runner: runnerName, text: message(err), routed });
     }
 
     // Whatever happened, ask again: a refused press must not leave the row
@@ -73,7 +80,7 @@ export function RunnersPage() {
         description="The loops that have spoken to this Hatch lately. A runner asks for its instructions between increments, so anything set here takes effect on its next pass - never in the middle of one."
       />
 
-      {(failure ?? error) && <p className="text-danger">{failure ?? error}</p>}
+      {(topRefusal(failure) ?? error) && <p className="text-danger">{topRefusal(failure) ?? error}</p>}
 
       {runners?.length === 0 && (
         <EmptyState message="Nothing has run here lately. A runner appears within a minute of hatch go-to-work starting, and drops off two hours after it stops." />
@@ -89,6 +96,7 @@ export function RunnersPage() {
                 <th>Last said</th>
                 <th>Heard from</th>
                 <th>Bounds</th>
+                <th>Token budget</th>
                 <th />
               </tr>
             </thead>
@@ -100,9 +108,16 @@ export function RunnersPage() {
                       key={runner.name}
                       runner={runner}
                       now={now}
-                      onPatch={(request) => void act(() => patchRunner(runner.name, request))}
-                      onOrder={(request) => void act(() => orderRunner(runner.name, request))}
-                      onWithdraw={() => void act(() => withdrawOrder(runner.name))}
+                      refusal={formRefusal(failure, runner.name)}
+                      onPatch={(request) =>
+                        void act(
+                          runner.name,
+                          () => patchRunner(runner.name, request),
+                          request.maxTokens !== undefined || request.maxTokensPerHour !== undefined,
+                        )
+                      }
+                      onOrder={(request) => void act(runner.name, () => orderRunner(runner.name, request))}
+                      onWithdraw={() => void act(runner.name, () => withdrawOrder(runner.name))}
                     />
                   ))}
                   {group.runners.length > 1 && <HostTotal group={group} />}
@@ -122,7 +137,7 @@ export function RunnersPage() {
 export function HostTotal({ group }: { group: RunnerHostGroup }) {
   return (
     <tr className="hatch-runners-host-total">
-      <td colSpan={6}>
+      <td colSpan={7}>
         <strong>{group.host}</strong>
         {` · ${group.totalRuns} runs · ${moneyPhrase(group.totalSpent)}`}
       </td>
@@ -133,12 +148,15 @@ export function HostTotal({ group }: { group: RunnerHostGroup }) {
 export function Row({
   runner,
   now,
+  refusal = null,
   onPatch,
   onOrder,
   onWithdraw,
 }: {
   runner: Runner;
   now: Date;
+  /** A refused bounds save that named a token flag, to draw under that field. */
+  refusal?: ReturnType<typeof formRefusal>;
   onPatch: (request: RunnerPatchRequest) => void;
   onOrder: (request: RunnerOrderRequest) => void;
   onWithdraw: () => void;
@@ -185,6 +203,9 @@ export function Row({
         <td>{agoPhrase(runner.lastSeenAt, now)}</td>
         <td>
           <BoundsSummary runner={runner} />
+        </td>
+        <td>
+          <TokenBudget runner={runner} />
         </td>
         <td>
           {controllable && (
@@ -238,9 +259,9 @@ export function Row({
       </tr>
       {open && (
         <tr>
-          <td colSpan={6}>
+          <td colSpan={7}>
             <RunnerDetails runner={runner} now={now} />
-            <BoundsForm runner={runner} onSave={onPatch} />
+            <BoundsForm runner={runner} onSave={onPatch} refusal={refusal?.text} refusalField={refusal?.field} />
           </td>
         </tr>
       )}
@@ -283,6 +304,8 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
     projectsLabel(runner),
     runner.maxRuns !== null && `${runner.maxRuns} run(s)`,
     runner.maxSpend !== null && `$${runner.maxSpend}`,
+    runner.maxTokens !== null && `${compactTokens(runner.maxTokens)} tokens`,
+    runner.maxTokensPerHour !== null && `${compactTokens(runner.maxTokensPerHour)} tokens/hour`,
     runner.untilAt && `until ${new Date(runner.untilAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
   ].filter(Boolean);
 
@@ -300,6 +323,32 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
   );
 }
 
+/** The token budget: the night's line, then the hour's, each with a bar where
+    it has a cap. The bar is one picture with one sentence, on its track, the
+    way the utilization bars announce themselves. */
+export function TokenBudget({ runner }: { runner: Runner }) {
+  const lines = tokenBudget(runner);
+  if (lines.length === 0) return <Text tone="muted">No token budget</Text>;
+
+  return (
+    <>
+      {lines.map((line) => (
+        <div key={line.text} className="hatch-token-budget-line">
+          <span>{line.text}</span>
+          {line.percent !== null && (
+            <div className="hatch-usage-bar-track" role="img" aria-label={line.text}>
+              <div
+                className="hatch-usage-bar-fill"
+                style={{ '--usage-color': `var(--${line.tone})`, width: `${line.percent}%` } as CSSProperties}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
  * The bounds, edited together.
  *
@@ -308,7 +357,18 @@ export function BoundsSummary({ runner }: { runner: Runner }) {
  * because they tabbed out of the box would set a budget of "4" on the way to
  * "40".
  */
-function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: RunnerPatchRequest) => void }) {
+export function BoundsForm({
+  runner,
+  onSave,
+  refusal,
+  refusalField,
+}: {
+  runner: Runner;
+  onSave: (request: RunnerPatchRequest) => void;
+  /** The server's refusal of a save, drawn under `refusalField` rather than at the top of the page. */
+  refusal?: string;
+  refusalField?: 'maxTokens' | 'maxTokensPerHour';
+}) {
   const [draft, setDraft] = useState<RunnerBounds>(boundsOf(runner));
   const dirty = boundsChanged(draft, runner);
   const problem = boundsProblem(draft);
@@ -326,6 +386,28 @@ function BoundsForm({ runner, onSave }: { runner: Runner; onSave: (request: Runn
         </Field>
         <Field label="Max spend" hint={MAX_SPEND_HINT}>
           <input inputMode="decimal" value={draft.maxSpend} onChange={(e) => set('maxSpend', e.target.value)} />
+        </Field>
+        <Field
+          label="Max tokens this run"
+          hint={TOKEN_FIELD_HINT}
+          error={refusalField === 'maxTokens' ? refusal : undefined}
+        >
+          <input
+            value={draft.maxTokens}
+            onChange={(e) => set('maxTokens', e.target.value)}
+            onBlur={(e) => set('maxTokens', groupedTokens(e.target.value))}
+          />
+        </Field>
+        <Field
+          label="Max tokens per hour"
+          hint={TOKEN_FIELD_HINT}
+          error={refusalField === 'maxTokensPerHour' ? refusal : undefined}
+        >
+          <input
+            value={draft.maxTokensPerHour}
+            onChange={(e) => set('maxTokensPerHour', e.target.value)}
+            onBlur={(e) => set('maxTokensPerHour', groupedTokens(e.target.value))}
+          />
         </Field>
         <MomentField
           label="Until"
