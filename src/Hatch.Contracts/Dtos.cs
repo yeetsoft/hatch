@@ -3956,6 +3956,11 @@ public enum RunnerBoardDrift
 /// <see cref="Tags"/>: the first beat that says writes it onto the row, and
 /// from then on only <c>PATCH</c> moves it. Absent says nothing.
 /// </param>
+/// <param name="ThrottledUntil">
+/// This runner is over its own <c>--max-tokens-per-hour</c> and expects to be
+/// under it at this instant; null otherwise. A fact the runner reports about
+/// itself, never a person's to set. The server column is HA-1672.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3985,7 +3990,8 @@ public record RunnerHeartbeatRequest(
     int? Runs = null,
     decimal? Spent = null,
     string? Host = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    DateTimeOffset? ThrottledUntil = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

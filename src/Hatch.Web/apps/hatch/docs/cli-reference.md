@@ -669,6 +669,23 @@ restart appends to the same file and the next night starts a new one.
   that reported none is not in the total. With `--runners` it is the set's
   combined total, and a restart carries it forward. A value that is not a token
   count is refused at startup, before any lock is taken.
+- `--max-tokens-per-hour <count>` waits, rather than stops, while the last
+  sixty minutes of reported tokens are at or over that count - `500k`, `2M`. The
+  loop takes no ticket, spawns nothing and keeps heartbeating, and says so once
+  (`hatch: this runner is over 200k tokens/hour - taking no tickets until 3:40am`,
+  then `hatch: still over 200k tokens/hour` as a reminder). The beat's line and
+  the runner row read `over 200k tokens/hour until 3:40am`, and the beat carries
+  `throttledUntil`, the instant the window is expected to be under the count.
+  The hour's own entries age out oldest first, so the loop resumes by itself the
+  moment the total is under, saying `hatch: back under 200k tokens/hour - taking
+  tickets again`. The wait records nothing: no increment, no failure and no
+  token is counted, so it never moves the three-failures stop or any other
+  bound. An order from the Runners page during the wait is spent with
+  `order spent - over 200k tokens/hour until 3:40am`, and nothing is claimed.
+  Usage limits win when both hold, a paused runner stays paused, and
+  `--max-tokens` and `--until` still end the night. With `--runners` the window
+  is the set's combined last hour, and a restart carries it forward. A value
+  that is not a token count is refused at startup, before any lock is taken.
 - `--until <HH:MM>` stops at that wall-clock hour, tomorrow's if it has gone by.
 - `--stop-file <path>` stops once that path exists, so `touch` it from anywhere.
 - `--restart-after <minutes>` comes back as a newer build at least that often.

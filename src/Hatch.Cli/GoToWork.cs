@@ -1233,6 +1233,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var busy = new SaidOnce();
         var paused = new SaidOnce();
         var exhausted = new SaidOnce();
+        var throttled = new SaidOnce();
         var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
 
@@ -1362,7 +1363,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             runtime.Readout.SetRunner(new RunnerSnapshot(
                 runtime.RunnerName, forName, tally.Runs, runtime.Clock.GetUtcNow() - tally.Started, tally.Spent,
-                Bound(tally), tally.Unpriced));
+                Bound(tally), tally.Unpriced,
+                tally.ThrottledUntil(runtime.Clock.GetUtcNow()) is { } waitingUntil
+                    ? $"over {Format.Compact(tally.MaxTokensPerHour ?? 0)} tokens/hour until {UsageLimit.Clock(waitingUntil, known: false, runtime.Clock)}"
+                    : null));
 
             if (tally.ShouldStop())
             {
@@ -1388,6 +1392,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 {
                     // A spawn would only fail, and the order is spent already.
                     line.Line = $"order spent - out of {runtime.Adapter.DisplayName} usage until {UsageLimit.Clock(limit, tally.ExhaustedKnown, runtime.Clock)}";
+                    runtime.Say.Line($"hatch: {line.Line}");
+                    printed.At = runtime.Clock.GetUtcNow();
+                    continue;
+                }
+
+                if (tally.ThrottledUntil(orderedAt) is { } throttle)
+                {
+                    // Spent the same way: the hour's own cap is no more to be
+                    // spent past by an order than the account's is.
+                    var orderCap = Format.Compact(tally.MaxTokensPerHour ?? 0);
+                    line.Line = $"order spent - over {orderCap} tokens/hour until {UsageLimit.Clock(throttle, known: false, runtime.Clock)}";
                     runtime.Say.Line($"hatch: {line.Line}");
                     printed.At = runtime.Clock.GetUtcNow();
                     continue;
@@ -1512,17 +1527,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // the fetch-for-nothing the workspace's own remarks already
                 // rule out, so this is timed on its own, independently of
                 // --interval, at the same ten minutes a quiet reminder waits.
-                if (now - checkedSelfAt >= StillNothing)
-                {
-                    checkedSelfAt = now;
-                    runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
-
-                    if (Changed(restart) is { Count: > 0 } changed)
-                    {
-                        SayChanged(changed, tally);
-                        return true;
-                    }
-                }
+                if (SelfChanged(now, ref checkedSelfAt, restart, tally)) return true;
 
                 if (!await NapAsync(interval, tally, ct))
                 {
@@ -1546,6 +1551,53 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             exhausted.Clear();
             tally.ClearExhausted();
+
+            // The loop's own hourly cap, which is a wait and not a stop: it
+            // records nothing, so no counter, no failure streak and no ledger
+            // entry moves, and the first pass the window allows is simply the
+            // next one. Behind the usage wait, so an account out of usage says
+            // so first.
+            var cap = tally.MaxTokensPerHour ?? 0;
+            if (tally.ThrottledUntil(now) is { } until)
+            {
+                idle.Clear();
+                busy.Clear();
+                var clock = UsageLimit.Clock(until, known: false, runtime.Clock);
+                line.Line = $"over {Format.Compact(cap)} tokens/hour until {clock}";
+
+                if (await SayQuietlyAsync(throttled, now, interval, once,
+                    digest: $"throttled:{until:O}",
+                    still: $"hatch: still over {Format.Compact(cap)} tokens/hour",
+                    inFull: () =>
+                    {
+                        runtime.Say.Line(
+                            $"hatch: this runner is over {Format.Compact(cap)} tokens/hour - taking no tickets until {clock}");
+                        return Task.CompletedTask;
+                    }))
+                    printed.At = runtime.Clock.GetUtcNow();
+
+                runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+
+                if (SelfChanged(now, ref checkedSelfAt, restart, tally)) return true;
+
+                if (!await NapAsync(interval, tally, ct))
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
+                    return false;
+                }
+
+                Watchdog(printed);
+                continue;
+            }
+
+            if (throttled.Running)
+            {
+                runtime.Say.Line("");
+                runtime.Say.Line($"hatch: back under {Format.Compact(cap)} tokens/hour - taking tickets again");
+                printed.At = runtime.Clock.GetUtcNow();
+            }
+
+            throttled.Clear();
 
             // Between the heartbeat and the pass, and on every iteration - an
             // idle loop and a busy one alike - so a pull request that stopped
@@ -1585,6 +1637,25 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         if (ct.IsCancellationRequested) tally.StopWhy ??= "interrupted";
         return false;
+    }
+
+    /// <summary>
+    /// The ten-minute check a wait runs on its own clock: make the loop's own
+    /// checkout current and answer whether its source changed, which is a
+    /// restart. Shared by the usage wait and the throttle wait, since both
+    /// would otherwise sit on a stale trunk for as long as they last.
+    /// </summary>
+    private bool SelfChanged(DateTimeOffset now, ref DateTimeOffset checkedSelfAt, Restarts restart, Tally tally)
+    {
+        if (now - checkedSelfAt < StillNothing) return false;
+
+        checkedSelfAt = now;
+        runtime.Workspace(runtime.Root, runtime.Settings.BaseBranch).Prepare();
+
+        if (Changed(restart) is not { Count: > 0 } changed) return false;
+
+        SayChanged(changed, tally);
+        return true;
     }
 
     private enum Pass
@@ -1693,6 +1764,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SourceSequence: source?.Sequence,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
+                // Read here rather than carried from the last pass, so the beat
+                // at the top of a pass is never one pass behind the window.
+                ThrottledUntil: tally.ThrottledUntil(runtime.Clock.GetUtcNow()),
                 // Absent before this loop's first rate_limit_event - a restart
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
@@ -1796,6 +1870,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         if (tally.MaxRuns is { } runs) parts.Add($"--max-runs {runs.ToString(CultureInfo.InvariantCulture)}");
         if (tally.MaxSpend is { } spend) parts.Add($"--max-spend {spend.ToString(CultureInfo.InvariantCulture)}");
         if (tally.MaxTokens is { } tokens) parts.Add($"--max-tokens {Format.Compact(tokens)}");
+        if (tally.MaxTokensPerHour is { } perHour) parts.Add($"--max-tokens-per-hour {Format.Compact(perHour)}");
         if (tally.UntilAt is not null) parts.Add($"--until {tally.Until}");
 
         return parts.Count == 0 ? null : string.Join(", ", parts);
