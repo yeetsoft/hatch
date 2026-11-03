@@ -184,7 +184,9 @@ colours; **Cumulative flow** shows how much work sat in each column over time,
 and where it is piling up. Cumulative flow carries its own **Projects**
 control (drawn only where there is more than one project) - a checkbox per
 project rather than the Timeline's one at a time - so the scope can be
-narrowed to some of the projects, not just none or all. A ticket counts as in
+narrowed to some of the projects, not just none or all; beside it, a
+**Colour by** control (also drawn only where there is more than one project)
+cuts the same stack by project instead of by column. A ticket counts as in
 flight while it stands in any
 column after the first that is neither done nor parked - the first column is
 where work waits, a done column is where it ended, and a parked one is a

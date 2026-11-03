@@ -196,4 +196,5 @@ lists it separately.
 **Reports** turns this page's own mechanics into pictures: the Timeline
 report draws when each epic was in flight and how long its work sat in each
 column; Cumulative flow draws how much work sat in each column over time,
-and where it is piling up.
+and where it is piling up, and a **Colour by** control lets that same stack
+be cut by project instead of by column.

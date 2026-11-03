@@ -1496,11 +1496,12 @@ export interface Timeline {
 }
 
 /** One grid step of a cumulative flow: the instant, and how many issues sat in
-    each column then, parallel to CumulativeFlow.columns. Mirrors
-    CumulativeFlowPointDto. */
+    each column then, parallel to CumulativeFlow.columns, and in each project,
+    parallel to CumulativeFlow.projects. Mirrors CumulativeFlowPointDto. */
 export interface CumulativeFlowPoint {
   at: string;
   counts: number[];
+  projectCounts: number[];
 }
 
 /** How many issues sat in each board column over time, one point per grid
@@ -1512,6 +1513,9 @@ export interface CumulativeFlow {
   /** The board's own columns, in board order, deferred columns excluded -
       parallel to each point's `counts`. */
   columns: number[];
+  /** The project keys in scope, in `/api/hatch/projects`'s own order -
+      parallel to each point's `projectCounts`. */
+  projects: string[];
   /** One per grid step, oldest first. */
   points: CumulativeFlowPoint[];
   /** Stretches in the range that named a column no longer on the board and
