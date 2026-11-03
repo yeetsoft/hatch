@@ -3,6 +3,7 @@ using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.DeviceMapping;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,7 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time, IOptions<AuthOptions> auth) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings) : ControllerBase
 {
     /// <summary>
     /// Every runner that has spoken to this Hatch lately, most recently heard
@@ -87,6 +88,7 @@ public class RunnersController(
 
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
 
         var dtos = new List<RunnerDto>(rows.Count);
         foreach (var r in rows)
@@ -94,7 +96,8 @@ public class RunnersController(
             var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
             var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
             var order = r.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, r.OrderKey, r.OrderedBy, r.OrderedAt) : null;
-            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order, yours: Yours(r.ForPersonId, wallEnabled, callerPerson)));
+            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order, yours: Yours(r.ForPersonId, wallEnabled, callerPerson),
+                defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour));
         }
 
         return dtos;
@@ -187,6 +190,7 @@ public class RunnersController(
 
         var forActor = await ForAsync(ct);
         var forName = forActor?.Name ?? (await caller.ApiKeyAsync(ct))?.Name;
+        var site = await siteSettings.GetAsync(ct);
 
         if (row is null)
         {
@@ -197,7 +201,8 @@ public class RunnersController(
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
-                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), null);
+                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), null,
+                    defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
             }
             catch (DbUpdateException)
             {
@@ -230,7 +235,8 @@ public class RunnersController(
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags));
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order);
+        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order,
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
@@ -377,6 +383,7 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
         var order = row.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, row.OrderKey, row.OrderedBy, row.OrderedAt) : null;
+        var site = await siteSettings.GetAsync(ct);
         return runners.Project(
             row,
             Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
@@ -384,7 +391,8 @@ public class RunnersController(
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
             order,
-            yours: Yours(row.ForPersonId, wallEnabled, callerPerson));
+            yours: Yours(row.ForPersonId, wallEnabled, callerPerson),
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
@@ -470,6 +478,7 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
+        var site = await siteSettings.GetAsync(ct);
         return runners.Project(
             row,
             Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
@@ -477,7 +486,8 @@ public class RunnersController(
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
             new RunnerOrderDto(kind, key, by, now),
-            yours: Yours(row.ForPersonId, wallEnabled, callerPerson));
+            yours: Yours(row.ForPersonId, wallEnabled, callerPerson),
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>Withdraws whatever standing order this runner holds - see <see cref="PostRunnerOrder"/>.</summary>
