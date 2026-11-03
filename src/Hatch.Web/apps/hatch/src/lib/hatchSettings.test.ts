@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { credentialClear, credentialIsSet, credentialPlaceholder, credentialSave, nameSave } from './hatchSettings';
-import type { CredentialField } from './hatchSettings';
-import type { HatchSettings } from '../types';
+import {
+  credentialClear,
+  credentialIsSet,
+  credentialPlaceholder,
+  credentialSave,
+  defaultTokensChanged,
+  defaultTokensOf,
+  defaultTokensProblem,
+  defaultTokensSave,
+  nameSave,
+  tokenBudgetEditable,
+} from './hatchSettings';
+import type { CredentialField, DefaultTokenField } from './hatchSettings';
+import type { HatchSettings, Me } from '../types';
 
 const settings = (over: Partial<HatchSettings> = {}): HatchSettings => ({
   claudeSubscriptionToken: '',
@@ -9,6 +20,18 @@ const settings = (over: Partial<HatchSettings> = {}): HatchSettings => ({
   xaiApiKey: '',
   localPersonNameApplies: true,
   localPersonName: '',
+  defaultMaxTokens: null,
+  defaultMaxTokensPerHour: null,
+  ...over,
+});
+
+const me = (over: Partial<Me> = {}): Me => ({
+  kind: 'person',
+  name: 'Ada',
+  role: 'user',
+  configured: true,
+  canSignOut: true,
+  canSignIn: true,
   ...over,
 });
 
@@ -80,5 +103,100 @@ describe('the name field', () => {
 
   it('never names a credential', () => {
     for (const field of FIELDS) expect(nameSave('Ada')).not.toHaveProperty(field);
+  });
+});
+
+describe('tokenBudgetEditable', () => {
+  it('is permissive while Me has not answered yet', () => {
+    expect(tokenBudgetEditable(null, false)).toBe(true);
+  });
+
+  it('is editable for an admin, whatever Me says the role is', () => {
+    expect(tokenBudgetEditable(me({ role: 'user' }), true)).toBe(true);
+  });
+
+  it('is editable for a local Me with no role to gate on', () => {
+    expect(tokenBudgetEditable(me({ role: null }), false)).toBe(true);
+  });
+
+  it('is closed to a signed-in user who is not an admin', () => {
+    expect(tokenBudgetEditable(me({ role: 'user' }), false)).toBe(false);
+  });
+});
+
+describe('defaultTokensOf', () => {
+  it('reads a cap grouped with commas', () => {
+    expect(defaultTokensOf(settings({ defaultMaxTokens: 500_000, defaultMaxTokensPerHour: 2_000_000 }))).toEqual({
+      defaultMaxTokens: '500,000',
+      defaultMaxTokensPerHour: '2,000,000',
+    });
+  });
+
+  it('reads no cap as an empty box', () => {
+    expect(defaultTokensOf(settings())).toEqual({ defaultMaxTokens: '', defaultMaxTokensPerHour: '' });
+  });
+});
+
+describe('defaultTokensChanged', () => {
+  const saved = settings({ defaultMaxTokens: 500_000, defaultMaxTokensPerHour: null });
+
+  it('is false against what defaultTokensOf reads back', () => {
+    expect(defaultTokensChanged(defaultTokensOf(saved), saved)).toBe(false);
+  });
+
+  it('is false for a shorthand that counts the same as the saved value', () => {
+    const draft: Record<DefaultTokenField, string> = { defaultMaxTokens: '500k', defaultMaxTokensPerHour: '' };
+
+    expect(defaultTokensChanged(draft, saved)).toBe(false);
+  });
+
+  it('is true once either box holds a different count', () => {
+    const draft: Record<DefaultTokenField, string> = { defaultMaxTokens: '600k', defaultMaxTokensPerHour: '' };
+
+    expect(defaultTokensChanged(draft, saved)).toBe(true);
+  });
+
+  it('is true once a cap is cleared', () => {
+    const draft: Record<DefaultTokenField, string> = { defaultMaxTokens: '', defaultMaxTokensPerHour: '' };
+
+    expect(defaultTokensChanged(draft, saved)).toBe(true);
+  });
+});
+
+describe('defaultTokensProblem', () => {
+  it('is null for two empty boxes', () => {
+    expect(defaultTokensProblem({ defaultMaxTokens: '', defaultMaxTokensPerHour: '' })).toBeNull();
+  });
+
+  it('is null for two token counts', () => {
+    expect(defaultTokensProblem({ defaultMaxTokens: '500k', defaultMaxTokensPerHour: '2M' })).toBeNull();
+  });
+
+  it('names the per-run box when it cannot parse', () => {
+    expect(defaultTokensProblem({ defaultMaxTokens: 'none', defaultMaxTokensPerHour: '' })).toBe(
+      'Default max tokens per run takes a token count, like 500k or 2M.',
+    );
+  });
+
+  it('names the per-hour box when it cannot parse', () => {
+    expect(defaultTokensProblem({ defaultMaxTokens: '', defaultMaxTokensPerHour: 'none' })).toBe(
+      'Default max tokens per hour takes a token count, like 500k or 2M.',
+    );
+  });
+});
+
+describe('defaultTokensSave', () => {
+  it('sends both fields as the wire form, every time', () => {
+    expect(defaultTokensSave({ defaultMaxTokens: '500,000', defaultMaxTokensPerHour: '2M' })).toEqual({
+      defaultMaxTokens: '500000',
+      defaultMaxTokensPerHour: '2M',
+    });
+  });
+
+  it('sends a cleared box as a clear, not a no-op', () => {
+    expect(defaultTokensSave({ defaultMaxTokens: '', defaultMaxTokensPerHour: '' })).toEqual({
+      defaultMaxTokens: '',
+      defaultMaxTokensPerHour: '',
+    });
   });
 });

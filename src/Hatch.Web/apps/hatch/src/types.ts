@@ -1767,6 +1767,10 @@ export interface HatchSettings {
   localPersonNameApplies: boolean;
   /** The name as stored, or empty. Not a secret, so it comes back to be edited. */
   localPersonName: string;
+  /** The site-wide cap on tokens a runner with none of its own runs under. Null for no cap. */
+  defaultMaxTokens: number | null;
+  /** The site-wide cap on tokens per hour a runner with none of its own runs under. Null for no cap. */
+  defaultMaxTokensPerHour: number | null;
 }
 
 /** An edit to any of the settings, or several. A field left out is left alone;
@@ -1776,6 +1780,8 @@ export interface HatchSettingsWriteRequest {
   codexApiKey?: string;
   xaiApiKey?: string;
   localPersonName?: string;
+  defaultMaxTokens?: string;
+  defaultMaxTokensPerHour?: string;
 }
 
 // ---- Backups ----
@@ -2171,9 +2177,9 @@ export interface Runner {
   maxTokens: number | null;
   /** The most tokens this runner may spend in any rolling hour. Null is no cap. */
   maxTokensPerHour: number | null;
-  /** Where `maxTokens` came from: `none` or `runner` today. */
+  /** Where `maxTokens` came from: `none`, `default` or `runner` today. */
   maxTokensSource: string;
-  /** Where `maxTokensPerHour` came from: `none` or `runner` today. */
+  /** Where `maxTokensPerHour` came from: `none`, `default` or `runner` today. */
   maxTokensPerHourSource: string;
   /** Tokens this runner has spent so far. Null from a CLI that has not sent usage yet. */
   tokensUsed: number | null;
