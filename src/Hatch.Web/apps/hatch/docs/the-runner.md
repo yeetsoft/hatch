@@ -752,8 +752,10 @@ Ctrl-C and `--stop-file` stop all of them, each after the increment it is in,
 and the output of each line is prefixed `[n]`. `--max-runs`, `--max-spend`
 and `--max-tokens` bound the set's combined total, not each runner's own: each
 runner checks the sum of what the set has done, between its increments, and a
-restart of the set carries that sum forward. A second `--runners` set started
-over the same workspaces is refused: runner 1 meets the checkout lock (`a
+restart of the set carries that sum forward. `--max-tokens-per-hour` is a wait
+and not a stop, and it judges the set's combined last hour: each runner reads
+the others' entries from the set's ledger and waits on its own. A second
+`--runners` set started over the same workspaces is refused: runner 1 meets the checkout lock (`a
 go-to-work is already running in <path>`) and the others meet the workspace
 lock, the same refusals as in [the workspace lock](#the-workspace-lock) above.
 `--runners` needs a workspace, so `--workspace off` is refused, and
