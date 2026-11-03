@@ -357,6 +357,7 @@ asked for is a run somebody has to go and check on.
 hatch go-to-work --max-runs 5             stop after five increments
 hatch go-to-work --max-spend 20           stop once the night has cost $20
 hatch go-to-work --max-tokens 2M          stop once the increments have reported two million tokens
+hatch go-to-work --max-tokens-per-hour 200k   wait, not stop, while the last hour is over 200k tokens
 hatch go-to-work --until 08:00            stop at that wall-clock hour (tomorrow, if it has gone by today)
 hatch go-to-work --stop-file /tmp/stop    stop once that path exists
 hatch go-to-work --project FIL --project AER   take only those projects' tickets
@@ -370,6 +371,21 @@ that reported none is not in the total and the tally says how many did not.
 `--until` takes `HH:MM`.
 `--stop-file` is refused if the path already exists, because otherwise an empty
 board and a stale stop file would look identical.
+
+`--max-tokens-per-hour` is the one bound here that **waits** and does not stop.
+It takes the same token counts, and while the tokens reported by increments
+that ended in the last sixty minutes are at or over it, the loop takes no
+ticket, spawns nothing and keeps heartbeating. The terminal says `hatch: this
+runner is over 200k tokens/hour - taking no tickets until 3:40am`, reminds you
+with `hatch: still over 200k tokens/hour`, and when the oldest entries have aged
+out, `hatch: back under 200k tokens/hour - taking tickets again`. An order sent
+from the Runners page during the wait is spent (`order spent - over 200k
+tokens/hour until 3:40am`) and nothing is claimed. It is not one of the three
+failures: the wait records no increment, no failure and no token, so it moves no
+other bound. One increment bigger than the count puts the loop over on its own
+until that increment is an hour old, and the closing tally's `peak hour` line is
+the number to size the count from. A value that is not a token count, `0`
+included, is refused at startup.
 
 They are checked between increments and through every wait, so the increment
 in flight always finishes, is committed and is pushed. `--stop-file` is the one
@@ -446,8 +462,8 @@ as the way to get restarts back.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
 Windows: it catches the 75, rebuilds and runs the loop again, carrying the
-night's totals forward, so a restart cannot outspend `--max-spend` or re-open
-`--max-tokens`. A failed
+night's totals forward, so a restart cannot outspend `--max-spend`, re-open
+`--max-tokens` or forget the last hour's tokens. A failed
 rebuild is never fatal: the supervisor says so and carries on with the binary
 already there rather than ending the night over it. On Windows, the
 PowerShell supervisor runs the loop from a copy of the build made under

@@ -7929,6 +7929,16 @@ except the last one:
   the loop has no way to make it right. A fetch that merely did not answer is
   not this: that is a wait, and the next pass tries again.
 
+What it **waits** for is not a stop, and not one of the three failures.
+`--max-tokens-per-hour N` takes the same counts as `--max-tokens`; while the
+tokens reported by increments that ended in the last sixty minutes are at or
+over it, the loop takes no ticket, spawns nothing, keeps its heartbeat and
+spends any order sent to it, then resumes by itself as the oldest entries age
+out. The loop does not end, so there is no closing tally for it, and the wait
+records no increment, no failure and no token. One increment bigger than the
+count puts the loop over on its own until that increment ages out; the tally's
+`peak hour` line is the number to size it from.
+
 One thing that looks like a stop is not: **a restart**. A loop that spends the
 night improving this repository is running the version it started with, and
 would be until somebody came and stopped it — work that lands at one in the
@@ -7962,13 +7972,14 @@ the ticket was both:
   it restarts as is the trunk's, and not whichever branch the last session left.
 
 What survives the restart is what was typed and what has been spent.
-`--max-runs`, `--max-spend`, `--max-tokens`, `--until`, `--under`, `--interval`,
-`--quiet` and `--stop-file` are all still in argv, which the supervisor re-runs
-verbatim; the increments, the spend, the tokens (and how many increments
-reported none), the failure streak, the night's start and the two lists the
-tally prints travel in a state file the supervisor names once per night. So
-a restart cannot outspend `--max-spend`, re-open `--max-tokens` or outrun
-`--max-runs` by starting over,
+`--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour`, `--until`,
+`--under`, `--interval`, `--quiet` and `--stop-file` are all still in argv,
+which the supervisor re-runs verbatim; the increments, the spend, the tokens
+(and how many increments reported none), the last hour's token entries, the
+failure streak, the night's start and the two lists the tally prints travel in
+a state file the supervisor names once per night. So a restart cannot outspend
+`--max-spend`, re-open `--max-tokens`, re-open a `--max-tokens-per-hour` wait or
+outrun `--max-runs` by starting over,
 and the tally at the end covers the whole night and says how many times the loop
 came back. `--until` is carried as the instant it resolved to rather than
 re-read, which is the one bound that would otherwise be wrong: `--until 23:59`
@@ -8174,9 +8185,12 @@ loop before the stop conditions are asked, so a cap lowered from a page stops
 that loop at its very next pass. `until` on a row is always an instant, never a
 bare date: "stop by the 12th" is a midnight in a timezone nobody named.
 
-**`--max-tokens` is a flag-only bound for now.** It stops the loop, but it is
-not on the row, so nobody can raise or lower it from the page until the page
-controls it.
+**`--max-tokens` and `--max-tokens-per-hour` are flag-only bounds for now.**
+The first stops the loop and the second waits and does not stop; neither is on
+the row, so nobody can raise or lower them from the page until the page controls
+them. The runner reports `throttledUntil` on its beat, but the server only keeps
+it once HA-1672 lands and the page only shows it once HA-1673 does, so the page
+does not show a waiting runner yet.
 
 **The flags seed the row once.** The first heartbeat a name is ever seen under
 writes the four bounds from what the process actually started with, which is
