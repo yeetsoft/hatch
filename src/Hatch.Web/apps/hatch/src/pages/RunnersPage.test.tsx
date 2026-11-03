@@ -341,6 +341,25 @@ describe('RunnersPage token bounds', () => {
     expect(renderBounds(runner())).toContain('no bounds');
   });
 
+  it('marks a default-sourced cap in the bounds summary and the token budget line', () => {
+    const inherited = runner({
+      maxTokens: 2_000_000,
+      maxTokensPerHour: 200_000,
+      maxTokensSource: 'default',
+      maxTokensPerHourSource: 'default',
+      tokensUsed: 1_200_000,
+      tokensLastHour: 140_000,
+    });
+
+    const summary = renderBounds(inherited);
+    expect(summary).toContain('2M tokens (default)');
+    expect(summary).toContain('200k tokens/hour (default)');
+
+    const budget = renderBudget(inherited);
+    expect(budget).toContain('1.2M / 2M tokens (default)');
+    expect(budget).toContain('140k / 200k per hour (default)');
+  });
+
   it('badges a throttled row with the cap it is over, and draws what it last said', () => {
     const html = renderRow(
       runner({
@@ -387,7 +406,7 @@ describe('RunnersPage token bounds', () => {
 const renderForm = (props: { refusal?: string; refusalField?: 'maxTokens' | 'maxTokensPerHour' } = {}) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <BoundsForm runner={runner({ maxTokens: 2_000_000 })} onSave={noop} {...props} />
+      <BoundsForm runner={runner({ maxTokens: 2_000_000, maxTokensSource: 'runner' })} onSave={noop} {...props} />
     </MemoryRouter>,
   );
 
@@ -419,6 +438,21 @@ describe('RunnersPage BoundsForm', () => {
 
   it('draws no problem line for a clean runner', () => {
     expect(renderForm()).not.toContain('text-danger');
+  });
+
+  it('draws a default-sourced field empty, with a hint naming the inherited figure', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <BoundsForm
+          runner={runner({ maxTokens: 1_000_000, maxTokensSource: 'default' })}
+          onSave={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(fieldOf(html, 'Max tokens this run')).not.toContain('value="1,000,000"');
+    expect(html).toContain('value=""');
+    expect(html).toContain('Empty inherits the default: 1M tokens.');
   });
 });
 
