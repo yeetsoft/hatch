@@ -129,3 +129,25 @@ internal sealed record BoardBarMeasurement(
         return string.Join(Environment.NewLine, lines);
     }
 }
+
+/// <summary>One <c>.hatch-usage-bar-fill</c>: its box's width, its track's content width, the inline width and colour the page set, and the colour it resolved to.</summary>
+internal sealed record BudgetBar(double FillWidth, double TrackWidth, string StyleWidth, string UsageColor, string Color)
+{
+    public override string ToString() => string.Create(CultureInfo.InvariantCulture,
+        $"fill {FillWidth:0.##}px of {TrackWidth:0.##}px (style width {StyleWidth}, --usage-color {UsageColor}, drawn {Color})");
+}
+
+/// <summary>One Runners row's Token budget cell: its text, each line's words, each bar, and the activity badge beside the name.</summary>
+internal sealed record RunnerBudgetRow(string Name, string CellText, IReadOnlyList<string> Lines, IReadOnlyList<BudgetBar> Bars, string Badge)
+{
+    public override string ToString() =>
+        $"{Name}: badge \"{Badge}\"; cell \"{CellText}\"; lines [{string.Join(" | ", Lines)}]; bars [{string.Join("; ", Bars)}]";
+}
+
+/// <summary>The Runners page's token budget cells, row by row, and the document's width against its viewport.</summary>
+internal sealed record RunnerBudgetsMeasurement(int ScrollWidth, int ClientWidth, IReadOnlyList<RunnerBudgetRow> Rows)
+{
+    public override string ToString() => string.Join(Environment.NewLine,
+        new[] { $"document scrollWidth: {ScrollWidth}", $"document clientWidth: {ClientWidth}" }
+            .Concat(Rows.Select(r => r.ToString())));
+}
