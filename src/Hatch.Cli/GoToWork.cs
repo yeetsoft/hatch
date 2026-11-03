@@ -1819,7 +1819,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// is a field somebody cleared - the token bounds included, so a Hatch too
     /// old to answer them clears a loop's <c>--max-tokens</c>, as it does the
     /// others. Reading an absence as "leave the flag alone" would
-    /// make a cap impossible to take off from the page that set it. The tags
+    /// make a cap impossible to take off from the page that set it. An empty
+    /// token bound now arrives as the site default where there is one, so what
+    /// folds in is the effective cap and not only the row's own. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
     /// null bound means cleared. Whether dangerous work is refused is the same: a null
