@@ -2977,6 +2977,12 @@ public class EfHatchRunner
     /// <summary>The cap on dollars, on the same terms.</summary>
     public decimal? MaxSpend { get; set; }
 
+    /// <summary>The cap on tokens for the whole run, on the same terms as <see cref="MaxSpend"/>.</summary>
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The cap on tokens per hour, on the same terms as <see cref="MaxSpend"/>.</summary>
+    public long? MaxTokensPerHour { get; set; }
+
     /// <summary>
     /// When to stop, always as an instant. The command line takes a wall clock
     /// (<c>--until 06:00</c>) because somebody is typing it at a terminal in a
@@ -3033,6 +3039,12 @@ public class EfHatchRunner
 
     /// <summary>The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</summary>
     public decimal? Spent { get; set; }
+
+    /// <summary>The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</summary>
+    public long? TokensUsed { get; set; }
+
+    /// <summary>The tokens used in the last hour, on the terms <see cref="Runs"/> has.</summary>
+    public long? TokensLastHour { get; set; }
 
     /// <summary>The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</summary>
     [MaxLength(MaxHostLength)]
@@ -3105,6 +3117,15 @@ public class EfHatchRunner
     /// time, the same lazy expiry the rest of this table uses.
     /// </summary>
     public DateTimeOffset? ExhaustedUntil { get; set; }
+
+    /// <summary>
+    /// When this runner expects its token throttle to lift - a fact about the
+    /// process, on the same terms as <see cref="ExhaustedUntil"/>: a loop
+    /// heartbeat writes it, and a loop heartbeat that says it is not throttled
+    /// clears it, which is the only way it ever clears other than expiring by
+    /// arithmetic at read time. A <c>once</c> beat leaves it alone either way.
+    /// </summary>
+    public DateTimeOffset? ThrottledUntil { get; set; }
 
     /// <summary>
     /// The account's usage windows, as this runner's own session last read

@@ -3835,7 +3835,14 @@ public record RunnerDto(
     decimal? Spent = null,
     string? Host = null,
     string? ClaimStatus = null,
-    bool RefusesDangerous = false)
+    bool RefusesDangerous = false,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    string MaxTokensSource = "none",
+    string MaxTokensPerHourSource = "none",
+    long? TokensUsed = null,
+    long? TokensLastHour = null,
+    DateTimeOffset? ThrottledUntil = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -3862,7 +3869,7 @@ public enum RunnerBoardDrift
 /// itself.
 /// </summary>
 /// <remarks>
-/// The five bounds are <em>reported</em>, not requested: they are what this
+/// The seven bounds are <em>reported</em>, not requested: they are what this
 /// process started with, and they are written only when the row is being
 /// created. A restart of the same loop sends them again and the server ignores
 /// them, which is what stops a restart from undoing an operator's edit.
@@ -3931,7 +3938,7 @@ public enum RunnerBoardDrift
 /// <param name="Fresh">
 /// True only on the first answered beat of a loop process that carried no
 /// night state, i.e. one typed by hand or the first start under a supervisor:
-/// the five bounds in this body are then the flags it was started with, and
+/// the seven bounds in this body are then the flags it was started with, and
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
@@ -3959,8 +3966,12 @@ public enum RunnerBoardDrift
 /// <param name="ThrottledUntil">
 /// This runner is over its own <c>--max-tokens-per-hour</c> and expects to be
 /// under it at this instant; null otherwise. A fact the runner reports about
-/// itself, never a person's to set. The server column is HA-1672.
+/// itself, never a person's to set.
 /// </param>
+/// <param name="MaxTokens">The cap on tokens for the whole run, read only on a fresh <c>loop</c> beat, with the other bounds.</param>
+/// <param name="MaxTokensPerHour">The cap on tokens per hour, on the same terms as <see cref="MaxTokens"/>.</param>
+/// <param name="TokensUsed">The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</param>
+/// <param name="TokensLastHour">The tokens used in the last hour, on the terms <see cref="Runs"/> has.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -3991,7 +4002,11 @@ public record RunnerHeartbeatRequest(
     decimal? Spent = null,
     string? Host = null,
     bool? RefusesDangerous = null,
-    DateTimeOffset? ThrottledUntil = null);
+    DateTimeOffset? ThrottledUntil = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    long? TokensUsed = null,
+    long? TokensLastHour = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -4017,7 +4032,7 @@ public record RunnerUsageWindowDto(
 /// and read by nobody else.
 /// </summary>
 /// <remarks>
-/// The loop folds all six into its bounds before its next pick, so a person
+/// The loop folds all seven into its bounds before its next pick, so a person
 /// editing a row changes what that loop does from the next ticket onward -
 /// never in the middle of one. That is not a check anywhere: the heartbeat
 /// happens at the top of a pass, which is the one moment no claim is held.
@@ -4065,7 +4080,9 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Tags = null,
     RunnerOrderDto? Order = null,
     IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -4103,7 +4120,9 @@ public record RunnerPatchRequest(
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
     IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null);
+    bool? RefusesDangerous = null,
+    string? MaxTokens = null,
+    string? MaxTokensPerHour = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.

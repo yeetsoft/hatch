@@ -1114,6 +1114,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<long?>("MaxTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("MaxTokensPerHour")
+                        .HasColumnType("bigint");
+
                     b.Property<bool?>("Mine")
                         .HasColumnType("boolean");
 
@@ -1172,6 +1178,15 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<string>("Tags")
                         .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ThrottledUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("TokensLastHour")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("TokensUsed")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Under")
                         .HasMaxLength(32)
