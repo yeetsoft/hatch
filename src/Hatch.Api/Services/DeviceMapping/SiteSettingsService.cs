@@ -31,7 +31,9 @@ public record SiteSettingsSnapshot(
     string? ClaudeSubscriptionToken,
     string? CodexApiKey,
     string? XaiApiKey,
-    string? LocalPersonName);
+    string? LocalPersonName,
+    long? RunnerDefaultMaxTokens,
+    long? RunnerDefaultMaxTokensPerHour);
 
 public interface ISiteSettingsService
 {
@@ -138,7 +140,12 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
                 // No default: "nobody has said" is a distinct answer from any
                 // name, and it is what tells the nav strip to explain how to
                 // set one. LocalCaller decides what unset means.
-                LocalPersonName: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.LocalPersonName)));
+                LocalPersonName: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.LocalPersonName)),
+                // Unset is null, and so is anything that is not a whole number
+                // of at least one: a cleared default is stored as "", and a
+                // hand-edited row must not read as a cap of zero.
+                RunnerDefaultMaxTokens: ParseTokens(values, SiteSettingKeys.RunnerDefaultMaxTokens),
+                RunnerDefaultMaxTokensPerHour: ParseTokens(values, SiteSettingKeys.RunnerDefaultMaxTokensPerHour));
 
             cached = snapshot;
             expiresAt = time.GetUtcNow() + CacheTtl;
@@ -171,6 +178,11 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
         values.TryGetValue(key, out var raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : fallback;
+
+    private static long? ParseTokens(IReadOnlyDictionary<string, string> values, string key) =>
+        values.TryGetValue(key, out var raw) && long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1
+            ? parsed
+            : null;
 
     private static double ParseDouble(IReadOnlyDictionary<string, string> values, string key, double fallback) =>
         values.TryGetValue(key, out var raw) && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
