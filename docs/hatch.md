@@ -8192,8 +8192,9 @@ board cleared it. `until` on a row is always an instant, never a bare date:
 first stops the loop and the second waits and does not stop. Both are held,
 read and set as a token count (`500k`, `2M`) like the other bounds; the server
 also keeps what the runner reports beside them, `tokensUsed`, `tokensLastHour`
-and `throttledUntil`. The page does not draw any of it until HA-1673 does, so
-the page does not show a waiting runner yet.
+and `throttledUntil`. The page's Token budget column draws `tokensUsed` and
+`tokensLastHour` against the two caps, and a row over its hourly cap reads
+*Over 200k tokens/hour until 3:40am*.
 
 **A cap comes from the row, else the site default, else nowhere.** The row
 holds it when a fresh start gave the flag or a person's `PATCH` set it; failing
@@ -8270,7 +8271,8 @@ the instant it expects to be under the cap; a beat from a runner that is under
 it, or has no cap, carries null. The runner reads it fresh at the top of every
 pass, so the beat is never a pass behind. The server keeps it on the row, written
 by every `loop` beat (so a null clears it) and left alone by a `once` beat; the
-page draws it with HA-1673.
+page draws it as the throttled status, ranked below *Gone* and *Out of usage*
+and above *Paused*, in the viewer's own time zone like *Out of usage until*.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
