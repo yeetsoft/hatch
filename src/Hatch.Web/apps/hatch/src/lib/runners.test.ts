@@ -25,6 +25,7 @@ import {
   projectsLabel,
   topRefusal,
   tokenBudget,
+  tokenFieldHint,
   tokenFieldOf,
   tokensWire,
   TOKEN_WARN_PERCENT,
@@ -32,6 +33,7 @@ import {
 } from './runners';
 import type { Runner } from '../types';
 import type { RunnerBounds } from './runners';
+import { TOKEN_FIELD_HINT } from './workLog';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
 
@@ -281,6 +283,16 @@ describe('tokenBudget', () => {
   it('counts a figure nobody reported as nothing under a cap', () => {
     expect(tokenBudget(runner({ maxTokens: 1_000_000 }))).toEqual([{ text: '0 / 1M tokens', percent: 0, tone: 'success' }]);
   });
+
+  it('marks a cap inherited from the site default, in either window', () => {
+    const night = tokenBudget(runner({ maxTokens: 1_000_000, tokensUsed: 600_000, maxTokensSource: 'default' }));
+    expect(night[0].text).toBe('600k / 1M tokens (default)');
+
+    const hour = tokenBudget(
+      runner({ maxTokensPerHour: 500_000, tokensLastHour: 350_000, maxTokensPerHourSource: 'default' }),
+    );
+    expect(hour[0].text).toBe('350k / 500k per hour (default)');
+  });
 });
 
 describe('activityParts', () => {
@@ -472,6 +484,8 @@ describe('the bounds form', () => {
       maxSpend: 40,
       maxTokens: 2_000_000,
       maxTokensPerHour: 500_000,
+      maxTokensSource: 'runner',
+      maxTokensPerHourSource: 'runner',
       untilAt: '2026-09-09T06:00:00Z',
       tags: ['gpu', 'fast'],
       projects: ['HA', 'AER'],
@@ -492,6 +506,17 @@ describe('the bounds form', () => {
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
 
+  it('shows a default-sourced cap as an empty box, not the inherited number', () => {
+    const inherited = runner({
+      maxTokens: 1_000_000,
+      maxTokensPerHour: 500_000,
+      maxTokensSource: 'default',
+      maxTokensPerHourSource: 'default',
+    });
+
+    expect(boundsOf(inherited)).toMatchObject({ maxTokens: '', maxTokensPerHour: '' });
+  });
+
   it('notices a cap being taken off', () => {
     const bounded = runner({ maxRuns: 12 });
 
@@ -499,7 +524,12 @@ describe('the bounds form', () => {
   });
 
   it('reads a token box by its count, so a typed equivalent is no change and a cleared box is', () => {
-    const bounded = runner({ maxTokens: 2_000_000, maxTokensPerHour: 500_000 });
+    const bounded = runner({
+      maxTokens: 2_000_000,
+      maxTokensPerHour: 500_000,
+      maxTokensSource: 'runner',
+      maxTokensPerHourSource: 'runner',
+    });
 
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
     expect(boundsChanged({ ...boundsOf(bounded), maxTokens: '2M' }, bounded)).toBe(false);
@@ -510,7 +540,7 @@ describe('the bounds form', () => {
   });
 
   it('compares a token box that does not parse as the text it holds', () => {
-    const bounded = runner({ maxTokens: 2_000_000 });
+    const bounded = runner({ maxTokens: 2_000_000, maxTokensSource: 'runner' });
 
     expect(boundsChanged({ ...boundsOf(bounded), maxTokens: 'abc' }, bounded)).toBe(true);
     expect(boundsChanged({ ...boundsOf(runner()), maxTokens: 'abc' }, runner())).toBe(true);
@@ -614,6 +644,24 @@ describe('tokenFieldOf', () => {
   it('is null for any other refusal, and for none', () => {
     expect(tokenFieldOf('--max-runs takes a whole number')).toBeNull();
     expect(tokenFieldOf(null)).toBeNull();
+  });
+});
+
+describe('tokenFieldHint', () => {
+  it('gives the shared wording for a runner-owned cap or no cap at all', () => {
+    expect(tokenFieldHint(runner({ maxTokensSource: 'runner' }), 'maxTokens')).toBe(TOKEN_FIELD_HINT);
+    expect(tokenFieldHint(runner({ maxTokensSource: 'none' }), 'maxTokens')).toBe(TOKEN_FIELD_HINT);
+    expect(tokenFieldHint(runner({ maxTokensPerHourSource: 'runner' }), 'maxTokensPerHour')).toBe(TOKEN_FIELD_HINT);
+    expect(tokenFieldHint(runner({ maxTokensPerHourSource: 'none' }), 'maxTokensPerHour')).toBe(TOKEN_FIELD_HINT);
+  });
+
+  it('names the inherited figure for a default-sourced cap, in each field\'s own words', () => {
+    expect(tokenFieldHint(runner({ maxTokens: 1_000_000, maxTokensSource: 'default' }), 'maxTokens')).toBe(
+      'Empty inherits the default: 1M tokens.',
+    );
+    expect(
+      tokenFieldHint(runner({ maxTokensPerHour: 500_000, maxTokensPerHourSource: 'default' }), 'maxTokensPerHour'),
+    ).toBe('Empty inherits the default: 500k per hour.');
   });
 });
 

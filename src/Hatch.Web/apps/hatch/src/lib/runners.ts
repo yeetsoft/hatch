@@ -17,7 +17,7 @@ import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { runnerProjectsDraft, runnerProjectsRequest, sameProjects } from './runnerProjects';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
-import { compactTokens, parseTokenCount, thousands } from './workLog';
+import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
 import type { Runner, RunnerPatchRequest } from '../types';
 
 /** The seven states a row can be in, in the order they are decided. */
@@ -289,13 +289,14 @@ export interface TokenBudgetLine {
 /** One window's line: the figure against its cap (an unreported figure counts
     as 0), or the figure alone where the cap is unset - or nothing, where the
     cap is unset and no run reported a figure. */
-function budgetLine(used: number | null, cap: number | null, window: string): TokenBudgetLine | null {
+function budgetLine(used: number | null, cap: number | null, window: string, isDefault: boolean): TokenBudgetLine | null {
   if (cap === null) {
     return used === null ? null : { text: `${compactTokens(used)} ${window}, no cap`, percent: null, tone: null };
   }
   const spent = used ?? 0;
   const percent = cap > 0 ? Math.min(100, (spent / cap) * 100) : 100;
-  return { text: `${compactTokens(spent)} / ${compactTokens(cap)} ${window}`, percent, tone: budgetTone(percent) };
+  const text = `${compactTokens(spent)} / ${compactTokens(cap)} ${window}${isDefault ? ' (default)' : ''}`;
+  return { text, percent, tone: budgetTone(percent) };
 }
 
 /**
@@ -310,8 +311,8 @@ function budgetLine(used: number | null, cap: number | null, window: string): To
 export function tokenBudget(runner: Runner): TokenBudgetLine[] {
   if (runner.maxTokens === null && runner.maxTokensPerHour === null) return [];
 
-  const night = budgetLine(runner.tokensUsed, runner.maxTokens, 'tokens');
-  const hour = budgetLine(runner.tokensLastHour, runner.maxTokensPerHour, 'per hour');
+  const night = budgetLine(runner.tokensUsed, runner.maxTokens, 'tokens', runner.maxTokensSource === 'default');
+  const hour = budgetLine(runner.tokensLastHour, runner.maxTokensPerHour, 'per hour', runner.maxTokensPerHourSource === 'default');
   return [night, hour].filter((line): line is TokenBudgetLine => line !== null);
 }
 
@@ -338,8 +339,9 @@ export function boundsOf(runner: Runner): RunnerBounds {
     under: runner.under ?? '',
     maxRuns: runner.maxRuns === null ? '' : String(runner.maxRuns),
     maxSpend: runner.maxSpend === null ? '' : String(runner.maxSpend),
-    maxTokens: runner.maxTokens === null ? '' : thousands(runner.maxTokens),
-    maxTokensPerHour: runner.maxTokensPerHour === null ? '' : thousands(runner.maxTokensPerHour),
+    maxTokens: runner.maxTokensSource === 'runner' && runner.maxTokens !== null ? thousands(runner.maxTokens) : '',
+    maxTokensPerHour:
+      runner.maxTokensPerHourSource === 'runner' && runner.maxTokensPerHour !== null ? thousands(runner.maxTokensPerHour) : '',
     untilAt: runner.untilAt ?? '',
     tags: runnerTagsDraft(runner.tags),
     projects: runnerProjectsDraft(runner.projects),
@@ -417,6 +419,18 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     projects: runnerProjectsRequest(draft.projects),
     refusesDangerous: draft.refusesDangerous,
   };
+}
+
+/** A token field's hint: the shared wording, unless the field is inheriting
+    the site default, in which case it names the figure the empty box
+    inherits - the same words `budgetLine` uses for the same window, so the
+    hint and the budget line never disagree. */
+export function tokenFieldHint(runner: Runner, field: 'maxTokens' | 'maxTokensPerHour'): string {
+  const source = field === 'maxTokens' ? runner.maxTokensSource : runner.maxTokensPerHourSource;
+  if (source !== 'default') return TOKEN_FIELD_HINT;
+  const cap = runner[field];
+  const window = field === 'maxTokens' ? 'tokens' : 'per hour';
+  return `Empty inherits the default: ${compactTokens(cap as number)} ${window}.`;
 }
 
 /** Which token box a server refusal is about, so the form can mark it - or

@@ -1,4 +1,6 @@
-import type { HatchSettings, HatchSettingsWriteRequest } from '../types';
+import type { HatchSettings, HatchSettingsWriteRequest, Me } from '../types';
+import { parseTokenCount, thousands } from './workLog';
+import { tokensWire } from './runners';
 
 /**
  * The rules the Settings page's fields follow, pulled out of the component
@@ -51,3 +53,52 @@ export const credentialClear = (field: CredentialField): HatchSettingsWriteReque
  * two places deciding that would be two places to keep in step.
  */
 export const nameSave = (draft: string): HatchSettingsWriteRequest => ({ localPersonName: draft.trim() });
+
+/** The settings that set a site-wide default token budget. */
+export type DefaultTokenField = 'defaultMaxTokens' | 'defaultMaxTokensPerHour';
+
+/** Whether the token budget fields may be edited: the loading-is-permissive
+    convention `ApiKeysPage` already gates on, so a page that has not yet
+    heard back from `/api/hatch/auth/me` does not flash the fields closed. */
+export const tokenBudgetEditable = (me: Me | null, isAdmin: boolean): boolean =>
+  me === null || isAdmin || me.role === null;
+
+/** What the token budget fields look like in the form that edits them. */
+export const defaultTokensOf = (settings: HatchSettings): Record<DefaultTokenField, string> => ({
+  defaultMaxTokens: settings.defaultMaxTokens === null ? '' : thousands(settings.defaultMaxTokens),
+  defaultMaxTokensPerHour: settings.defaultMaxTokensPerHour === null ? '' : thousands(settings.defaultMaxTokensPerHour),
+});
+
+/** Whether a token box holds something other than the saved one. Compared as
+    counts where both parse, so `2M` against a saved `2,000,000` is no change. */
+function tokensDiffer(draft: string, saved: string): boolean {
+  const a = parseTokenCount(tokensWire(draft));
+  const b = parseTokenCount(tokensWire(saved));
+  return a !== null && b !== null ? a !== b : draft.trim() !== saved.trim();
+}
+
+/** Whether the form is holding anything the settings are not. */
+export const defaultTokensChanged = (draft: Record<DefaultTokenField, string>, settings: HatchSettings): boolean => {
+  const saved = defaultTokensOf(settings);
+  return (['defaultMaxTokens', 'defaultMaxTokensPerHour'] as const).some((f) => tokensDiffer(draft[f], saved[f]));
+};
+
+/** Why the form cannot be saved yet, or null. */
+export const defaultTokensProblem = (draft: Record<DefaultTokenField, string>): string | null => {
+  const maxTokens = tokensWire(draft.defaultMaxTokens);
+  if (maxTokens !== '' && parseTokenCount(maxTokens) === null) {
+    return 'Default max tokens per run takes a token count, like 500k or 2M.';
+  }
+  const maxTokensPerHour = tokensWire(draft.defaultMaxTokensPerHour);
+  if (maxTokensPerHour !== '' && parseTokenCount(maxTokensPerHour) === null) {
+    return 'Default max tokens per hour takes a token count, like 500k or 2M.';
+  }
+  return null;
+};
+
+/** The edit a Save of the token budget fields sends: both, every time, so a
+    cleared box is a clear and not a no-op. */
+export const defaultTokensSave = (draft: Record<DefaultTokenField, string>): HatchSettingsWriteRequest => ({
+  defaultMaxTokens: tokensWire(draft.defaultMaxTokens),
+  defaultMaxTokensPerHour: tokensWire(draft.defaultMaxTokensPerHour),
+});
