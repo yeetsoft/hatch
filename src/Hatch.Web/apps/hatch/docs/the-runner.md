@@ -320,6 +320,13 @@ runner's row; after that **the row is where it lives**, and `hatch config
 on the board. A running loop adopts the row's answer on its next heartbeat and
 says so once: `hatch: the board set --dangerous off` (or `on`).
 
+A runner can also refuse one ticket rather than every dangerous one: a session
+that decides the work is not one this runner can do runs `hatch recuse AER-12
+"reason"` and stops there. The board stops handing that runner this ticket,
+and the increment ends with `hatch: AER-12 - <runner> recused itself
+(<reason>), going on to the next` - no stall comment, no mark, no question.
+`hatch omit AER-12 --lift <runner>` undoes it.
+
 ## The runner's name
 
 The board shows each runner by name, under **Agents → Runners** (*Watching the

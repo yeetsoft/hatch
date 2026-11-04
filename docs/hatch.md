@@ -7044,11 +7044,13 @@ One pass, from the board to the release:
    at the tree in every checkout it entered and only then applies the verdict.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
+   After the session ends, the runner reads the issue once more — see [when an
+   increment does nothing](#when-an-increment-does-nothing) — to find a recusal.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
    so carries nothing, which is what `--quiet` is.
-7. **Release**, however the increment ended.
+7. **Release**, however the increment ended, `recused` included.
 
 **A refused heartbeat ends the increment.** The lease expired underneath the run,
 was taken over, or was cleared by the operator; the session is stopped rather
