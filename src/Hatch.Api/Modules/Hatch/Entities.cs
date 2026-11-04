@@ -1409,6 +1409,38 @@ public class EfHatchComment
 }
 
 /// <summary>
+/// A half-thought, not yet an issue - see docs/hatch.md, "Dream". No event
+/// trail: <see cref="UpdatedAt"/> is its whole history.
+/// </summary>
+[Table("Dreams")]
+public class EfHatchDream
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public required string Body { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    [MaxLength(500)]
+    public string? Source { get; set; }
+
+    /// <summary>The project this dream leans toward, or null. A lean, not a home - see this type's own <c>ProjectId</c>/<c>Project</c> FK config in HatchContext.</summary>
+    public int? ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>
+    /// <see cref="Body"/> weighted A - see <see cref="SearchQuery"/>. Never
+    /// assigned in code.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
+
+    public required DateTimeOffset CreatedAt { get; set; }
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
 /// What a runner found when it merged an issue's branch against the trunk of
 /// one repository, and what it was looking at when it did.
 ///

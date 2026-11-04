@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-three tables.
+/// migration history, twenty-four tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -19,6 +19,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
+    public DbSet<EfHatchDream> Dreams => Set<EfHatchDream>();
     public DbSet<EfHatchIssueEvent> IssueEvents => Set<EfHatchIssueEvent>();
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
     public DbSet<EfHatchPlaybookProposal> PlaybookProposals => Set<EfHatchPlaybookProposal>();
@@ -398,6 +399,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(t => t.Failing).HasColumnType("jsonb");
         });
 
+        // A dream outlives the project it leaned toward - SetNull, the same
+        // shape as EfHatchTrunkBuild.BugIssueId above.
+        modelBuilder.Entity<EfHatchDream>(e =>
+        {
+            e.HasOne(d => d.Project)
+                .WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
@@ -439,12 +450,22 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             modelBuilder.Entity<EfHatchWorkLogEntry>()
                 .HasIndex(w => w.SearchVector)
                 .HasMethod("GIN");
+
+            modelBuilder.Entity<EfHatchDream>()
+                .Property(d => d.SearchVector)
+                .HasComputedColumnSql(
+                    """setweight(to_tsvector('english', "Body"), 'A')""",
+                    stored: true);
+            modelBuilder.Entity<EfHatchDream>()
+                .HasIndex(d => d.SearchVector)
+                .HasMethod("GIN");
         }
         else
         {
             modelBuilder.Entity<EfHatchIssue>().Ignore(i => i.SearchVector);
             modelBuilder.Entity<EfHatchComment>().Ignore(c => c.SearchVector);
             modelBuilder.Entity<EfHatchWorkLogEntry>().Ignore(w => w.SearchVector);
+            modelBuilder.Entity<EfHatchDream>().Ignore(d => d.SearchVector);
         }
 
         base.OnModelCreating(modelBuilder);
