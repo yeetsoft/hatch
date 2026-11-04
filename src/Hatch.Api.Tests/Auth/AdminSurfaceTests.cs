@@ -400,6 +400,11 @@ public class AdminSurfaceTests
         "IssueDependenciesController.AddDependency",
         "IssueDependenciesController.RemoveDependency",
 
+        // What an issue drew on, read and replaced whole. Hatch-scoped like
+        // the rest of the module - see IssueDreamsController.
+        "IssueDreamsController.PutIssueDreams",
+        "IssueDreamsController.GetIssueDreams",
+
         // The lease on an issue, and the one place in the module where the
         // scope is accepted *because* the caller is a machine: a mutex only an
         // operator could operate would mutex nothing. All three carry the

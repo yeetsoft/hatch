@@ -2778,7 +2778,9 @@ declaration that was set aside, beside `remote` and `verdict` or `pullRequest`),
 `priority_changed`, `express_changed`, `wip_limit_changed` (an epic's [Stories
 at once](#stories-at-once) was set, changed or cleared - payload `{ from, to }`,
 either side null rather than the default), `dependency_added`,
-`dependency_removed`, `claim_taken`, `claim_lapsed` (a take found a lease that
+`dependency_removed`, `dreams_woven` (`PUT /issues/{key}/dreams` replaced the
+set of dreams this issue drew on - payload `{ from, to }`, both sides every
+dream id sorted ascending), `claim_taken`, `claim_lapsed` (a take found a lease that
 had already gone quiet past its terms and is taking it over — payload
 `{ from, heardAt }`, the previous holder and when it was last heard from,
 written immediately before the `claim_taken` for the runner taking over),
