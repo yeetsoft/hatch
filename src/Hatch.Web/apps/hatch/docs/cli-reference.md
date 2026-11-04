@@ -47,6 +47,7 @@ without the flag.
 | `depends` | No | Only with a second key |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
+| `omit` | No | Only with a runner and reason, or `--lift` |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
 | `answer` | No | Yes: answers a question |
@@ -473,6 +474,26 @@ is refused and calls nothing, so clearing is always said as `--clear`. Open to
 a key. A task inherits the flag of the story or epic above it, and `hatch show`
 prints the reason with `(from AER-5)` after it when it is not the issue's own;
 it prints nothing for an issue that is not flagged.
+
+### omit
+
+```
+hatch omit AER-12 [<runner> "reason" | --lift <runner>]
+```
+
+The runners kept off an issue's work. With only the key it reads: each
+runner omitted, its reason, who omitted it and how long ago, or
+`omitted runners: none`. With more it writes:
+
+- `<runner> "reason"` omits that runner from the issue.
+- `--lift <runner>` lifts the issue's own omission of that runner.
+
+The reason is required, and is at most 200 characters, measured after
+trimming; a missing or blank one is refused and calls nothing. A task inherits
+the omissions of the story or epic above it, and the read names each one with
+`(from AER-3)` after it. An inherited omission is lifted on the ticket that
+carries it: asked of the task, `--lift` prints the refusal naming that ticket.
+Open to a key.
 
 ### ask
 
