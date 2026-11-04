@@ -1120,6 +1120,45 @@ export interface SearchResult {
   hits: SearchHit[];
 }
 
+// ---- Dreams ----
+
+/** One dream: a line somebody wanted said, leaning toward a project or loose.
+    Mirrors DreamDto. */
+export interface Dream {
+  id: number;
+  body: string;
+  author: string;
+  source: string | null;
+  projectId: number | null;
+  projectKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The keys of the issues that drew on this dream. Never null. */
+  wovenInto: string[];
+}
+
+/** A page of dreams, and how many matched before paging. Mirrors DreamsPageDto. */
+export interface DreamsPage {
+  dreams: Dream[];
+  total: number;
+}
+
+/** What it takes to add a dream. Mirrors DreamCreateRequest. */
+export interface DreamCreateRequest {
+  body: string;
+  source?: string | null;
+  projectId?: number | null;
+}
+
+/** What it takes to edit a dream. Every field is independently
+    present-or-absent - DreamsController.EditDream reads a raw JsonElement,
+    so there is no server-side DTO this mirrors. */
+export interface DreamPatchRequest {
+  body?: string;
+  source?: string | null;
+  projectId?: number | null;
+}
+
 /** One edit for many issues. Null leaves a field alone and `''` clears it, the
     same way a single-issue patch reads them. Title and description are
     deliberately absent: they describe one issue. */

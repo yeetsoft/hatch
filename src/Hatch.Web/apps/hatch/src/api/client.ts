@@ -16,6 +16,10 @@ import type {
   CommentCreateRequest,
   CumulativeFlow,
   DangerousRequest,
+  Dream,
+  DreamCreateRequest,
+  DreamPatchRequest,
+  DreamsPage,
   HatchSettings,
   HatchSettingsWriteRequest,
   ImportRequest,
@@ -489,6 +493,22 @@ export const getComments = (key: string) => fetchJson<Comment[]>(`/api/hatch/iss
 export const addComment = (key: string, request: CommentCreateRequest) =>
   fetchJson<Comment>(`/api/hatch/issues/${seg(key)}/comments`, { method: 'POST', ...asJson(request) });
 export const getEvents = (key: string) => fetchJson<IssueEvent[]>(`/api/hatch/issues/${seg(key)}/events`);
+
+// ---- Dreams ----
+
+/** A page of dreams: `params` is already built, so the page and the test
+    share one builder (lib/dreams.ts's `dreamsRequest`). */
+export const getDreams = (params: URLSearchParams) =>
+  fetchJson<DreamsPage>(`/api/hatch/dreams?${params.toString()}`);
+export const addDream = (request: DreamCreateRequest) =>
+  fetchJson<Dream>('/api/hatch/dreams', { method: 'POST', ...asJson(request) });
+export const patchDream = (id: number, request: DreamPatchRequest) =>
+  fetchJson<Dream>(`/api/hatch/dreams/${id}`, { method: 'PATCH', ...asJson(request) });
+export const deleteDream = (id: number) =>
+  fetchJson<void>(`/api/hatch/dreams/${id}`, { method: 'DELETE' });
+export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`);
+export const putIssueDreams = (key: string, dreamIds: number[]) =>
+  fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
 
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */
