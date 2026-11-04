@@ -2152,16 +2152,20 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked` or `preempted` — absent is accepted
-exactly as it always has been, which covers the pick's own release, a restart,
-and an older CLI, and a value that is none of the three is `400`. It is read
-only where a token is given: the operator's tokenless clobber names no
-increment to have an outcome. The `claim_released` event carries it, and it is
-what `letGo` counts (see [Comment, question and answer](#comment-question-and-answer))
-— except `preempted`, which it skips over, neither counted nor resetting the
-count: the board itself ordered that put-down, not a choice the increment
-made, and the runner's own account of what it pushed lands as its own comment,
-not as a dropped increment.
+an optional `outcome`, `dropped`, `worked`, `preempted` or `recused` — absent
+is accepted exactly as it always has been, which covers the pick's own
+release, a restart, and an older CLI, and a value that is none of the four is
+`400`. It is read only where a token is given: the operator's tokenless
+clobber names no increment to have an outcome. The `claim_released` event
+carries it, and it is what `letGo` counts (see [Comment, question and
+answer](#comment-question-and-answer)) — except `preempted`, which it skips
+over, neither counted nor resetting the count: the board itself ordered that
+put-down, not a choice the increment made, and the runner's own account of
+what it pushed lands as its own comment, not as a dropped increment.
+`recused` is skipped the other way: it *stops* the count exactly as `worked`
+does, because the session's own `hatch recuse` is the decision, and the
+omission — not the let-go count — is what folds the ticket; a recusal never
+raises the let-go fold on its own.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -2720,13 +2724,13 @@ because of economy's or low's own pace.
 
 **`letGo` counts a ticket's trailing dropped increments, and is what the stall
 mark's resume limit is measured against.** A runner's release
-may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped` or
-`&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
-`work/next` and a queue row is this issue's releases, newest first, whose
-outcome was `dropped`, counted back to the first of: a release whose outcome
-was `worked`, a `status_changed`, a `resumed` event (a person's *Resume now*),
-or an `answered` event written by a person. A `held` event is stepped over:
-holding is not resuming.
+may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped`,
+`&outcome=worked` or `&outcome=recused` (see [Claim](#claim)) — and `letGo` on
+`work/{key}`, `work/next` and a queue row is this issue's releases, newest
+first, whose outcome was `dropped`, counted back to the first of: a release
+whose outcome was `worked` or `recused`, a `status_changed`, a `resumed` event
+(a person's *Resume now*), or an `answered` event written by a person. A
+`held` event is stepped over: holding is not resuming.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
 own release from reading as a string of drops. `0` on a client too old to
@@ -3389,7 +3393,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the claim's own runner row only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
-| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
