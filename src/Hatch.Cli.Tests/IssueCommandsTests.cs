@@ -489,6 +489,58 @@ public sealed class IssueCommandsTests
         Assert.Contains("dangerous:    load tests the node (from HA-12)", h.Said);
     }
 
+    private static IssueDto WithOmittedRunners() => AnIssue() with
+    {
+        OmittedRunners =
+        [
+            new RunnerOmissionDto("Sisyphus", "too slow", "key-one", Now.AddMinutes(-5), null),
+            new RunnerOmissionDto("Atlas", null, "key-two", Now.AddHours(-3), "AER-3"),
+        ],
+    };
+
+    [Fact]
+    public async Task Show_lists_the_omitted_runners_naming_the_ancestor_one_came_from()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", WithOmittedRunners());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.Contains("omitted runners:", h.Said);
+        Assert.Contains("  Sisyphus - too slow - key-one, 5m ago\n", h.Said);
+        Assert.Contains("  Atlas - no reason given - key-two, 3h ago (from AER-3)", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_omitted_runners_when_there_are_none()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
+
+        Assert.DoesNotContain("omitted runners", h.Said);
+    }
+
+    [Fact]
+    public async Task Brief_keeps_the_omitted_runners()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", WithOmittedRunners());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
+
+        Assert.Contains("omitted runners:", h.Said);
+        Assert.Contains("  Sisyphus - too slow - key-one, 5m ago", h.Said);
+        Assert.Contains("  Atlas - no reason given - key-two, 3h ago (from AER-3)", h.Said);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+    }
+
     [Fact]
     public async Task Show_says_how_many_stories_an_epic_may_run_at_once()
     {
