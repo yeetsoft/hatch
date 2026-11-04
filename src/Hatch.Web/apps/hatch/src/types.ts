@@ -297,6 +297,11 @@ export interface IssueCard {
   /** The key of the ancestor `dangerous` comes from; null when it is this
       issue's own or there is none. See IssueCardDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** The runners this issue itself omits, one row each. See IssueCardDto.OmittedRunnersOwn. */
+  omittedRunnersOwn: RunnerOmission[];
+  /** The runners omitted for this issue: its own and every ancestor's. See
+      IssueCardDto.OmittedRunners. */
+  omittedRunners: RunnerOmission[];
   /** When an increment last left this ticket where it found it, or null.
       See IssueCardDto.StalledAt. */
   stalledAt: string | null;
@@ -629,6 +634,10 @@ export interface Issue {
   dangerous: string | null;
   /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** See IssueCard.omittedRunnersOwn and IssueDto.OmittedRunnersOwn. */
+  omittedRunnersOwn: RunnerOmission[];
+  /** See IssueCard.omittedRunners and IssueDto.OmittedRunners. */
+  omittedRunners: RunnerOmission[];
   /** Why the issue finished with no code, or absent. See IssueDto.NoCode. */
   noCode?: string | null;
   /** When noCode was declared. See IssueDto.NoCodeAt. */
@@ -1002,6 +1011,21 @@ export interface NoCodeRequest {
 /** Mirrors DangerousRequest. */
 export interface DangerousRequest {
   reason: string;
+}
+
+/** One runner kept off an issue. `fromKey` is the ancestor the omission comes
+    from; null is the issue's own row. Mirrors RunnerOmissionDto. */
+export interface RunnerOmission {
+  runner: string;
+  reason: string | null;
+  by: string;
+  at: string;
+  fromKey: string | null;
+}
+
+/** Mirrors OmitRunnerRequest. */
+export interface OmitRunnerRequest {
+  reason: string | null;
 }
 
 /** A write to the runner tags a column requires. See StatusRunnerTagsWriteRequest (Hatch.Contracts). */
