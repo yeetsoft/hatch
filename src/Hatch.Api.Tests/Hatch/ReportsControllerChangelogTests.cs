@@ -125,16 +125,123 @@ public class ReportsControllerChangelogTests
     }
 
     [Fact]
-    public async Task LooseTrue_IsAcceptedAndEveryBucketsLooseListIsEmpty()
+    public async Task LooseTrue_EchoesTrueAndLooseMaybe_Is400()
     {
         var h = await NewAsync();
         await h.CloseEpicAsync("an epic", Now - TimeSpan.FromMinutes(1));
 
-        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: true, ct: default));
+        var trueResult = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+        Assert.True(trueResult.Loose);
 
-        Assert.True(result.Loose);
-        Assert.NotEmpty(result.Buckets);
-        Assert.All(result.Buckets, b => Assert.Empty(b.Loose));
+        var maybeResult = await h.Controller.GetChangelogReport(null, null, null, null, loose: "maybe", ct: default);
+        Assert.Equal("loose is true or false - not \"maybe\"", Refusal(maybeResult));
+    }
+
+    [Fact]
+    public async Task ABugUnderAnEpic_LandsInLoose_AndDescendantCountStillCountsIt()
+    {
+        var h = await NewAsync();
+        var epic = await h.CloseEpicAsync("the epic", Now - TimeSpan.FromMinutes(1));
+        var bug = await h.CloseAsync("bug", "a child bug", Now - TimeSpan.FromMinutes(1), parentId: epic.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var looseEntry = Assert.Single(bucket.Loose);
+        Assert.Equal(IssueKey.Format("AER", bug.Number), looseEntry.Key);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(1, group.DescendantCount);
+    }
+
+    [Fact]
+    public async Task AParentlessStoryClosedInTheWindow_LandsInLoose()
+    {
+        var h = await NewAsync();
+        var story = await h.CloseAsync("story", "a parentless story", Now - TimeSpan.FromMinutes(1));
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var looseEntry = Assert.Single(bucket.Loose);
+        Assert.Equal(IssueKey.Format("AER", story.Number), looseEntry.Key);
+    }
+
+    [Fact]
+    public async Task AStoryUnderAnEpic_DoesNotLandInLoose()
+    {
+        var h = await NewAsync();
+        var epic = await h.CloseEpicAsync("the epic", Now - TimeSpan.FromMinutes(1));
+        await h.CloseAsync("story", "a story under the epic", Now - TimeSpan.FromMinutes(1), parentId: epic.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        Assert.Empty(bucket.Loose);
+    }
+
+    [Fact]
+    public async Task AParentlessTask_DoesNotLandInLoose()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("task", "a parentless task", Now - TimeSpan.FromMinutes(1));
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        Assert.Empty(result.Buckets);
+    }
+
+    [Fact]
+    public async Task AClosedReflection_DoesNotLandInLoose()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("reflection", "a closed reflection", Now - TimeSpan.FromMinutes(1));
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        Assert.Empty(result.Buckets);
+    }
+
+    [Fact]
+    public async Task PriorityRidesTheLooseEntry()
+    {
+        var h = await NewAsync();
+        var emergency = await h.CloseAsync("bug", "an emergency bug", Now - TimeSpan.FromMinutes(5));
+        emergency.Priority = PriorityLevels.Emergency;
+        var normal = await h.CloseAsync("bug", "a normal bug", Now - TimeSpan.FromMinutes(1));
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var entries = bucket.Loose.ToDictionary(e => e.Key);
+        Assert.Equal("emergency", entries[IssueKey.Format("AER", emergency.Number)].Priority);
+        Assert.Equal("normal", entries[IssueKey.Format("AER", normal.Number)].Priority);
+    }
+
+    [Fact]
+    public async Task WithLooseFalseOrAbsent_ABucketHoldingOnlyABug_IsAbsent()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("bug", "a parentless bug", Now - TimeSpan.FromMinutes(1));
+
+        var absent = Value(await h.Controller.GetChangelogReport(null, null, null, null, ct: default));
+        Assert.Empty(absent.Buckets);
+
+        var falseResult = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "false", ct: default));
+        Assert.Empty(falseResult.Buckets);
+    }
+
+    [Fact]
+    public async Task WithLooseTrue_ThatBucket_HasEmptyGroupsAndNonemptyLoose()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("bug", "a parentless bug", Now - TimeSpan.FromMinutes(1));
+
+        var result = Value(await h.Controller.GetChangelogReport(null, null, null, null, loose: "true", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        Assert.Empty(bucket.Groups);
+        Assert.Single(bucket.Loose);
     }
 
     [Fact]
