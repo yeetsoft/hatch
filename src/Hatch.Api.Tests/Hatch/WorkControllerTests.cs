@@ -2370,6 +2370,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync("task", "omitted for A", h.Todo);
         var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
         await OmitAsync(h, issue, a, by: "operator");
 
         var forA = Only(await h.Work.GetQueue(asRunner: a));
