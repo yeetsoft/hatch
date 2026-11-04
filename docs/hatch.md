@@ -49,6 +49,7 @@ the next heading of the same level and stop.
   - [Comment, question and answer](#comment-question-and-answer) - Which
     comments are more than notes, and how are they bound?
   - [Search](#search) - How are issues, comments and work logs searched?
+  - [Dream](#dream) - What is a half-thought, before it becomes an issue?
   - [Issue event](#issue-event) - What has happened to an issue, and what
     kinds of event record it?
   - [Playbook](#playbook) - What is an agent told when an issue moves from
@@ -2732,6 +2733,20 @@ retitle's old wording as a match on the issue it no longer describes.
 
 **Done issues are in the result by default**; `statusId` narrows to one
 column, and none of the board's done-horizon folding applies.
+
+### Dream
+
+`EfHatchDream` — `Body`, `Author`, `Source`, `ProjectId`, `CreatedAt`,
+`UpdatedAt`. A half-thought, caught before it is shaped enough to be an
+issue.
+
+- **A dream is its own table, not an issue** — an issue needs a project, a
+  key, a column and a card; a hundred half-thoughts as cards would bury the
+  board.
+- **No event trail on a dream** — a dream is a note; `UpdatedAt` is its
+  whole history. The trail begins once a dream becomes work (HA-1722's
+  `dreams_woven` issue event).
+- `ProjectId` is a lean, not a home: `SetNull` on delete, not `Restrict`.
 
 ### Issue event
 
