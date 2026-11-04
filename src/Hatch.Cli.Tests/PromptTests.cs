@@ -720,6 +720,27 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void A_work_prompt_names_the_recuse_call_beside_ask()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
+
+        Assert.Contains("hatch recuse AER-12 \"...\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("this runner cannot do this work", prompt, StringComparison.Ordinal);
+        Assert.True(
+            prompt.IndexOf("hatch recuse AER-12", StringComparison.Ordinal) > prompt.IndexOf("hatch ask AER-12", StringComparison.Ordinal),
+            "The recuse line comes after the ask line.");
+    }
+
+    [Fact]
+    public void A_check_s_prompt_names_the_recuse_call_too()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", isCheck: true));
+
+        Assert.Contains("hatch recuse AER-12 \"...\"", prompt, StringComparison.Ordinal);
+        Assert.Contains("this runner cannot do this work", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_work_prompt_tells_a_session_that_files_work_to_declare_what_must_land_first()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12"));
