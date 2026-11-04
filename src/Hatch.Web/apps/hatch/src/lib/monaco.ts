@@ -50,7 +50,7 @@ import 'monaco-editor/features/toggleTabFocusMode/register';
 import 'monaco-editor/features/codicon/register';
 import 'monaco-editor/languages/definitions/markdown/register';
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
-import { editor } from 'monaco-editor/editor/editor.api';
+import { editor, KeyCode, KeyMod } from 'monaco-editor/editor/editor.api';
 import { EDITOR_TOKEN_NAMES, editorTheme, type EditorTokens } from './editorTheme';
 
 globalThis.MonacoEnvironment = { getWorker: () => new EditorWorker() };
@@ -80,4 +80,4 @@ export function applyTheme(resolved: 'light' | 'dark'): void {
   editor.setTheme(name);
 }
 
-export { editor };
+export { editor, KeyCode, KeyMod };

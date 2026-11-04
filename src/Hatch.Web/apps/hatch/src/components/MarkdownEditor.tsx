@@ -77,6 +77,8 @@ export interface MarkdownEditorProps {
   /** The box is on the page when it loads: ask for the editor only once it is
       focused or pointed at. */
   deferred?: boolean;
+  /** Meta/Ctrl+Enter pressed in the box. */
+  onCtrlEnter?: () => void;
 }
 
 export function MarkdownEditor(props: MarkdownEditorProps) {
@@ -187,6 +189,7 @@ function PlainEditor({
   className,
   placeholder,
   ariaLabel,
+  onCtrlEnter,
   handle,
   onWanted,
   failed,
@@ -227,6 +230,9 @@ function PlainEditor({
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value)}
         onPaste={(e) => image.onPaste(e.nativeEvent)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) onCtrlEnter?.();
+        }}
         onFocus={onWanted}
         onPointerEnter={onWanted}
       />
@@ -283,6 +289,7 @@ function MonacoEditor({
   className,
   placeholder,
   ariaLabel,
+  onCtrlEnter,
 }: MarkdownEditorProps & { monaco: MonacoModule; handoff: Handoff | null }) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ReturnType<MonacoModule['editor']['create']> | null>(null);
@@ -291,6 +298,10 @@ function MonacoEditor({
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
+  });
+  const onCtrlEnterRef = useRef(onCtrlEnter);
+  useEffect(() => {
+    onCtrlEnterRef.current = onCtrlEnter;
   });
   const { resolved } = useTheme();
 
@@ -369,6 +380,14 @@ function MonacoEditor({
     });
     editorRef.current = editor;
     modelRef.current = model;
+
+    // Only where a caller asked: an unconditional command would swallow
+    // Monaco's own Ctrl+Enter (insert line below) in every other box. The key
+    // enums come off the loaded module, not a static import of lib/monaco.ts,
+    // which would put the editor in this page's chunk.
+    if (onCtrlEnterRef.current) {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCtrlEnterRef.current?.());
+    }
 
     // Carry the caret over from the textarea this replaces.
     if (handoff) {
