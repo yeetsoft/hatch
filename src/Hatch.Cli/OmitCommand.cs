@@ -65,9 +65,7 @@ public sealed class OmitCommand(Cli cli)
             var reason = args[2].Trim();
             if (reason.Length == 0)
                 return Usage.Refuse(cli.Say, "omit needs a reason - a runner omitted with no reason teaches nobody", OmitUsage);
-            if (reason.Length > OmitRunnerRequest.MaxLength)
-                return Usage.Refuse(
-                    cli.Say, $"the reason is {reason.Length} characters; the limit is {OmitRunnerRequest.MaxLength}", OmitUsage);
+            if (CheckReason(reason) is { } tooLong) return Usage.Refuse(cli.Say, tooLong, OmitUsage);
 
             issue = await cli.Board.OmitRunnerAsync(key, runner, reason, ct);
         }
@@ -81,6 +79,12 @@ public sealed class OmitCommand(Cli cli)
         cli.Say.Lines(Draw(issue, cli.Clock.GetUtcNow()));
         return 0;
     }
+
+    /// <summary>The sentence refusing a trimmed reason over the limit, or null when it fits.</summary>
+    internal static string? CheckReason(string reason) =>
+        reason.Length > OmitRunnerRequest.MaxLength
+            ? $"the reason is {reason.Length} characters; the limit is {OmitRunnerRequest.MaxLength}"
+            : null;
 
     /// <summary>
     /// The issue's effective omitted runners, one line each, with the ancestor
