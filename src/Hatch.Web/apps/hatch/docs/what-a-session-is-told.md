@@ -141,7 +141,7 @@ its plan.
 ### Reaching Hatch
 
 Always. The `hatch` commands a session makes, to be run from the repository
-root: `comments`, `start`, `move`, `comment`, `ask`, `depends`, `dangerous`, and `api` for
+root: `comments`, `start`, `move`, `comment`, `ask`, `recuse`, `depends`, `dangerous`, and `api` for
 everything else. The key is already in the environment, and the brief above is already
 current, so there is no `show`. Two things change it:
 
@@ -158,6 +158,10 @@ current, so there is no `show`. Two things change it:
 - On a check's prompt, the `hatch dangerous` and `hatch depends` lines and the
   sentences on them are absent: a check records a verdict and does not flag or
   file work.
+- `recuse` is the way out when the session finds the work is one this runner
+  cannot do: it omits this runner from the ticket with a reason, and the loop
+  moves on without a stall (see [Stalls](one-increment-and-the-loop#stalls)).
+  A check's prompt carries it too.
 
 ### Landing on the trunk
 
