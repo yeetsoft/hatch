@@ -877,6 +877,115 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    private static RunnerOmissionDto Omitting(string runner, string? reason = "needs a GPU") =>
+        new(runner, reason, runner, DateTimeOffset.UnixEpoch, null);
+
+    /// <summary>
+    /// What a session that ran <c>hatch recuse</c> leaves behind, and the wire a
+    /// test of it needs: the issue read after the session carries
+    /// <paramref name="after"/>, and nothing moved. Comments and stalls are
+    /// mocked so a wrongly written one is seen, not a 404.
+    /// </summary>
+    private static async Task<(IncrementReport Report, Harness H)> RecusedAsync(
+        int letGo, IReadOnlyList<RunnerOmissionDto> after, IssueDto? dispatched = null, bool readFails = false,
+        string endedIn = "In Progress")
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: endedIn));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        if (readFails) h.Wire.Reply("GET", "/api/hatch/issues/AER-1", HttpStatusCode.InternalServerError);
+        else h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1") with { OmittedRunnersOwn = after });
+
+        var work = Fixtures.Work("AER-1", letGo: letGo, issue: dispatched);
+        var report = await h.Runtime.Increment().RunAsync(
+            work, h.Root, "opus", "high", quiet: false, claim, default, runnerName: "rall");
+
+        await claim.ReleaseAsync();
+        return (report, h);
+    }
+
+    /// <summary>
+    /// A session that ran <c>hatch recuse</c> ends as a recusal - said, not
+    /// commented, not stalled - and the claim is released <c>recused</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task A_session_that_recused_ends_the_increment_without_a_stall(int letGo)
+    {
+        var (report, h) = await RecusedAsync(letGo, [Omitting("rall")]);
+        using var _ = h;
+
+        Assert.Equal(ClaimOutcomes.Recused, report.ReleaseOutcome);
+        Assert.Equal("recused", report.Flag);
+        Assert.True(report.Recused);
+        Assert.False(report.LetGo);
+        Assert.Contains("recused itself (needs a GPU)", report.Outcome, StringComparison.Ordinal);
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Contains(h.Say.Said, l => l.Contains("rall recused itself (needs a GPU), going on to the next", StringComparison.Ordinal));
+        Assert.Equal(0, report.ExitCode);
+    }
+
+    /// <summary>A name the dispatch already carried is somebody's earlier call, not this session's.</summary>
+    [Fact]
+    public async Task A_runner_already_omitted_at_dispatch_is_not_a_recusal()
+    {
+        var already = Fixtures.Issue("AER-1") with { OmittedRunnersOwn = [Omitting("rall")] };
+        var (report, h) = await RecusedAsync(0, [Omitting("rall")], dispatched: already);
+        using var _ = h;
+
+        Assert.False(report.Recused);
+        Assert.True(report.LetGo);
+        Assert.Equal("let go", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+    }
+
+    [Fact]
+    public async Task Another_runner_newly_omitted_is_not_a_recusal()
+    {
+        var (report, h) = await RecusedAsync(0, [Omitting("somebody-else")]);
+        using var _ = h;
+
+        Assert.False(report.Recused);
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+    }
+
+    /// <summary>A read that fails is not a recusal: the stall is judged exactly as before, with one complaint.</summary>
+    [Fact]
+    public async Task A_failed_read_after_the_session_is_not_a_recusal()
+    {
+        var (report, h) = await RecusedAsync(0, [], readFails: true);
+        using var _ = h;
+
+        Assert.False(report.Recused);
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.NotEmpty(h.Say.Complained);
+    }
+
+    /// <summary>A session that recused but also moved the ticket did work: the end-of-increment verdict wins.</summary>
+    [Fact]
+    public async Task A_recused_session_that_moved_the_ticket_still_worked()
+    {
+        var (report, h) = await RecusedAsync(0, [Omitting("rall")], endedIn: "In Review");
+        using var _ = h;
+
+        Assert.True(report.Moved);
+        Assert.True(report.Recused);
+        Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+    }
+
     /// <summary>The second increment in a row to do the same is flagged exactly as every stall used to be.</summary>
     [Fact]
     public async Task A_ticket_that_did_not_move_a_second_time_in_a_row_is_flagged_where_a_person_will_see_it()
