@@ -59,6 +59,8 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,
