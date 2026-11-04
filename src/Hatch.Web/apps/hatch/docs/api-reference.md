@@ -258,6 +258,8 @@ not mint an issue number - try again".
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
+| omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
+| omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
