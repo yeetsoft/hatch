@@ -11,6 +11,7 @@ import {
   getBoard,
   getComments,
   getEvents,
+  getIssueDreams,
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
@@ -69,6 +70,7 @@ import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { deleteQuestion } from '../lib/deletion';
+import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { heldBy } from '../lib/stall';
@@ -95,6 +97,7 @@ import type {
   Board,
   ChildRollup,
   Comment,
+  Dream,
   Issue,
   IssueCard,
   IssueEvent,
@@ -119,6 +122,7 @@ export function IssuePage() {
   const move = useMoveProject((moved) => void navigate(`/issues/${moved.key}`));
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
+  const [dreams, setDreams] = useState<Dream[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [rollup, setRollup] = useState<IssueRollup | null>(null);
   const [rollupError, setRollupError] = useState<string | null>(null);
@@ -198,16 +202,18 @@ export function IssuePage() {
     );
 
     try {
-      const [loaded, loadedBoard, loadedComments, loadedEvents] = await Promise.all([
+      const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams] = await Promise.all([
         getIssue(key),
         getBoard(),
         getComments(key),
         getEvents(key),
+        getIssueDreams(key),
       ]);
       setIssue(loaded);
       setBoard(loadedBoard);
       setComments(loadedComments);
       setEvents(loadedEvents);
+      setDreams(loadedDreams);
       setError(null);
     } catch (err) {
       setError(message(err));
@@ -896,6 +902,8 @@ export function IssuePage() {
         onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
       />
 
+      <DreamsDrawnOn dreams={dreams} issueKey={issue.key} />
+
       <Description issue={issue} onSave={(description) => save({ description })} />
 
       <ReleaseNote issue={issue} onSave={saveReleaseNote} error={releaseNoteError} />
@@ -1054,6 +1062,21 @@ function Dependencies({
         )}
       </IssueSection>
     </>
+  );
+}
+
+function DreamsDrawnOn({ dreams, issueKey }: { dreams: Dream[]; issueKey: string }) {
+  if (dreams.length === 0) return null; // drawn only when there are rows - no empty 'Drew on' section
+  return (
+    <IssueSection id="drew-on" title="Drew on" count={dreams.length}>
+      <ul className="hatch-progress-list">
+        {dreams.map((dream) => (
+          <li key={dream.id} className="hatch-progress-row">
+            <Link to={`/dreams?issue=${issueKey}`}>{firstLine(dream.body)}</Link>
+          </li>
+        ))}
+      </ul>
+    </IssueSection>
   );
 }
 
