@@ -72,8 +72,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
               lists them best first, any word matching. Read the ones that do bear on it
               and fold what they ask for into the brief, quoting them. Record which you
               drew on with `hatch api PUT /api/hatch/issues/<KEY>/dreams
-              '{"dreamIds":[...]}'`. An empty answer costs one call; say *no dream bore
-              on this* in the description and move on.
+              '{"dreamIds":[...]}'`. An empty answer costs one call; say
+              *no dream bore on this* in the description and move on.
             - Ask the repository whatever the ticket does not answer. The code is the source
               of truth about what already exists; the ticket is only the source of truth
               about what is wanted.

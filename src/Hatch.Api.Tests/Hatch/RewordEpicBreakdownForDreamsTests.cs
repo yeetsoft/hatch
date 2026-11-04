@@ -28,8 +28,8 @@ public class RewordEpicBreakdownForDreamsTests
           lists them best first, any word matching. Read the ones that do bear on it
           and fold what they ask for into the brief, quoting them. Record which you
           drew on with `hatch api PUT /api/hatch/issues/<KEY>/dreams
-          '{"dreamIds":[...]}'`. An empty answer costs one call; say *no dream bore
-          on this* in the description and move on.
+          '{"dreamIds":[...]}'`. An empty answer costs one call; say
+          *no dream bore on this* in the description and move on.
 
         """;
 
@@ -241,7 +241,9 @@ public class RewordEpicBreakdownForDreamsTests
     private static async Task RunAsync(HatchContext db, IReadOnlyList<MigrationOperation> operations)
     {
         foreach (var operation in operations.OfType<SqlOperation>())
-            await db.Database.ExecuteSqlRawAsync(operation.Sql);
+            // The SQL carries a JSON literal, and ExecuteSqlRawAsync reads braces as format
+            // placeholders; escape them so the text reaches the database as written.
+            await db.Database.ExecuteSqlRawAsync(operation.Sql.Replace("{", "{{").Replace("}", "}}"));
     }
 
     private static async Task<EfHatchPlaybook> ReadAsync(HatchContext db, int id)
