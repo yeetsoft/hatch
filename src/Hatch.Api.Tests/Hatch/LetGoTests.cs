@@ -43,6 +43,7 @@ public class LetGoTests
     [Theory]
     [InlineData(ClaimOutcomes.Worked)]
     [InlineData(ClaimOutcomes.Preempted)]
+    [InlineData(ClaimOutcomes.Recused)]
     [InlineData(null)]
     public void ANewerReleaseOfAnyOtherOutcome_ClearsTheRecord(string? outcome)
     {
@@ -111,6 +112,15 @@ public class LetGoTests
         var held = Other(EfHatchIssueEvent.Held, "{}", 0);
 
         Assert.Equal(2, Count(drop, held, drop));
+    }
+
+    [Fact]
+    public void Count_StopsAtARecusedRelease()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var recused = Release(ClaimOutcomes.Recused, "runner", 1);
+
+        Assert.Equal(1, Count(drop, recused, drop));
     }
 
     [Fact]

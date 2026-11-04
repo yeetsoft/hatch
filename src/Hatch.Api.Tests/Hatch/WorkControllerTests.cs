@@ -2030,6 +2030,19 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task LetGo_StopsAtARecusedRelease()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped, recused, then dropped once", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Recused);
+        await Released(h, issue, Now.AddMinutes(2), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
     public async Task LetGo_StopsAtAStatusChange()
     {
         var h = await NewAsync();
