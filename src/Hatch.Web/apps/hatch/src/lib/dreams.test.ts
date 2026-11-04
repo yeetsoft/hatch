@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DREAMS_PAGE,
   EMPTY_DREAMS,
+  countLine,
   dreamsRequest,
   firstLine,
+  hasMore,
   isUrl,
   readDreams,
   writeDreams,
@@ -132,11 +134,43 @@ describe('isUrl', () => {
     expect(isUrl('https://example.com')).toBe(true);
   });
 
+  it('is true for an http address', () => {
+    expect(isUrl('http://x.test')).toBe(true);
+  });
+
+  it('is false for a javascript: source, which parses but must not become a link', () => {
+    expect(isUrl('javascript:alert(1)')).toBe(false);
+  });
+
+  it('is false for a mailto: source', () => {
+    expect(isUrl('mailto:a@b.test')).toBe(false);
+  });
+
   it('is false for plain text', () => {
     expect(isUrl('not a url')).toBe(false);
   });
 
   it('is false for an empty string', () => {
     expect(isUrl('')).toBe(false);
+  });
+});
+
+describe('countLine', () => {
+  it('reads "0 results" for none', () => {
+    expect(countLine(0, 0)).toBe('0 results');
+  });
+
+  it('reads how many of the total are shown', () => {
+    expect(countLine(3, 340)).toBe('3 of 340');
+  });
+});
+
+describe('hasMore', () => {
+  it('is true while fewer are shown than match', () => {
+    expect(hasMore(50, 51)).toBe(true);
+  });
+
+  it('is false once all are shown', () => {
+    expect(hasMore(51, 51)).toBe(false);
   });
 });
