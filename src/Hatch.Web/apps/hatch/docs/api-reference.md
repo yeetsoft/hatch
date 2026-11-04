@@ -981,11 +981,11 @@ key the same way `flow` 400s an unknown `projectId`; `flow` takes `from`/`to`
 the same way, plus `projectId` and `type`, and 400s an unknown `type` or
 `projectId`. `changelog` takes `from`/`to` (default the **fourteen** days
 ending now), a repeatable `projectId`, `bucket` (default `day`),
-`offsetMinutes` (-1440..1440) and `level` (`epic`, the default, or `story`),
-plus `loose` (accepted; its lists answer empty for now), and 400s a bad range
-bound, an offset outside +-1440 minutes, an unrecognised bucket name, a
-`level` other than `epic` or `story`, or a `projectId` that does not exist -
-in that order.
+`offsetMinutes` (-1440..1440), `level` (`epic`, the default, or `story`) and
+`loose` (`true` or `false`, trimmed/case-insensitive, default `false`), and
+400s a bad range bound, an offset outside +-1440 minutes, an unrecognised
+bucket name, a `level` other than `epic` or `story`, a `loose` other than
+`true` or `false`, or a `projectId` that does not exist - in that order.
 None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
