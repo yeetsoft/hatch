@@ -52,15 +52,18 @@ export function parsePreset(raw: string | null): WindowPreset | null {
  * the window ending at the next local midnight strictly after `now`, because
  * half a window is not a window and a pasted link with a typo in it should open
  * the page. That window is as wide as `range` says when it names a preset and
- * `DEFAULT_DAYS` otherwise; an unrecognised `range` is ignored like any other
+ * `defaultDays` otherwise; an unrecognised `range` is ignored like any other
  * typo.
  *
  * @param offsetMinutes Minutes east of UTC, as `presetRange` takes it.
+ * @param defaultDays The width when `range` names no preset; `DEFAULT_DAYS`
+ *   unless a page wants another.
  */
 export function resolveWindow(
   params: URLSearchParams,
   now: Date,
   offsetMinutes: number,
+  defaultDays: number = DEFAULT_DAYS,
 ): ReportWindow {
   const from = params.get(FROM)?.trim();
   const to = params.get(TO)?.trim();
@@ -73,7 +76,7 @@ export function resolveWindow(
 
   const end = Date.parse(presetRange('today', now, offsetMinutes).to);
   const days =
-    WINDOW_PRESETS.find((preset) => preset.key === parsePreset(params.get(RANGE)))?.days ?? DEFAULT_DAYS;
+    WINDOW_PRESETS.find((preset) => preset.key === parsePreset(params.get(RANGE)))?.days ?? defaultDays;
 
   return { from: new Date(end - days * DAY_MS).toISOString(), to: new Date(end).toISOString() };
 }

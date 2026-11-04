@@ -96,6 +96,14 @@ describe('resolveWindow', () => {
     expect(window.from).toBe(new Date(Date.parse(window.to) - count * DAY_MS).toISOString());
   });
 
+  it('is as wide as defaultDays when no preset is named, and range still beats it', () => {
+    const window = resolveWindow(params(''), NOW, 0, 14);
+
+    expect(window.to).toBe('2026-10-10T00:00:00.000Z');
+    expect(window.from).toBe(before(14));
+    expect(resolveWindow(params('range=1w'), NOW, 0, 14).from).toBe(before(7));
+  });
+
   it("ends a range at the reader's midnight at offset 600", () => {
     expect(resolveWindow(params('range=1y'), NOW, 600).to).toBe('2026-10-09T14:00:00.000Z');
   });

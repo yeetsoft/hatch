@@ -1523,6 +1523,56 @@ export interface CumulativeFlow {
   unresolved: number;
 }
 
+// ---- Changelog report ----
+
+/** Closed epics bucketed over a window, with the work beneath them. Mirrors
+    ChangelogReportDto. */
+export interface ChangelogReport {
+  from: string;
+  to: string;
+  bucket: string;
+  /** The depth the report groups at. */
+  level: 'epic' | 'story';
+  /** Whether work under no epic rides alongside the buckets - echoes the request. */
+  loose: boolean;
+  /** Newest first. */
+  buckets: ChangelogReportBucket[];
+}
+
+/** One bucket: the window it covers (`end` exclusive), the epics closed inside
+    it, and the loose work beside them. Mirrors ChangelogReportBucketDto. */
+export interface ChangelogReportBucket {
+  start: string;
+  end: string;
+  groups: ChangelogReportGroup[];
+  /** Closed bugs and parentless stories here when `loose` is set; [] otherwise,
+      and always [] at `level=story`. */
+  loose: ChangelogReportEntry[];
+}
+
+/** One closed epic as a bucket draws it. Mirrors ChangelogReportGroupDto. */
+export interface ChangelogReportGroup {
+  epic: IssueCard;
+  /** False when the group exists for a story closing under the epic rather
+      than the epic's own close; always true at `level=epic`. */
+  closedHere: boolean;
+  /** Every issue below the epic, at any depth. */
+  descendantCount: number;
+  stories: ChangelogReportEntry[];
+}
+
+/** One closed issue, as a group's `stories` or a bucket's `loose` draws it.
+    Mirrors ChangelogReportEntryDto. */
+export interface ChangelogReportEntry {
+  key: string;
+  title: string;
+  type: IssueType;
+  projectKey: string;
+  releaseNote: string | null;
+  closedAt: string;
+  priority: IssueCard['priority'];
+}
+
 // ---- The battery ----
 
 /** One limit window as the server describes it. Mirrors UtilizationLimit. */

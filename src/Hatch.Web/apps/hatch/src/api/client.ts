@@ -11,6 +11,7 @@ import type {
   BackupStatus,
   Board,
   ChangelogDto,
+  ChangelogReport,
   Comment,
   CommentCreateRequest,
   CumulativeFlow,
@@ -730,6 +731,36 @@ export interface CumulativeFlowQuery {
   /** Narrows the read to these projects' issues; every project when null,
       undefined or empty. */
   project?: string[] | null;
+}
+
+/** Closed epics bucketed over a window. Each parameter is set only when it
+    says something: a null, undefined or empty `from`/`to`/`bucket` is left off
+    so the server's own default stands, `projectId` is repeated once per id,
+    and `loose` is sent only when true. `level` and `offsetMinutes` are always
+    sent - the page's default level is not the API's bare default. */
+export const getChangelogReport = (query: ChangelogReportQuery) => {
+  const params = new URLSearchParams();
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  if (query.bucket) params.set('bucket', query.bucket);
+  params.set('level', query.level);
+  params.set('offsetMinutes', String(query.offsetMinutes));
+  if (query.loose === true) params.set('loose', 'true');
+  const qs = params.toString();
+  return fetchJson<ChangelogReport>('/api/hatch/reports/changelog' + (qs ? '?' + qs : ''));
+};
+
+/** The changelog report route's query string. `offsetMinutes` is minutes east
+    of UTC, the reader's. */
+export interface ChangelogReportQuery {
+  from?: string | null;
+  to?: string | null;
+  projectId?: number[] | null;
+  bucket?: string | null;
+  level: string;
+  loose?: boolean | null;
+  offsetMinutes: number;
 }
 
 export interface WorkLogSessionQuery {
