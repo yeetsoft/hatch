@@ -268,12 +268,12 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
 filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
-dangerous is the same kind of statement; no-code
+dangerous is the same kind of statement, and so is omitted-runners; no-code
 is a statement of fact about the work, with the same reach as recording a pull
 request through `PATCH`, which is also key-open; landing
 is a fact a session or a poll reports about a repository and a sha, not a
@@ -293,7 +293,8 @@ two-level alias. `PreApprovalRequest(Level)` takes one of `none`, `express`,
 `OnePrRequest(Value)` takes `on`, `off` or `inherit`.
 `IssueRunnerTagsWriteRequest(Tags)` is the whole list, replaced; trimmed,
 lower-cased and deduplicated, at most 8 tags of at most 32 characters, none
-with a space or comma. `ReleaseNoteRequest`
+with a space or comma. `OmitRunnerRequest(Reason)` is an optional reason,
+trimmed, at most 200 characters; null or blank stores none. `ReleaseNoteRequest`
 is an optional `Note` plus the query parameter `heldToken` (a guid, program
 callers only) - null or blank clears it. `StallRequest(Why)` is one line,
 truncated. `HoldRequest(Held)` is a boolean. `IssuePlaybookRequest(Model?,
@@ -311,7 +312,11 @@ a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one
 over 200 characters after trimming; `404` for no such key; re-sending the reason
-it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
+it already holds writes nothing. `omitted-runners` 400s a blank runner name,
+one over the runner-name limit, and a reason over 200 characters after
+trimming; `404` for no such key, and on DELETE for an omission the ticket
+does not carry itself, naming the ancestor when one does; re-sending the
+reason it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
 clear) and one over 200 characters after trimming, 409s while a pull request is
 recorded or a counted merge check found a branch, and `404` for no such key;
 re-sending the reason it already holds writes nothing. A later branch-finding

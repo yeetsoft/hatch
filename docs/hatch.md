@@ -1266,6 +1266,53 @@ that applies - its own, else the nearest flagged ancestor's, else null; and
 own or there is none. The issue, the card list, search and the board all
 carry them. Nothing acts on the flag yet.
 
+#### Omitted runners
+
+**A runner an issue - and everything beneath it - is closed to.**
+`EfHatchIssueRunnerOmission` is a child table, `IssueRunnerOmissions`, keyed
+on `(IssueId, RunnerName)` and cascade-deleted with the issue, not a jsonb
+column the way [runner tags](#runner-tags) are: a list replaced whole would
+lose the who-and-when of the entries it did not touch. Each row carries a
+`Reason` (nullable, at most 200 characters after the trim), the actor name
+that set it (`By`), and when (`At`); the runner is named by the same name
+the `Runners` table is keyed on. Written through `PUT
+/issues/{key}/omitted-runners/{runner}`
+(`IssueRunnerOmissionsController.PutOmittedRunner`) with `{ reason }`, and
+lifted through `DELETE` on the same path (`DeleteOmittedRunner`), open to a
+key the same way [runner tags](#runner-tags) and [dangerous](#dangerous)
+are: a statement about which runner may pick the ticket up, not a power
+over the board, so no type restriction, claim gate or lock. Both answer the
+`IssueDto`. The runner name and the reason are trimmed; an absent or blank
+reason is stored as none - but unlike `dangerous`, the `DELETE` route, not
+an empty reason, is how an omission goes. A blank runner name or one over
+`EfHatchRunner.MaxNameLength` is `400`, as is a reason over 200 characters.
+An unknown issue is `404`; on `DELETE`, so is a runner the issue does not
+itself omit, naming the ancestor that carries it instead - *"HA-1 has no own
+omission for \"x\" - it is inherited from HA-0"* - where only an ancestor
+carries it, since lifting it is that ancestor's to do. A repeat `PUT` with
+the same runner and the same reason writes nothing and leaves `UpdatedAt`
+alone; a changed reason rewrites `Reason`, `By` and `At`.
+
+**Written or lifted, the change is carried as an event, and the runners
+actually closed are a union, not an override.** A write lands
+`runner_omitted` with `{ runner, reason, from }` - `from` the previous
+reason, null on a first omission - and a lift lands
+`runner_omission_lifted` with `{ runner }`; both set `UpdatedAt` and name
+the caller as actor. `PriorityTree.EffectiveOmittedRunners` walks ancestors
+root-most first, then the issue's own, deduplicating by runner name so the
+root-most contributor wins - the same shape as
+[`EffectiveRunnerTags`](#runner-tags), and union rather than
+nearest-ancestor-wins for the reason priority and pre-approval are not: an
+omission only ever narrows who may run a ticket, so a child must not widen
+what its parent already said - a runner recused from an epic for a toolchain
+it lacks must not be handed one of its stories. A card or an issue carries
+two fields: `omittedRunnersOwn` is the issue's own rows, ordered by runner
+name, `fromKey` always null; `omittedRunners` is the union just described,
+each entry a `RunnerOmissionDto(Runner, Reason, By, At, FromKey)` with
+`fromKey` null for the issue's own. The issue, the card list and search
+carry both. Nothing acts on the list yet - the board does not carry them,
+and dispatch is a separate story.
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
@@ -3334,6 +3381,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
 | `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
+| `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Omitted runners](#omitted-runners). Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
+| `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
