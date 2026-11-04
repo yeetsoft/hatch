@@ -2,6 +2,8 @@
    other lib file here is: the web test run has no DOM, so what can be wrong
    lives in a function with a test beside it. */
 
+import type { Dream } from '../types';
+
 /** The filter the Dreams page's controls hold. Every field but `loose` is a
     string, `''` meaning unset, the way search.ts's own filters are held.
     `loose` is a real boolean - it is written to the URL as the literal
@@ -113,4 +115,14 @@ export function countLine(shown: number, total: number): string {
 /** Whether a next page exists. */
 export function hasMore(shown: number, total: number): boolean {
   return shown < total;
+}
+
+/** Whether a freshly posted dream belongs in the list the filters show: no
+    q, no issueKey, and either no projectId or the dream's own. `loose` never
+    excludes it (a new dream has no issue woven in). `q` is judged trimmed,
+    the way `writeDreams` writes it. */
+export function showsDream(filters: DreamFilters, dream: Pick<Dream, 'projectId'>): boolean {
+  if (filters.q.trim() !== '' || filters.issueKey !== '') return false;
+
+  return filters.projectId === '' || filters.projectId === String(dream.projectId);
 }

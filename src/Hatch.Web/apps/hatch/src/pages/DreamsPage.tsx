@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Button, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
-import { getDreams } from '../api/client';
+import { Button, Card, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
+import { addDream, getDreams } from '../api/client';
 import { Facet } from '../components/Facet';
+import { MarkdownEditor } from '../components/MarkdownEditor';
+import { ProjectChooser } from '../components/ProjectChooser';
 import { agoPhrase } from '../lib/claim';
-import { countLine, dreamsRequest, hasMore, isUrl, readDreams, writeDreams } from '../lib/dreams';
+import { EMPTY_DREAMS, countLine, dreamsRequest, hasMore, isUrl, readDreams, showsDream, writeDreams } from '../lib/dreams';
 import { message } from '../lib/errors';
 import { facetClass } from '../lib/facet';
 import { renderMarkdown } from '../lib/markdown';
@@ -102,12 +104,86 @@ export function DreamsPage() {
     );
   }
 
+  const [body, setBody] = useState('');
+  const [source, setSource] = useState('');
+  const [leanId, setLeanId] = useState<number | null>(null);
+  const [posting, setPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  async function post() {
+    // The editor's own Ctrl+Enter can fire on an empty box, or twice.
+    if (!body.trim() || posting) return;
+    setPosting(true);
+    setPostError(null);
+
+    try {
+      const dream = await addDream({ body, source: source.trim() || null, projectId: leanId });
+      setBody('');
+      setSource('');
+      setLeanId(null);
+
+      if (showsDream(filters, dream)) {
+        setDreams((prev) => [dream, ...prev]);
+        setTotal((t) => t + 1);
+      } else {
+        // The filters would hide it: clear them, and the key effect reloads
+        // with the new dream first. Prepending a dream the server would not
+        // list under them would also push every Show more offset one too far.
+        setParams(writeDreams(EMPTY_DREAMS));
+      }
+    } catch (err) {
+      // The draft stays as typed, so a refusal costs nothing to retry.
+      setPostError(message(err));
+    } finally {
+      setPosting(false);
+    }
+  }
+
   // Once per render of the list, so every row's "ago" reads from the same instant.
   const now = new Date();
 
   return (
     <div className="hatch-page">
       <PageHeader title="Dreams" description="Lines worth keeping before they are work." />
+
+      <Card className="hatch-dream-composer">
+        <div className="hatch-dream-composer__box">
+          <MarkdownEditor
+            value={body}
+            onChange={setBody}
+            rows={3}
+            deferred
+            ariaLabel="Dream"
+            placeholder="A line worth keeping…"
+            onCtrlEnter={() => void post()}
+          />
+          {postError && <p className="text-danger">{postError}</p>}
+        </div>
+
+        <ProjectChooser
+          projects={projects}
+          value={leanId}
+          onChange={setLeanId}
+          legend="Lean"
+          keepLabel="None"
+          onKeep={() => setLeanId(null)}
+        />
+
+        <input
+          type="text"
+          className="hatch-dream-composer__source"
+          aria-label="Source"
+          placeholder="Where it came from (optional)"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        />
+
+        <div className="hatch-dream-composer__actions">
+          <Button variant="primary" loading={posting} disabled={!body.trim()} onClick={() => void post()}>
+            Post
+          </Button>
+        </div>
+      </Card>
 
       <div className="hatch-board-filters hatch-search-filters">
         {/* type="search" on purpose; base.css says why. */}
