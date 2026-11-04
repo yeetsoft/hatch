@@ -640,7 +640,7 @@ public class DispatchTests
         var h = await NewAsync();
         await h.AddPlaybookAsync(h.Todo, h.InProgress);
         var epic = await h.FileAsync("epic", "e", h.Todo);
-        var story = await h.FileAsync("story", "s", h.Todo, parentId: epic.Id);
+        var story = await h.FileAsync("story", "s", h.InProgress, parentId: epic.Id);
         var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
         var key = IssueKey.Format(h.ProjectKey, task.Number);
         var epicKey = IssueKey.Format(h.ProjectKey, epic.Number);
