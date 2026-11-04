@@ -380,6 +380,7 @@ try
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "dangerous" => await new DangerousCommand(cli).RunAsync(rest, cancelling.Token),
+        "omit" => await new OmitCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
         "questions" => await new QuestionCommands(cli).QuestionsAsync(rest, cancelling.Token),
         "answer" => await new QuestionCommands(cli).AnswerAsync(rest, cancelling.Token),
@@ -501,7 +502,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "use", "standby", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "one-pr", "dangerous", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "one-pr", "dangerous", "omit", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -578,6 +579,8 @@ internal partial class Program
         "  hatch one-pr AER-5 on        ...turn it on for this story (or off, or inherit)",
         "  hatch dangerous AER-12 \"why\"  flag it: running its work could destabilise a machine",
         "  hatch dangerous AER-12 --clear  ...clear the flag",
+        "  hatch omit AER-12              the runners omitted from it, and where each came from",
+        "  hatch omit AER-12 <runner> \"why\"  ...omit one; --lift <runner> lifts it",
         "  hatch ask AER-12 \"how should retries be scoped?\" \\",
         "      --recommend \"Per-node: one budget per node, so a slow node cannot starve\" \\",
         "      --option \"Global: one budget for the drain, simpler to reason about\"",
