@@ -197,6 +197,29 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Dreams", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>
+                {
+                    b.Property<long>("DreamId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("DreamId", "IssueId");
+
+                    b.HasIndex("IssueId");
+
+                    b.ToTable("DreamThreads", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchImage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1638,6 +1661,25 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchDream", "Dream")
+                        .WithMany()
+                        .HasForeignKey("DreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Dream");
+
+                    b.Navigation("Issue");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
