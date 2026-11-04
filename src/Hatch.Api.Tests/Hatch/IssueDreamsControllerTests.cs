@@ -274,7 +274,6 @@ public class IssueDreamsControllerTests
         result.Result is CreatedAtActionResult created
             ? (T)created.Value!
             : result.Value ?? throw new InvalidOperationException($"expected a created value, got {result.Result}");
-}
 
     private static T CreatedDream<T>(ActionResult<T> result) =>
         result.Result is CreatedResult created
