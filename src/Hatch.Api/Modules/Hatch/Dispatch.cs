@@ -2074,16 +2074,22 @@ public sealed class PriorityTree
     // beside _rows rather than widening its tuple, as _runnerTags is.
     private readonly Dictionary<long, string?> _dangerous;
 
+    // Each issue's own runner omissions - one-to-many, so loaded by a second
+    // query rather than riding the single-row projection _dangerous does.
+    private readonly Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>> _omissions;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
         Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null,
-        Dictionary<long, string?>? dangerous = null)
+        Dictionary<long, string?>? dangerous = null,
+        Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
         _dangerous = dangerous ?? new();
+        _omissions = omissions ?? new();
     }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
@@ -2098,13 +2104,23 @@ public sealed class PriorityTree
             })
             .ToListAsync(ct);
 
+        var omissionRows = await db.RunnerOmissions.AsNoTracking()
+            .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
+            .ToListAsync(ct);
+
         return new PriorityTree(
             rows.ToDictionary(
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
             rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)),
             rows.ToDictionary(r => r.Id, r => ((IReadOnlyList<string>)RunnerTagColumn.Read(r.RunnerTags), (IReadOnlyList<string>)RunnerTagColumn.Read(r.ProjectRunnerTags))),
-            rows.ToDictionary(r => r.Id, r => r.Dangerous));
+            rows.ToDictionary(r => r.Id, r => r.Dangerous),
+            omissionRows
+                .GroupBy(o => o.IssueId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>)
+                        g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -2201,6 +2217,57 @@ public sealed class PriorityTree
         }
 
         return (all, from);
+    }
+
+    /// <summary>
+    /// The runners this issue's own rows omit, by runner name (ordinal) for a
+    /// stable read. Empty where it has none; <c>FromKey</c> is always null.
+    /// </summary>
+    public IReadOnlyList<RunnerOmissionDto> OwnOmittedRunners(long issueId)
+    {
+        if (!_omissions.TryGetValue(issueId, out var own)) return [];
+
+        return own
+            .OrderBy(x => x.Runner, StringComparer.Ordinal)
+            .Select(x => new RunnerOmissionDto(x.Runner, x.Reason, x.By, x.At, null))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The runners omitted on this issue: each ancestor's own rows root-most
+    /// first, then the issue's own, deduplicated by runner name (ordinal) so
+    /// the root-most contributor wins. <c>FromKey</c> is null for an entry the
+    /// issue itself carries, else the ancestor's key.
+    /// </summary>
+    public IReadOnlyList<RunnerOmissionDto> EffectiveOmittedRunners(long issueId)
+    {
+        var seen = new HashSet<long>();
+        var chain = new List<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            chain.Add(id);
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        chain.Reverse();
+
+        var all = new List<RunnerOmissionDto>();
+        var has = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var id in chain)
+        {
+            if (!_omissions.TryGetValue(id, out var own)) continue;
+
+            var fromKey = id == issueId ? null : TryGet(id, out var row) ? row.Key : null;
+
+            foreach (var o in own.OrderBy(x => x.Runner, StringComparer.Ordinal))
+                if (has.Add(o.Runner))
+                    all.Add(new RunnerOmissionDto(o.Runner, o.Reason, o.By, o.At, fromKey));
+        }
+
+        return all;
     }
 
     /// <summary>
@@ -2456,6 +2523,12 @@ public sealed class DependencyGate
 
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
+
+    /// <summary>The runners this issue's own rows omit - see <see cref="PriorityTree.OwnOmittedRunners"/>.</summary>
+    public IReadOnlyList<RunnerOmissionDto> OwnOmittedRunners(long issueId) => _tree.OwnOmittedRunners(issueId);
+
+    /// <summary>The runners omitted on this issue - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</summary>
+    public IReadOnlyList<RunnerOmissionDto> EffectiveOmittedRunners(long issueId) => _tree.EffectiveOmittedRunners(issueId);
 
     /// <summary>The story or bug whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);
