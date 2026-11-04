@@ -4457,6 +4457,12 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
 
+/* The changelog report's entry row: a board card's emergency inset and none of
+   the rest of `hatch-card`, which is draggable. */
+.hatch-changelog-report-entry.emergency {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
 /* Low: a grey between normal's plain ink and economy's flat muted - later,
    not whenever, so it reads as more present than economy's stripe. */
 .hatch-card.low {
@@ -5631,6 +5637,34 @@ button.hatch-option.chosen {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+}
+
+/* One closed issue in the changelog report - a `hatch-changelog-fixes` line
+   with a little room, so the emergency inset has something to sit against. */
+.hatch-changelog-report-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  list-style: none;
+}
+
+/* A stretch of the window no bucket covers, between two sections. */
+.hatch-changelog-report-gap {
+  margin: var(--sp-4) 0;
+}
+
+/* `Completed` beside an epic's heading: the chip look, quieter than the title. */
+.hatch-changelog-report-done {
+  margin-left: var(--sp-2);
+  padding: 2px var(--sp-1-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  font-size: var(--t-label);
+  font-weight: normal;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .hatch-cumulative-flow-legend-item {
