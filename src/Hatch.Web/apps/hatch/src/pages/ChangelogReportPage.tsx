@@ -1,17 +1,32 @@
-import { Fragment } from 'react';
-import { Link } from 'react-router-dom';
-import { Card, EmptyState, Grid, ProjectMark, markVars } from '@hatch/ui';
+import { Fragment, useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Card, EmptyState, Grid, PageHeader, ProjectMark, markVars } from '@hatch/ui';
+import { getChangelogReport, getProjects } from '../api/client';
+import { Facet } from '../components/Facet';
+import { ProjectsFacet } from '../components/ProjectsFacet';
+import { ReportWindowControls } from '../components/ReportWindowControls';
 import { TypeGlyph } from '../components/TypeGlyph';
 import { fixLine } from '../lib/changelog';
 import {
+  BUCKET,
   bucketLabel,
   changelogReportEmptyWords,
   hasQuietGap,
   quietGapWords,
+  resolveBucket,
+  resolveLevel,
+  resolveLoose,
+  withBucket,
+  withLevel,
+  withLoose,
   type ReportBucketSize,
 } from '../lib/changelogReport';
 import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { resolveProjects, withProjects } from '../lib/timeline';
+import { useLoaded } from '../lib/useLoaded';
+import { hasMultipleProjects } from '../lib/useProjects';
+import { useReportWindow } from '../lib/useReportWindow';
 import type { ChangelogReport, ChangelogReportEntry, ChangelogReportGroup, Project } from '../types';
 
 interface ChangelogReportBodyProps {
@@ -148,5 +163,144 @@ export function ChangelogReportBody({
         );
       })}
     </>
+  );
+}
+
+/** The reads this page is made of, arriving together so the body is never
+    drawn with its project marks still to come. */
+interface ChangelogReportView {
+  report: ChangelogReport;
+  projects: Project[];
+}
+
+const REPORT_ANSWERS = 'What landed in each day, week or month, at the level a stakeholder reads.';
+
+/**
+ * What landed, bucket by bucket, at the level a stakeholder reads.
+ *
+ * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
+ * falls back to the last two weeks; the controls write those, and `project`
+ * (repeated keys), `bucket`, `level` and `loose`, each leaving its default out
+ * of the URL.
+ */
+export function ChangelogReportPage() {
+  const [params, setParams] = useSearchParams();
+
+  const { from, to, now, offsetMinutes, move } = useReportWindow(14);
+
+  const search = params.toString();
+
+  const load = useCallback(async (): Promise<ChangelogReportView> => {
+    /* The read waits on the project list rather than going out beside it: the
+       URL holds keys, the read takes ids, and `resolveProjects` says which of
+       those keys this Hatch still has. */
+    const projects = await getProjects();
+    const query = new URLSearchParams(search);
+    const chosen = resolveProjects(query, projects);
+    const report = await getChangelogReport({
+      from,
+      to,
+      projectId: chosen.length < projects.length ? chosen.map((p) => p.id) : undefined,
+      bucket: resolveBucket(query),
+      level: resolveLevel(query),
+      loose: resolveLoose(query),
+      offsetMinutes,
+    });
+
+    return { report, projects };
+  }, [from, to, search, offsetMinutes]);
+
+  const { data, error } = useLoaded<ChangelogReportView>(load);
+
+  /* Replace rather than push, as the other reports do: ticking a control is not
+     a place somebody wants Back to walk them through. */
+  function chooseProjects(keys: string[]) {
+    setParams(withProjects(params, keys, (data?.projects ?? []).map((p) => p.key)), { replace: true });
+  }
+
+  if (error && !data) return <p className="text-danger">{error}</p>;
+  if (!data) return <p className="text-muted">Loading…</p>;
+
+  const chosen = resolveProjects(params, data.projects);
+  const bucket = resolveBucket(params);
+  const level = resolveLevel(params);
+  const loose = resolveLoose(params);
+
+  return (
+    <div className="hatch-page">
+      <PageHeader
+        title="Changelog"
+        description={REPORT_ANSWERS}
+        className="hatch-timeline-header"
+        actions={
+          <>
+            <ReportWindowControls
+              defaultPreset="2w"
+              window={{ from, to }}
+              now={now}
+              offsetMinutes={offsetMinutes}
+              onMove={move}
+            />
+            <div className="hatch-timeline-controls" role="group" aria-label="Filters">
+              {hasMultipleProjects(data.projects) && (
+                <ProjectsFacet
+                  projects={data.projects}
+                  chosen={chosen.map((p) => p.key)}
+                  onChange={chooseProjects}
+                />
+              )}
+              <Facet
+                label="Bucket"
+                lit={bucket !== 'day'}
+                value={bucket}
+                options={[
+                  { value: 'hour', text: 'Hour' },
+                  { value: 'day', text: 'Day' },
+                  { value: 'week', text: 'Week' },
+                  { value: 'month', text: 'Month' },
+                ]}
+                onChange={(value) =>
+                  setParams(withBucket(params, resolveBucket(new URLSearchParams({ [BUCKET]: value }))), {
+                    replace: true,
+                  })
+                }
+              />
+              <Facet
+                label="Level"
+                lit={level !== 'story'}
+                value={level}
+                options={[
+                  { value: 'epic', text: 'Epic' },
+                  { value: 'story', text: 'Story' },
+                ]}
+                onChange={(value) =>
+                  setParams(withLevel(params, value === 'epic' ? 'epic' : 'story'), { replace: true })
+                }
+              />
+              <Facet
+                label="Loose"
+                lit={loose}
+                value={loose ? 'on' : 'off'}
+                options={[
+                  { value: 'off', text: 'Off' },
+                  { value: 'on', text: 'On' },
+                ]}
+                onChange={(value) => setParams(withLoose(params, value === 'on'), { replace: true })}
+              />
+            </div>
+          </>
+        }
+      />
+
+      {error && <p className="text-danger">{error}</p>}
+
+      <ChangelogReportBody
+        report={data.report}
+        projects={data.projects}
+        level={level}
+        loose={loose}
+        offsetMinutes={offsetMinutes}
+      />
+    </div>
   );
 }
