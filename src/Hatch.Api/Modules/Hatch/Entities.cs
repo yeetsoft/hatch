@@ -2041,6 +2041,20 @@ public class EfHatchIssueEvent
     public const string DangerousChanged = "dangerous_changed";
 
     /// <summary>
+    /// A runner was omitted from an issue, or the reason it is omitted was
+    /// rewritten - see <see cref="EfHatchIssueRunnerOmission"/>. The payload is
+    /// <c>{ runner, reason, from }</c>: <c>from</c> is the reason it replaced,
+    /// null when the omission is new or had none.
+    /// </summary>
+    public const string RunnerOmitted = "runner_omitted";
+
+    /// <summary>
+    /// An issue's own omission of a runner was lifted - see <see
+    /// cref="EfHatchIssueRunnerOmission"/>. The payload is <c>{ runner }</c>.
+    /// </summary>
+    public const string RunnerOmissionLifted = "runner_omission_lifted";
+
+    /// <summary>
     /// An issue's no-code declaration changed - see <see cref="EfHatchIssue.NoCode"/>.
     /// The payload is <c>{ from, to }</c>, either side null, and <c>moved</c>
     /// names the column when a move into one left of review cleared it.

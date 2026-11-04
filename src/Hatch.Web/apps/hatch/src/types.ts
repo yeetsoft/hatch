@@ -759,6 +759,8 @@ export type IssueEventKind =
   | 'one_pr_changed'
   | 'runner_tags_changed'
   | 'dangerous_changed'
+  | 'runner_omitted'
+  | 'runner_omission_lifted'
   | 'release_note_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
