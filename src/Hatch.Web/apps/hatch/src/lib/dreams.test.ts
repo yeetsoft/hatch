@@ -8,10 +8,13 @@ import {
   hasMore,
   isUrl,
   readDreams,
+  removeDream,
+  replaceDream,
   showsDream,
   writeDreams,
   type DreamFilters,
 } from './dreams';
+import type { Dream } from '../types';
 
 function params(entries: Record<string, string>): URLSearchParams {
   const params = new URLSearchParams();
@@ -207,5 +210,52 @@ describe('showsDream', () => {
 
   it('hides a loose-leaning dream under a project filter', () => {
     expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: null })).toBe(false);
+  });
+});
+
+describe('replaceDream', () => {
+  const a = { id: 1, body: 'a' } as Dream;
+  const b = { id: 2, body: 'b' } as Dream;
+  const c = { id: 3, body: 'c' } as Dream;
+
+  it('swaps the dream with the same id and keeps the order', () => {
+    const b2 = { ...b, body: 'b2' };
+    expect(replaceDream([a, b, c], b2)).toEqual([a, b2, c]);
+  });
+
+  it('leaves the other dreams as the same objects', () => {
+    const result = replaceDream([a, b, c], { ...b, body: 'b2' });
+    expect(result[0]).toBe(a);
+    expect(result[2]).toBe(c);
+  });
+
+  it('changes nothing for an id the list does not hold', () => {
+    expect(replaceDream([a, b], { ...c, body: 'c2' })).toEqual([a, b]);
+  });
+
+  it('does not mutate its input', () => {
+    const input = [a, b];
+    replaceDream(input, { ...b, body: 'b2' });
+    expect(input).toEqual([a, b]);
+  });
+});
+
+describe('removeDream', () => {
+  const a = { id: 1 } as Dream;
+  const b = { id: 2 } as Dream;
+  const c = { id: 3 } as Dream;
+
+  it('drops only the dream with that id', () => {
+    expect(removeDream([a, b, c], 2)).toEqual([a, c]);
+  });
+
+  it('changes nothing for an id the list does not hold', () => {
+    expect(removeDream([a, b], 9)).toEqual([a, b]);
+  });
+
+  it('does not mutate its input', () => {
+    const input = [a, b];
+    removeDream(input, 1);
+    expect(input).toEqual([a, b]);
   });
 });

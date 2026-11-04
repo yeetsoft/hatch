@@ -30,6 +30,22 @@ themselves. If the search or the filters would hide the new dream, they are clea
 seen. If the server refuses the dream, its reason shows beside the box and what you typed stays as
 you left it, ready to post again.
 
+## Editing and deleting one
+
+Each dream in the list has an **Edit** button, which works as it does on an issue's description:
+Edit and Preview switch between the box and the rendered words, and **Save** appears once the words
+differ from what is stored. The new text shows in place, with no reload. If the server refuses the
+change, its reason shows on that row and your draft stays as you typed it. Only the words are
+editable; the lean and the source are set when the dream is posted.
+
+**Delete** asks first. Cancelling the question, or a refusal from the server, leaves the list as it
+was, and a refusal shows its reason on that row. Deleting a dream also removes it from the "Drew on"
+of any issue it was woven into, and the question names those issues. Each row keeps its own draft
+and its own reason, so editing or deleting one never touches another.
+
+An edit does not run the search again: a dream whose new words no longer match the search stays in
+the list until the next time it loads.
+
 ## Finding one
 
 The search box matches any word, not every word: a query of two words finds a dream that has either.
