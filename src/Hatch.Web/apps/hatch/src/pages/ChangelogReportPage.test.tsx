@@ -107,7 +107,7 @@ describe('ChangelogReportBody', () => {
       }),
     );
 
-    expect(html).toContain('<a href="/issues/HA-1">The first epic</a>');
+    expect(html).toMatch(/<a href="\/issues\/HA-1"[^>]*>The first epic<\/a>/);
     expect(html).toContain('Completed');
     expect(html).toContain('First line of the note');
     expect(html).not.toContain('second line');
