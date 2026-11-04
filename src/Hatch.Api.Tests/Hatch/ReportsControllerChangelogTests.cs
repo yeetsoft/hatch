@@ -252,6 +252,19 @@ public class ReportsControllerChangelogTests
     }
 
     [Fact]
+    public async Task AClosedStoryUnderAReflection_MakesNoGroupAnywhere()
+    {
+        var h = await NewAsync();
+        var reflection = await h.FileAsync("reflection", "the reflection", h.InProgress);
+        await h.CloseAsync("story", "a closed story", Now - TimeSpan.FromMinutes(1), parentId: reflection.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        Assert.Empty(result.Buckets);
+    }
+
+    [Fact]
     public async Task LevelStory_EchoesStoryAndAnswers200WithNothingClosed()
     {
         var h = await NewAsync();
