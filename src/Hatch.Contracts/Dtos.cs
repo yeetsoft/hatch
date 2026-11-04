@@ -1108,9 +1108,11 @@ public record CommentDto(
     string? DeliveredTo = null);
 
 /// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
+/// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
 public record DreamDto(
     long Id, string Body, string Author, string? Source,
-    int? ProjectId, string? ProjectKey, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+    int? ProjectId, string? ProjectKey, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    IReadOnlyList<string> WovenInto);
 
 /// <summary>What it takes to add a dream. <see cref="ProjectId"/> is the lean, and may be left out.</summary>
 public record DreamCreateRequest(string Body, string? Source = null, int? ProjectId = null);
@@ -2037,6 +2039,9 @@ public record AssigneeDirectoryDto(AssigneeDto? Me, IReadOnlyList<AssigneeDto> A
 /// who should chain them.
 /// </remarks>
 public record IssueDependencyRequest(string DependsOnKey);
+
+/// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
+public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
 
 // ---- Work ----
 

@@ -442,13 +442,21 @@ before 409ing.
 | POST | `/dreams` | Adds one |
 | PATCH | `/dreams/{id}` | Edits one |
 | DELETE | `/dreams/{id}` | Removes one |
+| PUT | `/issues/{key}/dreams` | Replaces the set of dreams this issue drew on |
+| GET | `/issues/{key}/dreams` | The dreams this issue drew on, newest first |
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
 `/dreams` takes `q` (any word, not every word - unlike `/search`), `projectId`
-(omitted matches every dream, leaning and loose alike), `limit` (1-200,
-default 50) and `offset`; with `q`, best match first, else newest first.
-Its answer is `DreamsPageDto(Dreams, Total)`, each a
-`DreamDto(Id, Body, Author, Source, ProjectId, ProjectKey, CreatedAt, UpdatedAt)`.
+(omitted matches every dream, leaning and loose alike), `issueKey` (only
+dreams woven into that issue), `loose` (`true` for only dreams woven into no
+issue at all), `limit` (1-200, default 50) and `offset`; with `q`, best match
+first, else newest first. `issueKey` and `loose` each AND with `q` and
+`projectId` as one more filter on the same query - each is a single
+`EXISTS`/`NOT EXISTS` against `DreamThreads`, not a lookup per dream. Its
+answer is `DreamsPageDto(Dreams, Total)`, each a
+`DreamDto(Id, Body, Author, Source, ProjectId, ProjectKey, CreatedAt, UpdatedAt, WovenInto)` -
+`WovenInto` the keys of the issues that drew on this dream, ordered by
+project key then issue number, empty where nothing has.
 POST's body is `DreamCreateRequest(Body, Source?, ProjectId?)`; `Author` is
 the caller. PATCH takes a raw JSON object rather than
 `DreamCreateRequest` - `{"body"?, "source"?, "projectId"?}` - so that a key
@@ -457,10 +465,20 @@ clears it (`source` and `projectId` only; `body` takes a string, never
 `null`). A PATCH that changes nothing writes nothing and leaves `UpdatedAt`
 alone.
 
+`PUT /issues/{key}/dreams` takes `IssueDreamsWriteRequest(DreamIds)` - the
+whole set this issue should carry afterwards, duplicates collapsed. A request
+naming the set already there writes nothing, logs nothing and leaves
+`UpdatedAt` alone; otherwise it writes a `dreams_woven` issue event (see
+docs/hatch.md) and answers the resulting `DreamDto[]`, newest first. `GET
+/issues/{key}/dreams` is the same read, with no write.
+
 **Refusals.** `/dreams` 400s a `limit` outside 1-200 or a negative `offset`,
-the same as `/search`. POST 400s a blank or over-length `Body`, or a
-`Source` over 500 characters; both POST and PATCH 404 an unknown
-`ProjectId`. PATCH and DELETE 404 an unknown `{id}`.
+the same as `/search`, and a malformed `issueKey`. POST 400s a blank or
+over-length `Body`, or a `Source` over 500 characters; both POST and PATCH
+404 an unknown `ProjectId`. PATCH and DELETE 404 an unknown `{id}`. `PUT
+/issues/{key}/dreams` and the `GET` beside it 404 an unparseable or unknown
+`{key}`; `PUT` 400s naming the first dream id in `DreamIds` that does not
+exist, writing nothing when it does.
 
 ## The loop's own routes
 
