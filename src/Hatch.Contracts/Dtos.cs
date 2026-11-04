@@ -319,6 +319,17 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags);
 
 /// <summary>
+/// One runner an issue is kept off - its own omission, or one inherited from
+/// an ancestor.
+/// </summary>
+/// <param name="Runner">The runner's name.</param>
+/// <param name="Reason">Why it is omitted; null where none was given.</param>
+/// <param name="By">Who omitted it.</param>
+/// <param name="At">When it was omitted.</param>
+/// <param name="FromKey">The key of the ancestor the omission comes from; null when it is the issue's own.</param>
+public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTimeOffset At, string? FromKey);
+
+/// <summary>
 /// A card. What the board draws, and nothing more - descriptions and comments
 /// are a detail-page request, because the board holds every issue in the house
 /// and shipping every description with it would make the first paint the
@@ -405,6 +416,8 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
 /// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
+/// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
+/// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -439,7 +452,9 @@ public record IssueCardDto(
     IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
     string? DangerousOwn = null,
     string? Dangerous = null,
-    string? DangerousFrom = null)
+    string? DangerousFrom = null,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -447,6 +462,8 @@ public record IssueCardDto(
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
 }
 
 /// <summary>
@@ -618,6 +635,8 @@ public record IssueClaimDto(
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 /// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>.</param>
 /// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
+/// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
+/// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -674,7 +693,9 @@ public record IssueDto(
     string? Dangerous = null,
     string? DangerousFrom = null,
     string? NoCode = null,
-    DateTimeOffset? NoCodeAt = null)
+    DateTimeOffset? NoCodeAt = null,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -682,6 +703,8 @@ public record IssueDto(
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
 }
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
@@ -1967,6 +1990,20 @@ public record ReleaseNoteRequest(string? Note)
 /// </summary>
 /// <param name="Reason">Why running the issue is dangerous. Trimmed before it is stored.</param>
 public record DangerousRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
+}
+
+/// <summary>
+/// Omitting a runner from an issue. A null or empty reason is stored as no
+/// reason, not as a clear.
+/// </summary>
+/// <param name="Reason">Why the runner is omitted. Trimmed before it is stored.</param>
+public record OmitRunnerRequest(string? Reason)
 {
     /// <summary>
     /// The longest reason the server will accept, measured after trimming. Here

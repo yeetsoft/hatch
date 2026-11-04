@@ -187,6 +187,8 @@ public class IssuesController(
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
+            var omittedRunnersOwn = priorities.OwnOmittedRunners(i.Id);
+            var omittedRunners = priorities.EffectiveOmittedRunners(i.Id);
 
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
@@ -213,6 +215,8 @@ public class IssuesController(
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
+                OmittedRunnersOwn: omittedRunnersOwn,
+                OmittedRunners: omittedRunners,
                 PriorityFrom: effectiveFrom,
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),

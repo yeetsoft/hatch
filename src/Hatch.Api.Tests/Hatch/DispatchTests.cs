@@ -741,6 +741,38 @@ public class DispatchTests
         Assert.Equal(("load-tests the API", (string?)null), tree.EffectiveDangerous(story.Id));
     }
 
+    // ---- Omitted runners: the union of the ancestors' rows, the root-most winning ----
+
+    [Fact]
+    public async Task EffectiveOmittedRunners_ATwoLevelsDownTask_ReadsTheEpicsOmission_AndTheRootMostWinsOverItsOwn()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        var story = await h.FileAsync("story", "s", h.Todo, parentId: epic.Id);
+        var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
+        var epicKey = IssueKey.Format(h.ProjectKey, epic.Number);
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = epic.Id, RunnerName = "gpu-1", By = "operator", At = Now });
+        await h.Db.SaveChangesAsync();
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        var effective = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
+        Assert.Equal("gpu-1", effective.Runner);
+        Assert.Equal(epicKey, effective.FromKey);
+        Assert.Empty(tree.OwnOmittedRunners(task.Id));
+
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = task.Id, RunnerName = "gpu-1", By = "operator", At = Now });
+        await h.Db.SaveChangesAsync();
+
+        tree = await PriorityTree.ForAsync(h.Db, default);
+
+        var still = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
+        Assert.Equal("gpu-1", still.Runner);
+        Assert.Equal(epicKey, still.FromKey);
+        var own = Assert.Single(tree.OwnOmittedRunners(task.Id));
+        Assert.Null(own.FromKey);
+    }
+
     // ---- Tags: the union an ancestor and the issue's own add to the project's ----
 
     [Fact]
