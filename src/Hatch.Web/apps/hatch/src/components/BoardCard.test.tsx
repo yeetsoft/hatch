@@ -34,6 +34,8 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,
