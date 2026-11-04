@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsTwentyFourTables()
+    public void TheModuleOwnsTwentyFiveTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["BuildChecks", "Comments", "Dreams", "Images", "IssueDependencies", "IssueEvents", "Issues", "Landings", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "Runners", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["BuildChecks", "Comments", "DreamThreads", "Dreams", "Images", "IssueDependencies", "IssueEvents", "Issues", "Landings", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "Runners", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -212,6 +212,23 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.Cascade,
             ForeignKeyOn(db, typeof(EfHatchIssueDependency), foreignKey).DeleteBehavior);
+    }
+
+    /// <summary>
+    /// An edge has no meaning without either issue or dream, so deleting
+    /// either takes it - in both directions. Pinned as model metadata rather
+    /// than exercised, for the reason <see cref="DependencyEdges_CascadeWithEitherIssue"/> is.
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(EfHatchDreamThread.DreamId))]
+    [InlineData(nameof(EfHatchDreamThread.IssueId))]
+    public void DreamThreadEdges_CascadeWithEitherSide(string foreignKey)
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.Cascade,
+            ForeignKeyOn(db, typeof(EfHatchDreamThread), foreignKey).DeleteBehavior);
     }
 
     /// <summary>

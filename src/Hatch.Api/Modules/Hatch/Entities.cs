@@ -1441,6 +1441,31 @@ public class EfHatchDream
 }
 
 /// <summary>
+/// One dream read as drawn on by one issue - see docs/hatch.md, "Dream".
+/// </summary>
+/// <remarks>
+/// No <c>[Key]</c> on either FK - a composite key cannot be expressed with
+/// data annotations, so <see cref="HatchContext.OnModelCreating"/> carries
+/// it. No inverse navigation on either end - two collections told apart
+/// only by name, and nothing reads them, the same choice
+/// <see cref="EfHatchIssueDependency"/> already made for the same reason.
+/// </remarks>
+[Table("DreamThreads")]
+public class EfHatchDreamThread
+{
+    public required long DreamId { get; set; }
+    public EfHatchDream? Dream { get; set; }
+
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Actor { get; set; }
+
+    public required DateTimeOffset At { get; set; }
+}
+
+/// <summary>
 /// What a runner found when it merged an issue's branch against the trunk of
 /// one repository, and what it was looking at when it did.
 ///
@@ -2077,6 +2102,13 @@ public class EfHatchIssueEvent
 
     /// <summary>The reverse - see <see cref="DependencyAdded"/>.</summary>
     public const string DependencyRemoved = "dependency_removed";
+
+    /// <summary>
+    /// `PUT /issues/{key}/dreams` replaced the set of dreams this issue drew
+    /// on - see HA-1722. The payload is `{ from, to }`, both sides every dream
+    /// id sorted ascending.
+    /// </summary>
+    public const string DreamsWoven = "dreams_woven";
 
     /// <summary>
     /// A runner took the lease on this issue - see
