@@ -159,7 +159,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, Asking(runner), ct);
     }
 
     /// <summary>
@@ -471,6 +471,14 @@ public class WorkController(
     /// False is a runner that refuses dangerous work - see
     /// <see cref="GetNextWork"/>.
     /// </param>
+    /// <param name="runner">
+    /// The caller's own runner name, when it wants an issue omitted for it
+    /// (its own omission or an ancestor's) folded with the same sentence the
+    /// scan gives: <see cref="Dispatch.OmissionFold"/>. Last, and named a query
+    /// parameter, because the <c>X-Hatch-Runner</c> header is stripped when a
+    /// key is used. A name matching no row is fine - the omission is matched on
+    /// the name alone. Absent, or naming another runner, folds nothing.
+    /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
         string key, [FromQuery] Guid? heldToken = null,
@@ -479,7 +487,8 @@ public class WorkController(
         [FromQuery] bool? clones = null,
         CancellationToken ct = default,
         [FromQuery] List<string>? tag = null,
-        [FromQuery] bool? dangerous = null)
+        [FromQuery] bool? dangerous = null,
+        [FromQuery] string? runner = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
@@ -507,6 +516,7 @@ public class WorkController(
             await Wip.LoadAsync(db, claims, statuses, now, ct),
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
             tags,
+            Asking(runner),
             ct);
     }
 
@@ -525,6 +535,13 @@ public class WorkController(
     /// writes, so a card that passed a gate with nobody present says so on its
     /// trail.
     /// </remarks>
+    /// <param name="runner">
+    /// The caller's own runner name, when it wants an issue omitted for it
+    /// (its own omission or an ancestor's) refused with the same sentence the
+    /// scan gives: <see cref="Dispatch.OmissionFold"/>. Last, and named a query
+    /// parameter, because the <c>X-Hatch-Runner</c> header is stripped when a
+    /// key is used. Absent, or naming another runner, folds nothing.
+    /// </param>
     [HttpPost("{key}/hop")]
     public async Task<ActionResult<IssueDto>> HopWork(
         string key,
@@ -532,7 +549,8 @@ public class WorkController(
         [FromQuery] bool? standing = null,
         [FromQuery] bool? clones = null,
         CancellationToken ct = default,
-        [FromQuery] List<string>? tag = null)
+        [FromQuery] List<string>? tag = null,
+        [FromQuery] string? runner = null)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
@@ -587,7 +605,8 @@ public class WorkController(
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
             landing: landing,
-            tags: tags);
+            tags: tags,
+            asking: Asking(runner));
 
         if (blocked is not null) return Conflict(blocked);
         if (!hop) return Conflict($"{key} is not a hop - a session moves this issue, and a hop does not");
@@ -1184,10 +1203,15 @@ public class WorkController(
     /// cannot come back blocked here; a caller's own declaration for a named
     /// dispatch.
     /// </param>
+    /// <param name="asking">
+    /// The caller's own runner name, for <see cref="Dispatch.OmissionFold"/> -
+    /// the same name the scan folded on, so a row it called clear on omission
+    /// cannot come back blocked here. Null folds nothing.
+    /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, CancellationToken ct)
+        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, RunnerAsking? asking, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -1296,7 +1320,7 @@ public class WorkController(
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags);
+            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
