@@ -29,6 +29,7 @@ export const NAV: NavEntry[] = [
     // How the work is going, and what happened to it: the plan ahead, the
     // measures of flow, and the record behind both.
     rows: [
+      { to: '/dreams', label: 'Dreams' },
       { to: '/plan', label: 'Plan' },
       { to: '/reports', label: 'Reports' },
       { to: '/history', label: 'History' },
