@@ -1257,6 +1257,7 @@ public class EfHatchIssue
     public ICollection<EfHatchLanding> Landings { get; set; } = [];
     public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
+    public ICollection<EfHatchIssueRunnerOmission> RunnerOmissions { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
 }
@@ -2697,6 +2698,31 @@ public class EfHatchIssueDependency
     public required string CreatedBy { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A runner this issue skips, and why - see docs/hatch.md, "Decisions taken".
+/// </summary>
+/// <remarks>
+/// No <c>[Key]</c> on either half of the primary key - a composite key cannot
+/// be expressed with data annotations, so <see cref="HatchContext.OnModelCreating"/>
+/// carries it, the same as <see cref="EfHatchDreamThread"/>.
+/// </remarks>
+[Table("IssueRunnerOmissions")]
+public class EfHatchIssueRunnerOmission
+{
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(EfHatchRunner.MaxNameLength)]
+    public required string RunnerName { get; set; }
+
+    public string? Reason { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string By { get; set; }
+
+    public required DateTimeOffset At { get; set; }
 }
 
 /// <summary>
