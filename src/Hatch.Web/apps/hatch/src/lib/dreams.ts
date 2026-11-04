@@ -126,3 +126,14 @@ export function showsDream(filters: DreamFilters, dream: Pick<Dream, 'projectId'
 
   return filters.projectId === '' || filters.projectId === String(dream.projectId);
 }
+
+/** The list with `updated` in place of the dream sharing its id, order kept.
+    An id the list does not hold changes nothing. */
+export function replaceDream(dreams: Dream[], updated: Dream): Dream[] {
+  return dreams.map((dream) => (dream.id === updated.id ? updated : dream));
+}
+
+/** The list without the dream `id`. An id the list does not hold changes nothing. */
+export function removeDream(dreams: Dream[], id: number): Dream[] {
+  return dreams.filter((dream) => dream.id !== id);
+}

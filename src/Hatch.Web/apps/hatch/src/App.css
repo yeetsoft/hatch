@@ -1541,6 +1541,10 @@ button.hatch-card-stories:focus-visible {
   margin-top: var(--sp-2);
 }
 
+.hatch-dream__delete {
+  margin-left: auto;
+}
+
 .hatch-dream__woven {
   display: flex;
   flex-wrap: wrap;

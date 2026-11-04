@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
-import { addDream, getDreams } from '../api/client';
+import { addDream, deleteDream, getDreams, patchDream } from '../api/client';
+import { DescriptionEditor } from '../components/DescriptionEditor';
 import { Facet } from '../components/Facet';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { agoPhrase } from '../lib/claim';
-import { EMPTY_DREAMS, countLine, dreamsRequest, hasMore, isUrl, readDreams, showsDream, writeDreams } from '../lib/dreams';
+import { EMPTY_DREAMS, countLine, dreamsRequest, hasMore, isUrl, readDreams, removeDream, replaceDream, showsDream, writeDreams } from '../lib/dreams';
 import { message } from '../lib/errors';
 import { facetClass } from '../lib/facet';
-import { renderMarkdown } from '../lib/markdown';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { createLedger } from '../lib/refresh';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
@@ -139,6 +139,14 @@ export function DreamsPage() {
     }
   }
 
+  const onChanged = (updated: Dream) => setDreams((prev) => replaceDream(prev, updated));
+
+  // Show more's offset is dreams.length, so the row and the total drop together.
+  const onRemoved = (id: number) => {
+    setDreams((prev) => removeDream(prev, id));
+    setTotal((t) => t - 1);
+  };
+
   // Once per render of the list, so every row's "ago" reads from the same instant.
   const now = new Date();
 
@@ -254,6 +262,8 @@ export function DreamsPage() {
                 dream={dream}
                 now={now}
                 project={dream.projectKey ? byKey.get(dream.projectKey) : undefined}
+                onChanged={onChanged}
+                onRemoved={onRemoved}
               />
             ))}
           </ul>
@@ -272,9 +282,44 @@ export function DreamsPage() {
 }
 
 /** One dream: who said it and when, where it came from, the project it leans
-    toward, its words, and the issues that drew on it. */
-function DreamRow({ dream, now, project }: { dream: Dream; now: Date; project: Project | undefined }) {
+    toward, its words, and the issues that drew on it. The words are editable in
+    place and the row can be deleted; the draft and the refusal are the row's own,
+    so one row's edit never touches another's. */
+function DreamRow({
+  dream,
+  now,
+  project,
+  onChanged,
+  onRemoved,
+}: {
+  dream: Dream;
+  now: Date;
+  project: Project | undefined;
+  onChanged: (updated: Dream) => void;
+  onRemoved: (id: number) => void;
+}) {
   const source = dream.source;
+  const [error, setError] = useState<string | null>(null);
+  // Remounts the editor after each save. The server trims the body it stores,
+  // so a draft saved with trailing whitespace would otherwise differ from the
+  // value that comes back and read as "changed while this was being edited".
+  const [saves, setSaves] = useState(0);
+
+  async function remove() {
+    // Deleting a dream also drops it from the "Drew on" of every issue woven into.
+    const woven = dream.wovenInto.length > 0;
+    const question = woven
+      ? `Delete this dream? It will also leave ${dream.wovenInto.join(', ')}'s "Drew on".`
+      : 'Delete this dream?';
+    if (!confirm(question)) return;
+    setError(null);
+    try {
+      await deleteDream(dream.id);
+      onRemoved(dream.id);
+    } catch (err) {
+      setError(message(err));
+    }
+  }
 
   return (
     <li className="hatch-dream">
@@ -299,9 +344,34 @@ function DreamRow({ dream, now, project }: { dream: Dream; now: Date; project: P
             title={project.name}
           />
         )}
+        <span className="hatch-dream__delete">
+          <Button variant="danger" onClick={() => void remove()}>
+            Delete
+          </Button>
+        </span>
       </div>
 
-      <div className="hatch-dream__body hatch-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(dream.body) }} />
+      <div className="hatch-dream__body">
+        <DescriptionEditor
+          key={saves}
+          title={null}
+          value={dream.body}
+          rows={3}
+          noun="dream"
+          error={error}
+          onSave={async (next) => {
+            setError(null);
+            try {
+              onChanged(await patchDream(dream.id, { body: next }));
+              setSaves((n) => n + 1);
+              return true;
+            } catch (err) {
+              setError(message(err));
+              return false;
+            }
+          }}
+        />
+      </div>
 
       {dream.wovenInto.length > 0 && (
         <div className="hatch-dream__woven">
