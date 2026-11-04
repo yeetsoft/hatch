@@ -300,7 +300,7 @@ description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
 ancestor. A ticket that requires a runner tag says so too, naming the project or
-the ancestor issue each tag beyond its own came from. None of those can be set from here: the key is a key, and each is a
+the ancestor issue each tag beyond its own came from. A ticket with omitted runners lists each one with its reason, who omitted it and how long ago, in the shape `hatch omit AER-12` reads, with `(from AER-3)` on one an ancestor carries, and says nothing of them when there are none. None of those can be set from here: the key is a key, and each is a
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it
 is doing - drawn from the ticket itself, so it shows for any holder and is
