@@ -91,14 +91,26 @@ export function firstLine(body: string): string {
   return body.split('\n')[0].trim();
 }
 
-/** Whether `source` reads as a real address - the same shape
-    setupPrompt.ts's own `setupPrompt` already uses to tell one from plain
-    text. */
+/** Whether `source` reads as a web address worth linking: it parses and its
+    protocol is `http:` or `https:`. A `javascript:` or `mailto:` source parses
+    as a URL too, and must stay plain text. */
 export function isUrl(source: string): boolean {
   try {
-    new URL(source);
-    return true;
+    const { protocol } = new URL(source);
+    return protocol === 'http:' || protocol === 'https:';
   } catch {
     return false;
   }
+}
+
+/** The count line under the filters: "3 of 340", or "0 results" when nothing
+    matched. Copied from search.ts, not imported - the two files are
+    deliberately separate. */
+export function countLine(shown: number, total: number): string {
+  return total === 0 ? '0 results' : `${shown} of ${total}`;
+}
+
+/** Whether a next page exists. */
+export function hasMore(shown: number, total: number): boolean {
+  return shown < total;
 }

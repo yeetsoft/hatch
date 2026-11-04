@@ -1512,6 +1512,42 @@ button.hatch-card-stories:focus-visible {
   flex: 1 1 100%;
 }
 
+/* The Dreams list: one card-like row per dream, stacked. */
+.hatch-dream-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
+.hatch-dream__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-label);
+}
+
+.hatch-dream__body {
+  margin-top: var(--sp-2);
+}
+
+.hatch-dream__woven {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+
 /* A date range is a .hatch-facet label wrapping two bare <input type="date">,
    so the facet's own border and background carry the look and the inputs
    draw nothing of their own - base.css's input rules are what this undoes. */
