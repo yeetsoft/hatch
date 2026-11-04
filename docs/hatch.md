@@ -4397,21 +4397,26 @@ a `400`. `bucket` is `hour`, `day`, `week` or `month`, case-insensitive and
 trimmed; absent or blank is `day`; anything else is a `400` naming the four.
 `offsetMinutes` is minutes east of UTC — local is UTC plus this — aligning
 every bucket to the reader's own clock rather than UTC's; outside -1440..1440
-is a `400`. `level` is absent, blank, or `epic`; anything else, `story`
-included, is a `400` naming `epic`. `loose` is a bool, default `false`,
-accepted and echoed back. The route is open to a person or to a key with the
-`hatch` scope, and the `400`s above come in that order — bound, offset,
-bucket, level, project.
+is a `400`. `level` is absent, blank, `epic` or `story`; anything else is a
+`400` naming the two. `loose` is a bool, default `false`, accepted and
+echoed back. The route is open to a person or to a key with the `hatch`
+scope, and the `400`s above come in that order — bound, offset, bucket,
+level, project.
 
 It answers `{ from, to, bucket, level, loose, buckets }`. `from`, `to`,
 `bucket`, `level` and `loose` are the request as the server resolved it.
 `buckets` is newest first, one `{ start, end, groups, loose }` per bucket that
-closed at least one epic — `start` and `end` are the bucket's own UTC
-instants. Each entry in `groups` is `{ epic, closedHere, descendantCount,
-stories }`, newest `closedAt` first within the bucket: `epic` is a card,
-`closedHere` is always `true`, `descendantCount` counts everything below the
-epic at any depth, and `stories` is `[]` for now. Every bucket's own `loose`
-is `[]` for now as well.
+has at least one group — `start` and `end` are the bucket's own UTC instants.
+Each entry in `groups` is `{ epic, closedHere, descendantCount, stories }`,
+newest first within the bucket: `epic` is a card, `descendantCount` counts
+everything below the epic at any depth, and `stories` is `[]` for now. At
+`level=epic`, `closedHere` is always `true` — only the epic's own close is
+read. At `level=story`, a group exists for every epic with a story closed in
+the bucket, or whose own close falls in it, or both; `closedHere` is `true`
+only when the epic itself closed in that bucket, and is `false` for a group
+that exists purely because a story under it closed there. A story with no
+epic above it is read by neither level yet, and is left for `loose` to carry
+later. Every bucket's own `loose` is `[]` for now, at either level.
 
 #### The rules
 
@@ -4421,19 +4426,25 @@ is `[]` for now as well.
   so there is no `unresolved` count here and no renamed-column hole to fall
   into.
 - **The window is half-open**, `[from, to)`, the same as the flow's.
-- **Only top-level epics** — an epic whose parent is not itself an epic — are
-  grouped; a story or task closing underneath one is not read at this level.
+- **At `level=epic`, only top-level epics** — an epic whose parent is not
+  itself an epic — are grouped; a story or task closing underneath one is not
+  read at this level.
+- **At `level=story`, a story groups under its nearest epic above it** —
+  walking parents up, whatever depth that epic sits at, so a story under a
+  sub-epic groups under the sub-epic, never the root. A story with no epic
+  above it makes no group at this level either; it is left for `loose` to
+  carry later. Only `story`-typed issues are read this way — a closed bug or
+  task underneath an epic makes no group of its own.
 - **Buckets align to the reader**, via `offsetMinutes`: an hour, a day, or a
   calendar month on the reader's own clock, floored and then shifted back out
   to UTC for the wire — weeks start on **Monday**, the same as
   [the timeline's axis](#the-drawing).
 - **Buckets are sparse.** An empty bucket is never emitted — no dense grid and
   no point cap, unlike [the cumulative flow](#the-cumulative-flow)'s.
-- **`level=epic` is the only level for now** — `story` is a `400` naming
-  `epic` until a later story widens it, so a reader hitting it today should
-  not read it as broken.
+- **`level` is `epic` or `story`** — absent or blank defaults to `epic`;
+  anything else is a `400` naming the two.
 - **`stories` and `loose` answer empty for now**, on every group and every
-  bucket alike, until a later story fills them in.
+  bucket alike, at either level, until a later story fills them in.
 
 **There is no page, no index card and no CLI subcommand** for it yet; a script
 reaches the same answer with `hatch api GET /api/hatch/reports/changelog?...`,

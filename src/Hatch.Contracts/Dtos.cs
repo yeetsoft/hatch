@@ -3156,7 +3156,7 @@ public record ChangelogMonthDto(string Month, int Count);
 /// for how a bucket is cut. A different shape from <see cref="ChangelogDto"/>,
 /// which is the changelog feed's own answer, not this report's.
 /// </summary>
-/// <param name="Level">The depth this report groups at - always <c>"epic"</c> for now.</param>
+/// <param name="Level">The depth this report groups at - <c>"epic"</c> or <c>"story"</c>.</param>
 /// <param name="Loose">Whether work under no epic rides alongside the buckets - always false for now.</param>
 public record ChangelogReportDto(
     DateTimeOffset From,
@@ -3167,7 +3167,11 @@ public record ChangelogReportDto(
     IReadOnlyList<ChangelogReportBucketDto> Buckets);
 
 /// <summary>One bucket: the window it covers, the epics closed inside it, and the loose work beside them.</summary>
-/// <param name="Groups">One entry per epic closed in this bucket.</param>
+/// <param name="Groups">
+/// One entry per epic closed in this bucket at <c>level=epic</c>; at <c>level=story</c>,
+/// one entry per epic with a story closed in this bucket, or whose own close falls
+/// in it, or both.
+/// </param>
 /// <param name="Loose">Work under no epic, closed in this bucket - always empty until a later story fills it in.</param>
 public record ChangelogReportBucketDto(
     DateTimeOffset Start,
@@ -3176,7 +3180,11 @@ public record ChangelogReportBucketDto(
     IReadOnlyList<ChangelogReportEntryDto> Loose);
 
 /// <summary>One closed epic, as a bucket draws it, with the work beneath it.</summary>
-/// <param name="ClosedHere">Whether the epic itself closed in this bucket - always true for now.</param>
+/// <param name="ClosedHere">
+/// Whether the epic itself closed in this bucket - always true at <c>level=epic</c>;
+/// at <c>level=story</c>, false is possible, when the group exists for a story
+/// closing under the epic rather than the epic's own close.
+/// </param>
 /// <param name="DescendantCount">Every issue below this epic, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
 /// <param name="Stories">The epic's own closed children - always empty until a later story fills it in.</param>
 public record ChangelogReportGroupDto(
