@@ -928,15 +928,18 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
-All five a key's. `timeline` takes `from`, `to` (default the ninety days
+All six a key's. `timeline` takes `from`, `to` (default the ninety days
 ending now), `projectId` and `createdBy`; `cumulative-flow` takes `from`/`to`,
 the same ninety-day default, plus a repeatable `project`, and 400s an unknown
 key the same way `flow` 400s an unknown `projectId`; `flow` takes `from`/`to`
 the same way, plus `projectId` and `type`, and 400s an unknown `type` or
-`projectId`. `changelog` 400s a bad range bound, an offset outside +-1440
-minutes, an unrecognised bucket name, a `level` other than `epic`, or a
-`projectId` that does not exist - in that order.
-None of the three queries is itself bounded by the range - the fold needs an
+`projectId`. `changelog` takes `from`/`to` (default the **fourteen** days
+ending now), a repeatable `projectId`, `bucket` (default `day`),
+`offsetMinutes` (-1440..1440) and `level` (`epic` only for now), plus `loose`
+(accepted; its lists answer empty for now), and 400s a bad range bound, an
+offset outside +-1440 minutes, an unrecognised bucket name, a `level` other
+than `epic`, or a `projectId` that does not exist - in that order.
+None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
 `UtilizationReading(State, ReadAt, Limits)` off whatever this caller's own
