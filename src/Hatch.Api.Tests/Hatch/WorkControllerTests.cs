@@ -2125,6 +2125,27 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task LetGoBy_APeerOmittedFromTheTicket_IsNotOneThatCouldTakeIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, b);
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issue.Id, RunnerName = b, By = "operator", At = Now.AddMinutes(-3) });
+        await h.Db.SaveChangesAsync();
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        // A third live runner that is not omitted could take it, so A defers again.
+        await AddLoopRunnerAsync(h, RunnerName());
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
     public async Task LetGoBy_AsRunnerGivesTheSameSentenceAsTheRunnerParameter()
     {
         var h = await NewAsync();
