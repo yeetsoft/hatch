@@ -80,14 +80,14 @@ public class ReportsControllerChangelogTests
     }
 
     [Fact]
-    public async Task ALevelOtherThanEpic_IsRefused()
+    public async Task ALevelOtherThanEpicOrStory_IsRefused()
     {
         var h = await NewAsync();
 
         var result = await h.Controller.GetChangelogReport(
-            null, null, null, null, level: "story", ct: default);
+            null, null, null, null, level: "task", ct: default);
 
-        Assert.Equal("a level is epic - not \"story\"", Refusal(result));
+        Assert.Equal("a level is epic or story - not \"task\"", Refusal(result));
     }
 
     // ---- The answer ----
@@ -184,6 +184,83 @@ public class ReportsControllerChangelogTests
         Assert.Equal(
             [IssueKey.Format("AER", later.Number), IssueKey.Format("AER", earlier.Number)],
             bucket.Groups.Select(g => g.Epic.Key));
+    }
+
+    // ---- level=story ----
+
+    [Fact]
+    public async Task TwoStoriesUnderOneEpic_ComeBackAsOneGroupWithClosedHereFalse()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.CloseAsync("story", "first story", Now - TimeSpan.FromMinutes(5), parentId: epic.Id);
+        await h.CloseAsync("story", "second story", Now - TimeSpan.FromMinutes(1), parentId: epic.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal("AER-1", group.Epic.Key);
+        Assert.False(group.ClosedHere);
+        Assert.Empty(group.Stories);
+    }
+
+    [Fact]
+    public async Task AStoryUnderASubEpic_GroupsUnderTheSubEpicNotTheRoot()
+    {
+        var h = await NewAsync();
+        var root = await h.FileAsync("epic", "the root epic", h.InProgress);
+        var sub = await h.FileAsync("epic", "the sub epic", h.InProgress, parentId: root.Id);
+        await h.CloseAsync("story", "a story", Now - TimeSpan.FromMinutes(1), parentId: sub.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(IssueKey.Format("AER", sub.Number), group.Epic.Key);
+    }
+
+    [Fact]
+    public async Task AnEpicClosingWithNoStoryClosingUnderIt_StillMakesAGroup()
+    {
+        var h = await NewAsync();
+        var epic = await h.CloseEpicAsync("the epic", Now - TimeSpan.FromMinutes(1));
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        var bucket = Assert.Single(result.Buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal("AER-1", group.Epic.Key);
+        Assert.True(group.ClosedHere);
+        Assert.Empty(group.Stories);
+    }
+
+    [Fact]
+    public async Task AClosedBugUnderTheEpic_NeverMakesItsOwnGroup()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.InProgress);
+        await h.CloseAsync("bug", "a closed bug", Now - TimeSpan.FromMinutes(1), parentId: epic.Id);
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        Assert.Empty(result.Buckets);
+    }
+
+    [Fact]
+    public async Task LevelStory_EchoesStoryAndAnswers200WithNothingClosed()
+    {
+        var h = await NewAsync();
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        Assert.Equal("story", result.Level);
+        Assert.Empty(result.Buckets);
     }
 
     // ---- Who may read it ----
