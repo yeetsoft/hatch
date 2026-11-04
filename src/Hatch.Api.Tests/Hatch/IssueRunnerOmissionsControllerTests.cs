@@ -103,6 +103,19 @@ public class IssueRunnerOmissionsControllerTests
     }
 
     [Fact]
+    public async Task AnEscapedName_IsStoredAsTheNameTheRunnerCallsItself()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+
+        // Kestrel leaves %2F encoded in the path on purpose, so a runner whose
+        // name is a path arrives here still carrying it.
+        await h.OmitAsync(issue.Key, "host:%2Fcheckouts%2Fone", "x");
+
+        Assert.Equal("host:/checkouts/one", (await h.Db.RunnerOmissions.SingleAsync()).RunnerName);
+    }
+
+    [Fact]
     public async Task TheRunnerNameIsMatchedCaseSensitively()
     {
         var h = await NewAsync();
@@ -205,6 +218,18 @@ public class IssueRunnerOmissionsControllerTests
         var lifted = (await h.EventsAsync(issue.Key)).Where(e => e.Kind == EfHatchIssueEvent.RunnerOmissionLifted).ToList();
         Assert.Equal("alpha", Assert.Single(lifted).Payload!.Value.GetProperty("runner").GetString());
         Assert.Equal(Now.AddHours(1), dto.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task LiftingAnEscapedName_RemovesTheRowStoredUnderTheDecodedName()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+        await h.OmitAsync(issue.Key, "host:%2Fcheckouts%2Fone", "x");
+
+        await h.LiftAsync(issue.Key, "host:%2Fcheckouts%2Fone");
+
+        Assert.Empty(await h.Db.RunnerOmissions.ToListAsync());
     }
 
     [Fact]
