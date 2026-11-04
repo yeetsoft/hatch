@@ -30,12 +30,12 @@ public class HatchContextTests
     }
 
     [Fact]
-    public void TheModuleOwnsTwentyThreeTables()
+    public void TheModuleOwnsTwentyFourTables()
     {
         using var db = NewContext();
 
         Assert.Equal(
-            ["BuildChecks", "Comments", "Images", "IssueDependencies", "IssueEvents", "Issues", "Landings", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "Runners", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
+            ["BuildChecks", "Comments", "Dreams", "Images", "IssueDependencies", "IssueEvents", "Issues", "Landings", "MergeChecks", "OvernightSeen", "PlaybookFiles", "PlaybookProposalChanges", "PlaybookProposals", "Playbooks", "ProjectLogos", "ProjectMembers", "ProjectRepositories", "Projects", "Runners", "Statuses", "TrunkBuilds", "Verdicts", "WipLimits", "WorkLogEntries"],
             db.Model.GetEntityTypes().Select(TableName).OrderBy(n => n, StringComparer.Ordinal));
     }
 
@@ -253,6 +253,16 @@ public class HatchContextTests
         Assert.Equal(
             DeleteBehavior.SetNull,
             ForeignKeyOn(db, typeof(EfHatchProject), nameof(EfHatchProject.ReflectNowIssueId)).DeleteBehavior);
+    }
+
+    [Fact]
+    public void ADreamsProjectId_SetsNull()
+    {
+        using var db = NewContext();
+
+        Assert.Equal(
+            DeleteBehavior.SetNull,
+            ForeignKeyOn(db, typeof(EfHatchDream), nameof(EfHatchDream.ProjectId)).DeleteBehavior);
     }
 
     [Fact]
