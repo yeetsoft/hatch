@@ -782,7 +782,15 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Preempted = "preempted";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted;
+    /// <summary>
+    /// The session recused this runner from the ticket (<c>hatch recuse</c>);
+    /// not a drop - the omission, not the let-go count, is what keeps the
+    /// ticket off this runner, so <c>LetGo</c> stops at it as at
+    /// <see cref="Worked"/>.
+    /// </summary>
+    public const string Recused = "recused";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused;
 }
 
 /// <summary>
@@ -2142,8 +2150,8 @@ public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
 /// <param name="LetGo">
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
-/// counted back to the first release whose outcome was
-/// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume, or
+/// counted back to the first release whose outcome was <see cref="ClaimOutcomes.Worked"/>
+/// or <see cref="ClaimOutcomes.Recused"/>, a status change, a person's resume, or
 /// an answer a person wrote - whichever comes first. A release with no outcome,
 /// a hold, and an answer written by a lapse, are skipped rather than counted or
 /// stopped at. Zero on
