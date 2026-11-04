@@ -55,6 +55,33 @@ public static class ChangelogReport
             .ToList();
     }
 
+    /// <summary>One bucket: the window it covers, and the loose issues closed inside it.</summary>
+    public sealed record LooseBucket(DateTimeOffset Start, DateTimeOffset End, IReadOnlyList<long> IssueIds);
+
+    /// <summary>
+    /// Closed bugs and parentless stories in <c>[from, to)</c>, bucketed and
+    /// ordered newest first - the same shape as <see cref="Fold"/>, but for the
+    /// issues that ride a changelog's loose list rather than its epic groups.
+    /// A bug lands here whatever its parent is; a story only with no parent at
+    /// all. A bucket with nothing in it is never emitted.
+    /// </summary>
+    public static IReadOnlyList<LooseBucket> FoldLoose(
+        IReadOnlyList<Row> rows, DateTimeOffset from, DateTimeOffset to, ChangelogBucketSize bucket, int offsetMinutes)
+    {
+        var kept = rows.Where(r =>
+            (r.Type == "bug" || (r.Type == "story" && r.ParentType == null)) && r.ClosedAt >= from && r.ClosedAt < to);
+
+        return kept
+            .Select(r => (Row: r, Bounds: BoundsOf(r.ClosedAt, bucket, offsetMinutes)))
+            .GroupBy(x => x.Bounds)
+            .OrderByDescending(g => g.Key.Start)
+            .Select(g => new LooseBucket(
+                g.Key.Start,
+                g.Key.End,
+                g.OrderByDescending(x => x.Row.ClosedAt).ThenByDescending(x => x.Row.Id).Select(x => x.Row.Id).ToList()))
+            .ToList();
+    }
+
     /// <summary>
     /// One closed story, as <see cref="FoldStories"/> needs it. <see cref="EpicId"/>
     /// is the nearest epic above it, already walked by the caller, or null with

@@ -158,6 +158,133 @@ public class ChangelogReportTests
         Assert.Equal([1L], found.EpicIds);
     }
 
+    private static ChangelogReport.Row Issue(
+        long id, string type, DateTimeOffset closedAt, string? parentType = null) =>
+        new(id, parentType, type, closedAt);
+
+    [Fact]
+    public void ABugWithAnEpicParent_LandsInLoose()
+    {
+        var row = Issue(1, "bug", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: "epic");
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var found = Assert.Single(buckets);
+        Assert.Equal([1L], found.IssueIds);
+    }
+
+    [Fact]
+    public void ABugWithNoParentAtAll_LandsInLoose()
+    {
+        var row = Issue(1, "bug", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: null);
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var found = Assert.Single(buckets);
+        Assert.Equal([1L], found.IssueIds);
+    }
+
+    [Fact]
+    public void AStoryWithNoParentAtAll_LandsInLoose()
+    {
+        var row = Issue(1, "story", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: null);
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var found = Assert.Single(buckets);
+        Assert.Equal([1L], found.IssueIds);
+    }
+
+    [Fact]
+    public void AStoryWithAnEpicParent_NeverAppearsInLoose()
+    {
+        var row = Issue(1, "story", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: "epic");
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Empty(buckets);
+    }
+
+    [Fact]
+    public void ATaskWithNoParent_NeverAppearsInLoose()
+    {
+        var row = Issue(1, "task", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: null);
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Empty(buckets);
+    }
+
+    [Fact]
+    public void AReflectionWithNoParent_NeverAppearsInLoose()
+    {
+        var row = Issue(1, "reflection", new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero), parentType: null);
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Empty(buckets);
+    }
+
+    [Fact]
+    public void WithinABucket_LooseIssueIdsAreOrderedByClosedAtThenIdDescending()
+    {
+        var day = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+        var rows = new[]
+        {
+            Issue(1, "bug", day.AddHours(1)),
+            Issue(2, "bug", day.AddHours(3)),
+            Issue(3, "bug", day.AddHours(3)),
+        };
+
+        var buckets = ChangelogReport.FoldLoose(rows, Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var found = Assert.Single(buckets);
+        Assert.Equal([3L, 2L, 1L], found.IssueIds);
+    }
+
+    [Fact]
+    public void AnOffsetReaderBehindUtc_SeesTheLooseDayBucketOnTheirOwnClock()
+    {
+        var row = Issue(1, "bug", new DateTimeOffset(2026, 1, 15, 1, 0, 0, TimeSpan.Zero));
+
+        var buckets = ChangelogReport.FoldLoose([row], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: -300);
+
+        var found = Assert.Single(buckets);
+        Assert.Equal(new DateTime(2026, 1, 14), found.Start.AddMinutes(-300).DateTime);
+    }
+
+    [Fact]
+    public void TheLooseWindowIsHalfOpen_FromIsInclusiveAndToIsExclusive()
+    {
+        var from = new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero);
+        var to = new DateTimeOffset(2026, 3, 2, 0, 0, 0, TimeSpan.Zero);
+        var atFrom = Issue(1, "bug", from);
+        var atTo = Issue(2, "bug", to);
+
+        var buckets = ChangelogReport.FoldLoose([atFrom, atTo], from, to, ChangelogReport.ChangelogBucketSize.Hour, offsetMinutes: 0);
+
+        var ids = buckets.SelectMany(b => b.IssueIds).ToList();
+        Assert.Contains(1L, ids);
+        Assert.DoesNotContain(2L, ids);
+    }
+
+    [Fact]
+    public void AcrossBuckets_LooseBucketsComeBackNewestStartFirst()
+    {
+        var rows = new[]
+        {
+            Issue(1, "bug", new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero)),
+            Issue(2, "bug", new DateTimeOffset(2026, 3, 5, 0, 0, 0, TimeSpan.Zero)),
+        };
+
+        var buckets = ChangelogReport.FoldLoose(rows, Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Equal(2, buckets.Count);
+        Assert.True(buckets[0].Start > buckets[1].Start);
+        Assert.Equal([2L], buckets[0].IssueIds);
+        Assert.Equal([1L], buckets[1].IssueIds);
+    }
+
     private static ChangelogReport.StoryRow Story(long id, long? epicId, DateTimeOffset closedAt) =>
         new(id, epicId, closedAt);
 
