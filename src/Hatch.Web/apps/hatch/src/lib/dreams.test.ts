@@ -8,6 +8,7 @@ import {
   hasMore,
   isUrl,
   readDreams,
+  showsDream,
   writeDreams,
   type DreamFilters,
 } from './dreams';
@@ -172,5 +173,39 @@ describe('hasMore', () => {
 
   it('is false once all are shown', () => {
     expect(hasMore(51, 51)).toBe(false);
+  });
+});
+
+describe('showsDream', () => {
+  it('shows a dream under the empty filter', () => {
+    expect(showsDream(EMPTY_DREAMS, { projectId: null })).toBe(true);
+  });
+
+  it('shows a dream under loose alone, since a new dream has no issue woven in', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, loose: true }, { projectId: null })).toBe(true);
+  });
+
+  it('hides a dream under a q', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, q: 'x' }, { projectId: null })).toBe(false);
+  });
+
+  it('shows a dream under a whitespace-only q, which writes nothing', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, q: '   ' }, { projectId: null })).toBe(true);
+  });
+
+  it('hides a dream under an issueKey', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, issueKey: 'HA-1' }, { projectId: null })).toBe(false);
+  });
+
+  it('shows a dream whose project is the one filtered on', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: 3 })).toBe(true);
+  });
+
+  it('hides a dream whose project differs from the one filtered on', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: 4 })).toBe(false);
+  });
+
+  it('hides a loose-leaning dream under a project filter', () => {
+    expect(showsDream({ ...EMPTY_DREAMS, projectId: '3' }, { projectId: null })).toBe(false);
   });
 });

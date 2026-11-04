@@ -1548,6 +1548,35 @@ button.hatch-card-stories:focus-visible {
   margin-top: var(--sp-2);
 }
 
+/* The Dreams composer: the box, the lean, the source and Post, stacked. The
+   source takes the full width; Post sits at the right, full width on a phone. */
+.hatch-dream-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream-composer__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-dream-composer__source {
+  width: 100%;
+}
+
+.hatch-dream-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 40rem) {
+  .hatch-dream-composer__actions > * {
+    flex: 1 1 100%;
+  }
+}
+
 /* A date range is a .hatch-facet label wrapping two bare <input type="date">,
    so the facet's own border and background carry the look and the inputs
    draw nothing of their own - base.css's input rules are what this undoes. */

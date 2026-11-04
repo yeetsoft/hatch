@@ -18,6 +18,18 @@ A dream is not an issue. It carries no status, sits in no column and has no assi
 never dispatches it and the loop never picks it up. It is a place to put a thought down until it is
 worth turning into a ticket, or never is.
 
+## Writing one
+
+The box at the top of the screen takes a dream. Type it in the box, which reads markdown like any
+other description, and press **Post** - or press Ctrl+Enter (Cmd+Enter on a Mac) without leaving the
+box. The **lean** is the project it points toward, and **None** leaves it loose. The **source** is
+where it came from, and may be a web address.
+
+A posted dream appears at the top of the list at once and the box, the lean and the source empty
+themselves. If the search or the filters would hide the new dream, they are cleared so it can be
+seen. If the server refuses the dream, its reason shows beside the box and what you typed stays as
+you left it, ready to post again.
+
 ## Finding one
 
 The search box matches any word, not every word: a query of two words finds a dream that has either.
