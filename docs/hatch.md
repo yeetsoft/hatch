@@ -7073,11 +7073,13 @@ One pass, from the board to the release:
    at the tree in every checkout it entered and only then applies the verdict.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
+   After the session ends, the runner reads the issue once more — see [when an
+   increment does nothing](#when-an-increment-does-nothing) — to find a recusal.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
    so carries nothing, which is what `--quiet` is.
-7. **Release**, however the increment ended.
+7. **Release**, however the increment ended, `recused` included.
 
 **A refused heartbeat ends the increment.** The lease expired underneath the run,
 was taken over, or was cleared by the operator; the session is stopped rather
@@ -7815,6 +7817,20 @@ and not one of the three in a row that end a night, the same treatment a lost
 lease and a usage limit get and for the same reason: this is the loop working
 correctly on a busy board, not a broken increment. The very next pass finds
 the emergency issue at the top of the walk and picks it straight up.
+
+**Neither is a recusal.** A session that ran `hatch recuse` on its ticket - it
+found the work is one this runner cannot do - ends the increment as a
+recusal: no stall comment, no mark, no question. The loop reads the issue
+again after the session, the same fresh read [the claim](#claim) describes,
+and finds this runner newly among the ticket's own omitted runners; it prints
+one line - `hatch: {key} - {runner} recused itself ({reason}), going on to
+the next` - and releases the claim `recused`, which stops the `letGo` count
+rather than raising it: the omission, not the let-go fold, is what keeps the
+ticket off this runner. The night's tally lists it with the let-go ones, its
+own line reading `recused` rather than `let go`, and it is not one of the
+three failures that end a night - the same treatment a usage limit and a
+preemption get, and for the same reason: a runner refusing work it cannot do
+is the loop working correctly, not a broken increment.
 
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket
