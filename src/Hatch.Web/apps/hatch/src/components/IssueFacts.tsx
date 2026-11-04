@@ -3,6 +3,7 @@ import { Field, ProjectMark } from '@hatch/ui';
 import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
 import { dangerousFact } from '../lib/dangerous';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { omissionsFact } from '../lib/runnerOmissions';
 import { runnerTagsSentence } from '../lib/runnerTags';
 import { MomentChip } from './MomentChip';
 import { PullRequestLink } from './PullRequestLink';
@@ -67,6 +68,12 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
       {issue.dangerous && (
         <Field label="Dangerous" as="div">
           {dangerousFact(issue.dangerous, issue.dangerousFrom)}
+        </Field>
+      )}
+
+      {issue.omittedRunners.length > 0 && (
+        <Field label="Omitted runners" as="div">
+          {omissionsFact(issue.omittedRunners)}
         </Field>
       )}
 
