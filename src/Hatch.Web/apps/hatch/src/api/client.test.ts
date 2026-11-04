@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Runner, Status } from '../types';
-import { orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
+import { getChangelogReport, orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
 
 const status: Status = {
   id: 7,
@@ -67,5 +67,49 @@ describe('runner orders', () => {
       '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('getChangelogReport', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getChangelogReport>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getChangelogReport(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends the level and offset alone when nothing else is set', async () => {
+    expect(await urlOf({ level: 'story', offsetMinutes: 0 })).toBe(
+      '/api/hatch/reports/changelog?level=story&offsetMinutes=0',
+    );
+  });
+
+  it('sends every field, repeating projectId once per id', async () => {
+    const url = await urlOf({
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-11-01T00:00:00.000Z',
+      projectId: [3, 5],
+      bucket: 'week',
+      level: 'epic',
+      loose: true,
+      offsetMinutes: -300,
+    });
+
+    expect(url).toBe(
+      '/api/hatch/reports/changelog?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+        '&projectId=3&projectId=5&bucket=week&level=epic&offsetMinutes=-300&loose=true',
+    );
+  });
+
+  it('leaves off a false loose, an empty from and a null bucket', async () => {
+    expect(
+      await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
+    ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
   });
 });
