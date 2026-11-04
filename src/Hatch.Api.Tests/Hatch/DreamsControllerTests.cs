@@ -59,6 +59,16 @@ public class DreamsControllerTests
         Assert.Equal(h.ProjectAKey, dream.ProjectKey);
     }
 
+    [Fact]
+    public async Task Add_ANewDream_HasAnEmptyWovenInto()
+    {
+        var h = await NewAsync();
+
+        var dream = await h.AddAsync("nothing has drawn on this yet");
+
+        Assert.Empty(dream.WovenInto);
+    }
+
     // ---- Add refusals ----
 
     [Theory]
@@ -141,6 +151,77 @@ public class DreamsControllerTests
         Assert.DoesNotContain(loose.Id, narrowed.Dreams.Select(d => d.Id));
         Assert.Equal(2, unnarrowed.Total);
         Assert.Contains(loose.Id, unnarrowed.Dreams.Select(d => d.Id));
+    }
+
+    // ---- Listing: loose and issueKey ----
+
+    [Fact]
+    public async Task List_LooseTrue_NarrowsToDreamsWithNoThread_AndADreamWithOneIsAbsent()
+    {
+        var h = await NewAsync();
+        var threaded = await h.AddAsync("an issue drew on this");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var unthreaded = await h.AddAsync("nothing has");
+        await h.SeedThreadAsync(threaded.Id, "AER-1", Now);
+
+        var loose = await h.GetAsync(loose: true);
+        var all = await h.GetAsync();
+
+        Assert.Equal([unthreaded.Id], loose.Dreams.Select(d => d.Id));
+        Assert.Equal(1, loose.Total);
+        Assert.Equal([unthreaded.Id, threaded.Id], all.Dreams.Select(d => d.Id));
+        Assert.Equal(2, all.Total);
+    }
+
+    [Fact]
+    public async Task List_IssueKeyNarrowsToTheDreamsThatIssueDrewOn_AndAnUnknownIssueKeyIsEmptyNotAnError()
+    {
+        var h = await NewAsync();
+        var drawnOn = await h.AddAsync("this one was drawn on");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.AddAsync("this one was not");
+        await h.SeedThreadAsync(drawnOn.Id, "AER-1", Now);
+
+        var narrowed = await h.GetAsync(issueKey: "AER-1");
+        var unknown = await h.GetAsync(issueKey: "AER-404");
+
+        Assert.Equal([drawnOn.Id], narrowed.Dreams.Select(d => d.Id));
+        Assert.Equal(1, narrowed.Total);
+        Assert.Empty(unknown.Dreams);
+        Assert.Equal(0, unknown.Total);
+    }
+
+    [Fact]
+    public async Task List_AMalformedIssueKey_Is400()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Controller.GetDreams(null, null, 50, 0, "nonsense", false, default);
+
+        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Equal("\"nonsense\" is not an issue key", bad.Value);
+    }
+
+    [Fact]
+    public async Task List_LooseAndIssueKey_CombineWithQAndProjectIdByAnd()
+    {
+        var h = await NewAsync();
+        var leaningA = await h.AddAsync("leans to A", projectId: h.ProjectAId);
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.AddAsync("leans to B", projectId: h.ProjectBId);
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var threadedToB = await h.AddAsync("threaded, but leans to B", projectId: h.ProjectBId);
+        await h.SeedThreadAsync(threadedToB.Id, "AER-1", Now);
+
+        var looseInA = await h.GetAsync(loose: true, projectId: h.ProjectAId);
+        var threadedInA = await h.GetAsync(issueKey: "AER-1", projectId: h.ProjectAId);
+        var contradiction = await h.GetAsync(loose: true, issueKey: "AER-1");
+
+        Assert.Equal([leaningA.Id], looseInA.Dreams.Select(d => d.Id));
+        Assert.Empty(threadedInA.Dreams);
+        Assert.Equal(0, threadedInA.Total);
+        Assert.Empty(contradiction.Dreams);
+        Assert.Equal(0, contradiction.Total);
     }
 
     // ---- Listing: the page ----
@@ -316,6 +397,38 @@ public class DreamsControllerTests
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
+    // ---- WovenInto ----
+
+    [Fact]
+    public async Task List_ADreamWithASeededThread_ReadsItBackInWovenInto_InKeyOrder()
+    {
+        var h = await NewAsync();
+        var woven = await h.AddAsync("many issues drew on this");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var untouched = await h.AddAsync("none did");
+        await h.SeedThreadAsync(woven.Id, "OPS-1", Now);
+        await h.SeedThreadAsync(woven.Id, "AER-10", Now.AddMinutes(1));
+        await h.SeedThreadAsync(woven.Id, "AER-2", Now.AddMinutes(2));
+
+        var page = await h.GetAsync();
+
+        Assert.Equal(["AER-2", "AER-10", "OPS-1"], page.Dreams.Single(d => d.Id == woven.Id).WovenInto);
+        Assert.Empty(page.Dreams.Single(d => d.Id == untouched.Id).WovenInto);
+    }
+
+    [Fact]
+    public async Task Edit_ADreamWithASeededThread_StillShowsWovenInto_AfterAnUnrelatedEdit()
+    {
+        var h = await NewAsync();
+        var dream = await h.AddAsync("the old words");
+        await h.SeedThreadAsync(dream.Id, "AER-1", Now);
+
+        var edited = await h.PatchAsync(dream.Id, """{"body":"changed"}""");
+
+        Assert.Equal("changed", edited.Body);
+        Assert.Equal(["AER-1"], edited.WovenInto);
+    }
+
     // ---- Deleting ----
 
     [Fact]
@@ -354,15 +467,45 @@ public class DreamsControllerTests
         public required string ProjectAKey { get; init; }
         public required int ProjectBId { get; init; }
         public required string ProjectBKey { get; init; }
+        public required int StatusId { get; init; }
 
         public async Task<DreamDto> AddAsync(string body, string? source = null, int? projectId = null) =>
             Created(await Controller.AddDream(new DreamCreateRequest(body, source, projectId), default));
 
-        public async Task<DreamsPageDto> GetAsync(string? q = null, int? projectId = null, int limit = 50, int offset = 0) =>
-            Value(await Controller.GetDreams(q, projectId, limit, offset, default));
+        public async Task<DreamsPageDto> GetAsync(
+            string? q = null, int? projectId = null, int limit = 50, int offset = 0, string? issueKey = null, bool loose = false) =>
+            Value(await Controller.GetDreams(q, projectId, limit, offset, issueKey, loose, default));
 
         public async Task<DreamDto> PatchAsync(long id, string json) =>
             Value(await Controller.EditDream(id, Json(json), default));
+
+        /// <summary>This file has no issue controller, so an issue is seeded straight onto the context.</summary>
+        public async Task<EfHatchIssue> SeedIssueAsync(int projectId, int number)
+        {
+            var issue = new EfHatchIssue
+            {
+                ProjectId = projectId, Number = number,
+                Type = "task", Title = "t", Description = "", StatusId = StatusId, Rank = 1024,
+                CreatedBy = "ann", CreatedAt = Now, UpdatedAt = Now,
+            };
+            Db.Issues.Add(issue);
+            await Db.SaveChangesAsync();
+            return issue;
+        }
+
+        /// <summary>
+        /// Straight onto the table - a seed for the read tests, not a route under test. The issue is
+        /// seeded first when absent: a thread read back needs a real issue row to name.
+        /// </summary>
+        public async Task SeedThreadAsync(long dreamId, string issueKey, DateTimeOffset at)
+        {
+            IssueKey.TryParse(issueKey, out var projectKey, out var number);
+            var issue = await Db.Issues.WithKey(projectKey, number).FirstOrDefaultAsync()
+                ?? await SeedIssueAsync(await Db.Projects.Where(p => p.Key == projectKey).Select(p => p.Id).FirstAsync(), number);
+            Db.DreamThreads.Add(new EfHatchDreamThread { DreamId = dreamId, IssueId = issue.Id, Actor = "ann", At = at });
+            await Db.SaveChangesAsync();
+            Db.ChangeTracker.Clear();
+        }
     }
 
     private static async Task<Harness> NewAsync()
@@ -372,7 +515,8 @@ public class DreamsControllerTests
 
         var projectA = new EfHatchProject { Key = "AER", Name = "Aerie", CreatedAt = Now };
         var projectB = new EfHatchProject { Key = "OPS", Name = "Ops", CreatedAt = Now };
-        db.AddRange(projectA, projectB);
+        var status = new EfHatchStatus { Name = "inbox", SortOrder = 10 };
+        db.AddRange(projectA, projectB, status);
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
@@ -387,6 +531,7 @@ public class DreamsControllerTests
             ProjectAKey = projectA.Key,
             ProjectBId = projectB.Id,
             ProjectBKey = projectB.Key,
+            StatusId = status.Id,
         };
     }
 
