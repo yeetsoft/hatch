@@ -30,6 +30,8 @@ const card = (key: string, parentKey: string | null, projectKey = 'AER'): IssueC
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,

@@ -52,6 +52,7 @@ import type {
   PlaybookFilesDto,
   PlaybookPatchRequest,
   PlaybookProposal,
+  OmitRunnerRequest,
   PlaybookProposalApproveResult,
   PlaybookProposalRejectResult,
   HatchImage,
@@ -288,6 +289,8 @@ export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/pl
 // that could ever post one is the loop itself.
 
 export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+/** Every live runner's name, unscoped. */
+export const getRunnerNames = () => fetchJson<string[]>('/api/hatch/runners/names');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
 export const orderRunner = (name: string, request: RunnerOrderRequest) =>
@@ -387,6 +390,12 @@ export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteReq
 
 export const setIssueDangerous = (key: string, request: DangerousRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
+
+export const omitRunner = (key: string, runner: string, request: OmitRunnerRequest) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'PUT', ...asJson(request) });
+
+export const liftRunnerOmission = (key: string, runner: string) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'DELETE' });
 
 /** Mark a ticket stalled, with why - and, through the same panel, read back
     off. On `setPriority`'s shape: the state is sent, not toggled, and the
