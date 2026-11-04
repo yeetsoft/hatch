@@ -497,7 +497,7 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out |
 | GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next`; `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
