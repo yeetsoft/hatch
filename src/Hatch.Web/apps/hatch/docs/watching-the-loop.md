@@ -181,7 +181,9 @@ goes into one of these rows in the first place.
 History, and opens on a card per report. **Timeline** answers when each top-level epic was in flight,
 and how long its work sat in each column, drawn in the board's own column
 colours; **Cumulative flow** shows how much work sat in each column over time,
-and where it is piling up. Cumulative flow carries its own **Projects**
+and where it is piling up; **Changelog** lists what landed, bucketed by the
+hour, day, week or month, at the level a stakeholder reads - epics, or the
+stories under them. Cumulative flow carries its own **Projects**
 control (drawn only where there is more than one project) - a checkbox per
 project rather than the Timeline's one at a time - so the scope can be
 narrowed to some of the projects, not just none or all; beside it, a
@@ -199,6 +201,23 @@ project or one person's work. And an epic's row can be hidden: a **Hidden**
 list appears beside the controls naming each one, with **Show** beside it and **Show
 all** beneath, and what is hidden is remembered for this browser only, never
 for anybody else looking at the same board.
+
+The Changelog opens on the last two weeks, not ninety days, with the same
+window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**
+(drawn only where there is more than one) is a checkbox per project, as in
+Cumulative flow. **Bucket** - hour, day, week or month, day to begin with -
+sets how finely the window is cut: each bucket is a section headed by its own
+date, and a stretch with nothing in it between two buckets is a line, "Quiet
+from" one date "to" another. **Level** picks what a bucket holds, and the page
+opens on story: each epic that had stories close in the bucket is a heading,
+marked **Completed** where the epic itself closed there, with its stories
+beneath; at epic, each epic closed is a card. **Loose** is off to begin with;
+on, an **Also landed** list under each bucket adds the bugs and the stories
+with no epic that closed, at either level, with an emergency-priority one
+tinted. A window in which nothing landed says so. Every control writes itself
+to the address bar, leaving out what is still its default, so the address can
+be sent to somebody and opens on the same answer, and Back is not walked
+through each change.
 
 ## History and the work log
 
