@@ -28,4 +28,16 @@ describe('ReportsPage', () => {
     expect(html).toContain('How much work sat in each column over time, and where it is piling up.');
     expect(html).toContain('href="/reports/cumulative-flow"');
   });
+
+  it('lists the Changelog report with what it answers and a link to it', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('Changelog');
+    expect(html).toContain('What landed in each day, week or month, at the level a stakeholder reads.');
+    expect(html).toContain('href="/reports/changelog"');
+  });
 });
