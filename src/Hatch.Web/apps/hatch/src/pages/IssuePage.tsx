@@ -15,7 +15,11 @@ import {
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
+  getRunnerNames,
+  getRunners,
   getWorkLog,
+  liftRunnerOmission,
+  omitRunner,
   patchIssue,
   patchIssuePlaybook,
   removeDependency,
@@ -29,6 +33,7 @@ import {
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
+import { OmittedRunners } from '../components/OmittedRunners';
 import { PriorityControl } from '../components/PriorityControl';
 import { PreApprovalControl } from '../components/PreApprovalControl';
 import { RunnerTagsField } from '../components/RunnerTagsField';
@@ -62,6 +67,7 @@ import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint } from '../lib/playbookFiles';
+import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { moveBlocked } from '../lib/protectedColumns';
@@ -150,6 +156,13 @@ export function IssuePage() {
   const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
   /* A dangerous-reason save is already out - the same shape as `runnerTagsBusy`. */
   const [dangerousBusy, setDangerousBusy] = useState(false);
+  /* The runner whose lift is out, or null - OmittedRunners' own busy flag. */
+  const [omissionLifting, setOmissionLifting] = useState<string | null>(null);
+  /* Every live runner's name, null while unread - OmittedRunners uses this to
+     flag a row naming a runner that is no longer on the board. */
+  const [runnerNames, setRunnerNames] = useState<string[] | null>(null);
+  /* The person-scoped runner names, offered in the omit form's picker. */
+  const [pickable, setPickable] = useState<string[]>([]);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
@@ -238,6 +251,13 @@ export function IssuePage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
+
+  /* The two lists OmittedRunners' picker and "not a runner" badge draw from.
+     Read once on mount, not keyed on `key`: neither list is per issue. */
+  useEffect(() => {
+    getRunnerNames().then(setRunnerNames).catch(() => {});
+    getRunners().then((rows) => setPickable(rows.map((r) => r.name))).catch(() => {});
+  }, []);
 
   /* While a message to the agent is waiting under a live claim, and only then:
      the comments and the claim - not the whole eight-read `load` - every five
@@ -466,6 +486,34 @@ export function IssuePage() {
       } finally {
         setDangerousBusy(false);
       }
+    },
+    [key, load],
+  );
+
+  /* Lifting one of this issue's own omitted runners, the same shape saveDangerous is. */
+  const liftOmission = useCallback(
+    async (runner: string) => {
+      setOmissionLifting(runner);
+      try {
+        await liftRunnerOmission(key, runner);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setOmissionLifting(null);
+      }
+    },
+    [key, load],
+  );
+
+  /* Posting a new omission. Resolves null once added, else the API's refusal
+     sentence, so OmittedRunners draws it in place rather than in the page's
+     `error`. */
+  const addOmission = useCallback(
+    async (runner: string, reason: string) => {
+      const r = await submitOmission(omitRunner, key, runner, reason);
+      if (r.ok) await load();
+      return r.ok ? null : r.refusal;
     },
     [key, load],
   );
@@ -784,6 +832,15 @@ export function IssuePage() {
 
           <DangerousOwnField reason={issue.dangerousOwn} busy={dangerousBusy} onSave={(reason) => void saveDangerous(reason)} />
           <DangerousInherited from={issue.dangerousFrom} reason={issue.dangerous} />
+
+          <OmittedRunners
+            omissions={issue.omittedRunners}
+            runnerNames={runnerNames}
+            pickable={pickable}
+            liftingRunner={omissionLifting}
+            onLift={(runner) => void liftOmission(runner)}
+            onAdd={addOmission}
+          />
 
           {/* A story or a bug answers for its tasks, so it gets the control; a task under
               one that shares a pull request says so, since "why is there no PR
