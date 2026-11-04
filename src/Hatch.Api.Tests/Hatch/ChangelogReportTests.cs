@@ -157,4 +157,135 @@ public class ChangelogReportTests
         var found = Assert.Single(buckets);
         Assert.Equal([1L], found.EpicIds);
     }
+
+    private static ChangelogReport.StoryRow Story(long id, long? epicId, DateTimeOffset closedAt) =>
+        new(id, epicId, closedAt);
+
+    private static ChangelogReport.EpicCandidate Candidate(long id, DateTimeOffset? closedAt) =>
+        new(id, closedAt);
+
+    [Fact]
+    public void TwoStoriesUnderOneEpicInTheSameBucket_MakeOneGroupOrderedByClosedAt()
+    {
+        var day = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+        var stories = new[]
+        {
+            Story(1, epicId: 100, day.AddHours(1)),
+            Story(2, epicId: 100, day.AddHours(3)),
+        };
+
+        var buckets = ChangelogReport.FoldStories([], stories, Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var bucket = Assert.Single(buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(100, group.EpicId);
+        Assert.False(group.ClosedHere);
+        Assert.Equal([2L, 1L], group.StoryIds);
+    }
+
+    [Fact]
+    public void AStoryUnderASubEpic_GroupsUnderTheSubEpicNotTheRoot()
+    {
+        var story = Story(1, epicId: 200, new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero));
+
+        var buckets = ChangelogReport.FoldStories([], [story], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var bucket = Assert.Single(buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(200, group.EpicId);
+        Assert.Equal([1L], group.StoryIds);
+    }
+
+    [Fact]
+    public void AnEpicClosedWithNoStoryClosingInThatBucket_MakesABareMilestoneGroup()
+    {
+        var closedAt = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+        var epic = Candidate(100, closedAt);
+
+        var buckets = ChangelogReport.FoldStories([epic], [], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var bucket = Assert.Single(buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(100, group.EpicId);
+        Assert.True(group.ClosedHere);
+        Assert.Empty(group.StoryIds);
+    }
+
+    [Fact]
+    public void AnOpenEpicWithAStoryClosingUnderIt_MakesAGroupThatIsNotClosedHere()
+    {
+        var day = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+        var epic = Candidate(100, closedAt: null);
+        var story = Story(1, epicId: 100, day.AddHours(1));
+
+        var buckets = ChangelogReport.FoldStories([epic], [story], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        var bucket = Assert.Single(buckets);
+        var group = Assert.Single(bucket.Groups);
+        Assert.Equal(100, group.EpicId);
+        Assert.False(group.ClosedHere);
+        Assert.Equal([1L], group.StoryIds);
+    }
+
+    [Fact]
+    public void AStoryWithNoEpicAtAll_MakesNoGroupAnywhere()
+    {
+        var story = Story(1, epicId: null, new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero));
+
+        var buckets = ChangelogReport.FoldStories([], [story], Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Empty(buckets);
+    }
+
+    [Fact]
+    public void TwoEpicsClosingInTheSameBucket_OneAlsoCarryingAStoryElsewhere_AreBothPresentAndOrdered()
+    {
+        var day = new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero);
+        var epics = new[]
+        {
+            Candidate(100, day.AddHours(1)),
+            Candidate(200, day.AddHours(5)),
+        };
+        var stories = new[]
+        {
+            // Epic 100's story closes in a different bucket the next day, so it
+            // groups separately from epic 100's own bare close above.
+            Story(1, epicId: 100, day.AddDays(1).AddHours(2)),
+        };
+
+        var buckets = ChangelogReport.FoldStories(epics, stories, Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Equal(2, buckets.Count);
+
+        var dayBucket = buckets.Single(b => b.Start == ChangelogReport.BoundsOf(day, ChangelogReport.ChangelogBucketSize.Day, 0).Start);
+        Assert.Equal(2, dayBucket.Groups.Count);
+        // Newest close first: epic 200 (hour 5) before epic 100 (hour 1).
+        Assert.Equal([200L, 100L], dayBucket.Groups.Select(g => g.EpicId).ToList());
+        Assert.All(dayBucket.Groups, g => Assert.True(g.ClosedHere));
+        Assert.Empty(dayBucket.Groups.Single(g => g.EpicId == 100).StoryIds);
+        Assert.Empty(dayBucket.Groups.Single(g => g.EpicId == 200).StoryIds);
+
+        var nextDayBucket = buckets.Single(b => b != dayBucket);
+        var storyGroup = Assert.Single(nextDayBucket.Groups);
+        Assert.Equal(100, storyGroup.EpicId);
+        Assert.False(storyGroup.ClosedHere);
+        Assert.Equal([1L], storyGroup.StoryIds);
+    }
+
+    [Fact]
+    public void AcrossTwoBuckets_StoryBucketsComeBackNewestStartFirst()
+    {
+        var stories = new[]
+        {
+            Story(1, epicId: 100, new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero)),
+            Story(2, epicId: 200, new DateTimeOffset(2026, 3, 5, 0, 0, 0, TimeSpan.Zero)),
+        };
+
+        var buckets = ChangelogReport.FoldStories([], stories, Jan1, Jan1.AddYears(1), ChangelogReport.ChangelogBucketSize.Day, offsetMinutes: 0);
+
+        Assert.Equal(2, buckets.Count);
+        Assert.True(buckets[0].Start > buckets[1].Start);
+        Assert.Equal(200, Assert.Single(buckets[0].Groups).EpicId);
+        Assert.Equal(100, Assert.Single(buckets[1].Groups).EpicId);
+    }
 }

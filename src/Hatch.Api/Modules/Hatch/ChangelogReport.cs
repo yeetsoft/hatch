@@ -56,6 +56,77 @@ public static class ChangelogReport
     }
 
     /// <summary>
+    /// One closed story, as <see cref="FoldStories"/> needs it. <see cref="EpicId"/>
+    /// is the nearest epic above it, already walked by the caller, or null with
+    /// no epic above it at all.
+    /// </summary>
+    public readonly record struct StoryRow(long Id, long? EpicId, DateTimeOffset ClosedAt);
+
+    /// <summary>
+    /// One epic that might anchor a group in <see cref="FoldStories"/>.
+    /// <see cref="ClosedAt"/> is its own close, or null while it is still open;
+    /// which epics are worth passing in at all is the caller's call, not this
+    /// fold's - it only reads <see cref="ClosedAt"/> against the window.
+    /// </summary>
+    public readonly record struct EpicCandidate(long Id, DateTimeOffset? ClosedAt);
+
+    /// <summary>One epic's stories closed in a bucket, or its own bare close, or both.</summary>
+    public sealed record StoryGroup(long EpicId, bool ClosedHere, IReadOnlyList<long> StoryIds);
+
+    /// <summary>One bucket: the window it covers, and the story groups inside it.</summary>
+    public sealed record StoryBucket(DateTimeOffset Start, DateTimeOffset End, IReadOnlyList<StoryGroup> Groups);
+
+    /// <summary>
+    /// Closed stories in <c>[from, to)</c>, grouped under their epic and bucketed
+    /// alongside any of <paramref name="epics"/> whose own close also falls in the
+    /// window - a bare milestone where an epic closed with no story of its own
+    /// closing in that same bucket. A story with no epic above it makes no group
+    /// here; it is left for the caller to list elsewhere.
+    /// </summary>
+    public static IReadOnlyList<StoryBucket> FoldStories(
+        IReadOnlyList<EpicCandidate> epics, IReadOnlyList<StoryRow> stories,
+        DateTimeOffset from, DateTimeOffset to, ChangelogBucketSize bucket, int offsetMinutes)
+    {
+        var groups = new Dictionary<
+            (DateTimeOffset Start, DateTimeOffset End, long EpicId),
+            (List<long> StoryIds, bool ClosedHere, DateTimeOffset SortAt)>();
+
+        foreach (var g in stories
+            .Where(s => s.EpicId != null && s.ClosedAt >= from && s.ClosedAt < to)
+            .Select(s => (Story: s, Bounds: BoundsOf(s.ClosedAt, bucket, offsetMinutes)))
+            .GroupBy(x => (x.Bounds.Start, x.Bounds.End, EpicId: x.Story.EpicId!.Value)))
+        {
+            var ordered = g.OrderByDescending(x => x.Story.ClosedAt).ThenByDescending(x => x.Story.Id).ToList();
+            groups[g.Key] = (ordered.Select(x => x.Story.Id).ToList(), false, ordered[0].Story.ClosedAt);
+        }
+
+        foreach (var epic in epics)
+        {
+            if (epic.ClosedAt is not { } closedAt || closedAt < from || closedAt >= to)
+            {
+                continue;
+            }
+
+            var bounds = BoundsOf(closedAt, bucket, offsetMinutes);
+            var key = (bounds.Start, bounds.End, epic.Id);
+            var storyIds = groups.TryGetValue(key, out var existing) ? existing.StoryIds : [];
+            groups[key] = (storyIds, true, closedAt);
+        }
+
+        return groups
+            .GroupBy(kv => (kv.Key.Start, kv.Key.End))
+            .OrderByDescending(g => g.Key.Start)
+            .Select(g => new StoryBucket(
+                g.Key.Start,
+                g.Key.End,
+                g.OrderByDescending(kv => kv.Value.SortAt)
+                    .ThenByDescending(kv => kv.Key.EpicId)
+                    .Select(kv => new StoryGroup(kv.Key.EpicId, kv.Value.ClosedHere, kv.Value.StoryIds))
+                    .ToList()))
+            .ToList();
+    }
+
+    /// <summary>
     /// The bucket <paramref name="at"/> falls into on a reader whose wall clock
     /// is <paramref name="offsetMinutes"/> away from UTC: floored onto that
     /// reader's hour, day, Monday-to-Monday week, or calendar month, then
