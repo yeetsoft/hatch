@@ -890,6 +890,21 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithRecusedOutcome_RecordsItOnTheEvent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        // The session's own hatch recuse, not a drop - LetGo.Count stops at
+        // this outcome exactly as it stops at worked.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Recused, default));
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.Equal(ClaimOutcomes.Recused, released.Payload!.Value.GetProperty("outcome").GetString());
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithAnOutcome_NamesTheRunnerThatHeldTheClaim()
     {
         await using var h = await NewAsync();
@@ -937,7 +952,7 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         Assert.Equal(
-            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", \"preempted\", or nothing at all",
+            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", \"preempted\", \"recused\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, "quit", default)));
 
         // Refused before anything was touched.

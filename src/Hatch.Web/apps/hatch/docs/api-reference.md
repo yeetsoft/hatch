@@ -581,7 +581,7 @@ reason }` - `error` the sentence a person reads, `reason` one of `quiet`
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted` - and an optional
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused` - and an optional
 `reason` - only `quiet` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
