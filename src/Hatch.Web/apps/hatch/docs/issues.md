@@ -154,6 +154,33 @@ board stalls on a ticket for carrying the flag. The field sits on the issue
 page, in the Details card's edit view, right after Runner tags; emptying it
 clears the flag.
 
+## Omitted runners
+
+A runner named against a ticket that is then never handed that ticket. Each
+omission carries the runner's name, an optional reason of at most 200
+characters, who recorded it and when. A runner can recuse itself from a
+ticket it ought not to take, and a person can omit one from the issue page.
+
+It is inherited by everything under the ticket, a union down the tree: a
+child cannot widen what its parent said. An omission a ticket only inherits is
+therefore lifted on the ancestor that holds it, never on the child, and the
+issue page names that ancestor beside each inherited name.
+
+An omission stays until somebody lifts it; moving the ticket between columns
+does not remove it. A name that is no longer a live runner (see [the
+runner](the-runner#the-runners-name)) stays listed, marked *not a runner on
+this board*, so a runner that comes back under the same name finds the
+omission still standing.
+
+The list sits on the issue page, in the Details card's edit view, right after
+Dangerous: every omission the ticket carries, with **Lift** on each of its
+own, and below it **Omit a runner** — a picker over the runners you can see
+that also takes a typed name, a reason with a 200-character counter, and a
+button. A refusal appears beside the field and what you typed stays. The
+read-only card and the peek show the same list as a fact. Opening it takes
+nothing beyond being able to open the ticket at all, the same as Runner tags
+and Dangerous.
+
 ## Held
 
 A person's own mark, set from the ticket's **Hold for me** button and read
