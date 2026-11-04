@@ -339,6 +339,15 @@ public class AdminSurfaceTests
         // IssuesController.SearchIssues, whose cards it returns.
         "SearchController.GetSearch",
 
+        // Dreams: a line somebody wanted said, with no issue underneath it at
+        // all - Hatch-scoped like the rest of the module, reads included,
+        // for the same reason BoardController's is: it is the operator's own
+        // list, not a fact about the house.
+        "DreamsController.GetDreams",
+        "DreamsController.AddDream",
+        "DreamsController.EditDream",
+        "DreamsController.DeleteDream",
+
         // What landed in the newest night, across every issue rather than
         // about one - Hatch-scoped and open to a person the same way
         // WorkLogController's and ActivityController's reads are. See
