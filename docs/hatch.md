@@ -7818,6 +7818,20 @@ lease and a usage limit get and for the same reason: this is the loop working
 correctly on a busy board, not a broken increment. The very next pass finds
 the emergency issue at the top of the walk and picks it straight up.
 
+**Neither is a recusal.** A session that ran `hatch recuse` on its ticket - it
+found the work is one this runner cannot do - ends the increment as a
+recusal: no stall comment, no mark, no question. The loop reads the issue
+again after the session, the same fresh read [the claim](#claim) describes,
+and finds this runner newly among the ticket's own omitted runners; it prints
+one line - `hatch: {key} - {runner} recused itself ({reason}), going on to
+the next` - and releases the claim `recused`, which stops the `letGo` count
+rather than raising it: the omission, not the let-go fold, is what keeps the
+ticket off this runner. The night's tally lists it with the let-go ones, its
+own line reading `recused` rather than `let go`, and it is not one of the
+three failures that end a night - the same treatment a usage limit and a
+preemption get, and for the same reason: a runner refusing work it cannot do
+is the loop working correctly, not a broken increment.
+
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket
 that can try again by itself in fifteen minutes does not need to cost a
