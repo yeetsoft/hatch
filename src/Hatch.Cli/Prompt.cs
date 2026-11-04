@@ -577,6 +577,7 @@ public static class Prompt
                 : new[] { $"hatch move {key} <column>     move it anywhere non-terminal" }),
         $"hatch comment {key} \"...\"     write on the ticket",
         $"hatch ask {key} \"...\"         ask for a decision, and stop",
+        $"hatch recuse {key} \"...\"      this runner cannot do this work - say why, and stop",
         ..(isCheck ? Array.Empty<string>() : new[]
         {
             $"hatch depends {key} <waited-on>   {key} cannot start until <waited-on> lands",
