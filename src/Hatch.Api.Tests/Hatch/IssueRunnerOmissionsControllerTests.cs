@@ -238,6 +238,56 @@ public class IssueRunnerOmissionsControllerTests
         Assert.Empty(await h.EventsAsync(issue.Key));
     }
 
+    // ---- Projection ----
+
+    [Fact]
+    public async Task ATaskTwoLevelsDown_ReadsTheEpicsOmission_WithFromKey_AndTheEpicWinsWhenItOmitsTheSameName()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "an epic");
+        var story = Created(await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "story", "a story", null, epic.Key, null, null), default));
+        var task = Created(await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "task", "a task", null, story.Key, null, null), default));
+        await h.OmitAsync(epic.Key, "alpha", "x");
+
+        var inherited = await h.ReadAsync(task.Key);
+
+        var carried = Assert.Single(inherited.OmittedRunners);
+        Assert.Equal(("alpha", "x", epic.Key), (carried.Runner, carried.Reason, carried.FromKey));
+        Assert.Empty(inherited.OmittedRunnersOwn);
+
+        await h.OmitAsync(task.Key, "alpha", "y");
+
+        var both = await h.ReadAsync(task.Key);
+        var effective = Assert.Single(both.OmittedRunners);
+        Assert.Equal(("alpha", "x", epic.Key), (effective.Runner, effective.Reason, effective.FromKey));
+        var own = Assert.Single(both.OmittedRunnersOwn);
+        Assert.Equal(("alpha", "y", (string?)null), (own.Runner, own.Reason, own.FromKey));
+    }
+
+    [Fact]
+    public async Task AFreshTicket_AnswersBothListsAsEmptyArrays_NotNull_AndNotOmittedFromTheJson()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a thing");
+
+        var read = await h.ReadAsync(issue.Key);
+
+        Assert.NotNull(read.OmittedRunnersOwn);
+        Assert.Empty(read.OmittedRunnersOwn);
+        Assert.NotNull(read.OmittedRunners);
+        Assert.Empty(read.OmittedRunners);
+        var json = System.Text.Json.JsonSerializer.SerializeToElement(
+            read, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        foreach (var name in new[] { "omittedRunnersOwn", "omittedRunners" })
+        {
+            Assert.True(json.TryGetProperty(name, out var list), name);
+            Assert.Equal(System.Text.Json.JsonValueKind.Array, list.ValueKind);
+            Assert.Equal(0, list.GetArrayLength());
+        }
+    }
+
     // ---- Who may do it ----
 
     [Fact]
