@@ -952,7 +952,7 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | GET | `/reports/timeline` | The top-level epics active in a range, and the work beneath each as stretches across the board's columns |
 | GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid; a terminal column baselines at zero at the window start and counts only what closed inside it. The answer also carries `projectCounts` beside `counts`, cut by the same `project` scope, agreeing with it on the total at every point |
 | GET | `/reports/flow` | How work moved through the board in a range: per column what entered, left and stands, and how long it dwelled, plus the window's drops, hops, send-backs, questions and sessions - counts and durations only |
-| GET | `/reports/changelog` | Closed top-level epics, bucketed over a range rather than split by day - `bucket` is `hour`, `day`, `week` or `month` (day by default), aligned to the reader's own clock with `offsetMinutes`. `from`/`to` default to the changelog feed's own fourteen days; `projectId` is repeatable. Groups' `stories` and every bucket's `loose` answer empty until a later story fills them in |
+| GET | `/reports/changelog` | Closed work, bucketed over a range rather than split by day - `level` is `epic` (closed top-level epics, the default) or `story` (closed stories grouped under their nearest epic). `bucket` is `hour`, `day`, `week` or `month` (day by default), aligned to the reader's own clock with `offsetMinutes`. `from`/`to` default to the changelog feed's own fourteen days; `projectId` is repeatable. Groups' `stories` and every bucket's `loose` answer empty until a later story fills them in |
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
@@ -963,10 +963,11 @@ key the same way `flow` 400s an unknown `projectId`; `flow` takes `from`/`to`
 the same way, plus `projectId` and `type`, and 400s an unknown `type` or
 `projectId`. `changelog` takes `from`/`to` (default the **fourteen** days
 ending now), a repeatable `projectId`, `bucket` (default `day`),
-`offsetMinutes` (-1440..1440) and `level` (`epic` only for now), plus `loose`
-(accepted; its lists answer empty for now), and 400s a bad range bound, an
-offset outside +-1440 minutes, an unrecognised bucket name, a `level` other
-than `epic`, or a `projectId` that does not exist - in that order.
+`offsetMinutes` (-1440..1440) and `level` (`epic`, the default, or `story`),
+plus `loose` (accepted; its lists answer empty for now), and 400s a bad range
+bound, an offset outside +-1440 minutes, an unrecognised bucket name, a
+`level` other than `epic` or `story`, or a `projectId` that does not exist -
+in that order.
 None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
