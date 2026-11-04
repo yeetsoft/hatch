@@ -162,6 +162,10 @@ public sealed class IssueCommands(Cli cli)
         // like the lines above it.
         if (DangerousCommand.Draw(issue) is { } dangerous) cli.Say.Line(dangerous);
 
+        // Said only where a runner is omitted, by the issue or an ancestor,
+        // the way the flags above it are; an empty list says nothing here.
+        if (issue.OmittedRunners.Count > 0) cli.Say.Lines(OmitCommand.Draw(issue, cli.Clock.GetUtcNow()));
+
         // Said only where the issue declared it finished with no code.
         if (issue.NoCode is { Length: > 0 } noCode) cli.Say.Line($"no code:      {noCode}");
 
