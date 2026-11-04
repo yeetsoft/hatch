@@ -59,8 +59,10 @@ public sealed class IncrementReport
     /// What the claim is released with: <see cref="ClaimOutcomes.Worked"/> for
     /// anything that changed something on the ticket's behalf - moved it,
     /// resolved its conflict, pushed a build fix, or had the session ask its
-    /// own question - and <see cref="ClaimOutcomes.Dropped"/> for a stall,
-    /// flagged or let go alike. Left null for a lost lease, a usage limit, an
+    /// own question - <see cref="ClaimOutcomes.Recused"/> for a session that ran
+    /// <c>hatch recuse</c> and left the ticket where it found it, and
+    /// <see cref="ClaimOutcomes.Dropped"/> for a stall, flagged or let go
+    /// alike. Left null for a lost lease, a usage limit, an
     /// interrupted increment, and a board read that failed: none of those is
     /// this increment's verdict to give, because none of them ran to one.
     /// </summary>
@@ -195,6 +197,16 @@ public sealed class IncrementReport
     public int Asked { get; set; }
 
     /// <summary>
+    /// The session ran <c>hatch recuse</c>: the ticket read after it names this
+    /// runner among its own omitted runners, and the dispatch did not. Read for
+    /// every increment, but only acted on when the ticket did not otherwise move.
+    /// </summary>
+    public bool Recused { get; set; }
+
+    /// <summary>Why the session recused, as it said so - null when it gave no reason.</summary>
+    public string? RecusedReason { get; set; }
+
+    /// <summary>
     /// The keys under the ticket after the session that were not there at
     /// dispatch - progress, though the ticket did not move.
     /// </summary>
@@ -315,6 +327,7 @@ public sealed class IncrementReport
         : CheckReason is { Length: > 0 } cr ? $"{cr}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : (NoWorkLog || ResultErrored) && Done.Length > 0 ? $"the session {Cause}, and it {Done}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
+        : Recused && Stalled ? $"recused itself ({RecusedReason ?? "no reason given"})"
         : Stalled && StillFailing.Count > 0
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
@@ -734,6 +747,30 @@ public sealed class Increment(
                     say.Complain(e.Message);
                 }
 
+                // Whether the session recused this runner from the ticket. A
+                // fresh issue read, not the dispatch read above: that one is
+                // what work was handed out against, and may one day refuse an
+                // omitted runner. The runner's name newly among the ticket's
+                // own omitted runners is the recusal; a name already there at
+                // dispatch is somebody else's earlier call, and a read that
+                // fails is not a recusal at all.
+                try
+                {
+                    var now = await board.IssueAsync(report.Key, ct);
+                    var own = now?.OmittedRunnersOwn.FirstOrDefault(o =>
+                        string.Equals(o.Runner, runnerName, StringComparison.Ordinal));
+                    if (runnerName.Length > 0 && own is not null
+                        && !work.Issue.OmittedRunnersOwn.Any(o => string.Equals(o.Runner, runnerName, StringComparison.Ordinal)))
+                    {
+                        report.Recused = true;
+                        report.RecusedReason = own.Reason;
+                    }
+                }
+                catch (HatchException e)
+                {
+                    say.Complain(e.Message);
+                }
+
                 // And if the board says nothing happened, say so on the ticket -
                 // once quietly, and only the second time in a row with a flag.
                 // Not for an increment whose lease went: writing a stall onto a
@@ -743,6 +780,13 @@ public sealed class Increment(
                 // a stall, it is the one increment kind whose ticket is left
                 // clean and unquestioned on purpose.
                 //
+                // A recusal comes first: the session said, in the one place
+                // that says it, that this runner should not have this ticket,
+                // and the ticket is free for another runner the moment the
+                // claim is released. It wins over a question asked alongside
+                // it, and it is neither commented nor stalled - the omission
+                // already carries the reason.
+                //
                 // Stalled and Moved are not mutually exclusive here: a conflict
                 // or build increment is judged by its branch above, and can move
                 // the ticket to a new column while still leaving that branch
@@ -750,7 +794,14 @@ public sealed class Increment(
                 // said - but see below for who wins the claim's own verdict.
                 if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted && !report.HardLimited)
                 {
-                    if (report.Asked > 0)
+                    if (report.Recused)
+                    {
+                        report.ReleaseOutcome = ClaimOutcomes.Recused;
+                        report.Flag = "recused";
+                        say.Line("");
+                        say.Line($"hatch: {report.Key} - {runnerName} recused itself ({report.RecusedReason ?? "no reason given"}), going on to the next");
+                    }
+                    else if (report.Asked > 0)
                     {
                         // The session already asked its own question on the way
                         // out, and a question already does everything a stall
@@ -798,7 +849,8 @@ public sealed class Increment(
                 // something on the ticket's behalf, and that always wins over a
                 // stall reported alongside it - a conflict or build increment
                 // that moved the ticket did work, whatever its branch still
-                // needs. Left at whatever the guard above decided (Dropped, or
+                // needs, and a recusal that moved it too. Left at whatever the
+                // guard above decided (Recused, Dropped, or
                 // still null) for everything else - a lost lease, a usage
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
