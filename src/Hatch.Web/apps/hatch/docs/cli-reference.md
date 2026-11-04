@@ -48,6 +48,7 @@ without the flag.
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
 | `omit` | No | Only with a runner and reason, or `--lift` |
+| `recuse` | No | Yes: omits this runner's own name |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
 | `answer` | No | Yes: answers a question |
@@ -494,6 +495,22 @@ the omissions of the story or epic above it, and the read names each one with
 `(from AER-3)` after it. An inherited omission is lifted on the ticket that
 carries it: asked of the task, `--lift` prints the refusal naming that ticket.
 Open to a key.
+
+### recuse
+
+```
+hatch recuse AER-12 "reason"
+```
+
+What a session calls on its way out: `omit` for this checkout's own runner
+name, the one `hatch config --show` prints. It makes the same write `omit`
+does, and says what it recorded: `recused <runner> from AER-12: <reason>`.
+
+The reason is required, and is at most 200 characters, measured after
+trimming; a missing, blank or overlong one is refused and calls nothing, and
+so is a checkout with no runner name. The dispatcher never hands the issue to
+this runner again, and neither does it hand it any task below the issue. Lift
+it with `hatch omit AER-12 --lift <runner>`. Open to a key.
 
 ### ask
 
