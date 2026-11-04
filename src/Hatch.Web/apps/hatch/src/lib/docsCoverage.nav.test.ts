@@ -5,6 +5,7 @@ import { APP_BASENAME } from './basename';
 
 const SCREENS: Record<string, string> = {
   '/plan': 'issues',
+  '/dreams': 'dreams',
   '/reports': 'flow-wip-and-the-battery',
   '/': 'the-board-and-its-columns',
   '/search': 'getting-started',

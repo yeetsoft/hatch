@@ -6181,6 +6181,19 @@ reflection to revert or amend it; a confirmed one is reported and left for a
 person to close. `Hypotheses read` is never left out: with no earlier
 reflection, or none due, it reads `None` and says why.
 
+**The epic-breakdown row consults the Dream Board.**
+`RewordEpicBreakdownForDreams` (20261104120000) rewrites that row's
+`DefaultPrompt` alone, only where it still reads the stock text byte for byte,
+as `RewordReflectionPlaybook` does: `Prompt` and `UpdatedAt` are left
+untouched, so an operator's own wording survives and a row handed back receives
+the new text. The paragraph it adds to the prompt sits between *Read what has
+already happened* and *Ask the repository*: search `GET /api/hatch/dreams?q=`,
+read what bears on the epic, quote it, and record the dreams drawn on with
+`PUT /api/hatch/issues/<KEY>/dreams`, or say *no dream bore on this*. It
+applies to every epic breakdown, woven or hand-written. The story and task
+breakdown rows are not reworded, since a story's seed is its epic. This adds
+reading, not writing, so the row stays *judges*.
+
 Nothing re-asserts them afterwards, and nothing overwrites one. `TheFlow` moves
 three of them from `inbox → todo` onto `Breakdown → Backlog`, because that is
 where specifying a draft happens now, but it writes no prompt, no model and no
