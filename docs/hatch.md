@@ -2746,6 +2746,12 @@ issue.
 - **No event trail on a dream** — a dream is a note; `UpdatedAt` is its
   whole history. The trail begins once a dream becomes work (HA-1722's
   `dreams_woven` issue event).
+- **A thread is a link row, not a note.** `EfHatchDreamThread` —
+  `DreamId`, `IssueId`, `Actor`, `At`, composite-keyed on the pair, each a
+  cascade-delete FK: a deleted dream or a deleted issue takes its own
+  threads with it, never the other side's data. Written by whoever did the
+  reading — a breakdown session, a person on the issue page later — and
+  never inferred from text; see `PUT /issues/{key}/dreams` under Issue.
 - `ProjectId` is a lean, not a home: `SetNull` on delete, not `Restrict`.
 
 ### Issue event

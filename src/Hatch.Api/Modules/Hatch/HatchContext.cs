@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-four tables.
+/// migration history, twenty-five tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -26,6 +26,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchPlaybookProposalChange> PlaybookProposalChanges => Set<EfHatchPlaybookProposalChange>();
     public DbSet<EfHatchWipLimit> WipLimits => Set<EfHatchWipLimit>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
+    public DbSet<EfHatchDreamThread> DreamThreads => Set<EfHatchDreamThread>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
@@ -229,6 +230,25 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(d => d.DependsOn)
                 .WithMany()
                 .HasForeignKey(d => d.DependsOnId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // An edge has no meaning without either row, so deleting either takes
+        // it, in both directions. No inverse navigation on the dream or the
+        // issue for either end - two collections told apart only by name, and
+        // nothing reads them.
+        modelBuilder.Entity<EfHatchDreamThread>(e =>
+        {
+            e.HasKey(t => new { t.DreamId, t.IssueId });
+
+            e.HasOne(t => t.Dream)
+                .WithMany()
+                .HasForeignKey(t => t.DreamId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(t => t.Issue)
+                .WithMany()
+                .HasForeignKey(t => t.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
