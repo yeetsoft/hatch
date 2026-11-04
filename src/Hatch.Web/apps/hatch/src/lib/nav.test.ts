@@ -66,10 +66,10 @@ describe('the bar', () => {
     expect(HOME_LABEL).toBe('Board');
   });
 
-  it('puts Plan, Reports and History under Track, in that order', () => {
+  it('puts Dreams, Plan, Reports and History under Track, in that order', () => {
     const track = NAV.find((entry) => entry.kind === 'group' && entry.label === 'Track');
     if (!track || track.kind !== 'group') throw new Error('Track not found');
-    expect(track.rows.map((row) => row.to)).toEqual(['/plan', '/reports', '/history']);
+    expect(track.rows.map((row) => row.to)).toEqual(['/dreams', '/plan', '/reports', '/history']);
   });
 
   it('no longer lists History under Manage', () => {
@@ -100,8 +100,8 @@ describe('activeGroup', () => {
     expect(activeGroup('/users')?.label).toBe('Manage');
   });
 
-  it('finds Track from Plan, Reports, History and a report under it', () => {
-    for (const path of ['/plan', '/reports', '/reports/timeline', '/history']) {
+  it('finds Track from Dreams, Plan, Reports, History and a report under it', () => {
+    for (const path of ['/dreams', '/plan', '/reports', '/reports/timeline', '/history']) {
       expect(activeGroup(path)?.label).toBe('Track');
     }
   });
@@ -144,9 +144,10 @@ describe('navRows', () => {
   }
 
   it('puts Search first with no group label, then Track under its heading', () => {
-    const rows = navRows(false).slice(0, 4);
+    const rows = navRows(false).slice(0, 5);
     expect(rows).toEqual([
       { to: '/search', label: 'Search', end: undefined, groupLabel: null },
+      { to: '/dreams', label: 'Dreams', groupLabel: 'Track' },
       { to: '/plan', label: 'Plan', groupLabel: 'Track' },
       { to: '/reports', label: 'Reports', groupLabel: 'Track' },
       { to: '/history', label: 'History', groupLabel: 'Track' },

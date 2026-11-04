@@ -15,6 +15,7 @@ import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
+import { DreamsPage } from './pages/DreamsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SearchPage } from './pages/SearchPage';
 import { TimelinePage } from './pages/TimelinePage';
@@ -148,6 +149,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<BoardPage />} />
             <Route path="/plan" element={<PlanPage />} />
+            <Route path="/dreams" element={<DreamsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/timeline" element={<TimelinePage />} />
             <Route path="/reports/cumulative-flow" element={<CumulativeFlowPage />} />
