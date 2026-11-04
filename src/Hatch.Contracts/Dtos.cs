@@ -1107,6 +1107,17 @@ public record CommentDto(
     DateTimeOffset? DeliveredAt = null,
     string? DeliveredTo = null);
 
+/// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
+public record DreamDto(
+    long Id, string Body, string Author, string? Source,
+    int? ProjectId, string? ProjectKey, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+
+/// <summary>What it takes to add a dream. <see cref="ProjectId"/> is the lean, and may be left out.</summary>
+public record DreamCreateRequest(string Body, string? Source = null, int? ProjectId = null);
+
+/// <summary>A page of dreams, and how many matched before paging.</summary>
+public record DreamsPageDto(IReadOnlyList<DreamDto> Dreams, int Total);
+
 /// <summary>
 /// Mark messages as read, and get back the ones this call marked.
 /// </summary>
