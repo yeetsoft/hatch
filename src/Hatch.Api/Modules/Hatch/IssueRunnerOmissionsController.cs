@@ -42,7 +42,7 @@ public class IssueRunnerOmissionsController(
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
-        var runnerName = runner.Trim();
+        var runnerName = Uri.UnescapeDataString(runner).Trim();
         if (runnerName.Length == 0) return BadRequest("a runner name is required");
         if (runnerName.Length > EfHatchRunner.MaxNameLength)
             return BadRequest($"a runner name is at most {EfHatchRunner.MaxNameLength} characters");
@@ -107,7 +107,7 @@ public class IssueRunnerOmissionsController(
         var issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
-        var runnerName = runner.Trim();
+        var runnerName = Uri.UnescapeDataString(runner).Trim();
         var row = await db.RunnerOmissions
             .FirstOrDefaultAsync(o => o.IssueId == issue.Id && o.RunnerName == runnerName, ct);
 
