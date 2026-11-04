@@ -3172,6 +3172,15 @@ input.hatch-inline-title-input {
   gap: var(--sp-2);
 }
 
+.hatch-omission-add-heading {
+  margin: 0;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
 .hatch-omission-add {
   display: flex;
   flex-wrap: wrap;

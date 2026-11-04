@@ -90,6 +90,7 @@ export function OmittedRunners({ omissions, runnerNames, pickable, liftingRunner
         </ul>
       )}
 
+      <h3 className="hatch-omission-add-heading">Omit a runner</h3>
       <div className="hatch-omission-add">
         <input
           type="text"

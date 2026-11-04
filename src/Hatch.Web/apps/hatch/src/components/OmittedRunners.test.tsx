@@ -50,7 +50,7 @@ describe('OmittedRunners', () => {
     expect(draw({ omissions: [row], runnerNames: null })).not.toContain('not a runner on this board');
   });
 
-  it('with nothing omitted says so, and still draws the add controls', () => {
+  it('with nothing omitted says so, and still draws the add controls, labelled "Omit a runner"', () => {
     const html = draw({ omissions: [], pickable: ['one', 'two'] });
     expect(html).toContain('No runner is omitted.');
     expect(html).toContain('maxLength="200"');
@@ -58,5 +58,6 @@ describe('OmittedRunners', () => {
     expect(html).toContain('<option value="one">');
     expect(html).toContain('<option value="two">');
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Omit</);
+    expect(html).toContain('Omit a runner');
   });
 });
