@@ -3382,7 +3382,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
-| `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (accepted, answered empty for now). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
+| `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4404,10 +4404,10 @@ trimmed; absent or blank is `day`; anything else is a `400` naming the four.
 `offsetMinutes` is minutes east of UTC — local is UTC plus this — aligning
 every bucket to the reader's own clock rather than UTC's; outside -1440..1440
 is a `400`. `level` is absent, blank, `epic` or `story`; anything else is a
-`400` naming the two. `loose` is a bool, default `false`, accepted and
-echoed back. The route is open to a person or to a key with the `hatch`
-scope, and the `400`s above come in that order — bound, offset, bucket,
-level, project.
+`400` naming the two. `loose` is `true` or `false`, trimmed/case-insensitive,
+default `false`; else a `400` naming the two. The route is open to a person
+or to a key with the `hatch` scope, and the `400`s above come in that
+order — bound, offset, bucket, level, loose, project.
 
 It answers `{ from, to, bucket, level, loose, buckets }`. `from`, `to`,
 `bucket`, `level` and `loose` are the request as the server resolved it.
@@ -4422,7 +4422,9 @@ the bucket, or whose own close falls in it, or both; `closedHere` is `true`
 only when the epic itself closed in that bucket, and is `false` for a group
 that exists purely because a story under it closed there. A story with no
 epic above it is read by neither level yet, and is left for `loose` to carry
-later. Every bucket's own `loose` is `[]` for now, at either level.
+later. At `level=epic`, a bucket's `loose` is the closed bugs (any parent)
+and parentless stories in it when `loose=true`, else `[]`; at `level=story`
+it stays `[]`.
 
 #### The rules
 
@@ -4449,8 +4451,10 @@ later. Every bucket's own `loose` is `[]` for now, at either level.
   no point cap, unlike [the cumulative flow](#the-cumulative-flow)'s.
 - **`level` is `epic` or `story`** — absent or blank defaults to `epic`;
   anything else is a `400` naming the two.
-- **`stories` and `loose` answer empty for now**, on every group and every
-  bucket alike, at either level, until a later story fills them in.
+- **`stories` still answers empty for now** — HA-1708's job.
+- **`loose`, at `level=epic`**, carries closed bugs (any parent) and
+  parentless stories, newest-closed first, with `priority`; nothing else
+  appears; it decorates, never reorders. `[]` at `level=story`.
 
 **There is no page, no index card and no CLI subcommand** for it yet; a script
 reaches the same answer with `hatch api GET /api/hatch/reports/changelog?...`,
