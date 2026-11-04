@@ -351,12 +351,12 @@ public class ReportsController(
     /// <param name="bucket">One of <c>hour</c>, <c>day</c>, <c>week</c>, <c>month</c>; day when absent.</param>
     /// <param name="offsetMinutes">Minutes east of UTC, so local is UTC plus this - aligns a bucket to the reader's own wall clock.</param>
     /// <param name="level">The depth this report groups at: absent or <c>epic</c> groups closed top-level epics; <c>story</c> groups closed stories under their nearest epic.</param>
-    /// <param name="loose">Whether work under no epic rides alongside the buckets; always answered empty for now.</param>
+    /// <param name="loose">Whether closed bugs (any parent) and parentless stories ride with the epic buckets, each with its priority; "true"/"false", trimmed/case-insensitive - "false" or absent runs no second query.</param>
     [HttpGet("changelog")]
     public async Task<ActionResult<ChangelogReportDto>> GetChangelogReport(
         [FromQuery] string? from, [FromQuery] string? to, [FromQuery] List<int>? projectId,
         [FromQuery] string? bucket, [FromQuery] int offsetMinutes = 0,
-        [FromQuery] string? level = null, [FromQuery] bool loose = false, CancellationToken ct = default)
+        [FromQuery] string? level = null, [FromQuery] string? loose = null, CancellationToken ct = default)
     {
         var now = time.GetUtcNow();
 
@@ -395,6 +395,15 @@ public class ReportsController(
 
         if (!string.IsNullOrEmpty(level) && level != "epic" && level != "story")
             return BadRequest($"a level is epic or story - not \"{level}\"");
+
+        var looseTrimmed = loose?.Trim();
+        bool looseFlag;
+        if (string.IsNullOrEmpty(looseTrimmed) || string.Equals(looseTrimmed, "false", StringComparison.OrdinalIgnoreCase))
+            looseFlag = false;
+        else if (string.Equals(looseTrimmed, "true", StringComparison.OrdinalIgnoreCase))
+            looseFlag = true;
+        else
+            return BadRequest($"loose is true or false - not \"{loose}\"");
 
         var ids = (projectId ?? []).Distinct().ToList();
         foreach (var id in ids)
@@ -453,7 +462,7 @@ public class ReportsController(
                     Loose: []))
                 .ToList();
 
-            return new ChangelogReportDto(start, end, ChangelogReport.Name(size), "story", loose, storyBucketDtos);
+            return new ChangelogReportDto(start, end, ChangelogReport.Name(size), "story", looseFlag, storyBucketDtos);
         }
 
         var closed = db.Issues.AsNoTracking()
@@ -475,20 +484,55 @@ public class ReportsController(
 
         var buckets = ChangelogReport.Fold(rows, start, end, size, offsetMinutes);
 
+        IReadOnlyList<ChangelogReport.LooseBucket> looseBuckets = [];
+        if (looseFlag)
+        {
+            var closedLoose = db.Issues.AsNoTracking()
+                .Where(i => i.Status!.IsTerminal && i.ClosedAt != null
+                    && (i.Type == "bug" || (i.Type == "story" && i.ParentId == null)));
+            if (ids.Count > 0) closedLoose = closedLoose.Where(i => ids.Contains(i.ProjectId));
+
+            var looseRows = (await closedLoose
+                    .Select(i => new { i.Id, ParentType = i.Parent == null ? null : i.Parent.Type, i.Type, ClosedAt = i.ClosedAt!.Value })
+                    .ToListAsync(ct))
+                .Select(i => new ChangelogReport.Row(i.Id, i.ParentType, i.Type, i.ClosedAt))
+                .ToList();
+            looseBuckets = ChangelogReport.FoldLoose(looseRows, start, end, size, offsetMinutes);
+        }
+
         var epicIds = buckets.SelectMany(b => b.EpicIds).ToHashSet();
         var (epicCards, epicTree) = await LoadCardsAsync(epicIds, now, ct);
-
-        var bucketDtos = buckets
-            .Select(b => new ChangelogReportBucketDto(
-                b.Start,
-                b.End,
-                b.EpicIds
-                    .Select(id => new ChangelogReportGroupDto(epicCards[id], ClosedHere: true, epicTree!.DescendantCount(id), Stories: []))
-                    .ToList(),
-                Loose: []))
+        var looseIssueIds = looseBuckets.SelectMany(b => b.IssueIds).ToHashSet();
+        var looseEntries = new Dictionary<long, ChangelogReportEntryDto>();
+        if (looseIssueIds.Count > 0)
+        {
+            var rows2 = await db.Issues.AsNoTracking().Where(i => looseIssueIds.Contains(i.Id))
+                .Select(i => new {
+                    ProjectKey = i.Project!.Key, i.Id, i.Number, i.Type, i.Title, i.ReleaseNote, i.Priority,
+                    ClosedAt = i.ClosedAt!.Value,
+                }).ToListAsync(ct);
+            foreach (var r in rows2)
+                looseEntries[r.Id] = new ChangelogReportEntryDto(
+                    IssueKey.Format(r.ProjectKey, r.Number), r.Title, r.Type, r.ProjectKey,
+                    r.ReleaseNote, r.ClosedAt, PriorityLevels.Name(r.Priority));
+        }
+        var epicByStart = buckets.ToDictionary(b => b.Start);
+        var looseByStart = looseBuckets.ToDictionary(b => b.Start);
+        var bucketDtos = epicByStart.Keys.Concat(looseByStart.Keys).Distinct()
+            .OrderByDescending(s => s)
+            .Select(s =>
+            {
+                epicByStart.TryGetValue(s, out var eb);
+                looseByStart.TryGetValue(s, out var lb);
+                return new ChangelogReportBucketDto(
+                    s, eb?.End ?? lb!.End,
+                    (eb?.EpicIds ?? []).Select(id => new ChangelogReportGroupDto(
+                        epicCards[id], ClosedHere: true, epicTree!.DescendantCount(id), Stories: [])).ToList(),
+                    (lb?.IssueIds ?? []).Select(id => looseEntries[id]).ToList());
+            })
             .ToList();
 
-        return new ChangelogReportDto(start, end, ChangelogReport.Name(size), "epic", loose, bucketDtos);
+        return new ChangelogReportDto(start, end, ChangelogReport.Name(size), "epic", looseFlag, bucketDtos);
     }
 
     /// <summary>

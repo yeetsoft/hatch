@@ -3168,7 +3168,7 @@ public record ChangelogMonthDto(string Month, int Count);
 /// which is the changelog feed's own answer, not this report's.
 /// </summary>
 /// <param name="Level">The depth this report groups at - <c>"epic"</c> or <c>"story"</c>.</param>
-/// <param name="Loose">Whether work under no epic rides alongside the buckets - always false for now.</param>
+/// <param name="Loose">Whether work under no epic rides alongside the buckets - echoes the request.</param>
 public record ChangelogReportDto(
     DateTimeOffset From,
     DateTimeOffset To,
@@ -3183,7 +3183,7 @@ public record ChangelogReportDto(
 /// one entry per epic with a story closed in this bucket, or whose own close falls
 /// in it, or both.
 /// </param>
-/// <param name="Loose">Work under no epic, closed in this bucket - always empty until a later story fills it in.</param>
+/// <param name="Loose">Closed bugs (any parent) and parentless stories here when loose=true - [] when false, and always [] at level=story.</param>
 public record ChangelogReportBucketDto(
     DateTimeOffset Start,
     DateTimeOffset End,
