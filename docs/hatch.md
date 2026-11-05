@@ -4150,10 +4150,10 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There are two reports with a
-card each: the Timeline and the Cumulative flow. **Two further reads, the
-[flow](#the-flow) and the [changelog report](#the-changelog-report), have no
-page and no index card** — they are for a program, not a person at a screen. A
+per report, each stating the question it answers. There are three reports with
+a card each: the Timeline, the Cumulative flow and the
+[Changelog](#the-changelog-report). **One further read, the [flow](#the-flow),
+has no page and no index card** — it is for a program, not a person at a screen. A
 new report with a page is one more entry in that index and a route; neither
 report gets a nav entry of its own, and the index card stays the only way in.
 
@@ -4442,12 +4442,14 @@ GET /api/hatch/reports/changelog?from=&to=&projectId=&bucket=&offsetMinutes=&lev
 ```
 
 `GET /api/hatch/changelog` (`ChangelogController`) answers what shipped as a
-page, before and after a cursor. This route answers the same question —
+page, before and after a cursor. It is the agent-facing feed behind
+`hatch changelog`, unchanged; the web page that used to draw from it was
+replaced by this report. This route answers the same question —
 **what closed, in the reader's own time buckets** — as a report rather than a
 paged feed: closed top-level epics, grouped into buckets aligned to the
-reader's wall clock rather than split one day at a time. It is **for a
-program**, like [the flow](#the-flow): counts and cards only, with no page and
-no index card.
+reader's wall clock rather than split one day at a time. It has a page
+(`ChangelogReportPage`, at `/reports/changelog`) and an index card on
+[Reports](#reports), and the same answer stays reachable by a script.
 
 `from` and `to` are instants, defaulting to the **fourteen days ending now**
 rather than the other reports' ninety — the changelog feed's own window — with
@@ -4511,10 +4513,10 @@ it stays `[]`.
   parentless stories, newest-closed first, with `priority`; nothing else
   appears; it decorates, never reorders. `[]` at `level=story`.
 
-**There is no page, no index card and no CLI subcommand** for it yet; a script
-reaches the same answer with `hatch api GET /api/hatch/reports/changelog?...`,
-which is the [API surface](#api-surface)'s row for it. A later story gives it
-a page.
+It has a page and an index card, but **no CLI subcommand** (`hatch changelog`
+is the older feed, not this report); a script reaches the same answer with
+`hatch api GET /api/hatch/reports/changelog?...`, which is the
+[API surface](#api-surface)'s row for it.
 
 ## The overnight
 

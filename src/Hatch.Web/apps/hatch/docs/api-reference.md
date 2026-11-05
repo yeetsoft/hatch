@@ -959,8 +959,9 @@ reads; it takes `limit` (1 to 500, default 100) and `offset`, and answers
 `hasMore` rather than a count. `/changelog` takes `before`, `projectId` and
 `days` (default 14), answering the newest window of days that shipped
 something, with every closed month's own count beside it for the jump
-control - this is the same route the Changelog entry at the top of the
-app's nav draws from, not a page of its own.
+control - this is the feed agents read (`hatch changelog`), unchanged; no
+page of the app draws from it any more, since the Changelog report under
+Reports reads `/reports/changelog` instead.
 
 **Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
