@@ -255,7 +255,9 @@ hatch changelog [--days <n>] [--before <date>] [--project <KEY>] [--json]
 
 What shipped, as markdown: a heading per day, a bullet per feature carrying how
 much shipped beneath it, and an *Also* list of that day's fixes. A window with
-nothing in it prints one sentence saying so. It writes nothing.
+nothing in it prints one sentence saying so. It writes nothing. This is the
+agent-facing feed, unchanged; the web view is the Changelog report under
+Reports.
 
 - `--days <n>` is the newest *n* days that shipped something, not the last *n*
   calendar days. Seven by default.
