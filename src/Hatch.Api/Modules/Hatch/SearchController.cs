@@ -219,6 +219,8 @@ public class SearchController(
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
+            var omittedRunnersOwn = priorities.OwnOmittedRunners(i.Id);
+            var omittedRunners = priorities.EffectiveOmittedRunners(i.Id);
 
             // The same card /issues answers, built the same way - a hit that read
             // one way here and another on the board is the divergence
@@ -245,6 +247,8 @@ public class SearchController(
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
+                OmittedRunnersOwn: omittedRunnersOwn,
+                OmittedRunners: omittedRunners,
                 PriorityFrom: effectiveFrom,
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),

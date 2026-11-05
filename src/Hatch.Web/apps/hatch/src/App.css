@@ -3154,6 +3154,51 @@ input.hatch-inline-title-input {
   font-size: var(--t-small);
 }
 
+/* The omitted-runners section: one row per runner, wrapping so a long reason
+   drops under the name rather than pushing the Lift button off a narrow
+   screen, then the add form, whose inputs share the line until they cannot. */
+.hatch-omissions {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.hatch-omission {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.hatch-omission-add-heading {
+  margin: 0;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.hatch-omission-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.hatch-omission-add input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.hatch-omission-refusal {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--danger);
+}
+
 .hatch-comment {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-3);

@@ -511,6 +511,30 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public Task<IssueDto?> SetDangerousAsync(string key, string reason, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/dangerous", new DangerousRequest(reason), ct);
 
+    /// <summary>Omits a runner from the issue, with the reason; the answer is the issue with its omitted runners as they now stand.</summary>
+    public Task<IssueDto?> OmitRunnerAsync(string key, string runner, string reason, CancellationToken ct) =>
+        Client.WriteAsync<IssueDto>(
+            HttpMethod.Put, $"/api/hatch/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}", new OmitRunnerRequest(reason), ct);
+
+    /// <summary>
+    /// Lifts the issue's own omission of a runner. Not <c>WriteAsync</c>:
+    /// that turns every <c>404</c> into the fixed "no such issue or route" and drops the
+    /// body, which is where the API says an omission is inherited from an ancestor. A
+    /// <c>404</c> with a body is therefore a refusal sentence to print, not a fault; an
+    /// empty-bodied one (an unknown issue) still throws.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? Refusal)> LiftOmissionAsync(string key, string runner, CancellationToken ct)
+    {
+        var path = $"/api/hatch/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}";
+        var answer = await Client.Send(HttpMethod.Delete, path, null, ct);
+
+        if (answer.Status == System.Net.HttpStatusCode.NotFound && answer.Body.Trim().Length > 0) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
     /// <summary>Declares the issue finished with no code, with the reason; an empty reason clears the declaration.</summary>
     public Task<IssueDto?> SetNoCodeAsync(string key, string reason, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/no-code", new NoCodeRequest(reason), ct);

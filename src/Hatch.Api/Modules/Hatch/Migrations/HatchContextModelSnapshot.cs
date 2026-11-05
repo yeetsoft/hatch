@@ -517,6 +517,31 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("IssueEvents", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssueRunnerOmission", b =>
+                {
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RunnerName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("By")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.HasKey("IssueId", "RunnerName");
+
+                    b.ToTable("IssueRunnerOmissions", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLanding", b =>
                 {
                     b.Property<long>("Id")
@@ -1738,6 +1763,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssueRunnerOmission", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany("RunnerOmissions")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLanding", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
@@ -1928,6 +1964,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Landings");
 
                     b.Navigation("MergeChecks");
+
+                    b.Navigation("RunnerOmissions");
 
                     b.Navigation("Verdicts");
 

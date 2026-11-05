@@ -65,12 +65,19 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// A ticket that runner let go of last is folded for it - and only for it
     /// - while some other live runner could take the ticket; see
     /// <see cref="LetGo.By"/>. Null, every caller before this one, folds
-    /// nothing.
+    /// nothing. Its name also keeps a ticket omitted from that runner off its
+    /// rows, see <see cref="OmissionFold"/>.
+    /// </param>
+    /// <param name="foldLetGo">
+    /// False for a scan that names <paramref name="asking"/> only so the
+    /// omission fold can read that runner's own omissions: the let-go deferral
+    /// is not applied, so a peer's scan never starts peer scans of its own.
     /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
-        TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null)
+        TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
+        bool foldLetGo = true)
     {
         tags ??= TagDeclaration.Unjudged;
 
@@ -267,7 +274,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         // The tickets this runner let go of last, with nothing since to clear
         // the record. Only a caller that named itself pays the query.
-        var letGoBy = asking is null ? [] : await LetGo.ByAsync(db, asking.Name, ct);
+        var letGoBy = asking is null || !foldLetGo ? [] : await LetGo.ByAsync(db, asking.Name, ct);
         PeerScans? peers = null;
 
         // Unconditional on the implementation column existing - nothing as cheap
@@ -330,7 +337,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing, projectRepoSourced, tags: tags, projects: projects);
+                        landing, projectRepoSourced, tags: tags, projects: projects, asking: asking);
 
                     var blocked = blocking.Sentence;
                     var kind = blocking.Kind;
@@ -409,6 +416,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
                 || (tags.RefusesDangerous && candidates.Any(i => tree.EffectiveDangerous(i.Id).Reason is not null))
                 || projects is { Count: > 0 }
+                || (asking is not null && candidates.Any(i => tree.EffectiveOmittedRunners(i.Id).Any(o => o.Runner == asking.Name)))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
                 : rows;
             var dead = Deadlocks.Find(whole);
@@ -518,7 +526,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         var scan = await ScanAsync(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
-            tags: declared.Tags, projects: declared.Projects);
+            tags: declared.Tags, projects: declared.Projects,
+            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -743,6 +752,28 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         return columnTags.Count > 0
             ? $"{key} in {from.Name} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}"
             : $"{key} is worked only by a runner advertising {Listed(required)} - this runner advertises {has}";
+    }
+
+    /// <summary>
+    /// Why this caller's runner is not the one for the issue: the issue's own
+    /// omissions or an ancestor's name it. The sentence says who omitted it and
+    /// where - "recused itself" when the omission was the runner's own, and
+    /// " on {key}" when it was inherited. Null for a caller that named no runner.
+    /// </summary>
+    private static string? OmissionFold(EfHatchIssue issue, DependencyGate gate, string? runner, DateTimeOffset now)
+    {
+        if (runner is null) return null;
+        var omission = gate.EffectiveOmittedRunners(issue.Id)
+            .FirstOrDefault(o => string.Equals(o.Runner, runner, StringComparison.Ordinal));
+        if (omission is null) return null;
+
+        var key = IssueKey.Format(issue.Project!.Key, issue.Number);
+        var ago = Minutes((int)(now - omission.At).TotalSeconds);
+        var prefix = string.Equals(omission.By, runner, StringComparison.Ordinal)
+            ? "it recused itself" : $"{omission.By} omitted it";
+        var fromPart = omission.FromKey is null ? "" : $" on {omission.FromKey}";
+        var reasonPart = string.IsNullOrEmpty(omission.Reason) ? "" : $" ({omission.Reason})";
+        return $"{key} is not worked by {runner} - {prefix}{fromPart} {ago} ago{reasonPart}";
     }
 
     /// <summary>
@@ -1114,6 +1145,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// or tag sentence about a project this runner does not drive would
     /// mislead, so the project fold runs first.
     /// </param>
+    /// <param name="asking">
+    /// The runner the caller is answering for, by name, or null for a caller
+    /// that named none - see <see cref="OmissionFold"/>. Only its name is read
+    /// here.
+    /// </param>
     public static string? Blocked(
         EfHatchIssue issue,
         EfHatchStatus from,
@@ -1140,11 +1176,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
-        IReadOnlyList<string>? projects = null) =>
+        IReadOnlyList<string>? projects = null,
+        RunnerAsking? asking = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
-            repoSourced, tags, projects).Sentence;
+            repoSourced, tags, projects, asking).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -1179,7 +1216,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
-        IReadOnlyList<string>? projects = null)
+        IReadOnlyList<string>? projects = null,
+        RunnerAsking? asking = null)
     {
         var hop = hopKind is not null;
 
@@ -1342,6 +1380,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var reviewIdle = conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is not null;
         if (!reviewIdle && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
+
+        // Beside the tag fold, for the same reasons: every move, hops included,
+        // and not on an idle review self-move the review judge folds itself.
+        if (!reviewIdle && OmissionFold(issue, gate, asking?.Name, claimed.Now) is { } omissionBlock)
+            return new Blocking(omissionBlock, BlockedKinds.Other);
 
         // After the tag fold, so a runner that is wrong on both hears about the
         // tags; before the dependencies, which it cannot be asked to wait on.
@@ -2074,16 +2117,22 @@ public sealed class PriorityTree
     // beside _rows rather than widening its tuple, as _runnerTags is.
     private readonly Dictionary<long, string?> _dangerous;
 
+    // Each issue's own runner omissions - one-to-many, so loaded by a second
+    // query rather than riding the single-row projection _dangerous does.
+    private readonly Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>> _omissions;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
         Dictionary<long, (IReadOnlyList<string>, IReadOnlyList<string>)>? runnerTags = null,
-        Dictionary<long, string?>? dangerous = null)
+        Dictionary<long, string?>? dangerous = null,
+        Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>>? omissions = null)
     {
         _rows = rows;
         _onePr = onePr ?? new();
         _runnerTags = runnerTags ?? new();
         _dangerous = dangerous ?? new();
+        _omissions = omissions ?? new();
     }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
@@ -2098,13 +2147,23 @@ public sealed class PriorityTree
             })
             .ToListAsync(ct);
 
+        var omissionRows = await db.RunnerOmissions.AsNoTracking()
+            .Select(o => new { o.IssueId, o.RunnerName, o.Reason, o.By, o.At })
+            .ToListAsync(ct);
+
         return new PriorityTree(
             rows.ToDictionary(
                 r => r.Id,
                 r => ((long?)r.ParentId, IssueKey.Format(r.ProjectKey, r.Number), r.Priority, r.PreApproval)),
             rows.ToDictionary(r => r.Id, r => (r.Type, r.OnePullRequest, r.ProjectOnePr, r.StatusId, r.HasPr, r.Terminal)),
             rows.ToDictionary(r => r.Id, r => ((IReadOnlyList<string>)RunnerTagColumn.Read(r.RunnerTags), (IReadOnlyList<string>)RunnerTagColumn.Read(r.ProjectRunnerTags))),
-            rows.ToDictionary(r => r.Id, r => r.Dangerous));
+            rows.ToDictionary(r => r.Id, r => r.Dangerous),
+            omissionRows
+                .GroupBy(o => o.IssueId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>)
+                        g.Select(o => (o.RunnerName, o.Reason, o.By, o.At)).ToList()));
     }
 
     internal bool TryGet(long id, out (long? ParentId, string Key, int Priority, int PreApproval) row) => _rows.TryGetValue(id, out row);
@@ -2201,6 +2260,57 @@ public sealed class PriorityTree
         }
 
         return (all, from);
+    }
+
+    /// <summary>
+    /// The runners this issue's own rows omit, by runner name (ordinal) for a
+    /// stable read. Empty where it has none; <c>FromKey</c> is always null.
+    /// </summary>
+    public IReadOnlyList<RunnerOmissionDto> OwnOmittedRunners(long issueId)
+    {
+        if (!_omissions.TryGetValue(issueId, out var own)) return [];
+
+        return own
+            .OrderBy(x => x.Runner, StringComparer.Ordinal)
+            .Select(x => new RunnerOmissionDto(x.Runner, x.Reason, x.By, x.At, null))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The runners omitted on this issue: each ancestor's own rows root-most
+    /// first, then the issue's own, deduplicated by runner name (ordinal) so
+    /// the root-most contributor wins. <c>FromKey</c> is null for an entry the
+    /// issue itself carries, else the ancestor's key.
+    /// </summary>
+    public IReadOnlyList<RunnerOmissionDto> EffectiveOmittedRunners(long issueId)
+    {
+        var seen = new HashSet<long>();
+        var chain = new List<long>();
+        long? at = issueId;
+
+        while (at is { } id && seen.Add(id))
+        {
+            chain.Add(id);
+            at = TryGet(id, out var found) ? found.ParentId : null;
+        }
+
+        chain.Reverse();
+
+        var all = new List<RunnerOmissionDto>();
+        var has = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var id in chain)
+        {
+            if (!_omissions.TryGetValue(id, out var own)) continue;
+
+            var fromKey = id == issueId ? null : TryGet(id, out var row) ? row.Key : null;
+
+            foreach (var o in own.OrderBy(x => x.Runner, StringComparer.Ordinal))
+                if (has.Add(o.Runner))
+                    all.Add(new RunnerOmissionDto(o.Runner, o.Reason, o.By, o.At, fromKey));
+        }
+
+        return all;
     }
 
     /// <summary>
@@ -2456,6 +2566,12 @@ public sealed class DependencyGate
 
     /// <summary>The dangerous reason live on this issue - see <see cref="PriorityTree.EffectiveDangerous"/>.</summary>
     public (string? Reason, string? FromKey) EffectiveDangerous(long issueId) => _tree.EffectiveDangerous(issueId);
+
+    /// <summary>The runners this issue's own rows omit - see <see cref="PriorityTree.OwnOmittedRunners"/>.</summary>
+    public IReadOnlyList<RunnerOmissionDto> OwnOmittedRunners(long issueId) => _tree.OwnOmittedRunners(issueId);
+
+    /// <summary>The runners omitted on this issue - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</summary>
+    public IReadOnlyList<RunnerOmissionDto> EffectiveOmittedRunners(long issueId) => _tree.EffectiveOmittedRunners(issueId);
 
     /// <summary>The story or bug whose pull request this task is waiting on, or null - see <see cref="PriorityTree.WaitingOn"/>.</summary>
     public string? WaitingOn(long issueId, List<EfHatchStatus> statuses) => _tree.WaitingOn(issueId, statuses);

@@ -2030,6 +2030,19 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task LetGo_StopsAtARecusedRelease()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped, recused, then dropped once", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Recused);
+        await Released(h, issue, Now.AddMinutes(2), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
     public async Task LetGo_StopsAtAStatusChange()
     {
         var h = await NewAsync();
@@ -2122,6 +2135,27 @@ public class WorkControllerTests
 
         Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: b)).Issue.Key);
         Assert.IsType<NoContentResult>((await h.Work.GetNextWork(runner: a)).Result);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerOmittedFromTheTicket_IsNotOneThatCouldTakeIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, b);
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issue.Id, RunnerName = b, By = "operator", At = Now.AddMinutes(-3) });
+        await h.Db.SaveChangesAsync();
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        // A third live runner that is not omitted could take it, so A defers again.
+        await AddLoopRunnerAsync(h, RunnerName());
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
     [Fact]
@@ -2279,6 +2313,70 @@ public class WorkControllerTests
 
         Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
         Assert.Equal(DeferralSentence(b, 3), Only(await h.Work.GetQueue(runner: b)).Blocked);
+    }
+
+    // ---- Omitted runners on a named dispatch and a hop ----
+
+    private static async Task OmitAsync(Harness h, EfHatchIssue issue, string runner, string by, string? reason = null)
+    {
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issue.Id, RunnerName = runner, By = by, At = Now.AddMinutes(-3), Reason = reason });
+        await h.Db.SaveChangesAsync();
+    }
+
+    private static string OmissionSentence(EfHatchIssue issue, string runner, string prefix = "operator omitted it") =>
+        $"{Key(issue)} is not worked by {runner} - {prefix} 3 minutes ago";
+
+    [Fact]
+    public async Task GetWork_WithRunner_FoldsAnIssueOmittedForIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "omitted for A", h.Todo);
+        var a = RunnerName();
+        await OmitAsync(h, issue, a, by: "operator");
+
+        Assert.Equal(OmissionSentence(issue, a), Value(await h.Work.GetWork(Key(issue), runner: a)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: RunnerName())).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue))).Blocked);
+
+        var own = await h.FileAsync("task", "recused by A", h.Todo);
+        await OmitAsync(h, own, a, by: a);
+        Assert.Equal(OmissionSentence(own, a, "it recused itself"), Value(await h.Work.GetWork(Key(own), runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_WithRunner_OmittedForIt_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var a = RunnerName();
+        await OmitAsync(h, issue, a, by: "operator");
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default, runner: a);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(OmissionSentence(issue, a), response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+
+        var other = await h.Work.HopWork(Key(issue), null, null, null, default, runner: RunnerName());
+        Assert.Equal(h.InProgress, Value(other).StatusId);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_FoldsAnOmittedIssueWithNoRunnerParameter()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "omitted for A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await OmitAsync(h, issue, a, by: "operator");
+
+        var forA = Only(await h.Work.GetQueue(asRunner: a));
+        Assert.Equal(OmissionSentence(issue, a), forA.Blocked);
+        Assert.Equal(BlockedKinds.Other, forA.BlockedKind);
+        Assert.Null(Only(await h.Work.GetQueue()).Blocked);
     }
 
     // ---- HA-395: whether the last move was a send-back, carried to the next session ----

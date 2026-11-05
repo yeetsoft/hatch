@@ -182,6 +182,8 @@ public static class IssueProjection
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(issue.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(issue.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(issue.Id);
+            var omittedRunnersOwn = priorities.OwnOmittedRunners(issue.Id);
+            var omittedRunners = priorities.EffectiveOmittedRunners(issue.Id);
 
             MergeWorkDto? mergeWork = null;
             if (issue.StatusId == mergesId)
@@ -252,7 +254,9 @@ public static class IssueProjection
                 dangerous,
                 dangerousFrom,
                 issue.NoCode,
-                issue.NoCodeAt);
+                issue.NoCodeAt,
+                omittedRunnersOwn,
+                omittedRunners);
         });
     }
 

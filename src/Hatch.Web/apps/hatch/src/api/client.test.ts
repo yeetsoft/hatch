@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Runner, Status } from '../types';
-import { getChangelogReport, orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
+import type { Issue, Runner, Status } from '../types';
+import { getChangelogReport, liftRunnerOmission, omitRunner, orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
 
 const status: Status = {
   id: 7,
@@ -67,6 +67,46 @@ describe('runner orders', () => {
       '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('omitRunner', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PUTs the reason, escaping a slash in the runner name', async () => {
+    const issue = { key: 'HA-12' } as Issue;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(issue), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await omitRunner('HA-12', 'host:/checkouts/one', { reason: 'too risky' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      expect.objectContaining({ method: 'PUT', body: '{"reason":"too risky"}' }),
+    );
+    expect(result).toEqual(issue);
+  });
+});
+
+describe('liftRunnerOmission', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('DELETEs the omission, escaping a slash in the runner name', async () => {
+    const issue = { key: 'HA-12' } as Issue;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(issue), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await liftRunnerOmission('HA-12', 'host:/checkouts/one');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(result).toEqual(issue);
   });
 });
 

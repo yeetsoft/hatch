@@ -544,6 +544,12 @@ public class AdminSurfaceTests
         // note of the ticket it is working and no other. IssueReleaseNoteController.
         "IssueReleaseNoteController.PutIssueReleaseNote",
 
+        // Which runners are left out of an issue's subtree, and why - a statement
+        // about the ticket that narrows who runs it, open to a key for the same
+        // reason runner-tags is. IssueRunnerOmissionsController.
+        "IssueRunnerOmissionsController.DeleteOmittedRunner",
+        "IssueRunnerOmissionsController.PutOmittedRunner",
+
         // Holding and resuming a ticket - an agent that could hold its own
         // ticket could park it off the board for the night. Stalling is the
         // other write IssueStallController makes, and it is open to a key on

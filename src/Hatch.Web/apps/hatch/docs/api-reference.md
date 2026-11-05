@@ -258,6 +258,8 @@ not mint an issue number - try again".
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
+| omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
+| omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
@@ -266,12 +268,12 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
 filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
-dangerous is the same kind of statement; no-code
+dangerous is the same kind of statement, and so is omitted-runners; no-code
 is a statement of fact about the work, with the same reach as recording a pull
 request through `PATCH`, which is also key-open; landing
 is a fact a session or a poll reports about a repository and a sha, not a
@@ -291,7 +293,8 @@ two-level alias. `PreApprovalRequest(Level)` takes one of `none`, `express`,
 `OnePrRequest(Value)` takes `on`, `off` or `inherit`.
 `IssueRunnerTagsWriteRequest(Tags)` is the whole list, replaced; trimmed,
 lower-cased and deduplicated, at most 8 tags of at most 32 characters, none
-with a space or comma. `ReleaseNoteRequest`
+with a space or comma. `OmitRunnerRequest(Reason)` is an optional reason,
+trimmed, at most 200 characters; null or blank stores none. `ReleaseNoteRequest`
 is an optional `Note` plus the query parameter `heldToken` (a guid, program
 callers only) - null or blank clears it. `StallRequest(Why)` is one line,
 truncated. `HoldRequest(Held)` is a boolean. `IssuePlaybookRequest(Model?,
@@ -309,7 +312,11 @@ a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one
 over 200 characters after trimming; `404` for no such key; re-sending the reason
-it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
+it already holds writes nothing. `omitted-runners` 400s a blank runner name,
+one over the runner-name limit, and a reason over 200 characters after
+trimming; `404` for no such key, and on DELETE for an omission the ticket
+does not carry itself, naming the ancestor when one does; re-sending the
+reason it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
 clear) and one over 200 characters after trimming, 409s while a pull request is
 recorded or a counted merge check found a branch, and `404` for no such key;
 re-sending the reason it already holds writes nothing. A later branch-finding
@@ -490,11 +497,11 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out |
 | GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next` |
-| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags included |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next`; `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
+| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
@@ -574,7 +581,7 @@ reason }` - `error` the sentence a person reads, `reason` one of `quiet`
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted` - and an optional
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused` - and an optional
 `reason` - only `quiet` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either

@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-five tables.
+/// migration history, twenty-six tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -26,6 +26,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchPlaybookProposalChange> PlaybookProposalChanges => Set<EfHatchPlaybookProposalChange>();
     public DbSet<EfHatchWipLimit> WipLimits => Set<EfHatchWipLimit>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
+    public DbSet<EfHatchIssueRunnerOmission> RunnerOmissions => Set<EfHatchIssueRunnerOmission>();
     public DbSet<EfHatchDreamThread> DreamThreads => Set<EfHatchDreamThread>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
@@ -249,6 +250,17 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(t => t.Issue)
                 .WithMany()
                 .HasForeignKey(t => t.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cascade: an omission means nothing once the issue it names is gone.
+        modelBuilder.Entity<EfHatchIssueRunnerOmission>(e =>
+        {
+            e.HasKey(o => new { o.IssueId, o.RunnerName });
+
+            e.HasOne(o => o.Issue)
+                .WithMany(i => i.RunnerOmissions)
+                .HasForeignKey(o => o.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

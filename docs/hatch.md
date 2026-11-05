@@ -1266,6 +1266,53 @@ that applies - its own, else the nearest flagged ancestor's, else null; and
 own or there is none. The issue, the card list, search and the board all
 carry them. Nothing acts on the flag yet.
 
+#### Omitted runners
+
+**A runner an issue - and everything beneath it - is closed to.**
+`EfHatchIssueRunnerOmission` is a child table, `IssueRunnerOmissions`, keyed
+on `(IssueId, RunnerName)` and cascade-deleted with the issue, not a jsonb
+column the way [runner tags](#runner-tags) are: a list replaced whole would
+lose the who-and-when of the entries it did not touch. Each row carries a
+`Reason` (nullable, at most 200 characters after the trim), the actor name
+that set it (`By`), and when (`At`); the runner is named by the same name
+the `Runners` table is keyed on. Written through `PUT
+/issues/{key}/omitted-runners/{runner}`
+(`IssueRunnerOmissionsController.PutOmittedRunner`) with `{ reason }`, and
+lifted through `DELETE` on the same path (`DeleteOmittedRunner`), open to a
+key the same way [runner tags](#runner-tags) and [dangerous](#dangerous)
+are: a statement about which runner may pick the ticket up, not a power
+over the board, so no type restriction, claim gate or lock. Both answer the
+`IssueDto`. The runner name and the reason are trimmed; an absent or blank
+reason is stored as none - but unlike `dangerous`, the `DELETE` route, not
+an empty reason, is how an omission goes. A blank runner name or one over
+`EfHatchRunner.MaxNameLength` is `400`, as is a reason over 200 characters.
+An unknown issue is `404`; on `DELETE`, so is a runner the issue does not
+itself omit, naming the ancestor that carries it instead - *"HA-1 has no own
+omission for \"x\" - it is inherited from HA-0"* - where only an ancestor
+carries it, since lifting it is that ancestor's to do. A repeat `PUT` with
+the same runner and the same reason writes nothing and leaves `UpdatedAt`
+alone; a changed reason rewrites `Reason`, `By` and `At`.
+
+**Written or lifted, the change is carried as an event, and the runners
+actually closed are a union, not an override.** A write lands
+`runner_omitted` with `{ runner, reason, from }` - `from` the previous
+reason, null on a first omission - and a lift lands
+`runner_omission_lifted` with `{ runner }`; both set `UpdatedAt` and name
+the caller as actor. `PriorityTree.EffectiveOmittedRunners` walks ancestors
+root-most first, then the issue's own, deduplicating by runner name so the
+root-most contributor wins - the same shape as
+[`EffectiveRunnerTags`](#runner-tags), and union rather than
+nearest-ancestor-wins for the reason priority and pre-approval are not: an
+omission only ever narrows who may run a ticket, so a child must not widen
+what its parent already said - a runner recused from an epic for a toolchain
+it lacks must not be handed one of its stories. A card or an issue carries
+two fields: `omittedRunnersOwn` is the issue's own rows, ordered by runner
+name, `fromKey` always null; `omittedRunners` is the union just described,
+each entry a `RunnerOmissionDto(Runner, Reason, By, At, FromKey)` with
+`fromKey` null for the issue's own. The issue, the card list and search
+carry both. The dispatcher folds a ticket omitted for the runner that asks -
+see [the dispatcher](#the-dispatcher), item 10.
+
 #### Stories at once
 
 **One epic's own ceiling on how many of its stories run at once.** `WipLimit`
@@ -2105,16 +2152,20 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked` or `preempted` — absent is accepted
-exactly as it always has been, which covers the pick's own release, a restart,
-and an older CLI, and a value that is none of the three is `400`. It is read
-only where a token is given: the operator's tokenless clobber names no
-increment to have an outcome. The `claim_released` event carries it, and it is
-what `letGo` counts (see [Comment, question and answer](#comment-question-and-answer))
-— except `preempted`, which it skips over, neither counted nor resetting the
-count: the board itself ordered that put-down, not a choice the increment
-made, and the runner's own account of what it pushed lands as its own comment,
-not as a dropped increment.
+an optional `outcome`, `dropped`, `worked`, `preempted` or `recused` — absent
+is accepted exactly as it always has been, which covers the pick's own
+release, a restart, and an older CLI, and a value that is none of the four is
+`400`. It is read only where a token is given: the operator's tokenless
+clobber names no increment to have an outcome. The `claim_released` event
+carries it, and it is what `letGo` counts (see [Comment, question and
+answer](#comment-question-and-answer)) — except `preempted`, which it skips
+over, neither counted nor resetting the count: the board itself ordered that
+put-down, not a choice the increment made, and the runner's own account of
+what it pushed lands as its own comment, not as a dropped increment.
+`recused` is skipped the other way: it *stops* the count exactly as `worked`
+does, because the session's own `hatch recuse` is the decision, and the
+omission — not the let-go count — is what folds the ticket; a recusal never
+raises the let-go fold on its own.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -2673,13 +2724,13 @@ because of economy's or low's own pace.
 
 **`letGo` counts a ticket's trailing dropped increments, and is what the stall
 mark's resume limit is measured against.** A runner's release
-may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped` or
-`&outcome=worked` (see [Claim](#claim)) — and `letGo` on `work/{key}`,
-`work/next` and a queue row is this issue's releases, newest first, whose
-outcome was `dropped`, counted back to the first of: a release whose outcome
-was `worked`, a `status_changed`, a `resumed` event (a person's *Resume now*),
-or an `answered` event written by a person. A `held` event is stepped over:
-holding is not resuming.
+may say how the increment ended — `DELETE …/claim?token=…&outcome=dropped`,
+`&outcome=worked` or `&outcome=recused` (see [Claim](#claim)) — and `letGo` on
+`work/{key}`, `work/next` and a queue row is this issue's releases, newest
+first, whose outcome was `dropped`, counted back to the first of: a release
+whose outcome was `worked` or `recused`, a `status_changed`, a `resumed` event
+(a person's *Resume now*), or an `answered` event written by a person. A
+`held` event is stepped over: holding is not resuming.
 A release with no outcome is skipped over — it neither counts nor stops the
 count, which is what keeps an older CLI's releases, a restart, and the pick's
 own release from reading as a string of drops. `0` on a client too old to
@@ -3334,13 +3385,15 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
 | `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
+| `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Omitted runners](#omitted-runners). The runner name may carry a slash the same way `/runners/{name}` does — escaped to `%2F` in the route, decoded once here before it is trimmed. Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
+| `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
 | `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the claim's own runner row only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
-| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped` or `worked`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is neither is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
+| `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
 | `/issues/{key}/pull-request-state` | PUT | Keeps what the forge last said of the pull request recorded on an issue: its merge state (`clean`, `blocked`, `behind`, `dirty`, `unstable`, `draft` or `unknown`) and its review decision (`none`, `approved`, `changes-requested` or `review-required`), with the head sha it was read at and when. `{ url, headSha, mergeState, reviewDecision, runner }`; answers `204`. Refused, in a sentence, with `409` for an issue with no pull request recorded or a `url` that is not the recorded one, and `400` for a merge state or review decision outside those lists, an empty head sha, or one longer than a sha can be; `404` on an unknown key. The column is not checked, and `runner` is neither checked nor kept. The board stores them; `MergeWork.Judge` reads the merge state and head sha (see [the merge column's judge list](#the-approval-column)) and nothing else on the server does, and the review decision is read by nothing. A read that repeats the stored merge state, review decision and head sha writes no event and refreshes only when it was read |
@@ -3348,10 +3401,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/questions` | GET | Every open question in the house |
 | `/search` | GET | `q`, `projectId`, `type`, `statusId`, `createdFrom`, `createdTo`, `closedFrom`, `closedTo`, `limit` (50, max 200), `offset`, all optional and ANDed — see [Search](#search). Done issues are included by default; `statusId` narrows to one column |
 | `/plan`, `/plan/{key}` | GET | See [the level above the board](#the-level-above-the-board) |
-| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
-| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
-| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. The same `?runner=` also folds a ticket that runner is [omitted](#omitted-runners) from, its own or an ancestor's — see [the dispatcher](#the-dispatcher). Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
+| `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
+| `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -4593,7 +4646,7 @@ An override changes what a dispatch costs and never whether one happens.
 Nothing in the refusals below consults one: an issue with no playbook for its
 next move is refused in the same sentence whether it names a model or not.
 
-**Fourteen refusals**, and two of them are rules of the whole loop rather than
+**Fifteen refusals**, and two of them are rules of the whole loop rather than
 missing configuration:
 
 1. The issue is already in a terminal column — there is nothing after it.
@@ -4649,7 +4702,26 @@ missing configuration:
    kind `other`. Named by the column only when that column's own tags are part
    of why it folded: *"AER-12 in Breakdown is worked only by a runner
    advertising gpu - this runner advertises none"*. Waits on nobody.
-10. The issue is flagged dangerous, on its own row or by inheritance from the
+10. The caller's runner is [omitted](#omitted-runners) from the issue, on its
+    own row or inherited from an ancestor's (the two are a union), and the
+    caller sent `?runner=<name>`: somebody said this runner is not to work it.
+    On every move a runner is handed, in every column and on every hop, and
+    never a review row the verdict below already folds - the same reach as the
+    runner-tag item above. It asks nothing of the column, and is not gated on
+    the implementation column. Two sentence shapes, by who said it: *"HA-9 is
+    not worked by gpu-1 - it recused itself 3 minutes ago (no toolchain)"*
+    where the omission's own author is the runner asked about, and *"HA-9 is
+    not worked by gpu-1 - operator omitted it 3 minutes ago (no toolchain)"*
+    where somebody else wrote it. An omission inherited from an ancestor adds
+    where it was set - *"HA-9 is not worked by gpu-1 - operator omitted it on
+    HA-2 3 minutes ago (no toolchain)"* - and the parenthesised reason is left
+    off where there is none. Kind `other`. Waits on nobody. It reads `?runner=`
+    (and `?asRunner=` on the queue, which wins where both are sent) the way the
+    let-go fold in [what a pass skipped](#what-a-pass-skipped) does, but on all
+    four routes: `work/next`, `work/queue`, `work/{key}` and a hop. A name
+    matching no runner is fine, and no `?runner=` folds nothing. Said after the
+    runner-tag item and before the dangerous one.
+11. The issue is flagged dangerous, on its own row or by inheritance from the
     nearest flagged ancestor, and the caller sent `?dangerous=false`: the
     runner refuses dangerous work. On the same moves as the runner-tag item
     above that run the issue's code — out of the implementation column, and on
@@ -4662,7 +4734,7 @@ missing configuration:
     dangerous work"*, naming the issue asked about and the reason the flag
     carries, kind `other`. Waits on nobody. Said after the runner-tag item, so
     a runner wrong on both hears about the tags, and before the dependency.
-11. Something it [depends on](#dependency) is unfinished, and the move is into
+12. Something it [depends on](#dependency) is unfinished, and the move is into
     the column where the code gets written, or a parent pull (hop kind 4) out of
     a `ParentPulls` column. Only those moves: a pull request that already exists
     is not held back by what its ticket once waited on.
@@ -4673,18 +4745,18 @@ missing configuration:
     pull request. *"AER-12, sharing its parent's branch, is already in flight -
     one sibling at a time"*, kind `family`. See
     [one sibling at a time](#one-pull-request).
-12. The move is into the [WIP section](#wip), and the section has no room for
+13. The move is into the [WIP section](#wip), and the section has no room for
     it: the load — not counting this issue — is already at or over the limit.
     Said after the dependency, which needs other work to land, and before the
     verdict below, which needs nothing at all once a branch is clean — a full
     section needs other work to leave. The load is always the board's own,
     whatever `ancestorKey` narrows the candidates to.
-13. The move is into the WIP section, the issue's parent is an epic, and that
+14. The move is into the WIP section, the issue's parent is an epic, and that
     epic is at its own [limit](#an-epics-own-limit) — the load under it, not
     counting this issue, is already at or over its `WipLimit`. Said right
     after the section-wide check above, for the same reason: it too needs
     other work to leave before anything more of this epic is pulled in.
-14. It is in review and there is nothing for an agent to do on its branch: it
+15. It is in review and there is nothing for an agent to do on its branch: it
     neither conflicts with the trunk nor has a build that failed on its current
     tip — because it merges cleanly and its build passes, is still running, was
     not read on that tip or has no checks, because it has no branch on origin
@@ -5868,7 +5940,7 @@ the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
-runner tag it does not advertise, or a flagged-dangerous issue it refuses, among them: no new kind.
+runner tag it does not advertise, a ticket omitted for it, or a flagged-dangerous issue it refuses, among them: no new kind.
 
 **A ticket this runner let go of is folded for it while another could take
 it.** Send `?runner=<name>` (or `?asRunner=`) and a row whose newest claim
@@ -5877,6 +5949,16 @@ minutes ago, and another live runner could take it - it is left for them while
 one can`, kind `other`; every other runner's row is unchanged. See [A ticket a
 runner let go of](#the-dispatcher) for what counts as another runner that could
 take it. A name matching no row is fine, and no `runner` folds nothing.
+
+**A ticket omitted for this runner is folded for it too.** The same
+`?runner=<name>` (or `?asRunner=`) also folds a row the runner is
+[omitted](#omitted-runners) from, its own or an ancestor's: `HA-9 is not worked
+by gpu-1 - it recused itself 3 minutes ago (no toolchain)`, or `HA-9 is not
+worked by gpu-1 - operator omitted it on HA-2 3 minutes ago (no toolchain)` for somebody
+else's, kind `other`. Unlike the let-go fold it is not left to another runner -
+it holds whatever the others are doing - and `work/{key}` and a hop read
+`?runner=` for it as well, though neither runs the let-go fold. See item 10 of
+[the dispatcher](#the-dispatcher).
 
 **The rows arrive in the board's own order.** Rightmost column first, and
 within a column the `(rank, id)` that `GET /api/hatch/board` serves that column
@@ -5894,7 +5976,7 @@ Every fold therefore lives in one place and in one order, most fundamental
 first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
 assignee, an unanswered question, a repository this runner lacks, a runner tag the
-project asks for and this runner lacks, a flagged-dangerous issue a runner that
+project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
 refuses dangerous work was asked about, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
@@ -6991,11 +7073,13 @@ One pass, from the board to the release:
    at the tree in every checkout it entered and only then applies the verdict.
    For a conflict dispatch the runner then **checks the branch again**, before
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
+   After the session ends, the runner reads the issue once more — see [when an
+   increment does nothing](#when-an-increment-does-nothing) — to find a recusal.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
    so carries nothing, which is what `--quiet` is.
-7. **Release**, however the increment ended.
+7. **Release**, however the increment ended, `recused` included.
 
 **A refused heartbeat ends the increment.** The lease expired underneath the run,
 was taken over, or was cleared by the operator; the session is stopped rather
@@ -7733,6 +7817,20 @@ and not one of the three in a row that end a night, the same treatment a lost
 lease and a usage limit get and for the same reason: this is the loop working
 correctly on a busy board, not a broken increment. The very next pass finds
 the emergency issue at the top of the walk and picks it straight up.
+
+**Neither is a recusal.** A session that ran `hatch recuse` on its ticket - it
+found the work is one this runner cannot do - ends the increment as a
+recusal: no stall comment, no mark, no question. The loop reads the issue
+again after the session, the same fresh read [the claim](#claim) describes,
+and finds this runner newly among the ticket's own omitted runners; it prints
+one line - `hatch: {key} - {runner} recused itself ({reason}), going on to
+the next` - and releases the claim `recused`, which stops the `letGo` count
+rather than raising it: the omission, not the let-go fold, is what keeps the
+ticket off this runner. The night's tally lists it with the let-go ones, its
+own line reading `recused` rather than `let go`, and it is not one of the
+three failures that end a night - the same treatment a usage limit and a
+preemption get, and for the same reason: a runner refusing work it cannot do
+is the loop working correctly, not a broken increment.
 
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket
