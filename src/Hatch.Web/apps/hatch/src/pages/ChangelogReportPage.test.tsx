@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
 import { ChangelogReportBody } from './ChangelogReportPage';
 import { quietGapWords } from '../lib/changelogReport';
 import type {
@@ -180,5 +181,28 @@ describe('ChangelogReportBody', () => {
 
   it('heads each bucket with bucketLabel', () => {
     expect(render(report())).toContain('<h2>Wednesday, November 4, 2026</h2>');
+  });
+});
+
+describe('CopyMarkdownButton', () => {
+  /* The press path - the clipboard write, "Copied", a refusal - needs a DOM and
+     is covered by the driver check. */
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is not drawn where the clipboard API is not there', () => {
+    vi.stubGlobal('navigator', {});
+
+    expect(renderToStaticMarkup(<CopyMarkdownButton markdown="x" />)).not.toContain('Copy as Markdown');
+  });
+
+  it('is a button saying Copy as Markdown where it is', () => {
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn() } });
+
+    const html = renderToStaticMarkup(<CopyMarkdownButton markdown="x" />);
+
+    expect(html).toContain('<button');
+    expect(html).toContain('Copy as Markdown');
   });
 });
