@@ -238,7 +238,7 @@ export function parseDocPage(path: string, raw: string): DocPage {
     `/docs/...` address or inventing a body-less page type. The one place both
     DocsSidebar and the docs landing read it from, so neither can drift from
     the other. */
-export const CHANGELOG_LINK = { title: 'Changelog', to: '/changelog' } as const;
+export const CHANGELOG_LINK = { title: 'Changelog', to: '/reports/changelog' } as const;
 
 /** The order a reader sees sections in - the one place section order is written. */
 export const DOC_SECTIONS = [

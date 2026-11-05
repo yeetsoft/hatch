@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
 import { AttentionProvider } from './components/AttentionProvider';
@@ -33,7 +33,6 @@ import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { OvernightPage } from './pages/OvernightPage';
-import { ChangelogPage } from './pages/ChangelogPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -163,7 +162,7 @@ function AppShell() {
             <Route path="/playbooks" element={<PlaybooksPage />} />
             <Route path="/runners" element={<RunnersPage />} />
             <Route path="/overnight" element={<OvernightPage />} />
-            <Route path="/changelog" element={<ChangelogPage />} />
+            <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/issues/:key" element={<IssueRoute />} />
             <Route path="/import" element={<ImportPage />} />

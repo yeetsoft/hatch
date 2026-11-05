@@ -50,6 +50,11 @@ describe('NAV', () => {
       expect(routes).toContain(to);
     }
   });
+
+  it('redirects /changelog to the report, replacing the entry, with the old page gone', () => {
+    expect(appSource).toContain('<Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />');
+    expect(appSource).not.toContain('ChangelogPage');
+  });
 });
 
 describe('the bar', () => {
