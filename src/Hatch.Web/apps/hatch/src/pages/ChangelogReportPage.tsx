@@ -2,10 +2,12 @@ import { Fragment, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Card, EmptyState, Grid, PageHeader, ProjectMark, markVars } from '@hatch/ui';
 import { getChangelogReport, getProjects } from '../api/client';
+import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
 import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { ReportWindowControls } from '../components/ReportWindowControls';
 import { TypeGlyph } from '../components/TypeGlyph';
+import { fullHref } from '../lib/basename';
 import { fixLine } from '../lib/changelog';
 import {
   BUCKET,
@@ -21,6 +23,7 @@ import {
   withLoose,
   type ReportBucketSize,
 } from '../lib/changelogReport';
+import { changelogMarkdown } from '../lib/changelogMarkdown';
 import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { resolveProjects, withProjects } from '../lib/timeline';
@@ -226,6 +229,13 @@ export function ChangelogReportPage() {
   const level = resolveLevel(params);
   const loose = resolveLoose(params);
 
+  // The paste reaches the board the reader was on, on either hostname: the
+  // links are built from the page's own location, as Copy link is.
+  const markdown = changelogMarkdown(data.report, {
+    bucketLabel: (start) => bucketLabel(start, data.report.bucket as ReportBucketSize, offsetMinutes),
+    issueUrl: (key) => fullHref(window.location.origin, window.location.pathname, '/issues/' + key),
+  });
+
   return (
     <div className="hatch-page">
       <PageHeader
@@ -288,6 +298,7 @@ export function ChangelogReportPage() {
                 onChange={(value) => setParams(withLoose(params, value === 'on'), { replace: true })}
               />
             </div>
+            <CopyMarkdownButton markdown={markdown} />
           </>
         }
       />
