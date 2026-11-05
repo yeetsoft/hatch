@@ -219,6 +219,17 @@ to the address bar, leaving out what is still its default, so the address can
 be sent to somebody and opens on the same answer, and Back is not walked
 through each change.
 
+**Copy as Markdown**, beside the controls, puts the whole loaded answer on the
+clipboard - a `##` heading per bucket; at epic level a bullet per epic, its key
+a link, its title and how much sat beneath; at story level a bullet per epic,
+`(completed)` where it closed there, with its stories nested beneath. With
+**Loose** on, an `Also landed` heading, a `###` under its bucket, and a bullet
+per entry, an emergency one marked **Emergency**. Each key links to the issue
+on the Hatch the reader was on, and a quiet gap is left out. A window in which
+nothing landed pastes the same words the page shows. The button is not drawn
+where the browser has no clipboard access, and a copy the browser refuses is
+said so on the button itself.
+
 ## History and the work log
 
 These are two different things. **Track → History** is every event across
