@@ -233,11 +233,11 @@ export function parseDocPage(path: string, raw: string): DocPage {
   };
 }
 
-/** Reference's own first entry, ahead of every real DocPage there: a route, not
-    a markdown file, so it cannot become a DocPage without also living at a
-    `/docs/...` address or inventing a body-less page type. The one place both
-    DocsSidebar and the docs landing read it from, so neither can drift from
-    the other. */
+/** Reference's own first entry, ahead of every real DocPage there: a route (the
+    Changelog report), not a markdown file, so it cannot become a DocPage
+    without also living at a `/docs/...` address or inventing a body-less page
+    type. The one place both DocsSidebar and the docs landing read it from, so
+    neither can drift from the other. */
 export const CHANGELOG_LINK = { title: 'Changelog', to: '/reports/changelog' } as const;
 
 /** The order a reader sees sections in - the one place section order is written. */
