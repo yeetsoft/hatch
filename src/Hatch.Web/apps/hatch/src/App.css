@@ -5780,14 +5780,14 @@ button.hatch-option.chosen {
    and filter strips are about 800px of actions between them, and PageHeader
    makes its actions flex: none on a header that does not wrap, so from a phone
    up to a wide desktop the description was squeezed to a sliver or the actions
-   ran off the page. The titles keep a floor of 20rem; when the actions do not
+   ran off the page. The titles keep a floor of half the prose measure (20rem); when the actions do not
    fit beside that they drop under the title and wrap among themselves. */
 .hatch-timeline-header {
   flex-wrap: wrap;
 }
 
 .hatch-timeline-header .hatch-page-header__titles {
-  flex: 1 1 20rem;
+  flex: 1 1 calc(var(--measure-prose) / 2);
 }
 
 .hatch-timeline-header .hatch-page-header__actions {
