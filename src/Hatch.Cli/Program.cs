@@ -382,6 +382,7 @@ try
         "dangerous" => await new DangerousCommand(cli).RunAsync(rest, cancelling.Token),
         "omit" => await new OmitCommand(cli).RunAsync(rest, cancelling.Token),
         "recuse" => await new RecuseCommand(cli).RunAsync(rest, cancelling.Token),
+        "dream" => await new DreamCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
         "questions" => await new QuestionCommands(cli).QuestionsAsync(rest, cancelling.Token),
         "answer" => await new QuestionCommands(cli).AnswerAsync(rest, cancelling.Token),
@@ -503,7 +504,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "use", "standby", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "one-pr", "dangerous", "omit", "recuse", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -583,6 +584,8 @@ internal partial class Program
         "  hatch omit AER-12              the runners omitted from it, and where each came from",
         "  hatch omit AER-12 <runner> \"why\"  ...omit one; --lift <runner> lifts it",
         "  hatch recuse AER-12 \"why\"    this runner is wrong for it: the board never hands it here again",
+        "  hatch dream \"<words>\"        put a half-thought on the Dream Board",
+        "  hatch dream \"<words>\" --source <ref> --project AER  ...say where it came from, and which project it leans toward",
         "  hatch ask AER-12 \"how should retries be scoped?\" \\",
         "      --recommend \"Per-node: one budget per node, so a slow node cannot starve\" \\",
         "      --option \"Global: one budget for the drain, simpler to reason about\"",
