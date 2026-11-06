@@ -8,6 +8,7 @@ import { onePrToFile } from '../lib/onePr';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { AttachmentDropZone } from './AttachmentDropZone';
+import { AttachmentList } from './AttachmentList';
 import { IssuePicker } from './IssuePicker';
 import { MarkdownEditor, type MarkdownEditorHandle } from './MarkdownEditor';
 import { MomentField } from './MomentField';
@@ -205,6 +206,8 @@ export function NewIssueDialog({
                   handle={editorRef}
                 />
               </Field>
+
+              <AttachmentList text={description} />
 
               {/* Both optional, and both usually left empty. They are here rather than
                   behind a second visit because the moment worth setting a ready date
