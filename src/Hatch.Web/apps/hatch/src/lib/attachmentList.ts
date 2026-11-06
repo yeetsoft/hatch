@@ -76,3 +76,25 @@ export function chunks<T>(items: T[], size: number): T[][] {
   }
   return result;
 }
+
+export type RowState = 'file' | 'deleted' | 'loading' | 'unavailable';
+
+export interface AttachmentRow {
+  id: string;
+  state: RowState;
+  attachment?: Attachment;
+}
+
+/** One row per id, in the order of `ids`. `known` wins over `failed`: a file
+    or a deletion already heard back from the server outranks a request that
+    merely failed to complete. */
+export function attachmentRows(ids: string[], known: Known, failed: ReadonlySet<string>): AttachmentRow[] {
+  return ids.map((id) => {
+    if (known.has(id)) {
+      const attachment = known.get(id);
+      return attachment ? { id, state: 'file', attachment } : { id, state: 'deleted' };
+    }
+    if (failed.has(id)) return { id, state: 'unavailable' };
+    return { id, state: 'loading' };
+  });
+}

@@ -188,6 +188,12 @@ export const uploadAttachment = (blob: Blob, fileName: string) => {
   return fetchJson<Attachment>('/api/hatch/attachments', { method: 'POST', body: form });
 };
 
+/** The attachments among `ids` that still exist, in the order asked. Ids are
+    guids, so no encoding. The route caps at 100 ids and drops any unknown or
+    duplicate id from the answer. */
+export const getAttachments = (ids: string[]) =>
+  fetchJson<Attachment[]>(`/api/hatch/attachments?ids=${ids.join(',')}`);
+
 // ---- Statuses ----
 
 export const getStatuses = () => fetchJson<Status[]>('/api/hatch/statuses');

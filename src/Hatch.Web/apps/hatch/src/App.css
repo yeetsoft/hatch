@@ -2826,6 +2826,35 @@ input.hatch-inline-title-input {
   }
 }
 
+/* The attachments linked in a description or a comment. Wrapping rows, never
+   a horizontal scroll at phone width - the name is `overflow-wrap: anywhere`,
+   as .hatch-column-name wraps a long column name. */
+.hatch-attachments {
+  margin-top: var(--sp-3);
+}
+
+.hatch-attachments ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.hatch-attachments a {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .hatch-child-list,
 .hatch-comments {
   list-style: none;

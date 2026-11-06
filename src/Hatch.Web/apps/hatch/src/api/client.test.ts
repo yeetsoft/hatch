@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  getAttachments,
   getChangelogReport,
   liftRunnerOmission,
   omitRunner,
@@ -183,5 +184,22 @@ describe('uploadAttachment', () => {
     expect((file as File).name).toBe('shot.png');
     expect(init.headers).toEqual({ Accept: 'application/json' });
     expect(result).toEqual(stored);
+  });
+});
+
+describe('getAttachments', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('GETs the comma-joined ids and returns the parsed body', async () => {
+    const found = [{ id: 'a', fileName: 'a.png', contentType: 'image/png', size: 1, createdAt: '2026-11-01T00:00:00Z' }];
+    const fetchMock = vi.fn(async (_path: string, _init?: RequestInit) => new Response(JSON.stringify(found), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getAttachments(['a', 'b']);
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments?ids=a,b');
+    expect(result).toEqual(found);
   });
 });
