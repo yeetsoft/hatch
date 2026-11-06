@@ -63,7 +63,7 @@ function EntryRow({ entry }: { entry: ChangelogReportEntry }) {
 }
 
 /**
- * One closed epic as a card, as ChangelogPage's FeatureCard draws a feature.
+ * One closed epic as a card.
  * Title only: an epic group carries no release note.
  */
 function GroupCard({ group, project }: { group: ChangelogReportGroup; project: Project | undefined }) {
