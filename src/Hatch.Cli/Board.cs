@@ -432,6 +432,10 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public Task<CommentDto?> CommentAsync(string key, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>($"/api/hatch/issues/{key}/comments", new CommentCreateRequest(body), ct);
 
+    /// <summary>A dream added to the Dream Board; the server sets its author.</summary>
+    public Task<DreamDto?> AddDreamAsync(DreamCreateRequest request, CancellationToken ct) =>
+        Client.PostAsync<DreamDto>("/api/hatch/dreams", request, ct);
+
     /// <summary>A new issue - the runner's own filer, for the one case nothing short of it covers: a hard-limited session that is gone before it can file anything itself.</summary>
     public Task<IssueDto?> CreateIssueAsync(IssueCreateRequest request, CancellationToken ct) =>
         Client.PostAsync<IssueDto>("/api/hatch/issues", request, ct);
