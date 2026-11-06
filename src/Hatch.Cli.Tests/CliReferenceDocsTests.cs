@@ -36,6 +36,7 @@ public sealed class CliReferenceDocsTests
         ["dangerous"] = DangerousCommand.DangerousUsage,
         ["omit"] = OmitCommand.OmitUsage,
         ["recuse"] = RecuseCommand.RecuseUsage,
+        ["dream"] = DreamCommand.DreamUsage,
         ["ask"] = QuestionCommands.AskUsage,
         ["questions"] = QuestionCommands.QuestionsUsage,
         ["answer"] = QuestionCommands.AnswerUsage,

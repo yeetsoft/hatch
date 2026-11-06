@@ -30,6 +30,13 @@ themselves. If the search or the filters would hide the new dream, they are clea
 seen. If the server refuses the dream, its reason shows beside the box and what you typed stays as
 you left it, ready to post again.
 
+## From a Claude session
+
+A session posts a dream through `hatch dream`, and the dream carries the session as its source, so
+the list says where it came from. A claude.ai conversation has no command to call: paste it into
+the box above as one dream, and note where it came from in the source. The command's flags are in
+the [CLI reference](cli-reference).
+
 ## Editing and deleting one
 
 Each dream in the list has an **Edit** button, which works as it does on an issue's description:
