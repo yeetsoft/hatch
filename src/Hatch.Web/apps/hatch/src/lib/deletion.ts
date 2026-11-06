@@ -37,3 +37,23 @@ export async function askToDelete(
     return { outcome: 'refused', error: message(err) };
   }
 }
+
+/** The sentence asked before an attachment is deleted - distinct from
+    {@link deleteQuestion} because removing a file also removes its links. */
+export const deleteAttachmentQuestion = (fileName: string) =>
+  `Delete ${fileName}? The links to it in this description are removed too.`;
+
+/** Same shape as {@link askToDelete}, for an attachment rather than an issue. */
+export async function askToDeleteAttachment(
+  fileName: string,
+  ask: (question: string) => boolean,
+  remove: () => Promise<void>,
+): Promise<DeleteOutcome> {
+  if (!ask(deleteAttachmentQuestion(fileName))) return { outcome: 'cancelled' };
+  try {
+    await remove();
+    return { outcome: 'deleted' };
+  } catch (err) {
+    return { outcome: 'refused', error: message(err) };
+  }
+}
