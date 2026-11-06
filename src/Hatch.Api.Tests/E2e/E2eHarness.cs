@@ -310,6 +310,18 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task ClickAsync(Deadline deadline, string selector) =>
         deadline.BoundAsync($"clicking {selector}", () => page!.Locator(selector).First.ClickAsync());
 
+    /// <summary>Selects everything in whichever element holds the page's focus.</summary>
+    public Task SelectAllAsync(Deadline deadline) =>
+        deadline.BoundAsync("selecting all", () => page!.Keyboard.PressAsync("ControlOrMeta+A"));
+
+    /// <summary>
+    /// Inserts <paramref name="text"/> as one operation, with no per-key
+    /// bracket pairing - unlike <c>Keyboard.TypeAsync</c>, which Monaco would
+    /// meet one key at a time, auto-closing <c>[</c>/<c>(</c> as they land.
+    /// </summary>
+    public Task InsertTextAsync(Deadline deadline, string text) =>
+        deadline.BoundAsync("inserting text", () => page!.Keyboard.InsertTextAsync(text));
+
     /// <summary>Runs <paramref name="script"/> in the page, a function taking <paramref name="arg"/>.</summary>
     public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
         deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
