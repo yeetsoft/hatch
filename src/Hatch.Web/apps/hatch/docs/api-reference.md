@@ -465,6 +465,7 @@ before 409ing.
 | DELETE | `/dreams/{id}` | Removes one |
 | PUT | `/issues/{key}/dreams` | Replaces the set of dreams this issue drew on |
 | GET | `/issues/{key}/dreams` | The dreams this issue drew on, newest first |
+| POST | `/dreams/weave` | Files an epic in the breakdown column, briefed to be woven from the dreams (a person's, not a key's) |
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
 `/dreams` takes `q` (any word, not every word - unlike `/search`), `projectId`
@@ -500,6 +501,29 @@ over-length `Body`, or a `Source` over 500 characters; both POST and PATCH
 /issues/{key}/dreams` and the `GET` beside it 404 an unparseable or unknown
 `{key}`; `PUT` 400s naming the first dream id in `DreamIds` that does not
 exist, writing nothing when it does.
+
+`POST /dreams/weave` is the one route under `/dreams` that files an issue
+rather than a dream - a person's, never a key's. Its body is
+`DreamWeaveRequest(ProjectId?, Mode?, Seed?, DreamIds?)`. `Mode` is one of
+four: `seed` draws the thread out of the dreams that bear on a free-text
+`Seed`; `pressing`, `common` and `next` take no seed and draw, respectively,
+on the thread the dreams return to with the most urgency, the thread the
+most dreams touch, and the nearest step toward the vision the dreams
+describe. `DreamIds` are the dreams the person had on screen when they
+pressed, if any - distinct, in the order sent, and merely a starting point
+handed to the session that weaves, not a binding set. The epic is born in
+the leftmost column a playbook row covers `epic` from (ties breaking the
+same way `MatchReflection` ranks them - a project-specific row before a
+board-wide one, then specificity, then id), titled and described by
+`DreamWeave.Title`/`Describe`, and answers `201` with the resulting
+`IssueDto`.
+
+**Refusals.** `403`s a key or a keyless runner outright. `400`s an unknown
+or missing `Mode`; a missing or blank `Seed` under mode `seed`; a `Seed`
+given under any other mode; a missing `ProjectId`; and the first id in
+`DreamIds` naming no dream, in the wording `PUT /issues/{key}/dreams` uses.
+`404`s an unknown `ProjectId`. `400`s with no playbook row covering `epic`
+on the project, naming the project's key and the Playbooks page.
 
 ## The loop's own routes
 

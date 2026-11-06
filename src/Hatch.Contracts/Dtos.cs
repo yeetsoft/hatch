@@ -1151,6 +1151,16 @@ public record DreamDto(
 /// <summary>What it takes to add a dream. <see cref="ProjectId"/> is the lean, and may be left out.</summary>
 public record DreamCreateRequest(string Body, string? Source = null, int? ProjectId = null);
 
+/// <summary>
+/// What a weave press sends to file the epic it asks for - see
+/// <c>DreamWeaveController</c> and <c>DreamWeave</c>.
+/// </summary>
+/// <param name="ProjectId">The project the epic is born in. Nullable so a missing one is a sentence ("an epic needs a home"), not a bound default.</param>
+/// <param name="Mode">One of <c>DreamWeave.Modes</c> - <c>seed</c>, <c>pressing</c>, <c>common</c> or <c>next</c>. Nullable for the same reason as <see cref="ProjectId"/>.</param>
+/// <param name="Seed">The free text behind mode <c>seed</c>; required there, and refused on every other mode.</param>
+/// <param name="DreamIds">The dreams the person had on screen when they pressed, if any.</param>
+public record DreamWeaveRequest(int? ProjectId, string? Mode, string? Seed = null, IReadOnlyList<long>? DreamIds = null);
+
 /// <summary>A page of dreams, and how many matched before paging.</summary>
 public record DreamsPageDto(IReadOnlyList<DreamDto> Dreams, int Total);
 
