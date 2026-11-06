@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentUrl, chunks, formatSize, linkedAttachmentIds, missingIds, settle } from './attachmentList';
+import { attachmentRows, attachmentUrl, chunks, formatSize, linkedAttachmentIds, missingIds, settle } from './attachmentList';
 import type { Attachment } from '../types';
 
 const ID_A = '11111111-1111-1111-1111-111111111111';
@@ -127,5 +127,41 @@ describe('chunks', () => {
 
   it('is empty for an empty input', () => {
     expect(chunks([], 100)).toEqual([]);
+  });
+});
+
+describe('attachmentRows', () => {
+  it('is a file row for an id known as an attachment, with the attachment attached', () => {
+    const known = new Map([[ID_A, attachment(ID_A)]]);
+    expect(attachmentRows([ID_A], known, new Set())).toEqual([{ id: ID_A, state: 'file', attachment: attachment(ID_A) }]);
+  });
+
+  it('is a deleted row for an id known as null', () => {
+    const known = new Map([[ID_A, null]]);
+    expect(attachmentRows([ID_A], known, new Set())).toEqual([{ id: ID_A, state: 'deleted' }]);
+  });
+
+  it('is an unavailable row for an id in failed and not in known', () => {
+    expect(attachmentRows([ID_A], new Map(), new Set([ID_A]))).toEqual([{ id: ID_A, state: 'unavailable' }]);
+  });
+
+  it('is a loading row for an id in neither known nor failed', () => {
+    expect(attachmentRows([ID_A], new Map(), new Set())).toEqual([{ id: ID_A, state: 'loading' }]);
+  });
+
+  it('follows the order of ids, not the order either set was built in', () => {
+    const known = new Map([[ID_B, attachment(ID_B)]]);
+    const failed = new Set([ID_A]);
+    expect(attachmentRows([ID_A, ID_B, ID_C], known, failed).map((r) => r.id)).toEqual([ID_A, ID_B, ID_C]);
+  });
+
+  it('known wins over failed for the same id', () => {
+    const known = new Map([[ID_A, attachment(ID_A)]]);
+    const failed = new Set([ID_A]);
+    expect(attachmentRows([ID_A], known, failed)).toEqual([{ id: ID_A, state: 'file', attachment: attachment(ID_A) }]);
+  });
+
+  it('is empty for no ids', () => {
+    expect(attachmentRows([], new Map(), new Set())).toEqual([]);
   });
 });
