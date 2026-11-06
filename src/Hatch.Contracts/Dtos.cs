@@ -56,9 +56,6 @@ public record ProjectDto(
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
 }
 
-/// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
-public record ImageDto(Guid Id);
-
 /// <summary>
 /// A stored file, as the list and the upload describe it. The bytes are not
 /// here: <c>GET /api/hatch/attachments/{id}</c> serves them.

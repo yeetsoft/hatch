@@ -423,14 +423,13 @@ at.
 | GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
 | POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB) |
 | DELETE | `/attachments/{id}` | **person** | Removes one |
-| POST | `/images` | **person** | Uploads one (raw body, detected content-type) |
-| GET | `/images/{id}` | key | Fetches it |
+| GET | `/images/{id}` | key | The inline view of an attachment that is an image |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
 | POST | `/import/preview-text` | key | The same, for a pasted title and body |
 | POST | `/import` | key | Files the approved tree: epic per doc, story per phase, task per checkbox |
 
 `AttachmentDto` is `Id`, `FileName`, `ContentType`, `Size` and `CreatedAt`; the
-bytes are only ever served by `GET /attachments/{id}`. `ImageDto` is just `Id`.
+bytes are only ever served by `GET /attachments/{id}`. `GET /images/{id}` is the inline view of an attachment, and answers 404 for a row that is not one of the four image types.
 A preview's answer is the parsed tree, one doc per
 file - the shape is internal to the importer and not worth repeating here.
 `preview-text`'s body is `PastedPlan(Title, Body)`. The import write's body
@@ -449,9 +448,7 @@ not a valid type. The name is the last path segment of the one sent, cut to
 `nosniff`, so a file labelled `text/html` is saved and never rendered.
 `GET /attachments` takes `ids` as a comma-separated list: it leaves out an id
 that is unknown, repeated or not a Guid, and 400s more than 100. `DELETE`
-404s an unknown id and writes no issue event. Image upload 403s a program
-caller outright - images are pasted by a person, not uploaded by an agent -
-and 400s an undetectable content type. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
+404s an unknown id and writes no issue event. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
 than 25 files. `preview-text` 400s an empty title or body, a title over the
 issue title cap, or a body over 1 MB. `import` 400s an empty or over-25
 `Docs` list, 404s an unknown `ProjectId`, 409s a board with no columns, and -
@@ -1047,7 +1044,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **43** person-only paths on this page,
+on this page with both) - there are **42** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1080,7 +1077,6 @@ PUT    /issues/{key}/pre-approval
 PUT    /issues/{key}/express
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
-POST   /images
 POST   /attachments
 DELETE /attachments/{id}
 PATCH  /runners/{name}
@@ -1097,8 +1093,8 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Thirty-one belong to a project, a column, the WIP section, a ticket's own
-fields, or image or attachment upload and delete; the other twelve are a runner's own record (now
+Thirty belong to a project, a column, the WIP section, a ticket's own
+fields, or attachment upload and delete; the other twelve are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 running a backup, and the three playbook writes.

@@ -7,6 +7,7 @@ import type {
   ApiKeyMinted,
   AssigneeDirectory,
   AssigneeRequest,
+  Attachment,
   Attention,
   BackupStatus,
   Board,
@@ -54,7 +55,6 @@ import type {
   OmitRunnerRequest,
   PlaybookProposalApproveResult,
   PlaybookProposalRejectResult,
-  HatchImage,
   Project,
   ProjectCreateRequest,
   ProjectLandingWriteRequest,
@@ -177,9 +177,15 @@ export const putProjectLogo = (id: number, blob: Blob) =>
 export const deleteProjectLogo = (id: number) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'DELETE' });
 
-// ---- Images ----
+// ---- Attachments ----
 
-export const uploadImage = (blob: Blob) => fetchJson<HatchImage>('/api/hatch/images', { method: 'POST', body: blob });
+/** Stores one file. Multipart, so the browser sets the boundary and this does
+    not name its own content type, as with `previewImport`. */
+export const uploadAttachment = (blob: Blob, fileName: string) => {
+  const form = new FormData();
+  form.append('file', blob, fileName);
+  return fetchJson<Attachment>('/api/hatch/attachments', { method: 'POST', body: form });
+};
 
 // ---- Statuses ----
 
