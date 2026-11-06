@@ -11,12 +11,14 @@
    nullable - which is what lets the issue page, where the description comes
    down with the page, use it with no loading branch at all. */
 
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Button } from '@hatch/ui';
 import { editDraft, isDirty, openDraft, receiveKnown, revert } from '../lib/draft';
+import { appendBlock } from '../lib/descriptionImage';
 import { renderMarkdown } from '../lib/markdown';
 import { useKeyboardInset, usePhone } from '../lib/viewport';
-import { MarkdownEditor } from './MarkdownEditor';
+import { AttachmentDropZone } from './AttachmentDropZone';
+import { MarkdownEditor, type MarkdownEditorHandle } from './MarkdownEditor';
 import { ProseClamp } from './ProseClamp';
 
 export function DescriptionEditor({
@@ -66,6 +68,14 @@ export function DescriptionEditor({
   const [saving, setSaving] = useState(false);
   const phone = usePhone();
   const inset = useKeyboardInset();
+  const editorRef = useRef<MarkdownEditorHandle>(null);
+
+  // The functional update: an upload outlives the render that started it, so
+  // what it appends to has to be read fresh when it lands, not captured here.
+  function append(text: string) {
+    setDraft((d) => editDraft(d, appendBlock(d.text, text)));
+    setPreview(false);
+  }
 
   // Same reasoning as the title's - see InlineTitle on the issue page. A save
   // landing underneath the editor is the new stored text - but a draft in
@@ -96,7 +106,7 @@ export function DescriptionEditor({
   const dirty = isDirty(draft);
 
   return (
-    <>
+    <AttachmentDropZone editor={editorRef} onAppend={append}>
       <div className="hatch-section-head">
         {title}
         <div className="hatch-section-actions">
@@ -146,6 +156,7 @@ export function DescriptionEditor({
           rows={rows}
           className={editorClassName}
           ariaLabel={noun.charAt(0).toUpperCase() + noun.slice(1)}
+          handle={editorRef}
         />
       )}
 
@@ -162,6 +173,6 @@ export function DescriptionEditor({
           </div>
         </div>
       )}
-    </>
+    </AttachmentDropZone>
   );
 }
