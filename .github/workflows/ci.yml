@@ -212,10 +212,15 @@ jobs:
   # No cache for Playwright's download: `--with-deps` installs apt packages
   # outside any directory worth caching, so the step runs on a hit as well and
   # the saving would be the download alone - against a key derived from the
-  # package version and one more thing to go stale. Revisit if the download
-  # turns out to dominate the job.
+  # package version and one more thing to go stale. The download has turned
+  # out to dominate the job, twice in one day (HA-1819): not a sustained
+  # outage but the Ubuntu mirror stalling on the ~181 shared-library packages
+  # `--with-deps` pulls, past this job's old 15-minute timeout before a test
+  # ever ran. A bounded retry on the install step is the fix for a slow single
+  # attempt; it is orthogonal to caching, not a substitute for it - caching
+  # still would not touch the apt packages that are the slow part.
   e2e:
-    timeout-minutes: 15
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
       # The same variable, and the same stock image, as the api job. The harness
@@ -285,8 +290,19 @@ jobs:
       # browsers` installs them; --with-deps for the shared libraries a bare
       # runner lacks. The browser is the one Playwright puts there, not one the
       # runner image happens to carry.
+      # Retried, bounded to 8 minutes per attempt: a stalled apt mirror (the
+      # ~181 shared-library packages `--with-deps` pulls for webkit) has twice
+      # cost the whole job before a test ran, while a genuinely broken install
+      # still fails every attempt and so still fails the job (HA-1819).
       - name: Install browsers
-        run: pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 8m pwsh src/Hatch.Api.Tests/bin/Release/net10.0/playwright.ps1 install chromium webkit --with-deps; then
+              exit 0
+            fi
+            echo "::warning::Install browsers attempt $attempt did not finish within 8 minutes; retrying"
+          done
+          exit 1
 
       # Same hang clamp as the api job. The trx is what the next step reads.
       - name: Test
