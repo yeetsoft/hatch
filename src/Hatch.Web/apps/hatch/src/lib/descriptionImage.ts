@@ -1,6 +1,6 @@
 /* Pure functions for an image pasted into a description or a comment - no DOM,
    no canvas. This app's vitest runs in plain Node, so the half that touches
-   createImageBitmap and a canvas lives in MarkdownEditor.tsx. */
+   createImageBitmap and a canvas lives in lib/shrinkImage.ts. */
 import { message } from './errors';
 import { LOGO_ACCEPTED_TYPES } from './projectLogo';
 
