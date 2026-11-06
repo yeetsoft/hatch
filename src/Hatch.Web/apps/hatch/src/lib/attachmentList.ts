@@ -68,6 +68,34 @@ export function settle(known: Known, asked: string[], found: Attachment[]): Know
   return result;
 }
 
+/** `markdown` with every reference to `id` - image, link or bare path - struck,
+    and the blank-line bookkeeping that removal leaves cleaned up: a line left
+    blank by the removal is dropped rather than kept empty, a run of 3+
+    newlines collapses to one blank line, and a leading or trailing run of
+    newlines is stripped. Known gap: an alt text with a literal, un-escaped
+    `]` can truncate the bracket match early - `attachmentMarkdown` never
+    writes one. A second gap: `.trim()` (needed so trailing prose on the same
+    line loses its single leading space) also drops a line's own structural
+    indentation (a list item, a blockquote) when the reference opens that
+    line - again never produced by `attachmentMarkdown` itself. */
+export function removeAttachmentLinks(markdown: string, id: string): string {
+  const path = `/api/hatch/(?:images|attachments)/${id}`;
+  const pattern = new RegExp(`!?\\[(?:\\\\.|[^\\]\\n])*\\]\\(${path}\\)|${path}`, 'gi');
+
+  const lines = markdown.split('\n').flatMap((line) => {
+    const replaced = line.replace(pattern, '');
+    if (replaced === line) return [line];
+    if (replaced.trim() === '') return [];
+    return [replaced.replace(/ {2,}/g, ' ').trim()];
+  });
+
+  return lines
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '')
+    .replace(/\n+$/, '');
+}
+
 /** `items` sliced into runs of at most `size`. */
 export function chunks<T>(items: T[], size: number): T[][] {
   const result: T[][] = [];

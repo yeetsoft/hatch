@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { attachmentRows, attachmentUrl, chunks, formatSize, linkedAttachmentIds, missingIds, settle } from './attachmentList';
+import {
+  attachmentRows,
+  attachmentUrl,
+  chunks,
+  formatSize,
+  linkedAttachmentIds,
+  missingIds,
+  removeAttachmentLinks,
+  settle,
+} from './attachmentList';
 import type { Attachment } from '../types';
 
 const ID_A = '11111111-1111-1111-1111-111111111111';
@@ -57,6 +66,57 @@ describe('linkedAttachmentIds', () => {
   it('still lists a guid inside a fenced code span, since this is a regex scan, not a markdown parse', () => {
     const markdown = ['```', `/api/hatch/attachments/${ID_A}`, '```'].join('\n');
     expect(linkedAttachmentIds(markdown)).toEqual([ID_A]);
+  });
+});
+
+describe('removeAttachmentLinks', () => {
+  it('drops an image reference alone on its line, and one of its two flanking blank lines', () => {
+    const markdown = `before\n\n![alt](/api/hatch/images/${ID_A})\n\nafter`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\n\nafter');
+  });
+
+  it('drops a link reference alone on its line with no flanking blank lines', () => {
+    const markdown = `before\n[text](/api/hatch/attachments/${ID_A})\nafter`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
+  });
+
+  it('drops a bare path alone on its line the same as a link', () => {
+    const markdown = `before\n/api/hatch/attachments/${ID_A}\nafter`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
+  });
+
+  it('strips a mid-sentence reference and leaves the rest of the sentence intact', () => {
+    const markdown = `Check [report.pdf](/api/hatch/attachments/${ID_A}) for details.`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('Check for details.');
+  });
+
+  it('leaves no leading blank line when the reference was the first line', () => {
+    const markdown = `[text](/api/hatch/attachments/${ID_A})\n\nafter`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('after');
+  });
+
+  it('leaves no trailing blank line when the reference was the last line', () => {
+    const markdown = `before\n\n[text](/api/hatch/attachments/${ID_A})`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('before');
+  });
+
+  it('matches regardless of case between the markdown and the id passed in', () => {
+    const markdown = `before\n[text](/api/hatch/attachments/${ID_A.toUpperCase()})\nafter`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
+  });
+
+  it('leaves a different id untouched', () => {
+    const markdown = `[a](/api/hatch/attachments/${ID_A})\n[b](/api/hatch/attachments/${ID_B})`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe(`[b](/api/hatch/attachments/${ID_B})`);
+  });
+
+  it('is empty when the whole text was the one reference', () => {
+    expect(removeAttachmentLinks(`/api/hatch/attachments/${ID_A}`, ID_A)).toBe('');
+  });
+
+  it('leaves no leading space before trailing prose on the same line', () => {
+    const markdown = `[report.pdf](/api/hatch/attachments/${ID_A}) see attached.`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe('see attached.');
   });
 });
 
