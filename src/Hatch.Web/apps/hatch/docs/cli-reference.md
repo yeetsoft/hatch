@@ -49,6 +49,7 @@ without the flag.
 | `dangerous` | No | Only with a reason or `--clear` |
 | `omit` | No | Only with a runner and reason, or `--lift` |
 | `recuse` | No | Yes: omits this runner's own name |
+| `dream` | No | Yes: adds a dream |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
 | `answer` | No | Yes: answers a question |
@@ -513,6 +514,26 @@ trimming; a missing, blank or overlong one is refused and calls nothing, and
 so is a checkout with no runner name. The dispatcher never hands the issue to
 this runner again, and neither does it hand it any task below the issue. Lift
 it with `hatch omit AER-12 --lift <runner>`. Open to a key.
+
+### dream
+
+```
+hatch dream "<words>" [--source <ref>] [--project AER]
+```
+
+Puts a half-thought on the Dream Board, the one a ticket is not yet the right
+shape for. The words are markdown, quoted as one argument, and are posted
+exactly as written after trimming. `--source` is free text saying where the
+dream came from: a session id, a URL. `--project` is a lean, not a home: the
+project key the dream points toward. A key nobody has is refused before any
+call is made, naming the key it could not find.
+
+The author is the key's name, set by the server and not by the command. It
+says what it posted: `posted dream <id> as <author>`. The dream appears on the
+Dreams screen at once, with its source beside it. A missing or blank set of
+words, a second bare argument and a flag `dream` does not take are refused and
+call nothing; the server's own refusal, a length cap for one, reaches the
+terminal as it is. Open to a key.
 
 ### ask
 
