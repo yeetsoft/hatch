@@ -140,6 +140,11 @@ The column names below are the stock ones.
 | In Progress → In Review | epics | Verifies the epic's own criteria against the trunk and files what is missing | Judges |
 | In Review → In Review | every type | The review row: fixes a conflict or a failing build on the branch, and nothing else | **Edits** |
 
+The *Breakdown → Backlog, epics* row also searches [the Dream Board](dreams)
+for dreams that bear on the epic it is turning into a plan — woven or
+hand-written alike — quotes the ones that do into the brief, and records
+which it drew on.
+
 Ten rows are seeded, but a stock board ends with nine. The epic row on **To Do →
 In Progress** is retired wherever the board pulls an epic across that move
 itself, because a session told to choose what starts would be telling the board
