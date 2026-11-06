@@ -194,6 +194,9 @@ export const uploadAttachment = (blob: Blob, fileName: string) => {
 export const getAttachments = (ids: string[]) =>
   fetchJson<Attachment[]>(`/api/hatch/attachments?ids=${ids.join(',')}`);
 
+export const deleteAttachment = (id: string) =>
+  fetchJson<void>(`/api/hatch/attachments/${id}`, { method: 'DELETE' });
+
 // ---- Statuses ----
 
 export const getStatuses = () => fetchJson<Status[]>('/api/hatch/statuses');

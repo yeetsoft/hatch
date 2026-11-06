@@ -207,7 +207,7 @@ export function NewIssueDialog({
                 />
               </Field>
 
-              <AttachmentList text={description} />
+              <AttachmentList text={description} onDeleted={() => {}} onDeleteError={() => {}} />
 
               {/* Both optional, and both usually left empty. They are here rather than
                   behind a second visit because the moment worth setting a ready date

@@ -11,7 +11,9 @@
    text has become by then. */
 
 import { useEffect, useRef, useState } from 'react';
-import { getAttachments } from '../api/client';
+import { Button } from '@hatch/ui';
+import { deleteAttachment, getAttachments } from '../api/client';
+import { askToDeleteAttachment } from '../lib/deletion';
 import {
   attachmentRows,
   attachmentUrl,
@@ -24,12 +26,21 @@ import {
   type Known,
 } from '../lib/attachmentList';
 
-export function AttachmentList({ text }: { text: string }) {
+export function AttachmentList({
+  text,
+  onDeleted,
+  onDeleteError,
+}: {
+  text: string;
+  onDeleted: (id: string) => void;
+  onDeleteError: (message: string) => void;
+}) {
   const key = linkedAttachmentIds(text).join(',');
   const ids = key === '' ? [] : key.split(',');
 
   const [known, setKnown] = useState<Known>(new Map());
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set());
   const inFlight = useRef(new Set<string>());
   const live = useRef(true);
 
@@ -70,11 +81,33 @@ export function AttachmentList({ text }: { text: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  async function handleDelete(id: string, fileName: string) {
+    setDeleting((d) => new Set(d).add(id));
+    const outcome = await askToDeleteAttachment(fileName, (q) => confirm(q), () => deleteAttachment(id));
+    setDeleting((d) => {
+      const next = new Set(d);
+      next.delete(id);
+      return next;
+    });
+    if (outcome.outcome === 'deleted') onDeleted(id);
+    else if (outcome.outcome === 'refused') onDeleteError(outcome.error);
+  }
+
   if (ids.length === 0) return null;
-  return <AttachmentRows rows={attachmentRows(ids, known, failed)} />;
+  return (
+    <AttachmentRows rows={attachmentRows(ids, known, failed)} deleting={deleting} onDelete={handleDelete} />
+  );
 }
 
-export function AttachmentRows({ rows }: { rows: AttachmentRow[] }) {
+export function AttachmentRows({
+  rows,
+  deleting,
+  onDelete,
+}: {
+  rows: AttachmentRow[];
+  deleting: ReadonlySet<string>;
+  onDelete: (id: string, fileName: string) => void;
+}) {
   if (rows.length === 0) return null;
   return (
     <section className="hatch-attachments" aria-label="Attachments">
@@ -87,6 +120,13 @@ export function AttachmentRows({ rows }: { rows: AttachmentRow[] }) {
                   {row.attachment.fileName}
                 </a>
                 <span className="text-muted">{formatSize(row.attachment.size)}</span>
+                <Button
+                  variant="danger"
+                  loading={deleting.has(row.id)}
+                  onClick={() => onDelete(row.id, row.attachment!.fileName)}
+                >
+                  Delete
+                </Button>
               </>
             )}
             {row.state === 'deleted' && <span className="text-muted">(deleted)</span>}
