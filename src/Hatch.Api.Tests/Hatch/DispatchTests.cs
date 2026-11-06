@@ -1285,6 +1285,88 @@ public class DispatchTests
         Assert.Empty(Deadlocks.Find(rows));
     }
 
+    // ---- MatchWeave: the leftmost from-column covering epic ----
+
+    private static EfHatchPlaybook WeaveRow(int id, int fromSort, string types = "", int? projectId = null) => new()
+    {
+        Id = id,
+        FromStatusId = fromSort,
+        FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
+        ToStatusId = fromSort + 1,
+        Types = types,
+        Shape = EfHatchPlaybook.AnyShape,
+        Prompt = "do the thing",
+        Model = "sonnet",
+        Effort = "high",
+        ProjectId = projectId,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Fact]
+    public void MatchWeave_PicksTheLeftmostFromColumnCoveringEpic()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 30, "epic"), WeaveRow(2, 10, "epic"), WeaveRow(3, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_IgnoresARowThatDoesNotCoverEpic()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "task,bug"), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_TakesEmptyTypesAsCovering()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(1, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_PrefersTheProjectRowOverTheBoardRowForTheSameColumn()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "epic"), WeaveRow(2, 10, "epic", projectId: 7) };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 7)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_IgnoresAProjectRowForAnotherProject()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "epic", projectId: 8), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 7)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_NothingCoveringEpic_IsNull()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "task"), WeaveRow(2, 20, "bug,story") };
+
+        Assert.Null(Dispatch.MatchWeave(rows, 1));
+        Assert.Null(Dispatch.MatchWeave([], 1));
+    }
+
+    [Fact]
+    public void MatchWeave_OnAStockShapedSet_ReturnsTheBreakdownRow()
+    {
+        var rows = new List<EfHatchPlaybook>
+        {
+            WeaveRow(1, 20, "epic"),
+            WeaveRow(2, 20),
+            WeaveRow(3, 30),
+            WeaveRow(4, 30, "task,bug"),
+            WeaveRow(5, 10, "epic"),
+        };
+
+        Assert.Equal(5, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
     // ---- Helpers ----
 
     private static PlaybookFileRow FileRow(
