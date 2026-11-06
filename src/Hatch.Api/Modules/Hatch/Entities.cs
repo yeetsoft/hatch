@@ -415,28 +415,46 @@ public class EfHatchProjectLogo
 }
 
 /// <summary>
-/// One image pasted into a description or a comment, stored as bytes in
-/// Postgres for the same reason <see cref="EfHatchProjectLogo"/> is: bytes in
-/// the row ride the existing backup and the disaster-recovery path unchanged,
-/// and a row cannot disagree with a file on a volume.
+/// One file pasted or uploaded into a description or a comment, stored as
+/// bytes in Postgres for the same reason <see cref="EfHatchProjectLogo"/> is:
+/// bytes in the row ride the existing backup and the disaster-recovery path
+/// unchanged, and a row cannot disagree with a file on a volume.
 ///
 /// Belongs to no issue. The New issue dialog accepts a paste before the issue
-/// has a key, so an image gets an id of its own and the markdown that shows it
-/// is the only thing that points here. Nothing collects an image whose draft
-/// was discarded.
+/// has a key, so a file gets an id of its own and the markdown or the issue
+/// that names it is the only pointer to it. Nothing collects an orphan.
 /// </summary>
-[Table("Images")]
-public class EfHatchImage
+[Table("Attachments")]
+public class EfHatchAttachment
 {
     [Key]
     public Guid Id { get; set; }
 
-    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
+    /// <summary>The file exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
     public required byte[] Bytes { get; set; }
 
-    /// <summary>Sniffed from the bytes, never taken from the request's Content-Type - see <see cref="EfHatchProjectLogo.ContentType"/>.</summary>
-    [MaxLength(64)]
+    /// <summary>
+    /// Sniffed for an image, declared otherwise - see
+    /// <see cref="EfHatchProjectLogo.ContentType"/>.
+    /// </summary>
+    [MaxLength(255)]
     public required string ContentType { get; set; }
+
+    /// <summary>The name it is served under. For an image, <c>image.&lt;ext&gt;</c>, from the sniffed type.</summary>
+    [MaxLength(255)]
+    public required string FileName { get; set; }
+
+    /// <summary>The byte count, kept alongside the bytes rather than computed, so a listing never has to load them.</summary>
+    public required long Size { get; set; }
+
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchIssue.AssigneePersonId"/> is one: Hatch owns its own
+    /// schema and its own migration history, and a constraint from a module
+    /// into <c>public.People</c> is the compile-time coupling Modules/README.md
+    /// exists to prevent.
+    /// </summary>
+    public Guid? CreatedById { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
 }
