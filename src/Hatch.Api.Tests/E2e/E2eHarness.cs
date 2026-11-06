@@ -314,6 +314,16 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
         deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
 
+    /// <summary>
+    /// Runs <paramref name="script"/> in the page against the first element matching
+    /// <paramref name="selector"/> - found by Playwright's own selector engine, which
+    /// knows <c>:has()</c> and <c>:text-is()</c> where a page script's own
+    /// <c>document.querySelector</c> does not. <paramref name="script"/> is a function
+    /// taking the matched element and then <paramref name="arg"/>.
+    /// </summary>
+    public Task<T> EvaluateOnAsync<T>(Deadline deadline, string phase, string selector, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.Locator(selector).First.EvaluateAsync<T>(script, arg));
+
     /// <summary>Polls <paramref name="script"/> in the page until it answers truthy.</summary>
     public Task WaitForFunctionAsync(Deadline deadline, string phase, string script, object? arg = null) =>
         deadline.BoundAsync(phase, () => page!.WaitForFunctionAsync(script, arg));
@@ -325,6 +335,19 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>The first element matching <paramref name="selector"/>, visible; the selector is in the phase so a stall names what it waited for.</summary>
     public Task WaitForVisibleAsync(Deadline deadline, string selector) =>
         deadline.BoundAsync($"waiting for {selector}", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Visible }));
+
+    /// <summary>The first element matching <paramref name="selector"/>, hidden or gone.</summary>
+    public Task WaitForHiddenAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"waiting for {selector} to hide", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden }));
+
+    /// <summary>
+    /// Whether <paramref name="selector"/> matches a visible element right now - no
+    /// wait, so a negative assertion ("the overlay never appears") cannot pass
+    /// just by outrunning a redraw with a wait that times out and is swallowed.
+    /// False when nothing matches at all.
+    /// </summary>
+    public Task<bool> IsVisibleAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"checking {selector}", () => page!.Locator(selector).First.IsVisibleAsync());
 
     public Task WaitForTopBarAsync(Deadline deadline) =>
         deadline.BoundAsync("waiting for the top bar", () => page!.Locator(TopBar).WaitForAsync(new() { State = WaitForSelectorState.Visible }));
