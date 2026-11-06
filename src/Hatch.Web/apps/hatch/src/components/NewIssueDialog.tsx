@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, EmptyState, Field, Modal } from '@hatch/ui';
 import { createIssue } from '../api/client';
+import { removeAttachmentLinks } from '../lib/attachmentList';
 import { resolveDefaultProject, readRememberedProject, writeRememberedProject } from '../lib/defaultProject';
 import { appendBlock } from '../lib/descriptionImage';
 import { message } from '../lib/errors';
@@ -207,7 +208,11 @@ export function NewIssueDialog({
                 />
               </Field>
 
-              <AttachmentList text={description} onDeleted={() => {}} onDeleteError={() => {}} />
+              <AttachmentList
+                text={description}
+                onDeleted={(id) => setDescription((d) => removeAttachmentLinks(d, id))}
+                onDeleteError={setError}
+              />
 
               {/* Both optional, and both usually left empty. They are here rather than
                   behind a second visit because the moment worth setting a ready date
