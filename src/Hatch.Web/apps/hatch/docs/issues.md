@@ -248,3 +248,16 @@ A file over 25 MB is refused by the server, and nothing is inserted - the
 server's own sentence appears under the editor instead. Dropping several
 files at once stops at the first refusal: nothing from that drop is
 inserted, and the sentence names the file that was refused.
+
+An issue holds whatever its description links. Under the description -
+on the issue page, on the board's peek, and in the New issue dialog,
+directly after its own description box - a list draws one row per link,
+each a name, a size and a download. The list reads the text as it is
+being edited, not the saved description, so a drop or a paste shows a row
+before **Save**, and removing a link from the text drops its row before
+Save too. A pasted image is in the list like any other link, and one
+pasted before this list existed still reads `image.png` - the paste
+handler's own fallback name, unrelated to this feature. A link naming a
+file that is no longer stored reads `(deleted)`, with no download. See
+[the API reference](api-reference#attachments-images-and-import) for the
+routes behind each row.
