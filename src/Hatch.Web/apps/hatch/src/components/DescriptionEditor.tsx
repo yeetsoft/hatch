@@ -14,6 +14,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { Button } from '@hatch/ui';
 import { editDraft, isDirty, openDraft, receiveKnown, revert } from '../lib/draft';
+import { removeAttachmentLinks } from '../lib/attachmentList';
 import { appendBlock } from '../lib/descriptionImage';
 import { renderMarkdown } from '../lib/markdown';
 import { useKeyboardInset, usePhone } from '../lib/viewport';
@@ -67,6 +68,7 @@ export function DescriptionEditor({
   const [draft, setDraft] = useState(() => openDraft(value));
   const [preview, setPreview] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const phone = usePhone();
   const inset = useKeyboardInset();
   const editorRef = useRef<MarkdownEditorHandle>(null);
@@ -97,6 +99,14 @@ export function DescriptionEditor({
     if (ok) setPreview(true);
   }
 
+  function handleAttachmentDeleted(id: string) {
+    const next = removeAttachmentLinks(draft.text, id);
+    const wasClean = !isDirty(draft);
+    setAttachmentError(null);
+    setDraft((d) => editDraft(d, next));
+    if (wasClean) void onSave(next);
+  }
+
   // Discards the draft and goes back to the stored text - Cancel and "take
   // the new version" (below) are the same action.
   function cancel() {
@@ -125,6 +135,7 @@ export function DescriptionEditor({
       </div>
 
       {error && <p className="text-danger">{error}</p>}
+      {attachmentError && <p className="text-danger">{attachmentError}</p>}
 
       {draft.changed && (
         <p className="text-muted">
@@ -164,7 +175,7 @@ export function DescriptionEditor({
       {/* Outside both branches so it shows in Edit and Preview and is never
           remounted by the toggle; reads the draft, not the stored text, so a
           file dropped a moment ago is listed before Save. */}
-      <AttachmentList text={draft.text} onDeleted={() => {}} onDeleteError={() => {}} />
+      <AttachmentList text={draft.text} onDeleted={handleAttachmentDeleted} onDeleteError={setAttachmentError} />
 
       {/* Save and Cancel, pinned above the keyboard at phone width so they
           are never out of reach while the description is dirty - AC3. Above
