@@ -28,11 +28,24 @@ public class ImagesControllerTests
 
         var dto = Value(await Post(controller, Png, "image/png"));
 
-        var row = await db.Images.SingleAsync();
+        var row = await db.Attachments.SingleAsync();
         Assert.Equal(dto.Id, row.Id);
         Assert.Equal("image/png", row.ContentType);
         Assert.Equal(Png, row.Bytes);
         Assert.Equal(Now, row.CreatedAt);
+    }
+
+    [Fact]
+    public async Task APostedPng_CarriesAFileNameAndSize()
+    {
+        var (controller, db) = New();
+
+        var dto = Value(await Post(controller, Png, "image/png"));
+
+        var row = await db.Attachments.SingleAsync();
+        Assert.Equal(dto.Id, row.Id);
+        Assert.Equal("image.png", row.FileName);
+        Assert.Equal(10, row.Size);
     }
 
     [Fact]
@@ -73,7 +86,7 @@ public class ImagesControllerTests
 
         var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Equal(PersonPhoto.UnsupportedError, bad.Value);
-        Assert.Empty(db.Images);
+        Assert.Empty(db.Attachments);
     }
 
     [Fact]
@@ -85,7 +98,7 @@ public class ImagesControllerTests
 
         var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Equal(PersonPhoto.EmptyError, bad.Value);
-        Assert.Empty(db.Images);
+        Assert.Empty(db.Attachments);
     }
 
     [Fact]
@@ -96,7 +109,7 @@ public class ImagesControllerTests
         var result = await Post(controller, Png, "image/png");
 
         Assert.Equal(403, Assert.IsType<ObjectResult>(result.Result).StatusCode);
-        Assert.Empty(db.Images);
+        Assert.Empty(db.Attachments);
     }
 
     [Fact]
@@ -105,6 +118,25 @@ public class ImagesControllerTests
         var (controller, _) = New();
 
         Assert.IsType<NotFoundResult>(await controller.GetImage(Guid.NewGuid(), default));
+    }
+
+    [Fact]
+    public async Task ARowStoredAsAPdf_Is404()
+    {
+        var (controller, db) = New();
+        var id = Guid.NewGuid();
+        db.Attachments.Add(new EfHatchAttachment
+        {
+            Id = id,
+            Bytes = [1, 2, 3],
+            ContentType = "application/pdf",
+            FileName = "document.pdf",
+            Size = 3,
+            CreatedAt = Now,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.IsType<NotFoundResult>(await controller.GetImage(id, default));
     }
 
     // ---- Harness ----
