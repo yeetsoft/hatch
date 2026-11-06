@@ -1845,6 +1845,25 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             .ThenBy(p => p.Id)
             .FirstOrDefault();
 
+    /// <summary>
+    /// The playbook a weave press files its epic into the column of: the row
+    /// covering <c>epic</c> whose from-column sits leftmost on the board, since
+    /// that is where an epic is born. Ties on the column break as
+    /// <see cref="MatchReflection"/> ranks them. Shape is not checked, for the
+    /// same reason. Callers load <see cref="EfHatchPlaybook.FromStatus"/> and
+    /// read <see cref="EfHatchPlaybook.FromStatusId"/> off the row. Null when
+    /// nothing covers it.
+    /// </summary>
+    public static EfHatchPlaybook? MatchWeave(List<EfHatchPlaybook> playbooks, int projectId) =>
+        playbooks
+            .Where(p => (p.Types.Length == 0 || EfHatchPlaybook.SplitTypes(p.Types).Contains("epic"))
+                        && (p.ProjectId == null || p.ProjectId == projectId))
+            .OrderBy(p => p.FromStatus!.SortOrder)
+            .ThenByDescending(p => p.ProjectId is not null)
+            .ThenByDescending(p => p.Specificity)
+            .ThenBy(p => p.Id)
+            .FirstOrDefault();
+
     // ---- Dates ----
 
     /// <summary>
