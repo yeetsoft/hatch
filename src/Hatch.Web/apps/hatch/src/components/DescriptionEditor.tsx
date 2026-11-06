@@ -164,7 +164,7 @@ export function DescriptionEditor({
       {/* Outside both branches so it shows in Edit and Preview and is never
           remounted by the toggle; reads the draft, not the stored text, so a
           file dropped a moment ago is listed before Save. */}
-      <AttachmentList text={draft.text} />
+      <AttachmentList text={draft.text} onDeleted={() => {}} onDeleteError={() => {}} />
 
       {/* Save and Cancel, pinned above the keyboard at phone width so they
           are never out of reach while the description is dirty - AC3. Above

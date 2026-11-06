@@ -13,7 +13,7 @@ function attachment(overrides: Partial<Attachment> = {}): Attachment {
 describe('AttachmentRows', () => {
   it('draws a file row with its download link and formatted size', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'file', attachment: attachment() }];
-    const html = renderToStaticMarkup(<AttachmentRows rows={rows} />);
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain(`href="/api/hatch/attachments/${ID_A}"`);
     expect(html).toContain('download="file.pdf"');
@@ -22,7 +22,7 @@ describe('AttachmentRows', () => {
 
   it('escapes a file name carrying markup, never rendering it as an element', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'file', attachment: attachment({ fileName: '<b>x</b> [y](z).pdf' }) }];
-    const html = renderToStaticMarkup(<AttachmentRows rows={rows} />);
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain('&lt;b&gt;');
     expect(html).not.toContain('<b>');
@@ -30,7 +30,7 @@ describe('AttachmentRows', () => {
 
   it('draws a deleted row with no link', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'deleted' }];
-    const html = renderToStaticMarkup(<AttachmentRows rows={rows} />);
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain('(deleted)');
     expect(html).not.toContain('<a');
@@ -38,7 +38,7 @@ describe('AttachmentRows', () => {
 
   it('draws a loading row with no link', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'loading' }];
-    const html = renderToStaticMarkup(<AttachmentRows rows={rows} />);
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain('Loading…');
     expect(html).not.toContain('<a');
@@ -46,13 +46,33 @@ describe('AttachmentRows', () => {
 
   it('draws an unavailable row with the download link still on the id', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'unavailable' }];
-    const html = renderToStaticMarkup(<AttachmentRows rows={rows} />);
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain('(unavailable)');
     expect(html).toContain(`href="/api/hatch/attachments/${ID_A}"`);
   });
 
   it('draws nothing for no rows', () => {
-    expect(renderToStaticMarkup(<AttachmentRows rows={[]} />)).toBe('');
+    expect(renderToStaticMarkup(<AttachmentRows rows={[]} deleting={new Set()} onDelete={() => {}} />)).toBe('');
+  });
+
+  it('draws a disabled Delete button for a file row whose id is deleting', () => {
+    const rows: AttachmentRow[] = [{ id: ID_A, state: 'file', attachment: attachment() }];
+    const html = renderToStaticMarkup(
+      <AttachmentRows rows={rows} deleting={new Set([ID_A])} onDelete={() => {}} />,
+    );
+
+    expect(html).toContain('disabled=""');
+  });
+
+  it('draws no Delete button for a deleted, a loading or an unavailable row', () => {
+    const rows: AttachmentRow[] = [
+      { id: ID_A, state: 'deleted' },
+      { id: '22222222-2222-2222-2222-222222222222', state: 'loading' },
+      { id: '33333333-3333-3333-3333-333333333333', state: 'unavailable' },
+    ];
+    const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
+
+    expect(html).not.toContain('>Delete<');
   });
 });
