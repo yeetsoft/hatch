@@ -322,6 +322,29 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task InsertTextAsync(Deadline deadline, string text) =>
         deadline.BoundAsync("inserting text", () => page!.Keyboard.InsertTextAsync(text));
 
+    /// <summary>
+    /// Arms a one-shot handler that accepts the next browser dialog
+    /// (<c>confirm</c>, <c>alert</c> or <c>prompt</c>) the page raises. Call
+    /// immediately before the click that raises it - a dialog fired before
+    /// this is armed is unhandled and the case hangs.
+    /// </summary>
+    public Task AcceptNextDialogAsync(Deadline deadline) =>
+        deadline.BoundAsync("arming the next dialog to accept", () =>
+        {
+            void Handler(object? s, IDialog d) { page!.Dialog -= Handler; _ = d.AcceptAsync(); }
+            page!.Dialog += Handler;
+            return Task.CompletedTask;
+        });
+
+    /// <summary><see cref="AcceptNextDialogAsync"/>'s mirror: dismisses the next dialog instead.</summary>
+    public Task DismissNextDialogAsync(Deadline deadline) =>
+        deadline.BoundAsync("arming the next dialog to dismiss", () =>
+        {
+            void Handler(object? s, IDialog d) { page!.Dialog -= Handler; _ = d.DismissAsync(); }
+            page!.Dialog += Handler;
+            return Task.CompletedTask;
+        });
+
     /// <summary>Runs <paramref name="script"/> in the page, a function taking <paramref name="arg"/>.</summary>
     public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
         deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
