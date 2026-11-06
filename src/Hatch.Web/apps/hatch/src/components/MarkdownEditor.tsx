@@ -27,15 +27,9 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, u
 import { Button, useTheme } from '@hatch/ui';
 import { uploadAttachment } from '../api/client';
 import { clientLogger } from '../lib/clientLogger';
-import {
-  SHRINK_ATTEMPTS,
-  encodeType,
-  imageMarkdown,
-  insertText,
-  pastedImage,
-  shrinkTarget,
-} from '../lib/descriptionImage';
+import { imageMarkdown, insertText, pastedImage } from '../lib/descriptionImage';
 import { message } from '../lib/errors';
+import { shrink } from '../lib/shrinkImage';
 import { normalizeEol } from '../lib/text';
 import { clampedHeight, parseCeiling, useAutoGrow } from '../lib/useAutoGrow';
 
@@ -62,6 +56,17 @@ interface Handoff {
 
 interface PlainHandle {
   capture(): Handoff | null;
+  insertAtCaret(text: string): boolean;
+}
+
+interface MonacoHandle {
+  insertAtCaret(text: string): boolean;
+}
+
+/** A way in, for a caller that needs to put text at the caret itself - a
+    drop zone, say - rather than through `value`/`onChange`. */
+export interface MarkdownEditorHandle {
+  insertAtCaret(text: string): boolean;
 }
 
 export interface MarkdownEditorProps {
@@ -79,6 +84,8 @@ export interface MarkdownEditorProps {
   deferred?: boolean;
   /** Meta/Ctrl+Enter pressed in the box. */
   onCtrlEnter?: () => void;
+  /** A way in for a caller that needs to insert text at the caret itself. */
+  handle?: Ref<MarkdownEditorHandle>;
 }
 
 export function MarkdownEditor(props: MarkdownEditorProps) {
@@ -94,6 +101,11 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   // true until a reload, not a retry flag.
   const [failed, setFailed] = useState(false);
   const plain = useRef<PlainHandle>(null);
+  const monacoHandle = useRef<MonacoHandle>(null);
+
+  useImperativeHandle(props.handle, () => ({
+    insertAtCaret: (text) => plain.current?.insertAtCaret(text) ?? monacoHandle.current?.insertAtCaret(text) ?? false,
+  }));
 
   useEffect(() => {
     if (coarse || !wanted || ready) return;
@@ -113,36 +125,8 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     };
   }, [coarse, wanted, ready]);
 
-  if (!ready) return <PlainEditor {...props} handle={plain} onWanted={() => setWanted(true)} failed={failed} />;
-  return <MonacoEditor {...props} monaco={ready.monaco} handoff={ready.handoff} />;
-}
-
-/** The file itself when it fits, else it drawn smaller onto a canvas and
-    re-encoded - the DOM half of ProjectLogoField's resize, with the arithmetic
-    in lib/descriptionImage.ts. Gives up after SHRINK_ATTEMPTS and returns what
-    it has: the server's refusal is what the person then reads. */
-async function shrink(file: File): Promise<Blob> {
-  let blob: Blob = file;
-  let bitmap: ImageBitmap | null = null;
-  try {
-    for (let attempt = 0; attempt < SHRINK_ATTEMPTS; attempt++) {
-      bitmap ??= await createImageBitmap(file);
-      const target = shrinkTarget(bitmap.width, bitmap.height, blob.size);
-      if (!target) return blob;
-      const canvas = document.createElement('canvas');
-      canvas.width = target.width;
-      canvas.height = target.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return blob;
-      ctx.drawImage(bitmap, 0, 0, target.width, target.height);
-      const next = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, encodeType(file.type)));
-      if (!next) return blob;
-      blob = next;
-    }
-    return blob;
-  } finally {
-    bitmap?.close();
-  }
+  if (!ready) return <PlainEditor {...props} bodyHandle={plain} onWanted={() => setWanted(true)} failed={failed} />;
+  return <MonacoEditor {...props} bodyHandle={monacoHandle} monaco={ready.monaco} handoff={ready.handoff} />;
 }
 
 /**
@@ -190,14 +174,14 @@ function PlainEditor({
   placeholder,
   ariaLabel,
   onCtrlEnter,
-  handle,
+  bodyHandle,
   onWanted,
   failed,
-}: MarkdownEditorProps & { handle: Ref<PlainHandle>; onWanted: () => void; failed: boolean }) {
+}: MarkdownEditorProps & { bodyHandle: Ref<PlainHandle>; onWanted: () => void; failed: boolean }) {
   const ref = useAutoGrow(value);
   useFocusFromLabel(ref, () => ref.current?.focus());
 
-  const image = useImagePaste((text) => {
+  const insertAtCaret = (text: string) => {
     const el = ref.current;
     if (!el) return;
     const { value: next, caret } = insertText(el.value, el.selectionStart, el.selectionEnd, text);
@@ -208,14 +192,22 @@ function PlainEditor({
       el.focus();
       el.setSelectionRange(caret, caret);
     });
-  });
+  };
+
+  const image = useImagePaste(insertAtCaret);
 
   // What the parent asks for at the moment the editor arrives: where the caret
-  // is in this box, so the one that replaces it can put it back.
-  useImperativeHandle(handle, () => ({
+  // is in this box, so the one that replaces it can put it back. Also the
+  // way in for a caller that wants to insert text at the caret itself.
+  useImperativeHandle(bodyHandle, () => ({
     capture() {
       const el = ref.current;
       return el ? { focused: document.activeElement === el, start: el.selectionStart, end: el.selectionEnd } : null;
+    },
+    insertAtCaret(text) {
+      if (document.activeElement !== ref.current) return false;
+      insertAtCaret(text);
+      return true;
     },
   }));
 
@@ -290,7 +282,8 @@ function MonacoEditor({
   placeholder,
   ariaLabel,
   onCtrlEnter,
-}: MarkdownEditorProps & { monaco: MonacoModule; handoff: Handoff | null }) {
+  bodyHandle,
+}: MarkdownEditorProps & { monaco: MonacoModule; handoff: Handoff | null; bodyHandle: Ref<MonacoHandle> }) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ReturnType<MonacoModule['editor']['create']> | null>(null);
   const modelRef = useRef<ReturnType<MonacoModule['editor']['createModel']> | null>(null);
@@ -305,12 +298,22 @@ function MonacoEditor({
   });
   const { resolved } = useTheme();
 
-  const image = useImagePaste((text) => {
+  const executeInsert = (text: string) => {
     const editor = editorRef.current;
     const selection = editor?.getSelection();
     // onDidChangeContent reports the edit through onChange, as a keystroke is.
     if (editor && selection) editor.executeEdits('image-paste', [{ range: selection, text, forceMoveMarkers: true }]);
-  });
+  };
+
+  const image = useImagePaste(executeInsert);
+
+  useImperativeHandle(bodyHandle, () => ({
+    insertAtCaret(text) {
+      if (!editorRef.current?.hasTextFocus()) return false;
+      executeInsert(text);
+      return true;
+    },
+  }));
 
   const { EndOfLinePreference, EditorOption } = monaco.editor;
 
