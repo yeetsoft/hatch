@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using Hatch.Api.Modules.Hatch;
@@ -49,6 +50,21 @@ public class AttachmentListTests
 
     /// <summary>Runs in the page: whether <c>.hatch-attachments li</c> has settled at <c>expected</c> rows.</summary>
     private const string RowCountScript = "(expected) => document.querySelectorAll('.hatch-attachments li').length === expected";
+
+    /// <summary>
+    /// Runs in the page against the editor host: its current text,
+    /// reconstructed from Monaco's rendered lines - one <c>.view-line</c> div
+    /// per logical line, joined with <c>\n</c>. Exact only because none of
+    /// this case's seeded lines wrap at this harness's desktop viewport.
+    /// Monaco renders every literal space as NBSP rather than a plain
+    /// space, and a line it renders as empty holds a lone NBSP rather than
+    /// nothing, to keep its height - both undone here.
+    /// </summary>
+    private const string EditorTextScript =
+        "(host) => Array.from(host.querySelectorAll('.view-line')).map((l) => l.textContent === '\\u00A0' ? '' : l.textContent.replace(/\\u00A0/g, ' ')).join('\\n')";
+
+    /// <summary>Runs against an element Playwright's own selector engine already found: whether it is no longer disabled.</summary>
+    private const string ButtonEnabledScript = "(el) => !el.disabled";
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public async Task TheAttachmentsLinkedIntoADescription_DrawAsRowsAndTrackTheDraft()
@@ -102,6 +118,111 @@ public class AttachmentListTests
                 "[gone](/api/hatch/attachments/00000000-0000-0000-0000-000000000000)");
 
             await harness.WaitForFunctionAsync(deadline, "waiting for the pdf's row to drop", RowCountScript, 3);
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Deleting an attachment strips its link and, on a clean draft, saves at
+    /// once; dismissing the confirm leaves everything - including a dirty
+    /// draft's unsaved typing - exactly as it was.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task DeletingAnAttachment_StripsItsLinkAndSavesACleanDraft_ButLeavesADirtyOneUntouched()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+
+        var harness = new E2eHarness("AttachmentList");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+            var (key, _, pdfId, _) = await SeedIssueAsync(harness.Services);
+
+            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/issues/{key}");
+            await harness.WaitForTopBarAsync(deadline);
+            await harness.WaitForVisibleAsync(deadline, DescriptionSection);
+            await harness.WaitForFunctionAsync(deadline, "waiting for the four attachment rows", RowCountScript, 4);
+
+            using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+
+            await harness.AcceptNextDialogAsync(deadline);
+            await harness.ClickAsync(deadline, ".hatch-attachments li:has-text(\"report.pdf\") button:text-is(\"Delete\")");
+
+            await harness.WaitForFunctionAsync(deadline, "waiting for the pdf's row to drop", RowCountScript, 3);
+
+            // The row dropping proves only that the draft's own text stripped the
+            // link - the autosave it also fires is a separate, fire-and-forget
+            // request, so the stored description is polled for rather than
+            // assumed to have landed by the time the row did.
+            string? descriptionAfterDelete = null;
+            for (var i = 0; i < 50; i++)
+            {
+                var issueAfterDelete = await http.GetAsync($"/api/hatch/issues/{key}");
+                Assert.Equal(HttpStatusCode.OK, issueAfterDelete.StatusCode);
+                descriptionAfterDelete = JsonDocument.Parse(await issueAfterDelete.Content.ReadAsStringAsync())
+                    .RootElement.GetProperty("description").GetString();
+                if (descriptionAfterDelete is not null && !descriptionAfterDelete.Contains(pdfId.ToString())) break;
+                await Task.Delay(100);
+            }
+            Assert.DoesNotContain(pdfId.ToString(), descriptionAfterDelete);
+
+            var deletedAttachment = await http.GetAsync($"/api/hatch/attachments/{pdfId}");
+            Assert.Equal(HttpStatusCode.NotFound, deletedAttachment.StatusCode);
+
+            await harness.ClickAsync(deadline, $"{DescriptionSection} button:text-is(\"Edit\")");
+            await harness.WaitForVisibleAsync(deadline, $"{DescriptionSection} {EditorHost}");
+            await harness.ClickAsync(deadline, $"{DescriptionSection} {EditorHost}");
+
+            var textAfterDelete = await harness.EvaluateOnAsync<string>(
+                deadline, "reading the draft after the pdf's link was stripped", EditorHost, EditorTextScript);
+
+            var noted = $"{textAfterDelete}\n\nKeep this note.";
+            await harness.SelectAllAsync(deadline);
+            await harness.InsertTextAsync(deadline, noted);
+
+            var saveSelector = $"{DescriptionSection} .hatch-section-actions button:text-is(\"Save\")";
+            await harness.WaitForVisibleAsync(deadline, saveSelector);
+
+            const string imageDeleteSelector = ".hatch-attachments li:has-text(\"image.png\") button:text-is(\"Delete\")";
+            await harness.DismissNextDialogAsync(deadline);
+            await harness.ClickAsync(deadline, imageDeleteSelector);
+
+            // A dismissed confirm changes nothing, so there is no row-count edge
+            // to wait on - the Delete button's own `disabled` clearing (set by
+            // `loading` for the span of the ask) is the settle signal instead.
+            // Polled rather than `WaitForFunctionAsync`, which evaluates with the
+            // page's native `document.querySelector` and knows nothing of
+            // Playwright's own `:has-text`/`:text-is`.
+            var settled = false;
+            for (var i = 0; i < 50 && !settled; i++)
+            {
+                settled = await harness.EvaluateOnAsync<bool>(deadline, "checking the dismissed delete settled", imageDeleteSelector, ButtonEnabledScript);
+                if (!settled) await Task.Delay(100);
+            }
+            Assert.True(settled, "The image row's Delete button is still disabled after the dialog was dismissed.");
+
+            await harness.WaitForFunctionAsync(deadline, "checking the row count held", RowCountScript, 3);
+            var textAfterDismiss = await harness.EvaluateOnAsync<string>(
+                deadline, "reading the draft after the dismissed delete", EditorHost, EditorTextScript);
+            Assert.Equal(noted, textAfterDismiss);
 
             harness.AssertNoPageErrors();
         }

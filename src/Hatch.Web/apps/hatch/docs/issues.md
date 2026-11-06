@@ -261,3 +261,14 @@ handler's own fallback name, unrelated to this feature. A link naming a
 file that is no longer stored reads `(deleted)`, with no download. See
 [the API reference](api-reference#attachments-images-and-import) for the
 routes behind each row.
+
+Each row also carries a **Delete**, which asks `Delete <file>? The links
+to it in this description are removed too.` Saying no leaves everything
+exactly as it was. Saying yes removes every link to that file from the
+description, and - on the issue page and the board's peek - saves the
+description at once if nothing else was being edited, so the stored
+description never links a file that is gone; a description already
+mid-edit keeps those edits unsaved, with the row and its link already
+gone and Save still offered for the rest. Deleting an attachment is
+person-only, the same line the upload already draws - see
+[the API reference](api-reference#attachments-images-and-import).
