@@ -149,6 +149,11 @@ public class AdminSurfaceTests
         // A pasted image: read by a key named in a brief, posted by a person.
         "ImagesController.GetImage",
         "ImagesController.PostImage",
+        // A stored file: read by a key named in a brief, posted and deleted by a person.
+        "AttachmentsController.GetAttachment",
+        "AttachmentsController.GetAttachments",
+        "AttachmentsController.PostAttachment",
+        "AttachmentsController.DeleteAttachment",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -781,6 +786,8 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
         "ImagesController.PostImage",
+        "AttachmentsController.PostAttachment",
+        "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

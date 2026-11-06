@@ -60,6 +60,12 @@ public record ProjectDto(
 public record ImageDto(Guid Id);
 
 /// <summary>
+/// A stored file, as the list and the upload describe it. The bytes are not
+/// here: <c>GET /api/hatch/attachments/{id}</c> serves them.
+/// </summary>
+public record AttachmentDto(Guid Id, string FileName, string ContentType, long Size, DateTimeOffset CreatedAt);
+
+/// <summary>
 /// A new project. <paramref name="Key"/> is checked against
 /// <see cref="EfHatchProject.KeyPattern"/> and against every existing key. It
 /// can be changed later, at a price the operator is shown first - see

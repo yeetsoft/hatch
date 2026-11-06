@@ -415,26 +415,43 @@ unknown key; `/plan` with an unknown `projectId` answers an empty plan rather
 than a 404, since an empty or just-deleted project is a legal thing to look
 at.
 
-## Images and import
+## Attachments, images and import
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
+| GET | `/attachments` | key | Describes the files named in `ids`, in the order asked |
+| GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
+| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB) |
+| DELETE | `/attachments/{id}` | **person** | Removes one |
 | POST | `/images` | **person** | Uploads one (raw body, detected content-type) |
 | GET | `/images/{id}` | key | Fetches it |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
 | POST | `/import/preview-text` | key | The same, for a pasted title and body |
 | POST | `/import` | key | Files the approved tree: epic per doc, story per phase, task per checkbox |
 
-`ImageDto` is just `Id`. A preview's answer is the parsed tree, one doc per
+`AttachmentDto` is `Id`, `FileName`, `ContentType`, `Size` and `CreatedAt`; the
+bytes are only ever served by `GET /attachments/{id}`. `ImageDto` is just `Id`.
+A preview's answer is the parsed tree, one doc per
 file - the shape is internal to the importer and not worth repeating here.
 `preview-text`'s body is `PastedPlan(Title, Body)`. The import write's body
 is `ImportRequest(ProjectId, Docs)`, and its answer is
 `ImportResultDto(Epics, IssueCount)`, each epic an
 `ImportedEpicDto(Filename, Key, Title, StoryCount, TaskCount)`.
 
-**Refusals.** Image upload 403s a program caller outright - images are
-pasted by a person, not uploaded by an agent - and 400s an undetectable
-content type. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
+**Refusals.** Attachment upload and delete 403 a program caller outright -
+files are attached by a person, not by an agent. Upload 400s a request with
+no file, an empty file, and a file over 25 MB, and stores nothing; an image is
+stored under its detected type whatever its size, anything else under the
+type it was sent with, or `application/octet-stream` when that is missing or
+not a valid type. The name is the last path segment of the one sent, cut to
+255 characters, or `attachment` when nothing is left. `GET /attachments/{id}`
+404s an unknown id and answers `Content-Disposition: attachment` with
+`nosniff`, so a file labelled `text/html` is saved and never rendered.
+`GET /attachments` takes `ids` as a comma-separated list: it leaves out an id
+that is unknown, repeated or not a Guid, and 400s more than 100. `DELETE`
+404s an unknown id and writes no issue event. Image upload 403s a program
+caller outright - images are pasted by a person, not uploaded by an agent -
+and 400s an undetectable content type. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
 than 25 files. `preview-text` 400s an empty title or body, a title over the
 issue title cap, or a body over 1 MB. `import` 400s an empty or over-25
 `Docs` list, 404s an unknown `ProjectId`, 409s a board with no columns, and -
@@ -1030,7 +1047,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **41** person-only paths on this page,
+on this page with both) - there are **43** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1064,6 +1081,8 @@ PUT    /issues/{key}/express
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
 POST   /images
+POST   /attachments
+DELETE /attachments/{id}
 PATCH  /runners/{name}
 POST   /runners/{name}/order
 DELETE /runners/{name}/order
@@ -1078,8 +1097,8 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-nine belong to a project, a column, the WIP section, a ticket's own
-fields, or image upload; the other twelve are a runner's own record (now
+Thirty-one belong to a project, a column, the WIP section, a ticket's own
+fields, or image or attachment upload and delete; the other twelve are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 running a backup, and the three playbook writes.
