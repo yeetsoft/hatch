@@ -20,6 +20,7 @@ import type {
   DreamCreateRequest,
   DreamPatchRequest,
   DreamsPage,
+  DreamWeaveRequest,
   HatchSettings,
   HatchSettingsWriteRequest,
   ImportRequest,
@@ -523,6 +524,9 @@ export const deleteDream = (id: number) =>
 export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`);
 export const putIssueDreams = (key: string, dreamIds: number[]) =>
   fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
+/** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */
+export const weaveDreams = (request: DreamWeaveRequest) =>
+  fetchJson<Issue>('/api/hatch/dreams/weave', { method: 'POST', ...asJson(request) });
 
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */

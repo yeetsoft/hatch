@@ -1180,6 +1180,17 @@ export interface DreamCreateRequest {
   projectId?: number | null;
 }
 
+/** The four ways a weave press can draw its epic - mirrors DreamWeave.Modes. */
+export type WeaveMode = 'seed' | 'pressing' | 'common' | 'next';
+
+/** What it takes to press a weave. Mirrors DreamWeaveRequest. */
+export interface DreamWeaveRequest {
+  projectId: number;
+  mode: WeaveMode;
+  seed?: string;
+  dreamIds?: number[];
+}
+
 /** What it takes to edit a dream. Every field is independently
     present-or-absent - DreamsController.EditDream reads a raw JsonElement,
     so there is no server-side DTO this mirrors. */

@@ -1,19 +1,35 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader, ProjectMark } from '@hatch/ui';
-import { addDream, deleteDream, getDreams, patchDream } from '../api/client';
+import { addDream, deleteDream, getDreams, patchDream, weaveDreams } from '../api/client';
+import { Choice } from '../components/Choice';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { Facet } from '../components/Facet';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { agoPhrase } from '../lib/claim';
-import { EMPTY_DREAMS, countLine, dreamsRequest, hasMore, isUrl, readDreams, removeDream, replaceDream, showsDream, writeDreams } from '../lib/dreams';
+import {
+  EMPTY_DREAMS,
+  WEAVE_MODES,
+  countLine,
+  dreamsRequest,
+  hasMore,
+  isUrl,
+  readDreams,
+  removeDream,
+  replaceDream,
+  showsDream,
+  weaveProjectDefault,
+  weaveRequest,
+  weaveSeed,
+  writeDreams,
+} from '../lib/dreams';
 import { message } from '../lib/errors';
 import { facetClass } from '../lib/facet';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { createLedger } from '../lib/refresh';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
-import type { Dream, Project } from '../types';
+import type { Dream, Project, WeaveMode } from '../types';
 
 /** How long the box waits after the last keystroke before it writes `q`. */
 const DEBOUNCE_MS = 300;
@@ -25,6 +41,7 @@ const DEBOUNCE_MS = 300;
  * nowhere else, so Back undoes a change and pasting the link reproduces it.
  */
 export function DreamsPage() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const filters = readDreams(params);
 
@@ -139,6 +156,45 @@ export function DreamsPage() {
     }
   }
 
+  const [weaveMode, setWeaveMode] = useState<WeaveMode>(WEAVE_MODES[0]);
+  const [weaveSeedText, setWeaveSeedText] = useState<string | null>(null);
+  const [weaveProjectId, setWeaveProjectId] = useState<number | null>(() => weaveProjectDefault(filters.projectId, projects));
+  const [weaveProjectChosen, setWeaveProjectChosen] = useState(false);
+  const [lastProjectsLength, setLastProjectsLength] = useState(projects.length);
+  // projects arrives after the first render - re-default the chooser once it
+  // does, the same adjusted-during-render idiom above keeps filters.q's draft
+  // in sync with, but only while the person hasn't chosen one themselves.
+  if (projects.length !== lastProjectsLength) {
+    setLastProjectsLength(projects.length);
+    if (!weaveProjectChosen) setWeaveProjectId(weaveProjectDefault(filters.projectId, projects));
+  }
+  const [weaveOnScreen, setWeaveOnScreen] = useState(false);
+  const [pressing, setPressing] = useState(false);
+  const [weaveError, setWeaveError] = useState<string | null>(null);
+
+  const weave = weaveRequest({
+    mode: weaveMode,
+    seed: weaveSeedText,
+    q: draft,
+    projectId: weaveProjectId,
+    useOnScreen: weaveOnScreen,
+    dreams,
+  });
+
+  async function press() {
+    if (weave === null || pressing) return;
+    setPressing(true);
+    setWeaveError(null);
+
+    try {
+      const epic = await weaveDreams(weave);
+      navigate(`/issues/${epic.key}`);
+    } catch (err) {
+      setWeaveError(message(err));
+      setPressing(false);
+    }
+  }
+
   const onChanged = (updated: Dream) => setDreams((prev) => replaceDream(prev, updated));
 
   // Show more's offset is dreams.length, so the row and the total drop together.
@@ -192,6 +248,43 @@ export function DreamsPage() {
           </Button>
         </div>
       </Card>
+
+      <details className="hatch-dream-weave">
+        <summary>Weave an epic</summary>
+
+        <Choice label="Mode" value={weaveMode} options={WEAVE_MODES} onChange={(value) => setWeaveMode(value as WeaveMode)} />
+
+        {weaveMode === 'seed' && (
+          <input
+            type="text"
+            aria-label="Seed"
+            value={weaveSeed(weaveSeedText, draft)}
+            onChange={(e) => setWeaveSeedText(e.target.value)}
+          />
+        )}
+
+        <ProjectChooser
+          projects={projects}
+          value={weaveProjectId}
+          onChange={(id) => {
+            setWeaveProjectChosen(true);
+            setWeaveProjectId(id);
+          }}
+          legend="Project"
+        />
+
+        <label>
+          <input type="checkbox" checked={weaveOnScreen} onChange={(e) => setWeaveOnScreen(e.target.checked)} />
+          Use the dreams on screen
+        </label>
+
+        <div className="hatch-dream-weave__actions">
+          <Button variant="primary" loading={pressing} disabled={weave === null} onClick={() => void press()}>
+            Weave
+          </Button>
+          {weaveError && <p className="text-danger">{weaveError}</p>}
+        </div>
+      </details>
 
       <div className="hatch-board-filters hatch-search-filters">
         {/* type="search" on purpose; base.css says why. */}

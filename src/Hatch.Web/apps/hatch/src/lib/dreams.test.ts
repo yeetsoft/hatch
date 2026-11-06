@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DREAMS_PAGE,
   EMPTY_DREAMS,
+  WEAVE_MODES,
   countLine,
   dreamsRequest,
   firstLine,
@@ -11,10 +12,13 @@ import {
   removeDream,
   replaceDream,
   showsDream,
+  weaveProjectDefault,
+  weaveRequest,
+  weaveSeed,
   writeDreams,
   type DreamFilters,
 } from './dreams';
-import type { Dream } from '../types';
+import type { Dream, Project } from '../types';
 
 function params(entries: Record<string, string>): URLSearchParams {
   const params = new URLSearchParams();
@@ -257,5 +261,101 @@ describe('removeDream', () => {
     const input = [a, b];
     removeDream(input, 1);
     expect(input).toEqual([a, b]);
+  });
+});
+
+describe('weaveSeed', () => {
+  it('follows q while the seed box has not been typed in', () => {
+    expect(weaveSeed(null, 'needle')).toBe('needle');
+  });
+
+  it('follows a changing q, untyped', () => {
+    expect(weaveSeed(null, '')).toBe('');
+  });
+
+  it('keeps an empty typed value rather than falling back to q', () => {
+    expect(weaveSeed('', 'needle')).toBe('');
+  });
+
+  it('keeps the person\'s own text once typed', () => {
+    expect(weaveSeed('their own seed', 'needle')).toBe('their own seed');
+  });
+});
+
+describe('weaveRequest', () => {
+  const dreams = [{ id: 3 } as Dream, { id: 1 } as Dream, { id: 2 } as Dream];
+
+  it('is null with no project chosen', () => {
+    expect(
+      weaveRequest({ mode: 'seed', seed: 'x', q: '', projectId: null, useOnScreen: false, dreams: [] }),
+    ).toBeNull();
+  });
+
+  it('is null for mode seed with a blank seed', () => {
+    expect(
+      weaveRequest({ mode: 'seed', seed: '   ', q: '', projectId: 1, useOnScreen: false, dreams: [] }),
+    ).toBeNull();
+  });
+
+  it('is null for mode seed with q blank too, once untyped', () => {
+    expect(
+      weaveRequest({ mode: 'seed', seed: null, q: '  ', projectId: 1, useOnScreen: false, dreams: [] }),
+    ).toBeNull();
+  });
+
+  it('sends the trimmed seed in mode seed', () => {
+    expect(
+      weaveRequest({ mode: 'seed', seed: '  a seed  ', q: '', projectId: 1, useOnScreen: false, dreams: [] }),
+    ).toEqual({ projectId: 1, mode: 'seed', seed: 'a seed' });
+  });
+
+  it('sends no seed for the other modes even if one is typed', () => {
+    expect(
+      weaveRequest({ mode: 'pressing', seed: 'typed but unused', q: '', projectId: 1, useOnScreen: false, dreams: [] }),
+    ).toEqual({ projectId: 1, mode: 'pressing' });
+  });
+
+  it('omits dreamIds unless asked', () => {
+    expect(
+      weaveRequest({ mode: 'common', seed: null, q: '', projectId: 1, useOnScreen: false, dreams }),
+    ).toEqual({ projectId: 1, mode: 'common' });
+  });
+
+  it('omits dreamIds when the list is empty even if asked', () => {
+    expect(
+      weaveRequest({ mode: 'common', seed: null, q: '', projectId: 1, useOnScreen: true, dreams: [] }),
+    ).toEqual({ projectId: 1, mode: 'common' });
+  });
+
+  it('lists dreamIds in list order when asked and non-empty', () => {
+    expect(
+      weaveRequest({ mode: 'next', seed: null, q: '', projectId: 1, useOnScreen: true, dreams }),
+    ).toEqual({ projectId: 1, mode: 'next', dreamIds: [3, 1, 2] });
+  });
+});
+
+describe('WEAVE_MODES', () => {
+  it('lists the four modes in the order the control offers them', () => {
+    expect(WEAVE_MODES).toEqual(['seed', 'pressing', 'common', 'next']);
+  });
+});
+
+describe('weaveProjectDefault', () => {
+  const projects = [{ id: 1 } as Project, { id: 2 } as Project];
+
+  it('takes the facet when it parses and names a known project', () => {
+    expect(weaveProjectDefault('2', projects)).toBe(2);
+  });
+
+  it('falls back to the sole project when there is exactly one', () => {
+    expect(weaveProjectDefault('', [{ id: 5 } as Project])).toBe(5);
+  });
+
+  it('is null for several projects with no facet', () => {
+    expect(weaveProjectDefault('', projects)).toBeNull();
+  });
+
+  it('is null for a facet naming an unknown project', () => {
+    expect(weaveProjectDefault('9', projects)).toBeNull();
   });
 });

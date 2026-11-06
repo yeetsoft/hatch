@@ -2,7 +2,7 @@
    other lib file here is: the web test run has no DOM, so what can be wrong
    lives in a function with a test beside it. */
 
-import type { Dream } from '../types';
+import type { Dream, DreamWeaveRequest, Project, WeaveMode } from '../types';
 
 /** The filter the Dreams page's controls hold. Every field but `loose` is a
     string, `''` meaning unset, the way search.ts's own filters are held.
@@ -136,4 +136,53 @@ export function replaceDream(dreams: Dream[], updated: Dream): Dream[] {
 /** The list without the dream `id`. An id the list does not hold changes nothing. */
 export function removeDream(dreams: Dream[], id: number): Dream[] {
   return dreams.filter((dream) => dream.id !== id);
+}
+
+/** The four ways a weave press can draw its epic, in the order the control offers them. */
+export const WEAVE_MODES: readonly WeaveMode[] = ['seed', 'pressing', 'common', 'next'];
+
+/** The seed box's text: the person's own once they have typed - `seed` is no
+    longer `null` the moment the box is touched, even to clear it - else the
+    search box's own `q`, so the seed follows a search the person is already
+    narrowing until they start one of their own. */
+export function weaveSeed(seed: string | null, q: string): string {
+  return seed !== null ? seed : q;
+}
+
+/** What a weave press sends, or `null` while it cannot be pressed: no project
+    chosen, or mode `seed` with nothing (once trimmed) in the seed box. `seed`
+    is sent, trimmed, only in mode `seed` - the other modes draw their own
+    text server-side and a leftover seed must not reach them. `dreamIds` is
+    sent, in list order, only when the on-screen box is asked for and the
+    list is not empty. */
+export function weaveRequest(args: {
+  mode: WeaveMode;
+  seed: string | null;
+  q: string;
+  projectId: number | null;
+  useOnScreen: boolean;
+  dreams: Dream[];
+}): DreamWeaveRequest | null {
+  const { mode, seed, q, projectId, useOnScreen, dreams } = args;
+  if (projectId === null) return null;
+
+  const trimmedSeed = weaveSeed(seed, q).trim();
+  if (mode === 'seed' && trimmedSeed === '') return null;
+
+  const request: DreamWeaveRequest = { projectId, mode };
+  if (mode === 'seed') request.seed = trimmedSeed;
+  if (useOnScreen && dreams.length > 0) request.dreamIds = dreams.map((dream) => dream.id);
+
+  return request;
+}
+
+/** The project a weave starts on: the Project facet's own, when it parses and
+    names a project that still exists; else the only project there is, when
+    there is exactly one; else `null`, so the person is asked rather than
+    guessed for. */
+export function weaveProjectDefault(filterProjectId: string, projects: Project[]): number | null {
+  const parsed = Number(filterProjectId);
+  if (filterProjectId !== '' && projects.some((project) => project.id === parsed)) return parsed;
+
+  return projects.length === 1 ? projects[0].id : null;
 }
