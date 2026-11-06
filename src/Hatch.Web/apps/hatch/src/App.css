@@ -1581,6 +1581,26 @@ button.hatch-card-stories:focus-visible {
   }
 }
 
+/* The weave control: the same stacked spacing as the composer card above it,
+   open under a <summary> rather than always shown. */
+.hatch-dream-weave {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream-weave__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 40rem) {
+  .hatch-dream-weave__actions > * {
+    flex: 1 1 100%;
+  }
+}
+
 /* A date range is a .hatch-facet label wrapping two bare <input type="date">,
    so the facet's own border and background carry the look and the inputs
    draw nothing of their own - base.css's input rules are what this undoes. */
