@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
-import { getChangelogReport, liftRunnerOmission, omitRunner, orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
+import {
+  getChangelogReport,
+  liftRunnerOmission,
+  omitRunner,
+  orderRunner,
+  setStatusRunnerTags,
+  uploadAttachment,
+  withdrawOrder,
+} from './client';
 
 const status: Status = {
   id: 7,
@@ -151,5 +159,29 @@ describe('getChangelogReport', () => {
     expect(
       await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
     ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
+  });
+});
+
+describe('uploadAttachment', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs the file as multipart under its name, with no content type of its own', async () => {
+    const stored = { id: 'abc', fileName: 'shot.png', contentType: 'image/png', size: 1, createdAt: '2026-11-01T00:00:00Z' };
+    const fetchMock = vi.fn(async (_path: string, _init?: RequestInit) => new Response(JSON.stringify(stored), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await uploadAttachment(new Blob(['x'], { type: 'image/png' }), 'shot.png');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments');
+    const init = fetchMock.mock.calls[0][1]!;
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    const file = (init.body as FormData).get('file');
+    expect(file).toBeInstanceOf(File);
+    expect((file as File).name).toBe('shot.png');
+    expect(init.headers).toEqual({ Accept: 'application/json' });
+    expect(result).toEqual(stored);
   });
 });

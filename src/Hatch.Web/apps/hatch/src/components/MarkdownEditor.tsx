@@ -25,7 +25,7 @@
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import { Button, useTheme } from '@hatch/ui';
-import { uploadImage } from '../api/client';
+import { uploadAttachment } from '../api/client';
 import { clientLogger } from '../lib/clientLogger';
 import {
   SHRINK_ATTEMPTS,
@@ -168,7 +168,7 @@ function useImagePaste(insert: (text: string) => void) {
     e.stopPropagation();
     setNote('Uploading image\u2026');
     shrink(file)
-      .then(uploadImage)
+      .then((blob) => uploadAttachment(blob, file.name || 'image.png'))
       .then(
         ({ id }) => {
           insertRef.current(imageMarkdown(id));

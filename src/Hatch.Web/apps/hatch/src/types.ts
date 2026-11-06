@@ -24,9 +24,13 @@ export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   bug: ['epic', 'story', 'reflection'],
 };
 
-/** A stored image: `/api/hatch/images/{id}` serves it. */
-export interface HatchImage {
+/** A stored file: `/api/hatch/attachments/{id}` serves it. */
+export interface Attachment {
   id: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface Project {
