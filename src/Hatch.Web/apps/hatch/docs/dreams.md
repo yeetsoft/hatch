@@ -70,6 +70,40 @@ woven into an issue shows a chip linking to that issue; a dream with no issue wo
 loose one. The call that writes the record is `PUT /issues/{key}/dreams`, described in the
 [API reference](api-reference).
 
-## The weave press
+## Weaving an epic
 
-The weave press turns a handful of dreams into a filed epic.
+**Weave an epic** sits closed, under the composer box, open by pressing its
+summary. The composer stays first, even on the phone - nothing goes above it.
+
+Inside is a **Mode**, one of four: a seed sentence's own thread; the thread
+the dreams return to with the most urgency; the thread the most dreams touch;
+or the next step toward the vision, given what has already shipped. Choosing
+**seed** shows a **Seed** box, which follows the search box above until you
+touch it - the moment you have typed in it, even to clear it, it keeps its
+own text and stops following search.
+
+A **Project** chooser defaults to the Project facet's own choice, or to the
+one project when the board runs only one; with more than one project and no
+facet set, nothing is checked, and the project must be chosen by hand - an
+epic needs a home. Below it, **Use the dreams on screen** hands the weave the
+dreams currently listed, in the order they are shown, as the ones to start
+reading from; left unticked, the weave names none and the session finds its
+own.
+
+Pressing **Weave** files an **epic** - in the breakdown column, briefed to be
+woven from the dreams - and takes you straight to it. A refusal shows beside
+the button and leaves every control as it was, ready to press again.
+
+What happens next happens off this page: the loop's epic-breakdown session
+reads the dreams the brief points at, rewrites the epic's own description
+quoting them, files its stories, and records which dreams it drew on - which
+is what puts a **woven into** chip on each of them, the same chip a dream
+gets from any other issue drawing on it (see [above](#woven-into-an-issue)).
+Nothing on the Dream Board itself is edited by that session.
+
+It is a person's press, not a key's: weaving spends a breakdown session at
+the largest model, which is a person's call to spend, so an agent calling the
+route is refused. Pressing also does nothing if nobody has told the board
+which column an epic is born in - a weave is refused outright where no
+playbook row covers the `epic` type. See the
+[API reference](api-reference) for the route and its refusals.

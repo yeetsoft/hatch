@@ -122,6 +122,8 @@ the next heading of the same level and stop.
     show during an increment?
 - [The level above the board](#the-level-above-the-board) - Which running
   project is nearest the line?
+- [The Dream Board](#the-dream-board) - How does the board hold what is not
+  work yet, and how is an epic pulled out of it?
 - [The importer](#the-importer) - How does a markdown plan become an epic
   with stories and tasks?
 - [The operator and agent contract](#the-operator-and-agent-contract) -
@@ -8694,6 +8696,51 @@ and folds post-order — O(n) for the tree rather than a walk per node — becau
 the Plan page asks about every epic in the house at once. It is server-side for
 the reason the rank and the dispatcher's pick are: a browser that re-derived a
 total would disagree with the CLI the first time a column was added.
+
+## The Dream Board
+
+A half-thought has nowhere to go that is not an issue - no project, no type, no
+column, no key, just the words (see [Dream](#dream)). The **Dream Board** is
+where it goes instead, and the **weave press** (`POST /dreams/weave`) is how
+one is pulled back out as an epic.
+
+**A weave is an epic, run by the stock epic-breakdown row.** The press files a
+`type: epic` issue in the from-column of the epic-breakdown row -
+`Dispatch.MatchWeave` picks it: among the rows covering `epic` for the
+project or the board, the leftmost from-column, ties broken the way
+`Dispatch.MatchReflection` ranks (a project-specific row before a board-wide
+one, then specificity, then id) - Breakdown, on a stock board. Its description
+is a brief, built by `DreamWeave.Describe`, not the epic's own words; the
+breakdown session then does what any breakdown does: reads the brief, rewrites
+the description quoting the dreams it drew on, files the stories, moves the
+ticket on. See [`DreamWeave.cs`](../src/Hatch.Api/Modules/Hatch/DreamWeave.cs)
+and [`DreamWeaveController.cs`](../src/Hatch.Api/Modules/Hatch/DreamWeaveController.cs).
+
+**Why not a `weave` issue type with its own playbook row, as reflection has:**
+a weave *is* an epic, and its product is an epic - a second row for the same
+job is a second row to drift out of step with the first. The per-issue method
+belongs in the description, which is what a description is for.
+
+**Why not the server calling a model:** a credential on the server, a second
+adapter seam beside the one the loop already has (see [Summary](#summary) and
+[Agents](#agents)), and a result that sits outside the board's own record of
+what ran and what it cost. Every LLM-shaped thing Hatch does is a session the
+loop dispatches against a playbook row; the weave press is no exception.
+
+**The press is a person's, not a key's.** Checked by `NotAPerson`, the same
+guard `PostReflect` makes before a reflect-now press - weaving spends a
+breakdown session at the largest model, which is a person's call to spend, not
+an agent's to make for itself. A key or a keyless runner naming itself with
+the runner header is refused either way.
+
+A few things the brief has to work around, since the epic it is filed for does
+not exist yet when it is written: it cannot print the epic's own key, so it
+says `<KEY>` and means the ticket's own, read back once filed; it tells the
+session to ask `GET /api/hatch/dreams` again with no `projectId` as well, since
+a dream leaning toward no project matches only that way; and nothing is parsed
+back out of the description afterwards to find what it drew on - tracing is
+still the link row the session writes itself, with
+`PUT /api/hatch/issues/{key}/dreams`.
 
 ## The importer
 
