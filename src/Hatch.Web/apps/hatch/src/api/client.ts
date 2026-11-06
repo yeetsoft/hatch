@@ -10,7 +10,6 @@ import type {
   Attention,
   BackupStatus,
   Board,
-  ChangelogDto,
   ChangelogReport,
   Comment,
   CommentCreateRequest,
@@ -800,27 +799,6 @@ export interface WorkLogSessionQuery {
   sort?: SessionSort;
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;
-}
-
-// ---- Changelog ----
-
-/** What shipped, by UTC day: the newest window of days that closed something.
-    Anything null or undefined is left out rather than sent empty, as
-    `getTimeline` does, and the `?` is left off when nothing is left. */
-export const getChangelog = (query: ChangelogQuery) => {
-  const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
-  }
-  const qs = params.toString();
-  return fetchJson<ChangelogDto>('/api/hatch/changelog' + (qs ? '?' + qs : ''));
-};
-
-/** The changelog route's query string; it has no DTO. */
-export interface ChangelogQuery {
-  before?: string | null;
-  projectId?: number | null;
-  days?: number;
 }
 
 // ---- Overnight ----
