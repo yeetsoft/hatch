@@ -18,6 +18,7 @@ import { appendBlock } from '../lib/descriptionImage';
 import { renderMarkdown } from '../lib/markdown';
 import { useKeyboardInset, usePhone } from '../lib/viewport';
 import { AttachmentDropZone } from './AttachmentDropZone';
+import { AttachmentList } from './AttachmentList';
 import { MarkdownEditor, type MarkdownEditorHandle } from './MarkdownEditor';
 import { ProseClamp } from './ProseClamp';
 
@@ -159,6 +160,11 @@ export function DescriptionEditor({
           handle={editorRef}
         />
       )}
+
+      {/* Outside both branches so it shows in Edit and Preview and is never
+          remounted by the toggle; reads the draft, not the stored text, so a
+          file dropped a moment ago is listed before Save. */}
+      <AttachmentList text={draft.text} />
 
       {/* Save and Cancel, pinned above the keyboard at phone width so they
           are never out of reach while the description is dirty - AC3. Above
