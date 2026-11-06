@@ -223,3 +223,28 @@ the source file stays a deliberate manual act, never this page's.
 project, type, status, parent, ancestor, text - then applies one edit to
 every result still ticked when the button is pressed, not to whatever the
 filter would return if run again later.
+
+## Attachments
+
+A file dropped onto the **New issue** dialog's body, or onto an issue's
+**Description** section on the issue page or the board's peek, is uploaded
+and linked into the description, in Edit or in Preview alike. While a file
+is in the air over either area it reads `Drop to attach`. Several files
+dropped at once are uploaded in order and inserted one per line.
+
+A PNG, JPEG, GIF or WebP becomes an inline image; anything else becomes a
+download link named for the file itself, routed through
+[the API reference](api-reference). An image over 2 MB is redrawn smaller
+in the browser before it is sent, and a shrunk GIF or PNG comes out as a
+still PNG.
+
+The upload lands at the caret when the editor is open and has one;
+otherwise it lands at the end of the draft after a blank line, and Preview
+switches to Edit to show it. Either way the draft is then unsaved until
+**Save**, the same as typing is. A pasted image is uploaded the same way
+and always lands at the caret.
+
+A file over 25 MB is refused by the server, and nothing is inserted - the
+server's own sentence appears under the editor instead. Dropping several
+files at once stops at the first refusal: nothing from that drop is
+inserted, and the sentence names the file that was refused.
