@@ -21,6 +21,13 @@ namespace Hatch.Api.Modules.Hatch;
 public class ImagesController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>
+    /// The content types <see cref="GetImage"/> will serve. A later ticket's
+    /// <c>POST /attachments</c> can put other content types into
+    /// <see cref="HatchContext.Attachments"/>, and this route stays image-only.
+    /// </summary>
+    private static readonly string[] ImageContentTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+    /// <summary>
     /// Person-only, like the logo: an agent that wants a picture on a ticket
     /// has no clipboard, and widening this later is one attribute and one line
     /// out of the audit's person-only list.
@@ -39,14 +46,16 @@ public class ImagesController(HatchContext db, TimeProvider time, ICallerIdentit
 
         if (!PersonPhoto.TryDetectContentType(bytes, out var contentType, out var error)) return BadRequest(error);
 
-        var image = new EfHatchImage
+        var image = new EfHatchAttachment
         {
             Id = Guid.NewGuid(),
             Bytes = bytes,
             ContentType = contentType,
+            FileName = $"image.{ExtensionFor(contentType)}",
+            Size = bytes.Length,
             CreatedAt = time.GetUtcNow(),
         };
-        db.Images.Add(image);
+        db.Attachments.Add(image);
         await db.SaveChangesAsync(ct);
 
         return new ImageDto(image.Id);
@@ -56,7 +65,9 @@ public class ImagesController(HatchContext db, TimeProvider time, ICallerIdentit
     [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
     public async Task<IActionResult> GetImage(Guid id, CancellationToken ct)
     {
-        var image = await db.Images.AsNoTracking().FirstOrDefaultAsync(i => i.Id == id, ct);
+        var image = await db.Attachments.AsNoTracking()
+            .Where(a => ImageContentTypes.Contains(a.ContentType))
+            .FirstOrDefaultAsync(a => a.Id == id, ct);
         if (image is null) return NotFound();
 
         // The id is a fresh Guid per upload and the bytes under it never change.
@@ -65,4 +76,13 @@ public class ImagesController(HatchContext db, TimeProvider time, ICallerIdentit
 
         return File(image.Bytes, image.ContentType);
     }
+
+    private static string ExtensionFor(string contentType) => contentType switch
+    {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => "bin",
+    };
 }

@@ -15,7 +15,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();
     public DbSet<EfHatchOvernightSeen> OvernightSeen => Set<EfHatchOvernightSeen>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
-    public DbSet<EfHatchImage> Images => Set<EfHatchImage>();
+    public DbSet<EfHatchAttachment> Attachments => Set<EfHatchAttachment>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
