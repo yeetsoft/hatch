@@ -626,6 +626,10 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
 
+        // A weave press spends a breakdown session at the largest model -
+        // a person's to press, not an agent's. See DreamWeaveController.
+        "DreamWeaveController.PostWeave",
+
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
         "SettingsController.GetAll",
@@ -784,6 +788,10 @@ public class AdminSurfaceTests
         "ProjectsController.PutBindsTracker",
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
+
+        // A weave press spends a breakdown session at the largest model -
+        // a person's to press, not an agent's. See DreamWeaveController.
+        "DreamWeaveController.PostWeave",
         "AttachmentsController.PostAttachment",
         "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
