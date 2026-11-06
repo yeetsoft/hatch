@@ -26,6 +26,11 @@ describe('receiveKnown', () => {
     expect(receiveKnown(openDraft('one'), 'two')).toEqual(openDraft('two'));
   });
 
+  it('adopts the value silently when it is the draft\'s own text, as a save landing is', () => {
+    const draft = editDraft(openDraft('one'), 'one edited');
+    expect(receiveKnown(draft, 'one edited')).toEqual(openDraft('one edited'));
+  });
+
   it('keeps the text, updates known, and flags changed on a dirty draft', () => {
     const draft = editDraft(openDraft('one'), 'one edited');
     expect(receiveKnown(draft, 'two')).toEqual({ known: 'two', text: 'one edited', changed: true });

@@ -303,6 +303,21 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task GoToAsync(Deadline deadline, string path) =>
         deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
 
+    /// <summary>The running host's services, for a case that seeds its own rows once <see cref="StartHostAsync"/> has returned.</summary>
+    public IServiceProvider Services => factory!.Services;
+
+    /// <summary>Clicks the first element matching <paramref name="selector"/>, once it is visible and enabled.</summary>
+    public Task ClickAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"clicking {selector}", () => page!.Locator(selector).First.ClickAsync());
+
+    /// <summary>Runs <paramref name="script"/> in the page, a function taking <paramref name="arg"/>.</summary>
+    public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
+
+    /// <summary>Polls <paramref name="script"/> in the page until it answers truthy.</summary>
+    public Task WaitForFunctionAsync(Deadline deadline, string phase, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.WaitForFunctionAsync(script, arg));
+
     /// <summary>Drops every route a case installed, so the next load meets the real host: one context goes from a stubbed state to the state at rest.</summary>
     public Task UnrouteAllAsync(Deadline deadline) =>
         deadline.BoundAsync("removing the routes", () => context!.UnrouteAllAsync());
