@@ -2,14 +2,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
+import { ProjectsFacet } from '../components/ProjectsFacet';
 import { ChangelogReportBody } from './ChangelogReportPage';
 import { quietGapWords } from '../lib/changelogReport';
+import { reportProjects } from '../lib/timeline';
 import type {
   ChangelogReport,
   ChangelogReportBucket,
   ChangelogReportEntry,
   ChangelogReportGroup,
   IssueCard,
+  Project,
 } from '../types';
 
 /* No DOM runner and no fetch: the body is rendered from props, as
@@ -204,5 +207,44 @@ describe('CopyMarkdownButton', () => {
 
     expect(html).toContain('<button');
     expect(html).toContain('Copy as Markdown');
+  });
+});
+
+describe('under a scope', () => {
+  const projects = [
+    { id: 1, key: 'HA', name: 'Hatch' },
+    { id: 2, key: 'AER', name: 'Aerie' },
+    { id: 3, key: 'PYC', name: 'Pyc' },
+  ] as Project[];
+  const scope = ['HA', 'AER'];
+
+  it('reads for the scope\'s projects alone', () => {
+    const { chosen, narrowed } = reportProjects(new URLSearchParams(), projects, scope);
+
+    expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
+    expect(narrowed?.map((p) => p.id)).toEqual([1, 2]);
+  });
+
+  it('ignores a project param outside the scope', () => {
+    const { chosen, narrowed } = reportProjects(new URLSearchParams('project=PYC'), projects, scope);
+
+    expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
+    expect(narrowed?.map((p) => p.id)).toEqual([1, 2]);
+  });
+
+  it('sends no project filter with no scope and no param', () => {
+    expect(reportProjects(new URLSearchParams(), projects, []).narrowed).toBeUndefined();
+  });
+
+  it('offers only the scope\'s projects in the facet', () => {
+    const { offered, chosen } = reportProjects(new URLSearchParams(), projects, scope);
+
+    const html = renderToStaticMarkup(
+      <ProjectsFacet projects={offered} chosen={chosen.map((p) => p.key)} onChange={() => {}} />,
+    );
+
+    expect(html).toContain('HA — Hatch');
+    expect(html).toContain('AER — Aerie');
+    expect(html).not.toContain('PYC');
   });
 });

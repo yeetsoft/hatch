@@ -27,7 +27,7 @@ import { changelogMarkdown } from '../lib/changelogMarkdown';
 import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { scopedPath } from '../lib/scope';
-import { resolveProjects, withProjects } from '../lib/timeline';
+import { reportProjects, withProjects } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
 import { hasMultipleProjects } from '../lib/useProjects';
@@ -186,11 +186,10 @@ const REPORT_ANSWERS = 'What landed in each day, week or month, at the level a s
  * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
  * falls back to the last two weeks; the controls write those, and `project`
  * (repeated keys), `bucket`, `level` and `loose`, each leaving its default out
- * of the URL.
+ * of the URL. A `project` outside the tab's scope is ignored, not rewritten.
  */
-export function ChangelogReportPage() {
+function ChangelogReportReader({ keys }: { keys: string[] }) {
   const [params, setParams] = useSearchParams();
-  const { keys } = useScope();
 
   const { from, to, now, offsetMinutes, move } = useReportWindow(14);
 
@@ -198,15 +197,15 @@ export function ChangelogReportPage() {
 
   const load = useCallback(async (): Promise<ChangelogReportView> => {
     /* The read waits on the project list rather than going out beside it: the
-       URL holds keys, the read takes ids, and `resolveProjects` says which of
-       those keys this Hatch still has. */
+       URL holds keys, the read takes ids, and `reportProjects` says which of
+       those keys this Hatch still has within the scope. */
     const projects = await getProjects();
     const query = new URLSearchParams(search);
-    const chosen = resolveProjects(query, projects);
+    const { narrowed } = reportProjects(query, projects, keys);
     const report = await getChangelogReport({
       from,
       to,
-      projectId: chosen.length < projects.length ? chosen.map((p) => p.id) : undefined,
+      projectId: narrowed?.map((p) => p.id),
       bucket: resolveBucket(query),
       level: resolveLevel(query),
       loose: resolveLoose(query),
@@ -214,20 +213,22 @@ export function ChangelogReportPage() {
     });
 
     return { report, projects };
-  }, [from, to, search, offsetMinutes]);
+  }, [from, to, search, offsetMinutes, keys]);
 
   const { data, error } = useLoaded<ChangelogReportView>(load);
 
   /* Replace rather than push, as the other reports do: ticking a control is not
      a place somebody wants Back to walk them through. */
-  function chooseProjects(keys: string[]) {
-    setParams(withProjects(params, keys, (data?.projects ?? []).map((p) => p.key)), { replace: true });
+  function chooseProjects(picked: string[]) {
+    const { offered } = reportProjects(params, data?.projects ?? [], keys);
+
+    setParams(withProjects(params, picked, offered.map((p) => p.key)), { replace: true });
   }
 
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const chosen = resolveProjects(params, data.projects);
+  const { offered, chosen } = reportProjects(params, data.projects, keys);
   const bucket = resolveBucket(params);
   const level = resolveLevel(params);
   const loose = resolveLoose(params);
@@ -255,9 +256,9 @@ export function ChangelogReportPage() {
               onMove={move}
             />
             <div className="hatch-timeline-controls" role="group" aria-label="Filters">
-              {hasMultipleProjects(data.projects) && (
+              {hasMultipleProjects(offered) && (
                 <ProjectsFacet
-                  projects={data.projects}
+                  projects={offered}
                   chosen={chosen.map((p) => p.key)}
                   onChange={chooseProjects}
                 />
@@ -317,4 +318,12 @@ export function ChangelogReportPage() {
       />
     </div>
   );
+}
+
+export function ChangelogReportPage() {
+  const { keys, loaded } = useScope();
+
+  if (!loaded) return <p className="text-muted">Loading…</p>;
+
+  return <ChangelogReportReader keys={keys} />;
 }
