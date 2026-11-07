@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
@@ -13,6 +13,7 @@ import { NavUtilization } from './components/NavUtilization';
 import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
+import { ScopeControl } from './components/ScopeControl';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { DreamsPage } from './pages/DreamsPage';
@@ -38,7 +39,9 @@ import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
-import { ScopeProvider } from './lib/useScope';
+import { scopeTitle } from './lib/scope';
+import { ScopeProvider, useScope } from './lib/useScope';
+import { hasMultipleProjects } from './lib/useProjects';
 import { HOME, HOME_LABEL, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
@@ -62,6 +65,15 @@ function AppShell() {
   const isPhone = usePhone();
   const location = useLocation();
   const pull = usePullToRefresh();
+  // ScopeProvider has already loaded the project list; a second useProjects()
+  // here would be a second fetch.
+  const { keys, projects, setScope } = useScope();
+
+  // The only document.title write in the app. `keys` keeps its identity until
+  // the scope changes, so this runs on a change of scope and not on a render.
+  useEffect(() => {
+    document.title = scopeTitle(keys);
+  }, [keys]);
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
@@ -81,8 +93,17 @@ function AppShell() {
           width="full"
           /* Below the phone breakpoint PrimaryNav is absent rather than
              hidden by CSS - its triggers must not sit in the tab order when
-             the same pages are reached from the gear's panel instead. */
-          leading={isPhone ? undefined : <PrimaryNav tone="accent" />}
+             the same pages are reached from the gear's panel instead. The
+             scope control goes with it: on a phone it is the strip under
+             the bar, below. */
+          leading={
+            isPhone ? undefined : (
+              <>
+                <PrimaryNav tone="accent" />
+                <ScopeControl projects={projects} keys={keys} onChange={setScope} />
+              </>
+            )
+          }
           trailing={
             <>
               {/* What the bar says about this session rather than about the
@@ -147,6 +168,14 @@ function AppShell() {
             </>
           }
         />
+
+        {/* Gated here as well as inside ScopeControl: the strip has padding, so
+            ungated it would draw an empty band on a one-project install. */}
+        {isPhone && hasMultipleProjects(projects) && (
+          <div className="hatch-scope-strip">
+            <ScopeControl projects={projects} keys={keys} onChange={setScope} />
+          </div>
+        )}
 
         <main className="hatch-content">
           <Routes>
