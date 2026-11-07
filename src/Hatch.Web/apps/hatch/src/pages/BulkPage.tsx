@@ -6,27 +6,15 @@ import { MomentField } from '../components/MomentField';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
-import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, movedOutOfScope, summarize } from '../lib/bulk';
-import type { BulkForm } from '../lib/bulk';
+import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from '../lib/bulk';
+import type { BulkForm, Filters } from '../lib/bulk';
 import { message } from '../lib/errors';
 import { bulkBlocked } from '../lib/protectedColumns';
 import { truncate } from '../lib/text';
 import { useScope } from '../lib/useScope';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { ISSUE_TYPES } from '../types';
-import type { Board, IssueBulkResult, IssueCard, IssueSearch, IssueType, Project } from '../types';
-
-/** The filter, before it is turned into a query. '' is "any", which is not a value the API takes. */
-interface Filters {
-  projectId: number | '';
-  type: IssueType | '';
-  statusId: number | '';
-  parentKey: string;
-  ancestorKey: string;
-  text: string;
-}
-
-const NO_FILTERS: Filters = { projectId: '', type: '', statusId: '', parentKey: KEEP, ancestorKey: '', text: '' };
+import type { Board, IssueBulkResult, IssueCard, IssueType, Project } from '../types';
 
 /** The Project filter: the projects it is given, and nothing at all when there is only one to pick. */
 export function BulkProjectFilter({
@@ -105,18 +93,7 @@ export function BulkPage() {
     setSearching(true);
     setOutcome(null);
     try {
-      const query: IssueSearch = {
-        projectId: filters.projectId === '' ? null : filters.projectId,
-        type: filters.type === '' ? null : filters.type,
-        statusId: filters.statusId === '' ? null : filters.statusId,
-        // KEEP is "any parent"; the empty string is a filter of its own -
-        // "no parent at all" - and has to reach the API as one.
-        parentKey: filters.parentKey === KEEP ? null : filters.parentKey,
-        ancestorKey: filters.ancestorKey || null,
-        text: filters.text.trim() || null,
-      };
-
-      const found = await searchIssues(query);
+      const found = await searchIssues(bulkSearch(filters, scope.ids));
       setResults(found);
       // Everything found starts ticked: the filter is the selection, and the
       // ticks are there to take things back out of it.
@@ -127,7 +104,7 @@ export function BulkPage() {
     } finally {
       setSearching(false);
     }
-  }, [filters]);
+  }, [filters, scope.ids]);
 
   async function apply() {
     const request = buildBulkEdit([...chosen], form);

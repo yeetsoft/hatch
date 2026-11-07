@@ -12,7 +12,7 @@
    `parentKey: ''` where it meant to send nothing does not fail - it quietly
    outdents fifty issues. */
 
-import type { IssueBulkEditRequest, IssueBulkRekeyed, IssueBulkResult, IssueType } from '../types';
+import type { IssueBulkEditRequest, IssueBulkRekeyed, IssueBulkResult, IssueSearch, IssueType } from '../types';
 
 /** The value a picker carries when it is not being used. Never a real key: no issue key is empty and none is this. */
 export const KEEP = '__keep__';
@@ -79,6 +79,42 @@ export function buildBulkEdit(keys: string[], form: BulkForm): IssueBulkEditRequ
   if (form.setDue) request.dueAt = form.dueAt;
 
   return request;
+}
+
+/** The filter, before it is turned into a query. '' is "any", which is not a value the API takes. */
+export interface Filters {
+  projectId: number | '';
+  type: IssueType | '';
+  statusId: number | '';
+  parentKey: string;
+  ancestorKey: string;
+  text: string;
+}
+
+export const NO_FILTERS: Filters = { projectId: '', type: '', statusId: '', parentKey: KEEP, ancestorKey: '', text: '' };
+
+/**
+ * The search the filter becomes, kept apart from the page so the scope rule is
+ * testable. With no project chosen the search covers every project in the
+ * scope, and a project chosen from a scope that has since narrowed is ignored.
+ * Unscoped (`scopeIds` empty) the Project filter lists every project, so any
+ * choice stands and no choice leaves the field out of the request.
+ */
+export function bulkSearch(filters: Filters, scopeIds: number[]): IssueSearch {
+  const chosen = filters.projectId;
+  const valid = chosen !== '' && (scopeIds.length === 0 || scopeIds.includes(chosen));
+  const projectId = valid ? [chosen] : scopeIds.length > 0 ? scopeIds : null;
+
+  return {
+    projectId,
+    type: filters.type === '' ? null : filters.type,
+    statusId: filters.statusId === '' ? null : filters.statusId,
+    // KEEP is "any parent"; the empty string is a filter of its own -
+    // "no parent at all" - and has to reach the API as one.
+    parentKey: filters.parentKey === KEEP ? null : filters.parentKey,
+    ancestorKey: filters.ancestorKey || null,
+    text: filters.text.trim() || null,
+  };
 }
 
 /**
