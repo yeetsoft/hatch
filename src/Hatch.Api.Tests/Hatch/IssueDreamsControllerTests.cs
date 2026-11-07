@@ -207,7 +207,7 @@ public class IssueDreamsControllerTests
 
         /// <summary>The dream as the dream list draws it.</summary>
         public async Task<DreamDto> ListedAsync(long id) =>
-            Value(await Dreams.GetDreams(null, null, 50, 0, null, false, default)).Dreams.Single(d => d.Id == id);
+            Value(await Dreams.GetDreams(null, null, 50, 0, null, false, false, default)).Dreams.Single(d => d.Id == id);
 
         /// <summary>The dream as an edit that changes nothing answers it.</summary>
         public async Task<DreamDto> EditedAsync(long id) =>

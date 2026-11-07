@@ -28,6 +28,7 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         [FromQuery] int offset = 0,
         [FromQuery] string? issueKey = null,
         [FromQuery] bool loose = false,
+        [FromQuery] bool includeNoProject = false,
         CancellationToken ct = default)
     {
         if (limit is < 1 or > MaxLimit)
@@ -39,7 +40,10 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         var query = db.Dreams.AsNoTracking().AsQueryable();
 
         var projectIds = (projectId ?? []).Distinct().ToList();
-        if (projectIds.Count > 0) query = query.Where(d => d.ProjectId != null && projectIds.Contains(d.ProjectId.Value));
+        if (projectIds.Count > 0)
+            query = includeNoProject
+                ? query.Where(d => d.ProjectId == null || projectIds.Contains(d.ProjectId.Value))
+                : query.Where(d => d.ProjectId != null && projectIds.Contains(d.ProjectId.Value));
 
         if (issueKey is not null)
         {

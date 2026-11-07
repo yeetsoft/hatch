@@ -202,6 +202,78 @@ public class DreamsControllerTests
         Assert.Empty(narrowed.Dreams);
     }
 
+    [Fact]
+    public async Task List_IncludeNoProject_WithProjectIds_AnswersThoseProjectsAndEveryLooseDream()
+    {
+        var h = await NewAsync();
+        var other = new EfHatchProject { Key = "ZZZ", Name = "Other", CreatedAt = Now };
+        h.Db.Add(other);
+        await h.Db.SaveChangesAsync();
+        var leaningA = await h.AddAsync("leans toward A", projectId: h.ProjectAId);
+        var leaningB = await h.AddAsync("leans toward B", projectId: h.ProjectBId);
+        var leaningOther = await h.AddAsync("leans toward another", projectId: other.Id);
+        var loose = await h.AddAsync("floats free");
+
+        var scoped = await h.GetAsync(projectId: [h.ProjectAId, h.ProjectBId], includeNoProject: true);
+
+        Assert.Equal(
+            new[] { leaningA.Id, leaningB.Id, loose.Id }.OrderBy(id => id),
+            scoped.Dreams.Select(d => d.Id).OrderBy(id => id));
+        Assert.DoesNotContain(leaningOther.Id, scoped.Dreams.Select(d => d.Id));
+        Assert.Equal(3, scoped.Total);
+    }
+
+    [Fact]
+    public async Task List_IncludeNoProject_WithNoProjectId_ChangesNothing()
+    {
+        var h = await NewAsync();
+        var leaningA = await h.AddAsync("leans toward A", projectId: h.ProjectAId);
+        await h.AddAsync("leans toward B", projectId: h.ProjectBId);
+        await h.AddAsync("floats free");
+
+        var plain = await h.GetAsync();
+        var included = await h.GetAsync(includeNoProject: true);
+        var notIncluded = await h.GetAsync(projectId: [h.ProjectAId], includeNoProject: false);
+
+        Assert.Equal(plain.Dreams.Select(d => d.Id), included.Dreams.Select(d => d.Id));
+        Assert.Equal(3, included.Total);
+        Assert.Equal([leaningA.Id], notIncluded.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_IncludeNoProject_WithAnUnknownProjectIdAlone_AnswersOnlyTheLooseDreams()
+    {
+        var h = await NewAsync();
+        await h.AddAsync("leans toward the project", projectId: h.ProjectAId);
+        var loose = await h.AddAsync("floats free");
+
+        var scoped = await h.GetAsync(projectId: [999_999], includeNoProject: true);
+
+        Assert.Equal([loose.Id], scoped.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_IncludeNoProject_PagesAcrossTheScopeAndTheLooseDreams()
+    {
+        var h = await NewAsync();
+        await h.AddAsync("leans toward A", projectId: h.ProjectAId);
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.AddAsync("leans toward B", projectId: h.ProjectBId);
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.AddAsync("floats free");
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        List<int> scope = [h.ProjectAId, h.ProjectBId];
+
+        var whole = (await h.GetAsync(projectId: scope, includeNoProject: true)).Dreams.Select(d => d.Id).ToList();
+
+        var first = await h.GetAsync(projectId: scope, limit: 1, offset: 0, includeNoProject: true);
+        var second = await h.GetAsync(projectId: scope, limit: 1, offset: 1, includeNoProject: true);
+        var third = await h.GetAsync(projectId: scope, limit: 1, offset: 2, includeNoProject: true);
+
+        Assert.All([first, second, third], page => Assert.Equal(3, page.Total));
+        Assert.Equal(whole, first.Dreams.Concat(second.Dreams).Concat(third.Dreams).Select(d => d.Id));
+    }
+
     // ---- Listing: loose and issueKey ----
 
     [Fact]
@@ -245,7 +317,7 @@ public class DreamsControllerTests
     {
         var h = await NewAsync();
 
-        var result = await h.Controller.GetDreams(null, null, 50, 0, "nonsense", false, default);
+        var result = await h.Controller.GetDreams(null, null, 50, 0, "nonsense", false, false, default);
 
         var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Equal("\"nonsense\" is not an issue key", bad.Value);
@@ -522,8 +594,9 @@ public class DreamsControllerTests
             Created(await Controller.AddDream(new DreamCreateRequest(body, source, projectId), default));
 
         public async Task<DreamsPageDto> GetAsync(
-            string? q = null, List<int>? projectId = null, int limit = 50, int offset = 0, string? issueKey = null, bool loose = false) =>
-            Value(await Controller.GetDreams(q, projectId, limit, offset, issueKey, loose, default));
+            string? q = null, List<int>? projectId = null, int limit = 50, int offset = 0, string? issueKey = null, bool loose = false,
+            bool includeNoProject = false) =>
+            Value(await Controller.GetDreams(q, projectId, limit, offset, issueKey, loose, includeNoProject, default));
 
         public async Task<DreamDto> PatchAsync(long id, string json) =>
             Value(await Controller.EditDream(id, Json(json), default));
