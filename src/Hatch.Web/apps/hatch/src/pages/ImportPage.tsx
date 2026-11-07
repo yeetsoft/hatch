@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Text } from '@hatch/ui';
 import type { BadgeTone } from '@hatch/ui';
-import { getProjects, previewImport, previewText, runImport } from '../api/client';
+import { previewImport, previewText, runImport } from '../api/client';
 import { MarkdownEditor } from '../components/MarkdownEditor';
 import { message } from '../lib/errors';
+import { importTarget } from '../lib/importTarget';
+import { useScope } from '../lib/useScope';
 import type { ImportResult, ParsedEpic, PlanState, Project } from '../types';
 
 /* What each state is called on screen. The parser's three states are matched to
@@ -34,7 +36,7 @@ const STATE_TONES: Record<PlanState, BadgeTone> = {
  * manual act - see docs/hatch.md, "The importer".
  */
 export function ImportPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { projects, isScoped } = useScope();
   const [projectId, setProjectId] = useState<number | null>(null);
   const [docs, setDocs] = useState<ParsedEpic[] | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -46,13 +48,11 @@ export function ImportPage() {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
 
-  useEffect(() => {
-    getProjects().then(setProjects).catch((err: unknown) => setError(message(err)));
-  }, []);
-
   // No project until somebody picks one - imports write into a project's keys,
-  // and a page that guesses which one is a hazard behind every one of them.
-  const chosen = projectId;
+  // and a page that guesses which one is a hazard behind every one of them. The
+  // one exception is a tab scoped to a single project, which has already said
+  // where its work goes; a pick the scope no longer holds is dropped, not sent.
+  const chosen = importTarget(projects, projectId, isScoped);
 
   // Both halves, because the server refuses either one missing and a button
   // that reports that after a round trip is a button that wasted a click.
@@ -128,20 +128,7 @@ export function ImportPage() {
 
       <Card>
         <div className="hatch-form">
-          <Field label="Project" hint="Where the imported issues get their keys.">
-            <select
-              value={chosen ?? ''}
-              disabled={projects.length === 0}
-              onChange={(e) => setProjectId(e.target.value === '' ? null : Number(e.target.value))}
-            >
-              <option value="">— choose a project —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.key} — {p.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <ImportProjectField projects={projects} value={chosen} onChange={setProjectId} />
 
           <Field label="Plan files" hint="One or more .md files. Nothing is written until you say so.">
             <input
@@ -254,6 +241,35 @@ export function ImportPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** The project the import writes into, from the tab's scope alone: the page
+    hands it the in-scope list, so it cannot offer one the tab has left out. */
+export function ImportProjectField({
+  projects,
+  value,
+  onChange,
+}: {
+  projects: Project[];
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  return (
+    <Field label="Project" hint="Where the imported issues get their keys.">
+      <select
+        value={value ?? ''}
+        disabled={projects.length === 0}
+        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+      >
+        <option value="">— choose a project —</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.key} — {p.name}
+          </option>
+        ))}
+      </select>
+    </Field>
   );
 }
 

@@ -217,7 +217,9 @@ flavour.
 
 **Manage → Import** reads a directory of `.md` files, previews what each one
 would become against the board's own columns, and copies it in - retiring
-the source file stays a deliberate manual act, never this page's.
+the source file stays a deliberate manual act, never this page's. In a tab
+scoped to projects the Project chooser lists only those, and a tab scoped to
+a single project has it already chosen.
 
 **Manage → Bulk edit** runs the same server-side filters the board does -
 project, type, status, parent, ancestor, text - then applies one edit to
