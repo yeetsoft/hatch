@@ -2,6 +2,7 @@ import { createMemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import {
   SCOPE_CLEARED,
+  cardsInScope,
   keepScope,
   knownKeys,
   parseScope,
@@ -144,6 +145,18 @@ describe('parseScope', () => {
 
   it('answers none for no projects', () => {
     expect(parseScope(q('scope=AER'), [])).toEqual([]);
+  });
+});
+
+describe('cardsInScope', () => {
+  const cards = [{ projectKey: 'AER' }, { projectKey: 'FIL' }, { projectKey: 'ZED' }];
+
+  it('answers the same array for an empty scope', () => {
+    expect(cardsInScope(cards, [])).toBe(cards);
+  });
+
+  it('drops the card outside the scope, order kept', () => {
+    expect(cardsInScope(cards, ['ZED', 'AER'])).toEqual([{ projectKey: 'AER' }, { projectKey: 'ZED' }]);
   });
 });
 

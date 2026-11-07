@@ -119,6 +119,17 @@ export function writeBoardProject(key: string): void {
     on; absent or empty, this browser's last choice stands. */
 export const initialProject = (fromUrl: string | null): string => fromUrl || readBoardProject();
 
+/** `project` as the picker would actually offer it: itself when `offered`
+    names that key, else `''` - including when `offered.length < 2`, since
+    the picker is hidden then and a lit filter could never be cleared by
+    hand. A scope outside of which `project` falls, or a remembered key for a
+    project this browser's scope no longer offers, both read this way. */
+export function scrubbedProject(project: string, offered: { key: string }[]): string {
+  if (project === '') return '';
+  if (offered.length < 2) return '';
+  return offered.some((p) => p.key === project) ? project : '';
+}
+
 /** Whether this filter is hiding anything, which is what decides if the board
     says so out loud, and if Reset is drawn. */
 export const isFiltering = (filter: CardFilter): boolean =>
