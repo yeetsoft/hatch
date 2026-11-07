@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, summarize } from './bulk';
+import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, movedOutOfScope, summarize } from './bulk';
 import type { BulkForm } from './bulk';
 
 const form = (over: Partial<BulkForm> = {}): BulkForm => ({ ...EMPTY_FORM, ...over });
@@ -112,5 +112,25 @@ describe('summarize', () => {
         rekeyed: [{ from: 'AER-1', to: 'BER-5' }],
       }),
     ).toBe('1 changed, 1 moved to BER');
+  });
+});
+
+describe('movedOutOfScope', () => {
+  const inAer = (key: string): boolean => key === 'AER';
+
+  it('names nothing when nothing was moved', () => {
+    expect(movedOutOfScope([], inAer)).toEqual([]);
+  });
+
+  it('names only the keys that landed outside the scope', () => {
+    const rekeyed = [
+      { from: 'FIL-1', to: 'AER-7' },
+      { from: 'AER-2', to: 'FIL-3' },
+    ];
+    expect(movedOutOfScope(rekeyed, inAer)).toEqual(['FIL-3']);
+  });
+
+  it('names nothing when everything is in scope', () => {
+    expect(movedOutOfScope([{ from: 'AER-2', to: 'FIL-3' }], () => true)).toEqual([]);
   });
 });
