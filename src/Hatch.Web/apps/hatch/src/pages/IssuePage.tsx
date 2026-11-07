@@ -40,6 +40,7 @@ import { RunnerTagsField } from '../components/RunnerTagsField';
 import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
+import { IssueScopeNotice } from '../components/IssueScopeNotice';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -655,6 +656,8 @@ export function IssuePage() {
           </Button>
         }
       />
+
+      <IssueScopeNotice projectKey={issue.projectKey} />
 
       {error && <p className="text-danger">{error}</p>}
 
