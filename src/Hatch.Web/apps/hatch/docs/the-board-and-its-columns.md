@@ -99,7 +99,10 @@ remembered per browser, in `localStorage`, across pages, reloads and
 restarts. A `?project=KEY` link opens that project whatever this browser
 remembers, and the browser remembers it afterwards. A second control in the
 bar scopes the whole tab to projects: see
-[Scoping a tab to projects](#scoping-a-tab-to-projects).
+[Scoping a tab to projects](#scoping-a-tab-to-projects). Under a scope the
+picker lists only the scope's projects, its empty choice reads **All in
+scope**, it is not drawn when the scope holds one project, and a
+`?project=` or remembered project outside the scope is dropped.
 
 A column that shows no card is drawn at half the width of one that does, so
 empty columns stop pushing the busy ones off screen. That covers a column with
@@ -129,14 +132,21 @@ Users, API keys, Settings and Docs ignore it — none of them is an issue
 list. Later sections on this page, and this app's other pages, say where
 else it reaches.
 
+On the board, cards of projects outside the scope are not drawn, and are not
+counted in *N hidden by the filter* (nor in *N of M*), because the scope sits
+upstream of the filter row. **New issue** offers only the scope's projects
+and opens on the first of them when the filter and the remembered project are
+outside it. **Go to Work** starts your runners on the picker's project, else
+on the scope's projects, else on every project.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
 drives only your own loop runners — a loop started by hand or on standby
 (see [Starting it at login](the-runner#starting-it-at-login)) — never
 another person's, whatever your role. **Go to Work** sets each of yours to
-running and bounds it to the project the picker holds, or every project
-when **All projects** is picked; **Pause** pauses the running ones. The
+running and bounds it to the project the picker holds, or the tab's scope,
+or every project when **All projects** is picked; **Pause** pauses the running ones. The
 press alone sets the project — changing the picker afterwards moves nothing
 until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
