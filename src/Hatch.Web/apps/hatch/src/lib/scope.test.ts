@@ -6,6 +6,7 @@ import {
   keepScope,
   knownKeys,
   parseScope,
+  projectsInScope,
   rawScope,
   scopeProjectIds,
   scopeSearch,
@@ -159,6 +160,22 @@ describe('cardsInScope', () => {
 
   it('drops the card outside the scope, order kept', () => {
     expect(cardsInScope(cards, ['ZED', 'AER'])).toEqual([{ projectKey: 'AER' }, { projectKey: 'ZED' }]);
+  });
+});
+
+describe('projectsInScope', () => {
+  const list = [{ key: 'AER' }, { key: 'FIL' }, { key: 'ZED' }];
+
+  it('answers the same array for an empty scope', () => {
+    expect(projectsInScope(list, [])).toBe(list);
+  });
+
+  it('keeps the projects in the scope, in list order', () => {
+    expect(projectsInScope(list, ['ZED', 'AER'])).toEqual([{ key: 'AER' }, { key: 'ZED' }]);
+  });
+
+  it('ignores a key the list lacks', () => {
+    expect(projectsInScope(list, ['FIL', 'NOPE'])).toEqual([{ key: 'FIL' }]);
   });
 });
 

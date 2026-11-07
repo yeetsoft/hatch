@@ -24,6 +24,7 @@
 import type { Project, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
 import { statusVars } from './color';
 import { dayLabel } from './leaderboard';
+import { projectsInScope } from './scope';
 
 /** x is percent of the pane, so the scale is resolution-free and the component
     can place a tick with a `left: x%` or a viewBox of this width. */
@@ -100,6 +101,29 @@ export function withProjects(params: URLSearchParams, keys: string[], allKeys: s
   }
 
   return next;
+}
+
+/** `picked` when it is fewer than `all`, else `undefined` - the read every
+    project has always been, so a report that names no project asks the server
+    for none. */
+export function narrowedTo(picked: Project[], all: Project[]): Project[] | undefined {
+  return picked.length < all.length ? picked : undefined;
+}
+
+/** What a report page needs of its project list: `offered`, the projects in the
+    tab's scope (every project when `keys` is empty); `chosen`, the ones the
+    URL's `project` params name among `offered`, falling back to `offered`; and
+    `narrowed`, `chosen` when it is fewer than every project in `projects`, else
+    `undefined`. */
+export function reportProjects(
+  params: URLSearchParams,
+  projects: Project[],
+  keys: string[],
+): { offered: Project[]; chosen: Project[]; narrowed: Project[] | undefined } {
+  const offered = projectsInScope(projects, keys);
+  const chosen = resolveProjects(params, offered);
+
+  return { offered, chosen, narrowed: narrowedTo(chosen, projects) };
 }
 
 /** A window as two epoch-millisecond instants. */
