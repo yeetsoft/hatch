@@ -96,12 +96,14 @@
 /* Which projects this tab is looking at, on a phone: the bar has no room for
    the control beside the nav, so it sits in a strip under the bar, wearing the
    bar's own gradient. No media query - App.tsx mounts it only on a phone, and
-   only with two or more projects. */
+   only with two or more projects. Its height is the 44px min-height alone -
+   no vertical padding, since the coarse-pointer trigger is already 44 - which
+   is the figure the board's phone rule subtracts below. */
 .hatch-scope-strip {
   display: flex;
   align-items: center;
   min-height: 44px;
-  padding: var(--sp-2) var(--sp-4);
+  padding: 0 var(--sp-4);
   background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
   color: var(--on-chrome);
 }
@@ -3580,6 +3582,16 @@ input.hatch-inline-title-input {
 .hatch-stall-line {
   margin: 0 0 var(--sp-2);
   overflow-wrap: anywhere;
+}
+
+/* Beside .hatch-stall, the same band down the left edge in the primary colour:
+   a fact about where the ticket sits relative to the tab, not a warning. */
+.hatch-scope-notice {
+  border-left: 3px solid var(--primary);
+}
+
+.hatch-scope-notice-line {
+  margin: 0 0 var(--sp-2);
 }
 
 /* What a key reading the page gets instead of the two buttons - ExpressControl's
