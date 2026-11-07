@@ -23,7 +23,7 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
     [HttpGet]
     public async Task<ActionResult<DreamsPageDto>> GetDreams(
         [FromQuery] string? q,
-        [FromQuery] int? projectId,
+        [FromQuery] List<int>? projectId,
         [FromQuery] int limit = DefaultLimit,
         [FromQuery] int offset = 0,
         [FromQuery] string? issueKey = null,
@@ -38,7 +38,8 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
 
         var query = db.Dreams.AsNoTracking().AsQueryable();
 
-        if (projectId is { } project) query = query.Where(d => d.ProjectId == project);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        if (projectIds.Count > 0) query = query.Where(d => d.ProjectId != null && projectIds.Contains(d.ProjectId.Value));
 
         if (issueKey is not null)
         {

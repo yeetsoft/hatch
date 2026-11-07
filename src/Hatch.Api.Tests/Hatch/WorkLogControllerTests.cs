@@ -926,11 +926,51 @@ public class WorkLogControllerTests
 
         Assert.Equal(2, (await h.ByPlaybookAsync()).Rows.Count);
 
-        var narrowed = await h.ByPlaybookAsync(projectId: h.ProjectId);
+        var narrowed = await h.ByPlaybookAsync(projectId: [h.ProjectId]);
         Assert.Equal("mine", Assert.Single(narrowed.Rows).PlaybookKey);
 
-        Assert.Equal("theirs", Assert.Single((await h.ByPlaybookAsync(projectId: other.Id)).Rows).PlaybookKey);
-        Assert.Empty((await h.ByPlaybookAsync(projectId: 999_999)).Rows);
+        Assert.Equal("theirs", Assert.Single((await h.ByPlaybookAsync(projectId: [other.Id])).Rows).PlaybookKey);
+        Assert.Empty((await h.ByPlaybookAsync(projectId: [999_999])).Rows);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_TwoProjectIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+
+        var other = new EfHatchProject { Key = "OTH", Name = "Other", CreatedAt = Now };
+        h.Db.Add(other);
+        await h.Db.SaveChangesAsync();
+        var elsewhere = await h.FileAsync(projectId: other.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-2), playbookKey: "mine");
+        await h.SpendAsync(elsewhere, 20_000, Now.AddHours(-1), playbookKey: "theirs");
+
+        var both = await h.ByPlaybookAsync(projectId: [h.ProjectId, other.Id]);
+        Assert.Equal(2, both.Rows.Count);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-2), playbookKey: "mine");
+
+        var repeated = await h.ByPlaybookAsync(projectId: [h.ProjectId, h.ProjectId]);
+        Assert.Equal("mine", Assert.Single(repeated.Rows).PlaybookKey);
+    }
+
+    [Fact]
+    public async Task ByPlaybook_AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-2), playbookKey: "mine");
+
+        var narrowed = await h.ByPlaybookAsync(projectId: [h.ProjectId, 999_999]);
+        Assert.Equal("mine", Assert.Single(narrowed.Rows).PlaybookKey);
     }
 
     [Fact]
@@ -1130,7 +1170,7 @@ public class WorkLogControllerTests
                 from, to, ancestorKey, sort, limit, projectIds?.ToList(), default));
 
         public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-            string? from = null, string? to = null, int? projectId = null) =>
+            string? from = null, string? to = null, List<int>? projectId = null) =>
             Value(await History.GetByPlaybook(from, to, projectId, default));
 
         public async Task<string> ByPlaybookRefusalAsync(string? from = null, string? to = null)

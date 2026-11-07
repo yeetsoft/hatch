@@ -31,7 +31,11 @@ public class ReportsController(
     /// </summary>
     /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
-    /// <param name="projectId">Narrows the top-level rows to one project's; what rides beneath them is not cut.</param>
+    /// <param name="projectId">
+    /// Narrows the top-level rows to these projects', repeatable; every project
+    /// when absent or empty. An id naming no project contributes nothing and is
+    /// not a refusal. What rides beneath the top-level rows is not cut.
+    /// </param>
     /// <param name="createdBy">Narrows the top-level rows to one creator's.</param>
     /// <remarks>
     /// Neither query below is bounded by the range or by the project. The fold
@@ -42,22 +46,21 @@ public class ReportsController(
     [HttpGet("timeline")]
     public async Task<ActionResult<TimelineDto>> GetTimeline(
         [FromQuery] string? from, [FromQuery] string? to,
-        [FromQuery] int? projectId, [FromQuery] string? createdBy, CancellationToken ct)
+        [FromQuery] List<int>? projectId, [FromQuery] string? createdBy, CancellationToken ct)
     {
         var now = time.GetUtcNow();
 
         if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
             return BadRequest(refusal);
 
-        if (projectId is { } wanted && !await db.Projects.AnyAsync(p => p.Id == wanted, ct))
-            return BadRequest($"there is no project {wanted}");
+        var projectIds = (projectId ?? []).Distinct().ToList();
 
         var (statuses, rows, changes) = await LoadHistoryAsync(ct);
 
         DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
         start = RangeBounds.ClampStart(start, end, first);
 
-        var result = TimelineReport.Fold(rows, changes, statuses, start, end, projectId, createdBy);
+        var result = TimelineReport.Fold(rows, changes, statuses, start, end, projectIds, createdBy);
 
         // Cards for exactly the issues in the answer, and none of the rest of
         // the tracker.
@@ -210,7 +213,11 @@ public class ReportsController(
     /// </summary>
     /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
-    /// <param name="projectId">Narrows every count to one project's issues.</param>
+    /// <param name="projectId">
+    /// Narrows every count to these projects' issues, repeatable; every
+    /// project when absent or empty. An id naming no project contributes
+    /// nothing and is not a refusal.
+    /// </param>
     /// <param name="type">Narrows every count to one issue type.</param>
     /// <remarks>
     /// The status history is loaded whole, as the other reports load it - the
@@ -221,7 +228,7 @@ public class ReportsController(
     [HttpGet("flow")]
     public async Task<ActionResult<FlowDto>> GetFlow(
         [FromQuery] string? from, [FromQuery] string? to,
-        [FromQuery] int? projectId, [FromQuery] string? type, CancellationToken ct)
+        [FromQuery] List<int>? projectId, [FromQuery] string? type, CancellationToken ct)
     {
         var now = time.GetUtcNow();
 
@@ -231,8 +238,7 @@ public class ReportsController(
         if (type is not null && !EfHatchIssue.IsValidType(type))
             return BadRequest($"an issue is one of {string.Join(", ", EfHatchIssue.Types)} - not \"{type}\"");
 
-        if (projectId is { } wanted && !await db.Projects.AnyAsync(p => p.Id == wanted, ct))
-            return BadRequest($"there is no project {wanted}");
+        var ids = (projectId ?? []).Distinct().ToList();
 
         var (statuses, rows) = await LoadBoardAsync(ct);
 
@@ -312,7 +318,7 @@ public class ReportsController(
             .Select(w => new FlowReport.Session(w.IssueId, w.EndedAt, w.IsError))
             .ToList();
 
-        var result = FlowReport.Fold(rows, events, questions, sessions, statuses, start, end, projectId, type);
+        var result = FlowReport.Fold(rows, events, questions, sessions, statuses, start, end, ids, type);
 
         // Decoration only: the fold answers non-deferred board columns, every
         // one of which is in the board just loaded.

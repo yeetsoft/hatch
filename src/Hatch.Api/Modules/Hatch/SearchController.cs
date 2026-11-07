@@ -56,7 +56,7 @@ public class SearchController(
     [HttpGet]
     public async Task<ActionResult<SearchDto>> GetSearch(
         [FromQuery] string? q,
-        [FromQuery] int? projectId,
+        [FromQuery] List<int>? projectId,
         [FromQuery] string? type,
         [FromQuery] int? statusId,
         [FromQuery] string? createdFrom,
@@ -84,7 +84,8 @@ public class SearchController(
 
         var query = db.Issues.AsNoTracking().AsQueryable();
 
-        if (projectId is { } project) query = query.Where(i => i.ProjectId == project);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        if (projectIds.Count > 0) query = query.Where(i => projectIds.Contains(i.ProjectId));
         if (type is not null) query = query.Where(i => i.Type == type);
         if (statusId is { } status) query = query.Where(i => i.StatusId == status);
 

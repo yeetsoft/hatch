@@ -253,19 +253,22 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// ones, null where the stored id no longer names a column.
     /// </remarks>
     /// <param name="projectId">
-    /// Narrows to one project's issues. An id that matches no project answers no
-    /// rows rather than a refusal.
+    /// Narrows to these projects' issues, repeatable; every project when absent
+    /// or empty. An id naming no project contributes nothing and is not a
+    /// refusal.
     /// </param>
     [HttpGet("by-playbook")]
     public async Task<ActionResult<WorkLogByPlaybookDto>> GetByPlaybook(
         [FromQuery] string? from,
         [FromQuery] string? to,
-        [FromQuery] int? projectId = null,
+        [FromQuery] List<int>? projectId = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
 
-        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectId, ct);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+
+        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectIds, ct);
     }
 
     /// <summary>

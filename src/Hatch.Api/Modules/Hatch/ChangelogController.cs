@@ -21,7 +21,7 @@ public class ChangelogController(HatchContext db, TimeProvider time) : Controlle
 
     [HttpGet]
     public async Task<ActionResult<ChangelogDto>> GetChangelog(
-        [FromQuery] string? before, [FromQuery] int? projectId,
+        [FromQuery] string? before, [FromQuery] List<int>? projectId,
         [FromQuery] int days = DefaultDays, CancellationToken ct = default)
     {
         var now = time.GetUtcNow();
@@ -32,13 +32,12 @@ public class ChangelogController(HatchContext db, TimeProvider time) : Controlle
         if (days < 1)
             return BadRequest($"a window is at least one day - not {days}");
 
-        if (projectId is { } wanted && !await db.Projects.AnyAsync(p => p.Id == wanted, ct))
-            return BadRequest($"there is no project {wanted}");
+        var ids = (projectId ?? []).Distinct().ToList();
 
         var closed = db.Issues.AsNoTracking()
             .Where(i => i.ParentId == null && i.Status!.IsTerminal && i.ClosedAt != null);
 
-        if (projectId is { } project) closed = closed.Where(i => i.ProjectId == project);
+        if (ids.Count > 0) closed = closed.Where(i => ids.Contains(i.ProjectId));
 
         // One unfiltered-by-window projection, shared by the window boundary
         // below and the month counts - a second, bounded query only runs once

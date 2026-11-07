@@ -1124,7 +1124,8 @@ export interface IssueDependencyRequest {
     combine with AND; `parentKey: ''` is the one that cannot be said any other
     way - "no parent at all". */
 export interface IssueSearch {
-  projectId?: number | null;
+  /** One project, several (repeated once per id), or every project when absent. */
+  projectId?: number | number[] | null;
   type?: IssueType | null;
   statusId?: number | null;
   parentKey?: string | null;

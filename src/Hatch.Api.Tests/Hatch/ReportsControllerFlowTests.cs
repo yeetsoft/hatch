@@ -61,18 +61,28 @@ public class ReportsControllerFlowTests
     private static string Refusal<T>(ActionResult<T> result) =>
         Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
 
-    private static async Task<EfHatchIssue> AddIssueAsync(Harness h, int statusId, DateTimeOffset createdAt)
+    private static async Task<EfHatchIssue> AddIssueAsync(
+        Harness h, int statusId, DateTimeOffset createdAt, int? projectId = null)
     {
+        var project = projectId ?? h.ProjectId;
         var issue = new EfHatchIssue
         {
-            ProjectId = h.ProjectId,
-            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == h.ProjectId) + 1,
+            ProjectId = project,
+            Number = await h.Db.Issues.CountAsync(i => i.ProjectId == project) + 1,
             Type = "task", Title = "task", Description = "", StatusId = statusId, Rank = 1024,
             CreatedBy = "ann", CreatedAt = createdAt, UpdatedAt = createdAt,
         };
         h.Db.Issues.Add(issue);
         await h.Db.SaveChangesAsync();
         return issue;
+    }
+
+    private static async Task<int> AddProjectAsync(Harness h, string key)
+    {
+        var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+        h.Db.Projects.Add(project);
+        await h.Db.SaveChangesAsync();
+        return project.Id;
     }
 
     private static async Task EventAsync(Harness h, long issueId, string kind, string payload, int daysAgo)
@@ -124,14 +134,65 @@ public class ReportsControllerFlowTests
             $"an issue is one of {string.Join(", ", EfHatchIssue.Types)} - not \"saga\"", Refusal(result));
     }
 
+    // ---- The repeatable project filter ----
+
     [Fact]
-    public async Task AnUnknownProject_IsRefused()
+    public async Task OneProjectId_NarrowsTheCounts()
     {
         var h = await NewAsync();
+        var other = await AddProjectAsync(h, "OPS");
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1));
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1), projectId: other);
 
-        var result = await h.Reports.GetFlow(null, null, h.ProjectId + 100, null, default);
+        var flow = Value(await h.Reports.GetFlow(null, null, [h.ProjectId], null, default));
 
-        Assert.Equal($"there is no project {h.ProjectId + 100}", Refusal(result));
+        Assert.Equal(1, flow.Columns.Single(c => c.Name == "todo").Standing);
+    }
+
+    [Fact]
+    public async Task TwoProjectIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var other = await AddProjectAsync(h, "OPS");
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1));
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1), projectId: other);
+
+        var flow = Value(await h.Reports.GetFlow(null, null, [h.ProjectId, other], null, default));
+
+        Assert.Equal(2, flow.Columns.Single(c => c.Name == "todo").Standing);
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1));
+
+        var flow = Value(await h.Reports.GetFlow(null, null, [h.ProjectId, h.ProjectId], null, default));
+
+        Assert.Equal(1, flow.Columns.Single(c => c.Name == "todo").Standing);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1));
+
+        var flow = Value(await h.Reports.GetFlow(null, null, [h.ProjectId, 999_999], null, default));
+
+        Assert.Equal(1, flow.Columns.Single(c => c.Name == "todo").Standing);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdAlone_AnswersNoRowsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await AddIssueAsync(h, h.Status["todo"], Now.AddDays(-1));
+
+        var flow = Value(await h.Reports.GetFlow(null, null, [999_999], null, default));
+
+        Assert.Equal(0, flow.Columns.Single(c => c.Name == "todo").Standing);
     }
 
     [Fact]

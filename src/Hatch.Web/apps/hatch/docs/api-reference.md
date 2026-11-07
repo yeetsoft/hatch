@@ -193,7 +193,7 @@ beyond the standard ones.
 | DELETE | `/issues/{key}` | Deletes it; children are outdented, not deleted |
 | POST | `/issues/{key}/move` | The drag: a column and the neighbours it landed between |
 
-All eight are a key's. `GET /issues` takes `projectId`, `type`, `statusId`,
+All eight are a key's. `GET /issues` takes a repeatable `projectId`, `type`, `statusId`,
 `parentKey` (`""` means "no parent at all" - the one filter with no other way
 to write it), `ancestorKey` (anything below at any depth, not the issue
 itself) and `text` (a substring of the title, plus an exact key match), all
@@ -401,19 +401,19 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/plan/{key}` | One issue's rollup and its children's |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
-All four a key's. `/search` takes `q`, `projectId`, `type`, `statusId`,
+All four a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). `/plan` takes an
-optional `projectId`. `/assignees` takes nothing, and answers an
+optional, repeatable `projectId`. `/assignees` takes nothing, and answers an
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
 
 **Refusals.** `/search` 400s an invalid `type`, a `limit` outside 1-200, a
 negative `offset`, or an unparseable date bound. `/plan/{key}` 404s an
-unknown key; `/plan` with an unknown `projectId` answers an empty plan rather
-than a 404, since an empty or just-deleted project is a legal thing to look
-at.
+unknown key; `/plan` with a `projectId` naming no project answers an empty
+plan rather than a 404, since an empty or just-deleted project is a legal
+thing to look at - true of each id when several are given.
 
 ## Attachments, images and import
 
@@ -468,8 +468,8 @@ before 409ing.
 | POST | `/dreams/weave` | Files an epic in the breakdown column, briefed to be woven from the dreams (a person's, not a key's) |
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
-`/dreams` takes `q` (any word, not every word - unlike `/search`), `projectId`
-(omitted matches every dream, leaning and loose alike), `issueKey` (only
+`/dreams` takes `q` (any word, not every word - unlike `/search`), a repeatable
+`projectId` (omitted or empty matches every dream, leaning and loose alike), `issueKey` (only
 dreams woven into that issue), `loose` (`true` for only dreams woven into no
 issue at all), `limit` (1-200, default 50) and `offset`; with `q`, best match
 first, else newest first. `issueKey` and `loose` each AND with `q` and
@@ -983,10 +983,10 @@ nothing rather than a refusal. It is ANDed with `ancestorKey` when both are
 given, and narrows the totals, the buckets and the `first`/`last` bounds
 alike.
 `/work-log/by-playbook` folds the same range by the playbook, transition,
-issue type, model and effort each session ran under, and takes `projectId`
-in place of `ancestorKey`; it answers every group, heaviest first by total
-tokens, with no sort or limit to choose, and an unknown `projectId` answers
-no rows rather than a refusal. Sessions from an older runner, which did not
+issue type, model and effort each session ran under, and takes a repeatable
+`projectId` in place of `ancestorKey`; it answers every group, heaviest first
+by total tokens, with no sort or limit to choose, and an id naming no project
+contributes nothing and is not a refusal. Sessions from an older runner, which did not
 record those, fold into one row of nulls, and a status name is the board's
 current one - null where the column has since gone.
 
@@ -1002,7 +1002,8 @@ reads; it takes `limit` (1 to 500, default 100) and `offset`, and a
 repeatable `projectId` that narrows to events whose issue is in any of those
 projects (an id naming no project contributes nothing and is not a refusal),
 with `limit` and `offset` paging the narrowed rows, and answers `hasMore`
-rather than a count. `/changelog` takes `before`, `projectId` and
+rather than a count. `/changelog` takes `before`, a repeatable `projectId`
+(an id naming no project contributes nothing and is not a refusal) and
 `days` (default 14), answering the newest window of days that shipped
 something, with every closed month's own count beside it for the jump
 control - this is the feed agents read (`hatch changelog`), unchanged; no
@@ -1013,8 +1014,8 @@ Reports reads `/reports/changelog` instead.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
 name, or a request whose buckets would exceed 1000. `sessions` 400s an
 unrecognised sort or a limit outside 1-500. `activity` 400s a limit outside
-1-500 or a negative offset. `changelog` 400s a window under one day or a
-project that does not exist. `history`/`sessions`/`by-playbook`/`changelog` all 400 an
+1-500 or a negative offset. `changelog` 400s a window under one day.
+`history`/`sessions`/`by-playbook`/`changelog` all 400 an
 unparseable range bound, in the order `to`, then `from`, then the inversion.
 
 ### Reports and the battery
@@ -1029,17 +1030,19 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
 All six a key's. `timeline` takes `from`, `to` (default the ninety days
-ending now), `projectId` and `createdBy`; `cumulative-flow` takes `from`/`to`,
-the same ninety-day default, plus a repeatable `project`, and 400s an unknown
-key the same way `flow` 400s an unknown `projectId`; `flow` takes `from`/`to`
-the same way, plus `projectId` and `type`, and 400s an unknown `type` or
-`projectId`. `changelog` takes `from`/`to` (default the **fourteen** days
-ending now), a repeatable `projectId`, `bucket` (default `day`),
+ending now), a repeatable `projectId` and `createdBy`; `cumulative-flow`
+takes `from`/`to`, the same ninety-day default, plus a repeatable `project`,
+and 400s an unknown key; `flow` takes `from`/`to` the same way, plus a
+repeatable `projectId` and `type`, and 400s an unknown `type`. On `timeline`
+and `flow`, a `projectId` naming no project contributes nothing and is
+not a refusal - unlike `changelog`'s own, below. `changelog` takes `from`/`to`
+(default the **fourteen** days ending now), a repeatable `projectId`,
+`bucket` (default `day`),
 `offsetMinutes` (-1440..1440), `level` (`epic`, the default, or `story`) and
 `loose` (`true` or `false`, trimmed/case-insensitive, default `false`), and
 400s a bad range bound, an offset outside +-1440 minutes, an unrecognised
 bucket name, a `level` other than `epic` or `story`, a `loose` other than
-`true` or `false`, or a `projectId` that does not exist - in that order.
+`true` or `false`, or any id in `projectId` that does not exist - in that order.
 None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a

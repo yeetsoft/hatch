@@ -147,7 +147,7 @@ public class SearchControllerTests
         var a = await h.FileAsync(h.ProjectAId, "task", "in A");
         var b = await h.FileAsync(h.ProjectBId, "bug", "in B");
 
-        Assert.Equal([a.Key], (await h.SearchAsync(projectId: h.ProjectAId)).Hits.Select(x => x.Card.Key));
+        Assert.Equal([a.Key], (await h.SearchAsync(projectId: [h.ProjectAId])).Hits.Select(x => x.Card.Key));
         Assert.Equal([b.Key], (await h.SearchAsync(type: "bug")).Hits.Select(x => x.Card.Key));
         Assert.Equal(2, (await h.SearchAsync(statusId: a.StatusId)).Total);
 
@@ -155,7 +155,52 @@ public class SearchControllerTests
         Assert.Equal(0, unknown.Total);
         Assert.Empty(unknown.Hits);
 
-        Assert.Empty((await h.SearchAsync(projectId: h.ProjectAId, type: "bug")).Hits);
+        Assert.Empty((await h.SearchAsync(projectId: [h.ProjectAId], type: "bug")).Hits);
+    }
+
+    [Fact]
+    public async Task ProjectId_TwoIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+        var b = await h.FileAsync(h.ProjectBId, "bug", "in B");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, h.ProjectBId]);
+
+        Assert.Equal(new[] { a.Key, b.Key }, hits.Hits.Select(x => x.Card.Key).OrderBy(k => k));
+    }
+
+    [Fact]
+    public async Task ProjectId_ARepeatedId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, h.ProjectAId]);
+
+        Assert.Equal([a.Key], hits.Hits.Select(x => x.Card.Key));
+    }
+
+    [Fact]
+    public async Task ProjectId_AnUnknownIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, 999_999]);
+
+        Assert.Equal([a.Key], hits.Hits.Select(x => x.Card.Key));
+    }
+
+    [Fact]
+    public async Task ProjectId_AnUnknownIdAlone_AnswersNoHitsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [999_999]);
+
+        Assert.Empty(hits.Hits);
     }
 
     [Fact]
@@ -328,7 +373,7 @@ public class SearchControllerTests
         }
 
         public async Task<SearchDto> SearchAsync(
-            string? q = null, int? projectId = null, string? type = null, int? statusId = null,
+            string? q = null, List<int>? projectId = null, string? type = null, int? statusId = null,
             string? createdFrom = null, string? createdTo = null, string? closedFrom = null, string? closedTo = null,
             int limit = 50, int offset = 0) =>
             Value(await Search.GetSearch(q, projectId, type, statusId, createdFrom, createdTo, closedFrom, closedTo, limit, offset, default));

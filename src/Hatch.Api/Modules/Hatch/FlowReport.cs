@@ -62,7 +62,7 @@ public static class FlowReport
     public static Result Fold(
         IReadOnlyList<TimelineReport.Row> rows, IReadOnlyList<Event> events, IReadOnlyList<Question> questions,
         IReadOnlyList<Session> sessions, IReadOnlyList<EfHatchStatus> statuses,
-        DateTimeOffset from, DateTimeOffset to, int? projectId, string? type)
+        DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, string? type)
     {
         var ordered = statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
         var columns = Columns.Board(ordered).Select(s => s.Id).ToList();
@@ -80,7 +80,8 @@ public static class FlowReport
         var dwell = new List<long>[columns.Count];
         for (var i = 0; i < dwell.Length; i++) dwell[i] = [];
 
-        var kept = rows.Where(r => (projectId is null || r.ProjectId == projectId) && (type is null || r.Type == type));
+        var kept = rows.Where(r =>
+            (projectIds is null || projectIds.Count == 0 || projectIds.Contains(r.ProjectId)) && (type is null || r.Type == type));
 
         var dropped = 0;
         var hopCounts = HopKindOrder.ToDictionary(k => k, _ => 0);

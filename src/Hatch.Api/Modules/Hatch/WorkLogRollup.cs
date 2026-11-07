@@ -275,9 +275,10 @@ public static class WorkLogRollup
     /// </summary>
     /// <remarks>
     /// The range is used as given and is half-open, the same rule
-    /// <see cref="SessionsAsync"/> states. <paramref name="projectId"/> narrows to
-    /// one project's issues; an id that matches none answers no rows rather than
-    /// a refusal, the convention the issue search already uses.
+    /// <see cref="SessionsAsync"/> states. <paramref name="projectIds"/> narrows
+    /// to these projects' issues, null or empty is no filter; an id that
+    /// matches none answers no rows rather than a refusal, the convention the
+    /// issue search already uses.
     ///
     /// The status names are the board's <em>current</em> ones, looked up by the
     /// stored id. The label never re-reads the playbook, so a deleted or
@@ -285,10 +286,10 @@ public static class WorkLogRollup
     /// ran - and a column since deleted is a null name beside an id that stays.
     /// </remarks>
     public static async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
-        HatchContext db, DateTimeOffset from, DateTimeOffset to, int? projectId, CancellationToken ct)
+        HatchContext db, DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, CancellationToken ct)
     {
         var entries = db.WorkLog.AsNoTracking().Where(w => w.EndedAt >= from && w.EndedAt < to);
-        if (projectId is { } project) entries = entries.Where(w => w.Issue!.ProjectId == project);
+        if (projectIds is { Count: > 0 }) entries = entries.Where(w => projectIds.Contains(w.Issue!.ProjectId));
 
         var rows = await entries
             .Select(w => new ByPlaybookRow(
