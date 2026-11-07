@@ -57,10 +57,10 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
 const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0, verb: '' };
 const WORKING: StatusLine = { before: 'Working ', key: 'FIL-97', after: ' · In Progress', tone: 'success', more: 0, verb: 'Working' };
 
-const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: StatusLine = EMPTY_LINE) =>
+const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: StatusLine = EMPTY_LINE, scope: string[] = []) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <GoToWorkControl plan={plan} status={status} project={project} reload={async () => {}} isPhone={isPhone} />
+      <GoToWorkControl plan={plan} status={status} project={project} scope={scope} reload={async () => {}} isPhone={isPhone} />
     </MemoryRouter>,
   );
 
@@ -70,6 +70,18 @@ const go = planGoToWork([runner({ state: 'paused' })], NOW);
 const pause = planGoToWork([runner({ state: 'running' })], NOW);
 
 describe('GoToWorkControl', () => {
+  it('names the scope’s projects when the picker is empty', () => {
+    const html = render(go, '', false, EMPTY_LINE, ['AER', 'FIL']);
+
+    expect(html).toContain('title="Start your runners on AER, FIL"');
+  });
+
+  it('names the picker’s project over the scope', () => {
+    const html = render(go, 'FIL', false, EMPTY_LINE, ['AER', 'FIL']);
+
+    expect(html).toContain('title="Start your runners on FIL"');
+  });
+
   it('is disabled and silent while the runners are loading', () => {
     const html = render({ mode: 'loading' });
 
