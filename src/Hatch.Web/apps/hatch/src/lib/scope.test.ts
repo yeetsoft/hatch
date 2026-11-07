@@ -10,6 +10,7 @@ import {
   scopeProjectIds,
   scopeSearch,
   scopeTitle,
+  scopeWithProject,
   scopedPath,
   withScope,
 } from './scope';
@@ -388,5 +389,11 @@ describe('keepScope in a router', () => {
     await k.router.navigate('/plan');
     expect(k.where()).toBe('/plan');
     expect(k.actions).toEqual(['POP', 'PUSH']);
+  });
+});
+
+describe('scopeWithProject', () => {
+  it('appends the key', () => {
+    expect(scopeWithProject(['AER'], 'HA')).toEqual(['AER', 'HA']);
   });
 });
