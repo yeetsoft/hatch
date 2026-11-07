@@ -2996,8 +2996,11 @@ public sealed class GoToWorkTests
             // A real tick rather than Task.Yield(): what is left after the
             // clamp clears is ordinary async work (claiming, spawning) with
             // nothing left to drive by hand, and a bare yield never gives the
-            // thread pool behind it an actual turn.
-            await Task.Delay(1);
+            // thread pool behind it an actual turn. 5ms, not 1ms, so the
+            // production continuation has enough real wall-clock time to
+            // resume before the next Advance() fires under thread-pool
+            // contention - matches HatchClientTests.DriveAsync.
+            await Task.Delay(5);
         }
     }
 
