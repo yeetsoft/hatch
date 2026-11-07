@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   SCOPE_CLEARED,
   keepScope,
+  knownKeys,
   parseScope,
   rawScope,
   scopeSearch,
@@ -67,6 +68,32 @@ describe('rawScope', () => {
 
   it('accepts the encoded comma', () => {
     expect(rawScope(q('scope=AER%2CFIL'))).toEqual(['AER', 'FIL']);
+  });
+});
+
+describe('knownKeys', () => {
+  it('drops an unknown key silently', () => {
+    expect(knownKeys(['AER', 'NOPE'], projects)).toEqual(['AER']);
+  });
+
+  it("answers in the project list's order", () => {
+    expect(knownKeys(['FIL', 'AER'], projects)).toEqual(['AER', 'FIL']);
+  });
+
+  it('answers none when every key is named', () => {
+    expect(knownKeys(['AER', 'FIL', 'ZED'], projects)).toEqual([]);
+  });
+
+  it('answers none when nothing is named', () => {
+    expect(knownKeys([], projects)).toEqual([]);
+  });
+
+  it('always answers none for a single-project list', () => {
+    expect(knownKeys(['AER'], [project({ key: 'AER' })])).toEqual([]);
+  });
+
+  it('answers none for no projects', () => {
+    expect(knownKeys(['AER'], [])).toEqual([]);
   });
 });
 

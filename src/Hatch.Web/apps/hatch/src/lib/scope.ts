@@ -37,18 +37,24 @@ export function rawScope(params: URLSearchParams): string[] {
   return [...new Set(keys)];
 }
 
-/** The keys `rawScope` names that are in `projects`, in the project list's own
-    order. `[]` - every project - for a single-project list, for a list where
-    every key is named, and when nothing is: unknown keys drop silently, and a
-    link naming only projects this Hatch does not have is "every project"
-    rather than an empty page. */
-export function parseScope(params: URLSearchParams, projects: { key: string }[]): string[] {
+/** `raw` filtered to the keys in `projects`, in the project list's own order.
+    `[]` - every project - for a single-project list, for a list where every
+    key is named, and when nothing is: unknown keys drop silently, and a list
+    naming only projects this Hatch does not have is "every project" rather
+    than an empty page. */
+export function knownKeys(raw: string[], projects: { key: string }[]): string[] {
   if (projects.length < 2) return [];
 
-  const named = new Set(rawScope(params));
+  const named = new Set(raw);
   const keys = projects.map((project) => project.key).filter((key) => named.has(key));
 
   return keys.length === projects.length ? [] : keys;
+}
+
+/** The keys `rawScope` names that are in `projects`, in the project list's own
+    order. See `knownKeys` for the rule. */
+export function parseScope(params: URLSearchParams, projects: { key: string }[]): string[] {
+  return knownKeys(rawScope(params), projects);
 }
 
 /** A copy of `params` with `scope` set to `keys` in `allKeys` order joined by
