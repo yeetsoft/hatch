@@ -8,6 +8,7 @@ import {
   rawScope,
   scopeProjectIds,
   scopeSearch,
+  scopeTitle,
   scopedPath,
   withScope,
 } from './scope';
@@ -190,6 +191,16 @@ describe('scopedPath', () => {
 
   it('leaves the path alone when there is none', () => {
     expect(scopedPath('/plan', [])).toBe('/plan');
+  });
+});
+
+describe('scopeTitle', () => {
+  it('joins the scoped keys with the Hatch suffix', () => {
+    expect(scopeTitle(['AER', 'FIL'])).toBe('AER, FIL - Hatch');
+  });
+
+  it('is just Hatch for no scope', () => {
+    expect(scopeTitle([])).toBe('Hatch');
   });
 });
 
