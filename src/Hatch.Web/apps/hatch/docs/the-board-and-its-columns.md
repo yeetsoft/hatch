@@ -146,9 +146,9 @@ drives only your own loop runners — a loop started by hand or on standby
 (see [Starting it at login](the-runner#starting-it-at-login)) — never
 another person's, whatever your role. **Go to Work** sets each of yours to
 running and bounds it to the project the picker holds, or the tab's scope,
-or every project when **All projects** is picked; **Pause** pauses the running ones. The
-press alone sets the project — changing the picker afterwards moves nothing
-until the next press. A press lands at the runner's next heartbeat: at once
+or every project when **All projects** is picked; **Pause** pauses the
+running ones. The press alone sets the project — changing the picker
+afterwards moves nothing until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
 With none of yours on, the button is disabled and the status says "No
 runner"; press it to find the link to start one.
