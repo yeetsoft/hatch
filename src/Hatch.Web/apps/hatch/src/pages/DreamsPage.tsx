@@ -82,7 +82,7 @@ export function DreamsPage() {
     setLoading(true);
     setError(null);
 
-    getDreams(dreamsRequest(filters, 0)).then(
+    getDreams(dreamsRequest(filters, 0, [])).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setDreams(result.dreams);
@@ -106,7 +106,7 @@ export function DreamsPage() {
     setLoadingMore(true);
     setError(null);
 
-    getDreams(dreamsRequest(filters, dreams.length)).then(
+    getDreams(dreamsRequest(filters, dreams.length, [])).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setDreams((prev) => [...prev, ...result.dreams]);

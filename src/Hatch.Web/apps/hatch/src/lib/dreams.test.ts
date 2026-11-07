@@ -8,9 +8,11 @@ import {
   firstLine,
   hasMore,
   isUrl,
+  offeredProjectId,
   readDreams,
   removeDream,
   replaceDream,
+  scrubbedDreamProject,
   showsDream,
   weaveProjectDefault,
   weaveRequest,
@@ -102,28 +104,93 @@ describe('writeDreams', () => {
 
 describe('dreamsRequest', () => {
   it('always writes limit=50', () => {
-    expect(dreamsRequest(EMPTY_DREAMS, 0).get('limit')).toBe(String(DREAMS_PAGE));
+    expect(dreamsRequest(EMPTY_DREAMS, 0, []).get('limit')).toBe(String(DREAMS_PAGE));
   });
 
   it('omits offset 0', () => {
-    expect(dreamsRequest(EMPTY_DREAMS, 0).has('offset')).toBe(false);
+    expect(dreamsRequest(EMPTY_DREAMS, 0, []).has('offset')).toBe(false);
   });
 
   it('writes a non-zero offset', () => {
-    expect(dreamsRequest(EMPTY_DREAMS, 50).get('offset')).toBe('50');
+    expect(dreamsRequest(EMPTY_DREAMS, 50, []).get('offset')).toBe('50');
   });
 
   it('renames issue to issueKey', () => {
-    const request = dreamsRequest({ ...EMPTY_DREAMS, issueKey: 'HA-1' }, 0);
+    const request = dreamsRequest({ ...EMPTY_DREAMS, issueKey: 'HA-1' }, 0, []);
     expect(request.get('issueKey')).toBe('HA-1');
     expect(request.has('issue')).toBe(false);
   });
 
   it('carries q, projectId and loose through unrenamed', () => {
-    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '' }, 0);
+    const request = dreamsRequest({ q: 'needle', projectId: '1', loose: true, issueKey: '' }, 0, []);
     expect(request.get('q')).toBe('needle');
     expect(request.get('projectId')).toBe('1');
     expect(request.get('loose')).toBe('true');
+  });
+
+  it('writes the scope as a projectId list with includeNoProject when no project is chosen', () => {
+    const request = dreamsRequest(EMPTY_DREAMS, 0, [1, 2]);
+    expect(request.getAll('projectId')).toEqual(['1', '2']);
+    expect(request.get('includeNoProject')).toBe('true');
+  });
+
+  it('keeps a chosen project as the lone projectId, with no includeNoProject', () => {
+    const request = dreamsRequest({ ...EMPTY_DREAMS, projectId: '2' }, 0, [1, 2]);
+    expect(request.getAll('projectId')).toEqual(['2']);
+    expect(request.has('includeNoProject')).toBe(false);
+  });
+
+  it('adds neither projectId nor includeNoProject for an empty scope', () => {
+    const request = dreamsRequest(EMPTY_DREAMS, 0, []);
+    expect(request.has('projectId')).toBe(false);
+    expect(request.has('includeNoProject')).toBe(false);
+  });
+
+  it('still carries q, loose, issueKey, limit and offset with a scope', () => {
+    const request = dreamsRequest({ q: 'needle', projectId: '', loose: true, issueKey: 'HA-1' }, 50, [1, 2]);
+    expect(request.get('q')).toBe('needle');
+    expect(request.get('loose')).toBe('true');
+    expect(request.get('issueKey')).toBe('HA-1');
+    expect(request.has('issue')).toBe(false);
+    expect(request.get('limit')).toBe(String(DREAMS_PAGE));
+    expect(request.get('offset')).toBe('50');
+  });
+});
+
+describe('scrubbedDreamProject', () => {
+  const inScope = [{ id: 1 }, { id: 2 }] as Project[];
+
+  it('keeps an in-scope project', () => {
+    expect(scrubbedDreamProject('2', inScope, true)).toBe('2');
+  });
+
+  it('drops an out-of-scope project when scoped', () => {
+    expect(scrubbedDreamProject('3', inScope, true)).toBe('');
+  });
+
+  it('keeps an out-of-scope project when unscoped', () => {
+    expect(scrubbedDreamProject('3', inScope, false)).toBe('3');
+  });
+
+  it('leaves an empty project empty', () => {
+    expect(scrubbedDreamProject('', inScope, true)).toBe('');
+    expect(scrubbedDreamProject('', inScope, false)).toBe('');
+  });
+});
+
+describe('offeredProjectId', () => {
+  const inScope = [{ id: 1 }, { id: 2 }] as Project[];
+
+  it('keeps an in-scope id', () => {
+    expect(offeredProjectId(2, inScope)).toBe(2);
+  });
+
+  it('gives null for an out-of-scope id', () => {
+    expect(offeredProjectId(3, inScope)).toBeNull();
+  });
+
+  it('gives null for null', () => {
+    expect(offeredProjectId(null, inScope)).toBeNull();
   });
 });
 
