@@ -179,6 +179,47 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('HATCH-…');
   });
 
+  it('opens on the first offered project when the filter and the memory name projects not offered', () => {
+    stubStorage({ [REMEMBERED_PROJECT_STORAGE_KEY]: 'HATCH' });
+    const third: Project = { ...OTHER, id: 3, key: 'ZED', name: 'Zed' };
+
+    // PROJECT (HATCH) is what the filter and the memory both name, and the
+    // board's scope left it out of the list.
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [OTHER, third],
+        candidates: [],
+        defaultProjectKey: 'HATCH',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain('AER-…');
+    expect(html).not.toContain('HATCH');
+  });
+
+  it('previews the only offered project', () => {
+    stubStorage();
+    const third: Project = { ...OTHER, id: 3, key: 'ZED', name: 'Zed' };
+
+    const html = renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [third],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: null,
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+
+    expect(html).toContain('ZED-…');
+  });
+
   it('offers no one-PR steps while Type is the default task', () => {
     stubStorage();
 
