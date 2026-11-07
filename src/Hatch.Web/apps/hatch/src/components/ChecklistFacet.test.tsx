@@ -1,0 +1,95 @@
+import { describe, expect, it } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ChecklistFacet } from './ChecklistFacet';
+
+const noop = () => {};
+const options = [
+  { value: 'a', text: 'Alpha', count: 0 },
+  { value: 'b', text: 'Beta', count: 3 },
+  { value: 'c', text: 'Gamma' },
+];
+
+function render(chosen: string[]) {
+  return renderToStaticMarkup(
+    <ChecklistFacet
+      label="Things"
+      summary="All"
+      groupLabel="Things group"
+      options={options}
+      chosen={chosen}
+      onChange={noop}
+      lockTitle="Keep at least one thing"
+    />,
+  );
+}
+
+function rows(html: string) {
+  return [...html.matchAll(/<label class="hatch-types-row"[\s\S]*?<\/label>/g)].map((m) => m[0]);
+}
+
+describe('ChecklistFacet', () => {
+  it('draws one row per option', () => {
+    expect(rows(render(['a', 'b', 'c']))).toHaveLength(options.length);
+  });
+
+  it('checks the chosen rows and leaves the rest unchecked', () => {
+    const rs = rows(render(['a', 'c']));
+    expect(rs[0]).toContain('checked=""');
+    expect(rs[1]).not.toContain('checked=""');
+    expect(rs[2]).toContain('checked=""');
+  });
+
+  it('draws a count when given, 0 included, and no count span when none are given', () => {
+    const rs = rows(render(['a', 'b', 'c']));
+    expect(rs[0]).toContain('<span class="hatch-types-count">0</span>');
+    expect(rs[1]).toContain('<span class="hatch-types-count">3</span>');
+    expect(rs[2]).not.toContain('hatch-types-count');
+  });
+
+  it('draws no hatch-types-count at all when no option has a count', () => {
+    const html = renderToStaticMarkup(
+      <ChecklistFacet
+        label="Things"
+        summary="All"
+        groupLabel="Things group"
+        options={options.map(({ value, text }) => ({ value, text }))}
+        chosen={['a', 'b', 'c']}
+        onChange={noop}
+        lockTitle="Keep at least one thing"
+      />,
+    );
+    expect(html).not.toContain('hatch-types-count');
+  });
+
+  it('carries the group label as the panel aria-label', () => {
+    expect(render(['a', 'b', 'c'])).toContain('role="group" aria-label="Things group"');
+  });
+
+  it('holds the summary and the label span in the trigger', () => {
+    const html = render(['a', 'b', 'c']);
+    expect(html).toContain('<span class="hatch-facet__label">Things</span>All');
+  });
+
+  it('is lit only when fewer than every option is chosen', () => {
+    expect(render(['a', 'b', 'c'])).not.toContain('hatch-facet--lit');
+    expect(render(['a', 'b'])).toContain('hatch-facet--lit');
+  });
+
+  it('disables and titles only the one row left when a single option is chosen', () => {
+    const rs = rows(render(['a']));
+    expect(rs[0]).toContain('disabled=""');
+    expect(rs[0]).toContain(`title="Keep at least one thing"`);
+    expect(rs[1]).not.toContain('disabled=""');
+    expect(rs[2]).not.toContain('disabled=""');
+  });
+
+  it('disables no row when two or more are chosen', () => {
+    const rs = rows(render(['a', 'b']));
+    for (const r of rs) expect(r).not.toContain('disabled=""');
+  });
+
+  it('disables the footer All button only when every option is already chosen', () => {
+    expect(render(['a', 'b', 'c'])).toContain('<button type="button" class="hatch-filter-clear" disabled="">All</button>');
+    expect(render(['a', 'b'])).toContain('<button type="button" class="hatch-filter-clear">All</button>');
+  });
+});
