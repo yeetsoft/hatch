@@ -539,10 +539,19 @@ export const weaveDreams = (request: DreamWeaveRequest) =>
 
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */
-export const getActivity = ({ limit, offset }: { limit?: number; offset?: number }) => {
+export const getActivity = ({
+  limit,
+  offset,
+  projectId,
+}: {
+  limit?: number;
+  offset?: number;
+  projectId?: number[] | null;
+}) => {
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', String(limit));
   if (offset !== undefined) params.set('offset', String(offset));
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   const query = params.toString();
   return fetchJson<ActivityPage>(`/api/hatch/activity${query ? `?${query}` : ''}`);
 };
@@ -693,10 +702,12 @@ export const getWorkLog = (key: string) => fetchJson<WorkLog>(`/api/hatch/issues
     `searchIssues` states, and it matters here for the same reason: an empty
     `ancestorKey` is not the same question as no `ancestorKey`. */
 export const getWorkLogSessions = (query: WorkLogSessionQuery) => {
+  const { projectId, ...rest } = query;
   const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
+  for (const [name, value] of Object.entries(rest)) {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   return fetchJson<WorkLogSessions>(`/api/hatch/work-log/sessions?${params.toString()}`);
 };
 
@@ -708,10 +719,12 @@ export const getWorkLogSessions = (query: WorkLogSessionQuery) => {
     presets were computed on, so the daily grid the page aligned to and the
     daily grid the server buckets on are one grid. */
 export const getWorkLogHistory = (query: WorkLogHistoryQuery) => {
+  const { projectId, ...rest } = query;
   const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
+  for (const [name, value] of Object.entries(rest)) {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   return fetchJson<WorkLogHistory>(`/api/hatch/work-log/history?${params.toString()}`);
 };
 
@@ -719,6 +732,8 @@ export interface WorkLogHistoryQuery {
   from: string;
   to: string;
   ancestorKey?: string | null;
+  /** Any of these projects; omitted or empty means every project. */
+  projectId?: number[] | null;
   /** Minutes east of UTC. It puts a daily bucket on the reader's midnight; an
       overnight run split across UTC midnight is two half-nights nobody
       worked. */
@@ -815,6 +830,8 @@ export interface WorkLogSessionQuery {
   to: string;
   /** One issue and everything beneath it, that issue included. */
   ancestorKey?: string | null;
+  /** Any of these projects; omitted or empty means every project. */
+  projectId?: number[] | null;
   sort?: SessionSort;
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  getActivity,
   getAttachments,
   getChangelogReport,
+  getWorkLogHistory,
+  getWorkLogSessions,
   liftRunnerOmission,
   omitRunner,
   orderRunner,
@@ -160,6 +163,103 @@ describe('getChangelogReport', () => {
     expect(
       await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
     ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
+  });
+});
+
+describe('getActivity', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getActivity>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getActivity(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string when nothing is set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/activity');
+  });
+
+  it('keeps limit and offset as they were, and repeats projectId once per id after them', async () => {
+    expect(await urlOf({ limit: 20, offset: 40, projectId: [3, 5] })).toBe(
+      '/api/hatch/activity?limit=20&offset=40&projectId=3&projectId=5',
+    );
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/activity?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/activity');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/activity');
+    expect(await urlOf({ limit: 20, projectId: null })).toBe('/api/hatch/activity?limit=20');
+  });
+});
+
+describe('getWorkLogSessions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getWorkLogSessions>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkLogSessions(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' };
+  const base = '/api/hatch/work-log/sessions?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z';
+
+  it('builds today\'s URL without a projectId, leaving out null fields', async () => {
+    expect(await urlOf(range)).toBe(base);
+    expect(await urlOf({ ...range, ancestorKey: null, sort: 'tokens', limit: 5 })).toBe(base + '&sort=tokens&limit=5');
+  });
+
+  it('repeats projectId once per id', async () => {
+    expect(await urlOf({ ...range, projectId: [3, 5] })).toBe(base + '&projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ ...range, projectId: [] })).toBe(base);
+    expect(await urlOf({ ...range, projectId: null })).toBe(base);
+  });
+});
+
+describe('getWorkLogHistory', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getWorkLogHistory>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkLogHistory(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', offsetMinutes: -300 };
+  const base =
+    '/api/hatch/work-log/history?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&offsetMinutes=-300';
+
+  it('builds today\'s URL without a projectId, leaving out null fields', async () => {
+    expect(await urlOf(range)).toBe(base);
+    expect(await urlOf({ ...range, ancestorKey: null })).toBe(base);
+  });
+
+  it('repeats projectId once per id, after the other fields', async () => {
+    expect(await urlOf({ ...range, projectId: [3, 5] })).toBe(base + '&projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ ...range, projectId: [] })).toBe(base);
+    expect(await urlOf({ ...range, projectId: null })).toBe(base);
   });
 });
 
