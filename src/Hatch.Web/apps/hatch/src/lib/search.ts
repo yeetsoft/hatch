@@ -87,13 +87,29 @@ export function writeSearch(filters: SearchFilters): URLSearchParams {
 export const SEARCH_PAGE = 50;
 
 /** The request `getSearch` takes: `writeSearch(filters)` plus `limit`, plus
-    `offset` when it is not the first page. */
-export function searchRequest(filters: SearchFilters, offset: number): URLSearchParams {
+    `offset` when it is not the first page. With no project chosen, one
+    `projectId` per id in `scopeIds` is appended, so a scoped tab searches only
+    its projects; a chosen project is sent alone, and `scopeIds` is not
+    consulted. */
+export function searchRequest(filters: SearchFilters, offset: number, scopeIds: number[] = []): URLSearchParams {
   const params = writeSearch(filters);
+  if (filters.projectId === '') {
+    for (const id of scopeIds) params.append('projectId', String(id));
+  }
   params.set('limit', String(SEARCH_PAGE));
   if (offset !== 0) params.set('offset', String(offset));
 
   return params;
+}
+
+/** `projectId` as the Project facet would actually offer it: itself when
+    `offered` names that id, else `''` - including when `offered.length < 2`,
+    since the facet is hidden then and a lit filter could never be cleared by
+    hand. The id-keyed twin of `scrubbedProject`. */
+export function scrubbedProjectId(projectId: string, offered: { id: number }[]): string {
+  if (projectId === '') return '';
+  if (offered.length < 2) return '';
+  return offered.some((p) => String(p.id) === projectId) ? projectId : '';
 }
 
 /** Whether any field is set - `q` counting only when it trims to something -

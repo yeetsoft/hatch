@@ -161,6 +161,11 @@ projects, reads **All in scope**, and is not drawn for a one-project scope;
 picking none draws the epics of every project in scope. A `?project=` outside
 the scope is dropped from the address.
 
+**Search** follows the scope too. Its Project filter lists only the scope's
+projects, reads **All in scope**, and is not drawn for a one-project scope;
+with none chosen the results are those of every project in scope. A
+`?projectId=` outside the scope is dropped from the address.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
