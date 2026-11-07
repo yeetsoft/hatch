@@ -16,13 +16,16 @@ import {
   TO,
   capPhrase,
   emptiness,
+  inScopeCards,
   rankedTop,
   rankingCaption,
   resolveQuery,
+  sessionWindow,
   shortSession,
   windowPhrase,
 } from '../lib/leaderboard';
 import { useLoaded } from '../lib/useLoaded';
+import { useScope } from '../lib/useScope';
 import {
   compactTokens,
   compactTokensOrDash,
@@ -72,8 +75,27 @@ const COLUMNS: { key: SessionSort; label: string }[] = [
  * has no function that could: a work log row is written by the dispatcher with
  * an API key and the server refuses a browser outright. The absence is the
  * guarantee - do not add one for symmetry.
+ *
+ * Under a scoped tab the three reads and the picker's candidates are all
+ * narrowed to the scope's projects - nothing is fetched until the project
+ * list is known, so the first request is already the right one. The body is
+ * a component of its own so that wait is not inside `load`.
  */
 export function LeaderboardPage() {
+  const { ids, inScope, loaded } = useScope();
+
+  if (!loaded) return <p className="text-muted">Loading…</p>;
+
+  return <LeaderboardBody ids={ids} inScope={inScope} />;
+}
+
+function LeaderboardBody({
+  ids,
+  inScope,
+}: {
+  ids: number[];
+  inScope: (projectKey: string) => boolean;
+}) {
   const [params, setParams] = useSearchParams();
 
   /* Minutes east of UTC, the form the server takes. Read once per render
@@ -101,7 +123,7 @@ export function LeaderboardPage() {
      overlap, and that redundancy is bought deliberately: one behaviour in every
      sort beats a branch that only sometimes fetches. */
   const load = useCallback(async (): Promise<LeaderboardView> => {
-    const window = { from: query.from, to: query.to, ancestorKey: query.issue };
+    const window = sessionWindow(query, ids);
     const [podium, table, history] = await Promise.all([
       getWorkLogSessions({ ...window, sort: 'tokens', limit: PODIUM }),
       getWorkLogSessions({ ...window, sort: query.sort, limit: TABLE_LIMIT }),
@@ -114,7 +136,7 @@ export function LeaderboardPage() {
     ]);
 
     return { podium, table, history };
-  }, [query, offsetMinutes]);
+  }, [query, offsetMinutes, ids]);
 
   const { data, error } = useLoaded<LeaderboardView>(load);
 
@@ -182,7 +204,7 @@ export function LeaderboardPage() {
             <IssuePicker
               label="Issue"
               value={query.issue}
-              candidates={board?.issues ?? []}
+              candidates={inScopeCards(board?.issues ?? [], inScope)}
               placeholder="Everything"
               emptyMessage="Nothing is filed yet."
               /* The handler writes the URL and nothing else. There is nothing

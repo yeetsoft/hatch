@@ -21,7 +21,7 @@
      row count - and the page says whichever is true once, at the top, rather
      than three times in three empty sections. */
 
-import type { SessionSort, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
+import type { IssueCard, SessionSort, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
 
 /** How many sessions the ranking draws: enough to be a podium, few enough to
     read before scrolling. The table below it is where the rest lives. */
@@ -166,6 +166,22 @@ export const parseSort = (raw: string | null): SessionSort =>
 
 export const parseMeasure = (raw: string | null): SpendMeasure =>
   raw === 'tokens' || raw === 'cost' ? raw : DEFAULT_MEASURE;
+
+/** What the three reads are asked for over: the range and the ancestor every
+    page already sent, with the scope's project ids added - left out when
+    there are none, so an unscoped page sends exactly what it always has. */
+export function sessionWindow(
+  query: { from: string; to: string; issue: string | null },
+  ids: number[],
+): { from: string; to: string; ancestorKey: string | null; projectId?: number[] } {
+  const window = { from: query.from, to: query.to, ancestorKey: query.issue };
+  return ids.length > 0 ? { ...window, projectId: ids } : window;
+}
+
+/** The picker's candidates, narrowed to the cards of projects in scope -
+    unscoped, `inScope` admits everything and the list is untouched. */
+export const inScopeCards = (cards: IssueCard[], inScope: (projectKey: string) => boolean): IssueCard[] =>
+  cards.filter((card) => inScope(card.projectKey));
 
 /**
  * The podium, off a list the server already ranked.
