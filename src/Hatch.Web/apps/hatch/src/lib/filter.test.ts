@@ -13,6 +13,7 @@ import {
   readBoardProject,
   readBoardTypes,
   revealType,
+  scrubbedProject,
   toggleType,
   toggleWaiting,
   typeCounts,
@@ -517,5 +518,25 @@ describe('readBoardProject / writeBoardProject / initialProject', () => {
     stubStorage();
 
     expect(initialProject(null)).toBe('');
+  });
+});
+
+describe('scrubbedProject', () => {
+  const offered = [{ key: 'AER' }, { key: 'FIL' }];
+
+  it('keeps a project the picker offers', () => {
+    expect(scrubbedProject('AER', offered)).toBe('AER');
+  });
+
+  it('scrubs a remembered key for a project not offered', () => {
+    expect(scrubbedProject('ZED', offered)).toBe('');
+  });
+
+  it('scrubs when the picker is hidden for one offered project', () => {
+    expect(scrubbedProject('AER', [{ key: 'AER' }])).toBe('');
+  });
+
+  it('is already empty and stays so', () => {
+    expect(scrubbedProject('', offered)).toBe('');
   });
 });
