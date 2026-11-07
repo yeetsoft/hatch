@@ -970,6 +970,24 @@
   color: var(--mark-ink, var(--muted));
 }
 
+/* The chips ScopeControl's trigger wears, one per scoped project, each tinted
+   from the inline --mark-color/--mark-ink markVars sets on it - not inherited
+   from the ProjectMark inside, which paints its own separate instance. */
+.hatch-scope-control--scoped {
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+
+.hatch-scope-control__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+}
+
 /* A card's assignee, claim mark and the rest, in a one-line row of their
    own so they never push the head into a second line the way the old
    single flex row did. Drawn only when the card carries at least one. */
