@@ -42,7 +42,9 @@ so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
 
 **Plan** draws its own meter from this same rollup, one row per epic in the
-house.
+house. In a tab scoped to projects its own Project picker follows the same rule
+as the board's: see
+[Scoping a tab to projects](the-board-and-its-columns#scoping-a-tab-to-projects).
 
 ## Rank and ordering
 

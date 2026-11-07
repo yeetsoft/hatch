@@ -84,7 +84,9 @@ board two days after it closes, so the column's count stays a true read of what
 just shipped rather than a growing pile of everything that ever has. The card is
 not gone — it can still be found by searching: press `/` on the board and take
 the trailing **Search everything** row, or follow the column's own `last 2 days`
-note, which opens Search already filtered to what closed there.
+note, which opens Search already filtered to what closed there. In a tab scoped
+to projects, Search's own Project filter is scoped the same way: see
+[Scoping a tab to projects](the-board-and-its-columns#scoping-a-tab-to-projects).
 
 Unless you put up the wall ([the wall, off, on and
 required](the-wall-off-on-and-required)), there is no sign-in. A Hatch started this way does not ask who you are and has
