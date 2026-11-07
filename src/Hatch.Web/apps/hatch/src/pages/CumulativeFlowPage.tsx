@@ -7,10 +7,11 @@ import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { isEmpty, resolveColourBy, withColourBy } from '../lib/cumulativeFlow';
 import type { ColourBy } from '../lib/cumulativeFlow';
-import { makeScale, resolveProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
+import { makeScale, reportProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { useLoaded } from '../lib/useLoaded';
 import { useReportWindow } from '../lib/useReportWindow';
+import { useScope } from '../lib/useScope';
 import { ReportWindowControls } from '../components/ReportWindowControls';
 import type { CumulativeFlow, Project, Status } from '../types';
 
@@ -77,8 +78,21 @@ export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinut
  * one creator - but the URL also carries `project` (repeated keys), which the
  * Projects control writes and the read is scoped by; absent, every project's
  * read is the one it has always been.
+ *
+ * Under a scoped tab it offers, reads and filters only the scope's projects.
+ * Nothing is fetched until the project list is known, so the first request is
+ * already the right one - the reader is a component of its own so that wait is
+ * not inside `load`.
  */
 export function CumulativeFlowPage() {
+  const { keys, loaded } = useScope();
+
+  if (!loaded) return <p className="text-muted">Loading…</p>;
+
+  return <CumulativeFlowReader keys={keys} />;
+}
+
+function CumulativeFlowReader({ keys }: { keys: string[] }) {
   const [params, setParams] = useSearchParams();
 
   const { from, to, now, offsetMinutes, move } = useReportWindow();
@@ -90,23 +104,25 @@ export function CumulativeFlowPage() {
 
     /* The read waits on the project list rather than going out beside it, for
        the reason `TimelinePage`'s own load does: the URL holds keys, and
-       `resolveProjects` needs to know which of them this Hatch still has. */
-    const chosen = resolveProjects(new URLSearchParams(search), projects);
+       `reportProjects` needs to know which of them this Hatch still has. */
+    const { narrowed } = reportProjects(new URLSearchParams(search), projects, keys);
     const answer = await getCumulativeFlow({
       from,
       to,
-      project: chosen.length < projects.length ? chosen.map((p) => p.key) : undefined,
+      project: narrowed?.map((p) => p.key),
     });
 
     return { answer, statuses, projects };
-  }, [from, to, search]);
+  }, [from, to, search, keys]);
 
   const { data, error } = useLoaded<CumulativeFlowView>(load);
 
   /* Replace rather than push, as TimelinePage's own chooseProject does: ticking
      a project is not a place somebody wants Back to walk them through. */
-  function chooseProjects(keys: string[]) {
-    setParams(withProjects(params, keys, (data?.projects ?? []).map((p) => p.key)), { replace: true });
+  function chooseProjects(chosenKeys: string[]) {
+    const { offered } = reportProjects(params, data?.projects ?? [], keys);
+
+    setParams(withProjects(params, chosenKeys, offered.map((p) => p.key)), { replace: true });
   }
 
   function chooseBy(value: string) {
@@ -116,7 +132,7 @@ export function CumulativeFlowPage() {
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const chosen = resolveProjects(params, data.projects);
+  const { offered, chosen } = reportProjects(params, data.projects, keys);
   const by = resolveColourBy(params);
 
   return (
@@ -134,10 +150,10 @@ export function CumulativeFlowPage() {
               offsetMinutes={offsetMinutes}
               onMove={move}
             />
-            {hasMultipleProjects(data.projects) && (
+            {hasMultipleProjects(offered) && (
               <div className="hatch-timeline-controls" role="group" aria-label="Filters">
                 <ProjectsFacet
-                  projects={data.projects}
+                  projects={offered}
                   chosen={chosen.map((p) => p.key)}
                   onChange={chooseProjects}
                 />

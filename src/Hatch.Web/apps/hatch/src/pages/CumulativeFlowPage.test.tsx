@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CumulativeFlowBody } from './CumulativeFlowPage';
+import { ProjectsFacet } from '../components/ProjectsFacet';
 import type { ColourBy } from '../lib/cumulativeFlow';
+import { reportProjects } from '../lib/timeline';
 import type { CumulativeFlow, Project, Status } from '../types';
 
 /* No DOM runner, so `useLoaded` is not driven: the body is rendered from
@@ -79,5 +81,39 @@ describe('CumulativeFlowBody', () => {
 
     expect(html).toContain(EMPTY);
     expect(html).toContain('2 column changes could not be placed');
+  });
+});
+
+describe('under a scope', () => {
+  const all = [
+    { id: 1, key: 'HA', name: 'Hatch' },
+    { id: 2, key: 'AER', name: 'Aerie' },
+    { id: 3, key: 'PYC', name: 'Pycnic' },
+  ] as Project[];
+  const scope = ['HA', 'AER'];
+
+  it('reads and chooses the scope when no project is named', () => {
+    const { chosen, narrowed } = reportProjects(new URLSearchParams(''), all, scope);
+
+    expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
+    expect(narrowed?.map((p) => p.key)).toEqual(['HA', 'AER']);
+  });
+
+  it('ignores a project outside the scope', () => {
+    const { chosen, narrowed } = reportProjects(new URLSearchParams('project=PYC'), all, scope);
+
+    expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
+    expect(narrowed?.map((p) => p.key)).toEqual(['HA', 'AER']);
+  });
+
+  it('offers only the scope in the Projects control', () => {
+    const { offered, chosen } = reportProjects(new URLSearchParams('project=PYC'), all, scope);
+    const html = renderToStaticMarkup(
+      <ProjectsFacet projects={offered} chosen={chosen.map((p) => p.key)} onChange={() => {}} />,
+    );
+
+    expect(html).toContain('<span class="hatch-types-name">HA — Hatch</span>');
+    expect(html).toContain('<span class="hatch-types-name">AER — Aerie</span>');
+    expect(html).not.toContain('PYC');
   });
 });
