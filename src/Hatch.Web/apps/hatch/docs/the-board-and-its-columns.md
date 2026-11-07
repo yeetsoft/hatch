@@ -139,6 +139,9 @@ and opens on the first of them when the filter and the remembered project are
 outside it. **Go to Work** starts your runners on the picker's project, else
 on the scope's projects, else on every project.
 
+An issue outside the tab's scope still opens from a link, says so under its
+header, and offers to add its project to the tab in one press.
+
 **Track → History** and **Agents → Leaderboard** follow the scope too.
 [History](watching-the-loop#history-and-the-work-log) lists only the events
 of the projects in scope, and the
