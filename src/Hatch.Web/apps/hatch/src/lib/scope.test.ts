@@ -6,7 +6,9 @@ import {
   knownKeys,
   parseScope,
   rawScope,
+  scopeProjectIds,
   scopeSearch,
+  scopeTitle,
   scopedPath,
   withScope,
 } from './scope';
@@ -97,6 +99,20 @@ describe('knownKeys', () => {
   });
 });
 
+describe('scopeProjectIds', () => {
+  it('answers none when no keys are named', () => {
+    expect(scopeProjectIds([], projects)).toEqual([]);
+  });
+
+  it("answers in the project list's order", () => {
+    expect(scopeProjectIds(['ZED', 'AER'], projects)).toEqual([1, 3]);
+  });
+
+  it('drops an unknown key silently', () => {
+    expect(scopeProjectIds(['AER', 'NOPE'], projects)).toEqual([1]);
+  });
+});
+
 describe('parseScope', () => {
   it('drops an unknown key silently', () => {
     expect(parseScope(q('scope=AER,NOPE'), projects)).toEqual(['AER']);
@@ -175,6 +191,16 @@ describe('scopedPath', () => {
 
   it('leaves the path alone when there is none', () => {
     expect(scopedPath('/plan', [])).toBe('/plan');
+  });
+});
+
+describe('scopeTitle', () => {
+  it('joins the scoped keys with the Hatch suffix', () => {
+    expect(scopeTitle(['AER', 'FIL'])).toBe('AER, FIL - Hatch');
+  });
+
+  it('is just Hatch for no scope', () => {
+    expect(scopeTitle([])).toBe('Hatch');
   });
 });
 
