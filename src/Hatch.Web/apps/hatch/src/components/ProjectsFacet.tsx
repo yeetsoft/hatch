@@ -1,14 +1,7 @@
-import { Menu } from '@hatch/ui';
-import { projectsSummary, toggleProject } from '../lib/cumulativeFlow';
-import { Caret } from './Facet';
-import { facetClass } from '../lib/facet';
+import { projectsSummary } from '../lib/cumulativeFlow';
+import { ChecklistFacet } from './ChecklistFacet';
 import type { Project } from '../types';
 
-/**
- * Which projects a report scopes to: a control that says its value and opens
- * a list of checkboxes - `TypesFacet`'s own shape, over projects rather than
- * issue types.
- */
 export function ProjectsFacet({
   projects,
   chosen,
@@ -18,49 +11,15 @@ export function ProjectsFacet({
   chosen: string[];
   onChange: (next: string[]) => void;
 }) {
-  const allKeys = projects.map((project) => project.key);
-  const all = chosen.length === projects.length;
-
   return (
-    <Menu
+    <ChecklistFacet
       label="Projects"
-      hover={false}
-      trigger={(props) => (
-        <button {...props} className={facetClass(!all)}>
-          <span className="hatch-facet__label">Projects</span>
-          {projectsSummary(chosen, projects)}
-          <Caret />
-        </button>
-      )}
-    >
-      <div className="hatch-types-panel" role="group" aria-label="Projects">
-        {projects.map((project) => {
-          const on = chosen.includes(project.key);
-          const last = on && chosen.length === 1;
-          return (
-            <label
-              key={project.key}
-              className="hatch-types-row"
-              title={last ? 'Keep at least one project' : undefined}
-            >
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={last}
-                onChange={() => onChange(toggleProject(chosen, project.key, allKeys))}
-              />
-              <span className="hatch-types-name">
-                {project.key} — {project.name}
-              </span>
-            </label>
-          );
-        })}
-        <div className="hatch-types-footer">
-          <button type="button" className="hatch-filter-clear" disabled={all} onClick={() => onChange(allKeys)}>
-            All
-          </button>
-        </div>
-      </div>
-    </Menu>
+      groupLabel="Projects"
+      summary={projectsSummary(chosen, projects)}
+      options={projects.map((project) => ({ value: project.key, text: `${project.key} — ${project.name}` }))}
+      chosen={chosen}
+      onChange={onChange}
+      lockTitle="Keep at least one project"
+    />
   );
 }

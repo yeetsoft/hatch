@@ -199,8 +199,9 @@ export function BoardPage() {
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
      does, since flipping a filter is not a place worth six presses of Back -
      and a change to the types is remembered. The types are compared by
-     reference: toggleType and revealType hand back a fresh array when they
-     change anything, and every other change spreads the filter and keeps it. */
+     reference: the Types control hands back a fresh array on every change,
+     and so does revealType, while every other change spreads the filter and
+     keeps it. */
   const changeFilter = useCallback(
     (next: CardFilter) => {
       setFilter((prev) => {
