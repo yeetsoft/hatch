@@ -59,6 +59,12 @@ The search box matches any word, not every word: a query of two words finds a dr
 That is unlike the Search page, which wants all of them. The results are narrowed by project, and by
 a loose-only toggle that keeps only the dreams no issue has drawn on.
 
+In a tab [scoped](the-board-and-its-columns#scoping-a-tab-to-projects) to some projects, the list
+shows those projects' dreams and the dreams that lean toward no project. The Project filter, the
+**Lean** chooser and the **Project** chooser under **Weave an epic** list only those projects, and
+**None** stays on **Lean**. A `projectId` in the address that the scope does not hold is dropped,
+and the list reads as if no project were chosen.
+
 The URL carries the search, so a link to a query is a real link: paste it to somebody and they see
 the same dreams.
 
