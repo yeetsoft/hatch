@@ -45,7 +45,8 @@ has:
   than showing empty caps. The two token caps read `2M tokens` and `200k
   tokens/hour` where set, each followed by `(default)` where the runner holds
   no cap of its own and is reading the site default instead of one it set.
-  The `under` epic, where set, is a link to its ticket too.
+  The `under` epic, where set, is a link to its ticket too. `Refuses
+  dangerous work` is one of the bounds shown, when set.
 - **Token budget** - `used / cap tokens` for the night and `used / cap per
   hour` for the last hour, each with a bar. The bar is green under 80% of the
   cap, amber from 80%, and red at the cap. A window with no cap reads `…
@@ -76,9 +77,13 @@ on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, its build - a short sha and how long ago, or
 `dev build` for one that hasn't been stamped - what it drives, and the
 repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
-not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), with **Save bounds** and **Revert** - and an Order
+not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert** - and an Order
 control: a box for a ticket
-key with **Work this ticket**, and **Run one pass**. The loop takes an order at
+key with **Work this ticket**, and **Run one pass**. **Refuse dangerous work** stops
+the board handing that runner an issue flagged dangerous (see
+[`hatch dangerous`](cli-reference#dangerous) for the flag). It starts from the
+loop's `HATCH_DANGEROUS` setting, and from then on this checkbox is the one that
+counts; a change reaches a running loop on its next heartbeat. The loop takes an order at
 its next heartbeat, paused or running, then returns to what its state says.
 A press only records what the board wants:
 the runner reads it between increments, at its next heartbeat, never in the
