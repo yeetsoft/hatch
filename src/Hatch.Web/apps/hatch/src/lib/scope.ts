@@ -67,6 +67,15 @@ export function parseScope(params: URLSearchParams, projects: { key: string }[])
   return knownKeys(rawScope(params), projects);
 }
 
+/** `cards` whose `projectKey` is in `keys`, order kept - or `cards` itself
+    when `keys` is empty, since `[]` is every project, as `knownKeys` says. */
+export function cardsInScope<T extends { projectKey: string }>(cards: T[], keys: string[]): T[] {
+  if (keys.length === 0) return cards;
+
+  const scoped = new Set(keys);
+  return cards.filter((card) => scoped.has(card.projectKey));
+}
+
 /** A copy of `params` with `scope` set to `keys` in `allKeys` order joined by
     `,` - or removed when `keys` is empty or holds every key in `allKeys`. Every
     other param is kept; the input is never mutated. */

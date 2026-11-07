@@ -85,11 +85,25 @@
 @media (pointer: coarse) {
   .hatch-topbar .hatch-topbar__brand,
   .hatch-topbar .hatch-menu__trigger--accent,
+  .hatch-scope-strip .hatch-menu__trigger--accent,
   .hatch-attention-control,
   .hatch-overnight-control,
   .hatch-battery {
     min-height: 44px;
   }
+}
+
+/* Which projects this tab is looking at, on a phone: the bar has no room for
+   the control beside the nav, so it sits in a strip under the bar, wearing the
+   bar's own gradient. No media query - App.tsx mounts it only on a phone, and
+   only with two or more projects. */
+.hatch-scope-strip {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-4);
+  background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
+  color: var(--on-chrome);
 }
 
 /* Who Hatch will name in the trail for anything done from this browser. Drawn
@@ -285,11 +299,19 @@
    height: a floor is what keeps .hatch-board (below) from collapsing, and
    letting this box grow past it when the filter row wraps to a second line is
    the document scroll this story asks for, not a bug to fight. Keep this in
-   step with --topbar-h if the bar's own height ever changes. */
+   step with --topbar-h if the bar's own height ever changes.
+
+   The second rule takes the scope strip's height off as well, 44px being its
+   min-height (.hatch-scope-strip); without it the board overscrolls by the
+   strip. The strip mounts only on a phone with two or more projects. */
 @media (max-width: 40rem) {
   .hatch-board-page {
     min-height: calc(100dvh - 48px);
     padding: var(--sp-4) var(--sp-4) 0;
+  }
+
+  .hatch-app:has(.hatch-scope-strip) .hatch-board-page {
+    min-height: calc(100dvh - 48px - 44px);
   }
 
   /* ---- The stacked board (HA-159) ----
@@ -2423,9 +2445,6 @@ button.hatch-chip {
 }
 
 .hatch-bulk-outcome {
-  margin-top: var(--sp-4);
-  padding-top: var(--sp-3);
-  border-top: 1px solid var(--line);
   font-size: var(--t-body);
 }
 
