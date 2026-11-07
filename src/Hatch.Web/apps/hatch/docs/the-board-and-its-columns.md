@@ -139,6 +139,12 @@ and opens on the first of them when the filter and the remembered project are
 outside it. **Go to Work** starts your runners on the picker's project, else
 on the scope's projects, else on every project.
 
+**Track → History** and **Agents → Leaderboard** follow the scope too.
+[History](watching-the-loop#history-and-the-work-log) lists only the events
+of the projects in scope, and the
+[Leaderboard](watching-the-loop#leaderboard) covers only the sessions run
+against their issues.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
