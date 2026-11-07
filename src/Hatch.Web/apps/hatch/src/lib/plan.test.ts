@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePlanEntries, fractionDone, isFinished, orderPlan } from './plan';
+import { comparePlanEntries, fractionDone, isFinished, orderPlan, planProjectId } from './plan';
 import type { PlanEntry, Rollup } from '../types';
 
 const rollup = (leaves: number, done: number, waiting = 0): Rollup => ({
@@ -183,5 +183,29 @@ describe('comparePlanEntries', () => {
   it('calls an entry equal to itself', () => {
     const only = epic('AER-1', 6, 3);
     expect(comparePlanEntries(only, only)).toBe(0);
+  });
+});
+
+describe('planProjectId', () => {
+  const offered = [
+    { id: 7, key: 'AA' },
+    { id: 3, key: 'BB' },
+  ];
+
+  it('fetches every offered project when scoped and nothing is chosen', () => {
+    expect(planProjectId('', offered, true)).toEqual([7, 3]);
+  });
+
+  it('fetches the chosen project alone', () => {
+    expect(planProjectId('BB', offered, true)).toBe(3);
+  });
+
+  it('fetches the whole tracker when unscoped and nothing is chosen', () => {
+    expect(planProjectId('', offered, false)).toBeUndefined();
+  });
+
+  it('reads a key naming nothing offered as nothing chosen', () => {
+    expect(planProjectId('NOPE', offered, true)).toEqual([7, 3]);
+    expect(planProjectId('NOPE', offered, false)).toBeUndefined();
   });
 });

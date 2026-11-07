@@ -114,3 +114,22 @@ export function orderPlan(epics: PlanEntry[]): OrderedPlan {
     finished: all.filter(isFinished),
   };
 }
+
+/**
+ * The id, or ids, the plan is fetched for.
+ *
+ * The URL holds a key - the thing a person would type or paste - and the API
+ * takes ids, so the key is looked up among the projects the picker offers. A
+ * key naming none of them reads as nothing chosen, which is what the picker
+ * will be showing: every offered project when a scope narrows the tracker,
+ * and `undefined` - the whole tracker - when none does.
+ */
+export function planProjectId(
+  chosen: string,
+  offered: { id: number; key: string }[],
+  isScoped: boolean,
+): number | number[] | undefined {
+  const project = offered.find((p) => p.key === chosen);
+  if (project) return project.id;
+  return isScoped ? offered.map((p) => p.id) : undefined;
+}
