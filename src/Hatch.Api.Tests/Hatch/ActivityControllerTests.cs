@@ -103,6 +103,114 @@ public class ActivityControllerTests
         Assert.Equal(paged.Count, paged.Distinct().Count());
     }
 
+    // ---- Narrowed to projects ----
+
+    [Fact]
+    public async Task NoProjectIdOrAnEmptyList_IsEveryProject()
+    {
+        var h = await NewAsync();
+        await h.FileAsync(h.ProjectAId);
+        await h.FileAsync(h.ProjectBId);
+
+        Assert.Equal(2, (await h.ActivityAsync(projectIds: null)).Events.Count);
+        Assert.Equal(2, (await h.ActivityAsync(projectIds: [])).Events.Count);
+    }
+
+    [Fact]
+    public async Task OneProjectId_ListsOnlyThatProjectsIssues()
+    {
+        var h = await NewAsync();
+        var issueA = await h.FileAsync(h.ProjectAId);
+        var issueB = await h.FileAsync(h.ProjectBId);
+        await h.EventAsync(issueA, Now.AddSeconds(5), kind: "retitled");
+        await h.EventAsync(issueB, Now.AddSeconds(6), kind: "retitled");
+
+        var page = await h.ActivityAsync(projectIds: [h.ProjectBId]);
+
+        Assert.Equal(2, page.Events.Count);
+        Assert.All(page.Events, e => Assert.Equal(issueB.Key, e.IssueKey));
+    }
+
+    [Fact]
+    public async Task TwoProjectIds_ListBothProjectsNewestFirst()
+    {
+        var h = await NewAsync();
+        var issueA = await h.FileAsync(h.ProjectAId);
+        var issueB = await h.FileAsync(h.ProjectBId);
+        await h.EventAsync(issueA, Now.AddSeconds(5), kind: "retitled");
+        await h.EventAsync(issueB, Now.AddSeconds(6), kind: "retitled");
+
+        var page = await h.ActivityAsync(projectIds: [h.ProjectAId, h.ProjectBId]);
+
+        Assert.Equal(4, page.Events.Count);
+        Assert.Equal([issueB.Key, issueA.Key], page.Events.Take(2).Select(e => e.IssueKey).ToArray());
+        for (var i = 1; i < page.Events.Count; i++)
+            Assert.True(page.Events[i - 1].At >= page.Events[i].At);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectId_ContributesNothingAndIsNotARefusal()
+    {
+        var h = await NewAsync();
+        var issueA = await h.FileAsync(h.ProjectAId);
+        await h.FileAsync(h.ProjectBId);
+
+        var mixed = await h.ActivityAsync(projectIds: [h.ProjectAId, 999_999]);
+        Assert.Equal([issueA.Key], mixed.Events.Select(e => e.IssueKey).ToArray());
+
+        var alone = await h.ActivityAsync(projectIds: [999_999]);
+        Assert.Empty(alone.Events);
+        Assert.False(alone.HasMore);
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_AnswersWhatItOnceDoes()
+    {
+        var h = await NewAsync();
+        var issueA = await h.FileAsync(h.ProjectAId);
+        await h.FileAsync(h.ProjectBId);
+        await h.EventAsync(issueA, Now.AddSeconds(5), kind: "retitled");
+
+        var once = await h.ActivityAsync(projectIds: [h.ProjectAId]);
+        var twice = await h.ActivityAsync(projectIds: [h.ProjectAId, h.ProjectAId]);
+
+        Assert.Equal(2, twice.Events.Count);
+        Assert.Equal(once.Events.Select(e => e.Id).ToList(), twice.Events.Select(e => e.Id).ToList());
+    }
+
+    [Fact]
+    public async Task PagingAcrossANarrowedSet_HasNoGapsAndNoRepeats()
+    {
+        var h = await NewAsync();
+        var issueA = await h.FileAsync(h.ProjectAId); // 1 created event
+        var issueB = await h.FileAsync(h.ProjectBId); // 1 created event
+
+        // Interleaved in time: 6 more for B (7 in all), 4 more for A (5 in all).
+        for (var i = 0; i < 6; i++)
+        {
+            await h.EventAsync(issueB, Now.AddSeconds(-(2 * i + 1)), kind: "retitled");
+            if (i < 4)
+                await h.EventAsync(issueA, Now.AddSeconds(-(2 * i + 2)), kind: "retitled");
+        }
+
+        var whole = await h.ActivityAsync(projectIds: [h.ProjectBId]);
+        Assert.Equal(7, whole.Events.Count);
+
+        var page1 = await h.ActivityAsync(limit: 3, offset: 0, projectIds: [h.ProjectBId]);
+        var page2 = await h.ActivityAsync(limit: 3, offset: 3, projectIds: [h.ProjectBId]);
+        var page3 = await h.ActivityAsync(limit: 3, offset: 6, projectIds: [h.ProjectBId]);
+
+        Assert.True(page1.HasMore);
+        Assert.True(page2.HasMore);
+        Assert.False(page3.HasMore);
+        Assert.Single(page3.Events);
+
+        var paged = page1.Events.Concat(page2.Events).Concat(page3.Events).ToList();
+        Assert.Equal(whole.Events.Select(e => e.Id).ToList(), paged.Select(e => e.Id).ToList());
+        Assert.Equal(paged.Count, paged.Select(e => e.Id).Distinct().Count());
+        Assert.All(paged, e => Assert.Equal(issueB.Key, e.IssueKey));
+    }
+
     [Fact]
     public async Task ALimitOutsideTheCapOrANegativeOffset_IsRefusedWithASentence()
     {
@@ -178,12 +286,13 @@ public class ActivityControllerTests
             return entry.Id;
         }
 
-        public async Task<ActivityPageDto> ActivityAsync(int limit = 100, int offset = 0) =>
-            Value(await Activity.GetActivity(limit, offset, default));
+        public async Task<ActivityPageDto> ActivityAsync(
+            int limit = 100, int offset = 0, IReadOnlyList<int>? projectIds = null) =>
+            Value(await Activity.GetActivity(limit, offset, projectIds?.ToList(), default));
 
         public async Task<string> RefusalAsync(int limit = 100, int offset = 0)
         {
-            var result = await Activity.GetActivity(limit, offset, default);
+            var result = await Activity.GetActivity(limit, offset, null, default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
     }
