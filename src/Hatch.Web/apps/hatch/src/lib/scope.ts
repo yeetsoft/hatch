@@ -61,6 +61,13 @@ export function scopeProjectIds(keys: string[], projects: { id: number; key: str
   return projects.filter((project) => named.has(project.key)).map((project) => project.id);
 }
 
+/** `keys` with `projectKey` appended, for widening the scope by one project.
+    Raw: `setScope` runs `withScope`, which puts the keys in the project list's
+    order and drops a duplicate or a scope that names every project. */
+export function scopeWithProject(keys: string[], projectKey: string): string[] {
+  return [...keys, projectKey];
+}
+
 /** The keys `rawScope` names that are in `projects`, in the project list's own
     order. See `knownKeys` for the rule. */
 export function parseScope(params: URLSearchParams, projects: { key: string }[]): string[] {
