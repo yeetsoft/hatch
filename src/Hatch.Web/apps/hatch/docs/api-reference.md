@@ -469,7 +469,7 @@ before 409ing.
 
 A dream is a line somebody wanted said - leaning toward a project, or loose.
 `/dreams` takes `q` (any word, not every word - unlike `/search`), a repeatable
-`projectId` (omitted or empty matches every dream, leaning and loose alike), `issueKey` (only
+`projectId` (omitted or empty matches every dream, leaning and loose alike), `includeNoProject` (`true` adds every dream with no project to a non-empty `projectId` list, in the same ordered, counted, paged answer; with no `projectId` it changes nothing; default `false`), `issueKey` (only
 dreams woven into that issue), `loose` (`true` for only dreams woven into no
 issue at all), `limit` (1-200, default 50) and `offset`; with `q`, best match
 first, else newest first. `issueKey` and `loose` each AND with `q` and
