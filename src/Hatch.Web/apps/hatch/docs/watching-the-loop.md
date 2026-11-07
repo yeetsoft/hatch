@@ -234,7 +234,9 @@ said so on the button itself.
 
 These are two different things. **Track → History** is every event across
 every project, newest first, a hundred to a page, each one naming when it
-happened, the issue, what happened, who did it and what changed.
+happened, the issue, what happened, who did it and what changed. Under a
+scoped tab it lists only the events of the projects in scope, and paging walks
+those rows.
 [People, roles and keys](people-roles-and-keys) says who a key or a person
 can be.
 
