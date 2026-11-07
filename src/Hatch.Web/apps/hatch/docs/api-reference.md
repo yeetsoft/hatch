@@ -976,7 +976,12 @@ range's length unless named, and answers the bucket size it actually used;
 `requests` or `peakContext`, each descending. Both take an optional
 `ancestorKey`, read inclusive of the issue itself - deliberately unlike the
 same parameter on `GET /issues` - so the graph, the table and the issue
-page's own meter can never describe different populations.
+page's own meter can never describe different populations. Both also take a
+repeatable `projectId`, narrowing to sessions whose issue is in any of those
+projects; none names every project, and an id naming no project contributes
+nothing rather than a refusal. It is ANDed with `ancestorKey` when both are
+given, and narrows the totals, the buckets and the `first`/`last` bounds
+alike.
 `/work-log/by-playbook` folds the same range by the playbook, transition,
 issue type, model and effort each session ran under, and takes `projectId`
 in place of `ancestorKey`; it answers every group, heaviest first by total
