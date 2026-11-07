@@ -9,6 +9,8 @@ import {
   creatorChoices,
   foldRows,
   makeScale,
+  narrowedTo,
+  reportProjects,
   resolveCreator,
   resolveProject,
   resolveProjects,
@@ -554,6 +556,76 @@ describe('withProjects', () => {
     withProjects(input, ['AER'], allKeys);
 
     expect(input.toString()).toBe('project=HA');
+  });
+});
+
+describe('narrowedTo', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+  ] as Project[];
+
+  it('is the picked projects when they are fewer than all', () => {
+    expect(narrowedTo([projects[1]], projects)).toEqual([projects[1]]);
+  });
+
+  it('is undefined when every project is picked', () => {
+    expect(narrowedTo(projects, projects)).toBeUndefined();
+  });
+
+  it('is undefined on a single-project install', () => {
+    expect(narrowedTo([projects[0]], [projects[0]])).toBeUndefined();
+  });
+});
+
+describe('reportProjects', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+    { id: 3, key: 'PYC' },
+  ] as Project[];
+  const inScope = [projects[0], projects[1]];
+
+  it('offers, chooses and narrows to the scope when no project is named', () => {
+    const got = reportProjects(params(''), projects, ['HA', 'AER']);
+
+    expect(got.offered).toEqual(inScope);
+    expect(got.chosen).toEqual(inScope);
+    expect(got.narrowed).toEqual(inScope);
+  });
+
+  it('drops a project param outside the scope', () => {
+    const got = reportProjects(params('project=PYC'), projects, ['HA', 'AER']);
+
+    expect(got.chosen).toEqual(inScope);
+    expect(got.narrowed).toEqual(inScope);
+  });
+
+  it('chooses a project inside the scope', () => {
+    const got = reportProjects(params('project=AER'), projects, ['HA', 'AER']);
+
+    expect(got.chosen).toEqual([projects[1]]);
+    expect(got.narrowed).toEqual([projects[1]]);
+  });
+
+  it('does not narrow with no scope and no param', () => {
+    const got = reportProjects(params(''), projects, []);
+
+    expect(got.offered).toEqual(projects);
+    expect(got.chosen).toEqual(projects);
+    expect(got.narrowed).toBeUndefined();
+  });
+
+  it('writes the clean URL for All in scope', () => {
+    const { offered } = reportProjects(params('project=HA'), projects, ['HA', 'AER']);
+
+    expect(
+      withProjects(
+        params('project=HA'),
+        ['HA', 'AER'],
+        offered.map((p) => p.key),
+      ).has('project'),
+    ).toBe(false);
   });
 });
 
