@@ -870,7 +870,7 @@ export function BoardPage() {
 
       <NewIssueDialog
         open={filing}
-        projects={projects}
+        projects={offered}
         candidates={board.issues}
         defaultProjectKey={filter.project}
         directory={directory}
