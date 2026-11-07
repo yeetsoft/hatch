@@ -126,10 +126,11 @@ public class PlanController(
     /// questions.
     /// </summary>
     /// <param name="projectId">
-    /// Whose epics to list, or every project's when absent. Both halves of the
-    /// answer are scoped by it. A number naming no project comes back with an
-    /// empty plan rather than a 404 - an empty project is a legal thing to look
-    /// at, and so is one another tab has just deleted.
+    /// Whose epics to list, or every project's when absent or empty; repeatable
+    /// to name several. Both halves of the answer are scoped by it. An id
+    /// naming no project contributes nothing and is not a refusal - an empty
+    /// project is a legal thing to look at, and so is one another tab has just
+    /// deleted.
     /// </param>
     /// <remarks>
     /// One tree load answers the whole page. <see cref="Rollup.Tree"/> folds on
@@ -138,12 +139,13 @@ public class PlanController(
     /// reason this can be a single request at all.
     /// </remarks>
     [HttpGet]
-    public async Task<ActionResult<PlanDto>> GetPlan([FromQuery] int? projectId, CancellationToken ct)
+    public async Task<ActionResult<PlanDto>> GetPlan([FromQuery] List<int>? projectId, CancellationToken ct)
     {
         var tree = await Rollup.LoadAsync(db, ct);
         var priorities = await PriorityTree.ForAsync(db, ct);
+        var projectIds = (projectId ?? []).Distinct().ToList();
 
-        var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic), projectId)
+        var epics = await InProject(db.Issues.AsNoTracking().Where(i => i.Type == Epic), projectIds)
             .Select(i => new
             {
                 i.Id,
@@ -178,7 +180,7 @@ public class PlanController(
         // not epics - a bug filed on its own, a story somebody forgot to
         // parent, and everything beneath them.
         var looseRoots = await InProject(
-                db.Issues.AsNoTracking().Where(i => i.ParentId == null && i.Type != Epic), projectId)
+                db.Issues.AsNoTracking().Where(i => i.ParentId == null && i.Type != Epic), projectIds)
             .Select(i => i.Id)
             .ToListAsync(ct);
 
@@ -304,6 +306,6 @@ public class PlanController(
     }
 
     /// <summary>The optional project filter, applied the once for both halves of the plan.</summary>
-    private static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, int? projectId) =>
-        projectId is { } id ? issues.Where(i => i.ProjectId == id) : issues;
+    private static IQueryable<EfHatchIssue> InProject(IQueryable<EfHatchIssue> issues, List<int> projectIds) =>
+        projectIds.Count > 0 ? issues.Where(i => projectIds.Contains(i.ProjectId)) : issues;
 }

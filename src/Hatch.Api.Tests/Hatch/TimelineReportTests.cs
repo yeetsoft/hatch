@@ -420,7 +420,8 @@ public class TimelineReportTests
     // A row in an active column with no history is active from its creation, and one in the
     // first column is never active: most of the fold's tests need no changes at all.
     private static TimelineReport.Result Fold(
-        TimelineReport.Row[] rows, TimelineReport.Change[]? changes = null, int? projectId = null, string? createdBy = null) =>
+        TimelineReport.Row[] rows, TimelineReport.Change[]? changes = null, IReadOnlyList<int>? projectId = null,
+        string? createdBy = null) =>
         TimelineReport.Fold(rows, changes ?? [], Board(), Day(-5), Day(5), projectId, createdBy);
 
     private static long?[] Ids(IEnumerable<TimelineReport.Node> nodes) => nodes.Select(n => n.IssueId).ToArray();
@@ -568,7 +569,7 @@ public class TimelineReportTests
             Issue(4, "task", 3, Day(-1), parent: 3, project: 1, by: "ann"),
         };
 
-        var byProject = Assert.Single(Fold(rows, projectId: 1).Epics);
+        var byProject = Assert.Single(Fold(rows, projectId: [1]).Epics);
         Assert.Equal(1, byProject.IssueId);
         Assert.Equal<long?[]>([2], Ids(byProject.Children));
 
@@ -576,7 +577,7 @@ public class TimelineReportTests
         Assert.Equal(3, byCreator.IssueId);
         Assert.Equal<long?[]>([4], Ids(byCreator.Children));
 
-        Assert.Empty(Fold(rows, projectId: 1, createdBy: "bob").Epics);
+        Assert.Empty(Fold(rows, projectId: [1], createdBy: "bob").Epics);
     }
 
     [Fact]
@@ -616,8 +617,8 @@ public class TimelineReportTests
         Assert.DoesNotContain("idle", all.Creators);
         Assert.DoesNotContain("child", all.Creators);
 
-        Assert.Equal(["Ann", "bob", "kept", "loner"], Fold(rows, projectId: 1).Creators);
-        Assert.Equal(["zed"], Fold(rows, projectId: 2).Creators);
+        Assert.Equal(["Ann", "bob", "kept", "loner"], Fold(rows, projectId: [1]).Creators);
+        Assert.Equal(["zed"], Fold(rows, projectId: [2]).Creators);
     }
 
     [Fact]
@@ -654,10 +655,10 @@ public class TimelineReportTests
         Assert.Equal<long?[]>([2], Ids(result.Epics));
         Assert.Equal(3, result.Unresolved);
 
-        Assert.Equal(1, Fold(rows, changes, projectId: 1).Unresolved);
-        Assert.Equal(2, Fold(rows, changes, projectId: 2).Unresolved);
+        Assert.Equal(1, Fold(rows, changes, projectId: [1]).Unresolved);
+        Assert.Equal(2, Fold(rows, changes, projectId: [2]).Unresolved);
         Assert.Equal(2, Fold(rows, changes, createdBy: "bob").Unresolved);
-        Assert.Equal(0, Fold(rows, changes, projectId: 1, createdBy: "bob").Unresolved);
+        Assert.Equal(0, Fold(rows, changes, projectId: [1], createdBy: "bob").Unresolved);
     }
 
     [Fact]
@@ -814,7 +815,7 @@ public class TimelineReportTests
             Issue(4, "task", 4, Day(-4), parent: 2, project: 1, by: "ann"),
         };
 
-        var byProject = Assert.IsType<TimelineReport.Node>(Fold(rows, projectId: 1).Other);
+        var byProject = Assert.IsType<TimelineReport.Node>(Fold(rows, projectId: [1]).Other);
         Assert.Equal<long?[]>([1], Ids(byProject.Children));
         Assert.Equal<long?[]>([3], Ids(byProject.Children[0].Children));
         Assert.Equal([new TimelineReport.Segment(3, Day(-3), null)], byProject.Segments);
@@ -824,7 +825,7 @@ public class TimelineReportTests
         Assert.Equal<long?[]>([4], Ids(byCreator.Children[0].Children));
         Assert.Equal([new TimelineReport.Segment(4, Day(-4), null)], byCreator.Segments);
 
-        Assert.Null(Fold(rows, projectId: 2, createdBy: "ann").Other);
+        Assert.Null(Fold(rows, projectId: [2], createdBy: "ann").Other);
     }
 }
 
@@ -1030,13 +1031,13 @@ public class TimelineReportControllerTests
     }
 
     [Fact]
-    public async Task AnUnknownProject_IsRefusedByNumber()
+    public async Task AnUnknownProjectIdAlone_AnswersNoRowsRatherThanARefusal()
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetTimeline(null, null, 999, null, default);
+        var timeline = Value(await h.Reports.GetTimeline(null, null, [999], null, default));
 
-        Assert.Equal("there is no project 999", Refusal(result));
+        Assert.Empty(timeline.Epics);
     }
 
     [Fact]
@@ -1044,7 +1045,7 @@ public class TimelineReportControllerTests
     {
         var h = await NewAsync();
 
-        var timeline = Value(await h.Reports.GetTimeline(null, null, h.ProjectId, null, default));
+        var timeline = Value(await h.Reports.GetTimeline(null, null, [h.ProjectId], null, default));
 
         Assert.Empty(timeline.Epics);
     }
@@ -1057,13 +1058,48 @@ public class TimelineReportControllerTests
         await ActiveEpicAsync(h, h.ProjectId, "ann");
         await ActiveEpicAsync(h, other.Id, "ann");
 
-        var first = Value(await h.Reports.GetTimeline(null, null, h.ProjectId, null, default));
-        var second = Value(await h.Reports.GetTimeline(null, null, other.Id, null, default));
+        var first = Value(await h.Reports.GetTimeline(null, null, [h.ProjectId], null, default));
+        var second = Value(await h.Reports.GetTimeline(null, null, [other.Id], null, default));
         var both = Value(await h.Reports.GetTimeline(null, null, null, null, default));
 
         Assert.Equal(["AER-1"], first.Epics.Select(e => e.Issue.Key));
         Assert.Equal(["BEE-1"], second.Epics.Select(e => e.Issue.Key));
         Assert.Equal(["AER-1", "BEE-1"], both.Epics.Select(e => e.Issue.Key).Order());
+    }
+
+    [Fact]
+    public async Task TwoProjectIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var other = await AddProjectAsync(h, "BEE");
+        await ActiveEpicAsync(h, h.ProjectId, "ann");
+        await ActiveEpicAsync(h, other.Id, "ann");
+
+        var both = Value(await h.Reports.GetTimeline(null, null, [h.ProjectId, other.Id], null, default));
+
+        Assert.Equal(["AER-1", "BEE-1"], both.Epics.Select(e => e.Issue.Key).Order());
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        await ActiveEpicAsync(h, h.ProjectId, "ann");
+
+        var repeated = Value(await h.Reports.GetTimeline(null, null, [h.ProjectId, h.ProjectId], null, default));
+
+        Assert.Equal(["AER-1"], repeated.Epics.Select(e => e.Issue.Key));
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        await ActiveEpicAsync(h, h.ProjectId, "ann");
+
+        var timeline = Value(await h.Reports.GetTimeline(null, null, [h.ProjectId, 999_999], null, default));
+
+        Assert.Equal(["AER-1"], timeline.Epics.Select(e => e.Issue.Key));
     }
 
     [Fact]

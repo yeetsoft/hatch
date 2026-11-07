@@ -188,11 +188,11 @@ public class PlanTests
         await h.FileAsync("bug", "loose in OPS", h.Todo, project: h.Other);
         await h.FileAsync("bug", "loose in OPS as well", h.Todo, project: h.Other);
 
-        var here = Value(await h.Plan.GetPlan(h.ProjectId, default));
+        var here = Value(await h.Plan.GetPlan([h.ProjectId], default));
         Assert.Equal(h.Key(mine), Assert.Single(here.Epics).Issue.Key);
         Assert.Equal(1, here.Loose.Leaves);
 
-        var there = Value(await h.Plan.GetPlan(h.Other, default));
+        var there = Value(await h.Plan.GetPlan([h.Other], default));
         Assert.Equal(h.Key(theirs, "OPS"), Assert.Single(there.Epics).Issue.Key);
         Assert.Equal(2, there.Loose.Leaves);
 
@@ -203,13 +203,52 @@ public class PlanTests
     }
 
     [Fact]
+    public async Task TwoProjectIds_ScopeBothHalvesToEither()
+    {
+        var h = await NewAsync();
+
+        var mine = await h.FileAsync("epic", "in AER", h.Todo);
+        await h.FileAsync("bug", "loose in AER", h.Todo);
+
+        var theirs = await h.FileAsync("epic", "in OPS", h.Todo, project: h.Other);
+        await h.FileAsync("bug", "loose in OPS", h.Todo, project: h.Other);
+
+        var both = Value(await h.Plan.GetPlan([h.ProjectId, h.Other], default));
+        Assert.Equal(2, both.Epics.Count);
+        Assert.Equal(2, both.Loose.Leaves);
+        Assert.Equivalent(
+            new[] { h.Key(mine), h.Key(theirs, "OPS") },
+            both.Epics.Select(e => e.Issue.Key).ToArray());
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync("epic", "in AER", h.Todo);
+
+        var repeated = Value(await h.Plan.GetPlan([h.ProjectId, h.ProjectId], default));
+        Assert.Equal(h.Key(mine), Assert.Single(repeated.Epics).Issue.Key);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync("epic", "in AER", h.Todo);
+
+        var plan = Value(await h.Plan.GetPlan([h.ProjectId, 404], default));
+        Assert.Equal(h.Key(mine), Assert.Single(plan.Epics).Issue.Key);
+    }
+
+    [Fact]
     public async Task AProjectIdNamingNothing_IsAnEmptyPlanRatherThanANotFound()
     {
         var h = await NewAsync();
         _ = await h.FileAsync("epic", "somewhere else", h.Todo);
         _ = await h.FileAsync("bug", "loose", h.Todo);
 
-        var plan = Value(await h.Plan.GetPlan(404, default));
+        var plan = Value(await h.Plan.GetPlan([404], default));
 
         // An empty project is a legal thing to look at, and so is one another
         // tab has just deleted.

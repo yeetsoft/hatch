@@ -235,18 +235,18 @@ public static class TimelineReport
     /// The tree half: every issue's segments, folded under the top-level epics
     /// and the loose roots above them. A top-level epic is an epic with no epic
     /// above it; a loose root is a parentless non-epic. Children ride with
-    /// their root whatever the filters say - <paramref name="projectId"/> and
+    /// their root whatever the filters say - <paramref name="projectIds"/> and
     /// <paramref name="createdBy"/> narrow only the roots.
     /// </summary>
     /// <remarks>
     /// The kept loose roots are the children of <see cref="Result.Other"/>, which
     /// is null when there are none. <see cref="Result.Creators"/> ignores
     /// <paramref name="createdBy"/> so a picker can still offer the people the
-    /// filter is hiding.
+    /// filter is hiding. <paramref name="projectIds"/> null or empty is no filter.
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<Row> rows, IReadOnlyList<Change> changes, IReadOnlyList<EfHatchStatus> statuses,
-        DateTimeOffset from, DateTimeOffset to, int? projectId, string? createdBy)
+        DateTimeOffset from, DateTimeOffset to, IReadOnlyList<int>? projectIds, string? createdBy)
     {
         var board = IndexOf(statuses);
         var byId = rows.ToDictionary(r => r.Id);
@@ -262,7 +262,7 @@ public static class TimelineReport
 
         var roots = rows
             .Where(r => (IsTopLevelEpic(r) || (r.Type != EpicType && r.ParentId is null))
-                && (projectId is null || r.ProjectId == projectId))
+                && (projectIds is null || projectIds.Count == 0 || projectIds.Contains(r.ProjectId)))
             .OrderBy(r => r.Rank).ThenBy(r => r.Id)
             .ToList();
 

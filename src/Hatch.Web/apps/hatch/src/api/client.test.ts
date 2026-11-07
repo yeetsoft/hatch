@@ -4,11 +4,14 @@ import {
   getActivity,
   getAttachments,
   getChangelogReport,
+  getPlan,
+  getTimeline,
   getWorkLogHistory,
   getWorkLogSessions,
   liftRunnerOmission,
   omitRunner,
   orderRunner,
+  searchIssues,
   setStatusRunnerTags,
   uploadAttachment,
   withdrawOrder,
@@ -260,6 +263,101 @@ describe('getWorkLogHistory', () => {
   it('treats an empty or null projectId as none', async () => {
     expect(await urlOf({ ...range, projectId: [] })).toBe(base);
     expect(await urlOf({ ...range, projectId: null })).toBe(base);
+  });
+});
+
+describe('getPlan', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (projectId?: number | number[]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getPlan(projectId);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no projectId', async () => {
+    expect(await urlOf()).toBe('/api/hatch/plan');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf(3)).toBe('/api/hatch/plan?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf([3, 5])).toBe('/api/hatch/plan?projectId=3&projectId=5');
+  });
+
+  it('treats an empty list as none', async () => {
+    expect(await urlOf([])).toBe('/api/hatch/plan');
+  });
+});
+
+describe('getTimeline', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getTimeline>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getTimeline(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string when nothing is set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/reports/timeline');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/reports/timeline?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/reports/timeline?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/reports/timeline');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/reports/timeline');
+  });
+});
+
+describe('searchIssues', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (filter: Parameters<typeof searchIssues>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await searchIssues(filter);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no filter set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/issues');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/issues?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/issues?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/issues');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/issues');
   });
 });
 

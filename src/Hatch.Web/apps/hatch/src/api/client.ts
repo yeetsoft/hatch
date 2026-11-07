@@ -322,7 +322,9 @@ export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${s
 export const searchIssues = (filter: IssueSearch) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(filter)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, String(v));
+    else params.set(name, String(value));
   }
   const query = params.toString();
   return fetchJson<IssueCard[]>(`/api/hatch/issues${query ? `?${query}` : ''}`);
@@ -471,8 +473,12 @@ export const getIssuePlan = (key: string) => fetchJson<IssueRollup>(`/api/hatch/
     epic at all. Its own read rather than a corner of the board: the board is
     refetched after every drag, and a rollup bolted onto it would be recomputed
     on every drop for a screen nobody is looking at. */
-export const getPlan = (projectId?: number) =>
-  fetchJson<Plan>(`/api/hatch/plan${projectId === undefined ? '' : `?projectId=${projectId}`}`);
+export const getPlan = (projectId?: number | number[]) => {
+  const params = new URLSearchParams();
+  for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
+  const qs = params.toString();
+  return fetchJson<Plan>(`/api/hatch/plan${qs ? `?${qs}` : ''}`);
+};
 
 // ---- Work ----
 
@@ -752,18 +758,20 @@ export interface WorkLogHistoryQuery {
 export const getTimeline = (query: TimelineQuery) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, String(v));
+    else params.set(name, String(value));
   }
   const qs = params.toString();
   return fetchJson<Timeline>('/api/hatch/reports/timeline' + (qs ? '?' + qs : ''));
 };
 
 /** The timeline route's query string; it has no DTO. An unset field is left out
-    of the URL, not sent empty. */
+    of the URL, not sent empty. `projectId` repeats once per id when given a list. */
 export interface TimelineQuery {
   from?: string | null;
   to?: string | null;
-  projectId?: number | null;
+  projectId?: number | number[] | null;
   createdBy?: string | null;
 }
 

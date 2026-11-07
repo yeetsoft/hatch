@@ -144,13 +144,62 @@ public class DreamsControllerTests
         var leaning = await h.AddAsync("leans toward the project", projectId: h.ProjectAId);
         var loose = await h.AddAsync("floats free");
 
-        var narrowed = await h.GetAsync(projectId: h.ProjectAId);
+        var narrowed = await h.GetAsync(projectId: [h.ProjectAId]);
         var unnarrowed = await h.GetAsync();
 
         Assert.Equal([leaning.Id], narrowed.Dreams.Select(d => d.Id));
         Assert.DoesNotContain(loose.Id, narrowed.Dreams.Select(d => d.Id));
         Assert.Equal(2, unnarrowed.Total);
         Assert.Contains(loose.Id, unnarrowed.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_TwoProjectIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var leaningA = await h.AddAsync("leans toward A", projectId: h.ProjectAId);
+        var leaningB = await h.AddAsync("leans toward B", projectId: h.ProjectBId);
+        var loose = await h.AddAsync("floats free");
+
+        var narrowed = await h.GetAsync(projectId: [h.ProjectAId, h.ProjectBId]);
+
+        Assert.Equal(
+            new[] { leaningA.Id, leaningB.Id },
+            narrowed.Dreams.Select(d => d.Id).OrderBy(id => id));
+        Assert.DoesNotContain(loose.Id, narrowed.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        var leaning = await h.AddAsync("leans toward the project", projectId: h.ProjectAId);
+
+        var narrowed = await h.GetAsync(projectId: [h.ProjectAId, h.ProjectAId]);
+
+        Assert.Equal([leaning.Id], narrowed.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        var leaning = await h.AddAsync("leans toward the project", projectId: h.ProjectAId);
+
+        var narrowed = await h.GetAsync(projectId: [h.ProjectAId, 999_999]);
+
+        Assert.Equal([leaning.Id], narrowed.Dreams.Select(d => d.Id));
+    }
+
+    [Fact]
+    public async Task List_AnUnknownProjectIdAlone_AnswersNoRowsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await h.AddAsync("leans toward the project", projectId: h.ProjectAId);
+
+        var narrowed = await h.GetAsync(projectId: [999_999]);
+
+        Assert.Empty(narrowed.Dreams);
     }
 
     // ---- Listing: loose and issueKey ----
@@ -213,8 +262,8 @@ public class DreamsControllerTests
         var threadedToB = await h.AddAsync("threaded, but leans to B", projectId: h.ProjectBId);
         await h.SeedThreadAsync(threadedToB.Id, "AER-1", Now);
 
-        var looseInA = await h.GetAsync(loose: true, projectId: h.ProjectAId);
-        var threadedInA = await h.GetAsync(issueKey: "AER-1", projectId: h.ProjectAId);
+        var looseInA = await h.GetAsync(loose: true, projectId: [h.ProjectAId]);
+        var threadedInA = await h.GetAsync(issueKey: "AER-1", projectId: [h.ProjectAId]);
         var contradiction = await h.GetAsync(loose: true, issueKey: "AER-1");
 
         Assert.Equal([leaningA.Id], looseInA.Dreams.Select(d => d.Id));
@@ -473,7 +522,7 @@ public class DreamsControllerTests
             Created(await Controller.AddDream(new DreamCreateRequest(body, source, projectId), default));
 
         public async Task<DreamsPageDto> GetAsync(
-            string? q = null, int? projectId = null, int limit = 50, int offset = 0, string? issueKey = null, bool loose = false) =>
+            string? q = null, List<int>? projectId = null, int limit = 50, int offset = 0, string? issueKey = null, bool loose = false) =>
             Value(await Controller.GetDreams(q, projectId, limit, offset, issueKey, loose, default));
 
         public async Task<DreamDto> PatchAsync(long id, string json) =>

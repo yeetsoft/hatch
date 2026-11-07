@@ -65,14 +65,14 @@ public class ChangelogControllerTests
     }
 
     [Fact]
-    public async Task ProjectId_NarrowsBothTheWindowAndTheMonthCounts()
+    public async Task OneProjectId_NarrowsBothTheWindowAndTheMonthCounts()
     {
         var h = await NewAsync();
         var other = await h.AddProjectAsync("OTH");
         await h.CloseAsync("task", "in AER", Now - TimeSpan.FromMinutes(1));
         await h.CloseAsync("task", "in OTH", Now - TimeSpan.FromMinutes(1), projectId: other);
 
-        var result = await h.GetChangelogAsync(projectId: h.ProjectId);
+        var result = await h.GetChangelogAsync(projectId: [h.ProjectId]);
 
         var day = Assert.Single(result.Days);
         Assert.Equal(["AER-1"], day.Fixes.Select(e => e.Key));
@@ -80,14 +80,52 @@ public class ChangelogControllerTests
     }
 
     [Fact]
-    public async Task AnUnknownProjectId_IsRefusedWithASentence()
+    public async Task TwoProjectIds_AnswerEitherProjects()
     {
         var h = await NewAsync();
+        var other = await h.AddProjectAsync("OTH");
+        await h.CloseAsync("task", "in AER", Now - TimeSpan.FromMinutes(1));
+        await h.CloseAsync("task", "in OTH", Now - TimeSpan.FromMinutes(1), projectId: other);
 
-        var refused = Assert.IsType<BadRequestObjectResult>(
-            (await h.Controller.GetChangelog(before: null, projectId: 999_999)).Result);
+        var result = await h.GetChangelogAsync(projectId: [h.ProjectId, other]);
 
-        Assert.Equal("there is no project 999999", refused.Value);
+        var day = Assert.Single(result.Days);
+        Assert.Equal(["AER-1", "OTH-2"], day.Fixes.Select(e => e.Key).OrderBy(k => k));
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("task", "in AER", Now - TimeSpan.FromMinutes(1));
+
+        var result = await h.GetChangelogAsync(projectId: [h.ProjectId, h.ProjectId]);
+
+        var day = Assert.Single(result.Days);
+        Assert.Equal(["AER-1"], day.Fixes.Select(e => e.Key));
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("task", "in AER", Now - TimeSpan.FromMinutes(1));
+
+        var result = await h.GetChangelogAsync(projectId: [h.ProjectId, 999_999]);
+
+        var day = Assert.Single(result.Days);
+        Assert.Equal(["AER-1"], day.Fixes.Select(e => e.Key));
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdAlone_AnswersNoRowsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await h.CloseAsync("task", "in AER", Now - TimeSpan.FromMinutes(1));
+
+        var result = await h.GetChangelogAsync(projectId: [999_999]);
+
+        Assert.Empty(result.Days);
     }
 
     [Fact]
@@ -230,7 +268,7 @@ public class ChangelogControllerTests
             return issue;
         }
 
-        public async Task<ChangelogDto> GetChangelogAsync(string? before = null, int? projectId = null, int days = 14) =>
+        public async Task<ChangelogDto> GetChangelogAsync(string? before = null, List<int>? projectId = null, int days = 14) =>
             Value(await Controller.GetChangelog(before, projectId, days));
     }
 
