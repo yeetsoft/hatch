@@ -164,14 +164,17 @@ reader opens the Overnight page - for that reader alone, not board-wide.
 
 ## Leaderboard
 
-**Agents → Leaderboard** is every session's work-log row, board-wide. Pick a
-range - **Last 24 hours**, **Today**, **Last 7 days**, **Last 14 days**
-(the default), **Last 30 days**, or a pasted window - and narrow it to one
-issue and everything beneath it. Below the controls sit a spend-over-time
-graph, a **Top billing** list of the costliest sessions in the window, and a
-table of every session in it, sortable by tokens, requests, peak context,
-notional USD or when it ran. Nothing on this page writes - there is no
-control that could, and the server refuses a browser outright.
+**Agents → Leaderboard** is every session's work-log row, board-wide unless
+scoped. Pick a range - **Last 24 hours**, **Today**, **Last 7 days**, **Last
+14 days** (the default), **Last 30 days**, or a pasted window - and narrow it
+to one issue and everything beneath it. Below the controls sit a
+spend-over-time graph, a **Top billing** list of the costliest sessions in the
+window, and a table of every session in it, sortable by tokens, requests,
+peak context, notional USD or when it ran. Nothing on this page writes - there
+is no control that could, and the server refuses a browser outright. Under a
+scoped tab the graph, the list and the table all cover only sessions run
+against issues of the projects in scope, and the issue filter offers only
+those issues.
 [What a session is told](what-a-session-is-told#the-work-log-block) says what
 goes into one of these rows in the first place.
 
