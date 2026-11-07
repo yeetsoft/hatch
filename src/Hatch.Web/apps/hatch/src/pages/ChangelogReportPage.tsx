@@ -26,8 +26,10 @@ import {
 import { changelogMarkdown } from '../lib/changelogMarkdown';
 import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { scopedPath } from '../lib/scope';
 import { resolveProjects, withProjects } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
+import { useScope } from '../lib/useScope';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { useReportWindow } from '../lib/useReportWindow';
 import type { ChangelogReport, ChangelogReportEntry, ChangelogReportGroup, Project } from '../types';
@@ -188,6 +190,7 @@ const REPORT_ANSWERS = 'What landed in each day, week or month, at the level a s
  */
 export function ChangelogReportPage() {
   const [params, setParams] = useSearchParams();
+  const { keys } = useScope();
 
   const { from, to, now, offsetMinutes, move } = useReportWindow(14);
 
@@ -233,7 +236,7 @@ export function ChangelogReportPage() {
   // links are built from the page's own location, as Copy link is.
   const markdown = changelogMarkdown(data.report, {
     bucketLabel: (start) => bucketLabel(start, data.report.bucket as ReportBucketSize, offsetMinutes),
-    issueUrl: (key) => fullHref(window.location.origin, window.location.pathname, '/issues/' + key),
+    issueUrl: (key) => fullHref(window.location.origin, window.location.pathname, scopedPath('/issues/' + key, keys)),
   });
 
   return (

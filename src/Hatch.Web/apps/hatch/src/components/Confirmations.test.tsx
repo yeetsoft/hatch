@@ -4,6 +4,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { Chicklet, ConfirmationStack } from './Confirmations';
 import { raise, raiseMove, settle } from '../lib/confirmations';
 import type { Confirmation } from '../lib/confirmations';
+import { ScopeProvider } from '../lib/useScope';
+import type { Project } from '../types';
+
+vi.mock('../lib/useProjects', async (original) => ({
+  ...(await original<typeof import('../lib/useProjects')>()),
+  useProjects: () => ({ projects: [{ key: 'AER' }, { key: 'FIL' }, { key: 'HA' }] as Project[], byKey: new Map(), loaded: true }),
+}));
 
 /* No DOM here, so this checks structure and not layout: that every kind of
    chicklet comes out of the one frame. What the width then does is lib/
@@ -46,6 +53,15 @@ const li = (stack: Confirmation[]) => {
   );
   return [...html.matchAll(/<li\b[^>]*>[\s\S]*?<\/li>/g)].map((m) => m[0]);
 };
+
+const liAt = (entry: string, stack: Confirmation[]) =>
+  renderToStaticMarkup(
+    <MemoryRouter initialEntries={[entry]}>
+      <ScopeProvider>
+        <ConfirmationStack stack={stack} onUndo={noop} onDismiss={noop} onDismissAll={noop} />
+      </ScopeProvider>
+    </MemoryRouter>,
+  );
 
 describe('Chicklet', () => {
   it('is the same outer element and class for a filing, a move, and a move after its undo', () => {
@@ -91,6 +107,20 @@ describe('Chicklet', () => {
     expect(html).toContain('↗');
   });
 
+  it('carries the scope on the key link when one is active', () => {
+    expect(key(liAt('/?scope=AER,FIL', filing))).toContain('href="/apps/hatch/issues/AER-1?scope=AER,FIL"');
+  });
+
+  it('leaves the key link bare when the scope is empty, or there is no provider', () => {
+    expect(key(liAt('/', filing))).toContain('href="/apps/hatch/issues/AER-1"');
+    expect(key(liAt('/', filing))).not.toContain('scope');
+    expect(key(li(filing)[0])).not.toContain('scope');
+  });
+
+  it('leaves the key link bare when the scope names every project', () => {
+    expect(key(liAt('/?scope=AER,FIL,HA', filing))).not.toContain('scope');
+  });
+
   it('routes the key in place, with no new tab and no ↗, when standalone', () => {
     vi.stubGlobal('window', {
       location: { pathname: '/apps/hatch/' },
@@ -102,6 +132,16 @@ describe('Chicklet', () => {
 
     expect(html).not.toContain('target="_blank"');
     expect(html).not.toContain('↗');
+  });
+
+  it('leaves the scope to the keeper on the routed key, standalone', () => {
+    vi.stubGlobal('window', {
+      location: { pathname: '/apps/hatch/' },
+      matchMedia: () => ({ matches: true, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+    });
+
+    expect(key(liAt('/?scope=AER,FIL', filing))).not.toContain('scope');
   });
 });
 

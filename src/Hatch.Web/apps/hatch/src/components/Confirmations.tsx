@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { moveIssue } from '../api/client';
 import { appHref } from '../lib/basename';
+import { scopedPath } from '../lib/scope';
+import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
 import {
   age,
@@ -305,6 +307,7 @@ export function Chicklet({
   children?: ReactNode;
 }) {
   const standalone = useStandalone();
+  const { keys } = useScope();
 
   return (
     <li className="hatch-confirmation">
@@ -319,7 +322,7 @@ export function Chicklet({
           {c.issueKey}
         </Link>
       ) : (
-        <a className="hatch-confirmation-key" href={appHref(`/issues/${c.issueKey}`)} target="_blank" rel="noreferrer">
+        <a className="hatch-confirmation-key" href={appHref(scopedPath(`/issues/${c.issueKey}`, keys))} target="_blank" rel="noreferrer">
           {c.issueKey} ↗
         </a>
       )}
