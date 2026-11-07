@@ -142,6 +142,12 @@ on the scope's projects, else on every project.
 An issue outside the tab's scope still opens from a link, says so under its
 header, and offers to add its project to the tab in one press.
 
+**Track → History** and **Agents → Leaderboard** follow the scope too.
+[History](watching-the-loop#history-and-the-work-log) lists only the events
+of the projects in scope, and the
+[Leaderboard](watching-the-loop#leaderboard) covers only the sessions run
+against their issues.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
