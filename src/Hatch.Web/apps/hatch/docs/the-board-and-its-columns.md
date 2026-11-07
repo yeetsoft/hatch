@@ -139,6 +139,9 @@ and opens on the first of them when the filter and the remembered project are
 outside it. **Go to Work** starts your runners on the picker's project, else
 on the scope's projects, else on every project.
 
+An issue outside the tab's scope still opens from a link, says so under its
+header, and offers to add its project to the tab in one press.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
