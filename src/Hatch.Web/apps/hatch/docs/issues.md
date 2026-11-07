@@ -217,12 +217,16 @@ flavour.
 
 **Manage → Import** reads a directory of `.md` files, previews what each one
 would become against the board's own columns, and copies it in - retiring
-the source file stays a deliberate manual act, never this page's.
+the source file stays a deliberate manual act, never this page's. In a tab
+scoped to projects the Project chooser lists only those, and a tab scoped to
+a single project has it already chosen.
 
 **Manage → Bulk edit** runs the same server-side filters the board does -
 project, type, status, parent, ancestor, text - then applies one edit to
 every result still ticked when the button is pressed, not to whatever the
-filter would return if run again later.
+filter would return if run again later. In a scoped tab its Project filter and
+results are the scope's, while *move to project* still offers every project; an
+issue moved out of scope leaves the table and is named in the result.
 
 ## Attachments
 
