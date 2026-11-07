@@ -11,6 +11,7 @@
    the drag it was in the middle of. */
 
 import { UNASSIGNED, assigneeToken, compareAssignees } from './assignee';
+import { toggleChoice } from './checklist';
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, IssueCard, IssueType } from '../types';
 
@@ -221,9 +222,9 @@ export const toggleWaiting = (filter: CardFilter): CardFilter => ({ ...filter, w
 /** Adds or removes one type, which is what a list of checkboxes does to a
     filter. Unticking the only one left returns the filter itself, unchanged. */
 export function toggleType(filter: CardFilter, type: IssueType): CardFilter {
-  const next = filter.types.includes(type) ? filter.types.filter((t) => t !== type) : [...filter.types, type];
+  const next = toggleChoice(filter.types, type, ISSUE_TYPES);
   if (next.length === 0) return filter;
-  return { ...filter, types: ISSUE_TYPES.filter((t) => next.includes(t)) };
+  return { ...filter, types: next };
 }
 
 /** Draws a type if it is not drawn already. Filing an issue of a hidden type
