@@ -51,6 +51,16 @@ export function knownKeys(raw: string[], projects: { key: string }[]): string[] 
   return keys.length === projects.length ? [] : keys;
 }
 
+/** The ids of the `projects` whose key is in `keys`, in the project list's own
+    order. `[]` when `keys` is empty - every project, as `knownKeys` says. */
+export function scopeProjectIds(keys: string[], projects: { id: number; key: string }[]): number[] {
+  if (keys.length === 0) return [];
+
+  const named = new Set(keys);
+
+  return projects.filter((project) => named.has(project.key)).map((project) => project.id);
+}
+
 /** The keys `rawScope` names that are in `projects`, in the project list's own
     order. See `knownKeys` for the rule. */
 export function parseScope(params: URLSearchParams, projects: { key: string }[]): string[] {
