@@ -38,6 +38,7 @@ import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
+import { ScopeProvider } from './lib/useScope';
 import { HOME, HOME_LABEL, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
@@ -47,7 +48,9 @@ export function App() {
     <MeProvider>
       <AttentionProvider>
         <OvernightProvider>
-          <AppShell />
+          <ScopeProvider>
+            <AppShell />
+          </ScopeProvider>
         </OvernightProvider>
       </AttentionProvider>
     </MeProvider>
