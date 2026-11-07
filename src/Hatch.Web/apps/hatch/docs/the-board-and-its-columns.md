@@ -97,7 +97,9 @@ The **Project** picker is drawn only when Hatch has more than one project,
 and **All projects** is a choice like any other. It and the type filter are
 remembered per browser, in `localStorage`, across pages, reloads and
 restarts. A `?project=KEY` link opens that project whatever this browser
-remembers, and the browser remembers it afterwards.
+remembers, and the browser remembers it afterwards. A second control in the
+bar scopes the whole tab to projects: see
+[Scoping a tab to projects](#scoping-a-tab-to-projects).
 
 A column that shows no card is drawn at half the width of one that does, so
 empty columns stop pushing the busy ones off screen. That covers a column with
@@ -108,6 +110,24 @@ A column whose only cards are folded behind **+ N waiting** keeps its full
 width, since the fold is work one click away. A drag does not widen the narrow
 columns; each is still a full-height drop target. The phone's stacked layout
 is unchanged.
+
+## Scoping a tab to projects
+
+Above the board, the bar carries a second control: which projects *this
+browser tab* is looking at. Scoped, it shows each project's mark and key,
+filled; unscoped, it reads **All projects**. Opening it shows every
+project as a checkbox — ticking or unticking one writes the scope
+immediately, and unticking the last one means every project again, same
+as never scoping at all.
+
+The scope lives in the address bar, as `?scope=KEY,KEY` — project keys,
+comma-separated. A link you click carries the tab's own scope forward; a
+link you paste or are sent means exactly what it says, with no
+browser memory behind it, so two tabs can hold two different scopes at
+once. Projects, Statuses, Playbooks, Runners, Overnight, Get the runner,
+Users, API keys, Settings and Docs ignore it — none of them is an issue
+list. Later sections on this page, and this app's other pages, say where
+else it reaches.
 
 ## Go to Work and Pause
 
