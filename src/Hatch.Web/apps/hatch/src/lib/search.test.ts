@@ -7,6 +7,7 @@ import {
   isSearching,
   matchedWords,
   readSearch,
+  scrubbedProjectId,
   searchPath,
   searchRequest,
   statusPath,
@@ -133,6 +134,39 @@ describe('searchRequest', () => {
 
   it('writes a non-zero offset', () => {
     expect(searchRequest(EMPTY_SEARCH, 50).get('offset')).toBe('50');
+  });
+
+  it('sends every scope id, in order, when no project is chosen', () => {
+    expect(searchRequest(EMPTY_SEARCH, 0, [3, 7]).getAll('projectId')).toEqual(['3', '7']);
+  });
+
+  it('sends only the chosen project, not the scope', () => {
+    const chosen = { ...EMPTY_SEARCH, projectId: '7' };
+    expect(searchRequest(chosen, 0, [3, 7]).getAll('projectId')).toEqual(['7']);
+  });
+
+  it('sends no projectId for no scope and no project', () => {
+    expect(searchRequest(EMPTY_SEARCH, 0).has('projectId')).toBe(false);
+  });
+});
+
+describe('scrubbedProjectId', () => {
+  const offered = [{ id: 1 }, { id: 2 }];
+
+  it('keeps a project the facet offers', () => {
+    expect(scrubbedProjectId('2', offered)).toBe('2');
+  });
+
+  it('scrubs an id for a project outside the scope', () => {
+    expect(scrubbedProjectId('3', offered)).toBe('');
+  });
+
+  it('scrubs when the facet is hidden for one offered project', () => {
+    expect(scrubbedProjectId('1', [{ id: 1 }])).toBe('');
+  });
+
+  it('is already empty and stays so', () => {
+    expect(scrubbedProjectId('', offered)).toBe('');
   });
 });
 
