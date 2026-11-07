@@ -73,18 +73,45 @@ export const DREAMS_PAGE = 50;
 
 /** The request `getDreams` takes: `writeDreams(filters)`, with its `issue`
     key renamed to the server's own `issueKey` query parameter, plus `limit`,
-    plus `offset` when it is not the first page. */
-export function dreamsRequest(filters: DreamFilters, offset: number): URLSearchParams {
+    plus `offset` when it is not the first page.
+
+    With no project chosen and a scope of `ids`, the scope is sent as a
+    `projectId` list and `includeNoProject` is set, so a narrowed tab still
+    sees the dreams that belong to no project. A chosen project is already
+    written by `writeDreams` and stays the lone `projectId`; an empty `ids`
+    adds nothing, which is the request an unscoped page has always made. */
+export function dreamsRequest(filters: DreamFilters, offset: number, ids: number[]): URLSearchParams {
   const params = writeDreams(filters);
   const issue = params.get('issue');
   if (issue !== null) {
     params.delete('issue');
     params.set('issueKey', issue);
   }
+  if (filters.projectId === '' && ids.length > 0) {
+    for (const id of ids) params.append('projectId', String(id));
+    params.set('includeNoProject', 'true');
+  }
   params.set('limit', String(DREAMS_PAGE));
   if (offset !== 0) params.set('offset', String(offset));
 
   return params;
+}
+
+/** The project filter, with a pick the scope no longer holds put back to
+    `''`. A filter read off an old link can name a project the tab has since
+    narrowed away from, and sending it would show a list the chooser cannot
+    explain. An unscoped tab never drops anything: nobody narrowed it. */
+export function scrubbedDreamProject(projectId: string, inScope: Project[], isScoped: boolean): string {
+  if (!isScoped || projectId === '') return projectId;
+
+  return inScope.some((p) => String(p.id) === projectId) ? projectId : '';
+}
+
+/** The project a lean or weave pick offers, if the scope still holds it; else
+    `null`. A pick left over from a scope that has since narrowed is dropped
+    here rather than sent. */
+export function offeredProjectId(id: number | null, inScope: Project[]): number | null {
+  return id !== null && inScope.some((p) => p.id === id) ? id : null;
 }
 
 /** A dream's one-liner: its body's first line, trimmed - the same one-liner
