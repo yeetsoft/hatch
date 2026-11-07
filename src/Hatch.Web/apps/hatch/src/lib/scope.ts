@@ -86,6 +86,12 @@ export function scopedPath(path: string, keys: string[]): string {
   return keys.length > 0 ? `${path}${scopeSearch(new URLSearchParams({ [SCOPE]: keys.join(',') }))}` : path;
 }
 
+/** The document title: the scoped keys, comma-joined, and ` - Hatch`, or
+    just `Hatch` for no scope. */
+export function scopeTitle(keys: string[]): string {
+  return keys.length > 0 ? `${keys.join(', ')} - Hatch` : 'Hatch';
+}
+
 export interface KeepScopeInput {
   location: { pathname: string; search: string; hash: string; state: unknown };
   /** react-router's enum, or the strings it holds. */
