@@ -1,11 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, EmptyState, Field, PageHeader, Text } from '@hatch/ui';
 import { getPlan, getProjects, getStatuses } from '../api/client';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
-import { orderPlan } from '../lib/plan';
+import { scrubbedProject } from '../lib/filter';
+import { orderPlan, planProjectId } from '../lib/plan';
 import { useLoaded } from '../lib/useLoaded';
+import { useScope } from '../lib/useScope';
 import type { Plan, PlanEntry, Project, Status } from '../types';
 
 /** The URL's whole vocabulary here: which project, by key. */
@@ -32,24 +34,37 @@ interface PlanView {
 export function PlanPage() {
   const [params, setParams] = useSearchParams();
   const chosen = params.get(PROJECT) ?? '';
+  const scope = useScope();
 
   /* Wrapped so useLoaded's effect has a stable dependency, and keyed on the
      chosen project so picking one is a refetch rather than a filter applied
      here - the server scopes both halves of the plan, including the loose
      bucket, and a client-side filter would get the second half wrong. */
   const load = useCallback(async (): Promise<PlanView> => {
-    const [projects, statuses] = await Promise.all([getProjects(), getStatuses()]);
+    const [allProjects, statuses] = await Promise.all([getProjects(), getStatuses()]);
+
+    /* From this page's own fetch rather than the scope provider's list: that
+       one can land after this, and an empty list would scrub everything. */
+    const offered = scope.isScoped ? allProjects.filter((p) => scope.keys.includes(p.key)) : allProjects;
 
     /* The plan waits on the project list rather than going out beside it,
        because the URL holds a key - the thing a person would type or paste -
-       and the API takes an id. A key naming no project falls back to the whole
-       tracker, which is what the picker will be showing anyway. */
-    const project = projects.find((p) => p.key === chosen);
-
-    return { plan: await getPlan(project?.id), statuses, projects };
-  }, [chosen]);
+       and the API takes an id. The key is looked up among the offered
+       projects, and a key naming none of them reads as nothing chosen. */
+    return { plan: await getPlan(planProjectId(chosen, offered, scope.isScoped)), statuses, projects: offered };
+  }, [chosen, scope.isScoped, scope.keys]);
 
   const { data, error } = useLoaded<PlanView>(load);
+
+  useEffect(() => {
+    if (!data) return;
+    // A key in the URL that names no offered project reads as nothing chosen,
+    // and the param is dropped - the picker has nothing to show it as.
+    if (scrubbedProject(chosen, data.projects) === chosen) return;
+    const next = new URLSearchParams(params);
+    next.delete(PROJECT);
+    setParams(next, { replace: true });
+  }, [data, chosen, params, setParams]);
 
   function choose(key: string) {
     const next = new URLSearchParams(params);
@@ -79,7 +94,7 @@ export function PlanPage() {
           projects.length > 1 && (
             <Field label="Project" className="hatch-plan-picker">
               <select value={chosen} onChange={(e) => choose(e.target.value)}>
-                <option value="">All projects</option>
+                <option value="">{scope.isScoped ? 'All in scope' : 'All projects'}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.key}>
                     {project.key} — {project.name}

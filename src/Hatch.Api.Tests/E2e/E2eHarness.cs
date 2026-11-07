@@ -310,6 +310,10 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task ClickAsync(Deadline deadline, string selector) =>
         deadline.BoundAsync($"clicking {selector}", () => page!.Locator(selector).First.ClickAsync());
 
+    /// <summary>Picks the option whose value is <paramref name="value"/> in the first <c>select</c> matching <paramref name="selector"/>, firing the events a person's pick would.</summary>
+    public Task SelectOptionAsync(Deadline deadline, string selector, string value) =>
+        deadline.BoundAsync($"choosing {value} in {selector}", () => page!.Locator(selector).First.SelectOptionAsync(value));
+
     /// <summary>Selects everything in whichever element holds the page's focus.</summary>
     public Task SelectAllAsync(Deadline deadline) =>
         deadline.BoundAsync("selecting all", () => page!.Keyboard.PressAsync("ControlOrMeta+A"));
