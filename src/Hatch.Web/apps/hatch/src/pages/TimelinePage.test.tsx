@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { TimelineBody } from './TimelinePage';
-import type { IssueCard, Status, Timeline, TimelineEntry } from '../types';
+import { TimelineBody, timelineProjects } from './TimelinePage';
+import type { IssueCard, Project, Status, Timeline, TimelineEntry } from '../types';
 
 /* No DOM runner, so `useLoaded` is not driven: the body is rendered from props,
    the way TimelineChart.test.tsx does it. */
@@ -116,5 +116,43 @@ describe('TimelineBody', () => {
 
     expect(html).toContain(EMPTY);
     expect(html).toContain('2 column changes could not be placed');
+  });
+});
+
+describe('timelineProjects', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+    { id: 3, key: 'PYC' },
+  ] as Project[];
+
+  it('sends every id in a two-project scope when none is picked', () => {
+    const { offered, chosen, ids } = timelineProjects(projects, ['HA', 'AER'], '');
+
+    expect(offered.map((p) => p.key)).toEqual(['HA', 'AER']);
+    expect(chosen).toBeNull();
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('sends the one picked project', () => {
+    const { chosen, ids } = timelineProjects(projects, ['HA', 'AER'], 'AER');
+
+    expect(chosen?.key).toBe('AER');
+    expect(ids).toEqual([2]);
+  });
+
+  it('ignores a project outside the scope', () => {
+    const { chosen, ids } = timelineProjects(projects, ['HA', 'AER'], 'PYC');
+
+    expect(chosen).toBeNull();
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('sends nothing for no scope and no pick', () => {
+    expect(timelineProjects(projects, [], '').ids).toBeUndefined();
+  });
+
+  it('still narrows for a one-project scope', () => {
+    expect(timelineProjects(projects, ['HA'], '').ids).toEqual([1]);
   });
 });

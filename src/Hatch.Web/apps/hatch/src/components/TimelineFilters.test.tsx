@@ -46,7 +46,8 @@ function render({
   project = '',
   creators = ['Ada', 'Grace'],
   creator = '',
-}: { projects?: Project[]; project?: string; creators?: string[]; creator?: string } = {}) {
+  scoped,
+}: { projects?: Project[]; project?: string; creators?: string[]; creator?: string; scoped?: boolean } = {}) {
   return renderToStaticMarkup(
     <TimelineFilters
       projects={projects}
@@ -55,6 +56,7 @@ function render({
       creator={creator}
       onProject={() => {}}
       onCreator={() => {}}
+      scoped={scoped}
     />,
   );
 }
@@ -84,6 +86,14 @@ describe('TimelineFilters', () => {
     expect(html).toContain('hatch-facet__label">Project<');
     expect(options(html).slice(0, 3)).toEqual(['All projects', 'AER — Aero', 'HA — Hatch']);
     expect(shown(html)).toEqual(['All projects', 'Anyone']);
+  });
+
+  it('says All in scope when the tab is scoped, offering only the scope', () => {
+    const html = render({ scoped: true });
+
+    expect(html).toContain('>All in scope</option>');
+    expect(html).not.toContain('>All projects</option>');
+    expect(options(html).slice(0, 3)).toEqual(['All in scope', 'AER — Aero', 'HA — Hatch']);
   });
 
   it('offers Anyone and then exactly the given creators, in order', () => {
