@@ -121,8 +121,19 @@ public static class WorkLogRollup
     /// deliberately ignore the range, so a page can tell "nothing has ever run"
     /// from "nothing ran in the range you asked for".
     /// </remarks>
+    /// <param name="projectIds">
+    /// Narrows to sessions whose issue is in any of these projects; null or
+    /// empty is no filter. Composes with <paramref name="ancestorId"/> by
+    /// intersection, and narrows the totals, the buckets and the
+    /// <c>first</c>/<c>last</c> bounds alike.
+    /// </param>
     public static async Task<WorkLogHistoryDto> SeriesAsync(
-        HatchContext db, WorkLogWindow window, WorkLogBucketSize bucket, long? ancestorId, CancellationToken ct)
+        HatchContext db,
+        WorkLogWindow window,
+        WorkLogBucketSize bucket,
+        long? ancestorId,
+        IReadOnlyList<int>? projectIds,
+        CancellationToken ct)
     {
         var to = window.From + window.Length * window.Buckets;
 
@@ -132,7 +143,7 @@ public static class WorkLogRollup
         // walk rather than three.
         var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
 
-        var rows = await Project(Scoped(db, scope).Where(w => w.EndedAt >= window.From && w.EndedAt < to))
+        var rows = await Project(Scoped(db, scope, projectIds).Where(w => w.EndedAt >= window.From && w.EndedAt < to))
             .ToListAsync(ct);
 
         var byBucket = rows
@@ -155,8 +166,8 @@ public static class WorkLogRollup
             to,
             Name(bucket),
             Fold(rows),
-            await FirstEndedAsync(db, scope, ascending: true, ct),
-            await FirstEndedAsync(db, scope, ascending: false, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
             buckets);
     }
 
@@ -181,11 +192,18 @@ public static class WorkLogRollup
     /// projection the way Npgsql does, and the work log grows by one row per
     /// increment.
     /// </remarks>
+    /// <param name="projectIds">
+    /// Narrows to sessions whose issue is in any of these projects; null or
+    /// empty is no filter. Composes with <paramref name="ancestorId"/> by
+    /// intersection, and narrows the totals and the <c>first</c>/<c>last</c>
+    /// bounds alike.
+    /// </param>
     public static async Task<WorkLogSessionsDto> SessionsAsync(
         HatchContext db,
         DateTimeOffset from,
         DateTimeOffset to,
         long? ancestorId,
+        IReadOnlyList<int>? projectIds,
         WorkLogSort sort,
         int limit,
         CancellationToken ct)
@@ -194,7 +212,7 @@ public static class WorkLogRollup
         // does it.
         var scope = ancestorId is { } id ? await ScopeAsync(db, id, includeDescendants: true, ct) : null;
 
-        var rows = await Scoped(db, scope)
+        var rows = await Scoped(db, scope, projectIds)
             .AsNoTracking()
             .Where(w => w.EndedAt >= from && w.EndedAt < to)
             .Select(w => new SessionRow(
@@ -245,8 +263,8 @@ public static class WorkLogRollup
             to,
             Name(sort),
             Fold(rows.ConvertAll(Meter)),
-            await FirstEndedAsync(db, scope, ascending: true, ct),
-            await FirstEndedAsync(db, scope, ascending: false, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: true, ct),
+            await FirstEndedAsync(db, scope, projectIds, ascending: false, ct),
             ordered,
             FoldReads(rows.Select(r => r.Reads)));
     }
@@ -455,9 +473,19 @@ public static class WorkLogRollup
         r.PromptChars,
         r.Agent);
 
-    /// <summary>The log, narrowed to a set of issues - or the whole of it when there is none.</summary>
-    private static IQueryable<EfHatchWorkLogEntry> Scoped(HatchContext db, List<long>? scope) =>
-        scope is null ? db.WorkLog : db.WorkLog.Where(w => scope.Contains(w.IssueId));
+    /// <summary>
+    /// The log, narrowed to a set of issues - or the whole of it when there is
+    /// none - then narrowed again to a set of projects, the same navigation
+    /// <see cref="ByPlaybookAsync"/> filters on. Null or empty is no project
+    /// filter.
+    /// </summary>
+    private static IQueryable<EfHatchWorkLogEntry> Scoped(
+        HatchContext db, List<long>? scope, IReadOnlyList<int>? projectIds)
+    {
+        var q = scope is null ? db.WorkLog : db.WorkLog.Where(w => scope.Contains(w.IssueId));
+        if (projectIds is { Count: > 0 }) q = q.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+        return q;
+    }
 
     private static IQueryable<Row> Project(IQueryable<EfHatchWorkLogEntry> entries) =>
         entries.AsNoTracking()
@@ -640,14 +668,15 @@ public static class WorkLogRollup
     /// or null when that population is empty.
     /// </summary>
     /// <remarks>
-    /// The scope is applied and the range is not, deliberately: a graph narrowed
-    /// to an epic wants the epic's span rather than the house's, and a page needs
-    /// the span to choose a range at all.
+    /// The scope and the <paramref name="projectIds"/> are applied and the
+    /// range is not, deliberately: a graph narrowed to an epic wants the
+    /// epic's span rather than the house's, and a page needs the span to
+    /// choose a range at all.
     /// </remarks>
     private static async Task<DateTimeOffset?> FirstEndedAsync(
-        HatchContext db, List<long>? scope, bool ascending, CancellationToken ct)
+        HatchContext db, List<long>? scope, IReadOnlyList<int>? projectIds, bool ascending, CancellationToken ct)
     {
-        var query = Scoped(db, scope).AsNoTracking();
+        var query = Scoped(db, scope, projectIds).AsNoTracking();
         var ordered = ascending ? query.OrderBy(w => w.EndedAt) : query.OrderByDescending(w => w.EndedAt);
 
         // Projected to a nullable rather than read as a row, so an empty log is
