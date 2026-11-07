@@ -3582,6 +3582,16 @@ input.hatch-inline-title-input {
   overflow-wrap: anywhere;
 }
 
+/* Beside .hatch-stall, the same band down the left edge in the primary colour:
+   a fact about where the ticket sits relative to the tab, not a warning. */
+.hatch-scope-notice {
+  border-left: 3px solid var(--primary);
+}
+
+.hatch-scope-notice-line {
+  margin: 0 0 var(--sp-2);
+}
+
 /* What a key reading the page gets instead of the two buttons - ExpressControl's
    own register for a state it may not write. */
 .hatch-stall-said {
