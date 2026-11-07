@@ -142,6 +142,14 @@ on the scope's projects, else on every project.
 An issue outside the tab's scope still opens from a link, says so under its
 header, and offers to add its project to the tab in one press.
 
+**Manage → Bulk edit** finds only the scope's issues: its Project filter lists
+the scope's projects and its results are theirs. Its *move to project* target
+is deliberately not narrowed, because moving an issue out of a scope is an
+edit, and the result names the issues that left. **Manage → Import** offers
+only the scope's projects in its Project chooser, and has the project already
+chosen when the scope holds one. See
+[Import and bulk edit](issues#import-and-bulk-edit).
+
 **Track → History** and **Agents → Leaderboard** follow the scope too.
 [History](watching-the-loop#history-and-the-work-log) lists only the events
 of the projects in scope, and the
