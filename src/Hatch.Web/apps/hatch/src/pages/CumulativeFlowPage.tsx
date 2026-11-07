@@ -104,7 +104,7 @@ function CumulativeFlowReader({ keys }: { keys: string[] }) {
 
     /* The read waits on the project list rather than going out beside it, for
        the reason `TimelinePage`'s own load does: the URL holds keys, and
-       `resolveProjects` needs to know which of them this Hatch still has. */
+       `reportProjects` needs to know which of them this Hatch still has. */
     const { narrowed } = reportProjects(new URLSearchParams(search), projects, keys);
     const answer = await getCumulativeFlow({
       from,
