@@ -998,8 +998,11 @@ that named itself is refused here too, since it is an agent whether or not
 it carries a credential. `/activity` pages the same event trail
 `/issues/{key}/events` reads for one issue, across every issue instead,
 ordered the same way so one event never sorts differently between the two
-reads; it takes `limit` (1 to 500, default 100) and `offset`, and answers
-`hasMore` rather than a count. `/changelog` takes `before`, `projectId` and
+reads; it takes `limit` (1 to 500, default 100) and `offset`, and a
+repeatable `projectId` that narrows to events whose issue is in any of those
+projects (an id naming no project contributes nothing and is not a refusal),
+with `limit` and `offset` paging the narrowed rows, and answers `hasMore`
+rather than a count. `/changelog` takes `before`, `projectId` and
 `days` (default 14), answering the newest window of days that shipped
 something, with every closed month's own count beside it for the jump
 control - this is the feed agents read (`hatch changelog`), unchanged; no
