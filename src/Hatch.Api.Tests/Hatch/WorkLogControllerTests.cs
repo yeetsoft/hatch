@@ -122,6 +122,122 @@ public class WorkLogControllerTests
         Assert.Equal("there is no nonsense", await h.RefusalAsync(ancestorKey: "nonsense"));
     }
 
+    // ---- Narrowing to several projects ----
+
+    [Fact]
+    public async Task NoProjectId_CountsEveryProjectsSpend()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var history = await h.HistoryAsync();
+
+        Assert.Equal(3, history.Totals.Sessions);
+        Assert.Equal(7_000, history.Totals.TotalTokens);
+    }
+
+    [Fact]
+    public async Task OneProjectId_NarrowsTotalsBucketsAndBounds()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        var only = Now.AddHours(-3);
+        await h.SpendAsync(mine, 1_000, only);
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var history = await h.HistoryAsync(bucket: "hour", projectIds: [h.ProjectId]);
+
+        Assert.Equal(1, history.Totals.Sessions);
+        Assert.Equal(1_000, history.Totals.TotalTokens);
+        Assert.Equal(1_000, history.Buckets.Sum(bk => bk.Totals.TotalTokens));
+        Assert.Equal(only, history.FirstSessionAt);
+        Assert.Equal(only, history.LastSessionAt);
+    }
+
+    [Fact]
+    public async Task TwoOfThreeProjectIds_IncludeTheirSpendButNotTheThirds()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var history = await h.HistoryAsync(projectIds: [h.ProjectId, b.Id]);
+
+        Assert.Equal(2, history.Totals.Sessions);
+        Assert.Equal(3_000, history.Totals.TotalTokens);
+    }
+
+    [Fact]
+    public async Task AnUnknownProjectIdMixedWithAKnownOne_OnlyTheKnownOnesSpendCounts_AndAloneAnswersZeroed()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-1));
+
+        var mixed = await h.HistoryAsync(projectIds: [h.ProjectId, 999_999]);
+        var unknownAlone = await h.HistoryAsync(projectIds: [999_999]);
+
+        Assert.Equal(1, mixed.Totals.Sessions);
+        Assert.Equal(1_000, mixed.Totals.TotalTokens);
+
+        Assert.Equal(0, unknownAlone.Totals.Sessions);
+        Assert.Equal(0, unknownAlone.Totals.TotalTokens);
+        Assert.Null(unknownAlone.FirstSessionAt);
+        Assert.Null(unknownAlone.LastSessionAt);
+    }
+
+    [Fact]
+    public async Task ARepeatedProjectId_CountsOnce()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-1));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-1));
+
+        var once = await h.HistoryAsync(projectIds: [h.ProjectId]);
+        var repeated = await h.HistoryAsync(projectIds: [h.ProjectId, h.ProjectId]);
+
+        Assert.Equal(once.Totals, repeated.Totals);
+    }
+
+    [Fact]
+    public async Task AnAncestorKeyAndAProjectId_IntersectRatherThanUnion()
+    {
+        var h = await NewAsync();
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var epic = await h.FileAsync("epic", "the effort");
+
+        await h.SpendAsync(epic, 1_000, Now.AddHours(-1));
+
+        var crossed = await h.HistoryAsync(ancestorKey: epic.Key, projectIds: [b.Id]);
+        var matched = await h.HistoryAsync(ancestorKey: epic.Key, projectIds: [h.ProjectId]);
+
+        Assert.Equal(0, crossed.Totals.Sessions);
+        Assert.Equal(1, matched.Totals.Sessions);
+    }
+
     // ---- When there is nothing yet ----
 
     [Fact]
@@ -535,6 +651,142 @@ public class WorkLogControllerTests
         Assert.Null(empty.LastSessionAt);
     }
 
+    // ---- Narrowing the sessions to several projects ----
+
+    [Fact]
+    public async Task TheSessions_NoProjectId_CountsEveryProjectsSpend()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var sessions = await h.SessionsAsync();
+
+        Assert.Equal(3, sessions.Totals.Sessions);
+        Assert.Equal(7_000, sessions.Totals.TotalTokens);
+    }
+
+    [Fact]
+    public async Task TheSessions_OneProjectId_NarrowsTotalsAndBounds()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        var only = Now.AddHours(-3);
+        await h.SpendAsync(mine, 1_000, only);
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var sessions = await h.SessionsAsync(projectIds: [h.ProjectId]);
+
+        Assert.Equal(1, sessions.Totals.Sessions);
+        Assert.Equal(1_000, sessions.Totals.TotalTokens);
+        Assert.Equal(only, sessions.FirstSessionAt);
+        Assert.Equal(only, sessions.LastSessionAt);
+    }
+
+    [Fact]
+    public async Task TheSessions_TwoOfThreeProjectIds_IncludeTheirSpendButNotTheThirds()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, c) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+        var inC = await h.FileAsync(projectId: c.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(inC, 4_000, Now.AddHours(-1));
+
+        var sessions = await h.SessionsAsync(projectIds: [h.ProjectId, b.Id]);
+
+        Assert.Equal(2, sessions.Totals.Sessions);
+        Assert.Equal(3_000, sessions.Totals.TotalTokens);
+    }
+
+    [Fact]
+    public async Task TheSessions_AnUnknownProjectIdMixedWithAKnownOne_OnlyTheKnownOnesSpendCounts_AndAloneAnswersZeroed()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-1));
+
+        var mixed = await h.SessionsAsync(projectIds: [h.ProjectId, 999_999]);
+        var unknownAlone = await h.SessionsAsync(projectIds: [999_999]);
+
+        Assert.Equal(1, mixed.Totals.Sessions);
+        Assert.Equal(1_000, mixed.Totals.TotalTokens);
+
+        Assert.Empty(unknownAlone.Sessions);
+        Assert.Equal(0, unknownAlone.Totals.Sessions);
+        Assert.Equal(0, unknownAlone.Totals.TotalTokens);
+        Assert.Null(unknownAlone.FirstSessionAt);
+        Assert.Null(unknownAlone.LastSessionAt);
+    }
+
+    [Fact]
+    public async Task TheSessions_ARepeatedProjectId_CountsOnce()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-1));
+        await h.SpendAsync(inB, 2_000, Now.AddHours(-1));
+
+        var once = await h.SessionsAsync(projectIds: [h.ProjectId]);
+        var repeated = await h.SessionsAsync(projectIds: [h.ProjectId, h.ProjectId]);
+
+        Assert.Equal(once.Totals, repeated.Totals);
+    }
+
+    [Fact]
+    public async Task TheSessions_ALimitSmallerThanTheNarrowedSet_StillReportsTheNarrowedTotals()
+    {
+        var h = await NewAsync();
+        var mine = await h.FileAsync();
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var inB = await h.FileAsync(projectId: b.Id);
+
+        await h.SpendAsync(mine, 1_000, Now.AddHours(-3));
+        await h.SpendAsync(mine, 2_000, Now.AddHours(-2));
+        await h.SpendAsync(mine, 3_000, Now.AddHours(-1));
+        await h.SpendAsync(inB, 7_000_000, Now.AddHours(-1));
+
+        var sessions = await h.SessionsAsync(projectIds: [h.ProjectId], limit: 2);
+
+        Assert.Equal(2, sessions.Sessions.Count);
+        Assert.Equal(3, sessions.Totals.Sessions);
+        Assert.Equal(6_000, sessions.Totals.TotalTokens);
+    }
+
+    [Fact]
+    public async Task TheSessions_AnAncestorKeyAndAProjectId_IntersectRatherThanUnion()
+    {
+        var h = await NewAsync();
+        var (b, _) = await h.TwoMoreProjectsAsync();
+        var epic = await h.FileAsync("epic", "the effort");
+
+        await h.SpendAsync(epic, 1_000, Now.AddHours(-1));
+
+        var crossed = await h.SessionsAsync(ancestorKey: epic.Key, projectIds: [b.Id]);
+        var matched = await h.SessionsAsync(ancestorKey: epic.Key, projectIds: [h.ProjectId]);
+
+        Assert.Equal(0, crossed.Totals.Sessions);
+        Assert.Equal(1, matched.Totals.Sessions);
+    }
+
     [Fact]
     public async Task TheSessionsTopReads_SumsAcrossSessions_RankedHeaviestFirst()
     {
@@ -784,6 +1036,16 @@ public class WorkLogControllerTests
             Created(await Issues.CreateIssue(
                 new IssueCreateRequest(projectId ?? ProjectId, type, title, null, parentKey, null, null), default));
 
+        /// <summary>Two projects beside the harness's own, for the tests that narrow to several.</summary>
+        public async Task<(EfHatchProject B, EfHatchProject C)> TwoMoreProjectsAsync()
+        {
+            var b = new EfHatchProject { Key = "PRB", Name = "B", CreatedAt = Now };
+            var c = new EfHatchProject { Key = "PRC", Name = "C", CreatedAt = Now };
+            Db.AddRange(b, c);
+            await Db.SaveChangesAsync();
+            return (b, c);
+        }
+
         /// <summary>
         /// A row straight into the context rather than through the writer, so
         /// the test chooses when the session ended.
@@ -852,16 +1114,20 @@ public class WorkLogControllerTests
             string? to = null,
             string? bucket = null,
             int offsetMinutes = 0,
-            string? ancestorKey = null) =>
-            Value(await History.GetHistory(from, to, bucket, offsetMinutes, ancestorKey, default));
+            string? ancestorKey = null,
+            IReadOnlyList<int>? projectIds = null) =>
+            Value(await History.GetHistory(
+                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), default));
 
         public async Task<WorkLogSessionsDto> SessionsAsync(
             string? from = null,
             string? to = null,
             string? ancestorKey = null,
             string? sort = null,
-            int limit = 100) =>
-            Value(await History.GetSessions(from, to, ancestorKey, sort, limit, default));
+            int limit = 100,
+            IReadOnlyList<int>? projectIds = null) =>
+            Value(await History.GetSessions(
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), default));
 
         public async Task<WorkLogByPlaybookDto> ByPlaybookAsync(
             string? from = null, string? to = null, int? projectId = null) =>
@@ -878,9 +1144,11 @@ public class WorkLogControllerTests
             string? to = null,
             string? ancestorKey = null,
             string? sort = null,
-            int limit = 100)
+            int limit = 100,
+            IReadOnlyList<int>? projectIds = null)
         {
-            var result = await History.GetSessions(from, to, ancestorKey, sort, limit, default);
+            var result = await History.GetSessions(
+                from, to, ancestorKey, sort, limit, projectIds?.ToList(), default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
 
@@ -889,9 +1157,11 @@ public class WorkLogControllerTests
             string? to = null,
             string? bucket = null,
             int offsetMinutes = 0,
-            string? ancestorKey = null)
+            string? ancestorKey = null,
+            IReadOnlyList<int>? projectIds = null)
         {
-            var result = await History.GetHistory(from, to, bucket, offsetMinutes, ancestorKey, default);
+            var result = await History.GetHistory(
+                from, to, bucket, offsetMinutes, ancestorKey, projectIds?.ToList(), default);
             return Assert.IsType<BadRequestObjectResult>(result.Result).Value?.ToString() ?? "";
         }
     }
