@@ -82,7 +82,8 @@ export function scopedPath(path: string, keys: string[]): string {
 
 export interface KeepScopeInput {
   location: { pathname: string; search: string; hash: string; state: unknown };
-  navigationType: NavigationType;
+  /** react-router's enum, or the strings it holds. */
+  navigationType: `${NavigationType}`;
   /** Raw keys: the list may not have loaded when the first click happens, and
       a carry validated against an empty list would drop the scope. */
   carried: string[];
