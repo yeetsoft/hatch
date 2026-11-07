@@ -49,9 +49,16 @@ public class ActivityController(HatchContext db) : ControllerBase
     /// </remarks>
     /// <param name="limit">How many rows to list, 1 to <see cref="MaxEvents"/>.</param>
     /// <param name="offset">How many rows, newest first, to skip before the page starts.</param>
+    /// <param name="projectId">
+    /// Narrows to events whose issue is in any of these projects; repeat it to
+    /// name several. None names every project. An id naming no project
+    /// contributes nothing and is not a refusal. <paramref name="limit"/> and
+    /// <paramref name="offset"/> page the narrowed rows.
+    /// </param>
     [HttpGet]
     public async Task<ActionResult<ActivityPageDto>> GetActivity(
-        [FromQuery] int limit = DefaultEvents, [FromQuery] int offset = 0, CancellationToken ct = default)
+        [FromQuery] int limit = DefaultEvents, [FromQuery] int offset = 0,
+        [FromQuery] List<int>? projectId = null, CancellationToken ct = default)
     {
         if (limit is < 1 or > MaxEvents)
             return BadRequest($"a limit is between 1 and {MaxEvents} - not {limit}");
@@ -59,7 +66,13 @@ public class ActivityController(HatchContext db) : ControllerBase
         if (offset < 0)
             return BadRequest($"an offset is not negative - not {offset}");
 
-        var rows = await db.IssueEvents.AsNoTracking()
+        var ids = (projectId ?? []).Distinct().ToList();
+
+        var narrowed = db.IssueEvents.AsNoTracking();
+        if (ids.Count > 0)
+            narrowed = narrowed.Where(e => ids.Contains(e.Issue!.ProjectId));
+
+        var rows = await narrowed
             .OrderByDescending(e => e.At)
             .ThenByDescending(e => e.Id)
             .Skip(offset)
