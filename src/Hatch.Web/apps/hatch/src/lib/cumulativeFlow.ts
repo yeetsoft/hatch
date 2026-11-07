@@ -14,6 +14,7 @@
 
 import { CHART_UNITS, type Scale, xOf } from './timeline';
 import { statusVars } from './color';
+import { toggleChoice } from './checklist';
 import { markVars } from '@hatch/ui';
 import type { Project, Status } from '../types';
 import type { CumulativeFlow, CumulativeFlowPoint } from '../types';
@@ -245,14 +246,15 @@ export function pinAfter(pin: number | null, count: number, action: PinAction): 
 }
 
 /** Adds or removes one project's key, which is what a list of checkboxes
-    does to the chosen set - `toggleType` (lib/filter.ts), over project keys.
+    does to the chosen set - `toggleType` (lib/filter.ts) and this are both
+    over `toggleChoice` (lib/checklist.ts).
     Unticking the only one left returns `chosen` unchanged, so the control can
     never empty the chart itself. */
 export function toggleProject(chosen: string[], key: string, allKeys: string[]): string[] {
-  const next = chosen.includes(key) ? chosen.filter((k) => k !== key) : [...chosen, key];
+  const next = toggleChoice(chosen, key, allKeys);
   if (next.length === 0) return chosen;
 
-  return allKeys.filter((k) => next.includes(k));
+  return next;
 }
 
 /** What the Projects control says: `All`, `All but AE` for all but one, else
