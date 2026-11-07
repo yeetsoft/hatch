@@ -71,6 +71,7 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
+import { useScope } from '../lib/useScope';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone, useStandalone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
@@ -168,6 +169,7 @@ export function BoardPage() {
   });
   const { projects, byKey: projectsByKey, loaded } = useProjects();
   const showProjectMark = hasMultipleProjects(projects);
+  const scope = useScope();
   /* The one runners read on this page: the queue modal lists the rows and the
      Go to Work button plans from them. The 20s poll re-renders, which is enough
      to age a silent runner to gone, since the plan takes its own clock. */
@@ -701,7 +703,7 @@ export function BoardPage() {
         }
         trailing={
           <>
-            <GoToWorkControl plan={goToWork} status={status} project={filter.project} reload={reloadRunners} isPhone={isPhone} />
+            <GoToWorkControl plan={goToWork} status={status} project={filter.project} scope={scope.keys} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
