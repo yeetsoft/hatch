@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { useProjects } from './useProjects';
-import { SCOPE, SCOPE_CLEARED, keepScope, knownKeys, rawScope, scopeSearch, withScope } from './scope';
+import { SCOPE, SCOPE_CLEARED, keepScope, knownKeys, rawScope, scopeProjectIds, scopeSearch, withScope } from './scope';
 import type { Project } from '../types';
 
 interface ScopeValue {
@@ -11,6 +11,8 @@ interface ScopeValue {
   isScoped: boolean;
   inScope(projectKey: string): boolean;
   setScope(keys: string[]): void;
+  ids: number[];
+  loaded: boolean;
 }
 
 const ScopeContext = createContext<ScopeValue>({
@@ -19,6 +21,8 @@ const ScopeContext = createContext<ScopeValue>({
   isScoped: false,
   inScope: () => true,
   setScope: () => undefined,
+  ids: [],
+  loaded: true,
 });
 
 /**
@@ -31,7 +35,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigationType = useNavigationType();
   const navigate = useNavigate();
-  const { projects } = useProjects();
+  const { projects, loaded } = useProjects();
 
   const [carried, setCarried] = useState<string[]>(() => rawScope(new URLSearchParams(location.search)));
 
@@ -48,8 +52,17 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
 
+  /* `step.carried` is a new array on every render (`rawScope` builds one), so
+     the memos below key on its content: `keys` and `ids` keep their identity
+     until the scope or the project list changes, which is what a page's
+     `useCallback` dep list reads. Keys hold no comma and are never empty, so
+     the joined string round-trips. */
+  const carriedKey = step.carried.join(',');
+  const carriedKeys = useMemo(() => (carriedKey ? carriedKey.split(',') : []), [carriedKey]);
+  const keys = useMemo(() => knownKeys(carriedKeys, projects), [carriedKeys, projects]);
+  const ids = useMemo(() => scopeProjectIds(keys, projects), [keys, projects]);
+
   const value = useMemo<ScopeValue>(() => {
-    const keys = knownKeys(step.carried, projects);
     const isScoped = keys.length > 0;
     const scoped = isScoped ? projects.filter((project) => keys.includes(project.key)) : projects;
 
@@ -58,6 +71,8 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       projects: scoped,
       isScoped,
       inScope: (projectKey: string) => !isScoped || keys.includes(projectKey),
+      ids,
+      loaded,
       setScope: (next: string[]) => {
         const params = withScope(
           new URLSearchParams(location.search),
@@ -77,7 +92,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
         );
       },
     };
-  }, [step.carried, projects, location, navigate]);
+  }, [keys, ids, projects, loaded, location, navigate]);
 
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>;
 }

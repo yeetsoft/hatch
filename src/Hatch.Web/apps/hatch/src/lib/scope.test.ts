@@ -6,6 +6,7 @@ import {
   knownKeys,
   parseScope,
   rawScope,
+  scopeProjectIds,
   scopeSearch,
   scopeTitle,
   scopedPath,
@@ -95,6 +96,20 @@ describe('knownKeys', () => {
 
   it('answers none for no projects', () => {
     expect(knownKeys(['AER'], [])).toEqual([]);
+  });
+});
+
+describe('scopeProjectIds', () => {
+  it('answers none when no keys are named', () => {
+    expect(scopeProjectIds([], projects)).toEqual([]);
+  });
+
+  it("answers in the project list's order", () => {
+    expect(scopeProjectIds(['ZED', 'AER'], projects)).toEqual([1, 3]);
+  });
+
+  it('drops an unknown key silently', () => {
+    expect(scopeProjectIds(['AER', 'NOPE'], projects)).toEqual([1]);
   });
 });
 
