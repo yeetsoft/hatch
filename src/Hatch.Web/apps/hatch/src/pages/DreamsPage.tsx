@@ -15,9 +15,11 @@ import {
   dreamsRequest,
   hasMore,
   isUrl,
+  offeredProjectId,
   readDreams,
   removeDream,
   replaceDream,
+  scrubbedDreamProject,
   showsDream,
   weaveProjectDefault,
   weaveRequest,
@@ -29,6 +31,7 @@ import { facetClass } from '../lib/facet';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { createLedger } from '../lib/refresh';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
+import { useScope } from '../lib/useScope';
 import type { Dream, Project, WeaveMode } from '../types';
 
 /** How long the box waits after the last keystroke before it writes `q`. */
@@ -39,13 +42,31 @@ const DEBOUNCE_MS = 300;
  * server's and nothing here reorders it. A search box, a Project facet and a
  * Loose-only switch over a list of dreams. Every field is the URL's and
  * nowhere else, so Back undoes a change and pasting the link reproduces it.
+ *
+ * In a tab scoped to projects the list is those projects' dreams and the
+ * loose ones, and every project the page offers is one of them.
  */
 export function DreamsPage() {
+  const { ids, projects, isScoped, loaded } = useScope();
+
+  if (!loaded) return <p className="text-muted">Loading…</p>;
+
+  return <DreamsBody ids={ids} projects={projects} isScoped={isScoped} />;
+}
+
+function DreamsBody({ ids, projects, isScoped }: { ids: number[]; projects: Project[]; isScoped: boolean }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const filters = readDreams(params);
+  const read = readDreams(params);
+  const filters = { ...read, projectId: scrubbedDreamProject(read.projectId, projects, isScoped) };
 
-  const { projects, byKey } = useProjects();
+  // A project in the URL that the scope does not offer reads as none chosen.
+  useEffect(() => {
+    if (read.projectId !== filters.projectId) setParams(writeDreams(filters), { replace: true });
+  }, [read.projectId, filters.projectId]);
+
+  // Only for the row marks: its own fetch, so empty on the first render.
+  const { byKey } = useProjects();
 
   const [draft, setDraft] = useState(filters.q);
   const [lastQ, setLastQ] = useState(filters.q);
@@ -73,7 +94,7 @@ export function DreamsPage() {
   const [error, setError] = useState<string | null>(null);
   const [ledger] = useState(createLedger);
 
-  const key = writeDreams(filters).toString();
+  const key = dreamsRequest(filters, 0, ids).toString();
 
   useEffect(() => {
     const ticket = ledger.begin();
@@ -82,7 +103,7 @@ export function DreamsPage() {
     setLoading(true);
     setError(null);
 
-    getDreams(dreamsRequest(filters, 0, [])).then(
+    getDreams(dreamsRequest(filters, 0, ids)).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setDreams(result.dreams);
@@ -106,7 +127,7 @@ export function DreamsPage() {
     setLoadingMore(true);
     setError(null);
 
-    getDreams(dreamsRequest(filters, dreams.length, [])).then(
+    getDreams(dreamsRequest(filters, dreams.length, ids)).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setDreams((prev) => [...prev, ...result.dreams]);
@@ -134,7 +155,7 @@ export function DreamsPage() {
     setPostError(null);
 
     try {
-      const dream = await addDream({ body, source: source.trim() || null, projectId: leanId });
+      const dream = await addDream({ body, source: source.trim() || null, projectId: offeredProjectId(leanId, projects) });
       setBody('');
       setSource('');
       setLeanId(null);
@@ -176,7 +197,7 @@ export function DreamsPage() {
     mode: weaveMode,
     seed: weaveSeedText,
     q: draft,
-    projectId: weaveProjectId,
+    projectId: offeredProjectId(weaveProjectId, projects),
     useOnScreen: weaveOnScreen,
     dreams,
   });
@@ -226,7 +247,7 @@ export function DreamsPage() {
 
         <ProjectChooser
           projects={projects}
-          value={leanId}
+          value={offeredProjectId(leanId, projects)}
           onChange={setLeanId}
           legend="Lean"
           keepLabel="None"
@@ -265,7 +286,7 @@ export function DreamsPage() {
 
         <ProjectChooser
           projects={projects}
-          value={weaveProjectId}
+          value={offeredProjectId(weaveProjectId, projects)}
           onChange={(id) => {
             setWeaveProjectChosen(true);
             setWeaveProjectId(id);
