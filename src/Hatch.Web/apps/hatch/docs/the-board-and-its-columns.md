@@ -148,6 +148,11 @@ of the projects in scope, and the
 [Leaderboard](watching-the-loop#leaderboard) covers only the sessions run
 against their issues.
 
+**Plan** follows the scope too. Its project picker lists only the scope's
+projects, reads **All in scope**, and is not drawn for a one-project scope;
+picking none draws the epics of every project in scope. A `?project=` outside
+the scope is dropped from the address.
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
