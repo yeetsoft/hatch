@@ -15,6 +15,8 @@ import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
 import { moveBlocked } from '../lib/protectedColumns';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { scopedPath } from '../lib/scope';
+import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
 import type { AssigneeDirectory, IssueCard, Project, Status } from '../types';
 
@@ -270,6 +272,7 @@ export function IssuePeek({
   );
 
   const standalone = useStandalone();
+  const { keys } = useScope();
 
   // Rendered unconditionally so the dialog's own open/closed handling - focus,
   // escape, the scrim - is the one that runs. Its title needs a card, though,
@@ -316,7 +319,7 @@ export function IssuePeek({
               no second document to open into, and "Open the issue" beside it is
               the only way out there is. */}
           {!standalone && (
-            <Button as="a" href={appHref(`/issues/${card.key}`)} target="_blank" rel="noreferrer">
+            <Button as="a" href={appHref(scopedPath(`/issues/${card.key}`, keys))} target="_blank" rel="noreferrer">
               New tab ↗
             </Button>
           )}

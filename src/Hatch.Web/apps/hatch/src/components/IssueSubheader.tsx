@@ -12,6 +12,8 @@ import { PullRequestStateChips } from './PullRequestStateChips';
 import { TypeBadge } from './TypeBadge';
 import { fullHref } from '../lib/basename';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { scopedPath } from '../lib/scope';
+import { useScope } from '../lib/useScope';
 import type { Issue, Project } from '../types';
 
 /**
@@ -34,6 +36,8 @@ export function IssueSubheader({
   /** Shipped or shelved, so the due chip stops warning - see isSettled. */
   stopped: boolean;
 }) {
+  const { keys } = useScope();
+
   return (
     <span className="hatch-issue-subheader">
       <span className="hatch-issue-identity">
@@ -47,7 +51,7 @@ export function IssueSubheader({
         />
         <span className="hatch-issue-key">{issue.key}</span>
         <Command
-          command={fullHref(window.location.origin, window.location.pathname, `/issues/${issue.key}`)}
+          command={fullHref(window.location.origin, window.location.pathname, scopedPath(`/issues/${issue.key}`, keys))}
           label="Copy link"
         />
         <TypeBadge type={issue.type} />
