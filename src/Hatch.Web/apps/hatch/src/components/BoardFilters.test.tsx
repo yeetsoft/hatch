@@ -12,17 +12,22 @@ const projects = [
   { key: 'HA', name: 'Hatch' },
 ] as Project[];
 
-function render(filter: CardFilter = DEFAULT_FILTER, collapsed = false) {
+function render(
+  filter: CardFilter = DEFAULT_FILTER,
+  collapsed = false,
+  over: { scoped?: boolean; projects?: Project[] } = {},
+) {
   return renderToStaticMarkup(
     <BoardFilters
       filter={filter}
       onChange={noop}
       assignees={[]}
-      projects={projects}
+      projects={over.projects ?? projects}
       cards={[]}
       showing={3}
       total={9}
       collapsed={collapsed}
+      scoped={over.scoped}
       trailing={<span>trail</span>}
     />,
   );
@@ -77,5 +82,21 @@ describe('BoardFilters', () => {
     const details = html.match(/<details[\s\S]*<\/details>/)![0];
     expect(details).toContain('hatch-facet__label">Assignee');
     expect(html).not.toContain('More filters');
+  });
+
+  it('reads All in scope under a scope', () => {
+    const html = render(DEFAULT_FILTER, false, { scoped: true });
+    expect(html).toContain('>All in scope</option>');
+    expect(html).not.toContain('>All projects</option>');
+  });
+
+  it('reads All projects with no scope', () => {
+    const html = render();
+    expect(html).toContain('>All projects</option>');
+  });
+
+  it('shows no Project facet for one offered project', () => {
+    const html = render(DEFAULT_FILTER, false, { projects: [projects[0]] });
+    expect(html).not.toContain('hatch-facet__label">Project');
   });
 });
