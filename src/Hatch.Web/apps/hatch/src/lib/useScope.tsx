@@ -7,7 +7,10 @@ import type { Project } from '../types';
 
 interface ScopeValue {
   keys: string[];
+  /** The projects the scope names, or every project when unscoped. */
   projects: Project[];
+  /** Every project, whatever the scope - what the scope control itself lists. */
+  allProjects: Project[];
   isScoped: boolean;
   inScope(projectKey: string): boolean;
   setScope(keys: string[]): void;
@@ -18,6 +21,7 @@ interface ScopeValue {
 const ScopeContext = createContext<ScopeValue>({
   keys: [],
   projects: [],
+  allProjects: [],
   isScoped: false,
   inScope: () => true,
   setScope: () => undefined,
@@ -69,6 +73,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     return {
       keys,
       projects: scoped,
+      allProjects: projects,
       isScoped,
       inScope: (projectKey: string) => !isScoped || keys.includes(projectKey),
       ids,

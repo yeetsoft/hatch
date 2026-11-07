@@ -54,6 +54,16 @@ describe('ScopeControl', () => {
     expect(html).toContain('<span class="hatch-types-name">GL — glasshole</span>');
   });
 
+  it('keeps the trigger and every row under a one-project scope, with only that row ticked', () => {
+    const html = render(three, ['HA']);
+    expect(html).not.toBe('');
+    expect([...trigger(html).matchAll(/hatch-scope-control__chip/g)]).toHaveLength(1);
+    const all = rows(html);
+    expect(all).toHaveLength(3);
+    expect(all.filter((row) => row.includes('checked=""'))).toHaveLength(1);
+    expect(all[0]).toContain('checked=""');
+  });
+
   it('never disables a row, for any scope including a single chosen project', () => {
     for (const keys of [[], ['AER'], ['HA', 'AER', 'GL']]) {
       for (const row of rows(render(three, keys))) expect(row).not.toContain('disabled=""');
