@@ -166,6 +166,14 @@ projects, reads **All in scope**, and is not drawn for a one-project scope;
 with none chosen the results are those of every project in scope. A
 `?projectId=` outside the scope is dropped from the address.
 
+**Track → Dreams** follows the scope too. Its list holds the dreams of the
+projects in scope and every dream that leans toward no project, which always
+shows. Its Project filter, the **Lean** chooser under the composer and the
+**Project** chooser under **Weave an epic** list only the scope's projects,
+**None** stays on **Lean**, and the filter is not drawn for a one-project
+scope. A `?projectId=` outside the scope is dropped from the address. See
+[Dreams](dreams#finding-one).
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
