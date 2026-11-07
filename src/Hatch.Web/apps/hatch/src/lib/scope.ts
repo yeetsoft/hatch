@@ -51,6 +51,16 @@ export function knownKeys(raw: string[], projects: { key: string }[]): string[] 
   return keys.length === projects.length ? [] : keys;
 }
 
+/** The ids of the `projects` whose key is in `keys`, in the project list's own
+    order. `[]` when `keys` is empty - every project, as `knownKeys` says. */
+export function scopeProjectIds(keys: string[], projects: { id: number; key: string }[]): number[] {
+  if (keys.length === 0) return [];
+
+  const named = new Set(keys);
+
+  return projects.filter((project) => named.has(project.key)).map((project) => project.id);
+}
+
 /** The keys `rawScope` names that are in `projects`, in the project list's own
     order. See `knownKeys` for the rule. */
 export function parseScope(params: URLSearchParams, projects: { key: string }[]): string[] {
@@ -84,6 +94,12 @@ export function scopeSearch(params: URLSearchParams): string {
     query of its own. */
 export function scopedPath(path: string, keys: string[]): string {
   return keys.length > 0 ? `${path}${scopeSearch(new URLSearchParams({ [SCOPE]: keys.join(',') }))}` : path;
+}
+
+/** The document title: the scoped keys, comma-joined, and ` - Hatch`, or
+    just `Hatch` for no scope. */
+export function scopeTitle(keys: string[]): string {
+  return keys.length > 0 ? `${keys.join(', ')} - Hatch` : 'Hatch';
 }
 
 export interface KeepScopeInput {
