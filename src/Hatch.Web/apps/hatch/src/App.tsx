@@ -67,7 +67,7 @@ function AppShell() {
   const pull = usePullToRefresh();
   // ScopeProvider has already loaded the project list; a second useProjects()
   // here would be a second fetch.
-  const { keys, projects, setScope } = useScope();
+  const { keys, allProjects, setScope } = useScope();
 
   // The only document.title write in the app. `keys` keeps its identity until
   // the scope changes, so this runs on a change of scope and not on a render.
@@ -100,7 +100,7 @@ function AppShell() {
             isPhone ? undefined : (
               <>
                 <PrimaryNav tone="accent" />
-                <ScopeControl projects={projects} keys={keys} onChange={setScope} />
+                <ScopeControl projects={allProjects} keys={keys} onChange={setScope} />
               </>
             )
           }
@@ -171,9 +171,9 @@ function AppShell() {
 
         {/* Gated here as well as inside ScopeControl: the strip has padding, so
             ungated it would draw an empty band on a one-project install. */}
-        {isPhone && hasMultipleProjects(projects) && (
+        {isPhone && hasMultipleProjects(allProjects) && (
           <div className="hatch-scope-strip">
-            <ScopeControl projects={projects} keys={keys} onChange={setScope} />
+            <ScopeControl projects={allProjects} keys={keys} onChange={setScope} />
           </div>
         )}
 
