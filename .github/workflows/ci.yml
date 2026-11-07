@@ -345,6 +345,17 @@ jobs:
             ${{ runner.temp }}/test-results
           if-no-files-found: ignore
 
+      # The scope control cases screenshot the desk and the phone, and on a green
+      # run those pictures are the evidence, so this one runs always. Until the
+      # cases land the glob matches nothing, which is allowed.
+      - name: Upload scope control screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scope-control-screenshots
+          path: src/Hatch.Api.Tests/TestResults/e2e/ScopeControl*/*.png
+          if-no-files-found: ignore
+
   # Proves the image `publish.yml` builds after every merge to main actually
   # builds, and that gh - the thing src/Hatch.Cli/Forge.cs shells out to
   # inside it - is really on PATH and runs, on a PR rather than only after one
