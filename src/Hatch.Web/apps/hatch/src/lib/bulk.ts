@@ -12,7 +12,7 @@
    `parentKey: ''` where it meant to send nothing does not fail - it quietly
    outdents fifty issues. */
 
-import type { IssueBulkEditRequest, IssueBulkResult, IssueType } from '../types';
+import type { IssueBulkEditRequest, IssueBulkRekeyed, IssueBulkResult, IssueType } from '../types';
 
 /** The value a picker carries when it is not being used. Never a real key: no issue key is empty and none is this. */
 export const KEEP = '__keep__';
@@ -95,4 +95,12 @@ export function summarize(result: IssueBulkResult): string {
     parts.push(`${result.rekeyed.length} moved to ${to.slice(0, to.lastIndexOf('-'))}`);
   }
   return parts.join(', ');
+}
+
+/**
+ * The new keys of the issues an edit moved out of the tab's scope. A moved issue
+ * drops off the results table, so without this the only trace of it is a count.
+ */
+export function movedOutOfScope(rekeyed: IssueBulkRekeyed[], inScope: (projectKey: string) => boolean): string[] {
+  return rekeyed.filter((pair) => !inScope(pair.to.slice(0, pair.to.lastIndexOf('-')))).map((pair) => pair.to);
 }

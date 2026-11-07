@@ -224,7 +224,9 @@ a single project has it already chosen.
 **Manage → Bulk edit** runs the same server-side filters the board does -
 project, type, status, parent, ancestor, text - then applies one edit to
 every result still ticked when the button is pressed, not to whatever the
-filter would return if run again later.
+filter would return if run again later. In a scoped tab its Project filter and
+results are the scope's, while *move to project* still offers every project; an
+issue moved out of scope leaves the table and is named in the result.
 
 ## Attachments
 
