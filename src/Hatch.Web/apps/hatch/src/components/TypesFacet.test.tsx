@@ -33,8 +33,16 @@ describe('TypesFacet', () => {
     expect(render(types)).toContain('<span class="hatch-facet__label">Types</span>All but tasks');
   });
 
-  it('locks the last type with Keep at least one type', () => {
+  it('leaves the last type unlocked and draws None', () => {
     const html = render(['epic']);
-    expect(html).toContain('title="Keep at least one type"');
+    expect(html).not.toContain('disabled=""');
+    expect(html).not.toContain('Keep at least one type');
+    expect(html).toContain('>None</button>');
+  });
+
+  it('reads None and is lit when no type is chosen', () => {
+    const html = render([]);
+    expect(html).toContain('<span class="hatch-facet__label">Types</span>None');
+    expect(html).toContain('hatch-facet--lit');
   });
 });
