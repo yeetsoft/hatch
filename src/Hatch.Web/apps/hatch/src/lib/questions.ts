@@ -12,13 +12,33 @@
    having: a question with nothing pointing at it. Never a flag, so it cannot be
    set wrong. */
 
-import type { Comment, IssueCard } from '../types';
+import type { Comment, IssueCard, QuestionOption } from '../types';
 
 export interface QuestionThread {
   question: Comment;
   /** Oldest first. Empty is what open means. */
   answers: Comment[];
 }
+
+/**
+ * A question as the card that asks it needs it, free of where it came from.
+ * Here and not beside the card, so that lib never imports components.
+ */
+export interface AskedQuestion {
+  id: number;
+  body: string;
+  author: string;
+  askedAt: string;
+  options: QuestionOption[] | null;
+}
+
+export const fromComment = (c: Comment): AskedQuestion => ({
+  id: c.id,
+  body: c.body,
+  author: c.author,
+  askedAt: c.createdAt,
+  options: c.options,
+});
 
 /** Every question on the issue, oldest first, each with what was said back. */
 export function threadQuestions(comments: Comment[]): QuestionThread[] {

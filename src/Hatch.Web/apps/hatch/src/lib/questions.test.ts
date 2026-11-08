@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askingCount, openQuestions, threadQuestions } from './questions';
+import { askingCount, fromComment, openQuestions, threadQuestions } from './questions';
 import type { Comment, CommentKind, IssueCard } from '../types';
 
 let next = 1;
@@ -151,5 +151,27 @@ describe('askingCount', () => {
      a person. */
   it('counts a card whose ready date has not arrived', () => {
     expect(askingCount([card({ readyAt: '2099-01-01', openQuestions: 1 })])).toBe(1);
+  });
+});
+
+describe('fromComment', () => {
+  it('carries the question and says askedAt for createdAt', () => {
+    const q = comment('question', 'per-node or global?');
+
+    expect(fromComment(q)).toEqual({
+      id: q.id,
+      body: 'per-node or global?',
+      author: 'hatch-agent',
+      askedAt: '2026-09-05T00:00:00Z',
+      options: null,
+    });
+  });
+
+  it('carries the options a question offered', () => {
+    const options = [{ label: 'per-node', detail: 'one each', recommended: true }];
+    const asked = fromComment({ ...comment('question', 'which?'), options });
+
+    expect(asked.options).toEqual(options);
+    expect('createdAt' in asked).toBe(false);
   });
 });
