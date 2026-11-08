@@ -39,7 +39,7 @@ import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
-import { scopeTitle } from './lib/scope';
+import { scopedPath, scopeTitle } from './lib/scope';
 import { ScopeProvider, useScope } from './lib/useScope';
 import { hasMultipleProjects } from './lib/useProjects';
 import { HOME, HOME_LABEL, navRows } from './lib/nav';
@@ -85,7 +85,7 @@ function AppShell() {
         <PullToRefresh {...pull} />
         <TopBar
           appName="Hatch"
-          homeHref={appHref(HOME)}
+          homeHref={appHref(scopedPath(HOME, keys))}
           /* The bar has no Board link: the logo is the way home, so it is
              named for where it goes and lit on the board. */
           homeLabel={HOME_LABEL}
