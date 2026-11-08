@@ -191,7 +191,9 @@ control (drawn only where there is more than one project) - a checkbox per
 project rather than the Timeline's one at a time - so the scope can be
 narrowed to some of the projects, not just none or all; beside it, a
 **Colour by** control (also drawn only where there is more than one project)
-cuts the same stack by project instead of by column. A ticket counts as in
+cuts the same stack by project instead of by column. Hovering a row of
+**Projects** shows **Only**, which keeps that project alone (on a touch screen
+it is always shown). A ticket counts as in
 flight while it stands in any
 column after the first that is neither done nor parked - the first column is
 where work waits, a done column is where it ended, and a parked one is a

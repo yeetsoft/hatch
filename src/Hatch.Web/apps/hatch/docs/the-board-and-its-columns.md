@@ -85,7 +85,9 @@ On a desktop window the header is one row, left to right: **Search**,
 (*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
 the work queue, the flow view and **+** (New issue). **Search** rests narrow
 and widens while you type in it. **Project** shows only its key (or **All**)
-when closed, and its open list keeps the full names. **Needs me** shows the
+when closed, and its open list keeps the full names. **Types** is a checkbox per type;
+hovering a row shows **Only**, which keeps that row alone (on a touch screen
+it is always shown). **Needs me** shows the
 cards holding a question nobody has answered. **…** opens the filters kept
 out of the row, today the **Assignee** choice; the button is lit while one of
 them is set, and the count still includes it. **×** returns every filter to
