@@ -24,7 +24,7 @@ function render(chosen: string[]) {
 }
 
 function rows(html: string) {
-  return [...html.matchAll(/<label class="hatch-types-row"[\s\S]*?<\/label>/g)].map((m) => m[0]);
+  return [...html.matchAll(/<div class="hatch-types-item">[\s\S]*?<\/button><\/div>/g)].map((m) => m[0]);
 }
 
 describe('ChecklistFacet', () => {
@@ -91,5 +91,25 @@ describe('ChecklistFacet', () => {
   it('disables the footer All button only when every option is already chosen', () => {
     expect(render(['a', 'b', 'c'])).toContain('<button type="button" class="hatch-filter-clear" disabled="">All</button>');
     expect(render(['a', 'b'])).toContain('<button type="button" class="hatch-filter-clear">All</button>');
+  });
+
+  it('draws one Only button per row, labelled and classed, outside the label', () => {
+    const rs = rows(render(['a', 'b', 'c']));
+    expect(rs).toHaveLength(options.length);
+    for (const [i, r] of rs.entries()) {
+      expect(r).toContain(
+        `<button type="button" class="hatch-filter-clear hatch-types-only" aria-label="Only ${options[i].text}">Only</button>`,
+      );
+      const label = r.match(/<label[\s\S]*?<\/label>/)![0];
+      expect(label).not.toContain('hatch-types-only');
+    }
+  });
+
+  it('never disables the Only button, even on the one row left chosen', () => {
+    const rs = rows(render(['a']));
+    for (const r of rs) {
+      const only = r.match(/<button[^>]*hatch-types-only[\s\S]*?<\/button>/)![0];
+      expect(only).not.toContain('disabled=""');
+    }
   });
 });

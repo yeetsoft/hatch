@@ -22,8 +22,8 @@ import { hasMultipleProjects } from '../lib/useProjects';
  *
  * A browser's first visit opens the board on every type (DEFAULT_FILTER); after
  * that it opens on the types last chosen there, and Reset returns to the
- * default. The last type drawn cannot be switched off, so the board never goes
- * blank from a checkbox.
+ * default. None is a choice too: it leaves the board blank on purpose, and the
+ * bar says so.
  */
 export function BoardFilters({
   filter,
