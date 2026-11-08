@@ -29,7 +29,7 @@ export function Waiting({
   questions: AskedQuestion[];
   obviated: boolean;
   onAnswered: () => void;
-  onError: (message: string) => void;
+  onError?: (message: string) => void;
 }) {
   if (questions.length === 0) return null;
 
@@ -71,10 +71,14 @@ function Asked({
   issueKey: string;
   question: AskedQuestion;
   onAnswered: () => void;
-  onError: (message: string) => void;
+  onError?: (message: string) => void;
 }) {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
+  // Only ever set where onError is absent: a caller that passes onError keeps
+  // its own place to show the refusal, and this stays empty rather than the
+  // sentence appearing twice.
+  const [error, setError] = useState<string | null>(null);
 
   // Derived rather than held beside `body`: the highlight is "the box says
   // exactly this option", and a second piece of state saying the same thing is
@@ -83,12 +87,15 @@ function Asked({
 
   async function submit() {
     setSaving(true);
+    setError(null);
     try {
       await addComment(issueKey, { body, kind: 'answer', answersId: question.id });
       setBody('');
       onAnswered();
     } catch (err) {
-      onError(message(err));
+      const m = message(err);
+      if (onError) onError(m);
+      else setError(m);
     } finally {
       setSaving(false);
     }
@@ -130,6 +137,7 @@ function Asked({
           Answer
         </Button>
       </div>
+      {error && <span className="text-danger">{error}</span>}
     </li>
   );
 }

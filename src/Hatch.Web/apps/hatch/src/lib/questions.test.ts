@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { askingCount, fromComment, openQuestions, threadQuestions } from './questions';
-import type { Comment, CommentKind, IssueCard } from '../types';
+import { askingCount, fromComment, fromQuestion, openQuestions, threadQuestions } from './questions';
+import type { Comment, CommentKind, IssueCard, Question } from '../types';
 
 let next = 1;
 
@@ -173,5 +173,39 @@ describe('fromComment', () => {
 
     expect(asked.options).toEqual(options);
     expect('createdAt' in asked).toBe(false);
+  });
+});
+
+const question = (over: Partial<Question> = {}): Question => ({
+  id: next++,
+  issueKey: 'AER-1',
+  issueTitle: 'Renew the wildcard certificate',
+  body: 'per-node or global?',
+  askedBy: 'hatch-agent',
+  askedAt: '2026-09-05T00:00:00Z',
+  options: null,
+  answers: [],
+  ...over,
+});
+
+describe('fromQuestion', () => {
+  it('carries the question and says askedBy for author', () => {
+    const q = question();
+
+    expect(fromQuestion(q)).toEqual({
+      id: q.id,
+      body: 'per-node or global?',
+      author: 'hatch-agent',
+      askedAt: '2026-09-05T00:00:00Z',
+      options: null,
+    });
+  });
+
+  it('carries the options a question offered', () => {
+    const options = [{ label: 'per-node', detail: 'one each', recommended: true }];
+    const asked = fromQuestion(question({ options }));
+
+    expect(asked.options).toEqual(options);
+    expect('issueKey' in asked).toBe(false);
   });
 });
