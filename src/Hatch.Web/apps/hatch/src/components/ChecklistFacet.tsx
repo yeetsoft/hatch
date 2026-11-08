@@ -48,16 +48,26 @@ export function ChecklistFacet({
           const on = chosen.includes(option.value);
           const last = on && chosen.length === 1;
           return (
-            <label key={option.value} className="hatch-types-row" title={last ? lockTitle : undefined}>
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={last}
-                onChange={() => onChange(toggleChoice(chosen, option.value, options.map((o) => o.value)))}
-              />
-              <span className="hatch-types-name">{option.text}</span>
-              {option.count !== undefined && <span className="hatch-types-count">{option.count}</span>}
-            </label>
+            <div key={option.value} className="hatch-types-item">
+              <label className="hatch-types-label" title={last ? lockTitle : undefined}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={last}
+                  onChange={() => onChange(toggleChoice(chosen, option.value, options.map((o) => o.value)))}
+                />
+                <span className="hatch-types-name">{option.text}</span>
+                {option.count !== undefined && <span className="hatch-types-count">{option.count}</span>}
+              </label>
+              <button
+                type="button"
+                className="hatch-filter-clear hatch-types-only"
+                aria-label={`Only ${option.text}`}
+                onClick={() => onChange([option.value])}
+              >
+                Only
+              </button>
+            </div>
           );
         })}
         <div className="hatch-types-footer">

@@ -1686,6 +1686,47 @@ button.hatch-card-stories:focus-visible {
   accent-color: var(--primary);
 }
 
+.hatch-types-item {
+  display: flex;
+  align-items: center;
+  padding-right: var(--sp-3);
+}
+
+.hatch-types-item:hover {
+  background: var(--primary-bg);
+}
+
+.hatch-types-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
+.hatch-types-label input {
+  accent-color: var(--primary);
+}
+
+/* Shown on hover or keyboard focus; a finger has no hover, so it always shows. */
+.hatch-types-only {
+  flex: none;
+  opacity: 0;
+}
+
+.hatch-types-item:hover .hatch-types-only,
+.hatch-types-only:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .hatch-types-only {
+    opacity: 1;
+  }
+}
+
 .hatch-types-name {
   text-transform: capitalize;
 }
