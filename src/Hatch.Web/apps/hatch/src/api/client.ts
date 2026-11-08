@@ -69,6 +69,7 @@ import type {
   ProjectRepository,
   ProjectRepositoryWriteRequest,
   ProjectRunnerTagsWriteRequest,
+  Question,
   QueueEntry,
   Revision,
   Runner,
@@ -314,6 +315,9 @@ export const withdrawOrder = (name: string) =>
   fetchJson<void>(`/api/hatch/runners/${seg(name)}/order`, { method: 'DELETE' });
 
 export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`);
+
+export const getIssueQuestions = (key: string) =>
+  fetchJson<Question[]>(`/api/hatch/issues/${seg(key)}/questions`);
 
 /** The issues a filter finds, as cards. An absent field is left off the query
     string entirely - an empty `parentKey` means "no parent" to the server, so

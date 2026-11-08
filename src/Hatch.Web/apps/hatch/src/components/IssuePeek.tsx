@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Modal, ProjectMark } from '@hatch/ui';
-import { getIssue, patchIssue, setPriority, setPreApproval } from '../api/client';
+import { getIssue, getIssueQuestions, patchIssue, setPriority, setPreApproval } from '../api/client';
 import { DescriptionEditor } from './DescriptionEditor';
 import { PriorityControl } from './PriorityControl';
 import { PreApprovalControl } from './PreApprovalControl';
 import { MomentChip } from './MomentChip';
+import { Waiting } from './OpenQuestions';
 import { PullRequestLink } from './PullRequestLink';
 import { StatusPicker } from './StatusPicker';
 import { TypeBadge } from './TypeBadge';
@@ -14,11 +15,12 @@ import { askToDelete } from '../lib/deletion';
 import { isSettled } from '../lib/columns';
 import { message } from '../lib/errors';
 import { moveBlocked } from '../lib/protectedColumns';
+import { fromQuestion } from '../lib/questions';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { scopedPath } from '../lib/scope';
 import { useScope } from '../lib/useScope';
 import { useStandalone } from '../lib/viewport';
-import type { AssigneeDirectory, IssueCard, Project, Status } from '../types';
+import type { AssigneeDirectory, IssueCard, Project, Question, Status } from '../types';
 
 /** What the peek had to ask for, and the card it asked about. `description`
     undefined is "not here yet", which is what the Loading line reads off; so is
@@ -29,6 +31,10 @@ interface Asked {
   pullRequestUrl?: string | null;
   loadError?: string;
   saveError?: string;
+  /** The card's own open questions, fetched only while it has any - undefined
+      is "not back yet". */
+  questions?: Question[];
+  questionsError?: string;
   /** What the server last said about the level in effect, the issue's own
       level and where the effective one came from, or undefined while the
       card's own value stands. */
@@ -171,7 +177,25 @@ export function IssuePeek({
         }),
       )
       .catch((err: unknown) => apply(key, { loadError: message(err) }));
+
+    if ((card?.openQuestions ?? 0) > 0) {
+      getIssueQuestions(key)
+        .then((questions) => apply(key, { questions }))
+        .catch((err: unknown) => apply(key, { questionsError: message(err) }));
+    }
   }, [key, apply]);
+
+  /* Re-reads this card's own questions and reloads the board behind the
+     dialog; the dialog itself never closes - a card can carry more than one
+     question, and answering one is not a reason to lose the others. */
+  const answered = useCallback(() => {
+    if (!key) return;
+    apply(key, { questionsError: undefined });
+    getIssueQuestions(key)
+      .then((questions) => apply(key, { questions }))
+      .catch((err: unknown) => apply(key, { questionsError: message(err) }));
+    onExpedited();
+  }, [key, apply, onExpedited]);
 
   /* Never throws: DescriptionEditor awaits this and reads the answer, and a
      rejection would leave it reading busy for ever. The board is not reloaded -
@@ -392,6 +416,20 @@ export function IssuePeek({
             <MomentChip kind="due" value={card.dueAt} muted={stopped} />
           </div>
         )}
+
+        {card.openQuestions > 0 &&
+          (asked.questionsError ? (
+            <p className="text-danger">{asked.questionsError}</p>
+          ) : asked.questions === undefined ? (
+            <p className="text-muted">Loading…</p>
+          ) : (
+            <Waiting
+              issueKey={card.key}
+              questions={asked.questions.map(fromQuestion)}
+              obviated={false}
+              onAnswered={answered}
+            />
+          ))}
 
         <div className="hatch-peek-description">
           {asked.loadError ? (

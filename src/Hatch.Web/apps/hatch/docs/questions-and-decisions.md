@@ -71,6 +71,9 @@ An unanswered question shows in three places:
   per question, oldest first. A row opens the issue; it does not answer in place.
 - The **Waiting on you** card on the issue page, where each question shows its
   options with the recommended one marked.
+- Clicking the card behind the badge opens the peek with the same card drawn
+  above the Description, answerable the same way. The badge clears on the
+  board behind the dialog once it is.
 
 Choosing an option makes its label the answer's text. It does not send it:
 **Answer**, or Enter, does. The box stays editable, so an answer the options did

@@ -89,11 +89,11 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   ...over,
 });
 
-const render = (onClose: () => void = noop) =>
+const render = (onClose: () => void = noop, overCard: Partial<IssueCard> = {}) =>
   renderToStaticMarkup(
     <MemoryRouter>
       <IssuePeek
-        card={card()}
+        card={card(overCard)}
         status={status()}
         statuses={[status()]}
         directory={null}
@@ -172,5 +172,33 @@ describe('IssuePeek', () => {
     recorded.props?.onClose();
 
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('draws nothing for open questions on a card with none', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render(noop, { openQuestions: 0 });
+
+    // Description's own Loading line is still there; only one of them.
+    expect(html.split('Loading…')).toHaveLength(2);
+    expect(html).not.toContain('hatch-waiting');
+  });
+
+  it('shows the open questions loading before the fetch answers', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render(noop, { openQuestions: 1 });
+
+    // Two "Loading…" lines: the questions fetch and the description fetch,
+    // both still out on the render React does before either promise settles.
+    expect(html.split('Loading…')).toHaveLength(3);
   });
 });
