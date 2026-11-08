@@ -130,6 +130,37 @@ internal sealed record BoardBarMeasurement(
     }
 }
 
+/// <summary>
+/// What the board's open Types panel looks like at the moment it was read: the
+/// viewport, the document's width against it, whether a coarse pointer matches,
+/// the menu panel's box (null if no Only button was found) and each
+/// <c>.hatch-types-only</c> by name and box, in row order.
+/// </summary>
+internal sealed record TypesOnlyMeasurement(
+    int InnerWidth,
+    int ScrollWidth,
+    int ClientWidth,
+    bool CoarsePointerMatches,
+    Box? Panel,
+    IReadOnlyList<(string Name, Box Box)> Only)
+{
+    public override string ToString()
+    {
+        var lines = new List<string>
+        {
+            $"innerWidth: {InnerWidth}",
+            $"(pointer: coarse) matches: {CoarsePointerMatches}",
+            $"document scrollWidth: {ScrollWidth}",
+            $"document clientWidth: {ClientWidth}",
+            $"panel: {(Panel is null ? "absent" : Panel.ToString())}",
+        };
+
+        lines.AddRange(Only.Select(o => $"{o.Name}: {o.Box}"));
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}
+
 /// <summary>One <c>.hatch-usage-bar-fill</c>: its box's width, its track's content width, the inline width and colour the page set, and the colour it resolved to.</summary>
 internal sealed record BudgetBar(double FillWidth, double TrackWidth, string StyleWidth, string UsageColor, string Color)
 {
