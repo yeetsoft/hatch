@@ -132,6 +132,22 @@ Users, API keys, Settings and Docs ignore it — none of them is an issue
 list. Later sections on this page, and this app's other pages, say where
 else it reaches.
 
+In a Hatch with three projects, `AER`, `FIL` and `GEO`, three tabs can each
+look at one of them:
+
+1. Open the board. The control reads **All projects**, with every box ticked.
+2. Untick `FIL` and `GEO`. The address gains `?scope=AER` and the tab's title
+   becomes `AER - Hatch`.
+3. Duplicate the tab. The copy opens on the same address, so it starts on the
+   same scope, `AER`.
+4. In the copy, tick `FIL` and untick `AER`. Its address becomes
+   `?scope=FIL` and its title `FIL - Hatch`; the first tab is untouched.
+5. Duplicate once more and, in that copy, untick `FIL` and tick `GEO`. Its
+   address becomes `?scope=GEO` and its title `GEO - Hatch`. Three tabs,
+   three scopes, three titles, side by side.
+
+**A link you click keeps the scope; a link you paste means what it says.**
+
 On the board, cards of projects outside the scope are not drawn, and are not
 counted in *N hidden by the filter* (nor in *N of M*), because the scope sits
 upstream of the filter row. **New issue** offers only the scope's projects
