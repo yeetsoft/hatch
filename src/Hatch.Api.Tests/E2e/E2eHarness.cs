@@ -47,6 +47,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
     public const string BoardTrailingSelector = ".hatch-filter-trailing";
 
+    public const string TypesOnlySelector = ".hatch-types-only";
+
     public const string RunnersCardSelector = ".hatch-card--flush";
 
     /// <summary>Every control a Runners row draws in its group: the buttons, and the ticket input.</summary>
@@ -109,6 +111,31 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             })(),
             trailing: [...trailing.children].map((element) => ({
               name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
+              box: plain(element.getBoundingClientRect()),
+            })),
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Runs in the page and reads the open Types panel: every Only button's box
+    /// and the box of the menu panel that holds them. A <c>DOMRect</c> does not
+    /// serialise, so each is copied to a plain object.
+    /// </summary>
+    private const string MeasureTypesOnlyScript = """
+        (onlySelector) => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const only = [...document.querySelectorAll(onlySelector)];
+          const panel = only.length === 0 ? null : only[0].closest('.hatch-menu__panel');
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            panel: panel === null ? null : plain(panel.getBoundingClientRect()),
+            only: only.map((element) => ({
+              name: element.getAttribute('aria-label') || element.textContent.trim(),
               box: plain(element.getBoundingClientRect()),
             })),
           };
@@ -499,6 +526,23 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
                 .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
                 .ToList(),
             read.GetProperty("search").ValueKind == JsonValueKind.Null ? null : ReadBox(read.GetProperty("search")));
+    }
+
+    /// <summary>The open Types panel's Only buttons and the panel itself as the page stands; the panel must be open.</summary>
+    public async Task<TypesOnlyMeasurement> MeasureTypesOnlyAsync(Deadline deadline)
+    {
+        var read = await deadline.BoundAsync("measuring the Types panel", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureTypesOnlyScript, TypesOnlySelector));
+
+        return new TypesOnlyMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            read.GetProperty("panel").ValueKind == JsonValueKind.Null ? null : ReadBox(read.GetProperty("panel")),
+            read.GetProperty("only").EnumerateArray()
+                .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
+                .ToList());
     }
 
     /// <summary>Resizes the open page, for a case that asks about a width other than the launch profile's.</summary>
