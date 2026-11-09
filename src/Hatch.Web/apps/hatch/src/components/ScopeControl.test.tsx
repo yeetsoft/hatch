@@ -57,7 +57,9 @@ describe('ScopeControl', () => {
 
   it('keeps an icon project out of the scoped chip but in its panel row', () => {
     const html = render([{ key: 'HA', name: 'Hatch', icon: 'rocket' }, ...three.slice(1)] as Project[], ['HA']);
-    expect(trigger(html)).not.toContain('<svg');
+    const chip = trigger(html).match(/<span class="hatch-scope-control__chip"[^>]*>[\s\S]*?<\/span>/)?.[0] ?? '';
+    expect(chip).toContain('>HA</span>');
+    expect(chip).not.toContain('<svg');
     expect(rows(html)[0]).toContain('<svg');
   });
 
