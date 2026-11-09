@@ -241,6 +241,11 @@ export function projectsLabel(runner: Runner): string | null {
   return runner.projects.length === 0 ? null : `projects ${runner.projects.join(', ')}`;
 }
 
+/** A runner's models, joined - or null where it has reported none. The `models ` prefix is deliberate, the same reason as `projectsLabel`: a bare list beside an agent name reads as nothing. */
+export function modelsLabel(runner: Runner): string | null {
+  return runner.models.length === 0 ? null : `models ${runner.models.join(', ')}`;
+}
+
 /** Whether this runner was started with do-my-work or --mine, as the word for the row - or null, drawn the same as `clones`. */
 export function mineLabel(runner: Runner): string | null {
   return runner.mine ? 'own tickets only' : null;
