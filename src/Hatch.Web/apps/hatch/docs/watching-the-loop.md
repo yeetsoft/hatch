@@ -75,8 +75,9 @@ on this page.
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, the models it offers, its build - a short sha and how
-long ago, or `dev build` for one that hasn't been stamped - what it drives, and
-the repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
+long ago, or `dev build` for one that hasn't been stamped - what it drives, the
+repositories it serves, and the dependencies it has - `has dotnet 10.0.100,
+node 22.11.0`, shown only when it reported any - then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
 not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert**.
 **Refuse dangerous work** stops the board handing that runner an issue flagged
 dangerous (see [`hatch dangerous`](cli-reference#dangerous) for the flag). It
@@ -97,6 +98,10 @@ runners and heartbeat as one, but never set a bound or a control, since an
 agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
+
+The models and the dependencies are what the runner's last beat reported -
+detection merged with `HATCH_HAS`, as [has](the-runner#has) describes - and
+nothing a person sets on this page.
 
 The two token boxes take a token count, like `500k` or `2M`, and show it back
 as `500,000` when you leave the box. Empty clears the cap. A value that is not
@@ -195,7 +200,10 @@ hour, day, week or month, at the level a stakeholder reads - epics, or the
 stories under them. Cumulative flow carries its own **Projects**
 control (drawn only where there is more than one project) - a checkbox per
 project rather than the Timeline's one at a time - so the scope can be
-narrowed to some of the projects, not just none or all; beside it, a
+narrowed to any of the projects. **All** and **None** sit at the foot of the
+list, **All** greyed out while every project is ticked and **None** while
+nothing is; **None** draws "No project is chosen." in place of the chart.
+Beside **Projects**, a
 **Colour by** control (also drawn only where there is more than one project)
 cuts the same stack by project instead of by column. Hovering a row of
 **Projects** shows **Only**, which keeps that project alone (on a touch screen
@@ -216,8 +224,9 @@ for anybody else looking at the same board.
 The Changelog opens on the last two weeks, not ninety days, with the same
 window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**
 (drawn only where there is more than one) is a checkbox per project, as in
-Cumulative flow. **Bucket** - hour, day, week or month, day to begin with -
-sets how finely the window is cut: each bucket is a section headed by its own
+Cumulative flow, with the same **All** and **None**; **None** draws the same
+sentence, "No project is chosen.", in place of the list. **Bucket** - hour, day, week or month, day to begin
+with - sets how finely the window is cut: each bucket is a section headed by its own
 date, and a stretch with nothing in it between two buckets is a line, "Quiet
 from" one date "to" another. **Level** picks what a bucket holds, and the page
 opens on story: each epic that had stories close in the bucket is a heading,
@@ -278,11 +287,28 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Backups**, **Deadlocked**, **Trunk builds that fail**, **Pull
-requests to review**, **Approved, not merging**, **Landed, not done**,
-**Questions to answer**. **Backups** appears only when the configured
-backup is failing or stale, and links to Settings, where the folder is
-fixed. **Agent** - things the loop is already on: **Branches that
+them: **Waiting on a runner**, **Backups**, **Deadlocked**, **Trunk builds
+that fail**, **Pull requests to review**, **Approved, not merging**,
+**Landed, not done**, **Questions to answer**. **Waiting on a runner** lists
+every issue whose next move no live runner can take for want of a model or a
+tool, and links to the Runners page, where each runner shows what it offers
+([the runner](the-runner#what-a-runner-advertises) covers what that is); like
+**Backups**, it lights the control and adds no pill to the bar. **Backups**
+appears only when the configured backup is failing or stale, and links to
+Settings, where the folder is fixed.
+
+Each row under **Waiting on a runner** is the issue's key, a link, its title,
+and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
+`no live runner has pwsh 7 and playwright-browsers`; a move that needs both
+joins them with `; `. A pinned id reads `pinned to <id> - no live runner's
+agent is <agent>`. A board with no live runner at all lists nothing - that is
+the *no runner* condition, not this one - and neither does a split fleet, one
+runner lacking the model and another the tool, since no single sentence is
+true of all of them. With nothing to list, the group says *Nothing is waiting
+on a runner.* [hatch queue](cli-reference#queue) prints the same list at the
+terminal.
+
+**Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.

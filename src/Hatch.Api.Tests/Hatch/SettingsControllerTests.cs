@@ -263,7 +263,7 @@ public class SettingsControllerTests
         new() { Id = Guid.NewGuid(), Name = "Nathan", Role = role, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
 
     private static EfApiKey AKey() =>
-        new() { Name = "hatch", Hash = [1], Prefix = "hatch_ak_x", Scopes = [ApiKeyScopes.Hatch], CreatedAt = DateTime.UtcNow };
+        new() { Name = "hatch", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = DateTime.UtcNow };
 
     private static async Task AssertAdminsOnly(Fixture fixture, HatchSettingsWriteRequest request)
     {
@@ -606,7 +606,7 @@ public class SettingsControllerTests
 
     /// <summary>
     /// The second gate, and the one the attribute cannot express: wherever the
-    /// wall is up nobody gets the token - not a scoped key, not an
+    /// wall is up nobody gets the token - not a key, not an
     /// administrator at a browser. A route this far inside the filter has
     /// already been told the caller is allowed, so this refusal is the action's
     /// own and it is unconditional.
@@ -717,7 +717,7 @@ public class SettingsControllerTests
 
     /// <summary>
     /// The split itself, asserted rather than described: the credential routes take
-    /// a Hatch-scoped key because a keyless runner is its ordinary caller, and
+    /// a key because a keyless runner is its ordinary caller, and
     /// the two routes beside it still take a person and nothing else. Read off
     /// the attributes because that is where the decision lives - and because
     /// RequireRoleAttribute is AllowMultiple = false, so an attribute added at
@@ -726,10 +726,10 @@ public class SettingsControllerTests
     [Fact]
     public void TheCredentialRoutesTakeAKeyAndTheOtherTwoDoNot()
     {
-        Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetClaudeToken)).AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetCredential)).AcceptScope);
-        Assert.Null(Guard(nameof(SettingsController.GetHatchSettings)).AcceptScope);
-        Assert.Null(Guard(nameof(SettingsController.PutHatchSettings)).AcceptScope);
+        Assert.True(Guard(nameof(SettingsController.GetClaudeToken)).AcceptKey);
+        Assert.True(Guard(nameof(SettingsController.GetCredential)).AcceptKey);
+        Assert.False(Guard(nameof(SettingsController.GetHatchSettings)).AcceptKey);
+        Assert.False(Guard(nameof(SettingsController.PutHatchSettings)).AcceptKey);
 
         static RequireRoleAttribute Guard(string action) =>
             typeof(SettingsController).GetMethod(action)!.GetCustomAttribute<RequireRoleAttribute>()

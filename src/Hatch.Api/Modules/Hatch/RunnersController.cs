@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.DeviceMapping;
 using Hatch.Contracts;
@@ -41,66 +42,177 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys) : ControllerBase
 {
     /// <summary>
-    /// Every runner that has spoken to this Hatch lately, most recently heard
-    /// from first.
+    /// Every runner this Hatch knows of: one entry per visible key - revoked
+    /// included, with its config - plus one for every visible heartbeat row no
+    /// key claims. <c>?live=true</c> narrows that to the entries actually
+    /// answering lately, the list the board and the Runners page both draw by
+    /// default.
     /// </summary>
     /// <remarks>
-    /// Two reads and no join. The claims are every issue holding one - tens of
-    /// cards on the busiest board this is for - matched to runners in memory,
-    /// because the thing being matched on is a name a checkout computed and not
-    /// a key anybody indexed.
+    /// Three whole reads and a join in memory - see <see cref="Runner.JoinAsync"/>
+    /// - because the thing being matched on is a name, not a key anybody
+    /// indexed, and the scale here is tens of rows.
     ///
-    /// <para>Rows outside <see cref="VisibleAsync"/>'s reach are dropped from
-    /// the same table <see cref="Heartbeat"/> writes <c>ForPersonId</c> to,
-    /// through <see cref="IActorDirectory.PrincipalAsync"/> - the same
-    /// resolution, so "whose runner is this" and "who may see it" cannot
-    /// disagree.</para>
+    /// <para>Rows outside <see cref="VisibleAsync"/>'s reach are dropped by the
+    /// same resolution <see cref="Heartbeat"/> writes <c>ForPersonId</c>
+    /// through, via <see cref="IActorDirectory.PrincipalAsync"/> - so "whose
+    /// runner is this" and "who may see it" cannot disagree.</para>
     /// </remarks>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
-    public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct)
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct, [FromQuery] bool live = false)
     {
         var now = time.GetUtcNow();
-
-        // The drop horizon in the WHERE, so a runner nobody has heard from
-        // since last night is not something a client has to know to filter out.
-        // The row stays where it is: one that comes back under the same name
-        // finds its own bounds still on it.
-        var dropBefore = runners.DropBefore(now);
-
         var (all, personId) = await VisibleAsync(ct);
 
-        var query = db.Runners.AsNoTracking().Where(r => r.LastSeenAt >= dropBefore);
-        if (!all)
-        {
-            query = personId is { } id ? query.Where(r => r.ForPersonId == id) : query.Where(r => r.ForPersonId == null);
-        }
-
-        var rows = await query
-            .OrderByDescending(r => r.LastSeenAt)
-            .ToListAsync(ct);
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var visible = joined.Where(r => all || r.OwnerPersonId == personId).ToList();
+        if (live) visible = visible.Where(r => r.IsLive(runners, now)).ToList();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
         var drivers = await runners.DriversAsync(db, now, ct);
-
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dtos = new List<RunnerDto>(rows.Count);
-        foreach (var r in rows)
-        {
-            var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
-            var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
-            var order = r.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, r.OrderKey, r.OrderedBy, r.OrderedAt) : null;
-            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order, yours: Yours(r.ForPersonId, wallEnabled, callerPerson),
-                defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour));
-        }
+        var dtos = new List<RunnerDto>(visible.Count);
+        foreach (var r in visible)
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, ct));
 
         return dtos;
+    }
+
+    /// <summary>One visible runner by its name, or <c>404</c> for a name nothing has ever used or this caller may not see.</summary>
+    [HttpGet("{name}")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerDto>> GetRunner(string name, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var now = time.GetUtcNow();
+        var (all, personId) = await VisibleAsync(ct);
+
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
+
+        var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, now, ct);
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
+
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+    }
+
+    /// <summary>
+    /// Mints a runner: a key and the config row beside it, answered once with
+    /// the secret. Admin only, and never a key - an agent that could mint
+    /// runners could mint itself more of whatever a runner may do.
+    /// </summary>
+    /// <remarks>
+    /// Every refusal comes before anything is written: the gate, the name, the
+    /// owner and the tags are all judged first, so a refused request leaves no
+    /// key and no row. <c>names</c> and <c>suggest-name</c> are refused as
+    /// names because they are the literal routes beside <c>{name}</c>, and a
+    /// runner called either could not be reached by its own URL.
+    ///
+    /// <para>The key's uniqueness is <see cref="IAuthService"/>'s to judge, and
+    /// it logs the mint too - so there is no logger here. The config row is
+    /// written even with no tags, so a minted runner always has one.</para>
+    /// </remarks>
+    [HttpPost]
+    [RequireRole(PersonRole.Admin)]
+    public async Task<ActionResult<RunnerMintedDto>> CreateRunner([FromBody] CreateRunnerRequest? request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var name = request?.Name?.Trim();
+        if (string.IsNullOrEmpty(name)) return BadRequest("a runner needs a name");
+        if (name.Length > EfApiKey.MaxNameLength)
+            return BadRequest($"a runner name is at most {EfApiKey.MaxNameLength} characters");
+        if (name.Equals("names", StringComparison.OrdinalIgnoreCase) || name.Equals("suggest-name", StringComparison.OrdinalIgnoreCase))
+            return BadRequest($"\"{name}\" is a route word");
+
+        // No owner named defaults to whoever is minting it, or to nobody where
+        // the wall is off, as the key route this was ported from does.
+        Guid? ownerPersonId;
+        if (request?.OwnerPersonId is { } named)
+        {
+            if (await actors.ResolveAsync(ActorKind.Person, named, ct) is null)
+                return BadRequest("that person does not exist");
+            ownerPersonId = named;
+        }
+        else
+        {
+            ownerPersonId = (await caller.PersonAsync(ct))?.Id;
+        }
+
+        if (RunnerTags.Normalise(request?.Tags, out var tags) is { } tagsRefusal) return BadRequest(tagsRefusal);
+
+        var created = await keys.CreateApiKeyAsync(name, ownerPersonId, ct);
+        if (created is null) return Conflict($"there is already a runner called \"{name}\"");
+
+        var config = new EfHatchRunnerConfig
+        {
+            ApiKeyId = created.Key.Id,
+            Tags = RunnerTagColumn.Write(tags),
+            UpdatedAt = time.GetUtcNow(),
+        };
+        db.RunnerConfigs.Add(config);
+        await db.SaveChangesAsync(ct);
+
+        // A live credential has no business in a cache, anyone's.
+        Response.Headers.CacheControl = "no-store";
+
+        // A new key holds nothing and drives nothing, so nothing is read for it.
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var dto = await ProjectAsync(
+            new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+
+        return new RunnerMintedDto(dto, created.Secret);
+    }
+
+    /// <summary>
+    /// A cast-list name no key and no heartbeat row holds, for the form that
+    /// mints a runner to offer. Revoked keys count: a name stays unique.
+    /// </summary>
+    /// <remarks>
+    /// The set is case-insensitive itself, since <see cref="RunnerCast.Suggest"/>
+    /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>
+    /// the way <see cref="GetRunnerNames"/> does.
+    /// </remarks>
+    [HttpGet("suggest-name")]
+    [RequireRole(PersonRole.Admin)]
+    public async Task<ActionResult<string>> SuggestRunnerName(CancellationToken ct)
+    {
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in await keys.ListApiKeysAsync(ct)) taken.Add(key.Name);
+        foreach (var beat in await db.Runners.AsNoTracking().Select(r => r.Name).ToListAsync(ct)) taken.Add(beat);
+
+        return RunnerCast.Suggest(taken);
+    }
+
+    /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
+    private async Task<RunnerDto> ProjectAsync(
+        Runner runner, Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
+        SiteSettingsSnapshot site, CancellationToken ct)
+    {
+        var ownerId = runner.OwnerPersonId;
+        var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
+        var canControl = CanControl(ownerId, wallEnabled, callerPerson);
+        var order = runner.Beat?.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, runner.Beat.OrderKey, runner.Beat.OrderedBy, runner.Beat.OrderedAt) : null;
+
+        return runners.Project(
+            runner, Holding(held, runner.Name), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
+            yours: Yours(ownerId, wallEnabled, callerPerson),
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
@@ -108,7 +220,7 @@ public class RunnersController(
     /// first, and nothing else.
     /// </summary>
     /// <remarks>
-    /// Open to every key the <c>hatch</c> scope admits, and the same list
+    /// Open to every key, and the same list
     /// whoever asks: a name is already public - every <c>claim_taken</c> event
     /// carries it - while where a runner is, whom it is for, what it holds and
     /// what its line says are what stays inside <see cref="GetRunners"/>'s
@@ -116,7 +228,7 @@ public class RunnersController(
     /// the caller is read.
     /// </remarks>
     [HttpGet("names")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<string>>> GetRunnerNames(CancellationToken ct)
     {
         var dropBefore = runners.DropBefore(time.GetUtcNow());
@@ -155,13 +267,14 @@ public class RunnersController(
     /// runner is turned away.</para>
     /// </remarks>
     [HttpPost("{name}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<RunnerInstructionDto>> Heartbeat(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
         if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
+        if (DependencySet.Normalise(request.Has, out var normalisedHas) is { } hasRefusal) return BadRequest(hasRefusal);
 
         var kind = request.Kind?.Trim().ToLowerInvariant() switch
         {
@@ -195,7 +308,7 @@ public class RunnersController(
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels)));
+            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas)));
 
             try
             {
@@ -233,7 +346,7 @@ public class RunnersController(
             row.OrderedAt = null;
         }
 
-        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels));
+        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas));
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order,
@@ -297,14 +410,19 @@ public class RunnersController(
         if (await NotAPerson(ct) is { } refusal) return refusal;
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
 
-        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
-        if (row is null) return NotFound();
+        var aggregate = (await Runner.JoinAsync(db, keys, ct)).FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (aggregate is null) return NotFound();
+
+        // Before ownership: a revoked key's runner is not one anybody may
+        // steer, whoever is asking.
+        var now = time.GetUtcNow();
+        if (aggregate.Key is { } liveKey && !liveKey.IsLive(now)) return Conflict($"{runner}'s key is revoked");
 
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
-        if (!CanControl(row.ForPersonId, wallEnabled, callerPerson))
+        if (!CanControl(aggregate.OwnerPersonId, wallEnabled, callerPerson))
         {
-            var forName = row.ForPersonId is { } forId
+            var forName = aggregate.OwnerPersonId is { } forId
                 ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? "its owner"
                 : "its owner";
             return new ObjectResult($"only {forName}, or an admin, may control {runner}")
@@ -361,40 +479,108 @@ public class RunnersController(
             untilAt = moment.At;
         }
 
-        if (state is not null) row.State = state;
-        if (request.Under is not null) row.Under = under;
-        if (request.MaxRuns is not null) row.MaxRuns = maxRuns;
-        if (request.MaxSpend is not null) row.MaxSpend = maxSpend;
-        if (request.MaxTokens is not null) row.MaxTokens = maxTokens;
-        if (request.MaxTokensPerHour is not null) row.MaxTokensPerHour = maxTokensPerHour;
-        if (request.UntilAt is not null) row.UntilAt = untilAt;
+        // The heartbeat row is tracked and may be absent: a key that has never
+        // run has none. State, projects and the danger flag live only there, so
+        // with none they are skipped rather than refused.
+        var beatRow = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        if (beatRow is not null)
+        {
+            if (state is not null) beatRow.State = state;
+
+            // "" clears it, never null, the same as Tags below.
+            if (wantedProjects is not null) beatRow.Projects = wantedProjects.Count > 0 ? string.Join('\n', wantedProjects) : "";
+
+            // Nothing to validate, so no place before the refusals above.
+            if (request.RefusesDangerous is not null) beatRow.RefusesDangerous = request.RefusesDangerous;
+        }
 
         // "" clears the board, never null - the whole of how PATCH's clear is
         // told apart from a row no heartbeat has seeded yet, with no migration.
-        if (request.Tags is not null) row.Tags = normalisedTags.Count > 0 ? string.Join('\n', normalisedTags) : "";
+        var beatTags = normalisedTags.Count > 0 ? string.Join('\n', normalisedTags) : "";
 
-        // "" clears it, never null, the same as Tags above.
-        if (wantedProjects is not null) row.Projects = wantedProjects.Count > 0 ? string.Join('\n', wantedProjects) : "";
+        EfHatchRunnerConfig? config = null;
+        if (aggregate.Key is { } key)
+        {
+            // The key's config row is the record of the bounds and tags; the
+            // heartbeat row is mirrored so a runner reading its own row sees
+            // the same thing. A key with no config row yet gets one here.
+            var bounded = request.Under is not null || request.MaxRuns is not null || request.MaxSpend is not null
+                || request.MaxTokens is not null || request.MaxTokensPerHour is not null || request.UntilAt is not null
+                || request.Tags is not null;
 
-        // Nothing to validate, so no place before the refusals above.
-        if (request.RefusesDangerous is not null) row.RefusesDangerous = request.RefusesDangerous;
+            if (bounded)
+            {
+                config = await db.RunnerConfigs.FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+                if (config is null)
+                    db.RunnerConfigs.Add(config = new EfHatchRunnerConfig { ApiKeyId = key.Id, UpdatedAt = now });
+
+                if (request.Under is not null) { config.Under = under; if (beatRow is not null) beatRow.Under = under; }
+                if (request.MaxRuns is not null) { config.MaxRuns = maxRuns; if (beatRow is not null) beatRow.MaxRuns = maxRuns; }
+                if (request.MaxSpend is not null) { config.MaxSpend = maxSpend; if (beatRow is not null) beatRow.MaxSpend = maxSpend; }
+                if (request.MaxTokens is not null) { config.MaxTokens = maxTokens; if (beatRow is not null) beatRow.MaxTokens = maxTokens; }
+                if (request.MaxTokensPerHour is not null) { config.MaxTokensPerHour = maxTokensPerHour; if (beatRow is not null) beatRow.MaxTokensPerHour = maxTokensPerHour; }
+                if (request.UntilAt is not null) { config.UntilAt = untilAt; if (beatRow is not null) beatRow.UntilAt = untilAt; }
+                if (request.Tags is not null) { config.Tags = RunnerTagColumn.Write(normalisedTags); if (beatRow is not null) beatRow.Tags = beatTags; }
+
+                config.UpdatedAt = now;
+            }
+        }
+        else if (beatRow is not null)
+        {
+            // A heartbeat no key claims has nowhere else to keep them, and no
+            // config row is ever made for it.
+            if (request.Under is not null) beatRow.Under = under;
+            if (request.MaxRuns is not null) beatRow.MaxRuns = maxRuns;
+            if (request.MaxSpend is not null) beatRow.MaxSpend = maxSpend;
+            if (request.MaxTokens is not null) beatRow.MaxTokens = maxTokens;
+            if (request.MaxTokensPerHour is not null) beatRow.MaxTokensPerHour = maxTokensPerHour;
+            if (request.UntilAt is not null) beatRow.UntilAt = untilAt;
+            if (request.Tags is not null) beatRow.Tags = beatTags;
+        }
 
         await db.SaveChangesAsync(ct);
 
-        var now = time.GetUtcNow();
-        var ownerName = row.ForPersonId is { } ownerId ? (await actors.ResolveAsync(ActorKind.Person, ownerId, ct))?.Name : null;
-        var order = row.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, row.OrderKey, row.OrderedBy, row.OrderedAt) : null;
-        var site = await siteSettings.GetAsync(ct);
-        return runners.Project(
-            row,
-            Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
-            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
-            ownerName,
-            CanControl(row.ForPersonId, wallEnabled, callerPerson),
-            order,
-            yours: Yours(row.ForPersonId, wallEnabled, callerPerson),
-            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+        return await ProjectAsync(
+            new Runner(aggregate.Key, config ?? aggregate.Config, beatRow),
+            await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, now, ct),
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
     }
+
+    /// <summary>
+    /// Stops a runner's key working, by the runner's name. The row stays - the
+    /// audit trail names this key, and a revoked runner is still listed - so
+    /// this is a <c>POST</c>, not a <c>DELETE</c>. Admin only, and never a key.
+    /// </summary>
+    [HttpPost("{name}/revoke")]
+    [RequireAdmin]
+    public async Task<IActionResult> RevokeRunner(string name, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+        if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+
+        return await keys.RevokeApiKeyAsync(key.Id, ct) ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Changes or clears whose tickets this runner's <c>--mine</c> reaches. Only
+    /// an admin, and deliberately never the key itself: a key that could set its
+    /// own owner could adopt anybody's tickets.
+    /// </summary>
+    [HttpPut("{name}/owner")]
+    [RequireAdmin]
+    public async Task<IActionResult> SetRunnerOwner(string name, [FromBody] ApiKeyOwnerRequest? request, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+        if (request?.PersonId is { } personId && await actors.ResolveAsync(ActorKind.Person, personId, ct) is null)
+            return BadRequest("that person does not exist");
+        if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+
+        return await keys.SetApiKeyOwnerAsync(key.Id, request?.PersonId, ct) ? NoContent() : NotFound();
+    }
+
+    /// <summary>The key a runner name answers to, revoked or not, or null where no key has that name.</summary>
+    private async Task<EfApiKey?> KeyNamedAsync(string runner, CancellationToken ct) =>
+        (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, runner, StringComparison.Ordinal));
 
     /// <summary>
     /// Order this runner to work a named ticket, or to pass on its next pick -
@@ -607,7 +793,7 @@ public class RunnersController(
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
         string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        Guid? forPersonId, string? tags, string? models)
+        Guid? forPersonId, string? tags, string? models, string? has)
     {
         var row = new EfHatchRunner
         {
@@ -641,6 +827,7 @@ public class RunnersController(
             BuiltAt = request.BuiltAt,
             Tags = tags,
             Models = models,
+            Has = has,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
             ThrottledUntil = request.ThrottledUntil,
@@ -663,7 +850,7 @@ public class RunnersController(
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
-        Guid? forPersonId, string? tags, string? models)
+        Guid? forPersonId, string? tags, string? models, string? has)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -703,6 +890,7 @@ public class RunnersController(
 
         // An empty list clears it: Joined answers null for one.
         if (request.Models is not null) row.Models = models;
+        if (request.Has is not null) row.Has = has;
 
         // Tags are seeded once, not a fact-vs-absent field like the rest of
         // this block: a row with any Tags already written - including the

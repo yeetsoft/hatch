@@ -19,9 +19,9 @@ namespace Hatch.Api.Tests.Auth;
 /// holds, what the wall accepts, and what a key may reach once it is through.
 ///
 /// The properties worth breaking a build over are the boundaries. A key reaches
-/// exactly the scopes it carries and nothing else - most importantly not the
+/// the routes that accept one and nothing else - most importantly not the
 /// endpoints that mint keys, because a key that could mint a key would make the
-/// scope system decorative. And a revoked key is refused even when the same
+/// key system decorative. And a revoked key is refused even when the same
 /// request is carrying a perfectly good cookie, which is the case revocation
 /// exists to close.
 /// </summary>
@@ -36,14 +36,13 @@ public class ApiKeyTests
     {
         var (service, db, _) = NewService();
 
-        var created = await service.CreateApiKeyAsync("Claude in VS Code", [ApiKeyScopes.Hatch], null, default);
+        var created = await service.CreateApiKeyAsync("Claude in VS Code", null, default);
 
         var row = await db.ApiKeys.AsNoTracking().SingleAsync();
         Assert.StartsWith(AuthTokens.ApiKeyPrefix, created!.Secret);
         Assert.Equal(AuthTokens.ApiKeyPrefix.Length + AuthTokens.ApiKeyBodyLength, created.Secret.Length);
         Assert.Equal(AuthTokens.Hash(created.Secret), row.Hash);
         Assert.Equal(created.Secret[..EfApiKey.PrefixLength], row.Prefix);
-        Assert.Equal(["hatch"], row.Scopes);
         Assert.Null(row.RevokedAt);
     }
 
@@ -58,7 +57,7 @@ public class ApiKeyTests
     {
         var (service, db, _) = NewService();
 
-        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
 
         var row = await db.ApiKeys.AsNoTracking().SingleAsync();
         Assert.DoesNotContain(created!.Secret, row.Prefix);
@@ -69,9 +68,9 @@ public class ApiKeyTests
     public async Task TwoKeys_CannotShareAName()
     {
         var (service, _, _) = NewService();
-        await service.CreateApiKeyAsync("Claude", [], null, default);
+        await service.CreateApiKeyAsync("Claude", null, default);
 
-        Assert.Null(await service.CreateApiKeyAsync("Claude", [], null, default));
+        Assert.Null(await service.CreateApiKeyAsync("Claude", null, default));
     }
 
     // ---- What the wall accepts ----
@@ -80,7 +79,7 @@ public class ApiKeyTests
     public async Task ALiveKey_Verifies()
     {
         var (service, _, _) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
 
         var verified = await service.VerifyApiKeyAsync(created!.Secret, default);
 
@@ -94,7 +93,7 @@ public class ApiKeyTests
         var person = new EfPerson { Name = "Ada", Role = PersonRole.Admin, CreatedAt = Now, UpdatedAt = Now };
         db.People.Add(person);
         await db.SaveChangesAsync();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], person.Id, default);
+        var created = await service.CreateApiKeyAsync("Claude", person.Id, default);
         // The service shares this context, so without the clear EF's
         // relationship fix-up would fill Owner whether or not the query asked.
         db.ChangeTracker.Clear();
@@ -108,7 +107,7 @@ public class ApiKeyTests
     public async Task AKeyWithNoOwner_VerifiesWithNone()
     {
         var (service, db, _) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
         db.ChangeTracker.Clear();
 
         var verified = await service.VerifyApiKeyAsync(created!.Secret, default);
@@ -121,7 +120,7 @@ public class ApiKeyTests
     public async Task ARevokedKey_StopsVerifying()
     {
         var (service, _, _) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [ApiKeyScopes.Hatch], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
 
         Assert.True(await service.RevokeApiKeyAsync(created!.Key.Id, default));
 
@@ -137,7 +136,7 @@ public class ApiKeyTests
     public async Task RevokingTwice_KeepsTheFirstTimestamp()
     {
         var (service, db, time) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
         await service.RevokeApiKeyAsync(created!.Key.Id, default);
 
         time.Advance(TimeSpan.FromHours(3));
@@ -153,7 +152,7 @@ public class ApiKeyTests
     public async Task AKeyNobodyMinted_DoesNotVerify(string? secret)
     {
         var (service, _, _) = NewService();
-        await service.CreateApiKeyAsync("Claude", [], null, default);
+        await service.CreateApiKeyAsync("Claude", null, default);
 
         Assert.Null(await service.VerifyApiKeyAsync(secret, default));
     }
@@ -167,7 +166,7 @@ public class ApiKeyTests
     public async Task LastUsed_IsWrittenAtMostOncePerThrottle()
     {
         var (service, db, time) = NewService();
-        var created = await service.CreateApiKeyAsync("Claude", [], null, default);
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
 
         await service.VerifyApiKeyAsync(created!.Secret, default);
         time.Advance(TimeSpan.FromSeconds(5));
@@ -186,7 +185,7 @@ public class ApiKeyTests
     [Fact]
     public async Task ABearerKey_IsAuthenticatedWithoutACookie()
     {
-        var auth = new StubAuthService(null) { Key = Key("Claude", ApiKeyScopes.Hatch) };
+        var auth = new StubAuthService(null) { Key = Key("Claude") };
         var gate = NewGate(auth);
 
         var decision = await gate.EvaluateAsync("/api/hatch/board", "hatch.example.com", [], "hatch_ak_secret", null, default);
@@ -230,57 +229,64 @@ public class ApiKeyTests
     // ---- What a key may reach ----
 
     [Fact]
-    public async Task AKeyCarryingTheScope_IsAllowed()
+    public async Task AKeyOnARouteThatAcceptsOne_IsAllowed()
     {
-        var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
+        var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
 
         Assert.Equal(RoleOutcome.Key, decision.Outcome);
         Assert.True(decision.IsAllowed);
         Assert.Equal("Claude", decision.ApiKey?.Name);
     }
 
-    [Fact]
-    public async Task AKeyWithoutTheScope_IsRefused()
+    /// <summary>
+    /// A key carries nothing but a name, and that is enough: the route decides.
+    /// Accepted where <c>AcceptKey</c> is set, refused <c>key_not_accepted</c>
+    /// where it is not.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, null)]
+    [InlineData(false, false, RoleDecision.KeyNotAccepted)]
+    public async Task AKeyBuiltWithNoExtraFields_IsDecidedOnTheRouteAlone(bool acceptKey, bool allowed, string? reason)
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, acceptKey, default);
 
-        Assert.False(decision.IsAllowed);
-        Assert.Equal(RoleDecision.ScopeMismatch, decision.Reason);
+        Assert.Equal(allowed, decision.IsAllowed);
+        Assert.Equal(reason, decision.Reason);
     }
 
     /// <summary>
-    /// The boundary the whole scheme rests on. Every route naming no scope
-    /// - minting credentials, revoking sessions, editing the house - stays the
+    /// The boundary the whole scheme rests on. Every route that accepts no
+    /// key - minting credentials, revoking sessions, editing the house - stays the
     /// operator's, and a key reaching one is refused rather than treated as an
     /// unnamed administrator.
     /// </summary>
     [Fact]
-    public async Task AKeyReachingAnUnscopedRoute_IsRefused()
+    public async Task AKeyReachingARouteThatAcceptsNone_IsRefused()
     {
-        var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
+        var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptKey: false, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
     }
 
     /// <summary>
-    /// Naming a scope widens nothing for a person. A person who has not
-    /// been let in is refused from a scoped route exactly as they are
+    /// Accepting a key widens nothing for a person. A person who has not
+    /// been let in is refused from a key-accepting route exactly as they are
     /// from every other one.
     /// </summary>
     [Fact]
-    public async Task AScopedRoute_IsStillClosedToAPendingPerson()
+    public async Task AKeyAcceptingRoute_IsStillClosedToAPendingPerson()
     {
         var person = new EfPerson { Name = "Ada", Role = PersonRole.Pending, CreatedAt = Now, UpdatedAt = Now };
         var gate = NewRoleGate(grant: Grant("Ada's iPhone", person));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.PendingApproval, decision.Reason);
@@ -291,7 +297,7 @@ public class ApiKeyTests
     [Fact]
     public async Task AKeysName_IsTheActorInAnAuditTrail()
     {
-        var caller = NewCaller(key: Key("Claude", ApiKeyScopes.Hatch));
+        var caller = NewCaller(key: Key("Claude"));
 
         Assert.Equal("Claude", await caller.ActorNameAsync(default));
     }
@@ -318,7 +324,7 @@ public class ApiKeyTests
     [Fact]
     public async Task WithTheWallOff_AKeyIsStillReadOffTheHeader()
     {
-        var auth = new StubAuthService(null) { Key = Key("Claude", ApiKeyScopes.Hatch) };
+        var auth = new StubAuthService(null) { Key = Key("Claude") };
         var context = new DefaultHttpContext();
         context.Request.Headers.Authorization = "Bearer hatch_ak_secret";
 
@@ -354,17 +360,16 @@ public class ApiKeyTests
     public async Task TheMintEndpoint_HandsBackTheSecretExactlyOnce()
     {
         var auth = new StubAuthService(null);
-        var key = Key("Claude", ApiKeyScopes.Hatch);
+        var key = Key("Claude");
         auth.MintResult = new ApiKeyCreated(key, "hatch_ak_thesecret");
         auth.Keys.Add(key);
         var controller = NewKeysController(auth);
 
-        var minted = Value(await controller.CreateKey(new CreateApiKeyRequest("Claude", [ApiKeyScopes.Hatch]), default));
+        var minted = Value(await controller.CreateKey(new CreateApiKeyRequest("Claude"), default));
 
         Assert.Equal("hatch_ak_thesecret", minted.Secret);
-        var (name, scopes, owner) = auth.KeysCreated.Single();
+        var (name, owner) = auth.KeysCreated.Single();
         Assert.Equal("Claude", name);
-        Assert.Equal(["hatch"], scopes);
         Assert.Null(owner);
 
         // And never again: the list carries the prefix and nothing more.
@@ -374,35 +379,13 @@ public class ApiKeyTests
     }
 
     [Fact]
-    public void TheScopesRead_IsExactlyTheScopesAKeyMayCarry()
-    {
-        var controller = NewKeysController(new StubAuthService(null));
-
-        Assert.Equal(ApiKeyScopes.All, Value(controller.ListScopes()));
-    }
-
-    [Fact]
     public async Task AKeyWithNoName_IsRefused()
     {
         var controller = NewKeysController(new StubAuthService(null));
 
-        var result = await controller.CreateKey(new CreateApiKeyRequest("  ", []), default);
+        var result = await controller.CreateKey(new CreateApiKeyRequest("  "), default);
 
         Assert.Contains("needs a name", Reason(result.Result));
-    }
-
-    /// <summary>
-    /// A typo in a scope is a key that mysteriously reaches nothing. Refused at
-    /// the door rather than stored and puzzled over later.
-    /// </summary>
-    [Fact]
-    public async Task AnUnknownScope_IsRefused()
-    {
-        var controller = NewKeysController(new StubAuthService(null));
-
-        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", ["hatchh"]), default);
-
-        Assert.Contains("is not a scope", Reason(result.Result));
     }
 
     [Fact]
@@ -411,7 +394,7 @@ public class ApiKeyTests
         // MintResult stays null, which is how the service says the name is taken.
         var controller = NewKeysController(new StubAuthService(null));
 
-        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", []), default);
+        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
 
         Assert.Contains("already a key called", Reason(result.Result));
     }
@@ -437,7 +420,7 @@ public class ApiKeyTests
         actors.AddPerson(admin.Name, admin.Id);
         var controller = NewKeysController(auth, actors, new StubCallerIdentity { Person = admin });
 
-        await controller.CreateKey(new CreateApiKeyRequest("Claude", []), default);
+        await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
 
         Assert.Equal(admin.Id, auth.KeysCreated.Single().OwnerPersonId);
     }
@@ -449,7 +432,7 @@ public class ApiKeyTests
         var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
         var controller = NewKeysController(auth);
 
-        await controller.CreateKey(new CreateApiKeyRequest("Claude", []), default);
+        await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
 
         Assert.Null(auth.KeysCreated.Single().OwnerPersonId);
     }
@@ -463,7 +446,7 @@ public class ApiKeyTests
         actors.AddPerson("Ada", ada);
         var controller = NewKeysController(auth, actors);
 
-        await controller.CreateKey(new CreateApiKeyRequest("Claude", [], ada), default);
+        await controller.CreateKey(new CreateApiKeyRequest("Claude", ada), default);
 
         Assert.Equal(ada, auth.KeysCreated.Single().OwnerPersonId);
     }
@@ -474,7 +457,7 @@ public class ApiKeyTests
         var auth = new StubAuthService(null);
         var controller = NewKeysController(auth);
 
-        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", [], Guid.NewGuid()), default);
+        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", Guid.NewGuid()), default);
 
         Assert.Contains("does not exist", Reason(result.Result));
         Assert.Empty(auth.KeysCreated);
@@ -528,13 +511,12 @@ public class ApiKeyTests
 
     // ---- Harness ----
 
-    private static EfApiKey Key(string name, params string[] scopes) => new()
+    private static EfApiKey Key(string name) => new()
     {
         Id = Guid.NewGuid(),
         Name = name,
         Prefix = "hatch_ak_abc",
         Hash = AuthTokens.Hash("hatch_ak_secret"),
-        Scopes = scopes,
         CreatedAt = Now,
     };
 

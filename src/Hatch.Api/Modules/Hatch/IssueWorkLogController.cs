@@ -25,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/work-log")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>
@@ -176,7 +176,7 @@ public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerI
     /// </summary>
     /// <remarks>
     /// <see cref="RequireAdminAttribute"/> accepts both an administrator and a
-    /// scoped key; this route accepts only the key, because the only honest
+    /// key; this route accepts only the key, because the only honest
     /// writer of a meter reading is the thing that read the meter. There is no
     /// control for writing an entry anywhere in the browser and there is not
     /// meant to be one.

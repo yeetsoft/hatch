@@ -705,14 +705,14 @@ public class IssueWorkLogControllerTests
     }
 
     [Fact]
-    public void TheRoute_AcceptsTheHatchScope()
+    public void TheRoute_AcceptsAKey()
     {
         var guard = typeof(IssueWorkLogController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- The trail it deliberately does not write ----
@@ -792,7 +792,6 @@ public class IssueWorkLogControllerTests
                 Name = "hatch",
                 Hash = [1],
                 Prefix = "hatch_ak_x",
-                Scopes = [ApiKeyScopes.Hatch],
                 CreatedAt = Now,
             },
         };

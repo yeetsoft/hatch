@@ -287,7 +287,6 @@ public class CallerIdentityTests
             Name = "Claude",
             Prefix = "hatch_ak_abc",
             Hash = AuthTokens.Hash("hatch_ak_secret"),
-            Scopes = [ApiKeyScopes.Hatch],
             CreatedAt = DateTimeOffset.UnixEpoch,
         };
 

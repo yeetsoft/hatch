@@ -216,6 +216,9 @@ public sealed class Tally
     /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
     public Controls? Controls { get; init; }
 
+    /// <summary>The models the runner has stopped offering - what a restart carries over. Null where nothing narrows.</summary>
+    public ModelNarrowing? Narrowing { get; init; }
+
     /// <summary>
     /// Whether this run is over, and why - asked before every increment and
     /// through every wait. One method, because "every exit path" is not
@@ -409,6 +412,15 @@ public sealed class Tally
             return;
         }
 
+        // The same for a model the account cannot spawn: the ticket is clean
+        // and waiting for a runner that can serve it, and three of these in a
+        // row is a runner with the wrong model, not three broken increments.
+        if (report.Unservable)
+        {
+            _interrupted.Add($"hatch:   unservable  {report.Key}  {report.Outcome}");
+            return;
+        }
+
         // A sixth list, and not a failure: the board ordered this ticket put
         // down for an emergency, which says nothing about whether the
         // increment itself was going well - three of these in a row must not
@@ -507,6 +519,7 @@ public sealed class Tally
         LetGo = _letGo,
         Interrupted = _interrupted,
         Preempted = _preempted,
+        Narrowed = Narrowing?.ToState(_clock.GetUtcNow()) ?? [],
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
         ExhaustedAt = ExhaustedAt,
@@ -1066,8 +1079,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SetDir = runtime.SetDir,
                 Slot = runtime.Slot,
                 Controls = runtime.Controls,
+                Narrowing = runtime.Narrowing,
                 Standby = standby,
             };
+
+            // A fresh start has carried nothing, which clears the store.
+            runtime.Narrowing.Load(carried?.Narrowed, runtime.Clock.GetUtcNow());
 
             // The host recreates the set's directory on every start, so after a
             // restart every ledger is gone while this member's night state still
@@ -1323,6 +1340,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         var session = found.FirstOrDefault(w => w.Window == "session");
                         lastProbedResetsAt = session?.ResetsAt;
                         tally.CorrectExhausted(session);
+                        var spentAt = runtime.Clock.GetUtcNow();
+                        foreach (var (model, resetsAt) in ModelNarrowing.Spent(found, spentAt))
+                        {
+                            if (runtime.Narrowing.Narrow(model, resetsAt, spentAt)) SayNarrowed(model, resetsAt);
+                        }
                         runtime.Say.Line(session is not null
                             ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
                             : "hatch: probe found no session window");
@@ -1724,6 +1746,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// The tags are still sent every beat, but the server takes them only on a
     /// row's first-ever beat; after that the row is the board's, the answer
     /// carries it back, and <see cref="Fold"/> adopts it.
+    /// <c>Has</c> is sent on every beat, unconditionally, empty list included,
+    /// so a machine with nothing clears whatever an older start advertised.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
@@ -1751,6 +1775,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,
@@ -2223,6 +2248,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
             releaseOutcome = report.ReleaseOutcome;
             releaseReason = report.ReleaseReason;
 
+            // A fresh clock read, not the `now` taken before the session ran:
+            // the narrowing's own "until" is read against when it actually
+            // takes effect.
+            if (report.Unservable && report.UnservableModel is { Length: > 0 } unservableModel
+                && runtime.Narrowing.Narrow(unservableModel, report.UnservableUntil, runtime.Clock.GetUtcNow()))
+                SayNarrowed(unservableModel, report.UnservableUntil);
+
             try
             {
                 // Before the lease is let go, because the ticket is still this
@@ -2238,7 +2270,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var hardLimit = report.HardLimited
                     ? new HardLimitInfo(report.HardLimitedAtTokens!.Value, report.HardLimitedAtRequests, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit);
+                var modelRefusal = report.Unservable
+                    ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
+                    : null;
+                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit, modelRefusal);
 
                 // The session was killed before it could file anything itself -
                 // the filing above is the runner's, done after RunAsync already
@@ -2356,6 +2391,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
         runtime.Say.Line($"hatch:   {named}");
         runtime.Say.Line($"hatch:   {tally.SoFar()}");
     }
+
+    /// <summary>
+    /// Said once, the moment <see cref="ModelNarrowing.Narrow"/> actually
+    /// changes something - never again for the same model until the narrowing
+    /// itself changes. Shared with a spent weekly window's own narrowing, not
+    /// only an unservable increment's.
+    /// </summary>
+    private void SayNarrowed(string model, DateTimeOffset? until) =>
+        runtime.Say.Line(until is { } at
+            ? $"hatch: {model} is off this runner's list until {UsageLimit.Clock(at, known: true, runtime.Clock)}"
+            : $"hatch: {model} is off this runner's list for the rest of this run");
 
     private async Task<bool> SayQuietlyAsync(
         SaidOnce paced, DateTimeOffset now, int interval, bool once,

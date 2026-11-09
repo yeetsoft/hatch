@@ -219,6 +219,10 @@ public sealed class OllamaAdapter : CodexAdapter
     /// <summary>A local server has no usage window to hit.</summary>
     public override UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
 
+    /// <summary>Overrides Codex's: a local server never speaks the ChatGPT-account sentence, only its own.</summary>
+    public override ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        ModelRefusal.Ollama(said);
+
     /// <summary>
     /// <c>haiku=&lt;id&gt;,sonnet=&lt;id&gt;,...</c>, in any order and any subset,
     /// as a dictionary keyed by lower-case alias - null or blank answers an

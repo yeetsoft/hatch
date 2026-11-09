@@ -37,7 +37,7 @@ namespace Hatch.Api.Tests.Auth;
 ///   (docs/auth-architecture.md, "A person is an authorization input"), and a
 ///   global role has nothing to say about them.
 /// - **Two levels, and the level is not a judgement per action.** Everything
-///   under Modules/Hatch asks for User, with `AcceptScope = "hatch"` except the
+///   under Modules/Hatch asks for User, with `AcceptKey = true` except the
 ///   person-only routes named in <c>PersonOnly</c>; everything else that is
 ///   guarded asks for Admin, except the People reads, which ask for User so
 ///   that a Pending person - who is let into nothing - sees no names either.
@@ -48,7 +48,7 @@ namespace Hatch.Api.Tests.Auth;
 ///   app - it is the operator's own tooling wearing a module's clothes, like
 ///   the admin app is the operator's own screen. Every one of its verbs is
 ///   guarded, reads included, and its bundle 404s for non-admins the same way
-///   (AdminAppMiddleware). Scoped API keys widen that (docs/hatch.md, "One
+///   (AdminAppMiddleware). API keys widen that (docs/hatch.md, "One
 ///   gate, two lanes"): a second credential through the same gate rather than
 ///   a second gate.
 /// </summary>
@@ -71,11 +71,10 @@ public class AdminSurfaceTests
 
         // API keys, and the one entry in this file with a second reason. They
         // are credentials, so they belong beside the sessions above - and they
-        // carry no AcceptScope, so a key cannot mint a key. Allowing that would
-        // make the scope system decorative, since any key could issue itself a
-        // second one carrying whatever it liked.
+        // carry no AcceptKey, so a key cannot mint a key. Allowing that would
+        // make the key system decorative, since a key could issue itself a
+        // second one.
         "ApiKeysController.ListKeys",
-        "ApiKeysController.ListScopes",
         "ApiKeysController.CreateKey",
         "ApiKeysController.RevokeKey",
         "ApiKeysController.SetOwner",
@@ -160,9 +159,9 @@ public class AdminSurfaceTests
 
         // Which columns are in the WIP section, and how much of one slice of
         // the board may sit across them at once, cut the same way as the
-        // runner bound below: reading is Hatch-scoped - an agent stalled
-        // behind a full section is entitled to know why - and the write names
-        // no scope, because a key that could raise the limit or empty the
+        // runner bound below: reading is key-accepting - an agent stalled
+        // behind a full section is entitled to know why - and the write accepts
+        // no key, because a key that could raise the limit or empty the
         // section could pull more of its own work in overnight. See
         // WipController.
         "WipController.GetWip",
@@ -180,11 +179,11 @@ public class AdminSurfaceTests
 
         // The other end of a message written by AddComment: a session, or the
         // runner spawning one, marking what it has put in front of the model.
-        // Hatch-scoped for the reason AddComment is - the key a spawned agent
+        // Key-accepting for the reason AddComment is - the key a spawned agent
         // inherits is the one that reads and delivers.
         "IssueMessagesController.Deliver",
 
-        // Hatch-scoped like the rest of the module, including the answering.
+        // Key-accepting like the rest of the module, including the answering.
         // A key is what `hatch.sh answer` types with, and a key is also what a
         // spawned agent inherits - the server cannot tell those apart, so it
         // does not pretend to. What keeps an agent from answering itself out of
@@ -196,7 +195,7 @@ public class AdminSurfaceTests
 
         // The same two facts as GetQuestions and GetBoard, read together for
         // the nav strip: what is up for review, and what is waiting on an
-        // answer. Hatch-scoped like both of the reads it stands in for, and it
+        // answer. Key-accepting like both of the reads it stands in for, and it
         // widens neither - a key that could not read the board could not read
         // this, and it says strictly less than the board does.
         "AttentionController.GetAttention",
@@ -208,7 +207,7 @@ public class AdminSurfaceTests
 
         // The loop's own write, on the loop's own say-so: it carries an
         // express issue past a column marked ExpressSkips with no session. It
-        // inherits the class's Hatch scope rather than a person-only route,
+        // inherits the class's AcceptKey rather than a person-only route,
         // because a key is exactly who calls a hop - see
         // IssueExpressController and StatusesController.PutExpressSkips for
         // the person-only edge that decides whether a hop exists at all.
@@ -216,7 +215,7 @@ public class AdminSurfaceTests
 
         // The runner's own write, same as the hop above: applies the verdict a
         // check session recorded under its own claim token, with no session
-        // dispatched. Hatch-scoped like the hop, for the same reason - a key is
+        // dispatched. Key-accepting like the hop, for the same reason - a key is
         // exactly who calls this once a check has run.
         "WorkController.VerdictWork",
 
@@ -231,13 +230,13 @@ public class AdminSurfaceTests
 
         // The review column's other direction: a merge column judged
         // "pushback" by MergeWork itself, carried back for a person - or the
-        // next session - to fix. Hatch-scoped like MergedWork beside it: a
+        // next session - to fix. Key-accepting like MergedWork beside it: a
         // runner's poll is exactly who reads this verdict.
         "WorkController.PushbackWork",
 
         // MergedWork's trunk-landing counterpart: a landing judged "land" by
         // LandingWork itself, carried to the terminal column after review.
-        // Hatch-scoped like its neighbours: a runner's poll is exactly who
+        // Key-accepting like its neighbours: a runner's poll is exactly who
         // calls it, and it refuses everything a hop refuses plus the judge.
         "WorkController.LandedWork",
 
@@ -260,42 +259,42 @@ public class AdminSurfaceTests
         // issues do: the verdicts already ride IssueDto.
         "WorkController.GetReview",
 
-        // The read a meter is drawn from, Hatch-scoped like the rest of the
+        // The read a meter is drawn from, key-accepting like the rest of the
         // module: it says how far along a subtree is, which is exactly what a
         // key holder asking "what is left under this epic" is entitled to.
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
 
         // Closed top-level epics, bucketed over a range rather than split by
-        // day; Hatch-scoped and open to a person, like GetTimeline.
+        // day; key-accepting and open to a person, like GetTimeline.
         "ReportsController.GetChangelogReport",
 
         // When the work happened, read off the status history: the epics active
-        // in a range and the stretches beneath them. Hatch-scoped and open to a
+        // in a range and the stretches beneath them. Key-accepting and open to a
         // person like WorkLogController's reads - it says what the trail
         // already says, folded into one answer.
         "ReportsController.GetTimeline",
 
         // How many issues sat in each board column over time, read off the
-        // status history; Hatch-scoped and open to a person, like GetTimeline.
+        // status history; key-accepting and open to a person, like GetTimeline.
         "ReportsController.GetCumulativeFlow",
 
         // How work moved through the board over a range - counts and
         // durations per column, read off the status history, the questions and
-        // the work log; Hatch-scoped and open to a person, like GetTimeline.
+        // the work log; key-accepting and open to a person, like GetTimeline.
         "ReportsController.GetFlow",
 
-        // My own Claude headroom, off my own runners' heartbeats. Hatch-scoped
+        // My own Claude headroom, off my own runners' heartbeats. Key-accepting
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,
         // which is a fact about the caller rather than about the house - and
         // it already narrows to the caller's own runners, the same as `--mine`.
         "UtilizationController.Get",
 
-        // The build on a repository's trunk, Hatch-scoped for the reason
+        // The build on a repository's trunk, key-accepting for the reason
         // BuildCheckController is: a key may read and write it, the same as a
         // branch's build check - it is a fact about a sha that any runner reads
-        // the same way. Filing the bug it can surface is Hatch-scoped too, now
+        // the same way. Filing the bug it can surface is key-accepting too, now
         // that the choice a key makes there is gated per project rather than
         // cut outright - see TrunkBuildBugController's own header for why.
         "TrunkBuildController.GetTrunkBuilds",
@@ -303,18 +302,25 @@ public class AdminSurfaceTests
         "TrunkBuildBugController.PostBug",
 
         // What .hatch/playbooks.yaml parsed to on a repository's trunk,
-        // Hatch-scoped and gated the same as TrunkBuildController: a key
+        // Key-accepting and gated the same as TrunkBuildController: a key
         // reads it the same way a runner's poll does, and a runner's poll
         // writes it the same way. See PlaybookFile.
         "PlaybookFileController.GetPlaybookFiles",
         "PlaybookFileController.PutPlaybookFile",
 
+        // What .hatch/dependencies.json parsed to on a repository's trunk,
+        // Key-accepting and gated the same as PlaybookFileController: a key
+        // reads it the same way a runner's poll does, and a runner's poll
+        // writes it the same way. See DependencyDeclaration.
+        "DependencyFileController.GetDependencyFiles",
+        "DependencyFileController.PutDependencyFile",
+
         // Who is at the browser, so the nav strip can say so and know the
-        // role. Guarded like the rest of the module, and Hatch-scoped for
+        // role. Guarded like the rest of the module, and key-accepting for
         // consistency: a key reads as nobody and gets a 204.
         "MeController.GetMe",
 
-        // What each ticket cost, one row per agent session. Hatch-scoped like
+        // What each ticket cost, one row per agent session. Key-accepting like
         // the rest of the module - and the write is cut a third way, tighter
         // than either of the two below: it refuses a person outright, in the
         // action, because the only honest writer of a meter reading is the
@@ -324,7 +330,7 @@ public class AdminSurfaceTests
         "IssueWorkLogController.GetWorkLog",
         "IssueWorkLogController.PostEntry",
 
-        // The same log read across issues, for the leaderboard. Hatch-scoped
+        // The same log read across issues, for the leaderboard. Key-accepting
         // like the module's other reads and, deliberately unlike the write above
         // it, open to a person: reading what the nights cost is the whole point
         // of the page.
@@ -333,18 +339,18 @@ public class AdminSurfaceTests
         "WorkLogController.GetSessions",
 
         // The event trail across every issue rather than about one - the
-        // module's other cross-issue read, Hatch-scoped and open to a person
+        // module's other cross-issue read, key-accepting and open to a person
         // the same way WorkLogController's reads are: it says nothing about an
         // issue its own thread would refuse to.
         "ActivityController.GetActivity",
 
         // The search across every issue, its comments and its work log -
-        // another cross-issue read, Hatch-scoped and open to a person like
+        // another cross-issue read, key-accepting and open to a person like
         // IssuesController.SearchIssues, whose cards it returns.
         "SearchController.GetSearch",
 
         // Dreams: a line somebody wanted said, with no issue underneath it at
-        // all - Hatch-scoped like the rest of the module, reads included,
+        // all - key-accepting like the rest of the module, reads included,
         // for the same reason BoardController's is: it is the operator's own
         // list, not a fact about the house.
         "DreamsController.GetDreams",
@@ -353,7 +359,7 @@ public class AdminSurfaceTests
         "DreamsController.DeleteDream",
 
         // What landed in the newest night, across every issue rather than
-        // about one - Hatch-scoped and open to a person the same way
+        // about one - key-accepting and open to a person the same way
         // WorkLogController's and ActivityController's reads are. See
         // OvernightController.
         "OvernightController.GetOvernight",
@@ -362,20 +368,20 @@ public class AdminSurfaceTests
         // see OvernightController.PostSeen.
         "OvernightController.PostSeen",
 
-        // What shipped, a window at a time - Hatch-scoped and open to a
+        // What shipped, a window at a time - key-accepting and open to a
         // person the same way OvernightController's read is. See
         // ChangelogController.
         "ChangelogController.GetChangelog",
 
-        // The backup folder's truth and the last attempt's - Hatch-scoped and
+        // The backup folder's truth and the last attempt's - key-accepting and
         // open to a person like OvernightController's read is. Running one is
         // the operator's own act, never a key's or a keyless runner's. See
         // BackupController.
         "BackupController.GetBackup",
         "BackupController.PostBackupRun",
 
-        // Playbooks are guarded twice over. Reading one is Hatch-scoped like
-        // the rest; writing one names no scope at all, so an API key is
+        // Playbooks are guarded twice over. Reading one is key-accepting like
+        // the rest; writing one accepts no key at all, so an API key is
         // refused - a playbook chooses the next agent's instructions, its
         // model and its budget, and an agent that could edit one could widen
         // its own. See PlaybooksController.
@@ -385,10 +391,10 @@ public class AdminSurfaceTests
         "PlaybooksController.DeletePlaybook",
 
         // What a session proposed changing about a playbook, read back, and
-        // the submission that files one - both Hatch-scoped, since the same
+        // the submission that files one - both key-accepting, since the same
         // key that cannot write to /playbooks directly can still ask for a
         // change and see where it landed. Deciding one is a person's own
-        // call, like PATCH /playbooks/{id} - no scope at all.
+        // call, like PATCH /playbooks/{id} - no key at all.
         // See PlaybookProposalsController.
         "PlaybookProposalsController.GetProposals",
         "PlaybookProposalsController.GetProposal",
@@ -399,18 +405,18 @@ public class AdminSurfaceTests
         // The two verbs that say one issue waits on another, and deliberately
         // *unlike* the playbook and the override below: an edge is a statement
         // about the work, not about an agent's budget, so a planning session
-        // that has just filed five stories can chain them itself. Hatch-scoped
+        // that has just filed five stories can chain them itself. Key-accepting
         // like the rest of the module. See IssueDependenciesController.
         "IssueDependenciesController.AddDependency",
         "IssueDependenciesController.RemoveDependency",
 
-        // What an issue drew on, read and replaced whole. Hatch-scoped like
+        // What an issue drew on, read and replaced whole. Key-accepting like
         // the rest of the module - see IssueDreamsController.
         "IssueDreamsController.PutIssueDreams",
         "IssueDreamsController.GetIssueDreams",
 
-        // The lease on an issue, and the one place in the module where the
-        // scope is accepted *because* the caller is a machine: a mutex only an
+        // The lease on an issue, and the one place in the module where a
+        // key is accepted *because* the caller is a machine: a mutex only an
         // operator could operate would mutex nothing. All three carry the
         // ordinary guard.
         //
@@ -424,7 +430,7 @@ public class AdminSurfaceTests
         "IssueClaimController.ReleaseClaim",
 
         // A runner's verdict on whether an issue's branch merges with the
-        // trunk, and Hatch-scoped for the reason the claim is: the caller is a
+        // trunk, and key-accepting for the reason the claim is: the caller is a
         // machine, and a verdict only an operator could enter would be one
         // nobody ever entered. It is a fact about two refs that every runner
         // computes the same way, not a statement about an agent's budget; a
@@ -453,7 +459,7 @@ public class AdminSurfaceTests
         "BroughtCurrentController.PutBroughtCurrent",
 
         // What a check session judged about an issue - pass or fail - and
-        // Hatch-scoped for the same reason the two verdicts above are: the
+        // Key-accepting for the same reason the two verdicts above are: the
         // caller is whatever ran the check, and a verdict only an operator
         // could enter would be one an agent session could never record for
         // itself. See VerdictsController.
@@ -463,7 +469,7 @@ public class AdminSurfaceTests
         // same way: an issue's model and effort override every playbook that
         // could speak for it, so an agent that could set one could raise its
         // own budget. Reading it is open - it rides IssueDto, which is
-        // Hatch-scoped - and only the write is here. See
+        // Key-accepting - and only the write is here. See
         // IssuePlaybookController.
         "IssuePlaybookController.PatchIssuePlaybook",
 
@@ -481,18 +487,23 @@ public class AdminSurfaceTests
         // a bound on how much a runner may spend and how long it may run. An
         // agent that could raise its own --max-spend could raise its own
         // budget. See RunnersController.
+        "RunnersController.GetRunner",
         "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
         // key that could write one could clear a person's name off a ticket and
         // hand itself work that was reserved. The directory read beside it is
-        // Hatch-scoped - it is a list of names, and an agent has to be able to
+        // Key-accepting - it is a list of names, and an agent has to be able to
         // say whose ticket it is declining to take. See AssigneeController.
         "AssigneeController.GetAssignees",
         "AssigneeController.PutIssueAssignee",
@@ -502,7 +513,7 @@ public class AdminSurfaceTests
         // that could set one could put its own ticket ahead of everything a
         // person filed, every night, with nothing looking wrong on the board.
         // Reading it is open - it rides IssueDto and IssueCardDto, both
-        // Hatch-scoped - and only the write is here. See
+        // Key-accepting - and only the write is here. See
         // IssueExpediteController, which cuts both its routes the same way.
         "IssueExpediteController.PutIssuePriority",
         "IssueExpediteController.PutIssueExpedite",
@@ -563,7 +574,7 @@ public class AdminSurfaceTests
 
         // The column half of the same edge: which columns an express issue is
         // carried past with no session. Reading it is open - it rides
-        // StatusDto, which is Hatch-scoped - and only the write is here. See
+        // StatusDto, which is key-accepting - and only the write is here. See
         // StatusesController.PutExpressSkips.
         "StatusesController.PutExpressSkips",
 
@@ -609,7 +620,7 @@ public class AdminSurfaceTests
         // way: a runner that could bind one could point every runner on the
         // board at a repository nobody chose. The read beside it
         // (GetRepositories, above with the rest of ProjectsController) is
-        // Hatch-scoped - it is exactly what a dispatch needs to know where to
+        // Key-accepting - it is exactly what a dispatch needs to know where to
         // check out. See ProjectsController.
         "ProjectsController.PutRepositories",
         "ProjectsController.PutLogo",
@@ -639,7 +650,7 @@ public class AdminSurfaceTests
 
         // Hatch's own two settings - the Claude subscription token and what to
         // call whoever is sitting at this machine. Cut tighter than the module
-        // around it: plain [RequireAdmin], no Hatch scope, so a key is refused
+        // around it: plain [RequireAdmin], no AcceptKey, so a key is refused
         // the read as well as the write. A key that could write here could set
         // the name every event in the house is signed with, or swap the
         // credential the account's headroom is read through. See
@@ -652,7 +663,7 @@ public class AdminSurfaceTests
         // The one route in that class cut the other way, and the only endpoint
         // in Hatch that hands a live secret back out. It is here because it is
         // still guarded - a household member who is not an administrator is
-        // refused - but it carries AcceptScope = hatch, unlike its two
+        // refused - but it sets AcceptKey, unlike its two
         // siblings, because its ordinary caller is a keyless container runner
         // that has to authenticate a claude CLI it starts itself. What keeps
         // that from being a widening is a second gate the attribute cannot
@@ -665,7 +676,7 @@ public class AdminSurfaceTests
         "SettingsController.GetClaudeToken",
 
         // The runner the image hands out, cut the same way as the settings
-        // above it: plain [RequireAdmin], no Hatch scope. Not because a binary
+        // above it: plain [RequireAdmin], no AcceptKey. Not because a binary
         // is a credential - it is the same program anybody may build from this
         // repository - but because the audience is a person at a browser
         // setting a machine up, and nobody's dispatcher has a reason to
@@ -720,7 +731,7 @@ public class AdminSurfaceTests
     }
 
     /// <summary>
-    /// The routes under Modules/Hatch that name no scope, so a key is refused
+    /// The routes under Modules/Hatch that accept no key, so a key is refused
     /// them: a playbook, an override, a runner bound, an assignee, a priority,
     /// the settings and the runner binary each choose what the next agent may
     /// do or spend. Each still asks for User - a person, not an Admin.
@@ -737,6 +748,10 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
 
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
@@ -800,6 +815,128 @@ public class AdminSurfaceTests
         "RunnerController.Download",
     ];
 
+    /// <summary>
+    /// The audit of what an API key may reach: every action whose attribute
+    /// sets AcceptKey, which is the only thing that lets a key in. Adding
+    /// a route here is a decision about what an agent may do unattended, not a
+    /// bookkeeping step - make it on purpose.
+    /// </summary>
+    private static readonly string[] AcceptsKey =
+    [
+        "ActivityController.GetActivity",
+        "AssigneeController.GetAssignees",
+        "AttachmentsController.GetAttachment",
+        "AttachmentsController.GetAttachments",
+        "AttentionController.GetAttention",
+        "BackupController.GetBackup",
+        "BoardController.GetBoard",
+        "BroughtCurrentController.PutBroughtCurrent",
+        "BuildCheckController.PutBuildCheck",
+        "ChangelogController.GetChangelog",
+        "DependencyFileController.GetDependencyFiles",
+        "DependencyFileController.PutDependencyFile",
+        "DreamsController.AddDream",
+        "DreamsController.DeleteDream",
+        "DreamsController.EditDream",
+        "DreamsController.GetDreams",
+        "ImagesController.GetImage",
+        "ImportController.Import",
+        "ImportController.Preview",
+        "ImportController.PreviewText",
+        "IssueClaimController.Heartbeat",
+        "IssueClaimController.ReleaseClaim",
+        "IssueClaimController.TakeClaim",
+        "IssueDangerousController.PutIssueDangerous",
+        "IssueDependenciesController.AddDependency",
+        "IssueDependenciesController.RemoveDependency",
+        "IssueDreamsController.GetIssueDreams",
+        "IssueDreamsController.PutIssueDreams",
+        "IssueMessagesController.Deliver",
+        "IssueNoCodeController.PutIssueNoCode",
+        "IssueOnePrController.PutIssueOnePr",
+        "IssueReleaseNoteController.PutIssueReleaseNote",
+        "IssueRunnerOmissionsController.DeleteOmittedRunner",
+        "IssueRunnerOmissionsController.PutOmittedRunner",
+        "IssueRunnerTagsController.PutIssueRunnerTags",
+        "IssueThreadController.AddComment",
+        "IssueThreadController.GetComments",
+        "IssueThreadController.GetEvents",
+        "IssueWorkLogController.GetWorkLog",
+        "IssueWorkLogController.PostEntry",
+        "IssuesController.BulkEdit",
+        "IssuesController.CreateIssue",
+        "IssuesController.DeleteIssue",
+        "IssuesController.GetIssue",
+        "IssuesController.MoveIssue",
+        "IssuesController.PatchIssue",
+        "IssuesController.SearchIssues",
+        "LandingController.PutLanding",
+        "MeController.GetMe",
+        "MergeCheckController.PutMergeCheck",
+        "OvernightController.GetOvernight",
+        "PlanController.GetIssuePlan",
+        "PlanController.GetPlan",
+        "PlaybookFileController.GetPlaybookFiles",
+        "PlaybookFileController.PutPlaybookFile",
+        "PlaybookProposalsController.GetProposal",
+        "PlaybookProposalsController.GetProposals",
+        "PlaybookProposalsController.SubmitProposal",
+        "PlaybooksController.GetPlaybooks",
+        "ProjectsController.CreateProject",
+        "ProjectsController.DeleteProject",
+        "ProjectsController.GetLogo",
+        "ProjectsController.GetMembers",
+        "ProjectsController.GetProjects",
+        "ProjectsController.GetRepositories",
+        "ProjectsController.PatchProject",
+        "PullRequestStateController.PutPullRequestState",
+        "QuestionsController.GetIssueQuestions",
+        "QuestionsController.GetQuestions",
+        "ReportsController.GetChangelogReport",
+        "ReportsController.GetCumulativeFlow",
+        "ReportsController.GetFlow",
+        "ReportsController.GetTimeline",
+        "RunnersController.GetRunner",
+        "RunnersController.GetRunnerNames",
+        "RunnersController.GetRunners",
+        "RunnersController.Heartbeat",
+        "SearchController.GetSearch",
+        "SettingsController.GetClaudeToken",
+        "SettingsController.GetCredential",
+        "StatusesController.CreateStatus",
+        "StatusesController.DeleteStatus",
+        "StatusesController.GetStatuses",
+        "StatusesController.PatchStatus",
+        "TrunkBuildBugController.PostBug",
+        "TrunkBuildController.GetTrunkBuilds",
+        "TrunkBuildController.PutTrunkBuild",
+        "UtilizationController.Get",
+        "VerdictsController.PostVerdict",
+        "WipController.GetWip",
+        "WorkController.ClosedWork",
+        "WorkController.GetNextWork",
+        "WorkController.GetQueue",
+        "WorkController.GetReview",
+        "WorkController.GetWork",
+        "WorkController.HopWork",
+        "WorkController.LandedWork",
+        "WorkController.MergedWork",
+        "WorkController.PushbackWork",
+        "WorkController.VerdictWork",
+        "WorkLogController.GetByPlaybook",
+        "WorkLogController.GetHistory",
+        "WorkLogController.GetSessions",
+    ];
+
+    /// <summary>Hatch routes that are the operator's, mirroring <see cref="UserOutsideHatch"/>.</summary>
+    private static readonly string[] AdminInHatch =
+    [
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
+    ];
+
     private static readonly string[] UserOutsideHatch =
     [
         "PeopleController.GetAll",
@@ -813,21 +950,40 @@ public class AdminSurfaceTests
         foreach (var (name, method) in GuardedActions())
         {
             var attribute = RequiredRole(method)!;
-            var expected = IsHatch(method) || UserOutsideHatch.Contains(name) ? PersonRole.User : PersonRole.Admin;
+            var expected = (IsHatch(method) && !AdminInHatch.Contains(name)) || UserOutsideHatch.Contains(name) ? PersonRole.User : PersonRole.Admin;
 
             Assert.True(expected == attribute.Minimum, $"{name} asks for {attribute.Minimum}, audited at {expected}");
         }
     }
 
     [Fact]
-    public void HatchRoutesAcceptTheHatchScopeExactlyWhereTheyDidBefore()
+    public void HatchRoutesAcceptTheKeyExactlyWhereTheyDidBefore()
     {
         foreach (var (name, method) in GuardedActions())
         {
-            var scope = RequiredRole(method)!.AcceptScope;
-            var expected = IsHatch(method) && !PersonOnly.Contains(name) ? ApiKeyScopes.Hatch : null;
+            var accepts = RequiredRole(method)!.AcceptKey;
+            var expected = IsHatch(method) && !PersonOnly.Contains(name);
 
-            Assert.True(expected == scope, $"{name} accepts scope '{scope}', audited at '{expected}'");
+            Assert.True(expected == accepts, $"{name} accepts a key: {accepts}, audited at {expected}");
+        }
+    }
+
+    [Fact]
+    public void TheRoutesThatAcceptAKeyAreExactlyTheCheckedInList()
+    {
+        var actual = GuardedActions()
+            .Where(a => RequiredRole(a.Method)!.AcceptKey)
+            .Select(a => a.Name)
+            .ToHashSet();
+
+        foreach (var name in actual.Except(AcceptsKey).OrderBy(n => n, StringComparer.Ordinal))
+        {
+            Assert.Fail($"{name} accepts a key, and is not in the audited list");
+        }
+
+        foreach (var name in AcceptsKey.Except(actual).OrderBy(n => n, StringComparer.Ordinal))
+        {
+            Assert.Fail($"{name} is in the audited list of routes that accept a key, and does not");
         }
     }
 
@@ -869,7 +1025,7 @@ public class AdminSurfaceTests
     {
         var all = ActionsWhere(guarded: true).Concat(ActionsWhere(guarded: false)).ToHashSet();
 
-        foreach (var action in Guarded.Concat(DeliberatelyOpen))
+        foreach (var action in Guarded.Concat(DeliberatelyOpen).Concat(AcceptsKey))
         {
             Assert.Contains(action, all);
         }

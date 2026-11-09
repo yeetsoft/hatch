@@ -1861,6 +1861,75 @@ public class EfHatchPlaybookFile
 }
 
 /// <summary>
+/// What a repository's trunk holds at <see cref="DependencyDeclaration.Path"/>,
+/// as of the last time something checked - the parsed entries, or why there
+/// are none. One row per repository per trunk, keyed on <see cref="Canonical"/>
+/// and <see cref="Trunk"/>, the same shape <see cref="EfHatchPlaybookFile"/> is.
+/// </summary>
+[Table("DependencyFiles")]
+[Index(nameof(Canonical), nameof(Trunk), IsUnique = true)]
+public class EfHatchDependencyFile
+{
+    public const int MaxRemoteLength = EfHatchTrunkBuild.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchTrunkBuild.MaxRefLength;
+    public const int MaxShaLength = EfHatchTrunkBuild.MaxShaLength;
+    public const int MaxHashLength = 64; // lower-hex SHA-256
+    public const int MaxUrlLength = EfHatchTrunkBuild.MaxCheckUrlLength;
+    public const int MaxProblemLength = 2000;
+
+    public const string ParsedState = "parsed";
+    public const string AbsentState = "absent";
+    public const string InvalidState = "invalid";
+    public static readonly string[] States = [ParsedState, AbsentState, InvalidState];
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    [MaxLength(MaxRemoteLength)] public required string Remote { get; set; }
+    [MaxLength(MaxRemoteLength)] public required string Canonical { get; set; }
+    [MaxLength(MaxRefLength)] public required string Trunk { get; set; }
+    [MaxLength(MaxShaLength)] public required string Sha { get; set; }
+
+    [MaxLength(10)] public required string State { get; set; } // one of States
+
+    [MaxLength(MaxHashLength)] public string? Hash { get; set; }
+
+    /// <summary>jsonb; see <see cref="ReadEntries"/>/<see cref="WriteEntries"/> below. Null when <see cref="State"/> is not <see cref="ParsedState"/>.</summary>
+    public string? Entries { get; set; }
+
+    [MaxLength(MaxProblemLength)] public string? Problem { get; set; }
+
+    [MaxLength(MaxShaLength)] public string? LastGoodSha { get; set; }
+    [MaxLength(MaxHashLength)] public string? LastGoodHash { get; set; }
+
+    [MaxLength(MaxUrlLength)] public string? Url { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+    [MaxLength(ClaimRequest.MaxRunnerLength)] public required string Runner { get; set; }
+    [MaxLength(Common.PersonName.MaxChars)] public required string CheckedBy { get; set; }
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static string? WriteEntries(IReadOnlyList<DeclaredDependency> entries) =>
+        entries.Count == 0 ? null : JsonSerializer.Serialize(entries, Json);
+
+    /// <summary>The stored list, or empty. A row that will not parse reads as empty rather than throwing the verdict away.</summary>
+    public static IReadOnlyList<DeclaredDependency> ReadEntries(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<DeclaredDependency>>(stored, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+}
+
+/// <summary>
 /// The verdict a check session wrote about an issue - pass or fail, and
 /// whatever findings came with it. One row per claim: a second write under the
 /// same <see cref="ClaimToken"/> replaces the first, the way a merge or build
@@ -3215,6 +3284,14 @@ public class EfHatchRunner
     public string? Models { get; set; }
 
     /// <summary>
+    /// The dependencies this runner says it has, newline-joined in the order
+    /// given - a fact about the running process, overwritten on every
+    /// heartbeat that names any and never seeded once like
+    /// <see cref="Tags"/>. Null is never said, and reads as none.
+    /// </summary>
+    public string? Has { get; set; }
+
+    /// <summary>
     /// Whether this runner refuses dangerous work. Seeded once by a heartbeat
     /// that says it; from then on only a <c>PATCH</c> moves it, so a restart
     /// with a different flag leaves the row alone. Null is never said, and
@@ -3297,4 +3374,60 @@ public class EfHatchRunner
 
     /// <summary>When the order was placed.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
+}
+
+/// <summary>
+/// The board's settings for one runner key - what an operator has chosen for
+/// it, as against <see cref="EfHatchRunner"/>, which is what the process
+/// reports about itself. Keyed by the API key's id and related to nothing, so
+/// a config outlives any one process the key starts.
+/// </summary>
+/// <remarks>
+/// Nothing reads this table yet; it is the board-facing half the runner will
+/// take its bounds from once something does.
+/// </remarks>
+[Table("RunnerConfigs")]
+public class EfHatchRunnerConfig
+{
+    /// <summary>
+    /// The API key this config belongs to. A bare <see cref="Guid"/> with no
+    /// navigation and no foreign key, because <c>EfApiKey</c> lives in the core
+    /// schema and a module never references another module's entities
+    /// (Modules/README.md) - the same shape as
+    /// <see cref="EfHatchOvernightSeen.PersonId"/>. Never generated: the id is
+    /// the key's, not this row's.
+    /// </summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid ApiKeyId { get; set; }
+
+    /// <summary>
+    /// The tags this runner carries, as a jsonb array in the order they were
+    /// written - normalised, case folded and deduplicated by
+    /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
+    /// column. Empty, not null, the way <see cref="EfHatchProject.RunnerTags"/>
+    /// is, so <c>EnsureCreated</c> and every migrated row read back "[]".
+    /// </summary>
+    public string Tags { get; set; } = "[]";
+
+    /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxUnderLength)]
+    public string? Under { get; set; }
+
+    /// <summary>The cap on increments, as <see cref="EfHatchRunner.MaxRuns"/>.</summary>
+    public int? MaxRuns { get; set; }
+
+    /// <summary>The cap on dollars, as <see cref="EfHatchRunner.MaxSpend"/>.</summary>
+    public decimal? MaxSpend { get; set; }
+
+    /// <summary>The cap on tokens for the whole run, as <see cref="EfHatchRunner.MaxTokens"/>.</summary>
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The cap on tokens per hour, as <see cref="EfHatchRunner.MaxTokensPerHour"/>.</summary>
+    public long? MaxTokensPerHour { get; set; }
+
+    /// <summary>When to stop, always as an instant, as <see cref="EfHatchRunner.UntilAt"/>.</summary>
+    public DateTimeOffset? UntilAt { get; set; }
+
+    /// <summary>When this config was last written.</summary>
+    public required DateTimeOffset UpdatedAt { get; set; }
 }

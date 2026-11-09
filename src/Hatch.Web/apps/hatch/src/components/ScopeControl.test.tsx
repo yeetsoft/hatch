@@ -36,22 +36,39 @@ describe('ScopeControl', () => {
     expect(html).toContain('All projects');
     expect(html).toContain('hatch-menu__trigger--accent');
     expect(html).not.toContain('hatch-scope-control__chip');
+    expect(html).toContain('hatch-menu__caret');
   });
 
   it('shows one chip for the scoped project and none for the rest', () => {
     const html = trigger(render(three, ['AER']));
+    expect(html).toContain('hatch-menu__caret');
     expect([...html.matchAll(/hatch-scope-control__chip/g)]).toHaveLength(1);
     expect(html).toContain('AER');
     expect(html).not.toContain('>HA<');
     expect(html).not.toContain('>GL<');
   });
 
+  it('draws no project mark inside a scoped chip', () => {
+    const html = trigger(render(three, ['AER']));
+    expect(html).toContain('hatch-scope-control__chip');
+    expect(html).not.toContain('hatch-project-mark');
+    expect(html).toMatch(/<span class="hatch-scope-control__chip"[^>]*>AER<\/span>/);
+  });
+
+  it('keeps an icon project out of the scoped chip but in its panel row', () => {
+    const html = render([{ key: 'HA', name: 'Hatch', icon: 'rocket' }, ...three.slice(1)] as Project[], ['HA']);
+    const chip = trigger(html).match(/<span class="hatch-scope-control__chip"[^>]*>[\s\S]*?<\/span>/)?.[0] ?? '';
+    expect(chip).toContain('>HA</span>');
+    expect(chip).not.toContain('<svg');
+    expect(rows(html)[0]).toContain('<svg');
+  });
+
   it('lists every project in the panel, scoped or not', () => {
     const html = render(three, ['AER']);
     expect(rows(html)).toHaveLength(3);
-    expect(html).toContain('<span class="hatch-types-name">HA — Hatch</span>');
-    expect(html).toContain('<span class="hatch-types-name">AER — Aerie</span>');
-    expect(html).toContain('<span class="hatch-types-name">GL — glasshole</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">HA — Hatch</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">AER — Aerie</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">GL — glasshole</span>');
   });
 
   it('keeps the trigger and every row under a one-project scope, with only that row ticked', () => {

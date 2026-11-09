@@ -185,7 +185,7 @@ public record StatusDto(
 /// column is still a name.
 ///
 /// There is no <c>IsWip</c> here or on <see cref="StatusPatchRequest"/>: this
-/// route accepts the <c>hatch</c> scope on every verb, and the WIP section is
+/// route accepts a key on every verb, and the WIP section is
 /// the operator's to set - see <see cref="EfHatchStatus.IsWip"/> and
 /// <c>WipController</c>.
 /// </summary>
@@ -793,7 +793,14 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Recused = "recused";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused;
+    /// <summary>
+    /// The runner's model could not be spawned (it was refused). The increment
+    /// neither stalled nor did work, so <c>LetGo</c> steps over it as over
+    /// <see cref="Preempted"/>.
+    /// </summary>
+    public const string Unservable = "unservable";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused or Unservable;
 }
 
 /// <summary>
@@ -1448,6 +1455,14 @@ public record ReviewDto(
 /// it is a person's. Null when no backup path is configured or all is well, on
 /// every board shape. Defaults to null so an older client still reads.
 /// </param>
+/// <param name="WaitingOnARunner">
+/// Every issue whose next move is clear but that no live runner can take,
+/// because every live, running, not-out-of-usage runner's own declaration folds
+/// it on the model it runs on or on a development dependency its project's
+/// repository asks for - and on nothing else. Ordered by tier, then rank. Empty,
+/// not null, when there is none or no runner is live, on every board shape.
+/// Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1462,7 +1477,8 @@ public record AttentionDto(
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
     IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
-    BackupAttentionDto? Backup = null);
+    BackupAttentionDto? Backup = null,
+    IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1567,6 +1583,17 @@ public record NoCodeHeldDto(string Key, string Title, string Type, string Reason
 /// </summary>
 /// <param name="Sentence">The queue's own words, starting <c>deadlocked - </c>.</param>
 public record DeadlockedDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// An issue whose next move is clear, and that no live runner can take - see
+/// <see cref="AttentionDto.WaitingOnARunner"/>.
+/// </summary>
+/// <param name="Move">The column the move starts from.</param>
+/// <param name="Missing">
+/// What no live runner has, in a sentence: <c>no live runner offers fable</c>,
+/// or <c>no live runner has pwsh 7 and playwright-browsers</c>.
+/// </param>
+public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
 
 // ---- The board ----
 
@@ -1920,7 +1947,7 @@ public record PlaybookProposalApproveResponse(int Approved, IReadOnlyList<Playbo
 /// </summary>
 /// <remarks>
 /// Its own request, and its own route, because
-/// <see cref="IssuesController"/> accepts the <c>hatch</c> scope and this must
+/// <see cref="IssuesController"/> accepts a key and this must
 /// not - see <see cref="IssuePlaybookController"/>. There is no prompt here on
 /// purpose: a prompt is the <em>method</em> for a transition, and a per-issue
 /// method is a paragraph, which is what a description is.
@@ -3760,6 +3787,21 @@ public record PlaybookFileDto(
 
 public record PlaybookFilesDto(string Path, IReadOnlyList<PlaybookFileDto> Files);
 
+/// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
+/// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>
+public record DependencyFileRequest(
+    string Remote, string Trunk, string Sha, string? Content, string? Url, string Runner);
+
+/// <summary>DeclaredDependency with its id resolved to the current label - the shape a client reads.</summary>
+public record DependencyFileEntryDto(string Id, string Label, string? Version);
+
+public record DependencyFileDto(
+    long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
+    IReadOnlyList<DependencyFileEntryDto> Entries, string? Problem, string? LastGoodSha, string? LastGoodHash,
+    string? Url, DateTimeOffset CheckedAt, string Runner, string CheckedBy);
+
+public record DependencyFilesDto(string Path, IReadOnlyList<DependencyFileDto> Files);
+
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
 /// stop.
@@ -3939,6 +3981,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// the runner reports about itself, never a person's to set. Empty for a
 /// runner that has said none, rather than null.
 /// </param>
+/// <param name="Has">
+/// The dependencies this runner says it has, normalised per
+/// <see cref="DependencySet.Normalise"/> and in the order it gave them. A fact
+/// the runner reports about itself, never a person's to set. Empty for a
+/// runner that has said none, rather than null.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3984,14 +4032,42 @@ public record RunnerDto(
     long? TokensUsed = null,
     long? TokensLastHour = null,
     DateTimeOffset? ThrottledUntil = null,
-    IReadOnlyList<string> Models = null!)
+    IReadOnlyList<string> Models = null!,
+    IReadOnlyList<string> Has = null!,
+    Guid? ApiKeyId = null,
+    string? Prefix = null,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? LastUsedAt = null,
+    DateTimeOffset? RevokedAt = null,
+    Guid? OwnerPersonId = null,
+    IReadOnlyList<RunnerSessionDto> Sessions = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
     public IReadOnlyList<string> Models { get; init; } = Models ?? [];
+    public IReadOnlyList<string> Has { get; init; } = Has ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
+    public IReadOnlyList<RunnerSessionDto> Sessions { get; init; } = Sessions ?? [];
 }
+
+/// <summary>
+/// One session an api key behind a runner has open, read beside the key's
+/// own fields on <see cref="RunnerDto"/>.
+/// </summary>
+public record RunnerSessionDto(string Where, DateTimeOffset LastSeenAt);
+
+/// <summary>
+/// A freshly minted runner key, answered once at creation - the only time
+/// the secret itself is readable.
+/// </summary>
+public record RunnerMintedDto(RunnerDto Runner, string Secret);
+
+/// <summary>
+/// What mints a runner. No name is refused; no owner reads as the caller;
+/// no tags reads as none.
+/// </summary>
+public record CreateRunnerRequest(string? Name, Guid? OwnerPersonId = null, IReadOnlyList<string>? Tags = null);
 
 /// <summary>
 /// Where a runner's own reported build sits relative to the board's -
@@ -4121,6 +4197,12 @@ public enum RunnerBoardDrift
 /// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
 /// whole, or kept whole, per <see cref="RunnerModels.Normalise"/>.
 /// </param>
+/// <param name="Has">
+/// The dependencies this runner has - a fact about the process, written on
+/// every beat like <see cref="Remotes"/>, never seeded once and never a
+/// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
+/// whole, or kept whole, per <see cref="DependencySet.Normalise"/>.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4156,7 +4238,8 @@ public record RunnerHeartbeatRequest(
     long? MaxTokensPerHour = null,
     long? TokensUsed = null,
     long? TokensLastHour = null,
-    IReadOnlyList<string>? Models = null);
+    IReadOnlyList<string>? Models = null,
+    IReadOnlyList<string>? Has = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -4328,7 +4411,6 @@ public record CredentialDto(string ProtectedToken);
 /// who already holds a grant and so has nothing to sign in to.
 /// </param>
 /// <param name="Owner">The key's owner's name, for <c>key</c> with an owner. Null for every other kind.</param>
-/// <param name="Scopes">The key's scopes, for <c>key</c>. Null for every other kind.</param>
 public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
-    string? Owner = null, string[]? Scopes = null);
+    string? Owner = null);

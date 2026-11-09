@@ -262,11 +262,11 @@ public class IssuePlaybookControllerTests
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
-        // No scope named, and no class-level attribute to inherit one from:
+        // No key accepted, and no class-level attribute to inherit one from:
         // an override is a playbook's power routed through another table, and
         // an agent that could set one could raise its own budget.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssuePlaybookController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
@@ -279,8 +279,8 @@ public class IssuePlaybookControllerTests
         var issue = await h.FileAsync();
         await h.SetAsync(issue.Key, "opus", "max");
 
-        // It rides IssueDto, which IssuesController hands out to the hatch
-        // scope: an agent is entitled to know what it is being spent on.
+        // It rides IssueDto, which IssuesController hands out to a
+        // key: an agent is entitled to know what it is being spent on.
         var read = Value(await h.Issues.GetIssue(issue.Key, default));
 
         Assert.Equal("opus", read.ModelOverride);

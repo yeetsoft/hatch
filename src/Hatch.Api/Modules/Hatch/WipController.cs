@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// Its own controller for the same reason <see cref="IssueExpediteController"/>
 /// is, and cut the same way: no class-level attribute, so the write below
-/// inherits no scope from anything. A key that could raise the limit or empty
+/// inherits no key acceptance from anything. A key that could raise the limit or empty
 /// the section could pull more of its own work in overnight - the dispatcher
 /// stalls at a full WIP section, and a key that could widen the section it is
 /// stalled behind would be an agent lifting its own ceiling.
@@ -31,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class WipController(HatchContext db, ICallerIdentity caller) : ControllerBase
 {
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<WipSectionDto>> GetWip(CancellationToken ct) => await Wip.SectionAsync(db, ct);
 
     /// <summary>

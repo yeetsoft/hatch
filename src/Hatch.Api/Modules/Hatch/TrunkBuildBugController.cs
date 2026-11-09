@@ -12,7 +12,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// hand from the forge's page.
 /// </summary>
 /// <remarks>
-/// The method below accepts the <c>hatch</c> scope, so a key may take it too -
+/// The method below accepts a key, so a key may take it too -
 /// gated at runtime per project, since the attribute itself cannot vary by
 /// project: expediting at a project's own standing permission (turned on by
 /// the project's owner, on that project alone) is not the same choice as a
@@ -38,7 +38,7 @@ public class TrunkBuildBugController(
     /// settings instead, and only where that project has auto-filing on.
     /// </summary>
     [HttpPost("api/hatch/trunk-builds/{id:long}/bug")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PostBug(long id, TrunkBuildBugRequest? request, CancellationToken ct)
     {
         var row = await db.TrunkBuilds.Include(t => t.BugIssue).ThenInclude(i => i!.Project)

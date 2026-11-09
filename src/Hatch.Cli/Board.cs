@@ -21,6 +21,32 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
 
     /// <summary>
+    /// What this runner's machine has - detected and declared, merged - sent as
+    /// one <c>has=</c> each on every dispatch read, so the board folds a move
+    /// whose project needs a dependency this machine does not satisfy. A
+    /// property set once detection finishes, not a constructor parameter: the
+    /// board is built before detection runs. A hop sends none, since the
+    /// board never judges a hop on it.
+    /// </summary>
+    public IReadOnlyList<string> Has { get; set; } = [];
+
+    /// <summary>
+    /// The models this runner can spawn, read afresh at each dispatch read and
+    /// sent as one <c>model=</c> each, so the board folds a move whose model the
+    /// runner does not offer. A delegate rather than a list because the board is
+    /// built before the adapter, and what the runner offers shrinks mid-run as a
+    /// model is narrowed; a list fixed at construction would go stale. Empty
+    /// sends none, and the board then judges the agent alone.
+    /// </summary>
+    public Func<IReadOnlyList<string>> Models { get; set; } = () => [];
+
+    /// <summary>
+    /// The agent this runner spawns, sent as <c>agent=</c> on every dispatch read
+    /// so the board folds a move that runs on another one; null sends nothing.
+    /// </summary>
+    public string? Agent { get; set; }
+
+    /// <summary>
     /// Whether this runner sends <c>dangerous=false</c> on every dispatch read, so the
     /// board leaves work flagged dangerous for a runner that takes it - and it follows
     /// the board's own answer once a heartbeat gives one.
@@ -103,7 +129,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// what that means.
     /// </summary>
     public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners", ct) ?? [];
+        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners?live=true", ct) ?? [];
 
     /// <summary>
     /// Every live runner's name and nothing else - what
@@ -116,6 +142,9 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
 
     /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
     public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);
+
+    /// <summary>What the Attention panel draws, so a terminal reading the same list cannot disagree with it.</summary>
+    public Task<AttentionDto?> AttentionAsync(CancellationToken ct) => Client.GetAsync<AttentionDto>("/api/hatch/attention", ct);
 
     /// <summary>
     /// A verdict on one issue's branch in one repository - see
@@ -194,6 +223,22 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         Client.WriteAsync<PlaybookFileDto>(HttpMethod.Put, "/api/hatch/playbook-files", request, ct);
 
     /// <summary>
+    /// Every dependency file verdict the board holds, and the path it is
+    /// reading at - read once per poll and matched locally against each
+    /// checkout, the same as <see cref="PlaybookFilesAsync"/>.
+    /// </summary>
+    public async Task<DependencyFilesDto> DependencyFilesAsync(CancellationToken ct) =>
+        await Client.GetAsync<DependencyFilesDto>("/api/hatch/dependency-files", ct) ?? new DependencyFilesDto("", []);
+
+    /// <summary>
+    /// What one repository's trunk now holds for the dependency file path -
+    /// see <see cref="DependencyFileRequest"/>. The remote is spelled the way
+    /// this runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<DependencyFileDto?> DependencyFileAsync(DependencyFileRequest request, CancellationToken ct) =>
+        Client.WriteAsync<DependencyFileDto>(HttpMethod.Put, "/api/hatch/dependency-files", request, ct);
+
+    /// <summary>
     /// Files the bug HA-95's button would have filed for this trunk build. A
     /// key sends no body - express, the priority and the column are the
     /// project's own standing permission (HA-792), not this call's to name. A
@@ -218,6 +263,8 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         if (heldToken is { } token) parts.Add($"heldToken={token}");
         parts.AddRange(DeclareParts(checkouts, clones));
         parts.AddRange(TagParts());
+        parts.AddRange(HasParts());
+        parts.AddRange(ModelParts());
         parts.AddRange(DangerousParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
@@ -371,12 +418,16 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
     /// per checkout that has one, and <c>standing=true</c> where one of them is
     /// the process's own, then a repeatable <c>tag=</c> per tag this runner
-    /// carries, then a repeatable <c>project=</c> per project it is bound to.
+    /// carries, then a repeatable <c>has=</c> per entry it has, then a
+    /// repeatable <c>model=</c> per model it offers and its
+    /// <c>agent=</c>, then a repeatable <c>project=</c> per project it is bound to.
     /// Prefixed with <c>&amp;</c> for a query that already has something in
     /// it, which every caller's does.
     /// </summary>
     private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
         DeclareParts(checkouts, clones).Concat(TagParts())
+            .Concat(HasParts())
+            .Concat(ModelParts())
             .Concat(DangerousParts())
             .Concat(ProjectParts())
             .ToList() is { Count: > 0 } parts
@@ -384,6 +435,14 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
             : "";
 
     private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
+
+    private IEnumerable<string> HasParts() => Has.Select(h => $"has={Uri.EscapeDataString(h)}");
+
+    private IEnumerable<string> ModelParts()
+    {
+        foreach (var model in Models()) yield return $"model={Uri.EscapeDataString(model)}";
+        if (!string.IsNullOrWhiteSpace(Agent)) yield return $"agent={Uri.EscapeDataString(Agent)}";
+    }
 
     private IEnumerable<string> DangerousParts() => RefusesDangerous ? ["dangerous=false"] : [];
 

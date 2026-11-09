@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/import")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class ImportController(HatchContext db, PlanImportParser parser, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>A plan file is prose; a megabyte of it is a mistake, not a plan.</summary>

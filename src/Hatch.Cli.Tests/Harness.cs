@@ -194,7 +194,7 @@ public sealed class FakeAdapter : IAgentAdapter
     public IAgentStreamReader CreateReader(string root, RunFacts facts, string model)
     {
         OnReader?.Invoke(facts);
-        return new FakeStreamReader(facts, ResumeCommand);
+        return new FakeStreamReader(facts, ResumeCommand, StreamUsage);
     }
 
     public string? ReadClosing(string json) => null;
@@ -217,6 +217,14 @@ public sealed class FakeAdapter : IAgentAdapter
         return Limit;
     }
 
+    public ModelRefusal.Recognised? ModelRefused { get; set; }
+
+    /// <summary>The usage windows the reader reports once the stream ends - empty unless a test sets them.</summary>
+    public IReadOnlyList<UsageWindow> StreamUsage { get; set; } = [];
+
+    public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        ModelRefused;
+
     /// <summary>Where <see cref="OutputLastMessagePath"/> answers from - null unless a test sets it.</summary>
     public string? OutputLastMessageFile { get; set; }
 
@@ -228,7 +236,7 @@ public sealed class FakeAdapter : IAgentAdapter
 /// wrote: <c>FAKE-RESULT sessionId|title|summary|turns|costUsd|durationMs</c>,
 /// pipe-delimited, with none of <see cref="StreamRender"/>'s stream-json.
 /// </summary>
-internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand) : IAgentStreamReader
+internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand, IReadOnlyList<UsageWindow> usage) : IAgentStreamReader
 {
     private const string Prefix = "FAKE-RESULT ";
 
@@ -240,7 +248,7 @@ internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resu
 
     public IReadOnlyList<WorkLogReadDto> Reads => [];
 
-    public IReadOnlyList<UsageWindow> Usage => [];
+    public IReadOnlyList<UsageWindow> Usage => usage;
 
     public DateTimeOffset? UsageReadAt => null;
 
@@ -751,14 +759,14 @@ public sealed class Harness : IDisposable
     /// </summary>
     public TimeProvider Clock { get; }
 
-    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false)
+    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false, IReadOnlyList<string>? models = null, IReadOnlyList<string>? has = null)
     {
         Temp = Directory.CreateTempSubdirectory("hatch-test-").FullName;
         Root = Path.Combine(Temp, "checkout");
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
         Clock = clock ?? TimeProvider.System;
-        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous };
+        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous, Models = models, Has = has ?? [] };
         _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
@@ -774,7 +782,7 @@ public sealed class Harness : IDisposable
         // test that moves the trunk sha mid-test still finds it current and
         // reads nothing further, the free pass the trunk-builds stub above
         // gives by a fixed sha instead. A test about the playbook file itself
-        // overrides this with its own stub.
+        // overrides this with its own stub, and the dependency file likewise.
         Wire.Serve("GET", "/api/hatch/playbook-files", _ =>
         {
             var files = Workspace.HeadsFor.GetValueOrDefault(Root)?.TrunkSha is { } sha
@@ -783,9 +791,17 @@ public sealed class Harness : IDisposable
             return JsonSerializer.Serialize(new PlaybookFilesDto(".hatch/playbooks.yaml", files), Fixtures.Json);
         });
 
+        Wire.Serve("GET", "/api/hatch/dependency-files", _ =>
+        {
+            var files = Workspace.HeadsFor.GetValueOrDefault(Root)?.TrunkSha is { } sha
+                ? new[] { Fixtures.DependencyFile(sha: sha) }
+                : [];
+            return JsonSerializer.Serialize(new DependencyFilesDto(".hatch/dependencies.json", files), Fixtures.Json);
+        });
+
         Runtime = new Runtime(
             Settings: settings,
-            Board: new Board(_client, settings.Tags, settings.RefusesDangerous),
+            Board: new Board(_client, settings.Tags, settings.RefusesDangerous) { Has = settings.Has },
             Sessions: Sessions,
             Adapter: new ClaudeAdapter(),
             Say: Say,
@@ -800,7 +816,12 @@ public sealed class Harness : IDisposable
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
             SourceRevision = () => SourceRevision,
-            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags, settings.RefusesDangerous),
+            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags, settings.RefusesDangerous)
+            {
+                Has = settings.Has,
+                Models = () => Runtime.AdvertisedModels() ?? [],
+                Agent = Runtime.Adapter.Id,
+            },
             MakeClone = Clone.Factory,
             Clock = Clock,
             // A temp file rather than the real Settings.UserConfigPath() -
@@ -808,6 +829,9 @@ public sealed class Harness : IDisposable
             // machine actually running the suite.
             RunnersPath = Path.Combine(Temp, "runners"),
         };
+
+        Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];
+        Runtime.Board.Agent = Runtime.Adapter.Id;
     }
 
     /// <summary>

@@ -365,6 +365,104 @@ public sealed class GoToWorkTests
         }
     }
 
+    [Fact]
+    public async Task The_queue_and_work_reads_carry_the_models_this_runner_offers_and_its_agent()
+    {
+        using var h = new Harness(models: ["haiku", "sonnet"]);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        foreach (var read in reads)
+        {
+            Assert.Contains("model=haiku", read.Query);
+            Assert.Contains("model=sonnet", read.Query);
+            Assert.Contains("agent=claude", read.Query);
+            Assert.DoesNotContain("model=opus", read.Query);
+        }
+    }
+
+    [Fact]
+    public async Task The_queue_and_work_reads_carry_one_has_per_entry_this_runner_has()
+    {
+        using var h = new Harness(has: ["dotnet@10.0.100", "pwsh"]);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        foreach (var read in reads)
+        {
+            Assert.Contains("has=dotnet%4010.0.100", read.Query);
+            Assert.Contains("has=pwsh", read.Query);
+            Assert.Equal(2, read.Query.Split('&').Count(p => p.StartsWith("has=", StringComparison.Ordinal)));
+        }
+    }
+
+    [Fact]
+    public async Task With_nothing_this_runner_has_the_reads_carry_no_has()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.DoesNotContain("has=", c.Query));
+    }
+
+    [Fact]
+    public async Task With_no_models_given_the_reads_carry_everything_the_agent_offers()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var query = h.Wire.To("GET", Queue)[0].Query;
+        foreach (var alias in ModelFamilies.Aliases) Assert.Contains($"model={alias}", query);
+        Assert.Contains("agent=claude", query);
+    }
+
+    [Fact]
+    public async Task A_model_narrowed_mid_run_drops_off_the_next_read()
+    {
+        // Not through a pass: the loop loads its carried narrowing at start,
+        // which is none here, so a model narrowed beforehand is cleared.
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+        h.Runtime.Narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
+        await h.Board.QueueAsync([], null, 0, default);
+
+        var reads = h.Wire.To("GET", Queue);
+        Assert.Contains("model=opus", reads[0].Query);
+        Assert.DoesNotContain("model=opus", reads[1].Query);
+        Assert.Contains("model=sonnet", reads[1].Query);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_heartbeat_carries_has(bool has)
+    {
+        string[] dependencies = has ? ["dotnet@10.0.100", "pwsh"] : [];
+        using var h = new Harness();
+        var runtime = h.Runtime with { Has = dependencies };
+        OneTicket(h);
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.NotNull(beat.Has);
+        Assert.Equal(dependencies, beat.Has);
+    }
+
     /// <summary>
     /// One pass of a loop that is not <c>--once</c>, answered with <paramref name="told"/>
     /// - the only shape in which a heartbeat answer is applied back. MaxRuns
@@ -730,6 +828,147 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_model_narrowed_for_the_run_and_carried_across_a_restart_is_left_off_the_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("opus", null)] });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.Equal(["haiku", "sonnet", "fable"], b.Models));
+    }
+
+    [Fact]
+    public async Task A_fresh_start_forgets_what_was_narrowed_and_offers_every_model()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var runtime = h.Runtime;
+        runtime.Narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_narrowing_that_ran_out_before_the_restart_is_not_carried_back_in()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("opus", DateTimeOffset.UtcNow.AddHours(-1))] });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    /// <summary>
+    /// HA-1990: a session that reports <c>Unservable</c> says the terminal
+    /// line once, narrows the model from that moment, and releases the claim
+    /// unservable - never a stall, since <see cref="Lifecycle.LeaveAsync"/>
+    /// takes the one-comment branch instead of the tidy one.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refusal_says_the_terminal_line_once_and_releases_unservable_not_stalled()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
+                Fixtures.Json));
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Say.Said, l => l == "hatch: fable is off this runner's list for the rest of this run");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=unservable", released.Query, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+    }
+
+    /// <summary>
+    /// HA-1990/HA-1988 end to end: once a model is narrowed, the next pass's
+    /// own <see cref="Picker"/> folds a row pinned to it into the skip list
+    /// rather than claiming it.
+    /// </summary>
+    [Fact]
+    public async Task A_narrowed_model_is_skipped_by_the_pickers_own_pass()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fable") });
+        // A fresh start forgets anything narrowed before it began (as
+        // A_fresh_start_forgets_what_was_narrowed_and_offers_every_model
+        // proves), so the narrowing has to arrive the way a real one would -
+        // carried across a restart - rather than being set directly on this
+        // runtime just before the run.
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("fable", null)] });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - one this agent cannot take", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("no longer offers it", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// <see cref="ModelNarrowing.Narrow"/>'s own "true only when changed"
+    /// contract, read through the terminal: two increments refused on the
+    /// same model with the same <c>Until</c> say the one line only once.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refused_twice_with_the_same_until_says_the_terminal_line_once()
+    {
+        using var h = new Harness();
+        // No model pinned on the row itself, so narrowing after the first
+        // refusal does not fold the second pass's claim into the skip list -
+        // the same ticket is picked up, refused, and released unservable
+        // again, and it is Narrow()'s own dedupe this test is after.
+        OneTicket(h);
+        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
+                Fixtures.Json));
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        // Both within the one run, so the loop's own "fresh start forgets
+        // everything" reset only happens once, before the first pass.
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Say.Said, l => l == "hatch: fable is off this runner's list for the rest of this run");
+    }
+
+    [Fact]
+    public async Task A_loop_restarted_from_a_state_file_written_before_narrowing_offers_every_model()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        File.WriteAllText(h.NightState, "{\"restarts\":1}");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.All(Beats(h), b => Assert.Equal(["haiku", "sonnet", "opus", "fable"], b.Models));
+    }
+
+    [Fact]
     public async Task Only_the_first_answered_beat_of_a_fresh_loop_is_fresh()
     {
         using var h = new Harness();
@@ -1070,6 +1309,65 @@ public sealed class GoToWorkTests
         // HA-1457: the caller says whether the probe's own answer carried a
         // session window, every time it asks.
         Assert.Contains(h.Say.Said, l => l.Contains("probe found a session window", StringComparison.Ordinal));
+    }
+
+    // ---- HA-1991: a spent per-model weekly window narrows that model ----
+
+    private async Task<Harness> RunProbedAsync(
+        double percent, DateTimeOffset reset, string? scopedName, string[] args)
+    {
+        var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () =>
+                [Fixtures.UsageReport([("weekly_scoped", percent, reset.ToString("O"))], scopedName: scopedName), Fixtures.Result(turns: 0)],
+        };
+
+        await new GoToWorkCommand(h.Runtime with { Sessions = fake }).RunAsync(args, default);
+        return h;
+    }
+
+    [Fact]
+    public async Task A_spent_model_week_in_the_probe_is_left_off_the_beat()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--once"]);
+
+        Assert.Equal(["haiku", "sonnet", "fable"], Beats(h)[0].Models);
+    }
+
+    [Fact]
+    public async Task A_spent_model_week_is_said_once_across_probes()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--max-runs", "2"]);
+
+        Assert.Single(h.Say.Said, l => l.Contains("opus is off this runner's list until", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_model_week_under_the_limit_leaves_the_model_on_the_beat()
+    {
+        using var h = await RunProbedAsync(99, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--once"]);
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_model_week_already_past_its_reset_leaves_the_model_on_the_beat()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddHours(-1), "Opus", ["--once"]);
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_model_week_naming_no_tier_narrows_nothing_and_says_nothing()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), null, ["--once"]);
+
+        Assert.Equal(["haiku", "sonnet", "opus", "fable"], Beats(h)[0].Models);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("off this runner's list", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2439,6 +2737,23 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task A_hop_declares_neither_models_nor_agent()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        Assert.DoesNotContain("model=", call.Query);
+        Assert.DoesNotContain("agent=", call.Query);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -2464,6 +2779,22 @@ public sealed class GoToWorkTests
         {
             Assert.DoesNotContain("tag=", call.Query);
         }
+    }
+
+    [Fact]
+    public async Task A_hop_carries_no_has()
+    {
+        using var h = new Harness(has: ["dotnet@10.0.100", "pwsh"]);
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Contains("has=pwsh", h.Wire.To("GET", Queue)[0].Query);
+        Assert.DoesNotContain("has=", h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0].Query);
     }
 
     [Fact]

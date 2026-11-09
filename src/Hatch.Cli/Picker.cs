@@ -110,7 +110,8 @@ public sealed class Picker(
     Board board, string runner, Terminal say,
     IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch,
     string? workspace = null, Func<string, string, IClone>? clone = null,
-    string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null)
+    string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null,
+    ModelNarrowing? narrowing = null, TimeProvider? clock = null)
 {
     /// <summary>
     /// How many clear rows to try before calling the board busy. A bounded walk,
@@ -122,6 +123,7 @@ public sealed class Picker(
 
     private readonly bool _clones = workspace is not null;
     private readonly ModelFamilies _families = families ?? ModelFamilies.Default;
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
 
     /// <summary>The word a hop row prints, naming which of the seven reasons carried it.</summary>
     public static string HopWord(string? hopKind, string? hopUnder) => hopKind switch
@@ -145,12 +147,7 @@ public sealed class Picker(
     /// <paramref name="agent"/>'s own family are all anybody's to take.
     /// </summary>
     public static string? WrongAgent(string? model, string agent, ModelFamilies families) =>
-        families.AgentOf(model) is { } owner && owner != agent
-            ? $"pinned to {model}, {Article(owner)} {owner} model - this runner's agent is {agent}"
-            : null;
-
-    /// <summary>"an" before a vowel-initial word, "a" otherwise.</summary>
-    private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
+        families.WrongAgent(model, agent);
 
     public async Task<Picked> PickAsync(
         string? under, int offsetMinutes, CancellationToken ct, TimeSpan? heartbeat = null, bool mine = false)
@@ -181,11 +178,12 @@ public sealed class Picker(
         if (clear.Count == 0) return new Picked(Pick.Idle, null, null, queue, [], Checkouts: checkouts);
 
         // A row pinned to another agent's model, whose denied-tools this
-        // agent cannot honour, or whose model its server has not pulled, is passed over before it is claimed - a claim
+        // agent cannot honour, whose model its server has not pulled, or whose model the runner has stopped offering, is passed over before it is claimed - a claim
         // taken only to be let go would fold the row for every other runner
         // meanwhile. A hop row spawns nothing, so it stays.
         var skipped = new List<string>();
         var remaining = new List<QueueEntryDto>();
+        var now = _clock.GetUtcNow();
         foreach (var entry in clear)
         {
             if (!entry.Hop && WrongAgent(entry.Model, agent, _families) is { } why)
@@ -194,6 +192,8 @@ public sealed class Picker(
                 skipped.Add($"  {entry.Issue.Key}  {denied}");
             else if (!entry.Hop && adapter is not null && !adapter.CanServe(entry.Model, out var unserved))
                 skipped.Add($"  {entry.Issue.Key}  {unserved}");
+            else if (!entry.Hop && narrowing?.Refusal(entry.Model, agent, now, _clock) is { } narrowed)
+                skipped.Add($"  {entry.Issue.Key}  {narrowed}");
             else
                 remaining.Add(entry);
         }
@@ -406,6 +406,7 @@ public sealed class Picker(
         string? why = WrongAgent(model, agent, _families);
         if (why is null && adapter is not null && !adapter.CanDeny(work.Playbook?.DeniedTools ?? [], out var denied)) why = denied;
         if (why is null && adapter is not null && !adapter.CanServe(model, out var unserved)) why = unserved;
+        if (why is null && narrowing?.Refusal(model, agent, _clock.GetUtcNow(), _clock) is { } narrowed) why = narrowed;
         if (why is not null) return Declined($"{key} - {why}");
 
         var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat, playbookId: work.Playbook?.Id);

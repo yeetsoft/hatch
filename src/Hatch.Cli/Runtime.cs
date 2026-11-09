@@ -28,6 +28,9 @@ public sealed record Runtime(
     /// <summary>The model families a pinned id is judged against, so a test can run a second agent.</summary>
     public ModelFamilies Families { get; init; } = ModelFamilies.Default;
 
+    /// <summary>The models this runner has stopped offering. A reference, so it survives <c>runtime with { ... }</c>.</summary>
+    public ModelNarrowing Narrowing { get; init; } = new();
+
     /// <summary>
     /// This process's own build identity, read once off the entry assembly -
     /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
@@ -95,9 +98,12 @@ public sealed record Runtime(
     /// <summary>This member's slot in a runner set, from <c>HATCH_SET_SLOT</c>; null for slot 1 and for a lone runner.</summary>
     public int? Slot { get; init; }
 
+    /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
+    public IReadOnlyList<string> Has { get; init; } = [];
+
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
+    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter, Narrowing, Clock);
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine, RunnerName);
 
@@ -113,13 +119,23 @@ public sealed record Runtime(
 
     /// <summary>
     /// The models a beat advertises: <c>HATCH_MODELS</c> where it was set and
-    /// validated for the agent the adapter is, else the adapter's own list.
-    /// Null where that list is empty, so the beat leaves the row's models be.
+    /// validated for the agent the adapter is, else the adapter's own list,
+    /// less any <see cref="Narrowing"/> in force. Null where that list is empty,
+    /// so the beat leaves the row's models be - but empty, not null, where every
+    /// model is narrowed, since an empty list clears the row's models and null
+    /// would leave the stale ones.
     /// </summary>
-    public IReadOnlyList<string>? AdvertisedModels()
+    public IReadOnlyList<string>? AdvertisedModels() => Advertised(Settings, Adapter, Narrowing, Clock.GetUtcNow());
+
+    /// <summary>
+    /// <see cref="AdvertisedModels"/>'s rule without a <see cref="Runtime"/>, for
+    /// the commands that read the queue but spawn nothing.
+    /// </summary>
+    public static IReadOnlyList<string>? Advertised(
+        Settings settings, IAgentAdapter adapter, ModelNarrowing narrowing, DateTimeOffset now)
     {
-        var chosen = Settings.Models is not null && Adapter.Id == Settings.Agent ? Settings.Models : Adapter.Models;
-        return chosen.Count > 0 ? chosen : null;
+        var chosen = settings.Models is not null && adapter.Id == settings.Agent ? settings.Models : adapter.Models;
+        return chosen.Count > 0 ? narrowing.Offered(chosen, now) : null;
     }
 
     /// <summary>
@@ -190,7 +206,12 @@ public sealed record Runtime(
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous)
+        {
+            Has = Has,
+            Models = () => AdvertisedModels() ?? [],
+            Agent = Adapter.Id,
+        },
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

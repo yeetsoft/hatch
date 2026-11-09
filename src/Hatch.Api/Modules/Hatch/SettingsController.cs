@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// clears.
 ///
 /// The two routes that read and write them are <c>[RequireRole(User)]</c> with
-/// no <c>AcceptScope</c>, unlike <see cref="UtilizationController"/> and
+/// no <c>AcceptKey</c>, unlike <see cref="UtilizationController"/> and
 /// <see cref="LocalPersonController"/> beside them: those are reads an agent has
 /// a use for, and these are not. An API key that could write here could set the
 /// name every event in the house is signed with, or swap the credential the
@@ -74,7 +74,7 @@ public class SettingsController(
     /// </summary>
     /// <remarks>
     /// <para>Two gates, and they are independent on purpose. The attribute
-    /// accepts a Hatch-scoped key or a keyless runner, unlike the two routes
+    /// accepts a key or a keyless runner, unlike the two routes
     /// above it - a dispatcher is the ordinary caller here, and a person at a
     /// browser is the unusual one. Then the first line refuses everybody,
     /// caller and credential alike, wherever the wall is up: a credential that
@@ -89,7 +89,7 @@ public class SettingsController(
     /// gates read alike from outside.</para>
     /// </remarks>
     [HttpGet("credentials/{agent}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<CredentialDto>> GetCredential(string agent, CancellationToken ct) =>
         await CredentialAsync(agent, ct);
 
@@ -99,7 +99,7 @@ public class SettingsController(
     /// the same gates, because it is the same method.
     /// </summary>
     [HttpGet("claude-token")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<CredentialDto>> GetClaudeToken(CancellationToken ct) =>
         await CredentialAsync("claude", ct);
 

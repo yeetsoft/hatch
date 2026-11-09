@@ -499,6 +499,38 @@ export interface PlaybookFilesDto {
   files: PlaybookFileDto[];
 }
 
+/** One dependency a repository's declaration names. Mirrors DependencyFileEntryDto. */
+export interface DependencyFileEntry {
+  id: string;
+  label: string;
+  version: string | null;
+}
+
+/** Mirrors DependencyFileDto. */
+export interface DependencyFileDto {
+  id: number;
+  remote: string;
+  canonical: string;
+  trunk: string;
+  sha: string;
+  state: string;
+  hash: string | null;
+  entries: DependencyFileEntry[];
+  problem: string | null;
+  lastGoodSha: string | null;
+  lastGoodHash: string | null;
+  url: string | null;
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
+/** Mirrors DependencyFilesDto. */
+export interface DependencyFilesDto {
+  path: string;
+  files: DependencyFileDto[];
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
@@ -1774,6 +1806,16 @@ export interface Deadlocked {
   sentence: string;
 }
 
+/** An issue whose next move no live runner can take, with the sentence naming
+    what is missing - a model or a tool. Mirrors WaitingOnARunnerDto. */
+export interface WaitingOnARunner {
+  key: string;
+  title: string;
+  type: string;
+  move: string;
+  missing: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1843,6 +1885,10 @@ export interface Attention {
       fix, every time. Null when backups are healthy or not configured. Absent
       from a board that predates it. */
   backup?: BackupAttention | null;
+  /** The issues whose next move no live runner can take, and what each lacks:
+      a person's to fix, every time. Lights the control and draws no pill.
+      Absent from a board that predates it. */
+  waitingOnARunner?: WaitingOnARunner[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
@@ -2302,6 +2348,10 @@ export interface Runner {
       one that has reported none, including an older CLI that predates the
       field. */
   models: string[];
+  /** The dependencies this runner has - `id` or `id@version`, from its own
+      heartbeat. Mirrors RunnerDto.Has; empty, never null, for one that has
+      reported none. */
+  has: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;
@@ -2369,6 +2419,20 @@ export interface Runner {
   /** Where this runner's own build sits against its own reported source - the
       checkout's history, not the API. Mirrors RunnerDto's SourceDrift. */
   sourceDrift: RevisionDrift;
+  /** The api key this entry is minted as, or null for a heartbeat no key claims. */
+  apiKeyId?: string | null;
+  /** The leading characters of the key's own secret, for display only, or null with no key. */
+  prefix?: string | null;
+  /** When the key was minted, or null with no key. */
+  createdAt?: string | null;
+  /** When the key was last used, or null with no key or one never used. */
+  lastUsedAt?: string | null;
+  /** When the key was revoked, or null while it still works or there is no key. */
+  revokedAt?: string | null;
+  /** Who the key belongs to, or null for a key owned by nobody or no key at all. */
+  ownerPersonId?: string | null;
+  /** The sessions this key's runner has open. */
+  sessions?: { where: string; lastSeenAt: string }[];
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
@@ -2469,7 +2533,6 @@ export interface ApiKey {
   name: string;
   /** The leading characters of the secret - enough to match a row to a config file. */
   prefix: string;
-  scopes: string[];
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
@@ -2486,7 +2549,6 @@ export interface ApiKeyMinted {
 /** Mirrors CreateApiKeyRequest. Omitted `ownerPersonId` defaults to the admin minting it. */
 export interface ApiKeyCreateRequest {
   name: string;
-  scopes: string[];
   ownerPersonId?: string;
 }
 

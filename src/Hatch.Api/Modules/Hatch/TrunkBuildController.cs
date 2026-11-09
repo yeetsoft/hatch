@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/trunk-builds")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>Every trunk verdict the board holds, ordered by canonical then trunk - what the poll reads once a poll.</summary>

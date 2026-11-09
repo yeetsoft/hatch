@@ -19,7 +19,6 @@ export function ProjectsFacet({
       options={projects.map((project) => ({ value: project.key, text: `${project.key} — ${project.name}` }))}
       chosen={chosen}
       onChange={onChange}
-      lockTitle="Keep at least one project"
     />
   );
 }

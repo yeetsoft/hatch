@@ -386,14 +386,14 @@ public class ReportsControllerChangelogTests
     // ---- Who may read it ----
 
     [Fact]
-    public void TheRoute_AcceptsTheHatchScope()
+    public void TheRoute_AcceptsAKey()
     {
         var guard = typeof(ReportsController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     private static T Value<T>(Microsoft.AspNetCore.Mvc.ActionResult<T> result) =>

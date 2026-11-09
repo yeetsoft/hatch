@@ -97,7 +97,7 @@ RUN apt-get update \
 # own releases staying numerically ahead of Ubuntu's backport, not on telling
 # the two repos apart by identity.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
- && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -112,7 +112,12 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # double the image to buy nothing. `stable` rather than `latest` - an image
 # built on any given day should carry the version Anthropic is telling people
 # to run, not whatever landed that morning.
-RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
+# Run from a file, not piped, for the reason the grok step gives below. Retried
+# like every fetch here: a transient 5xx should not fail the build.
+RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://claude.ai/install.sh -o /tmp/claude-install.sh \
+ && bash /tmp/claude-install.sh stable \
+ && rm /tmp/claude-install.sh
+
 # codex: the vendor's release binary rather than the npm package, for the same
 # reason as above - there is no Node in this image. It is a static musl build,
 # so the glibc base here runs it as it would any other. Unpinned
@@ -120,8 +125,14 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s stable
 # whatever shipped that morning, so set CODEX_VERSION to a release tag where
 # that matters. The asset names were checked against the releases page when
 # this landed (both triples answer under /releases/latest/download/); a rename
-# upstream fails this build, not an increment. TARGETARCH is declared again
-# because the build stage's does not carry over.
+# upstream fails this build, not an increment. The download is retried because
+# GitHub's release assets answer 504 now and then, for up to five minutes
+# (--retry-max-time 300 is the governor; --retry and --retry-delay only need to
+# reach it). The earlier ~50s budget was too short on 2026-11-09, when a 504
+# outlasted all six attempts. The same flags are on every vendor fetch in this
+# file. It goes to a file rather than a pipe so a retry cannot hand tar a
+# corrupt stream; a 404 still fails.
+# TARGETARCH is declared again because the build stage's does not carry over.
 ARG TARGETARCH
 ARG CODEX_VERSION=latest
 RUN case "$TARGETARCH" in \
@@ -134,7 +145,9 @@ RUN case "$TARGETARCH" in \
     else \
       url=https://github.com/openai/codex/releases/download/$CODEX_VERSION/codex-$triple.tar.gz; \
     fi \
- && curl -fsSL "$url" | tar -xzf - -C /usr/local/bin \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 "$url" -o /tmp/codex.tar.gz \
+ && tar -xzf /tmp/codex.tar.gz -C /usr/local/bin \
+ && rm /tmp/codex.tar.gz \
  && mv /usr/local/bin/codex-$triple /usr/local/bin/codex \
  && chmod +x /usr/local/bin/codex \
  && codex --version
@@ -146,7 +159,7 @@ RUN case "$TARGETARCH" in \
 # and swallows curl's. It installs under ~/.grok/bin, which the PATH below
 # carries. The grok adapter passes --no-auto-update, so what is installed here
 # is what runs.
-RUN curl -fsSL https://x.ai/cli/install.sh -o /tmp/grok-install.sh \
+RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://x.ai/cli/install.sh -o /tmp/grok-install.sh \
  && bash /tmp/grok-install.sh \
  && rm /tmp/grok-install.sh \
  && /root/.grok/bin/grok --version

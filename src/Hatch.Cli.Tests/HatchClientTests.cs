@@ -168,7 +168,7 @@ public sealed class HatchClientTests
     }
 
     /// <summary>
-    /// A role-gate code the scope hint does not cover prints as itself, so a
+    /// A role-gate code the fixed hint does not cover prints as itself, so a
     /// person short of the role the route asks for is told that, not sent
     /// looking at a key that was never the problem.
     /// </summary>
@@ -186,14 +186,14 @@ public sealed class HatchClientTests
     }
 
     /// <summary>
-    /// The two codes that really are a scope refusal still get the fixed
+    /// The one code that really is a key refusal still gets the fixed
     /// sentence, in place of the code rather than beside it.
     /// </summary>
     [Fact]
-    public async Task A_403_scope_mismatch_keeps_the_fixed_scope_sentence()
+    public async Task A_403_key_not_accepted_keeps_the_fixed_sentence()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"scope_mismatch\"}");
+        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"key_not_accepted\"}");
         using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(

@@ -19,6 +19,12 @@ public class TypesOnlyFitsPhoneTests(ITestOutputHelper output)
     /// <summary>A little past <see cref="CaseBudgetSeconds"/>, so it only fires if <see cref="Deadline"/> itself fails to bound something.</summary>
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
+    /// <summary>The smallest target a coarse pointer should be asked to hit, in CSS pixels.</summary>
+    private const double MinimumTarget = 44;
+
+    /// <summary>Sub-pixel layout is fractional; two boxes that touch are not overlapping.</summary>
+    private const double Tolerance = 0.5;
+
     private const string FiltersSummary = "details.hatch-board-filters-more > summary";
 
     private const string TypesTrigger = "button.hatch-facet:has(.hatch-facet__label:text-is(\"Types\"))";
@@ -58,8 +64,8 @@ public class TypesOnlyFitsPhoneTests(ITestOutputHelper output)
             Assert.True(types.Only.Count >= 2, $"fewer than two Only buttons were found, so the selector found something else:{Environment.NewLine}{types}");
             foreach (var (name, box) in types.Only)
             {
-                Assert.True(box.Height >= 44, $"{name} is under 44px high:{Environment.NewLine}{types}");
-                Assert.True(box.Width >= 44, $"{name} is under 44px wide:{Environment.NewLine}{types}");
+                Assert.True(box.Height >= MinimumTarget - Tolerance, $"{name} is under 44px high:{Environment.NewLine}{types}");
+                Assert.True(box.Width >= MinimumTarget - Tolerance, $"{name} is under 44px wide:{Environment.NewLine}{types}");
             }
 
             Assert.NotNull(types.Panel);

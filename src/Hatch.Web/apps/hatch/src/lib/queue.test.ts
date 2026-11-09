@@ -397,6 +397,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   projects: [],
   refusesDangerous: false,
   models: [],
+  has: [],
   drives: [],
   clones: null,
   mine: null,

@@ -229,6 +229,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
                 text: trigger.textContent.trim(),
                 scoped: trigger.classList.contains('hatch-scope-control--scoped'),
                 chips: document.querySelectorAll('{{Chip}}').length,
+                caret: trigger.querySelectorAll('.hatch-menu__caret').length,
               };
             }
             """);
@@ -250,6 +251,8 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             violations.Add($"unscoped: the trigger's colour {m.GetProperty("triggerColor")} is not a nav link's {m.GetProperty("linkColor")}");
         if (m.GetProperty("chips").GetInt32() != 0)
             violations.Add($"unscoped: {m.GetProperty("chips").GetInt32()} chip(s) drawn with nothing scoped");
+        if (m.GetProperty("caret").GetInt32() == 0)
+            violations.Add("unscoped: the trigger draws no caret");
         if (title != "Hatch") violations.Add($"unscoped: the tab title is \"{title}\", not \"Hatch\"");
 
         output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, "unscoped-light")}");
@@ -296,6 +299,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
                 text: trigger.textContent.trim(),
                 scoped: trigger.classList.contains('hatch-scope-control--scoped'),
                 chips: document.querySelectorAll('{{Chip}}').length,
+                caret: trigger.querySelectorAll('.hatch-menu__caret').length,
                 nav: document.querySelectorAll('{{NavSelector}}').length,
               };
             }
@@ -320,6 +324,8 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             violations.Add($"unscoped: the trigger reads \"{m.GetProperty("text").GetString()}\" and is not the unscoped one");
         if (m.GetProperty("chips").GetInt32() != 0)
             violations.Add($"unscoped: {m.GetProperty("chips").GetInt32()} chip(s) drawn with nothing scoped");
+        if (m.GetProperty("caret").GetInt32() == 0)
+            violations.Add("unscoped: the trigger draws no caret");
         if (title != "Hatch") violations.Add($"unscoped: the tab title is \"{title}\", not \"Hatch\"");
 
         await BoardFitsAsync(harness, deadline, "unscoped", violations);
@@ -531,7 +537,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             $$"""
             () => ({
               title: document.title,
-              chips: [...document.querySelectorAll('{{Chip}}')].map(c => ({ text: c.textContent.trim(), hasMark: c.firstElementChild !== null })),
+              chips: [...document.querySelectorAll('{{Chip}}')].map(c => ({ text: c.textContent.trim(), hasMark: c.querySelector('.hatch-project-mark') !== null })),
               triggerScoped: document.querySelector('{{Trigger}}').classList.contains('hatch-scope-control--scoped'),
               reload: window.__noReload ?? null,
               history: history.length,
@@ -546,10 +552,10 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             for (var i = 0; i < keys.Length; i++)
             {
                 var text = chips[i].GetProperty("text").GetString() ?? "";
-                if (!text.Contains(keys[i], StringComparison.Ordinal))
-                    violations.Add($"scoped {step}: chip {i} reads \"{text}\" and does not carry {keys[i]}");
-                if (!chips[i].GetProperty("hasMark").GetBoolean())
-                    violations.Add($"scoped {step}: chip {i} ({keys[i]}) has no project mark");
+                if (text != keys[i])
+                    violations.Add($"scoped {step}: chip {i} reads \"{text}\", not exactly {keys[i]}");
+                if (chips[i].GetProperty("hasMark").GetBoolean())
+                    violations.Add($"scoped {step}: chip {i} ({keys[i]}) draws a project mark inside a same-colour chip");
             }
 
         if (!m.GetProperty("triggerScoped").GetBoolean())

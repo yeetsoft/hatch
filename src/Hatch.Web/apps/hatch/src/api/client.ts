@@ -51,6 +51,7 @@ import type {
   Playbook,
   PlaybookCreateRequest,
   PlaybookFilesDto,
+  DependencyFilesDto,
   PlaybookPatchRequest,
   PlaybookProposal,
   OmitRunnerRequest,
@@ -274,7 +275,7 @@ export const setStatusRunnerTags = (id: number, request: StatusRunnerTagsWriteRe
 
 // ---- Playbooks ----
 //
-// Reading is all a Hatch-scoped API key may do here; the three writes are
+// Reading is all an API key may do here; the three writes are
 // refused for one, which is why they exist only on this page and never in a
 // script. See PlaybooksController.
 
@@ -293,9 +294,11 @@ export const deletePlaybook = (id: number) =>
 
 export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/playbook-files');
 
+export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatch/dependency-files');
+
 // ---- Runners ----
 //
-// Reading is open to a Hatch-scoped key, like the claim - a dispatcher that
+// Reading is open to a key, like the claim - a dispatcher that
 // could not say it was alive would leave a page that could only ever be empty.
 // The write is refused to one, for the reason the playbook writes are: an agent
 // that could raise its own --max-spend could raise its own budget. See
@@ -304,7 +307,7 @@ export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/pl
 // There is no heartbeat here. A browser is not a runner, and the only caller
 // that could ever post one is the loop itself.
 
-export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners?live=true');
 /** Every live runner's name, unscoped. */
 export const getRunnerNames = () => fetchJson<string[]>('/api/hatch/runners/names');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
@@ -641,9 +644,6 @@ export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'PO
 
 export const getApiKeys = () => fetchJson<ApiKey[]>('/api/auth/keys');
 
-/** The scopes a key may carry, from the server, so the form never spells them. */
-export const getApiKeyScopes = () => fetchJson<string[]>('/api/auth/keys/scopes');
-
 /** The response carries the secret, once. Nothing else ever will. */
 export const mintApiKey = (request: ApiKeyCreateRequest) =>
   fetchJson<ApiKeyMinted>('/api/auth/keys', { method: 'POST', ...asJson(request) });
@@ -657,8 +657,8 @@ export const setApiKeyOwner = (id: string, personId: string | null) =>
 
 // ---- Settings ----
 //
-// Person only, both verbs: unlike every other route in this file, a Hatch-scoped
-// API key is refused here. One of these two settings is a credential and the
+// Person only, both verbs: unlike every other route in this file, an API key
+// is refused here. One of these two settings is a credential and the
 // other is the name every event a browser writes is signed with. See
 // Hatch.Api.Modules.Hatch.SettingsController.
 

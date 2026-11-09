@@ -7,6 +7,7 @@ import {
   deleteProjectMember,
   fileProjectReflection,
   getAssignees,
+  getDependencyFiles,
   getPeople,
   getStatuses,
   patchProject,
@@ -23,6 +24,7 @@ import {
 } from '../api/client';
 import { message } from '../lib/errors';
 import { boardColumns } from '../lib/columns';
+import { declarationSentence, fileForRepository, invalidSentence } from '../lib/dependencyFiles';
 import { fileReflection } from '../lib/projectReflect';
 import {
   openProjectDraft,
@@ -50,6 +52,7 @@ import {
   type ProjectMembersDraft,
 } from '../lib/projectMembers';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { pullRequestWords } from '../lib/pullRequest';
 import { hasMergeColumn } from '../lib/protectedColumns';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import { useLoaded } from '../lib/useLoaded';
@@ -98,6 +101,7 @@ export function ProjectEditDialog({
   const { data: people } = useLoaded(getPeople);
   const { data: directory } = useLoaded(getAssignees);
   const { data: statuses } = useLoaded(getStatuses);
+  const { data: dependencyFiles } = useLoaded(getDependencyFiles);
 
   // Reset whenever a different project is picked, so a half-typed
   // confirmation and a stale draft cannot be carried from one project to
@@ -126,6 +130,35 @@ export function ProjectEditDialog({
 
   function write(next: typeof list) {
     setDraft((d) => d && { ...d, repositories: next });
+  }
+
+  // What a runner has read of a bound repository's declaration. Resolved from
+  // the saved project, not the draft: the draft has no canonical, and a remote
+  // added this session has nothing stored to look up yet.
+  function declaration(remote: string) {
+    const original = project!.repositories.find((r) => r.remote === remote);
+    if (!original) return null;
+    const files = dependencyFiles?.files ?? [];
+    const row = fileForRepository(original, files);
+    if (row === null) {
+      // More than one trunk read and no base branch to choose between them:
+      // something has been read, so "not read yet" would be untrue.
+      if (files.some((f) => f.canonical === original.canonical)) return null;
+      return <span className="text-muted">no runner has read its declaration yet</span>;
+    }
+    if (row.state === 'parsed') return <span className="text-muted">{declarationSentence(row)}</span>;
+    if (row.state !== 'invalid') return null;
+    return (
+      <>
+        <span className="text-muted">{invalidSentence(row)}</span>
+        {row.url !== null && (
+          <a className="hatch-chip hatch-chip-link" href={row.url} target="_blank" rel="noreferrer noopener">
+            <span className="hatch-chip-kind">File</span>
+            {pullRequestWords(row.url)}
+          </a>
+        )}
+      </>
+    );
   }
 
   function writeMembers(next: typeof members) {
@@ -302,6 +335,7 @@ export function ProjectEditDialog({
           <div className="hatch-inline-form" key={repo.remote}>
             <code>{repo.remote}</code>
             {index === 0 && <span className="text-muted">primary</span>}
+            {declaration(repo.remote)}
             <input
               placeholder="Base branch"
               value={repo.baseBranch ?? ''}

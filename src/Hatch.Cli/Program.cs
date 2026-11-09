@@ -316,6 +316,16 @@ try
             return 1;
         }
 
+        // Once at start, concurrently - a supervisor restart is a new process,
+        // so it detects again with no code of its own. An id nobody declared
+        // says why once; one an operator declared with HATCH_HAS does not.
+        var detection = await Detect.RunAsync(
+            Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+        foreach (var id in detection.Missing(settings.Has))
+            say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
+        var has = detection.Merge(settings.Has);
+        board.Has = has;
+
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
@@ -338,9 +348,13 @@ try
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
+            Has = has,
             Readout = readoutState,
             Controls = controls,
         }.WithGit();
+
+        board.Models = () => runtime.AdvertisedModels() ?? [];
+        board.Agent = adapter.Id;
 
         return command switch
         {
@@ -355,10 +369,32 @@ try
         };
     }
 
+    // `queue` makes no beat; the merged set rides on its dispatch read, so the
+    // board folds what this machine cannot run. The other fourteen commands have
+    // no use for it.
+    Detection? queueDetection = null;
+    if (command == "queue")
+        queueDetection = await Detect.RunAsync(
+            Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+    board.Has = queueDetection?.Merge(settings.Has) ?? [];
+
+    // `queue` and `next` read what a pass would, so they declare what this
+    // runner can spawn the way `work` does - without a Runtime, since they spawn
+    // nothing. An agent id that does not resolve declares nothing: `work` is
+    // where a bad one is refused.
+    if (command is "queue" or "next"
+        && Agents.Resolve(settings.Agent, settings, null, out _, out var readAdapter, out _))
+    {
+        var narrowing = new ModelNarrowing();
+        board.Models = () => Runtime.Advertised(settings, readAdapter, narrowing, TimeProvider.System.GetUtcNow()) ?? [];
+        board.Agent = readAdapter.Id;
+    }
+
     var cli = new Cli(board, say, new Input(), settings, runnerName)
     {
         Checkouts = checkouts,
         Clones = settings.Workspace is not null,
+        Has = queueDetection?.Merge(settings.Has) ?? [],
     };
 
     return command switch
@@ -667,6 +703,8 @@ internal partial class Program
         "                     unset, takes it. Seeds the runner's row once, then the board owns it",
         "  HATCH_MODELS       comma-separated models this runner advertises; unset means the",
         "                     agent's default",
+        "  HATCH_HAS          comma-separated dependencies (id or id@version) this machine has that",
+        "                     detection cannot see; adds to what detection finds, never removes",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

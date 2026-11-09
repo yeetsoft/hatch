@@ -55,9 +55,9 @@ layers, highest first: an exported `HATCH_BASE`/`HATCH_KEY`, then
 `hatch config` writes. **The key lives outside the artifact**: never a tracked
 file, never a value in a commit, never pasted into a plan or an issue. Hatch is
 headed for release to other operators, and a credential in the artifact is one
-operator's credential inherited by everyone who clones it. The key carries the
-`hatch` scope and reaches `/api/hatch/*` and nothing else, so a `403` means the
-key is working and the route is not one a key may take — ask the operator.
+operator's credential inherited by everyone who clones it. The key reaches
+`/api/hatch/*` and nothing else, so a `403` means the key is working and the
+route is not one a key may take — ask the operator.
 
 The key is optional against a Hatch running with its wall off, where calls name
 themselves with a runner header instead. So a `401` says which of two things
@@ -175,7 +175,7 @@ one loads on every increment. Two rules from it matter enough to repeat:
   approver does, or the board itself, carrying a pre-approved issue through
   with no session (the approve hop), since a pre-approval is that owner's
   or approver's own permission given in advance. A `403` there is the gate
-  working, the same as a scope refusal (see "The key").
+  working, the same as a `key_not_accepted` refusal (see "The key").
 - **End by saying what you did**, in the `work-log` block the prompt's
   closing section describes — `hatch` lifts it into the work log row.
 
@@ -186,6 +186,8 @@ so the trail says who did what without anybody being asked to record it.
 
 - Build with `make` (`make build`, `make test-api`, `make test-web`), never a
   bare `dotnet` — the npm step needs the shell profile.
+  `.hatch/dependencies.json` is the machine-readable form of what a build needs;
+  a build that starts needing something new updates it in the same change.
 - Never commit unless asked.
 - No hardcoded domains, addresses, hostnames, or people, anywhere — including
   in plans and comments. See [`docs/ethos.md`](docs/ethos.md).

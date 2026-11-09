@@ -24,6 +24,7 @@ import {
   tagsLabel,
   projectsLabel,
   modelsLabel,
+  hasLabel,
   topRefusal,
   tokenBudget,
   tokenFieldHint,
@@ -58,6 +59,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   projects: [],
   refusesDangerous: false,
   models: [],
+  has: [],
   drives: [],
   clones: null,
   mine: null,
@@ -437,6 +439,20 @@ describe('modelsLabel', () => {
 
   it('prefixes the models with the word, since a bare list reads as nothing', () => {
     expect(modelsLabel(runner({ models: ['haiku', 'sonnet', 'opus'] }))).toBe('models haiku, sonnet, opus');
+  });
+});
+
+describe('hasLabel', () => {
+  it('is null for a runner that has reported none', () => {
+    expect(hasLabel(runner())).toBeNull();
+  });
+
+  it('draws a versioned entry with the version as a separate word', () => {
+    expect(hasLabel(runner({ has: ['node@22.11.0'] }))).toBe('has node 22.11.0');
+  });
+
+  it('joins a mix of versioned and bare entries', () => {
+    expect(hasLabel(runner({ has: ['dotnet@10.0.100', 'pwsh'] }))).toBe('has dotnet 10.0.100, pwsh');
   });
 });
 

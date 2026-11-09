@@ -20,6 +20,8 @@ public sealed record RunnerDeclaration(
     string? Under,
     bool Mine,
     TagDeclaration Tags,
+    HasDeclaration Has,
+    ModelDeclaration Models,
     IReadOnlyList<string> Projects,
     Actor? Principal,
     string Name)
@@ -48,6 +50,8 @@ public sealed record RunnerDeclaration(
             row.Under,
             mine,
             TagDeclaration.Of(row.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], row.RefusesDangerous ?? false),
+            row.Has is null ? HasDeclaration.Unjudged : HasDeclaration.Of(row.Has.Split('\n', StringSplitOptions.RemoveEmptyEntries)),
+            ModelDeclaration.Of(row.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Agent),
             WorkController.ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries)),
             principal,
             row.Name);

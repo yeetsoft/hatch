@@ -29,7 +29,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/me")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class MeController(
     ICallerIdentity caller,
     ISiteSettingsService settings,
@@ -40,7 +40,7 @@ public class MeController(
     {
         if (await caller.ApiKeyAsync(ct) is { } key)
             return new MeDto("key", key.Name, key.Owner?.Role.ToString().ToLowerInvariant(),
-                true, false, false, key.Owner?.Name, key.Scopes);
+                true, false, false, key.Owner?.Name);
 
         if (await caller.LocalAsync(ct) is { Kind: ActorKind.Key } runner)
             return new MeDto("runner", runner.Name, null, true, false, false);

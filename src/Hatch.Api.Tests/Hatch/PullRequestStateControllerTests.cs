@@ -323,7 +323,7 @@ public class PullRequestStateControllerTests
     // ---- The gate ----
 
     [Fact]
-    public void WritingOne_IsOpenToAHatchScopedKey()
+    public void WritingOne_IsOpenToAKey()
     {
         var guard = typeof(PullRequestStateController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
@@ -332,7 +332,7 @@ public class PullRequestStateControllerTests
 
         // The caller is a runner, and a state only a person could enter would
         // be one nobody ever entered.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Harness ----

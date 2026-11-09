@@ -133,6 +133,28 @@ public static class Columns
         Board(statuses).FirstOrDefault(s => s.MergesPullRequest);
 
     /// <summary>
+    /// The merge column a check's pass in review may land in, for a project
+    /// with the setting on: the column immediately after
+    /// <paramref name="from"/>, when <paramref name="from"/> is
+    /// <see cref="AwaitingReview"/> and that next column is protected and
+    /// ticked <see cref="EfHatchStatus.MergesPullRequest"/>. Null otherwise.
+    ///
+    /// Measured off <see cref="AwaitingReview"/> and <see cref="Advance"/> plus
+    /// the two flags on the next column, never off a name: an operator renames
+    /// columns, and a hardcoded name is a rule that quietly stops applying.
+    ///
+    /// <para>Both flags are required. A column ticked Merges PR but not
+    /// protected is not one a dispatch is barred from, so a pass would land
+    /// work there unattended.</para>
+    /// </summary>
+    public static EfHatchStatus? Approves(List<EfHatchStatus> statuses, EfHatchStatus from, bool checkApprovesMerge) =>
+        checkApprovesMerge
+        && AwaitingReview(statuses)?.Id == from.Id
+        && Advance(statuses, from) is { IsProtected: true, MergesPullRequest: true } next
+            ? next
+            : null;
+
+    /// <summary>
     /// The column where an agent writes the code: the one a person ticked
     /// <em>Code written here</em> on. Where none is ticked, the one whose own
     /// next move is into the awaiting-review column. Null only on an unticked

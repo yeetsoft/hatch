@@ -76,7 +76,8 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
               | --repo <path>... | --tag <tag>... | --workspace <dir>
-              | --models <model>... | --log on|<dir>|off | --dangerous on|off]
+              | --models <model>... | --has <entry>...
+              | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -89,7 +90,8 @@ header instead. Never put it in a repository, either way.
 - `--show` says what is set and which layer each value came from, including an
   `identity:` line naming who `/api/hatch/me` says the caller is - printed as
   `<unreachable>` rather than failing when the origin is unset or does not
-  answer. What it prints is in [the runner](the-runner#what---show-prints).
+  answer - and `has:`/`missing:`, detected quietly and merged with `HATCH_HAS`.
+  What it prints is in [the runner](the-runner#what---show-prints).
 - `--origin <origin>` writes the origin alone, asking nothing, and leaves the
   key and everything else as they were.
 - `--key <key>` writes the key alone, and needs an origin already set. A key on
@@ -128,6 +130,12 @@ header instead. Never put it in a repository, either way.
   100, trimmed and deduplicated. One that is neither, one of another agent, or a
   comma inside one (`--models haiku,sonnet`) is refused, naming it, with nothing
   written ([the runner](the-runner#models)).
+- `--has <entry>...` writes `HATCH_HAS`, what this machine has that detection
+  cannot see. Give each its own `--has` (`--has dotnet@10 --has node`); a bare
+  `--has` clears them. Each is an `id` or `id@version` the master list knows,
+  trimmed, lowercased and deduplicated. One it does not know, or a comma inside
+  one (`--has dotnet,node`), is refused, naming it, with nothing written
+  ([the runner](the-runner#has)).
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
@@ -255,6 +263,15 @@ A row's marker says where the pass puts it:
   session)` marks a hop: the loop carries the ticket on itself, with no session,
   rather than spawning one.
 
+After those rows, `queue` closes with one line per distinct thing no live
+runner currently offers or has, read from the same `waitingOnARunner` list
+the attention panel draws, so the terminal and the panel cannot disagree.
+Narrowed to `--mine` or an ancestor key, the footer counts only the issues the
+rows above show; unnarrowed, it matches the panel. For example: `3 issues
+wait for a runner that offers fable` or `1 issue waits for a runner that has
+pwsh 7 and playwright-browsers`. A server too old to send the list prints
+nothing extra.
+
 ### changelog
 
 ```
@@ -292,6 +309,10 @@ tokens, before any projects, each only where it has said so. The tokens read
 `2.4M tokens (180k last hour)`: the total, and the last hour in brackets only
 where the runner reported one. A runner that reported only an hour prints no
 tokens at all.
+
+A runner that reports dependencies closes that part of its line with
+`  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
+projects; one with none prints nothing extra.
 
 A runner bound to some projects (`go-to-work --project FIL --project AER`, or
 the Projects field on the Runners page) closes its line with `  projects FIL AER`,
@@ -619,7 +640,7 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 - A 2xx prints the body untouched, so it pipes to `jq`. A non-2xx exits 1 and
   prints the refusal, since here the refusal is the answer someone asked for.
   A 403 prints the API's own reason - a role-gate code, or a plain sentence -
-  except `key_not_accepted` and `scope_mismatch`, where it means the key is
+  except `key_not_accepted`, where it means the key is
   working and the route is not one a key may take.
 
 What a call writes is whatever the route does, and the actor is the key's name
@@ -795,7 +816,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | Code | Meaning |
 |---|---|
 | `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, it was interrupted, or the `--mine` key belongs to nobody. |
-| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, a bad `HATCH_MODELS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
+| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, a bad `HATCH_MODELS`, a bad `HATCH_HAS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
 | `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |
@@ -827,8 +848,8 @@ hatch: 404 - no such issue or route: <path>
 A `403` prints the API's own reason where it has one - a role-gate code such
 as `hatch: 403 - not_admin`, or a plain sentence such as `hatch: 403 - only an
 owner or approver of AER may move work into "approved"`. The fixed sentence
-above is kept for the two codes that really are a scope refusal,
-`key_not_accepted` and `scope_mismatch`, where it replaces the code outright,
+above is kept for the one code that really is a key refusal,
+`key_not_accepted` (a key on a route that takes no key), where it replaces the code outright,
 and for a `403` with an empty body, where there is no reason in the answer to
 print - worded by whether a key was sent at all.
 
@@ -845,9 +866,9 @@ slowly is a different case. Every call gives up after two minutes, whatever
 The two `401`s tell apart a key that was sent and refused from no key sent at
 all to a Hatch that wants one: the first sends you to check the key, the second
 to `hatch config`. A `403` is the gate and not a fault - it names its own
-cause, which is the API's own reason rather than always a scope. [401 and
+cause, which is the API's own reason. [401 and
 403](people-roles-and-keys#401-and-403) has both from the other side, and
-[People, roles and keys](people-roles-and-keys) has what a key's scopes reach.
+[People, roles and keys](people-roles-and-keys) has what a key may and may not do.
 Anything else is `hatch: <code> - <body>`, with the body's own sentence where
 it has one.
 

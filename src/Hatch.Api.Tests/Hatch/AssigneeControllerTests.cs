@@ -408,7 +408,7 @@ public class AssigneeControllerTests
     // ---- The one property the design rests on ----
 
     [Fact]
-    public void TheWrite_NamesNoScope_SoAKeyIsRefused()
+    public void TheWrite_AcceptsNoKey_SoAKeyIsRefused()
     {
         var guard = typeof(AssigneeController)
             .GetMethod(nameof(AssigneeController.PutIssueAssignee))!
@@ -416,18 +416,18 @@ public class AssigneeControllerTests
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
-        // No scope named, and no class-level attribute to inherit one from:
+        // No key accepted, and no class-level attribute to inherit one from:
         // under "people only" an assignee is a dispatch gate, and a key that
         // could write one could hand itself work somebody had reserved.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(AssigneeController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
     [Fact]
-    public void TheDirectoryRead_TakesTheHatchScope()
+    public void TheDirectoryRead_TakesAKey()
     {
         var guard = typeof(AssigneeController)
             .GetMethod(nameof(AssigneeController.GetAssignees))!
@@ -437,7 +437,7 @@ public class AssigneeControllerTests
 
         // Reading stays open, like everything else a dispatch needs: an agent
         // has to be able to say whose ticket it is leaving alone.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     [Fact]
@@ -448,8 +448,8 @@ public class AssigneeControllerTests
         var ada = h.Actors.AddPerson("Ada");
         await h.AssignAsync(issue.Key, ActorKind.Person, ada.Id);
 
-        // It rides IssueDto, which IssuesController hands out to the hatch
-        // scope - the same lane the model override reads through.
+        // It rides IssueDto, which IssuesController hands out to a
+        // key - the same lane the model override reads through.
         Assert.Equal("Ada", (await h.ReadAsync(issue.Key)).Assignee!.Name);
     }
 

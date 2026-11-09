@@ -510,14 +510,14 @@ public class BuildCheckControllerTests
     // ---- The gate ----
 
     [Fact]
-    public void WritingOne_IsOpenToAHatchScopedKey()
+    public void WritingOne_IsOpenToAKey()
     {
         var guard = typeof(BuildCheckController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Harness ----

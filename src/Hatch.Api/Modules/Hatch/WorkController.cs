@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/work")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
     IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners) : ControllerBase
@@ -128,6 +128,28 @@ public class WorkController(
     /// stripped when a key is used. A name matching no row is fine - it only
     /// means no peer was told apart from it. Absent folds nothing.
     /// </param>
+    /// <param name="model">
+    /// The models the caller's runner offers, repeatable - aliases or pinned
+    /// ids, see <see cref="RunnerModels.Normalise"/>. A move whose model (the
+    /// issue's override, else the matched playbook's) is an alias not listed
+    /// is folded with <see cref="ModelFamilies.NotOffered"/>. Absent, with no
+    /// <paramref name="agent"/> either, folds nothing; a hop is never folded.
+    /// A bad entry is refused with a 400 carrying the same sentence.
+    /// </param>
+    /// <param name="agent">
+    /// The agent the caller's runner drives. A move pinned to another agent's
+    /// model id is folded with <see cref="ModelFamilies.WrongAgent"/>. Blank
+    /// is absent.
+    /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -141,14 +163,21 @@ public class WorkController(
         [FromQuery] List<string>? tag = null,
         [FromQuery] List<string>? project = null,
         [FromQuery] bool? dangerous = null,
-        [FromQuery] string? runner = null)
+        [FromQuery] string? runner = null,
+        [FromQuery] List<string>? model = null,
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
+        if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
+
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var scan = await _dispatch.ScanAsync(
             offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
-            asking: Asking(runner));
+            asking: Asking(runner), models: models, has: hasDeclared);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -159,7 +188,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, Asking(runner), ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), ct);
     }
 
     /// <summary>
@@ -235,6 +264,27 @@ public class WorkController(
     /// As on <see cref="GetNextWork"/>. Beside <paramref name="asRunner"/>,
     /// which already names the runner, <paramref name="asRunner"/> wins.
     /// </param>
+    /// <param name="model">
+    /// The models the caller's runner offers, repeatable - see
+    /// <see cref="GetNextWork"/>. Ignored, though still validated, beside
+    /// <paramref name="asRunner"/>: that row's own <see cref="EfHatchRunner.Models"/>
+    /// is read instead, and a row that never reported any folds nothing.
+    /// </param>
+    /// <param name="agent">
+    /// The agent the caller's runner drives - see <see cref="GetNextWork"/>.
+    /// Ignored beside <paramref name="asRunner"/>, which reads
+    /// <see cref="EfHatchRunner.Agent"/>, exactly as <paramref name="model"/> is.
+    /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence. Ignored, though still validated, beside
+    /// <paramref name="asRunner"/>: that row's own <see cref="EfHatchRunner.Has"/> is read instead.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -252,8 +302,15 @@ public class WorkController(
         [FromQuery] List<string>? tag = null,
         [FromQuery] List<string>? project = null,
         [FromQuery] bool? dangerous = null,
-        [FromQuery] string? runner = null)
+        [FromQuery] string? runner = null,
+        [FromQuery] List<string>? model = null,
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
+        if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
+
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
 
         var projects = ProjectKeys(project);
@@ -285,6 +342,8 @@ public class WorkController(
             ancestorKey = declared.Under;
             mine = declared.Mine;
             tags = declared.Tags;
+            models = declared.Models;
+            hasDeclared = declared.Has;
             projects = declared.Projects.ToList();
             principal = declared.Principal;
         }
@@ -294,7 +353,7 @@ public class WorkController(
         }
 
         var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
-            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner));
+            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -479,6 +538,22 @@ public class WorkController(
     /// key is used. A name matching no row is fine - the omission is matched on
     /// the name alone. Absent, or naming another runner, folds nothing.
     /// </param>
+    /// <param name="model">
+    /// The models the caller's runner offers, repeatable - see
+    /// <see cref="GetNextWork"/>.
+    /// </param>
+    /// <param name="agent">
+    /// The agent the caller's runner drives - see <see cref="GetNextWork"/>.
+    /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence.
+    /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
         string key, [FromQuery] Guid? heldToken = null,
@@ -488,8 +563,15 @@ public class WorkController(
         CancellationToken ct = default,
         [FromQuery] List<string>? tag = null,
         [FromQuery] bool? dangerous = null,
-        [FromQuery] string? runner = null)
+        [FromQuery] string? runner = null,
+        [FromQuery] List<string>? model = null,
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
+        if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
+
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
@@ -516,6 +598,8 @@ public class WorkController(
             await Wip.LoadAsync(db, claims, statuses, now, ct),
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
             tags,
+            models,
+            hasDeclared,
             Asking(runner),
             ct);
     }
@@ -614,6 +698,8 @@ public class WorkController(
         var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : rowTo!;
         var actor = await caller.ActorNameAsync(ct);
 
+        var closedBySetting = hopKind == HopKinds.Close && preApprovalLevel != PreApprovalLevels.PreApproved;
+
         var payload = hopKind switch
         {
             HopKinds.Parent => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("pulled", true))),
@@ -623,7 +709,8 @@ public class WorkController(
                 from, target, ("sendback", true),
                 ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
             HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
-            HopKinds.Close when NoCode.Declared(issue) => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
+            HopKinds.Close when closedBySetting => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("approved", "setting"))),
+            HopKinds.Close when NoCode.Declared(issue) =>JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
             HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
             _ => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("express", true))),
         };
@@ -659,13 +746,15 @@ public class WorkController(
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = NoCode.Declared(issue)
-                    ? preApprovalFromKey is null
-                        ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
-                        : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
-                    : preApprovalFromKey is null
-                        ? "Closed by its pre-approval on its own row: every child is done."
-                        : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
+                Body = closedBySetting
+                    ? $"Closed under {key}'s setting, a passing check approves the merge: every child is done."
+                    : NoCode.Declared(issue)
+                        ? preApprovalFromKey is null
+                            ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
+                            : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
+                        : preApprovalFromKey is null
+                            ? "Closed by its pre-approval on its own row: every child is done."
+                            : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }
@@ -733,14 +822,33 @@ public class WorkController(
 
         if (verdict.Verdict == CheckVerdicts.Pass)
         {
-            var target = Columns.Target(statuses, from)!;
+            var approvedColumn = Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge);
+            var approves = approvedColumn is not null && !string.IsNullOrWhiteSpace(issue.PullRequestUrl);
+            var target = approves ? approvedColumn! : Columns.Target(statuses, from)!;
+
             issue.Events.Add(new EfHatchIssueEvent
             {
                 Actor = actor,
                 Kind = EfHatchIssueEvent.StatusChanged,
-                Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
+                Payload = approves
+                    ? JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId), ("approved", "check")))
+                    : JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
                 At = now,
             });
+
+            if (approves)
+            {
+                var playbook = await db.Playbooks.Include(p => p.FromStatus).Include(p => p.ToStatus)
+                    .FirstAsync(p => p.Id == playbookId, ct);
+                db.Comments.Add(new EfHatchComment
+                {
+                    IssueId = issue.Id,
+                    Author = actor,
+                    Body = $"Approved by {playbook.FromStatus!.Name} → {playbook.ToStatus!.Name}'s passing verdict.",
+                    CreatedAt = now,
+                });
+            }
+
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);
@@ -1203,6 +1311,16 @@ public class WorkController(
     /// cannot come back blocked here; a caller's own declaration for a named
     /// dispatch.
     /// </param>
+    /// <param name="models">
+    /// What the caller's runner offers - see <see cref="ModelDeclaration"/>.
+    /// The scan's own for a loop's dispatch, for the same reason as
+    /// <paramref name="tags"/>.
+    /// </param>
+    /// <param name="has">
+    /// What the caller's runner has - see <see cref="HasDeclaration"/>. The
+    /// scan's own for a loop's dispatch, for the same reason as
+    /// <paramref name="tags"/>.
+    /// </param>
     /// <param name="asking">
     /// The caller's own runner name, for <see cref="Dispatch.OmissionFold"/> -
     /// the same name the scan folded on, so a row it called clear on omission
@@ -1211,7 +1329,7 @@ public class WorkController(
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, RunnerAsking? asking, CancellationToken ct)
+        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -1317,10 +1435,12 @@ public class WorkController(
             : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
+        var requirement = has.Judged ? await _dispatch.DependencyRequirementAsync(issue.Project!, ct) : null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking);
+            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking, models: models,
+            has: has, requirement: requirement);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance

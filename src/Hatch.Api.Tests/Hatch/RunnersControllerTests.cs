@@ -1,11 +1,14 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.DeviceMapping;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -305,6 +308,96 @@ public class RunnersControllerTests
         var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Models: ["nonsense"]), default);
 
         Assert.Equal(ModelFamilies.Default.Refusal("nonsense"), Reason(refusal.Result));
+        Assert.Empty(await h.Db.Runners.ToListAsync());
+    }
+
+    // ---- Has ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingDependencies_StoresThemInTheOrderGiven()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        Assert.Equal(["dotnet@10.0.100", "node@22.11.0"], (await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ALaterHeartbeat_OverwritesTheDependenciesAPriorOneReported()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["make"]));
+
+        Assert.Equal(["make"], (await h.OneAsync()).Has);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: []));
+        Assert.Empty((await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoHas_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal(["dotnet@10.0.100", "node@22.11.0"], (await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ARowThatNeverReportedHas_ReadsThemEmpty()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Empty((await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ADependencyInAnyCase_IsStoredLowercased()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["Dotnet@10.0.100"]));
+
+        Assert.Equal(["dotnet@10.0.100"], (await h.OneAsync()).Has);
+        Assert.Equal("dotnet@10.0.100", (await h.RowAsync()).Has);
+    }
+
+    [Theory]
+    [InlineData("cobol")]
+    [InlineData("dotnet@x")]
+    public async Task ABadDependency_IsRefusedWithTheRulesSentenceAndLeavesTheRowAlone(string entry)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["make"]));
+        var seenAt = (await h.RowAsync()).LastSeenAt;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+
+        // Not BeatAsync: it throws on anything but a value, and this refusal
+        // is the assertion.
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Has: [entry]), default);
+
+        var sentence = DependencySet.Normalise([entry], out _);
+        Assert.NotNull(sentence);
+        Assert.Equal(sentence, Reason(refusal.Result));
+        var row = await h.RowAsync();
+        Assert.Equal("make", row.Has);
+        Assert.Equal(seenAt, row.LastSeenAt);
+    }
+
+    [Fact]
+    public async Task ARefusedFirstBeatNamingDependencies_CreatesNoRow()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Has: ["cobol"]), default);
+
+        Assert.Equal(DependencySet.Normalise(["cobol"], out _), Reason(refusal.Result));
         Assert.Empty(await h.Db.Runners.ToListAsync());
     }
 
@@ -2618,28 +2711,626 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public void TheThreeRoutes_AreScopedTheWayTheClaimAndThePlaybookAre()
+    public void TheThreeRoutes_AcceptKeysTheWayTheClaimAndThePlaybookDo()
     {
         // The heartbeat and the read are a dispatcher's - a runner that could
         // not say it was alive would leave a page that could only be empty. The
         // write is a person's, because it is the budget.
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.Heartbeat))!.AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunners))!.AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunnerNames))!.AcceptScope);
+        Assert.True(Guard(nameof(RunnersController.Heartbeat))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunners))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunner))!.AcceptKey);
 
-        var patch = Scope(nameof(RunnersController.PatchRunner));
+        var patch = Guard(nameof(RunnersController.PatchRunner));
         Assert.NotNull(patch);
-        Assert.Null(patch.AcceptScope);
+        Assert.False(patch.AcceptKey);
 
-        // And no class-level attribute for the PATCH to inherit a scope from.
+        // And no class-level attribute for the PATCH to inherit a key acceptance from.
         Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
-    private static RequireRoleAttribute? Scope(string method) =>
+    private static RequireRoleAttribute? Guard(string method) =>
         typeof(RunnersController).GetMethod(method)!
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
+
+    // ---- The key is the runner ----
+
+    [Fact]
+    public async Task AKeyWithNoBeat_IsListed_AsThoughItHadJustStarted_ButNotInLive()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("here:/checkouts/fresh");
+
+        var row = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/fresh", row.Name);
+        Assert.Equal(RunnerKinds.Loop, row.Kind);
+        Assert.Equal(RunnerStates.Running, row.State);
+        Assert.Equal(key.Id, row.ApiKeyId);
+        Assert.Equal(key.Prefix, row.Prefix);
+        Assert.Equal(key.CreatedAt, row.CreatedAt);
+        Assert.Null(row.RevokedAt);
+
+        Assert.Empty(await h.ListAsync());
+    }
+
+    [Fact]
+    public async Task ARevokedKey_IsStillListed_WithRevokedAt()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("here:/checkouts/gone");
+        await h.RevokeKeyAsync(key.Id);
+
+        var row = Assert.Single(await h.ListAllAsync());
+        Assert.NotNull(row.RevokedAt);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoKey_IsListed_WithEveryKeyFieldNull()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.OneAsync();
+        Assert.Null(row.ApiKeyId);
+        Assert.Null(row.Prefix);
+        Assert.Null(row.CreatedAt);
+        Assert.Null(row.LastUsedAt);
+        Assert.Null(row.RevokedAt);
+    }
+
+    [Fact]
+    public async Task Live_DropsAKeyOnlyRunnerAndAnAgedBeat()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync("here:/checkouts/keyonly");
+        await h.BeatAsync("here:/checkouts/aged", new RunnerHeartbeatRequest());
+
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
+        await h.BeatAsync("here:/checkouts/fresh", new RunnerHeartbeatRequest());
+
+        Assert.Equal(["here:/checkouts/fresh"], (await h.ListAsync()).Select(r => r.Name));
+        Assert.Equal(3, (await h.ListAllAsync()).Count);
+    }
+
+    [Fact]
+    public async Task AConfigRow_OverridesTheBeatsOwnBoundsAndTags()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Under: "AER-1", MaxRuns: 5, Tags: ["from-beat"]));
+        var key = await h.AddKeyAsync(Runner);
+
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = key.Id,
+            Tags = RunnerTagColumn.Write(["from-config"]),
+            Under = "AER-2",
+            MaxRuns = 40,
+            MaxSpend = 12.5m,
+            MaxTokens = 1000,
+            MaxTokensPerHour = 100,
+            UntilAt = Now.AddDays(1),
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.OneAsync();
+        Assert.Equal(["from-config"], row.Tags);
+        Assert.Equal("AER-2", row.Under);
+        Assert.Equal(40, row.MaxRuns);
+        Assert.Equal(12.5m, row.MaxSpend);
+        Assert.Equal(1000, row.MaxTokens);
+        Assert.Equal(100, row.MaxTokensPerHour);
+        Assert.Equal(Now.AddDays(1), row.UntilAt);
+    }
+
+    [Fact]
+    public async Task APersonCalling_SeesEveryKeyRunnerToo()
+    {
+        var h = await NewAsync(wall: true);
+        await h.AddKeyAsync("here:/checkouts/owned-key", h.PersonId);
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        var rows = await h.ListAllAsync();
+        Assert.Equal(["here:/checkouts/owned-key", "here:/checkouts/ownerless-key"], rows.Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnAdminsKey_SeesEveryKeyRunnerToo()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.Admin);
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        Assert.Equal(2, (await h.ListAllAsync()).Count);
+    }
+
+    [Fact]
+    public async Task AUsersKey_SeesOnlyItsOwnersKeyRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = new Actor(ActorKind.Person, h.PersonId, "Owner");
+        await h.AddKeyAsync("here:/checkouts/owned-key", h.PersonId);
+        await h.AddKeyAsync("here:/checkouts/someone-elses-key", Guid.NewGuid());
+
+        var owned = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/owned-key", owned.Name);
+    }
+
+    [Fact]
+    public async Task AUsersKey_WithNoPrincipal_SeesOnlyTheOwnerlessKeyRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        var visible = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/ownerless-key", visible.Name);
+    }
+
+    // ---- Reading one ----
+
+    [Fact]
+    public async Task GetRunner_AnswersTheVisibleRowByName()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.GetAsync(Runner);
+        Assert.Equal(Runner, row?.Name);
+    }
+
+    [Fact]
+    public async Task GetRunner_404sForAnUnknownName()
+    {
+        var h = await NewAsync();
+
+        Assert.Null(await h.GetAsync("nobody:/here"));
+    }
+
+    [Fact]
+    public async Task GetRunner_404sForAnInvisibleName()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+
+        Assert.Null(await h.GetAsync("here:/checkouts/owned-key"));
+    }
+
+    [Fact]
+    public async Task GetRunner_ResolvesAnEscapedName()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.GetAsync("here:%2Fcheckouts%2Fone");
+        Assert.Equal(Runner, row?.Name);
+    }
+
+    // ---- Minting one ----
+
+    [Fact]
+    public async Task Create_MintsAKeyAndItsConfigAndAnswersTheSecretOnceUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", Tags: [" Docker ", "docker", "GPU"])));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal("Abed Nadir", minted.Runner.Name);
+        Assert.NotNull(minted.Runner.ApiKeyId);
+        Assert.Equal(["docker", "gpu"], minted.Runner.Tags);
+
+        var key = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(minted.Runner.ApiKeyId, key.Id);
+
+        var config = Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Equal(key.Id, config.ApiKeyId);
+        Assert.Equal(["docker", "gpu"], RunnerTagColumn.Read(config.Tags).Order(StringComparer.Ordinal));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_WritesAConfigRowEvenWithNoTags()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var config = Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Empty(RunnerTagColumn.Read(config.Tags));
+    }
+
+    [Fact]
+    public async Task Create_ARunnerAlreadyCalledThat_IsAConflictAndStaysOneKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var again = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        Assert.IsType<ConflictObjectResult>(again.Result);
+        Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AKeyCaller_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(program: true);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AnOwnerWhoDoesNotExist_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: Guid.NewGuid()));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Equal("that person does not exist", Reason(refused.Result));
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_ANamedOwner_OwnsTheRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var owner = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: owner.Id)));
+
+        Assert.Equal(owner.Id, minted.Runner.OwnerPersonId);
+        Assert.Equal(owner.Id, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Create_NoOwnerNamed_DefaultsToTheCallingPerson()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("names")]
+    [InlineData("Names")]
+    [InlineData("SUGGEST-NAME")]
+    [InlineData("TOO-LONG")]
+    public async Task Create_ANameThatCannotBeUsed_IsRefusedAndNothingIsWritten(string? name)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        if (name == "TOO-LONG") name = new string('x', EfApiKey.MaxNameLength + 1);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest(name));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_ABadTag_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", Tags: ["a b"]));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    // ---- Suggesting a name ----
+
+    [Fact]
+    public async Task Suggest_OnAnEmptyBoard_IsTheFirstNameOnTheCastList()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Assert.Equal(RunnerCast.All[0], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_AfterMintingThatName_IsTheNext()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(await h.SuggestAsync())));
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsANameOnlyAHeartbeatHolds()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(RunnerCast.All[0], new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsAKeyNameWhateverItsCase()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var lowered = RunnerCast.All[0].ToLowerInvariant();
+        Assert.NotEqual(RunnerCast.All[0], lowered);
+        await h.AddKeyAsync(lowered);
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsARevokedKeysName()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(RunnerCast.All[0]);
+        await h.RevokeKeyAsync(key.Id);
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_WithEveryCastNameTaken_NumbersTheFirst()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        foreach (var name in RunnerCast.All) await h.AddKeyAsync(name);
+
+        Assert.Equal($"{RunnerCast.All[0]} 2", await h.SuggestAsync());
+    }
+
+    // ---- Editing a runner that has a key ----
+
+    [Fact]
+    public async Task Patch_WithAKey_WritesTheConfigRowAndMirrorsItOntoTheBeat()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(
+            Under: "aer-1", MaxRuns: "3", MaxSpend: "4.5", MaxTokens: "2m", MaxTokensPerHour: "500k",
+            UntilAt: "2026-09-12T17:00:00Z", Tags: ["GPU ", " linux"], State: "paused"));
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal(key.Id, config.ApiKeyId);
+        Assert.Equal("AER-1", config.Under);
+        Assert.Equal(3, config.MaxRuns);
+        Assert.Equal(4.5m, config.MaxSpend);
+        Assert.Equal(2_000_000, config.MaxTokens);
+        Assert.Equal(500_000, config.MaxTokensPerHour);
+        Assert.Equal(new DateTimeOffset(2026, 9, 12, 17, 0, 0, TimeSpan.Zero), config.UntilAt);
+        Assert.Equal(["gpu", "linux"], RunnerTagColumn.Read(config.Tags));
+
+        var row = await h.RowAsync();
+        Assert.Equal("AER-1", row.Under);
+        Assert.Equal(3, row.MaxRuns);
+        Assert.Equal(4.5m, row.MaxSpend);
+        Assert.Equal(2_000_000, row.MaxTokens);
+        Assert.Equal(500_000, row.MaxTokensPerHour);
+        Assert.Equal(config.UntilAt, row.UntilAt);
+        Assert.Equal("gpu\nlinux", row.Tags);
+        Assert.Equal("paused", row.State);
+
+        Assert.Equal("paused", patched.State);
+        Assert.Equal("AER-1", patched.Under);
+        Assert.Equivalent(await h.GetAsync(Runner), patched);
+    }
+
+    [Fact]
+    public async Task Patch_WithAKeyAndNoBeat_WritesOnlyTheConfig()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(
+            MaxRuns: "7", Tags: ["gpu"], State: "paused", Projects: [], RefusesDangerous: true));
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal(key.Id, config.ApiKeyId);
+        Assert.Equal(7, config.MaxRuns);
+        Assert.Empty(await h.Db.Runners.ToListAsync());
+        Assert.Equal(7, patched.MaxRuns);
+        Assert.Equal(["gpu"], patched.Tags);
+        Assert.Equivalent(await h.GetAsync(Runner), patched);
+    }
+
+    [Fact]
+    public async Task Patch_WithAKey_ButOnlyBeatFields_LeavesTheConfigAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
+
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Equal("paused", (await h.RowAsync()).State);
+    }
+
+    [Fact]
+    public async Task Patch_WithAKey_UpdatesAnExistingConfigRow()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3", Tags: ["a"]));
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: ""));
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Null(config.MaxRuns);
+        Assert.Equal(["a"], RunnerTagColumn.Read(config.Tags));
+        Assert.Equal(h.Time.GetUtcNow(), config.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task Patch_WithNoKey_WritesTheBeatAndNeverMakesAConfigRow()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "2", Tags: ["gpu"], State: "paused"));
+
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+        var row = await h.RowAsync();
+        Assert.Equal(2, row.MaxRuns);
+        Assert.Equal("gpu", row.Tags);
+        Assert.Equal("paused", row.State);
+        Assert.Equal(2, patched.MaxRuns);
+    }
+
+    [Fact]
+    public async Task Patch_ByTheOwnerOfAKey_IsAllowed()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "1"));
+
+        Assert.Equal(1, patched.MaxRuns);
+    }
+
+    [Fact]
+    public async Task Patch_ByAnotherPerson_OfAKeysRunner_Is403AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxRuns: "1"), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("Alice", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_ByAnAdmin_OfAnotherPersonsKey_IsAllowed()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "1"));
+
+        Assert.Equal(1, patched.MaxRuns);
+    }
+
+    [Fact]
+    public async Task Patch_ByAKey_IsRefusedAndWritesNothing()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        await h.AddKeyAsync(Runner);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxRuns: "1"), default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_OfARevokedKeysRunner_IsAConflict_EvenForANonOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        await h.RevokeKeyAsync(key.Id);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxRuns: "1"), default);
+
+        Assert.IsType<ConflictObjectResult>(refusal.Result);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_OfANameNeitherAKeyNorABeatHolds_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxRuns: "1"), default);
+
+        Assert.IsType<NotFoundResult>(refusal.Result);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    // ---- Revoking and handing over a runner ----
+
+    [Fact]
+    public async Task Revoke_StopsTheKey_AndTheRunnerStaysListed()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+
+        Assert.IsType<NoContentResult>(await h.RevokeAsync(Runner));
+
+        var key = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.NotNull(key.RevokedAt);
+        Assert.Equal(Runner, Assert.Single(await h.ListAllAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Revoke_OfANameNoKeyAnswersTo_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.IsType<NotFoundResult>(await h.RevokeAsync(Runner));
+        Assert.IsType<NotFoundResult>(await h.RevokeAsync("nobody:/at/all"));
+    }
+
+    [Fact]
+    public async Task SetOwner_SetsAndClearsTheKeysOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.AddKeyAsync(Runner);
+
+        Assert.IsType<NoContentResult>(await h.SetOwnerAsync(Runner, ada.Id));
+        Assert.Equal(ada.Id, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+        Assert.Equal(ada.Id, (await h.GetAsync(Runner))!.OwnerPersonId);
+
+        Assert.IsType<NoContentResult>(await h.SetOwnerAsync(Runner, null));
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task SetOwner_ToAPersonWhoDoesNotExist_Is400AndChangesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        Assert.IsType<BadRequestObjectResult>(await h.SetOwnerAsync(Runner, Guid.NewGuid()));
+
+        Assert.Equal(h.PersonId, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task SetOwner_OfANameNoKeyAnswersTo_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var ada = h.Actors.AddPerson("Ada");
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.IsType<NotFoundResult>(await h.SetOwnerAsync(Runner, ada.Id));
+    }
 
     // ---- Harness ----
 
@@ -2709,6 +3400,11 @@ public class RunnersControllerTests
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
 
+        public async Task<IActionResult> RevokeAsync(string name) => await Runners.RevokeRunner(name, default);
+
+        public async Task<IActionResult> SetOwnerAsync(string name, Guid? personId) =>
+            await Runners.SetRunnerOwner(name, new ApiKeyOwnerRequest(personId), default);
+
         public async Task<RunnerDto> OrderAsync(string name, RunnerOrderRequest request) =>
             Value(await Runners.PostRunnerOrder(name, request, default));
 
@@ -2721,11 +3417,39 @@ public class RunnersControllerTests
             return await Db.IssueEvents.Where(e => e.IssueId == issue.Id).OrderBy(e => e.At).ToListAsync();
         }
 
-        public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default));
+        public required IAuthService Keys { get; init; }
+
+        public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default, live: true));
+
+        public async Task<IReadOnlyList<RunnerDto>> ListAllAsync() => Value(await Runners.GetRunners(default, live: false));
+
+        public async Task<RunnerDto?> GetAsync(string name)
+        {
+            var result = await Runners.GetRunner(name, default);
+            return result.Result is NotFoundResult or NotFoundObjectResult ? null : Value(result);
+        }
 
         public async Task<IReadOnlyList<string>> NamesAsync() => Value(await Runners.GetRunnerNames(default));
 
+        /// <summary>Mints a runner as the harness's caller, with the response the controller writes its headers to.</summary>
+        public async Task<ActionResult<RunnerMintedDto>> CreateAsync(CreateRunnerRequest request)
+        {
+            Runners.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            return await Runners.CreateRunner(request, default);
+        }
+
+        public async Task<string> SuggestAsync() => Value(await Runners.SuggestRunnerName(default));
+
         public async Task<RunnerDto> OneAsync() => Assert.Single(await ListAsync());
+
+        /// <summary>A key with no beat - a runner never heard from yet, revocable with <see cref="RevokeKeyAsync"/>.</summary>
+        public async Task<EfApiKey> AddKeyAsync(string name, Guid? ownerPersonId = null)
+        {
+            var created = await Keys.CreateApiKeyAsync(name, ownerPersonId, default);
+            return created!.Key;
+        }
+
+        public async Task RevokeKeyAsync(Guid id) => await Keys.RevokeApiKeyAsync(id, default);
 
         /// <summary>
         /// The stored row itself, for the fields no wire DTO carries -
@@ -2785,6 +3509,9 @@ public class RunnersControllerTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
+        var coreDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var keys = new AuthService(coreDb, Options.Create(new AuthOptions { Enabled = wall }), time, NullLogger<AuthService>.Instance);
         var claims = TestClaims.With();
         var runners = new Runners(
             Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
@@ -2802,7 +3529,6 @@ public class RunnersControllerTests
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
-                    Scopes = [ApiKeyScopes.Hatch],
                     CreatedAt = Now,
                     OwnerPersonId = keyOwner is null ? null : id,
                     Owner = keyOwner is null ? null : new EfPerson { Id = id, Name = "Owner", Role = keyOwner.Value, CreatedAt = Now, UpdatedAt = Now },
@@ -2815,13 +3541,14 @@ public class RunnersControllerTests
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
-                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour)),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,
             Actors = actors,
             PersonId = id,
+            Keys = keys,
         };
     }
 

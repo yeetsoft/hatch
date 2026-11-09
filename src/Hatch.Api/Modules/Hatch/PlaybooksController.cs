@@ -13,8 +13,8 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// The split down the middle of this controller is the whole design. Reading is
 /// open to an API key, because an agent has to be told what it was dispatched
-/// with. Writing is not: <see cref="RequireAdminAttribute"/> with no scope
-/// named refuses a key outright, so the rows that choose an agent's
+/// with. Writing is not: <see cref="RequireAdminAttribute"/> which accepts
+/// no key refuses one outright, so the rows that choose an agent's
 /// instructions, its model and its budget can only be changed by a person at a
 /// browser.
 /// </summary>
@@ -32,7 +32,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<PlaybookDto>>> GetPlaybooks(CancellationToken ct)
     {
         var rows = await db.Playbooks.AsNoTracking()

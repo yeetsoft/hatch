@@ -195,7 +195,7 @@ public class IssueWipLimitControllerTests
             .SingleOrDefault();
 
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssueWipLimitController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
@@ -240,8 +240,8 @@ public class IssueWipLimitControllerTests
         var epic = await h.FileAsync("epic", "the epic");
         await h.SetAsync(epic.Key, "2");
 
-        // It rides IssueDto, which IssuesController hands out to the hatch
-        // scope: an agent is entitled to know how many of its siblings it is
+        // It rides IssueDto, which IssuesController hands out to a
+        // key: an agent is entitled to know how many of its siblings it is
         // competing against.
         var read = Value(await h.Issues.GetIssue(epic.Key, default));
 

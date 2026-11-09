@@ -214,7 +214,7 @@ public class RunnersBudgetTests(ITestOutputHelper output)
             Loop(Throttled, maxTokensPerHour: 200_000, tokensLastHour: 210_000, throttledUntil: now.AddHours(1)),
         };
 
-        await context.RouteAsync("**/api/hatch/runners", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/hatch/runners*", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(runners, Web),

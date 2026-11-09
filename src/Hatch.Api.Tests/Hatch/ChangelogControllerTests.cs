@@ -177,14 +177,14 @@ public class ChangelogControllerTests
     // ---- Who may read it ----
 
     [Fact]
-    public void TheRoute_AcceptsTheHatchScope()
+    public void TheRoute_AcceptsAKey()
     {
         var guard = typeof(ChangelogController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     private static async Task<Harness> NewAsync()

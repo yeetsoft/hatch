@@ -186,12 +186,12 @@ public class IssuePreApprovalControllerTests
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
-        // No scope named, and no class-level attribute to inherit one from:
+        // No key accepted, and no class-level attribute to inherit one from:
         // express decides which gates the loop may pass unattended, so a key
         // that could set one could carry its own ticket through the night
         // unattended.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssuePreApprovalController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
@@ -205,7 +205,7 @@ public class IssuePreApprovalControllerTests
         await h.ExpressAsync(issue.Key, true);
 
         // It rides IssueDto and IssueCardDto, both of which IssuesController
-        // hands out to the hatch scope: an agent is entitled to know why it was
+        // hands out to a key: an agent is entitled to know why it was
         // sent where it was sent.
         Assert.True((await h.ReadAsync(issue.Key)).Express);
 

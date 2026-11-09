@@ -62,7 +62,8 @@ public sealed class IncrementReport
     /// own question - <see cref="ClaimOutcomes.Recused"/> for a session that ran
     /// <c>hatch recuse</c> and left the ticket where it found it, and
     /// <see cref="ClaimOutcomes.Dropped"/> for a stall, flagged or let go
-    /// alike. Left null for a lost lease, a usage limit, an
+    /// alike, and <see cref="ClaimOutcomes.Unservable"/> for a session the
+    /// account refused for its model. Left null for a lost lease, a usage limit, an
     /// interrupted increment, and a board read that failed: none of those is
     /// this increment's verdict to give, because none of them ran to one.
     /// </summary>
@@ -156,6 +157,19 @@ public sealed class IncrementReport
 
     /// <summary>Whether this increment ended on a usage limit rather than an ordinary result.</summary>
     public bool UsageLimited => UsageLimitResetAt is not null;
+
+    /// <summary>
+    /// The session ended because the model it was spawned with was refused -
+    /// not a usage limit, and not a stall: nothing about the ticket went
+    /// wrong, this runner just cannot serve it with that model.
+    /// </summary>
+    public bool Unservable { get; set; }
+
+    /// <summary>The alias or pinned id the session was spawned with, which the refusal is about.</summary>
+    public string? UnservableModel { get; set; }
+
+    /// <summary>When the refusal is expected to lift, or null for the end of the run.</summary>
+    public DateTimeOffset? UnservableUntil { get; set; }
 
     /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed.</summary>
     public long? ClampedAtTokens { get; set; }
@@ -318,6 +332,7 @@ public sealed class IncrementReport
         Moved ? $"{From} -> {Ended}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitPassed ? " (the named reset had just passed)" : UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
+        : Unservable ? $"{UnservableModel} is not one this runner can spawn"
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : FixPushed ? $"fix pushed, build pending{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -635,6 +650,28 @@ public sealed class Increment(
                     : $"hatch: {report.Key} - out of {adapter.DisplayName} usage, and the reset time could not be read - treating it as an hour away");
             }
 
+            // A model the account cannot spawn is a second kind of session that
+            // ended for a reason that is not the ticket's: released unservable,
+            // so the board can keep this model off the runner's list. Never
+            // when a usage limit was recognised - that sentence wins - nor
+            // when the lease was lost or the ticket was put down.
+            if (!claim.LostToOthers && claim.Preempted is null && !report.UsageLimited
+                && adapter.RecogniseModelRefusal(said, endedAt) is { } refused)
+            {
+                var refusedModel = string.IsNullOrWhiteSpace(model) ? refused.Model : model;
+                report.Unservable = true;
+                report.UnservableModel = refusedModel;
+                report.UnservableUntil = refused.ResetAt
+                    ?? facts.Usage?.FirstOrDefault(w => w.Window == "weeklyModel" && w.ResetsAt > endedAt
+                        && !string.IsNullOrEmpty(refusedModel) && w.Label.Contains(refusedModel, StringComparison.OrdinalIgnoreCase))?.ResetsAt;
+                if (report.UnservableUntil is { } until)
+                    report.UnservableUntil = TimeZoneInfo.ConvertTime(until, _clock.LocalTimeZone);
+                report.ReleaseOutcome = ClaimOutcomes.Unservable;
+
+                say.Line("");
+                say.Line($"hatch: {report.Key} - {refusedModel} was refused, not spawnable on this account");
+            }
+
             // Everything from here on reads from or writes to the board, all of
             // it through the same token a Ctrl-C cancels. The spawn above
             // already answers a cancellation by stopping the session and
@@ -682,12 +719,12 @@ public sealed class Increment(
                 // board is told about its branch is theirs to say. Never on a
                 // usage limit either: there is no fix to judge, only a session
                 // that did not finish.
-                if (conflict is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted) await JudgeAsync(report, conflict, ct);
+                if (conflict is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Preempted) await JudgeAsync(report, conflict, ct);
 
                 // The same for a build increment, and the same reason: what it
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
-                if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted) await JudgeBuildAsync(report, build, ct);
+                if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Preempted) await JudgeBuildAsync(report, build, ct);
 
                 // The verdict on a check increment: the tree first - a check
                 // that left anything uncommitted or moved HEAD is not one
@@ -695,7 +732,7 @@ public sealed class Increment(
                 // itself. Same guards as the other two judgments, plus
                 // HardLimited: a check that was stopped for crossing its hard
                 // limit has nothing finished to apply either.
-                if (checkTreeUnchanged is not null && !claim.LostToOthers && !report.UsageLimited && !report.Preempted && !report.HardLimited)
+                if (checkTreeUnchanged is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Preempted && !report.HardLimited)
                     await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
 
                 // A plain increment's session may have written no work-log
@@ -778,7 +815,8 @@ public sealed class Increment(
                 // ours, and the ticket did not move because we stopped - which
                 // the loop already knows. And not for a usage limit: that is not
                 // a stall, it is the one increment kind whose ticket is left
-                // clean and unquestioned on purpose.
+                // clean and unquestioned on purpose. Nor a refused model, for
+                // the same reason.
                 //
                 // A recusal comes first: the session said, in the one place
                 // that says it, that this runner should not have this ticket,
@@ -792,7 +830,7 @@ public sealed class Increment(
                 // the ticket to a new column while still leaving that branch
                 // unresolved. This guard runs regardless, so the branch is still
                 // said - but see below for who wins the claim's own verdict.
-                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Preempted && !report.HardLimited)
+                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Unservable && !report.Preempted && !report.HardLimited)
                 {
                     if (report.Recused)
                     {
@@ -855,7 +893,7 @@ public sealed class Increment(
                 // limit, and the "not known" reads above never reach a verdict
                 // at all.
                 if (report.Preempted) report.ReleaseOutcome = ClaimOutcomes.Preempted;
-                else if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) report.ReleaseOutcome = ClaimOutcomes.Worked;
+                else if (!report.Unservable && (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0)) report.ReleaseOutcome = ClaimOutcomes.Worked;
             }
             catch (OperationCanceledException)
             {

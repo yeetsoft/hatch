@@ -163,7 +163,6 @@ public sealed class BackupControllerTests : IDisposable
             Name = "hatch",
             Hash = [1],
             Prefix = "hatch_ak_x",
-            Scopes = [ApiKeyScopes.Hatch],
             CreatedAt = Now,
         };
 
@@ -191,24 +190,24 @@ public sealed class BackupControllerTests : IDisposable
     }
 
     [Fact]
-    public void PostBackupRun_CarriesAPersonOnlyRoleWithNoAcceptScope()
+    public void PostBackupRun_CarriesAPersonOnlyRoleWithNoAcceptKey()
     {
         var method = typeof(BackupController).GetMethod(nameof(BackupController.PostBackupRun))!;
         var attribute = method.GetCustomAttribute<RequireRoleAttribute>();
 
         Assert.NotNull(attribute);
         Assert.Equal(PersonRole.User, attribute!.Minimum);
-        Assert.Null(attribute.AcceptScope);
+        Assert.False(attribute.AcceptKey);
     }
 
     [Fact]
-    public void GetBackup_AcceptsTheHatchScope()
+    public void GetBackup_AcceptsAKey()
     {
         var method = typeof(BackupController).GetMethod(nameof(BackupController.GetBackup))!;
         var attribute = method.GetCustomAttribute<RequireRoleAttribute>();
 
         Assert.NotNull(attribute);
-        Assert.Equal(ApiKeyScopes.Hatch, attribute!.AcceptScope);
+        Assert.True(attribute!.AcceptKey);
     }
 
     private Task Seed(DateTimeOffset at) =>

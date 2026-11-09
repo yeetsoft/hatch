@@ -33,7 +33,7 @@ public class IssueRunnerOmissionsController(
     /// does not move <c>UpdatedAt</c>, the same as every other edit in Hatch.
     /// </summary>
     [HttpPut("{key}/omitted-runners/{runner}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PutOmittedRunner(
         string key, string runner, OmitRunnerRequest request, CancellationToken ct)
     {
@@ -99,7 +99,7 @@ public class IssueRunnerOmissionsController(
     /// and leaves that row alone.
     /// </summary>
     [HttpDelete("{key}/omitted-runners/{runner}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> DeleteOmittedRunner(string key, string runner, CancellationToken ct)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();

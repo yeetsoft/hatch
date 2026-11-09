@@ -45,7 +45,7 @@ public sealed class RunnersCommand(Cli cli)
 
         if (json)
         {
-            const string path = "/api/hatch/runners";
+            const string path = "/api/hatch/runners?live=true";
             var answer = await cli.Board.Client.Send(HttpMethod.Get, path, null, ct);
             if (!answer.Ok)
             {
@@ -71,7 +71,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Bound(r) + Models(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -96,6 +96,22 @@ public sealed class RunnersCommand(Cli cli)
         if (row.TokensUsed is { } used)
             parts.Add($"{Format.Compact(used)} tokens" + (row.TokensLastHour is { } lastHour ? $" ({Format.Compact(lastHour)} last hour)" : ""));
         return parts.Count > 0 ? "  " + string.Join(" ", parts) : "";
+    }
+
+    /// <summary>
+    /// The dependencies a runner says it has, each entry's <c>id@version</c>
+    /// rendered <c>id version</c> and comma-joined; nothing where it has said
+    /// none, so a row without them reads as it always has.
+    /// </summary>
+    private static string Has(RunnerDto row)
+    {
+        if (row.Has.Count == 0) return "";
+        var entries = row.Has.Select(entry =>
+        {
+            var at = entry.IndexOf('@');
+            return at == -1 ? entry : $"{entry[..at]} {entry[(at + 1)..]}";
+        });
+        return "  has " + string.Join(", ", entries);
     }
 
     /// <summary>

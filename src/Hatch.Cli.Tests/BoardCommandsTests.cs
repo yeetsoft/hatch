@@ -349,6 +349,128 @@ public sealed class BoardCommandsTests
             h.Said);
     }
 
+    private static AttentionDto Attention(IReadOnlyList<WaitingOnARunnerDto>? waiting = null) =>
+        new([], 0, [], [], WaitingOnARunner: waiting);
+
+    /// <summary>
+    /// The footer counts and groups the same way <see cref="Digest.Of"/> does,
+    /// over <see cref="WaitingOnARunnerDto.Missing"/> rather than a fold reason -
+    /// and the rows above it print exactly as they did before this footer existed.
+    /// </summary>
+    [Fact]
+    public async Task The_queue_closes_with_one_line_per_distinct_missing_thing()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner offers fable"),
+            new WaitingOnARunnerDto("AER-3", "AER-3's title", "task", "In Progress", "no live runner offers fable"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            AER-1  [task]  In Progress  -> In Review
+            2 issues wait for a runner that offers fable
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Fact]
+    public async Task A_single_missing_thing_is_singular()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner has pwsh 7"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            """
+            AER-1  [task]  In Progress  -> In Review
+            1 issue waits for a runner that has pwsh 7
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task No_waiting_entries_prints_the_rows_only(bool fieldOmitted)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        h.Wire.Json("GET", "/api/hatch/attention", Attention(fieldOmitted ? null : []));
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review", h.Said);
+    }
+
+    [Fact]
+    public async Task An_attention_route_too_old_to_answer_prints_the_rows_only()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        // /api/hatch/attention is left unscripted: the wire answers 404, as an
+        // older Hatch or a transient failure would too.
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review", h.Said);
+    }
+
+    [Fact]
+    public async Task Narrowed_by_an_ancestor_key_the_footer_counts_only_what_the_rows_show()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), null),
+        });
+        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        [
+            new WaitingOnARunnerDto("AER-1", "AER-1's title", "task", "In Progress", "no live runner offers fable"),
+            new WaitingOnARunnerDto("AER-9", "AER-9's title", "task", "In Progress", "no live runner offers fable"),
+        ]));
+
+        await new BoardCommands(h.Cli).QueueAsync(["AER-1"], default);
+
+        Assert.Equal(
+            """
+            AER-1  [task]  In Progress  -> In Review
+            1 issue waits for a runner that offers fable
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
     /// <summary>
     /// The tag fold is a sentence the server writes; the queue prints it as it
     /// prints any other, in the column a blocked row's reason always takes.
@@ -376,6 +498,81 @@ public sealed class BoardCommandsTests
             AER-7  [story]  In Progress  {sentence}
             """.ReplaceLineEndings("\n"),
             h.Said);
+    }
+
+    /// <summary>
+    /// The dependency fold is a sentence the server writes too; the queue prints
+    /// it on the row's own line, never folded into a count with another row's.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_a_dependency_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-5 needs dotnet 10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-5", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+            new QueueEntryDto(
+                Fixtures.Issue("AER-6", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence.Replace("AER-5", "AER-6"), BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            $"""
+            AER-5  [task]  In Progress  {sentence}
+            AER-6  [task]  In Progress  {sentence.Replace("AER-5", "AER-6")}
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    /// <summary>
+    /// The model fold is a sentence the server writes too, and prints the same way.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_its_model_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-4 in Todo runs on fable - this runner's claude does not offer it";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-4", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal($"AER-4  [task]  In Progress  {sentence}", h.Said);
+    }
+
+    /// <summary>
+    /// A bare board declares nothing, and one given a source sends a
+    /// <c>model=</c> each, read afresh on every call, then its agent.
+    /// </summary>
+    [Fact]
+    public async Task The_board_declares_models_and_agent_only_where_given_them_and_reads_them_afresh()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+        IReadOnlyList<string> offered = ["haiku", "sonnet"];
+        h.Board.Models = () => offered;
+        h.Board.Agent = "claude";
+        await h.Board.QueueAsync([], null, 0, default);
+        offered = ["haiku"];
+        await h.Board.QueueAsync([], null, 0, default);
+
+        var reads = h.Wire.To("GET", "/api/hatch/work/queue");
+        Assert.DoesNotContain("model=", reads[0].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("agent=", reads[0].Query, StringComparison.Ordinal);
+        Assert.Contains("model=haiku&model=sonnet&agent=claude", reads[1].Query, StringComparison.Ordinal);
+        Assert.Contains("model=haiku&agent=claude", reads[2].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("model=sonnet", reads[2].Query, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -935,6 +1132,51 @@ public sealed class BoardCommandsTests
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
         Assert.EndsWith("-> ?", h.Said);
+    }
+
+    /// <summary>
+    /// Three groups of counts 2, 1 and 1 pin the order: count descending, then
+    /// <c>Missing</c> itself ordinal, the same two keys <see cref="Digest.Of"/>
+    /// sorts folded rows by.
+    /// </summary>
+    [Fact]
+    public void Waiting_orders_by_count_descending_then_missing_ordinal()
+    {
+        var waiting = new[]
+        {
+            new WaitingOnARunnerDto("AER-1", "t", "task", "In Progress", "no live runner has pwsh 7"),
+            new WaitingOnARunnerDto("AER-2", "t", "task", "In Progress", "no live runner offers fable"),
+            new WaitingOnARunnerDto("AER-3", "t", "task", "In Progress", "no live runner offers fable"),
+            new WaitingOnARunnerDto("AER-4", "t", "task", "In Progress", "no live runner offers grok"),
+        };
+
+        Assert.Equal(
+            [
+                "2 issues wait for a runner that offers fable",
+                "1 issue waits for a runner that has pwsh 7",
+                "1 issue waits for a runner that offers grok",
+            ],
+            BoardCommands.Waiting(waiting));
+    }
+
+    [Fact]
+    public void Waiting_prints_a_shape_other_than_the_plain_prefix_verbatim()
+    {
+        var waiting = new[]
+        {
+            new WaitingOnARunnerDto(
+                "AER-1", "t", "task", "In Progress", "pinned to opus - no live runner's agent is codex"),
+            new WaitingOnARunnerDto(
+                "AER-2", "t", "task", "In Progress",
+                "no live runner offers fable; no live runner has pwsh 7"),
+        };
+
+        Assert.Equal(
+            [
+                "1 issue waits: no live runner offers fable; no live runner has pwsh 7",
+                "1 issue waits: pinned to opus - no live runner's agent is codex",
+            ],
+            BoardCommands.Waiting(waiting));
     }
 
     [Fact]

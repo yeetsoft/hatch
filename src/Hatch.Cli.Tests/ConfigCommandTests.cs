@@ -25,7 +25,8 @@ public sealed class ConfigCommandTests : IDisposable
         Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null,
         string? profileName = null,
         string? profilePath = null,
-        ConfigCommand.ProfileResolver? resolveProfile = null) =>
+        ConfigCommand.ProfileResolver? resolveProfile = null,
+        Probe? detectProbe = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
         {
@@ -40,6 +41,10 @@ public sealed class ConfigCommandTests : IDisposable
             // No active profile unless a test says otherwise: the real one reads
             // the machine's own pointer, which no test may depend on.
             ResolveProfile = resolveProfile ?? NoActiveProfile,
+            // Nothing on this dictionary's own PATH resolves to a real tool, so
+            // the real probe is never actually called unless a test's own
+            // environment names a FakePath-style directory.
+            DetectProbe = detectProbe ?? Detect.RealProbe,
         };
 
     private static bool NoActiveProfile(
@@ -846,6 +851,30 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_RETRY_SECONDS:  30  (exported)", Said);
     }
 
+    // ---- --show: has / missing ----
+
+    /// <summary>Nothing on the test's own environment resolves, so every dependency is missing.</summary>
+    [Fact]
+    public async Task Show_prints_has_and_missing_with_nothing_detected_or_declared()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"{"has:".PadRight(19)}none", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}dotnet, make, node, playwright-browsers, postgres, pwsh", Said);
+    }
+
+    [Fact]
+    public async Task Show_moves_a_declared_dependency_from_missing_to_has()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_HAS"] = "make" })
+            .RunAsync(["--show"], default);
+
+        Assert.Contains($"{"has:".PadRight(19)}make", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}dotnet, node, playwright-browsers, postgres, pwsh", Said);
+    }
+
     [Fact]
     public async Task Show_says_it_is_not_in_a_checkout_when_it_is_not()
     {
@@ -897,16 +926,16 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_prints_a_keys_identity_with_its_owner_and_scopes()
+    public async Task Show_prints_a_keys_identity_with_its_owner()
     {
         await Command(
                 new Replies(),
                 environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
                 meProbe: (_, _, _) => Task.FromResult<MeDto?>(
-                    new MeDto("key", "ada-key", "admin", true, false, false, "Ada", ["hatch"])))
+                    new MeDto("key", "ada-key", "admin", true, false, false, "Ada")))
             .RunAsync(["--show"], default);
 
-        Assert.Contains("identity:         key \"ada-key\", owned by Ada, scopes: hatch", Said);
+        Assert.Contains("identity:         key \"ada-key\", owned by Ada", Said);
     }
 
     [Fact]
@@ -1986,6 +2015,145 @@ public sealed class ConfigCommandTests : IDisposable
                 .RunAsync(["--here", "--models", "haiku"], default));
 
         Assert.Contains("HATCH_MODELS=haiku", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    // ---- --has ----
+
+    [Fact]
+    public async Task Has_writes_the_joined_list_and_touches_nothing_else()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--has", "dotnet@10", "--has", "node"], default));
+
+        var lines = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", lines);
+        Assert.Contains("HATCH_BASE=https://kept", lines);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
+        Assert.Contains("HATCH_TAGS=gpu", lines);
+    }
+
+    [Fact]
+    public async Task Has_is_normalised_lowercased_and_deduplicated()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--has", "Dotnet@10", "--has", "dotnet@10"], default));
+
+        Assert.Contains("HATCH_HAS=dotnet@10", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Has_alone_clears_what_was_there()
+    {
+        await Command(new Replies()).RunAsync(["--has", "node"], default);
+        Assert.Contains("HATCH_HAS=node", File.ReadAllLines(ConfigPath));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--has"], default));
+
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_HAS=", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("cobol")]
+    [InlineData("haiku,sonnet")]
+    [InlineData("node,pwsh")]
+    public async Task A_dependency_that_breaks_DependencySet_is_refused_with_the_file_untouched(string bad)
+    {
+        await Command(new Replies()).RunAsync(["--has", "node"], default);
+        var before = File.ReadAllBytes(ConfigPath);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--has", bad], default));
+
+        Assert.StartsWith("hatch: ", Complained, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+    }
+
+    [Fact]
+    public async Task An_unknown_dependency_is_refused_naming_the_list()
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--has", "cobol"], default));
+
+        Assert.Contains(
+            "the list is dotnet, make, node, playwright-browsers, postgres, pwsh", Complained, StringComparison.Ordinal);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Has_shaped_wrong_is_refused_and_nothing_is_written()
+    {
+        // A trailing bare --has.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--has", "node", "--has"], default));
+        Assert.False(File.Exists(ConfigPath));
+
+        // Two values with no --has between them.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--has", "node", "pwsh"], default));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Has_is_left_in_the_file_by_every_other_write()
+    {
+        var checkout = Tree("checkout");
+        var clones = Path.Combine(_temp, "clones-has");
+        var logs = Path.Combine(_temp, "logs-has");
+        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
+        await Command(new Replies()).RunAsync(["--has", "dotnet@10", "--has", "node"], default);
+
+        await Command(new Replies()).RunAsync(["--repo", checkout], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", clones], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--models", "haiku"], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Has_needs_no_checkout_and_no_reachable_board()
+    {
+        var probed = false;
+        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
+        {
+            probed = true;
+            return Task.FromResult<string?>(null);
+        });
+
+        Assert.Equal(0, await cmd.RunAsync(["--has", "node"], default));
+        Assert.False(probed);
+    }
+
+    [Fact]
+    public async Task Here_has_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
+                .RunAsync(["--here", "--has", "node"], default));
+
+        Assert.Contains("HATCH_HAS=node", File.ReadAllLines(checkoutEnv));
         Assert.False(File.Exists(ConfigPath));
     }
 

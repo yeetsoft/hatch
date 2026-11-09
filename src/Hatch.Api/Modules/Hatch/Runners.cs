@@ -149,8 +149,108 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.TokensUsed,
             runner.TokensLastHour,
             runner.ThrottledUntil,
-            runner.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            runner.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
+            runner.Has?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
     }
+
+    /// <summary>
+    /// The same row, for a <see cref="Runner"/> aggregate rather than a bare
+    /// heartbeat: a key with no beat projects as though it had just started -
+    /// <see cref="Transient"/> - and a config row, where present, overrides
+    /// the board's own six bounds and the tags on top of whichever beat is
+    /// doing the projecting.
+    /// </summary>
+    public RunnerDto Project(
+        Runner runner, (string Key, ClaimSnapshot Claim, string? Status)? claim, IReadOnlyList<string>? drives = null,
+        string? forName = null, bool canControl = true, RunnerOrderDto? order = null,
+        bool yours = false, long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null)
+    {
+        var beat = runner.Beat ?? Transient(runner.Key!);
+        var effective = runner.Config is { } config ? Overlaid(beat, config) : beat;
+
+        var dto = Project(effective, claim, drives, forName, canControl, order, yours, defaultMaxTokens, defaultMaxTokensPerHour)
+            with { OwnerPersonId = runner.OwnerPersonId };
+
+        if (runner.Config is { } tagged)
+            dto = dto with { Tags = RunnerTagColumn.Read(tagged.Tags).Order(StringComparer.Ordinal).ToArray() };
+
+        if (runner.Key is { } key)
+        {
+            dto = dto with
+            {
+                ApiKeyId = key.Id,
+                Prefix = key.Prefix,
+                CreatedAt = key.CreatedAt,
+                LastUsedAt = key.LastUsedAt,
+                RevokedAt = key.RevokedAt,
+            };
+        }
+
+        return dto;
+    }
+
+    /// <summary>A key with no beat of its own, projected as though it had just started - so every field a beat guarantees non-null still is.</summary>
+    private static EfHatchRunner Transient(EfApiKey key) => new()
+    {
+        Name = key.Name,
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        FirstSeenAt = key.CreatedAt,
+        LastSeenAt = key.LastUsedAt ?? key.CreatedAt,
+    };
+
+    /// <summary>
+    /// A shallow copy of <paramref name="beat"/> with the board's own six
+    /// bounds taken from <paramref name="config"/> instead, even where that is
+    /// null - a copy, never a mutation, because <paramref name="beat"/> may be
+    /// the very row <see cref="HeldAsync"/> or a later caller reads again.
+    /// </summary>
+    private static EfHatchRunner Overlaid(EfHatchRunner beat, EfHatchRunnerConfig config) => new()
+    {
+        Name = beat.Name,
+        Kind = beat.Kind,
+        FirstSeenAt = beat.FirstSeenAt,
+        LastSeenAt = beat.LastSeenAt,
+        Line = beat.Line,
+        LineAt = beat.LineAt,
+        State = beat.State,
+        Under = config.Under,
+        MaxRuns = config.MaxRuns,
+        MaxSpend = config.MaxSpend,
+        MaxTokens = config.MaxTokens,
+        MaxTokensPerHour = config.MaxTokensPerHour,
+        UntilAt = config.UntilAt,
+        Remotes = beat.Remotes,
+        Clones = beat.Clones,
+        Mine = beat.Mine,
+        Standing = beat.Standing,
+        Where = beat.Where,
+        Runs = beat.Runs,
+        Spent = beat.Spent,
+        TokensUsed = beat.TokensUsed,
+        TokensLastHour = beat.TokensLastHour,
+        Host = beat.Host,
+        Agent = beat.Agent,
+        Revision = beat.Revision,
+        Sequence = beat.Sequence,
+        BuiltAt = beat.BuiltAt,
+        SourceRevision = beat.SourceRevision,
+        SourceSequence = beat.SourceSequence,
+        Tags = beat.Tags,
+        Models = beat.Models,
+        Has = beat.Has,
+        RefusesDangerous = beat.RefusesDangerous,
+        Projects = beat.Projects,
+        ExhaustedUntil = beat.ExhaustedUntil,
+        ThrottledUntil = beat.ThrottledUntil,
+        Usage = beat.Usage,
+        UsageReadAt = beat.UsageReadAt,
+        ForPersonId = beat.ForPersonId,
+        OrderKind = beat.OrderKind,
+        OrderKey = beat.OrderKey,
+        OrderedBy = beat.OrderedBy,
+        OrderedAt = beat.OrderedAt,
+    };
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
     {

@@ -14,7 +14,7 @@ these calls; this page is for the ones it has no verb for).
 
 A person's browser carries a session cookie; a program sends `Authorization:
 Bearer hatch_ak_…`. [People, roles and keys](people-roles-and-keys) covers
-minting a key and what its one scope reaches - this page only says, route by
+minting a key and what a key reaches - this page only says, route by
 route, who may call it.
 
 **Issue routes take the display key** - `/issues/{key}`, case-insensitively,
@@ -535,10 +535,10 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing) |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next`; `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
@@ -619,7 +619,7 @@ reason }` - `error` the sentence a person reads, `reason` one of `quiet`
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted`, `recused` - and an optional
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable` - and an optional
 `reason` - only `quiet` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
@@ -733,6 +733,34 @@ content over the stored cap, and writes no event - there is no issue to
 write one on, and no question, since a bad playbooks file is this row's own
 state rather than a stall.
 
+### Dependency files
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/dependency-files` | key | Every stored verdict of what a repository's trunk actually carries at `.hatch/dependencies.json` |
+| PUT | `/dependency-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
+
+`/dependency-files` is not that same edge the playbook matrix above draws:
+it is not the matrix, it is a cache of what a runner's poll actually found
+on disk at a repository-sourced project's trunk - a fact a key reports about
+a file, not an edit to Hatch's own instructions - so both its `GET` and its
+`PUT` stay key-open, the same reasoning `/playbook-files` takes. What the file
+says is in [the runner](the-runner#what-a-repository-needs).
+
+`DependencyFileDto` carries `Remote`, `Canonical`, `Trunk`, `Sha`, `State`
+(`parsed`, `invalid` or `absent`), `Hash` (the stored content's SHA-256),
+`Entries` (each a resolved `Id`, current `Label` and optional `Version`,
+from `DependencyDeclaration.Parse`), `Problem`, `LastGoodSha`/`LastGoodHash`,
+`Url`, `CheckedAt`, `Runner` and `CheckedBy`.
+
+**Refusals worth naming.** `PUT` 400s an empty remote, trunk, sha or runner,
+non-base64 or non-UTF-8 content, or content over the stored cap, and writes
+no event - there is no issue to write one on, and no question, since a bad
+dependencies file is this row's own state rather than a stall. An unknown
+dependency id is not one of these refusals: `DependencyDeclaration.Parse`
+folds it into the same `Problem` any other shape failure produces, so it
+reaches the stored row as `state: invalid`, not a 400.
+
 ### Playbook proposals
 
 | Method | Path | Who | What it does |
@@ -749,10 +777,15 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
+| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run), and what the board would like it to do next |
+| GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
+| POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
+| GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
+| POST | `/runners/{name}/revoke` | **admin** | Stops the runner's key working, by the runner's name; the runner stays listed, `404` for a name no key answers to |
+| PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
@@ -821,6 +854,15 @@ different agent than the beat's `agent` - refuses the whole beat with a `400`
 carrying the rule's sentence, and the row is left exactly as it was (a refused
 first beat creates no row). It has no `PATCH` field.
 
+`has` is a fact the runner reports about the process, written on every beat
+like `remotes`: an absent one leaves the row alone, `[]` clears it, and any
+other list replaces it, kept in the order given with repeats dropped. Each entry
+is a dependency `id` or `id@version`, lowercased before it is stored; an entry
+that breaks the `DependencySet` rule - a blank entry, an id not on the master
+list, or a malformed version - refuses the whole beat with a `400` carrying the
+rule's sentence, and the row is left exactly as it was (a refused first beat
+creates no row). It has no `PATCH` field.
+
 `refusesDangerous` follows the tags rule: the first heartbeat a name is seen
 under that carries it (true or false) seeds the row, a later beat with another
 value leaves the row alone, the instruction answers the row's value (always
@@ -865,7 +907,8 @@ row holds it, `default` when it comes from the site default on `/settings`,
 `tokensLastHour`, the loop's own running counts, and `throttledUntil`, the
 instant a waiting loop expects to be under its hourly cap, or null. `models`
 is the runner's advertised models in the order given, `[]` for a row that never
-reported.
+reported; `has` is the dependencies it advertised, as `id` or `id@version`
+strings in the order given, `[]` for a row that never said.
 `maxTokens` and `maxTokensPerHour` are the effective cap in either of the first
 two cases, so a row never makes the reader add the two together.
 
@@ -883,8 +926,8 @@ long to reach a beat answered there.
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
 
-`/runner` and `/runner/download/{rid}` carry no scope at all, unlike every
-other Hatch-scoped read on this page - the audience is a person at a browser
+`/runner` and `/runner/download/{rid}` take no key, unlike every
+other read on this page - the audience is a person at a browser
 setting up a machine, and nobody's dispatcher needs to download the program
 it is already running as.
 
@@ -927,11 +970,10 @@ folder configured, `409`s while another run already holds the gate, and
 `/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
-Owner, Scopes)` - `kind: key` for an API key, naming its own name, its
-owner's name (`Owner`, null with no owner), its scopes (`Scopes`, null for
-every other kind) and its owner's role lowercased (`Role`, null with no
+Owner)` - `kind: key` for an API key, naming its own name, its
+owner's name (`Owner`, null with no owner) and its owner's role lowercased (`Role`, null with no
 owner); `kind: runner` for a wall-off runner header, naming its own name with
-`Owner` and `Scopes` both null; `kind: person` when a grant holds a person;
+`Owner` null; `kind: person` when a grant holds a person;
 `kind: local` with the wall off and the machine's own person speaking;
 `kind: none` with the wall off and nobody local either (an unidentified
 browser, still able to sign in); and `204` only for an unidentified browser
@@ -1074,14 +1116,20 @@ the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
 or through a chain, on something itself waiting on it - and the backup's
 own trouble (`backup`), null when `Hatch__BackupPath` is unset or the
-backup is healthy.
+backup is healthy. `waitingOnARunner` lists the issues whose next move is
+clear but that no live runner can take, because every live runner's own
+declaration folds it on the model it runs on or on a development dependency
+its project's repository asks for; each entry carries `key`, `title`, `type`,
+`move` (the column the move starts from) and `missing` (what no live runner
+has), ordered by tier and then rank, and the list is empty when no runner is
+live.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
 
 ## Who may call what
 
-One scope, `hatch`, and it reaches everything under `/api/hatch` **less the
+A key reaches everything under `/api/hatch` **less the
 routes that take a person only**. A key that calls one of those gets a
 `403`, and that is the gate working as designed, not a misconfiguration -
 [People, roles and keys](people-roles-and-keys#api-keys) says the same thing

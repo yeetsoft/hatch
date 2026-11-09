@@ -53,12 +53,15 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<ProjectRepositoryDto>))]
 [JsonSerializable(typeof(PlaybookFilesDto))]
 [JsonSerializable(typeof(PlaybookFileDto))]
+[JsonSerializable(typeof(DependencyFilesDto))]
+[JsonSerializable(typeof(DependencyFileDto))]
 [JsonSerializable(typeof(ChangelogDto))]
 [JsonSerializable(typeof(ChangelogDayDto))]
 [JsonSerializable(typeof(ChangelogEntryDto))]
 [JsonSerializable(typeof(ChangelogMonthDto))]
 [JsonSerializable(typeof(List<ProjectDto>))]
 [JsonSerializable(typeof(DreamDto))]
+[JsonSerializable(typeof(AttentionDto))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
@@ -91,6 +94,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(NightState))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 [JsonSerializable(typeof(PlaybookFileRequest))]
+[JsonSerializable(typeof(DependencyFileRequest))]
 
 // What a hook prints for the session that ran it.
 [JsonSerializable(typeof(PostToolUseOutput))]

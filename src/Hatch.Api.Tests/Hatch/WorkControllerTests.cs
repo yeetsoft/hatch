@@ -4996,6 +4996,409 @@ public class WorkControllerTests
         Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
+    // ---- Models: a move the runner cannot spawn is folded ----
+
+    private static string NotOffered(EfHatchIssue issue, string column, string model, string? agent) =>
+        ModelFamilies.NotOffered(Key(issue), column, model, agent);
+
+    [Fact]
+    public async Task Queue_AnOverrideTheRunnerDoesNotOffer_IsFoldedInEveryColumnItStandsIn()
+    {
+        var h = await NewAsync();
+        var todo = await h.FileAsync("task", "wants fable", h.Todo);
+        var doing = await h.FileAsync("task", "also wants fable", h.InProgress);
+        await h.OverrideAsync(todo, model: "fable");
+        await h.OverrideAsync(doing, model: "fable");
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, model: ["haiku", "sonnet"], agent: "claude"));
+
+        var foldedTodo = queue.Single(e => e.Issue.Key == Key(todo));
+        Assert.Equal(NotOffered(todo, "todo", "fable", "claude"), foldedTodo.Blocked);
+        Assert.Equal(BlockedKinds.Other, foldedTodo.BlockedKind);
+
+        var foldedDoing = queue.Single(e => e.Issue.Key == Key(doing));
+        Assert.Equal(NotOffered(doing, "in progress", "fable", "claude"), foldedDoing.Blocked);
+        Assert.Equal(BlockedKinds.Other, foldedDoing.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_AModelWithNoAgent_IsFoldedWithTheSentenceThatNamesNoAgent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, model: ["haiku"]));
+
+        Assert.Equal(NotOffered(issue, "todo", "fable", null), entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_ADeclaredAlias_IsNotFolded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["haiku", "fable"], agent: "claude")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_NothingSent_FoldsNothingOnModels()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_APinnedIdOfAnotherAgent_IsFoldedWithTheWrongAgentSentence_AndOneOfTheRunnersOwnIsNot()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned", h.Todo);
+
+        await h.OverrideAsync(issue, model: "gpt-6-luna");
+        var wrong = Only(await h.Work.GetQueue(0, null, default, agent: "claude"));
+        Assert.Equal(ModelFamilies.Default.WrongAgent("gpt-6-luna", "claude"), wrong.Blocked);
+        Assert.Equal(BlockedKinds.Other, wrong.BlockedKind);
+
+        // Without an agent there is nothing to be wrong about.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["haiku"])).Blocked);
+
+        await h.OverrideAsync(issue, model: "claude-opus-5");
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AHop_IsNeverFoldedOnItsModel()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.OverrideAsync(issue, model: "fable");
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, model: ["haiku"], agent: "claude"));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Next_SkipsAFoldedRowToTheNextClearOne_AndWorkReturnsTheFoldedRowBlocked()
+    {
+        var h = await NewAsync();
+        var clear = await h.FileAsync("task", "runs on haiku", h.Todo);
+        var folded = await h.FileAsync("task", "wants fable", h.InProgress);
+        await h.OverrideAsync(clear, model: "haiku");
+        await h.OverrideAsync(folded, model: "fable");
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default, model: ["haiku"], agent: "claude"));
+        Assert.Equal(Key(clear), next.Issue.Key);
+
+        var named = Value(await h.Work.GetWork(Key(folded), null, default, model: ["haiku"], agent: "claude"));
+        Assert.Equal(NotOffered(folded, "in progress", "fable", "claude"), named.Blocked);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(folded), null, default, model: ["fable"], agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_EveryRowFolded_IsNoContent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default, model: ["haiku"])).Result);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRowsModelsAndAgent_AndARowThatNeverReportedFoldsNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var offers = RunnerName();
+        var silent = RunnerName();
+        await AddLoopRunnerAsync(h, offers, r => { r.Agent = "claude"; r.Models = "haiku\nsonnet"; });
+        await AddLoopRunnerAsync(h, silent);
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: offers));
+        Assert.Equal(NotOffered(issue, "todo", "fable", "claude"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent)).Blocked);
+
+        // The query's own models are ignored beside the row's, as tag is.
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, asRunner: offers, model: ["fable"])).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatLacksTheModel_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var peer = await AddLoopRunnerAsync(h, b, r => { r.Agent = "claude"; r.Models = "haiku\nsonnet"; });
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+
+        peer.Models = "haiku\nsonnet\nfable";
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(
+            DeferralSentence(a, 7),
+            Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Models_ABadEntry_IsRefusedWithTheRunnerModelsSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "anything", h.Todo);
+
+        var wrongAgent = RunnerModels.Normalise(["gpt-6-luna"], "claude", out _)!;
+        var nonsense = RunnerModels.Normalise(["nonsense"], null, out _)!;
+
+        Assert.Equal(wrongAgent, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, model: ["gpt-6-luna"], agent: "claude")).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, model: ["nonsense"])).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetNextWork(0, null, null, default, model: ["nonsense"])).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetWork(Key(issue), null, default, model: ["nonsense"])).Result).Value);
+    }
+
+    // ---- Dependencies: a move the runner's has-list cannot satisfy is folded ----
+
+    private static string NeedsSentence(EfHatchIssue issue, string needs, string canonicals, string has) =>
+        $"{Key(issue)} needs {needs} ({canonicals}'s {DependencyDeclaration.Path}) - this runner has {has}";
+
+    private static async Task<EfHatchProjectRepository> NeedingAsync(Harness h, params DeclaredDependency[] entries)
+    {
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", EfHatchDependencyFile.ParsedState, entries);
+        return repo;
+    }
+
+    [Fact]
+    public async Task Dependencies_AnUnmetNeed_FoldsEveryCodeGatedMove_ButNotTheMoveIntoImplementation()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        await h.ConflictPlaybookAsync();
+        var doing = await h.FileAsync("task", "being built", h.InProgress);
+        var todo = await h.FileAsync("task", "not started", h.Todo);
+        var conflicted = await h.FileAsync("story", "conflicted", h.Review);
+        await h.VerdictAsync(conflicted, MergeVerdicts.Conflicted, files: ["a.txt"]);
+        var red = await h.FileAsync("story", "red build", h.Review);
+        await h.VerdictAsync(red, MergeVerdicts.Clean);
+        await h.BuildAsync(red, BuildVerdicts.Failed);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"]));
+
+        foreach (var issue in new[] { doing, conflicted, red })
+        {
+            var entry = queue.Single(e => e.Issue.Key == Key(issue));
+            Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), entry.Blocked);
+            Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+        }
+
+        Assert.Null(queue.Single(e => e.Issue.Key == Key(todo)).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_AHop_IsNeverFolded()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"]));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Dependencies_ASatisfyingVersion_AndABareNeedMetByAnyVersion_FoldNothing()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"), new DeclaredDependency("node", null));
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@10.0.100", "node@22"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8", "dotnet@10.0.100", "node"])).Blocked);
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@10.0.100"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_NoHasSent_FoldsNothing()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", EfHatchDependencyFile.ParsedState, [new DeclaredDependency("dotnet", "10")]);
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_SeveralUnmet_AreOneSentenceNamingEachOfThem()
+    {
+        var h = await NewAsync();
+        var one = await h.BindRepositoryAsync("https://example.com/o/one", "main");
+        var two = await h.BindRepositoryAsync("https://example.com/o/two", "main");
+        await h.DependencyFileAsync(one, "main", EfHatchDependencyFile.ParsedState,
+            [new DeclaredDependency("dotnet", "10"), new DeclaredDependency("make", null)]);
+        await h.DependencyFileAsync(two, "main", EfHatchDependencyFile.ParsedState,
+            [new DeclaredDependency("node", "22"), new DeclaredDependency("dotnet", "10")]);
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8", "node@20"]));
+
+        Assert.Equal(
+            $"{Key(issue)} needs dotnet 10, make and node 22 " +
+            $"({one.Canonical} and {two.Canonical}'s {DependencyDeclaration.Path}) - " +
+            "this runner has dotnet 8, no make and node 20",
+            entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_AnInvalidFile_FoldsWithItsOwnSentence_ForAnyJudgedRunner()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        var sha = new string('c', 40);
+        await h.DependencyFileAsync(repo, "main", EfHatchDependencyFile.InvalidState, problem: "is not valid JSON (line 3)", sha: sha);
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        var expected = $"{repo.Canonical}'s {DependencyDeclaration.Path} is invalid at {sha} (is not valid JSON (line 3)) - fix it on the trunk";
+
+        Assert.Equal(expected, Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@10"])).Blocked);
+        Assert.Equal(expected, Only(await h.Work.GetQueue(0, null, default, has: ["node"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_AnAbsentFile_OrNoRow_FoldsNothing()
+    {
+        var h = await NewAsync();
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"])).Blocked);
+
+        await h.DependencyFileAsync(repo, "main", EfHatchDependencyFile.AbsentState);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_NoBoundRepository_FoldsNothing()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_SkipsAnUnmetRowToTheNextClearOne_AndWorkReturnsTheFoldedRowBlocked()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var folded = await h.FileAsync("task", "being built", h.InProgress);
+        var clear = await h.FileAsync("task", "not started", h.Todo);
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default, has: ["dotnet@8"]));
+        Assert.Equal(Key(clear), next.Issue.Key);
+
+        var named = Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@8"]));
+        Assert.Equal(NeedsSentence(folded, "dotnet 10", repo.Canonical, "dotnet 8"), named.Blocked);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@10"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_EveryRowUnmet_IsNoContent()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default, has: ["dotnet@8"])).Result);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRowsHas_AndARowThatNeverReportedFoldsNothing()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+        var lacks = RunnerName();
+        var silent = RunnerName();
+        await AddLoopRunnerAsync(h, lacks, r => r.Has = "dotnet@8");
+        await AddLoopRunnerAsync(h, silent);
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: lacks));
+        Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent)).Blocked);
+
+        // The query's own has is ignored beside the row's, as model is.
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, asRunner: lacks, has: ["dotnet@10"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent, has: ["dotnet@8"])).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatLacksTheDependency_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("task", "dropped by A", h.InProgress);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var peer = await AddLoopRunnerAsync(h, b, r => r.Has = "dotnet@8");
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a, has: ["dotnet@10"])).Blocked);
+
+        peer.Has = "dotnet@10.0.100";
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(
+            DeferralSentence(a, 7),
+            Only(await h.Work.GetQueue(runner: a, has: ["dotnet@10"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Dependencies_ABadEntry_IsRefusedWithTheDependencySetSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "anything", h.Todo);
+
+        var unknown = DependencySet.Normalise(["nonsense"], out _)!;
+        var badVersion = DependencySet.Normalise(["dotnet@ten"], out _)!;
+
+        Assert.Equal(unknown, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, has: ["nonsense"])).Result).Value);
+        Assert.Equal(badVersion, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, has: ["dotnet@ten"])).Result).Value);
+        Assert.Equal(unknown, Assert.IsType<BadRequestObjectResult>((await h.Work.GetNextWork(0, null, null, default, has: ["nonsense"])).Result).Value);
+        Assert.Equal(unknown, Assert.IsType<BadRequestObjectResult>((await h.Work.GetWork(Key(issue), null, default, has: ["nonsense"])).Result).Value);
+    }
+
     // ---- Projects, a runner's own binding (HA-1535) ----
 
     [Fact]
@@ -5595,7 +5998,7 @@ public class WorkControllerTests
         // WorkController's own harness authenticates every call as a key
         // (StubCallerIdentity.Key) - the same caller every other test in this
         // file already uses. This test exists to say so out loud: a hop
-        // inherits the class's Hatch scope rather than a person-only route,
+        // inherits the class's AcceptKey rather than a person-only route,
         // because the loop is exactly who calls one.
         var h = await NewAsync();
         var issue = await h.FileAsync("story", "carried across", h.Todo);
@@ -6364,6 +6767,75 @@ public class WorkControllerTests
         Assert.Equal(
             $"Closed by its pre-approval from {Key(grandparent)}: every child is done.",
             comment.Body);
+    }
+
+    [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_MovesItToDone()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Done, moved.StatusId);
+        Assert.Equal(h.Done, row.StatusId);
+    }
+
+    [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_WritesOneStatusChangedEventCarryingApprovedSetting()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("setting", payload.GetProperty("approved").GetString());
+        Assert.False(payload.TryGetProperty("preapproved", out _));
+        AssertColumns(e, h.Review, h.Done);
+    }
+
+    [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_WritesTheClosedUnderTheSettingComment()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed under {Key(issue)}'s setting, a passing check approves the merge: every child is done.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task HopWork_OnAPreApprovedCloseRowInASettingOnProject_KeepsThePreApprovalsPayloadAndComment()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var payload = System.Text.Json.JsonDocument.Parse(Assert.Single(row.Events).Payload!).RootElement;
+        Assert.True(payload.GetProperty("preapproved").GetBoolean());
+        Assert.False(payload.TryGetProperty("approved", out _));
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal("Closed by its pre-approval on its own row: every child is done.", comment.Body);
     }
 
     [Fact]
@@ -10230,6 +10702,126 @@ public class WorkControllerTests
         Assert.NotNull(verdictRow.AppliedAt);
     }
 
+    /// <summary>A check on the review column, which <c>Columns.Approves</c> needs: <c>CheckingAsync</c>'s own playbook ends at Checking, so a second one runs Checking to Review.</summary>
+    private async Task<int> ReviewCheckAsync(Harness h)
+    {
+        await h.CheckingAsync();
+        var playbook = Playbook(h.Checking, h.Review, "", "sonnet", isCheck: true);
+        h.Db.Playbooks.Add(playbook);
+        await h.Db.SaveChangesAsync();
+        return playbook.Id;
+    }
+
+    private async Task<EfHatchStatus> AddApprovedColumnAsync(Harness h)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        return approved;
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOnReviewWithPrAndMergeColumnNext_MovesToMergeColumn()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        var approved = await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(approved.Id, moved.StatusId);
+        Assert.Equal(approved.Id, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
+        Assert.Equal(playbookId, payload.GetProperty("playbookId").GetInt32());
+        Assert.Equal("check", payload.GetProperty("approved").GetString());
+        AssertColumns(e, h.Review, approved.Id);
+
+        var comments = row.Comments.OrderBy(c => c.Id).ToList();
+        Assert.Equal(2, comments.Count);
+        Assert.NotEqual(EfHatchComment.Verdict, comments[0].Kind);
+        Assert.Equal("Approved by checking → review's passing verdict.", comments[0].Body);
+        Assert.Equal(EfHatchComment.Verdict, comments[1].Kind);
+        Assert.Equal("looks right", comments[1].Body);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOnNoPullRequest_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Review);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOff_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        await AddApprovedColumnAsync(h);
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Review);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_FromNotReviewColumn_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Checking);
+    }
+
+    /// <summary>The pass went where <c>Columns.Target</c> sends it - review, whether it came from review or from checking - with no approval written.</summary>
+    private static async Task AssertPassFellBackAsync(Harness h, EfHatchIssue issue, int from)
+    {
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Review, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
+        Assert.False(payload.TryGetProperty("approved", out _));
+        AssertColumns(e, from, h.Review);
+
+        var comment = Assert.Single(row.Comments);
+        Assert.Equal(EfHatchComment.Verdict, comment.Kind);
+        Assert.Equal("looks right", comment.Body);
+    }
+
     [Fact]
     public async Task VerdictWork_FirstFail_ReturnsTheIssueToImplementation()
     {
@@ -10965,7 +11557,7 @@ public class WorkControllerTests
             // at. The refusal is a property of the route, not of a prompt
             // asking nicely.
             Assert.NotNull(guard);
-            Assert.Null(guard.AcceptScope);
+            Assert.False(guard.AcceptKey);
         }
     }
 
@@ -10978,7 +11570,7 @@ public class WorkControllerTests
             .Single();
 
         // An agent has to be able to read what it was dispatched with.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- The WIP section ----
@@ -12460,6 +13052,30 @@ public class WorkControllerTests
             };
 
             Db.PlaybookFiles.Add(file);
+            await Db.SaveChangesAsync();
+            return file;
+        }
+
+        /// <summary>The state of a repository's <c>.hatch/dependencies.json</c> on a trunk, as a prior check against it left it.</summary>
+        public async Task<EfHatchDependencyFile> DependencyFileAsync(
+            EfHatchProjectRepository repo, string trunk, string state,
+            IReadOnlyList<DeclaredDependency>? entries = null, string? problem = null, string? sha = null)
+        {
+            var file = new EfHatchDependencyFile
+            {
+                Remote = repo.Remote,
+                Canonical = repo.Canonical,
+                Trunk = trunk,
+                Sha = sha ?? new string('a', 40),
+                State = state,
+                Entries = entries is null ? null : EfHatchDependencyFile.WriteEntries(entries),
+                Problem = problem,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            };
+
+            Db.DependencyFiles.Add(file);
             await Db.SaveChangesAsync();
             return file;
         }

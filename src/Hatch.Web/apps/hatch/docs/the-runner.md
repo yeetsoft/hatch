@@ -211,6 +211,8 @@ HATCH_LOG            where its log goes (on: the logs folder beside the
 HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
 HATCH_MODELS         the models this runner advertises, comma-separated
                      (default: the agent's)
+HATCH_HAS            what this machine has that detection cannot see,
+                     comma-separated (default: nothing)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -233,7 +235,7 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   resolved active one, or `<none>`; the `runner:` line below and an unset
   `HATCH_WORKSPACE:` line name it in turn;
 - the runner's name, and where it came from;
-- who `/api/hatch/me` says the caller is - the key, its owner and its scopes,
+- who `/api/hatch/me` says the caller is - the key and its owner,
   or that calls go out as a named runner - or `<unreachable>` when there is
   no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
@@ -250,6 +252,11 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   `off - this runner refuses dangerous work`, or a bad value with the sentence that refuses it;
 - `HATCH_MODELS:` as a comma-separated list, `<unset - the agent's default>`, or a bad
   value with the sentence that refuses it;
+- `has:` - what detection found merged with what `HATCH_HAS` declares, `id` or
+  `id version`, comma-separated, or `none`;
+- `missing:` - everything neither detection nor `HATCH_HAS` found, comma-separated,
+  or `none`. Detected here quietly: an absent id prints no line on stderr the
+  way it does for a beat;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -263,6 +270,18 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   third every board-bound line while a profile is active, set or not.
 
 ## What a runner advertises
+
+A runner tells the board three facts, each owned differently. *Tags* are a
+person's decision: the first beat that names any seeds the row, and after
+that the row is where they live, moved only by a `PATCH` on it. *Models* -
+what its agent can spawn - and *has* - what its machine has - are
+detections instead: every beat overwrites the row, and no page or `PATCH`
+edits them, so a value can never say a machine has a tool it does not. Each
+of the three is judged on every dispatch read (`hatch queue`, `next`, `work
+KEY`, the loop's own pass) and never on a hop, and each is opt-in on the
+wire: a caller sending no `tag=`, `model=`/`agent=` or `has=` is folded by
+nothing for it, which is why an older CLI and the issue page are unaffected.
+[Models](#models) and [Has](#has) below have each detection in full.
 
 A tag is a word a project's, a ticket's, or one of its ancestors' runner tags
 require. A project that requires `gpu` is only worked by a runner that carries
@@ -314,9 +333,9 @@ hatch config --models haiku --models sonnet
 `--models` is repeatable, and bare `--models` clears them. A comma inside one
 value is refused (`--models haiku,sonnet` is one unknown id, not two), with
 nothing written. So is a pinned id of a different agent than `HATCH_AGENT`
-(blank is `claude`): `"gpt-6-luna" is a codex model - this runner's agent is
-claude`. A bad `HATCH_MODELS` in a file or the environment refuses every
-command with the same sentence, after `hatch: HATCH_MODELS -`. It is
+(blank is `claude`): `"qwen3-coder:30b" is an ollama model - this runner's
+agent is claude`. A bad `HATCH_MODELS` in a file or the environment refuses
+every command with the same sentence, after `hatch: HATCH_MODELS -`. It is
 machine-bound, so a profile still reads it from the per-user file.
 
 **What the default is.** Unset, a runner advertises what its agent can spawn:
@@ -330,11 +349,135 @@ valid Ollama id (`name:tag`) is left out rather than refusing the beat.
 checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
 agent advertises that agent's default instead of a list that would be refused.
 
+**A runner can stop offering a model for a while.** Until a time, or for the
+rest of the run, a narrowed model is left off the list the beat sends, whatever
+`HATCH_MODELS` or the agent's default says, and it is back once the time
+passes. A per-model weekly window the `/usage` probe finds spent narrows that
+model until the window resets, and the terminal says so once - see [When it
+will not run](#when-it-will-not-run). A supervisor restart keeps what is
+narrowed; a fresh start forgets it.
+Where every model is narrowed the beat sends an empty list, which clears the
+row's models, rather than none, which would leave the last list standing.
+
 **Every heartbeat writes the list.** Unlike tags, the board does not own it:
 the row carries whatever the last beat said, so changing `HATCH_MODELS` or
 pulling a model on an ollama server shows on the next heartbeat. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
-`hatch runners` closes a row with `  models haiku sonnet`.
+
+**The models and the agent ride on every dispatch read too.** `hatch queue`,
+`hatch next`, `hatch work KEY` and the loop's own pass send one `model=` per
+model the runner offers - less any narrowed, read afresh each time - and
+`agent=` for its agent; a hop sends neither. A move whose model the runner
+does not offer is folded for it, with the board's own sentence: *"HA-12 in
+Breakdown runs on fable - this runner's claude does not offer it"*. So a runner
+never claims a ticket only to refuse it. A playbook or an issue pinned to a
+model id rather than an alias is choosing an agent, not a list ([model and
+effort](playbooks#model-and-effort)); a move pinned to another agent's id is
+folded the same way, with the board's own clause after the ticket key, as
+`queue` shows it: *"pinned to gpt-6-luna, a codex model - this runner's
+agent is claude"*. A runner that offers no list, or has narrowed every
+model, sends no `model=` and the board judges the agent alone.
+`hatch runners` closes a row with `  models haiku sonnet` and then `  has
+dotnet 10.0.100, node 22.11.0`. The Runners page draws the dependencies a
+runner has the same way, as `has dotnet 10.0.100, node 22.11.0`, under the
+repositories line in a row's details.
+
+### Has
+
+A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
+comma-separated list of dependencies - each an `id` or `id@version` from the
+master list - trimmed, lowercased and deduplicated. It adds to what detection
+finds and never removes. It is read from the same four layers as any other
+setting, and unset means nothing declared.
+
+```
+HATCH_HAS=dotnet@10.0.100,pwsh
+hatch config --has dotnet@10.0.100 --has pwsh
+```
+
+`--has` is repeatable, and bare `--has` clears them. A comma inside one value
+is refused (`--has dotnet,pwsh` is one unknown id, not two), with nothing
+written. So is an id the master list does not know: `` `cobol` is not a
+dependency Hatch knows - the list is dotnet, make, node, playwright-browsers,
+postgres, pwsh ``. A bad `HATCH_HAS` in a file or the environment refuses
+every command with the same sentence, after `hatch: HATCH_HAS -`. It is
+machine-bound, so a profile still reads it from the per-user file.
+
+**Detection runs once**, at the start of `go-to-work`, `do-my-work`, `work`
+and `queue`, concurrently across all six dependencies: `make`, `dotnet`,
+`node` and `pwsh` on `PATH` (and which version each answers), whether a
+Playwright browsers cache exists, and whether Postgres answers - a binary on
+`PATH`, or failing that a Docker daemon's `docker info`. None of the six can
+outlast five seconds alone, but Postgres tries three binaries and a daemon in
+turn before giving up, so it alone can take up to four times that. What
+detection finds is merged with what `HATCH_HAS` declares - a declared entry
+adds only what detection missed, never removing what detection found - and
+the merged set is what a beat advertises: the same one `hatch runners` and the
+Runners page draw, above. A supervisor restart is a new process, so it
+detects again with no code of its own; an id neither detection nor `HATCH_HAS`
+covers says why once on stderr, as `hatch: <id> not detected - <why>`.
+
+The merged set is also sent on every dispatch read - `queue`, `work <key>`
+and the loop's own pass - one `has=` per entry, and never on a hop. A move
+whose project needs a dependency this runner's set does not satisfy is folded
+for it with the board's own sentence, printed unchanged: `AER-1 needs dotnet
+10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8`. So a
+runner never claims a ticket only to find its machine cannot run it.
+[What a repository needs](#what-a-repository-needs) says where that need is
+written.
+
+## What a repository needs
+
+**The file.** A repository says what a build of it needs in
+`.hatch/dependencies.json` on the trunk of each repository a project binds. The
+shape is `{"dependencies": [ ... ]}`, and an entry is an id string or
+`{"id": ..., "version": ...}`. The ids are the master list - `make`, `dotnet`,
+`node`, `playwright-browsers`, `postgres`, `pwsh` - each declared once. A
+version is one to three dotted whole numbers, and it is met by any detected
+version whose leading components equal it: `10` is met by `10.0.100`, `22.11` is
+not met by `22.10.0`, and `22` means 22.x, not 22 or newer. A need the list
+lacks is a runner tag instead ([What a runner
+advertises](#what-a-runner-advertises)).
+
+**Where it is read.** The runner's poll reads the blob off the trunk through
+git, beside `.hatch/playbooks.yaml`, and reports it to `PUT
+/api/hatch/dependency-files` ([API reference](api-reference#dependency-files));
+the board parses the bytes itself. A project's need is the union over every
+repository it binds.
+
+**What it gates.** Development steps only: out of the implementation column, and
+the review self-move while it is conflict or build work. Never a hop, never the
+move into the implementation column, and never breakdown or analysis, which read
+a repository and do not build it. A runner that falls short is folded with the
+sentence quoted under [Has](#has).
+
+**An invalid file.** An invalid file folds the project's development steps with
+*"acme/repo's .hatch/dependencies.json is invalid at <sha> (<problem>) - fix it
+on the trunk"*. An absent file, or one no runner has read yet, folds nothing, so
+a repository that has not opted in is exactly as it was.
+
+**On the Projects page.** In Manage, Projects, editing a project shows what the
+board knows beside each bound repository: *needs dotnet 10, node 22, ...*,
+*declares no dependencies*, or *no runner has read its declaration yet*. An
+invalid file shows its problem and *last good sha* with the short sha where one
+parsed, and a **File** chip to the blob.
+
+**This repository's own file** is the worked example:
+
+```json
+{
+  "dependencies": [
+    "make",
+    { "id": "dotnet", "version": "10" },
+    { "id": "node", "version": "22" },
+    { "id": "pwsh", "version": "7" },
+    "playwright-browsers",
+    "postgres"
+  ]
+}
+```
+
+The Makefile's header comment points at it, so the two move together.
 
 ## What a runner refuses
 
@@ -638,7 +781,7 @@ file:             <per-user config>/config
 checkout:         <checkout-a>/scripts/.env  (written by --here)
 profile:          <none>
 runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
@@ -667,7 +810,7 @@ file:             <per-user config>/config
 checkout:         <checkout-b>/scripts/.env  (written by --here)
 profile:          <profile-b>  (<per-user config>/profiles/<profile-b>)
 runner:           <checkout-b>  (<per-user config>/runners)  (profile: <profile-b>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
@@ -697,7 +840,7 @@ carries no layer. The key prints as its first twelve and last four
 characters, or `(set)` when it is short, never in full.
 
 The `identity:` line calls `/api/hatch/me` with whatever origin and key are
-folded above, and names the key, its owner and its scopes, or - for a runner
+folded above, and names the key and its owner, or - for a runner
 header instead of a key - that calls go out as its name. It prints
 `<unreachable>` without calling out at all when no origin is set, and the
 same when the call itself fails, so `--show` keeps working fully offline.
@@ -898,3 +1041,21 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   bound to repositories this runner has no checkout of.
 - **`hatch: could not reach <origin> for 90s - ...`** See [when a call
   fails](cli-reference#when-a-call-fails).
+- **`hatch: {model} is off this runner's list until {clock}`** (or `for the
+  rest of this run`):
+  - the increment ends released `unservable` - the model is one the account
+    cannot spawn, learned from the one refusal;
+  - the terminal's tally lists it as
+    `hatch:   unservable  HA-12  fable is not one this runner can spawn`
+    (three spaces after `hatch:`, two after `unservable` and the key, as
+    `GoToWork.cs:420` writes it);
+  - the ticket gets one comment, *"This runner's Claude no longer offers
+    fable, until 3:40am."* (or *"..., for the rest of this run."*), then the
+    branch, sha and resume command (`Lifecycle.cs:340`; `Claude` is the
+    adapter's display name);
+  - it is **not a stall**: no let-go comment, no mark, no question, not one
+    of the three failed increments - the next pass does not take that
+    ticket, because the beat drops the model and the board folds it with
+    the model sentence in `### Models`;
+  - a restart keeps the narrowing, a fresh start forgets it
+    ([one increment and the loop](one-increment-and-the-loop#stalls)).

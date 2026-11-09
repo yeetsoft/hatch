@@ -333,6 +333,7 @@ public sealed class WorkCommand(Runtime runtime)
                 Kind: RunnerKinds.Once,
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
                 Tags: runtime.Settings.Tags,
+                Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Where: runtime.Where,
@@ -706,7 +707,10 @@ public sealed class WorkCommand(Runtime runtime)
                 var preempted = report is { Preempted: true }
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted);
+                var modelRefusal = report is { Unservable: true }
+                    ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
+                    : null;
+                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted, modelRefusal: modelRefusal);
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged
@@ -845,7 +849,7 @@ public sealed class WorkCommand(Runtime runtime)
     /// "what model" since it beats the playbook the same way it does
     /// everywhere else named is resolved; or carrying denied-tools rules this
     /// agent's adapter cannot honour; or pinned to a model its server has not
-    /// pulled.
+    /// pulled; or pinned to a model the runner has stopped offering.
     /// </summary>
     private bool RefuseRow(WorkDto work, string? model)
     {
@@ -864,6 +868,12 @@ public sealed class WorkCommand(Runtime runtime)
         if (!runtime.Adapter.CanServe(model ?? work.Playbook?.Model, out var unserved))
         {
             runtime.Say.Complain($"hatch: {work.Issue.Key} - {unserved}");
+            return true;
+        }
+
+        if (runtime.Narrowing.Refusal(model ?? work.Playbook?.Model, runtime.Settings.Agent, runtime.Clock.GetUtcNow(), runtime.Clock) is { } narrowed)
+        {
+            runtime.Say.Complain($"hatch: {work.Issue.Key} - {narrowed}");
             return true;
         }
 

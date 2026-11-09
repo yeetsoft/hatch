@@ -19,8 +19,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// <para>Its own controller for the same reason
 /// <see cref="IssuePlaybookController"/> is, and cut the same way: no
-/// class-level attribute, so the write below inherits no scope from anything.
-/// <see cref="IssuesController"/> accepts the <c>hatch</c> scope on every route
+/// class-level attribute, so the write below inherits no key acceptance from anything.
+/// <see cref="IssuesController"/> accepts a key on every route
 /// it holds, so two more fields on <c>IssuePatchRequest</c> would have made this
 /// a key's write - and under the loop's <c>people only</c> rule an assignee is a
 /// dispatch gate. A key that could write one could clear a person's name off a
@@ -45,13 +45,13 @@ public class AssigneeController(
     /// second, and two requests to draw one row is two chances to disagree.
     /// </summary>
     /// <remarks>
-    /// Open to the <c>hatch</c> scope, unlike the write below. Nothing here is a
+    /// Open to a key, unlike the write below. Nothing here is a
     /// power: it is a list of names an operator could have read off the People
     /// page, and refusing it would only mean an agent could not say who a ticket
     /// belongs to when it declines to take it.
     /// </remarks>
     [HttpGet("assignees")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<AssigneeDirectoryDto>> GetAssignees(CancellationToken ct)
     {
         var live = await actors.LiveAsync(ct);
