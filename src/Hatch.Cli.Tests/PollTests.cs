@@ -22,6 +22,7 @@ public sealed class PollTests
     private static string PutBuild(string key) => $"/api/hatch/issues/{key}/build-check";
     private const string TrunkBuilds = "/api/hatch/trunk-builds";
     private const string PlaybookFiles = "/api/hatch/playbook-files";
+    private const string DependencyFiles = "/api/hatch/dependency-files";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -84,6 +85,20 @@ public sealed class PollTests
         public Rig KeepsPlaybookFile(PlaybookFileDto held)
         {
             H.Wire.Replace("PUT", PlaybookFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board says it holds for every dependency file, in place of the default current one the harness stubs.</summary>
+        public Rig StoresDependencyFiles(params DependencyFileDto[] rows)
+        {
+            H.Wire.Replace("GET", DependencyFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new DependencyFilesDto(".hatch/dependencies.json", rows), Fixtures.Json));
+            return this;
+        }
+
+        /// <summary>What the board answers a dependency file put with: the row it now holds.</summary>
+        public Rig KeepsDependencyFile(DependencyFileDto held)
+        {
+            H.Wire.Replace("PUT", DependencyFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(held, Fixtures.Json));
             return this;
         }
 
@@ -439,14 +454,22 @@ public sealed class PollTests
             rig.H.Workspace.Verdicts[(path, "AER-1")] = path.EndsWith("one", StringComparison.Ordinal) ? Clean() : Conflicted("x");
         }
 
-        // The harness's own playbook-files default only vouches for its one
-        // default checkout - these two are neither, so each needs its own row
-        // or the playbook half would fetch both, same as a trunk build would.
+        // The harness's own playbook-files and dependency-files defaults only
+        // vouch for its one default checkout - these two are neither, so each
+        // needs its own row or those halves would fetch both, same as a trunk
+        // build would.
         rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
             new PlaybookFilesDto(".hatch/playbooks.yaml",
             [
                 Fixtures.PlaybookFile(remote: "https://example.test/one.git", canonical: "example.test/one"),
                 Fixtures.PlaybookFile(remote: "https://example.test/two.git", canonical: "example.test/two"),
+            ]),
+            Fixtures.Json));
+        rig.H.Wire.Replace("GET", DependencyFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new DependencyFilesDto(".hatch/dependencies.json",
+            [
+                Fixtures.DependencyFile(remote: "https://example.test/one.git", canonical: "example.test/one"),
+                Fixtures.DependencyFile(remote: "https://example.test/two.git", canonical: "example.test/two"),
             ]),
             Fixtures.Json));
 
@@ -479,10 +502,15 @@ public sealed class PollTests
         rig.H.Workspace.HeadsFor["/checkouts/two"] = Heads(branches: ("aer-1-thing", Tip));
         rig.H.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Clean();
 
-        // See the sibling test above: this checkout is not the harness's own default one either.
+        // See the sibling test above: this checkout is not the harness's own default one either,
+        // for the playbook file or the dependency file.
         rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
             new PlaybookFilesDto(".hatch/playbooks.yaml",
                 [Fixtures.PlaybookFile(remote: "https://example.test/two.git", canonical: "example.test/two")]),
+            Fixtures.Json));
+        rig.H.Wire.Replace("GET", DependencyFiles, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+            new DependencyFilesDto(".hatch/dependencies.json",
+                [Fixtures.DependencyFile(remote: "https://example.test/two.git", canonical: "example.test/two")]),
             Fixtures.Json));
 
         await rig.Poll.RunAsync(runtime, Interval, default);
@@ -543,6 +571,11 @@ public sealed class PollTests
         Assert.Equal(0, rig.Count("fetch"));
         Assert.Single(rig.H.Say.Complained);
         Assert.Contains("origin did not answer", rig.H.Say.Complained[0], StringComparison.Ordinal);
+
+        // The playbook-file and dependency-file halves reuse the cached null
+        // head: no second complaint, and nothing put.
+        Assert.Empty(rig.H.Wire.To("PUT", PlaybookFiles));
+        Assert.Empty(rig.H.Wire.To("PUT", DependencyFiles));
     }
 
     [Fact]
@@ -608,10 +641,10 @@ public sealed class PollTests
 
         await rig.RunAsync();
 
-        // The review read, and the trunk and playbook-file halves' own -
-        // both run whether or not anything is in review, so a quiet board is
-        // not a poll that never gets there.
-        Assert.Equal(3, rig.H.Wire.Calls.Count);
+        // The review read, and the trunk, playbook-file and dependency-file
+        // halves' own - all run whether or not anything is in review, so a
+        // quiet board is not a poll that never gets there.
+        Assert.Equal(4, rig.H.Wire.Calls.Count);
         Assert.Equal([$"heads {rig.H.Root}"], rig.H.Workspace.Calls);
         Assert.Empty(rig.H.Say.Said);
         Assert.Empty(rig.H.Say.Complained);
@@ -1329,6 +1362,113 @@ public sealed class PollTests
         await rig.RunAsync();
 
         Assert.Empty(rig.H.Wire.To("PUT", PlaybookFiles));
+        Assert.Contains("some git error", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.Count("fetch"));
+        Assert.Equal(2, rig.Count("read-blob"));
+    }
+
+    // ---- The dependency file (HA-1915) ----
+
+    /// <summary>A checkout with an origin and nothing in review, whose dependency file the board does not hold at any sha.</summary>
+    private static Rig NoStoredDependencyFile()
+    {
+        var rig = new Rig().Board();
+        rig.StoresDependencyFiles();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+        return rig;
+    }
+
+    [Fact]
+    public async Task A_dependency_file_at_a_sha_the_board_does_not_hold_is_fetched_read_and_put()
+    {
+        using var rig = NoStoredDependencyFile();
+        var bytes = "{}"u8.ToArray();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/dependencies.json")] = new BlobRead(BlobOutcome.Found, bytes, null);
+        rig.H.Forge.FileUrlFor[".hatch/dependencies.json"] = "https://example.test/repo/blob/main/.hatch/dependencies.json";
+        rig.KeepsDependencyFile(Fixtures.DependencyFile());
+
+        await rig.RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Equal(1, rig.Count("read-blob"));
+        Assert.Contains($"read-blob {rig.H.Root} main .hatch/dependencies.json", rig.H.Workspace.Calls);
+
+        var put = Assert.Single(rig.H.Wire.To("PUT", DependencyFiles)).Read<DependencyFileRequest>();
+        Assert.Equal("https://example.test/repo.git", put.Remote);
+        Assert.Equal("main", put.Trunk);
+        Assert.Equal(Trunk, put.Sha);
+        Assert.Equal(Convert.ToBase64String(bytes), put.Content);
+        Assert.Equal("https://example.test/repo/blob/main/.hatch/dependencies.json", put.Url);
+        Assert.Equal("test:/checkout", put.Runner);
+    }
+
+    [Fact]
+    public async Task A_dependency_file_the_board_already_holds_at_the_trunks_sha_is_neither_fetched_nor_put()
+    {
+        using var rig = new Rig().Board();
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads();
+
+        await rig.RunAsync();
+
+        Assert.Equal(0, rig.Count("fetch"));
+        Assert.Equal(0, rig.Count("read-blob"));
+        Assert.Empty(rig.H.Wire.To("PUT", DependencyFiles));
+    }
+
+    [Fact]
+    public async Task A_trunk_with_no_dependency_file_at_all_is_put_with_null_content()
+    {
+        using var rig = NoStoredDependencyFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/dependencies.json")] = new BlobRead(BlobOutcome.Absent, null, null);
+        rig.H.Forge.FileUrlFor[".hatch/dependencies.json"] = "https://example.test/repo/blob/main/.hatch/dependencies.json";
+        rig.KeepsDependencyFile(Fixtures.DependencyFile());
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", DependencyFiles)).Read<DependencyFileRequest>().Content);
+    }
+
+    [Fact]
+    public async Task A_board_that_would_not_take_the_dependency_file_is_a_line_and_is_asked_again_next_interval()
+    {
+        using var rig = NoStoredDependencyFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/dependencies.json")] = new BlobRead(BlobOutcome.Found, "{}"u8.ToArray(), null);
+        rig.H.Forge.FileUrlFor[".hatch/dependencies.json"] = "https://example.test/repo/blob/main/.hatch/dependencies.json";
+        rig.H.Wire.Replace("PUT", DependencyFiles, HttpStatusCode.NotFound, "\"no route\"");
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(2, rig.Count("fetch"));
+        Assert.Equal(2, rig.Count("read-blob"));
+        Assert.Equal(2, rig.H.Wire.To("PUT", DependencyFiles).Count);
+        Assert.Contains("dependency file", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_dependency_file_put_with_no_forge_link_has_a_null_url()
+    {
+        using var rig = NoStoredDependencyFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/dependencies.json")] = new BlobRead(BlobOutcome.Found, "{}"u8.ToArray(), null);
+        rig.KeepsDependencyFile(Fixtures.DependencyFile());
+
+        await rig.RunAsync();
+
+        Assert.Null(Assert.Single(rig.H.Wire.To("PUT", DependencyFiles)).Read<DependencyFileRequest>().Url);
+    }
+
+    [Fact]
+    public async Task A_failed_dependency_file_read_is_one_complaint_and_is_not_cached_as_an_answer()
+    {
+        using var rig = NoStoredDependencyFile();
+        rig.H.Workspace.BlobsFor[(rig.H.Root, "main", ".hatch/dependencies.json")] = new BlobRead(BlobOutcome.Failed, null, "some git error");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("PUT", DependencyFiles));
         Assert.Contains("some git error", Assert.Single(rig.H.Say.Complained), StringComparison.Ordinal);
 
         await rig.Later().RunAsync();
