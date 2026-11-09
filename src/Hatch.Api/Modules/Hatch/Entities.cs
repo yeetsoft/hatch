@@ -3602,4 +3602,36 @@ public class EfHatchRunnerSession
 
     /// <summary>When the order was placed, as <see cref="EfHatchRunner.OrderedAt"/>.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
+
+    public const int MaxOsLength = 64;
+    public const int MaxArchLength = 16;
+    public const int MaxAgentVersionLength = 64;
+    public const int MaxUsernameLength = 64;
+    public const int MaxIpLength = 64;
+
+    /// <summary>The operating system this session's process runs on.</summary>
+    [MaxLength(MaxOsLength)]
+    public string? Os { get; set; }
+
+    /// <summary>The CPU architecture this session's process runs on.</summary>
+    [MaxLength(MaxArchLength)]
+    public string? Arch { get; set; }
+
+    /// <summary>The agent CLI's own version string, as this session's process reported it.</summary>
+    [MaxLength(MaxAgentVersionLength)]
+    public string? AgentVersion { get; set; }
+
+    /// <summary>Whether this session's process is running inside a container.</summary>
+    public bool? Container { get; set; }
+
+    /// <summary>The OS username this session's process runs as.</summary>
+    [MaxLength(MaxUsernameLength)]
+    public string? Username { get; set; }
+
+    /// <summary>The address this session's process last connected from, as the server read it off the connection.</summary>
+    [MaxLength(MaxIpLength)]
+    public string? Ip { get; set; }
+
+    /// <summary>When this session's process itself started.</summary>
+    public DateTimeOffset? ProcessStartedAt { get; set; }
 }

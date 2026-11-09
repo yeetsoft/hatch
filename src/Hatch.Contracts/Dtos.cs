@@ -4111,7 +4111,14 @@ public record RunnerSessionDto(
     string? OrderKind = null,
     string? OrderKey = null,
     string? OrderedBy = null,
-    DateTimeOffset? OrderedAt = null)
+    DateTimeOffset? OrderedAt = null,
+    string? Os = null,
+    string? Arch = null,
+    string? AgentVersion = null,
+    bool? Container = null,
+    string? Username = null,
+    DateTimeOffset? ProcessStartedAt = null,
+    string? Ip = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -4271,6 +4278,16 @@ public enum RunnerBoardDrift
 /// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
 /// whole, or kept whole, per <see cref="DependencySet.Normalise"/>.
 /// </param>
+/// <param name="Os">
+/// The operating system this process runs on - a fact about the process,
+/// written on every beat, on the terms <see cref="Host"/> has: absent leaves
+/// the session's value alone.
+/// </param>
+/// <param name="Arch">The CPU architecture this process runs on, on the same terms as <see cref="Os"/>.</param>
+/// <param name="AgentVersion">The agent CLI's own version string, on the same terms as <see cref="Os"/>.</param>
+/// <param name="Container">Whether this process is running inside a container, on the same terms as <see cref="Os"/>.</param>
+/// <param name="Username">The OS username this process runs as, on the same terms as <see cref="Os"/>.</param>
+/// <param name="ProcessStartedAt">When this process itself started, on the same terms as <see cref="Os"/>.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4307,7 +4324,13 @@ public record RunnerHeartbeatRequest(
     long? TokensUsed = null,
     long? TokensLastHour = null,
     IReadOnlyList<string>? Models = null,
-    IReadOnlyList<string>? Has = null);
+    IReadOnlyList<string>? Has = null,
+    string? Os = null,
+    string? Arch = null,
+    string? AgentVersion = null,
+    bool? Container = null,
+    string? Username = null,
+    DateTimeOffset? ProcessStartedAt = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
