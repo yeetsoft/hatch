@@ -1145,6 +1145,65 @@ public sealed class GoToWorkTests
         Assert.Contains(h.Say.Said, l => l.Contains("probe found a session window", StringComparison.Ordinal));
     }
 
+    // ---- HA-1991: a spent per-model weekly window narrows that model ----
+
+    private async Task<Harness> RunProbedAsync(
+        double percent, DateTimeOffset reset, string? scopedName, string[] args)
+    {
+        var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+        var fake = new FakeProbingSessions
+        {
+            Behaviour = () =>
+                [Fixtures.UsageReport([("weekly_scoped", percent, reset.ToString("O"))], scopedName: scopedName), Fixtures.Result(turns: 0)],
+        };
+
+        await new GoToWorkCommand(h.Runtime with { Sessions = fake }).RunAsync(args, default);
+        return h;
+    }
+
+    [Fact]
+    public async Task A_spent_model_week_in_the_probe_is_left_off_the_beat()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--once"]);
+
+        Assert.Equal(["haiku", "sonnet", "fable"], Beats(h)[0].Models);
+    }
+
+    [Fact]
+    public async Task A_spent_model_week_is_said_once_across_probes()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--max-runs", "2"]);
+
+        Assert.Single(h.Say.Said, l => l.Contains("opus is off this runner's list until", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_model_week_under_the_limit_leaves_the_model_on_the_beat()
+    {
+        using var h = await RunProbedAsync(99, DateTimeOffset.UtcNow.AddDays(2), "Opus", ["--once"]);
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_model_week_already_past_its_reset_leaves_the_model_on_the_beat()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddHours(-1), "Opus", ["--once"]);
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_model_week_naming_no_tier_narrows_nothing_and_says_nothing()
+    {
+        using var h = await RunProbedAsync(100, DateTimeOffset.UtcNow.AddDays(2), null, ["--once"]);
+
+        Assert.Equal(["haiku", "sonnet", "opus", "fable"], Beats(h)[0].Models);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("off this runner's list", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_failed_probe_leaves_the_streams_reading_on_the_beat()
     {
