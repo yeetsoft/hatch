@@ -187,10 +187,9 @@ public sealed class RunnerSessions(Runners runners)
 
     /// <summary>
     /// What a session heartbeat reads back off its own beat:
-    /// <see cref="Effective"/>'s six bounds, the ceiling's own tags where
-    /// there is a ceiling, and the session's own projects and danger flag -
-    /// <see cref="Runners.Instruct"/>'s own shape, for a session rather than
-    /// a bare beat.
+    /// <see cref="Effective"/>'s six bounds and the ceiling's own tags where
+    /// there is a ceiling - <see cref="Runners.Instruct"/>'s own shape, for a
+    /// session rather than a bare beat.
     /// </summary>
     /// <remarks>
     /// <see cref="RunnerInstructionDto.Drives"/> and
@@ -209,8 +208,8 @@ public sealed class RunnerSessions(Runners runners)
             Drives: [],
             Tags: tags,
             Order: null,
-            Projects: session.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            RefusesDangerous: session.RefusesDangerous ?? false,
+            Projects: null,
+            RefusesDangerous: null,
             MaxTokens: bounds.MaxTokens.Value,
             MaxTokensPerHour: bounds.MaxTokensPerHour.Value,
             RunnerName: runnerName,

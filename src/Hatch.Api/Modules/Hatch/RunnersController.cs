@@ -341,7 +341,7 @@ public class RunnersController(
     /// reads back what the board would like.
     /// </summary>
     /// <remarks>
-    /// <para>The seven bounds in the body are what this process started with,
+    /// <para>The six bounds in the body are what this process started with,
     /// and they are written <em>when the row is created</em> and by a
     /// <c>loop</c> beat that says it is <c>Fresh</c> - never by any other beat.
     /// That is the one subtle thing in this file: a loop restarting overnight
@@ -367,7 +367,6 @@ public class RunnersController(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
-        if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
         if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
         if (DependencySet.Normalise(request.Has, out var normalisedHas) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -403,7 +402,7 @@ public class RunnersController(
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas)));
+            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas)));
 
             try
             {
@@ -441,7 +440,7 @@ public class RunnersController(
             row.OrderedAt = null;
         }
 
-        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas));
+        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas));
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), order,
@@ -550,17 +549,6 @@ public class RunnersController(
         if (Tokens(request.MaxTokensPerHour, "--max-tokens-per-hour", out var maxTokensPerHour) is { } tokensPerHourError) return BadRequest(tokensPerHourError);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
 
-        // A key is judged here, on the one write a person makes - a heartbeat
-        // is not where a project is checked. Before any write below, so a
-        // refused request changes nothing.
-        var wantedProjects = request.Projects is null ? null : ProjectKeys(request.Projects);
-        if (wantedProjects is { Count: > 0 })
-        {
-            var known = await db.Projects.Select(p => p.Key).ToListAsync(ct);
-            var unknown = wantedProjects.Where(k => !known.Contains(k)).ToList();
-            if (unknown.Count > 0) return BadRequest($"there is no project {string.Join(", ", unknown)}");
-        }
-
         DateTimeOffset? untilAt = null;
         if (request.UntilAt is { } until && until.Trim().Length > 0)
         {
@@ -575,19 +563,10 @@ public class RunnersController(
         }
 
         // The heartbeat row is tracked and may be absent: a key that has never
-        // run has none. State, projects and the danger flag live only there, so
-        // with none they are skipped rather than refused.
+        // run has none. State lives only there, so with none it is skipped
+        // rather than refused.
         var beatRow = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
-        if (beatRow is not null)
-        {
-            if (state is not null) beatRow.State = state;
-
-            // "" clears it, never null, the same as Tags below.
-            if (wantedProjects is not null) beatRow.Projects = wantedProjects.Count > 0 ? string.Join('\n', wantedProjects) : "";
-
-            // Nothing to validate, so no place before the refusals above.
-            if (request.RefusesDangerous is not null) beatRow.RefusesDangerous = request.RefusesDangerous;
-        }
+        if (beatRow is not null && state is not null) beatRow.State = state;
 
         // "" clears the board, never null - the whole of how PATCH's clear is
         // told apart from a row no heartbeat has seeded yet, with no migration.
@@ -1113,15 +1092,13 @@ public class RunnersController(
     // ---- The rows ----
 
     /// <summary>
-    /// The seven bounds, from what the flags said, so the row shows the bounds
+    /// The six bounds, from what the flags said, so the row shows the bounds
     /// it is actually running under rather than reading as unbounded until
     /// somebody sets something. One place for a new row and a fresh beat, so
     /// the two cannot drift.
     /// </summary>
     private static void Bound(EfHatchRunner row, RunnerHeartbeatRequest request)
     {
-        var keys = ProjectKeys(request.Projects);
-        row.Projects = keys.Count > 0 ? string.Join('\n', keys) : null;
         row.Under = Fits(request.Under, EfHatchRunner.MaxUnderLength);
         row.MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null;
         row.MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null;
@@ -1133,8 +1110,9 @@ public class RunnersController(
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
         string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        Guid? forPersonId, string? tags, string? models, string? has)
+        Guid? forPersonId, string? models, string? has)
     {
+        var keys = ProjectKeys(request.Projects);
         var row = new EfHatchRunner
         {
             Name = name,
@@ -1165,9 +1143,9 @@ public class RunnersController(
             SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
             SourceSequence = request.SourceSequence,
             BuiltAt = request.BuiltAt,
-            Tags = tags,
             Models = models,
             Has = has,
+            Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
             ThrottledUntil = request.ThrottledUntil,
@@ -1184,13 +1162,13 @@ public class RunnersController(
     /// A row that already exists: kind, last seen, line, and the two facts
     /// about what it serves. The state is the operator's, with one exception: a
     /// fresh <c>loop</c> beat that says <c>Standby</c> writes it <c>paused</c>.
-    /// The seven bounds are the flags' at a fresh start - a <c>loop</c> beat that
+    /// The six bounds are the flags' at a fresh start - a <c>loop</c> beat that
     /// says so - and the operator's after: any other beat writing one would be
     /// the runner having the last word on what it may spend.
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
-        Guid? forPersonId, string? tags, string? models, string? has)
+        Guid? forPersonId, string? models, string? has)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -1232,19 +1210,15 @@ public class RunnersController(
         if (request.Models is not null) row.Models = models;
         if (request.Has is not null) row.Has = has;
 
-        // Tags are seeded once, not a fact-vs-absent field like the rest of
-        // this block: a row with any Tags already written - including the
-        // empty string PATCH stores to clear the board - is never touched by
-        // a later heartbeat again. Only a row still null, from a beat before
-        // this one shipped, takes a heartbeat's tags at all.
-        if (request.Tags is not null && row.Tags is null) row.Tags = tags;
-
-        // Seeded once like Tags, and not fact-vs-absent like its neighbours:
-        // a person can PATCH it, so a later beat re-stating the flag the
-        // process started with would undo their choice. Only a row still null
-        // - never said - takes a beat's word for it. Null stays null where
-        // nothing has said, which reads as false.
-        if (request.RefusesDangerous is not null && row.RefusesDangerous is null) row.RefusesDangerous = request.RefusesDangerous;
+        // A fact about the process, like Where and Remotes: overwritten by
+        // whatever the latest beat said, any kind. Tags are never taken off a
+        // beat at all - only PatchRunner moves row.Tags.
+        if (request.RefusesDangerous is not null) row.RefusesDangerous = request.RefusesDangerous;
+        if (request.Projects is not null)
+        {
+            var keys = ProjectKeys(request.Projects);
+            row.Projects = keys.Count > 0 ? string.Join('\n', keys) : null;
+        }
 
         // A tri-state of its own: absent leaves the row's own record alone (an
         // older CLI, or hatch work's single beat, neither of which knows
@@ -1262,7 +1236,7 @@ public class RunnersController(
         if (kind == EfHatchRunner.LoopKind) row.ThrottledUntil = request.ThrottledUntil;
 
         // Whose key this is can change on the API Keys page, so this is
-        // written every beat like Where and Remotes, unlike the seven bounds,
+        // written every beat like Where and Remotes, unlike the six bounds,
         // which only a fresh loop's first beat writes. Not a `once` beat:
         // `hatch work` shares a runner name with a loop in the same checkout,
         // and its flagless beat must not clear the loop's budget.
@@ -1386,8 +1360,13 @@ public class RunnersController(
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
 
-        // Seeded once, never restated - the same rule Touch draws for a beat.
-        if (request.RefusesDangerous is not null && session.RefusesDangerous is null) session.RefusesDangerous = request.RefusesDangerous;
+        // A fact about the process, like Where and Remotes - the same rule Touch draws for a beat.
+        if (request.RefusesDangerous is not null) session.RefusesDangerous = request.RefusesDangerous;
+        if (request.Projects is not null)
+        {
+            var keys = ProjectKeys(request.Projects);
+            session.Projects = keys.Count > 0 ? string.Join('\n', keys) : null;
+        }
 
         if (request.Exhausted == true) session.ExhaustedUntil = request.ExhaustedUntil;
         else if (request.Exhausted == false) session.ExhaustedUntil = null;
