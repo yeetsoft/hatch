@@ -791,6 +791,11 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
+| PATCH | `/runners/{name}/sessions/{id}` | **person** | Sets one session's state, by its id, without touching any sibling session under the same key |
+| POST | `/runners/{name}/sessions/{id}/order` | **person** | Orders one session to work a named ticket, or to pass on its next pick |
+| DELETE | `/runners/{name}/sessions/{id}/order` | **person** | Withdraws whatever order that session holds |
+| POST | `/runners/{name}/pause-all` | **person** | Pauses every live `loop` session under this key at once |
+| POST | `/runners/{name}/stop-all` | **person** | Stops every live `loop` session under this key at once |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
 | GET | `/runner/download/{rid}` | **person** | One platform's `hatch` binary |
 | GET | `/settings` | **person** | Hatch's own settings: the Claude subscription token, the agents' API keys, the local person's name, and the site's default token caps (`defaultMaxTokens`, `defaultMaxTokensPerHour`) |
