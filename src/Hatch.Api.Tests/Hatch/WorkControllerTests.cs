@@ -8310,6 +8310,106 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOn_AndNoCheckPlaybook_IsFoldedByTheMissingCheckSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "clean, green, and nothing covers the merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(
+            "a passing check would carry it into \"approved\", but no check playbook covers \"review\" to \"approved\" for a story - add one on the Playbooks page",
+            entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOn_AndANonCheckPlaybookForTheMergeMove_IsStillFolded()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet"));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "a row exists, but the scan never matches it yet", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // The scan still builds only the (review, review) row, matched against
+        // no playbook - a (review, approved) row, check or not, does not bite
+        // until the next task teaches the scan to ask for it.
+        Assert.Equal(
+            "a passing check would carry it into \"approved\", but no check playbook covers \"review\" to \"approved\" for a story - add one on the Playbooks page",
+            entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOff_KeepsTheReviewJudgesSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean and green, but the setting is off", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOn_AndNoPullRequest_KeepsTheReviewJudgesSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "clean and green, but no pull request yet", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Review_AConflictedBranchWithTheSettingOn_IsStillConflictWorkNotTheMissingCheckSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "stopped merging, even with the setting on", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+    }
+
+    [Fact]
     public async Task Review_NoBranchIsFolded()
     {
         var h = await NewAsync();
