@@ -2637,7 +2637,8 @@ entries the file parsed to, or the one sentence saying why it did not. Like a
 [playbook file](#playbook-file), a dependencies file is a fact about a
 repository's trunk and nobody's issue, so it is not keyed on one. An entry is
 an id — one of the dependencies Hatch knows, from `Dependencies.Default` — and
-an optional `version`, a string of one to three dotted whole numbers. The
+an optional `version`, a string of one to three dotted whole numbers. A
+version is a minimum, met by that version and anything newer. The
 operator-facing form is [What a repository
 needs](../src/Hatch.Web/apps/hatch/docs/the-runner.md#what-a-repository-needs).
 
@@ -4098,8 +4099,9 @@ when a move needs both:
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
   pinned id.
-- `no live runner has pwsh 7 and playwright-browsers` - the project's bound
-  repositories declare dependencies no live runner's `has` satisfies; an
+- `no live runner has pwsh 7 or newer and playwright-browsers` - the
+  project's bound repositories declare dependencies no live runner's `has`
+  satisfies; an
   invalid dependencies file is named as it is.
 
 A split fleet lists nothing, deliberately: where one runner lacks the model
@@ -4878,15 +4880,16 @@ missing configuration:
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
-    `DependencyVersion.Satisfies` accepts, or any bound repository's file is
-    `invalid`. On the same moves as the dangerous item — out of the
-    implementation column, and on the review self-move while it is conflict or
-    build work. Never a hop, and never the move into the implementation
-    column, nothing being spawned for either. A caller that sends no `?has=`
-    is not folded by this at all, which keeps every older caller working
-    unchanged. *"HA-12 needs dotnet 10, pwsh 7 and playwright-browsers
-    (`acme/repo`'s .hatch/dependencies.json) - this runner has dotnet 8, no
-    pwsh and no playwright-browsers"*, or *"`acme/repo`'s
+    `DependencyVersion.Satisfies` treats as a minimum - the caller's version
+    must be at least it - or any bound repository's file is `invalid`. On the
+    same moves as the dangerous item — out of the implementation column, and
+    on the review self-move while it is conflict or build work. Never a hop,
+    and never the move into the implementation column, nothing being spawned
+    for either. A caller that sends no `?has=` is not folded by this at all,
+    which keeps every older caller working unchanged. *"HA-12 needs dotnet 10
+    or newer, pwsh 7 or newer and playwright-browsers (`acme/repo`'s
+    .hatch/dependencies.json) - this runner has dotnet 8, no pwsh and no
+    playwright-browsers"*, or *"`acme/repo`'s
     .hatch/dependencies.json is invalid at `<sha>` (`<problem>`) - fix it on
     the trunk"*, kind `other`. Waits on nobody. `?asRunner=` and the let-go
     peer check read the row's `Has` instead, and a row that never reported it
@@ -6894,9 +6897,10 @@ which one it failed is what `work/queue` reports:
     declare.** The issue's project binds one or more [repositories](#repository),
     and the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
-    (`DependencyVersion.Satisfies`) it accepts, or any bound repository's file
-    is `invalid`. Checked on the same moves as the dangerous condition above —
-    out of the implementation column, and on the review self-move while it is
+    (`DependencyVersion.Satisfies`) treats as a minimum - the caller's version
+    must be at least it - or any bound repository's file is `invalid`.
+    Checked on the same moves as the dangerous condition above — out of the
+    implementation column, and on the review self-move while it is
     conflict or build work. Never a hop, and never the move into the
     implementation column. A caller that sends no `?has=` folds nothing.
     `?asRunner=` and the let-go peer check read the row's `Has` instead, and a
