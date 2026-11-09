@@ -23,6 +23,7 @@ export function TypesFacet({
       chosen={filter.types}
       onChange={(next) => onChange({ ...filter, types: ISSUE_TYPES.filter((t) => next.includes(t)) })}
       lockTitle="Keep at least one type"
+      allowNone
     />
   );
 }

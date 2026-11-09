@@ -71,3 +71,9 @@ export function bulkBlocked(
   }
   return null;
 }
+
+/** Whether any column on the board is both Protected and Merges PR - the one
+    shape that makes a project's checkApprovesMerge setting do anything. */
+export function hasMergeColumn(statuses: Status[]): boolean {
+  return statuses.some((s) => s.isProtected && s.mergesPullRequest);
+}

@@ -1751,6 +1751,7 @@ button.hatch-card-stories:focus-visible {
 .hatch-types-footer {
   display: flex;
   justify-content: flex-start;
+  gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   border-top: 1px solid var(--line-strong);
 }
