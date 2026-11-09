@@ -1450,13 +1450,24 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("AgentVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<Guid>("ApiKeyId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Arch")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<DateTimeOffset?>("BuiltAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool?>("Clones")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("Container")
                         .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("EndedAt")
@@ -1466,6 +1477,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Host")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Ip")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
@@ -1514,6 +1529,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("OrderedBy")
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Os")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("ProcessStartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Projects")
                         .HasColumnType("text");
@@ -1577,6 +1599,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<DateTimeOffset?>("UsageReadAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("Where")
                         .HasMaxLength(240)
