@@ -3987,6 +3987,10 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// the runner reports about itself, never a person's to set. Empty for a
 /// runner that has said none, rather than null.
 /// </param>
+/// <param name="RotatedAt">
+/// When the runner's key last had its secret replaced - null while it never
+/// has been, or there is no key at all.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4040,7 +4044,8 @@ public record RunnerDto(
     DateTimeOffset? LastUsedAt = null,
     DateTimeOffset? RevokedAt = null,
     Guid? OwnerPersonId = null,
-    IReadOnlyList<RunnerSessionDto> Sessions = null!)
+    IReadOnlyList<RunnerSessionDto> Sessions = null!,
+    DateTimeOffset? RotatedAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

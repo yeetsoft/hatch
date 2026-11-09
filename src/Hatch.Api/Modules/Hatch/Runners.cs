@@ -183,6 +183,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 CreatedAt = key.CreatedAt,
                 LastUsedAt = key.LastUsedAt,
                 RevokedAt = key.RevokedAt,
+                RotatedAt = key.RotatedAt,
             };
         }
 

@@ -2429,6 +2429,8 @@ export interface Runner {
   ownerPersonId?: string | null;
   /** The sessions this key's runner has open. */
   sessions?: { where: string; lastSeenAt: string }[];
+  /** When the key's secret was last replaced, or null while it never has been or there is no key. */
+  rotatedAt?: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
