@@ -744,7 +744,8 @@ state rather than a stall.
 it is not the matrix, it is a cache of what a runner's poll actually found
 on disk at a repository-sourced project's trunk - a fact a key reports about
 a file, not an edit to Hatch's own instructions - so both its `GET` and its
-`PUT` stay key-open, the same reasoning `/playbook-files` takes.
+`PUT` stay key-open, the same reasoning `/playbook-files` takes. What the file
+says is in [the runner](the-runner#what-a-repository-needs).
 
 `DependencyFileDto` carries `Remote`, `Canonical`, `Trunk`, `Sha`, `State`
 (`parsed`, `invalid` or `absent`), `Hash` (the stored content's SHA-256),
