@@ -1157,7 +1157,7 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket", Where: Runner));
 
         var runner = await h.OneAsync();
 
@@ -1174,7 +1174,7 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket", Where: Runner));
 
         await h.ReleaseAsync(issue.Key);
 
@@ -1190,12 +1190,12 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
 
         // Past the lease, and the same arithmetic the board does: a claim
         // nothing has refreshed is not a claim.
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
 
         var runner = await h.OneAsync();
         Assert.Null(runner.ClaimKey);
@@ -1218,7 +1218,7 @@ public class RunnersControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
 
         // IssueClaimController's own heartbeat and release now touch the
@@ -3480,7 +3480,7 @@ public class RunnersControllerTests
         {
             var issue = await Find(key);
             issue.ClaimToken = Guid.NewGuid();
-            issue.ClaimedBy = "hatch";
+            issue.ClaimedBy = runner;
             issue.ClaimRunner = runner;
             issue.ClaimedAt = Time.GetUtcNow();
             issue.ClaimHeartbeatAt = Time.GetUtcNow();

@@ -200,7 +200,7 @@ public class RunnersController(
 
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
-        Runner runner, Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held,
+        Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
         SiteSettingsSnapshot site, CancellationToken ct)
     {
@@ -210,7 +210,7 @@ public class RunnersController(
         var order = runner.Beat?.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, runner.Beat.OrderKey, runner.Beat.OrderedBy, runner.Beat.OrderedAt) : null;
 
         return runners.Project(
-            runner, Holding(held, runner.Name), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
+            runner, Holding(held, (runner.Name, runner.Beat?.Where ?? "")), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
             yours: Yours(ownerId, wallEnabled, callerPerson),
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
@@ -668,7 +668,7 @@ public class RunnersController(
         var site = await siteSettings.GetAsync(ct);
         return runners.Project(
             row,
-            Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
+            Holding(await runners.HeldAsync(db, claims, now, ct), (row.Name, row.Where ?? "")),
             (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
@@ -954,7 +954,8 @@ public class RunnersController(
     /// were one.
     /// </summary>
     private static (string Key, ClaimSnapshot Claim, string? Status)? Holding(
-        Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held, string name) =>
+        Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
+        (string Runner, string Where) name) =>
         held.TryGetValue(name, out var claim) ? claim : null;
 
     // ---- The two numbers ----

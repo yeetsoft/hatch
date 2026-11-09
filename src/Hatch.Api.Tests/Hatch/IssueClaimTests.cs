@@ -149,7 +149,7 @@ public class IssueClaimTests
             await h.EventKindsAsync(issue));
 
         var lapsed = (await h.EventsAsync(issue))[1];
-        Assert.Equal("Nathan on somewhere:/checkouts/one", lapsed.Payload!.Value.GetProperty("from").GetString());
+        Assert.Equal("Nathan at somewhere:/checkouts/one", lapsed.Payload!.Value.GetProperty("from").GetString());
         Assert.Equal(Now, lapsed.Payload!.Value.GetProperty("heardAt").GetDateTimeOffset());
     }
 
