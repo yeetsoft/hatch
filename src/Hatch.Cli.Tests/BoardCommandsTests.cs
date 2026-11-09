@@ -379,6 +379,35 @@ public sealed class BoardCommandsTests
     }
 
     /// <summary>
+    /// The dependency fold is a sentence the server writes too; the queue prints
+    /// it on the row's own line, never folded into a count with another row's.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_a_dependency_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-5 needs dotnet 10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-5", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+            new QueueEntryDto(
+                Fixtures.Issue("AER-6", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence.Replace("AER-5", "AER-6"), BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal(
+            $"""
+            AER-5  [task]  In Progress  {sentence}
+            AER-6  [task]  In Progress  {sentence.Replace("AER-5", "AER-6")}
+            """.ReplaceLineEndings("\n"),
+            h.Said);
+    }
+
+    /// <summary>
     /// The model fold is a sentence the server writes too, and prints the same way.
     /// </summary>
     [Fact]

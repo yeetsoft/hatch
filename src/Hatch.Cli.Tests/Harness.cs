@@ -759,14 +759,14 @@ public sealed class Harness : IDisposable
     /// </summary>
     public TimeProvider Clock { get; }
 
-    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false, IReadOnlyList<string>? models = null)
+    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false, IReadOnlyList<string>? models = null, IReadOnlyList<string>? has = null)
     {
         Temp = Directory.CreateTempSubdirectory("hatch-test-").FullName;
         Root = Path.Combine(Temp, "checkout");
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
         Clock = clock ?? TimeProvider.System;
-        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous, Models = models };
+        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous, Models = models, Has = has ?? [] };
         _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
@@ -801,7 +801,7 @@ public sealed class Harness : IDisposable
 
         Runtime = new Runtime(
             Settings: settings,
-            Board: new Board(_client, settings.Tags, settings.RefusesDangerous),
+            Board: new Board(_client, settings.Tags, settings.RefusesDangerous) { Has = settings.Has },
             Sessions: Sessions,
             Adapter: new ClaudeAdapter(),
             Say: Say,
@@ -818,6 +818,7 @@ public sealed class Harness : IDisposable
             SourceRevision = () => SourceRevision,
             NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags, settings.RefusesDangerous)
             {
+                Has = settings.Has,
                 Models = () => Runtime.AdvertisedModels() ?? [],
                 Agent = Runtime.Adapter.Id,
             },
