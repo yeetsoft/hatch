@@ -77,6 +77,26 @@ describe('ProjectEditDialog', () => {
     expect(html).toContain('files a emergency bug at express pre-approval in the automatic column,');
   });
 
+  // The dependency-files load is a useEffect renderToStaticMarkup never runs, so
+  // only this "nothing loaded yet" state is reachable here; parsed, invalid and
+  // ambiguous are proven by lib/dependencyFiles.test.ts.
+  it('says no runner has read the declaration beside a bound repository', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        repositories: [{ remote: 'git@forge.example:owner/repo.git', canonical: 'forge.example/owner/repo', baseBranch: null }],
+      }),
+    );
+
+    expect(html).toContain('no runner has read its declaration yet');
+  });
+
+  it('says nothing about a declaration where the project binds no repository', () => {
+    const html = render(project({ canAdminister: true, repositories: [] }));
+
+    expect(html).not.toContain('no runner has read its declaration yet');
+  });
+
   it('summarizes playbooks as written on the board when repoSourced is off', () => {
     const html = render(project({ repoSourced: false }));
 
