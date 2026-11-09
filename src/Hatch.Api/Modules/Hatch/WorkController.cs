@@ -718,7 +718,9 @@ public class WorkController(
         var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : rowTo!;
         var actor = await caller.ActorNameAsync(ct);
 
-        var closedBySetting = hopKind == HopKinds.Close && preApprovalLevel != PreApprovalLevels.PreApproved;
+        var preApproved = preApprovalLevel == PreApprovalLevels.PreApproved;
+        var closedByNoCodeSetting = hopKind == HopKinds.Close && !preApproved && NoCode.Declared(issue) && issue.Project!.NoCodeCloses;
+        var closedBySetting = hopKind == HopKinds.Close && !preApproved && !closedByNoCodeSetting;
 
         var payload = hopKind switch
         {
@@ -729,6 +731,7 @@ public class WorkController(
                 from, target, ("sendback", true),
                 ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
             HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            HopKinds.Close when closedByNoCodeSetting => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("approved", "nocode"), ("nocode", true))),
             HopKinds.Close when closedBySetting => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("approved", "setting"))),
             HopKinds.Close when NoCode.Declared(issue) =>JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
             HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
@@ -766,15 +769,17 @@ public class WorkController(
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = closedBySetting
-                    ? $"Closed under {key}'s setting, a passing check approves the merge: every child is done."
-                    : NoCode.Declared(issue)
-                        ? preApprovalFromKey is null
-                            ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
-                            : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
-                        : preApprovalFromKey is null
-                            ? "Closed by its pre-approval on its own row: every child is done."
-                            : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
+                Body = closedByNoCodeSetting
+                    ? $"Closed under {key}'s setting, a no-code declaration closes the ticket: finished with no code - {issue.NoCode}."
+                    : closedBySetting
+                        ? $"Closed under {key}'s setting, a passing check approves the merge: every child is done."
+                        : NoCode.Declared(issue)
+                            ? preApprovalFromKey is null
+                                ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
+                                : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
+                            : preApprovalFromKey is null
+                                ? "Closed by its pre-approval on its own row: every child is done."
+                                : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }

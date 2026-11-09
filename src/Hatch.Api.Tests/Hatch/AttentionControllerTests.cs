@@ -181,6 +181,39 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_ListsANotPreApprovedDeclaredNoCodeRowInNoCodeHeld_WhenTheProjectsSettingIsOff()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        issue.NoCode = "the setting was already right";
+        issue.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.NoCodeHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesADeclaredNoCodeRowOutOfNoCodeHeld_WhenTheProjectsNoCodeClosesIsOn()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        issue.NoCode = "the setting was already right";
+        issue.NoCodeAt = Now;
+        var project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        project.NoCodeCloses = true;
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.NoCodeHeld!);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+    }
+
+    [Fact]
     public async Task Attention_StillCountsAnUndeclaredRowWithNoPullRequest_AndListsNoNoCodeHeld()
     {
         var h = await NewAsync();

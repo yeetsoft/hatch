@@ -105,6 +105,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.PullRequestClosedAt,
                 Landing = i.Project!.Landing,
                 i.Project.ChecksRequired,
+                i.Project.NoCodeCloses,
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
@@ -296,12 +297,14 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         }
 
         // A declared issue the close hop would carry is the board's. One that is
-        // not pre-approved stays in review for a person, with the reason it gave:
-        // it has no pull request to be a row in Reviews and is not "without" one.
+        // neither pre-approved nor in a project whose NoCodeCloses is on stays in
+        // review for a person, with the reason it gave: it has no pull request to
+        // be a row in Reviews and is not "without" one.
         var noCodeHeld = inReview
             .Where(i => string.IsNullOrWhiteSpace(i.PullRequestUrl)
                 && NoCode.Declared(i.NoCode)
-                && tree.EffectivePreApproval(i.Id).Level != PreApprovalLevels.PreApproved)
+                && tree.EffectivePreApproval(i.Id).Level != PreApprovalLevels.PreApproved
+                && !i.NoCodeCloses)
             .Select(i => new NoCodeHeldDto(IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.NoCode!))
             .ToList();
 

@@ -456,7 +456,10 @@ the action, then an owner check answering `403` naming the project's key
 the ticket"*) to anyone else, and `404` on an unknown project. It has no
 repository or playbook precondition. A change stamps `NoCodeClosesBy` and
 `NoCodeClosesAt`; re-sending the value the project already holds writes
-nothing, the stamp included. Nothing reads the flag yet - no hop folds it in.
+nothing, the stamp included. The close hop reads the flag, carrying a
+declared childless issue through pre-approved or not once it is on, see [the
+hop](#the-hop); a declared row it carries this way also stops being one of
+[what is waiting on you](#what-is-waiting-on-you)'s `noCodeHeld`.
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -1913,21 +1916,27 @@ the work needed no branch, and anything that shows otherwise defeats it:
 **Where it stands.** The declared issue stands in the review column with no
 pull request, and the board does not wait for one:
 
-- Not [pre-approved](#pre-approval), it is held there. `ReviewWork.Judge` folds
-  it first, with *finished with no code - a person closes it*, so no review
-  session is spawned for a branch that does not exist, and it is not a row in
-  `reviews`. It is not counted in `inReviewWithoutPullRequest` either, because
-  having none is what it declared. The attention panel lists it, with the
-  reason, under **Finished with no code** (`noCodeHeld` - see [what is waiting
-  on you](#what-is-waiting-on-you)), and a person closes it.
-- [Pre-approved](#pre-approval), the **close** hop carries it into the first
-  terminal column right of review - the one case that hop takes an issue with no
+- Not [pre-approved](#pre-approval) and not in a project whose `NoCodeCloses`
+  is on, it is held there. `ReviewWork.Judge` folds it first, with *finished
+  with no code - a person closes it*, so no review session is spawned for a
+  branch that does not exist, and it is not a row in `reviews`. It is not
+  counted in `inReviewWithoutPullRequest` either, because having none is what
+  it declared. The attention panel lists it, with the reason, under
+  **Finished with no code** (`noCodeHeld` - see [what is waiting on
+  you](#what-is-waiting-on-you)), and a person closes it.
+- [Pre-approved](#pre-approval), or standing in a project whose
+  `NoCodeCloses` is on, the **close** hop carries it into the first terminal
+  column right of review - the one case that hop takes an issue with no
   children (see [the hop](#the-hop), kind 7), because the declaration stands in
-  for the children it would otherwise have needed. The hop's comment says
-  *finished with no code* and gives the reason, its `status_changed` event
-  carries `nocode: true`, and whatever [depends](#dependency) on the ticket is
-  dispatched on the next pass. A declared issue that has open children still
-  waits for them.
+  for the children it would otherwise have needed. A pre-approved row keeps
+  its own comment and `status_changed` payload (`preapproved: true`); carried
+  by the setting alone (not pre-approved), the comment names the project's
+  setting instead and the payload carries `approved: "nocode"` in place of
+  `preapproved`. Either way the comment says *finished with no code* and
+  gives the reason, the payload carries `nocode: true`, and whatever
+  [depends](#dependency) on the ticket is dispatched on the next pass. A
+  declared issue that has open children still waits for them, whichever
+  carried it - `CheckApprovesMerge` alone never carries a childless one.
 - A task under a story or bug that shares one pull request is not [waiting on
   that pull request](#one-pull-request) once it has declared: the wait is for
   code that was pushed, and it has none.
@@ -3439,7 +3448,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
-| `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. Nothing reads the flag yet |
+| `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -5077,26 +5086,29 @@ exactly as they are from a review self-move.
    scan already matched - this kind does not fire either: the check's own
    plain advance already carries it, and pre-approval adds nothing past what
    a passing check already would (HA-1592).
-7. **close** — a [pre-approved](#pre-approval) parent, or a parent in a
-   project whose *A passing check approves the merge* setting is on
-   ([`CheckApprovesMerge`](#project)), standing in the
-   review column with *no* pull request recorded, every child done by its
-   own type's rule — an epic's own fold ignores a deferred child the way
-   [running an epic](#running-an-epic) describes, while a story, bug or
-   task counts one open child as enough to hold it (`Dispatch.cs:1555-1563`)
-   — carried into the first terminal column strictly right of review
-   (`Columns.Closes`, `Columns.cs:204-208`), whatever that column is named.
-   A childless issue is never carried by this kind, with one exception: an
-   issue that declared itself [finished with no code](#finished-with-no-code)
-   (`hatch pr KEY --none`, `PUT /issues/{key}/no-code`). Having something filed
-   under it, or that declaration, is one of the kind's own conditions; a
-   declared issue that does have open children still waits for them, and the
-   rest of the kind - pre-approved, in review, no pull request recorded - holds
-   for it as for any parent. The declaration is a statement that nothing was
-   built, so it needs no children to have been done in its place. That
-   exception stays pre-approval-only: the setting is not a person's say-so
-   that nothing was built, so a declared issue in a project whose setting is
-   on, and not pre-approved, still waits in review for a person.
+7. **close** — standing in the review column with *no* pull request
+   recorded, and every child done by its own type's rule — an epic's own
+   fold ignores a deferred child the way [running an epic](#running-an-epic)
+   describes, while a story, bug or task counts one open child as enough to
+   hold it (`Dispatch.cs:2170-2176`) — carried into the first terminal
+   column strictly right of review (`Columns.Closes`, `Columns.cs:204-208`),
+   whatever that column is named, when either of two things is true: it is a
+   parent — something is filed under it — and it is
+   [pre-approved](#pre-approval) or stands in a project whose *A passing
+   check approves the merge* setting is on ([`CheckApprovesMerge`](#project));
+   or it declared itself [finished with no code](#finished-with-no-code)
+   (`hatch pr KEY --none`, `PUT /issues/{key}/no-code`) and is pre-approved or
+   stands in a project whose *A no-code declaration closes the ticket*
+   setting is on ([`NoCodeCloses`](#project)) — this second branch carries a
+   declared issue whether or not it has children, as long as any it has are
+   done. A childless, undeclared issue is never carried by this kind, and
+   `CheckApprovesMerge` alone never carries a childless one even if it is
+   declared: only a declaration that is itself pre-approved, or that stands
+   under `NoCodeCloses`, does that. A declared issue with open children
+   still waits for them, whichever setting or pre-approval would otherwise
+   have carried it — the declaration is a statement that nothing was built,
+   so it needs no children to have been done in its place, but it still
+   needs the children it does have to be.
 
 Both are asked last, after sendback, so neither changes the meaning of a
 row that already qualifies for one of the first five.
@@ -5156,36 +5168,47 @@ seven shapes depending on which kind carried it: `{ from, to, express: true }`,
 `{ from, to, pulled: true }` for a parent pull, `{ from, to, sendback: true,
 length, limit }` naming the brief's own length and its playbook's own
 limit, `{ from, to, preapproved: true }` — shared by the sixth kind and
-the seventh, the only two that share a shape — the same shape
-`IssuesController.MoveIssue` writes, with one more field, so a card that
-passed a gate with nobody present says so on its own trail, or `{ from, to,
-approved: "setting" }` for a seventh-kind close carried by the project's
-*A passing check approves the merge* setting alone. The setting's close has no
-`preapproved` field, since nobody's pre-approval carried it; where a parent is
-both pre-approved and in a project whose setting is on, the pre-approval's own
-shape and comment are written, unchanged. The seventh kind
+a pre-approved seventh — the same shape `IssuesController.MoveIssue`
+writes, with one more field, so a card that passed a gate with nobody
+present says so on its own trail, or, for a seventh-kind close carried by a
+setting alone (not pre-approved), one of two shapes naming which: `{ from,
+to, approved: "setting" }` for the project's *A passing check approves the
+merge* setting carrying a parent, or `{ from, to, approved: "nocode",
+nocode: true }` for its *A no-code declaration closes the ticket* setting
+carrying a declared issue. Neither setting's close carries a `preapproved`
+field, since nobody's pre-approval carried it; where an issue is both
+pre-approved and in a project whose setting is on, the pre-approval's own
+shape and comment are written, unchanged. A pre-approved seventh kind
 carrying an issue that [declared itself finished with no
-code](#finished-with-no-code) adds `nocode: true` beside `preapproved: true`.
+code](#finished-with-no-code) adds `nocode: true` beside `preapproved: true`
+instead.
 
 Both the sixth and seventh kinds write a second thing in the same save as
 the move: a comment, naming the ancestor the pre-approval was read from
 where it is inherited, or saying it stands on the issue's own row where it
-is not, or, for a close carried by the setting alone, naming the setting (`WorkController.cs:616-648`). The approve hop's own comment quotes
+is not, or, for a close carried by a setting alone, naming the setting
+(`WorkController.cs:616-648`). The approve hop's own comment quotes
 `MergeWork.Judge`'s own sentence for the branch, the same sentence `hatch
 queue` would otherwise have printed for it: *"Approved by its pre-approval
 from AER-12: \<the merge judge's own sentence\>."* where the level is
 inherited, or *"Approved by its pre-approval on its own row: \<the merge
 judge's own sentence\>."* where it is the issue's own. The close hop's own
-comment is one of three, the fixed sentence every child being done already is: *"Closed
-by its pre-approval from AER-12: every child is done."*, or *"Closed by
-its pre-approval on its own row: every child is done."* on the issue's own
-level. For an issue that declared it [finished with no
-code](#finished-with-no-code) the comment says so and gives the reason:
-*"Closed by its pre-approval from AER-12: finished with no code -
-\<reason\>."*, or *"... on its own row: ..."*, and the `status_changed` event
-carries `nocode: true` beside `preapproved: true`. The third is the setting's:
-*"Closed under AER-12's setting, a passing check approves the merge: every
-child is done."*, written with the `approved: "setting"` payload above.
+comment is one of four. Pre-approved, the fixed sentence every child being
+done already is: *"Closed by its pre-approval from AER-12: every child is
+done."*, or *"Closed by its pre-approval on its own row: every child is
+done."* on the issue's own level. For an issue that declared it [finished
+with no code](#finished-with-no-code) and is pre-approved, the comment says
+so and gives the reason instead: *"Closed by its pre-approval from AER-12:
+finished with no code - \<reason\>."*, or *"... on its own row: ..."*, and
+the `status_changed` event carries `nocode: true` beside `preapproved:
+true`. Carried by a setting alone, the third names *A passing check
+approves the merge*: *"Closed under AER-12's setting, a passing check
+approves the merge: every child is done."*, written with the `approved:
+"setting"` payload above. The fourth names *A no-code declaration closes
+the ticket*, for a declared issue carried by that setting and not
+pre-approved: *"Closed under AER-12's setting, a no-code declaration closes
+the ticket: finished with no code - \<reason\>."*, written with the
+`approved: "nocode"` payload above.
 
 **Why the server performs the hop, on its own route, rather than the CLI
 calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
