@@ -4419,6 +4419,14 @@ public record RunnerPatchRequest(
     string? MaxTokensPerHour = null);
 
 /// <summary>
+/// Sets one session's state, by its id - <see cref="RunnerPatchRequest"/>'s
+/// own <c>State</c>, narrowed to the one session a session control route
+/// names rather than the whole key.
+/// </summary>
+/// <param name="State">One of <c>running</c>, <c>paused</c>, <c>stopping</c>. Not clearable - a session is always in one of the three.</param>
+public record RunnerSessionPatchRequest(string? State = null);
+
+/// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.
 /// </summary>
 /// <remarks>
