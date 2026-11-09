@@ -7,6 +7,7 @@ import {
   boundsProblem,
   boundsRequest,
   budgetTone,
+  dangerousLabel,
   drivesLabel,
   formRefusal,
   groupByHost,
@@ -56,6 +57,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   repositories: [],
   tags: [],
   projects: [],
+  refusesDangerous: false,
   models: [],
   has: [],
   drives: [],
@@ -409,6 +411,16 @@ describe('projectsLabel', () => {
   });
 });
 
+describe('dangerousLabel', () => {
+  it('says nothing for a runner that takes dangerous work', () => {
+    expect(dangerousLabel(runner())).toBeNull();
+  });
+
+  it('says the phrase for a runner that refuses it', () => {
+    expect(dangerousLabel(runner({ refusesDangerous: true }))).toBe('Refuses dangerous work');
+  });
+});
+
 describe('tagsLabel', () => {
   it('is null for a runner that has named none', () => {
     expect(tagsLabel(runner())).toBeNull();
@@ -485,6 +497,7 @@ describe('the bounds form', () => {
     untilAt: '',
     tags: '',
     projects: '',
+    refusesDangerous: false,
     ...over,
   });
 
@@ -504,6 +517,7 @@ describe('the bounds form', () => {
       untilAt: '2026-09-09T06:00:00Z',
       tags: ['gpu', 'fast'],
       projects: ['HA', 'AER'],
+      refusesDangerous: true,
     });
 
     expect(boundsOf(bounded)).toEqual({
@@ -515,6 +529,7 @@ describe('the bounds form', () => {
       untilAt: '2026-09-09T06:00:00Z',
       tags: 'gpu\nfast',
       projects: 'HA\nAER',
+      refusesDangerous: true,
     });
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
@@ -573,11 +588,27 @@ describe('the bounds form', () => {
     expect(boundsChanged({ ...boundsOf(bounded), projects: 'AER\nHA' }, bounded)).toBe(true);
   });
 
+  it('notices the refuse-dangerous box flipping, and only that', () => {
+    const open = runner();
+    const refusing = runner({ refusesDangerous: true });
+
+    expect(boundsChanged(boundsOf(open), open)).toBe(false);
+    expect(boundsChanged({ ...boundsOf(open), refusesDangerous: true }, open)).toBe(true);
+    expect(boundsChanged({ ...boundsOf(refusing), refusesDangerous: false }, refusing)).toBe(true);
+  });
+
+  it('sends refusesDangerous either way, so an unticked box can turn it off', () => {
+    const base = boundsOf(runner());
+
+    expect(boundsRequest({ ...base, refusesDangerous: true }).refusesDangerous).toBe(true);
+    expect(boundsRequest({ ...base, refusesDangerous: false }).refusesDangerous).toBe(false);
+  });
+
   it('sends every field, so a cleared box clears the cap', () => {
     // The tri-state, from the other end: a field left out of the request means
     // "leave it alone", so an emptied box that was not sent would silently keep
     // the cap it was clearing.
-    expect(boundsRequest(bounds({ under: ' AER-930 ', maxSpend: '40', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ' }))).toEqual({
+    expect(boundsRequest(bounds({ under: ' AER-930 ', maxSpend: '40', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ', refusesDangerous: true }))).toEqual({
       under: 'AER-930',
       maxRuns: '',
       maxSpend: '40',
@@ -586,6 +617,7 @@ describe('the bounds form', () => {
       untilAt: '',
       tags: ['gpu', 'fast'],
       projects: ['HA', 'AER'],
+      refusesDangerous: true,
     });
   });
 

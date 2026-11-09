@@ -241,6 +241,11 @@ export function projectsLabel(runner: Runner): string | null {
   return runner.projects.length === 0 ? null : `projects ${runner.projects.join(', ')}`;
 }
 
+/** Whether this runner refuses dangerous work, as the summary says it - or null where it does not, drawn the same as `clones`. */
+export function dangerousLabel(runner: Runner): string | null {
+  return runner.refusesDangerous ? 'Refuses dangerous work' : null;
+}
+
 /** A runner's models, joined - or null where it has reported none. The `models ` prefix is deliberate, the same reason as `projectsLabel`: a bare list beside an agent name reads as nothing. */
 export function modelsLabel(runner: Runner): string | null {
   return runner.models.length === 0 ? null : `models ${runner.models.join(', ')}`;
@@ -327,7 +332,8 @@ export function tokenBudget(runner: Runner): TokenBudgetLine[] {
 }
 
 /** The bounds as the form holds them: strings, because that is what inputs are
-    and what the wire takes. */
+    and what the wire takes - all but `refusesDangerous`, a boolean because a
+    checkbox is. */
 export interface RunnerBounds {
   under: string;
   maxRuns: string;
@@ -339,6 +345,7 @@ export interface RunnerBounds {
   untilAt: string;
   tags: string;
   projects: string;
+  refusesDangerous: boolean;
 }
 
 /** What a row's bounds look like in the form that edits them. */
@@ -353,6 +360,7 @@ export function boundsOf(runner: Runner): RunnerBounds {
     untilAt: runner.untilAt ?? '',
     tags: runnerTagsDraft(runner.tags),
     projects: runnerProjectsDraft(runner.projects),
+    refusesDangerous: runner.refusesDangerous,
   };
 }
 
@@ -379,7 +387,8 @@ export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
     (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim()) ||
     (['maxTokens', 'maxTokensPerHour'] as const).some((f) => tokensDiffer(draft[f], saved[f])) ||
     !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
-    !sameProjects(runnerProjectsRequest(draft.projects), runner.projects)
+    !sameProjects(runnerProjectsRequest(draft.projects), runner.projects) ||
+    draft.refusesDangerous !== saved.refusesDangerous
   );
 }
 
@@ -423,6 +432,7 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     untilAt: draft.untilAt.trim(),
     tags: runnerTagsRequest(draft.tags),
     projects: runnerProjectsRequest(draft.projects),
+    refusesDangerous: draft.refusesDangerous,
   };
 }
 
