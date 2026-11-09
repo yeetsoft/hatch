@@ -86,6 +86,8 @@ Only an owner or an approver of the issue's project may move work into a protect
 
 Of the board's own hops, only the approve hop crosses a protected column's gate. A pre-approval is that owner's or approver's own permission, already given on the ticket in advance; the hop carries it out the moment the board can see it is true, and decides nothing for itself. Every other hop that would land in a protected column is refused the same way a person without the role is.
 
+A check's pass applied from the review column crosses the same gate, on a project with *A passing check approves the merge* turned on: that setting is the owner's or approver's own permission too, given on the project rather than the ticket, and the apply carries it out the same way the approve hop carries a pre-approval out. See `docs/hatch.md`, 'Check' for the column rule and 'The five paths past the terminal guard' for why it is a path and not a hole.
+
 Trying the move any other way answers with a 403 — the gate working, not a scope being wrong.
 
 ## The merge train
