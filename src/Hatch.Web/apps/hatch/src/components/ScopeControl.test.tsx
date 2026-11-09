@@ -49,9 +49,9 @@ describe('ScopeControl', () => {
   it('lists every project in the panel, scoped or not', () => {
     const html = render(three, ['AER']);
     expect(rows(html)).toHaveLength(3);
-    expect(html).toContain('<span class="hatch-types-name">HA — Hatch</span>');
-    expect(html).toContain('<span class="hatch-types-name">AER — Aerie</span>');
-    expect(html).toContain('<span class="hatch-types-name">GL — glasshole</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">HA — Hatch</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">AER — Aerie</span>');
+    expect(html).toContain('<span class="hatch-types-name hatch-scope-control__name">GL — glasshole</span>');
   });
 
   it('keeps the trigger and every row under a one-project scope, with only that row ticked', () => {
