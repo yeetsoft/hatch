@@ -25,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/utilization")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
 {
     [HttpGet]

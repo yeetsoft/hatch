@@ -184,7 +184,7 @@ public class ChangelogControllerTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     private static async Task<Harness> NewAsync()

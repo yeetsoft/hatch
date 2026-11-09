@@ -216,6 +216,9 @@ public sealed class Tally
     /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
     public Controls? Controls { get; init; }
 
+    /// <summary>The models the runner has stopped offering - what a restart carries over. Null where nothing narrows.</summary>
+    public ModelNarrowing? Narrowing { get; init; }
+
     /// <summary>
     /// Whether this run is over, and why - asked before every increment and
     /// through every wait. One method, because "every exit path" is not
@@ -516,6 +519,7 @@ public sealed class Tally
         LetGo = _letGo,
         Interrupted = _interrupted,
         Preempted = _preempted,
+        Narrowed = Narrowing?.ToState(_clock.GetUtcNow()) ?? [],
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
         ExhaustedAt = ExhaustedAt,
@@ -1075,8 +1079,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SetDir = runtime.SetDir,
                 Slot = runtime.Slot,
                 Controls = runtime.Controls,
+                Narrowing = runtime.Narrowing,
                 Standby = standby,
             };
+
+            // A fresh start has carried nothing, which clears the store.
+            runtime.Narrowing.Load(carried?.Narrowed, runtime.Clock.GetUtcNow());
 
             // The host recreates the set's directory on every start, so after a
             // restart every ledger is gone while this member's night state still

@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/pull-request-state")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class PullRequestStateController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

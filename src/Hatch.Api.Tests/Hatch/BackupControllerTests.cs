@@ -191,14 +191,14 @@ public sealed class BackupControllerTests : IDisposable
     }
 
     [Fact]
-    public void PostBackupRun_CarriesAPersonOnlyRoleWithNoAcceptScope()
+    public void PostBackupRun_CarriesAPersonOnlyRoleWithNoAcceptKey()
     {
         var method = typeof(BackupController).GetMethod(nameof(BackupController.PostBackupRun))!;
         var attribute = method.GetCustomAttribute<RequireRoleAttribute>();
 
         Assert.NotNull(attribute);
         Assert.Equal(PersonRole.User, attribute!.Minimum);
-        Assert.Null(attribute.AcceptScope);
+        Assert.False(attribute.AcceptKey);
     }
 
     [Fact]
@@ -208,7 +208,7 @@ public sealed class BackupControllerTests : IDisposable
         var attribute = method.GetCustomAttribute<RequireRoleAttribute>();
 
         Assert.NotNull(attribute);
-        Assert.Equal(ApiKeyScopes.Hatch, attribute!.AcceptScope);
+        Assert.True(attribute!.AcceptKey);
     }
 
     private Task Seed(DateTimeOffset at) =>

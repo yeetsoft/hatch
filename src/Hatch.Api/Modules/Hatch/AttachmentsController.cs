@@ -102,7 +102,7 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     /// file labelled <c>text/html</c> is saved and never rendered as a page.
     /// </summary>
     [HttpGet("{id:guid}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<IActionResult> GetAttachment(Guid id, CancellationToken ct)
     {
         var attachment = await db.Attachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
@@ -120,7 +120,7 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     /// unparseable, repeated or unknown is left out rather than refused.
     /// </summary>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<AttachmentDto>>> GetAttachments([FromQuery] string? ids, CancellationToken ct)
     {
         var entries = (ids ?? string.Empty)

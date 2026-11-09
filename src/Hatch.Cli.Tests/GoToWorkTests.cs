@@ -749,6 +749,60 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task A_model_narrowed_for_the_run_and_carried_across_a_restart_is_left_off_the_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("opus", null)] });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.Equal(["haiku", "sonnet", "fable"], b.Models));
+    }
+
+    [Fact]
+    public async Task A_fresh_start_forgets_what_was_narrowed_and_offers_every_model()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var runtime = h.Runtime;
+        runtime.Narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_narrowing_that_ran_out_before_the_restart_is_not_carried_back_in()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("opus", DateTimeOffset.UtcNow.AddHours(-1))] });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.Contains("opus", Beats(h)[0].Models!);
+    }
+
+    [Fact]
+    public async Task A_loop_restarted_from_a_state_file_written_before_narrowing_offers_every_model()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        File.WriteAllText(h.NightState, "{\"restarts\":1}");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--max-runs", "1"], default));
+
+        Assert.All(Beats(h), b => Assert.Equal(["haiku", "sonnet", "opus", "fable"], b.Models));
+    }
+
+    [Fact]
     public async Task Only_the_first_answered_beat_of_a_fresh_loop_is_fresh()
     {
         using var h = new Harness();

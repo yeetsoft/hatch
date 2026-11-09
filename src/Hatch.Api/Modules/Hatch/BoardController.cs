@@ -21,7 +21,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/board")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class BoardController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon) : ControllerBase
 {

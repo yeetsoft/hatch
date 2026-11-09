@@ -25,7 +25,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/work-log")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>

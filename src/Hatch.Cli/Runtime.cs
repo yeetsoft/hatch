@@ -28,6 +28,9 @@ public sealed record Runtime(
     /// <summary>The model families a pinned id is judged against, so a test can run a second agent.</summary>
     public ModelFamilies Families { get; init; } = ModelFamilies.Default;
 
+    /// <summary>The models this runner has stopped offering. A reference, so it survives <c>runtime with { ... }</c>.</summary>
+    public ModelNarrowing Narrowing { get; init; } = new();
+
     /// <summary>
     /// This process's own build identity, read once off the entry assembly -
     /// see CliRevision.cs. Replaceable so a test can assert what a heartbeat
@@ -116,13 +119,16 @@ public sealed record Runtime(
 
     /// <summary>
     /// The models a beat advertises: <c>HATCH_MODELS</c> where it was set and
-    /// validated for the agent the adapter is, else the adapter's own list.
-    /// Null where that list is empty, so the beat leaves the row's models be.
+    /// validated for the agent the adapter is, else the adapter's own list,
+    /// less any <see cref="Narrowing"/> in force. Null where that list is empty,
+    /// so the beat leaves the row's models be - but empty, not null, where every
+    /// model is narrowed, since an empty list clears the row's models and null
+    /// would leave the stale ones.
     /// </summary>
     public IReadOnlyList<string>? AdvertisedModels()
     {
         var chosen = Settings.Models is not null && Adapter.Id == Settings.Agent ? Settings.Models : Adapter.Models;
-        return chosen.Count > 0 ? chosen : null;
+        return chosen.Count > 0 ? Narrowing.Offered(chosen, Clock.GetUtcNow()) : null;
     }
 
     /// <summary>

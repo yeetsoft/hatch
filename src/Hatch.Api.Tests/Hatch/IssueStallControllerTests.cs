@@ -179,7 +179,7 @@ public class IssueStallControllerTests
             .SingleOrDefault();
 
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
     }
 
     [Fact]
