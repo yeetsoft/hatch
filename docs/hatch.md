@@ -90,7 +90,7 @@ the next heading of the same level and stop.
     Why does a review dispatch end in the column it started in?
   - [The approval column](#the-approval-column) - Which column merges a
     pull request with no session, and how is it found?
-  - [The four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) -
+  - [The five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) -
     Which routes cross the terminal and protected guards?
   - [One more, on `next` alone](#one-more-on-next-alone) - Which rules are
     the loop's policy rather than facts about an issue?
@@ -197,7 +197,7 @@ absence starts to hurt:
   case a dispatch *does* land an issue in a protected column, because a
   pre-approval is that owner's or approver's permission already given in
   advance rather than a program's own judgement call (see [the hop](#the-hop)
-  and [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard))
+  and [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard))
   — and refused a third time, client-side, in `hatch move`'s speed bump
   (`IssueCommands.cs:256`). Moving *out* of a protected column, and
   reordering within one, need no membership — the check only fires when the
@@ -3465,10 +3465,10 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
 | `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
-| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
+| `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
-| `/work/{key}/landed` | POST | Carries a trunk-landing issue in the review column to the first terminal column after it, with no claim and no session — judged by `LandingWork` itself, off the issue's own stored [landings](#landing) and [trunk builds](#trunk-build), not by the caller. No body. `409` for a column other than review, for a project that lands by pull request (*"this project lands by pull request, so there is no landing to confirm"*), for an issue with a pull request recorded (*"a pull request is recorded on this issue, so it lands by merge and not by landing"*), for no terminal column after review, for a judged kind other than `land` (carrying the judge's own sentence), and for a claimed issue; `404` on an unknown key. See [landing on the trunk](#landing-on-the-trunk) and [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
+| `/work/{key}/landed` | POST | Carries a trunk-landing issue in the review column to the first terminal column after it, with no claim and no session — judged by `LandingWork` itself, off the issue's own stored [landings](#landing) and [trunk builds](#trunk-build), not by the caller. No body. `409` for a column other than review, for a project that lands by pull request (*"this project lands by pull request, so there is no landing to confirm"*), for an issue with a pull request recorded (*"a pull request is recorded on this issue, so it lands by merge and not by landing"*), for no terminal column after review, for a judged kind other than `land` (carrying the judge's own sentence), and for a claimed issue; `404` on an unknown key. See [landing on the trunk](#landing-on-the-trunk) and [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
 | `/work/{key}/verdict` | POST | Applies the [verdict](#verdict) a check session recorded under `?heldToken=` — the runner's own write, after the session, with no gate of any kind; see [Check](#check). A pass moves the issue to where a dispatch from the column it stands in would take it, a first fail to the implementation column, and a second consecutive fail moves nothing and asks a question. `200` with the issue. `409` for an issue holding no live claim (*"<KEY> holds no live claim, so there is nothing for this token to match"*) and for a token that is not the claim's (*"<KEY>'s live claim does not match this token"*); `404` on an unknown key and for no unapplied verdict under that claim (*"no verdict was recorded under this claim"*), which is also what a retried apply gets. Takes `?remote=`, `?standing=` and `?clones=` as `GET /work/{key}` does, and ignores them |
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
@@ -5142,7 +5142,13 @@ which a retry of an applied one also gets. It takes no gate: no dependency, no
 [a hop](#the-hop), so a check column belongs left of the review column.
 
 - **Pass** moves the issue to where a dispatch from the column it stands in
-  would take it (`Columns.Target`).
+  would take it (`Columns.Target`) - unless the issue stands in the review
+  column, the project has *A passing check approves the merge*
+  (`EfHatchProject.CheckApprovesMerge`) on, the column after review is both
+  protected and ticked `MergesPullRequest`, and the issue carries a pull
+  request: then it moves there instead (`Columns.Approves`), and the move adds
+  a comment naming the playbook: `Approved by <playbook's From → To column
+  names>'s passing verdict.`, beside the findings comment every apply posts.
 - **A first fail** moves it to the implementation column
   (`Columns.Implementation`), whatever the check's own columns are.
 - **A second consecutive fail** moves nothing; see below.
@@ -5151,7 +5157,9 @@ A move is a `status_changed` event carrying `verdict` and `playbookId` beside
 the usual payload, and goes to the bottom of its column. Every apply, moved or
 held, also posts the findings as a comment of kind `verdict`
 ([Comment, question and answer](#comment-question-and-answer)) and sets the
-row's `AppliedAt`.
+row's `AppliedAt`. A pass that lands in the merge column this way carries
+`approved: "check"` beside them, and posts the approval comment above in the
+same save as the findings comment.
 
 **The second consecutive fail asks a person instead.** `VerdictStreak.Count`
 walks the issue's events newest first, before this apply's own move. Events
@@ -5573,7 +5581,11 @@ rather than inside it: `IssuesController.MergeColumnRefusal` (`:1119-1123`),
 a plain `400` for a move into the merges column on an issue with no pull
 request recorded — `"\"{name}\" merges the pull request, and this issue has
 none recorded"` — mirrored in the browser as `"This column merges the pull
-request, and this issue has none"`.
+request, and this issue has none"`. A check's pass applied by
+`WorkController.VerdictWork` crosses this gate too, the same way the hop and
+`/merged` do - see [the five paths past the terminal
+guard](#the-five-paths-past-the-terminal-guard) for why that is a path and not
+a hole.
 
 **The judge.** `MergeWork.Judge` decides what an issue standing in the merge
 column is waiting on, the way
@@ -5845,8 +5857,8 @@ WIP gate; unlike `/merged` it carries no story's waiting tasks, since that is
 for a pull request several of them share and a landing has none. Its `409`s
 are the ones the [API table](#api-surface) lists, and the sentence on a judged kind
 other than `land` is the judge's own — the same one `hatch queue` prints.
-See [the four paths past the terminal
-guard](#the-four-paths-past-the-terminal-guard) for why a program may take
+See [the five paths past the terminal
+guard](#the-five-paths-past-the-terminal-guard) for why a program may take
 this step.
 
 **Work that landed nothing.** An issue whose session changed nothing has no
@@ -5864,14 +5876,14 @@ landing, so the sentence is reported and no session is spawned. The panel
 lists only the **hold**s, as `landingHeld` — see [what is waiting on
 you](#what-is-waiting-on-you).
 
-### The four paths past the terminal guard
+### The five paths past the terminal guard
 
 Nothing above ever lands an issue in a terminal column, and nothing above
 ever lands one in a protected column either — that is what `Columns.Target`
 is for, dispatching review to itself rather than past either, and what
 `Dispatch.Blocked` refuses in every other case with *"the next column is
 \<name\>, and only the operator moves work there"* or *"...and only its
-approvers move work there"*. Four routes cross one of the two guards
+approvers move work there"*. Five routes cross one of the two guards
 anyway, each for its own reason, and none of them is a program's own
 judgement call.
 
@@ -5928,6 +5940,20 @@ moves into is `Columns.Closes`, the first terminal column after review — not
 `Columns.Advance`'s next column, since a merge column may stand between, and a
 landing does not go through one. No ready date, no assignee, no WIP section and
 no dependency gate it, for `/merged`'s reason.
+
+A check's pass into the merge column is the fifth, and it crosses the
+*protected* fold the way the approve hop does: `Columns.Approves` names the
+merge column only when the project has *A passing check approves the merge* on,
+the issue stands in whatever column is measured as review, the column after it
+is both protected and ticked `MergesPullRequest`, and the issue carries a pull
+request - the same no-pull-request test `IssuesController.MergeColumnRefusal`
+holds a drag to. `WorkController.VerdictWork` acts on it with no call to
+`Dispatch.Blocked` or `ProtectedMoveRefusalAsync`, the same way the hop and
+`/merged` do. It is a path and not a hole for the reason the approve hop is
+one: the owner's or approver's decision was made in advance - on the project,
+rather than the ticket - the moment *A passing check approves the merge* was
+switched on, and the apply carries that decision out rather than making one of
+its own.
 
 ### One more, on `next` alone
 
@@ -6671,7 +6697,7 @@ which one it failed is what `work/queue` reports:
    may pass*. The close hop crosses the terminal fold anyway, and the
    approve hop the protected one, because a pre-approval already given is
    that decision, made in advance (`Dispatch.cs:1249`, `:1252`) — see [the
-   four paths past the terminal guard](#the-four-paths-past-the-terminal-guard).
+   five paths past the terminal guard](#the-five-paths-past-the-terminal-guard).
    The review column is dispatched to itself instead of either (see the
    eighteenth condition), and never into the column after it.
 2. **No live [claim](#claim) is held by somebody else.** It is the only fold
@@ -7729,8 +7755,8 @@ a fresh verdict says it is clean again." - and skipped until a fresh verdict
 agrees it is still clean. Otherwise it runs `gh pr merge <url> --merge --admin
 --match-head-commit <sha>`; a refusal is reported the same way, once per sha -
 "gh would not merge its pull request - {why}". A merge that goes through calls
-`/work/{key}/merged`, the same route [the four paths past the terminal
-guard](#the-four-paths-past-the-terminal-guard) already documents an operator's
+`/work/{key}/merged`, the same route [the five paths past the terminal
+guard](#the-five-paths-past-the-terminal-guard) already documents an operator's
 own report of a merge taking, comments "Merged its pull request at {sha}, as
 {runner}.", and prints the same `hatch: HA-12 pull request merged -> Done`
 line the half above prints for its own advance.

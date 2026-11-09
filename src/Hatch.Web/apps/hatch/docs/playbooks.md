@@ -110,7 +110,9 @@ nothing but the prompt keeps a session to that. Two things go further:
 - **A check playbook** is the only kind of row that cannot move its ticket at
   all. While its claim is held, a key's move of that ticket is refused; the
   session records a verdict, pass or fail with its findings, and the runner
-  applies it afterwards. A pass sends the ticket forward. A fail sends it back to
+  applies it afterwards. A pass sends the ticket forward, or into the merge
+  column instead on a project with *A passing check approves the merge* (an
+  owner's choice, on **Manage → Projects**) turned on. A fail sends it back to
   the column where code is written, with the findings as a comment, and a second
   fail in a row moves nothing and asks a person. No seeded row is a check.
   Only a person marks a playbook as a check, on the Playbooks page; a check left
