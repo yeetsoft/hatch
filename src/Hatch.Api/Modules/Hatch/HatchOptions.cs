@@ -86,6 +86,22 @@ public class HatchOptions
     public int StallResumeMinutes { get; set; } = 15;
 
     /// <summary>
+    /// How long a merge train's head may be judged continuously
+    /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/> before its
+    /// driver is passed over for another live, eligible one - see
+    /// <see cref="TrainWatch.Observe"/>. Named in minutes for the same reason
+    /// <see cref="StallLapseMinutes"/> is.
+    /// </summary>
+    /// <remarks>
+    /// Read through <see cref="Runners.TrainStallSeconds"/> and nowhere else,
+    /// with the same three-way guard <see cref="RunnerGoneAfterSeconds"/> has:
+    /// zero or a negative falls back to the default, because "never pass a
+    /// driver over" is not this setting's job - <see cref="EfHatchProject.TrainStalledDriver"/>
+    /// not naming anybody is.
+    /// </remarks>
+    public int TrainStallMinutes { get; set; } = 10;
+
+    /// <summary>
     /// How many consecutive stalls an issue may resume through before it
     /// holds for a person instead.
     /// </summary>

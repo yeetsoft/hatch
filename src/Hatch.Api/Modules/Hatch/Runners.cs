@@ -50,6 +50,17 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             ? options.Value.RunnerGoneAfterSeconds
             : new HatchOptions().RunnerGoneAfterSeconds;
 
+    /// <summary>
+    /// How long a merge train's head may be judged continuously
+    /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/> before its
+    /// driver is passed over, in seconds - see <see cref="TrainWatch.Observe"/>.
+    /// Guarded the same way <see cref="GoneAfterSeconds"/> is.
+    /// </summary>
+    public int TrainStallSeconds { get; } =
+        options.Value.TrainStallMinutes > 0
+            ? options.Value.TrainStallMinutes * 60
+            : new HatchOptions().TrainStallMinutes * 60;
+
     /// <summary>The heartbeat at or after which a runner is still being heard from.</summary>
     public DateTimeOffset Cutoff(DateTimeOffset now) => now.AddSeconds(-GoneAfterSeconds);
 
@@ -449,6 +460,11 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
                 .Where(c => !people.TryGetValue(project.Id, out var qualifying)
                     || (c.ForPersonId is { } person && qualifying.Contains(person)))
+                // A candidate this project's train has just passed over stays
+                // eligible for every other project - see TrainWatch.Observe -
+                // so being stuck driving one merge column never costs a
+                // candidate its place on the rest of the board.
+                .Where(c => c.Name != project.TrainStalledDriver)
                 .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal)
                 .Select(c => c.Name).FirstOrDefault();
 

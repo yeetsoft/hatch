@@ -263,15 +263,7 @@ public sealed class Dispatch(
             // merge, so it has no place in the train - and left in, a row with no
             // checks at all would be elected head over a real pull request.
             var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
-            var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
-                i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
-                verdicts.TryGetValue(i.Id, out var v) ? v : [],
-                builds.TryGetValue(i.Id, out var b) ? b : [],
-                i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
-                pullRequestHeadSince: i.PullRequestHeadSince));
-            var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
-            var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
-            trainSlots = Train(merging, judged, effective, verdicts, statusChanges);
+            (_, trainSlots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
         }
 
         // Resolved only when some candidate actually reads at economy or low
@@ -794,6 +786,34 @@ public sealed class Dispatch(
     public sealed record TrainSlot(int Position, bool IsHead, string? HeadKey);
 
     /// <summary>
+    /// One project's merges column, judged and ordered: <see cref="ScanAsync"/>'s
+    /// own walk calls this for the sentence <see cref="Blocked"/> still asks
+    /// <see cref="MergeWork.Judge"/> for on its own, and <see cref="TrainHeadsAsync"/>
+    /// calls it for nothing else - an extraction, not a second opinion about
+    /// either the judgement or the order: both callers read the same
+    /// <paramref name="verdicts"/> and <paramref name="builds"/>, fetched once
+    /// by whichever of them is doing the fetching.
+    /// </summary>
+    private async Task<(Dictionary<long, MergeWork.Judgement> Judged, IReadOnlyDictionary<long, TrainSlot> Slots)> ReadTrainAsync(
+        IReadOnlyList<EfHatchIssue> merging,
+        IReadOnlyDictionary<long, (int Level, string? FromKey)> effective,
+        IReadOnlyDictionary<long, IReadOnlyList<EfHatchMergeCheck>> verdicts,
+        IReadOnlyDictionary<long, IReadOnlyList<EfHatchBuildCheck>> builds,
+        DateTimeOffset now, CancellationToken ct)
+    {
+        var judged = merging.ToDictionary(i => i.Id, i => MergeWork.Judge(
+            i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
+            verdicts.TryGetValue(i.Id, out var v) ? v : [],
+            builds.TryGetValue(i.Id, out var b) ? b : [],
+            i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
+            pullRequestHeadSince: i.PullRequestHeadSince));
+        var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
+        var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
+
+        return (judged, Train(merging, judged, effective, verdicts, statusChanges));
+    }
+
+    /// <summary>
     /// The order of a project's merges-column rows, and which one each
     /// project's train is acting on next - named once per pass rather than
     /// asked per row, so two rows in the same column never disagree about
@@ -886,6 +906,65 @@ public sealed class Dispatch(
             .FirstOrDefault();
 
         return clean is not null && string.Equals(clean.TrunkSha, markSha, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// One project's head of its merge train, for <see cref="RunnersController"/>'s
+    /// own stall watch - see <see cref="TrainWatch.Observe"/>. Not a fact
+    /// <see cref="ScanAsync"/>'s own walk hands out, because a plain scan folds
+    /// a project with no eligible row off its own walk entirely; this reads
+    /// every project's merges column on its own instead, judges it exactly as
+    /// <see cref="ScanAsync"/> does, and says only which row is the head.
+    /// </summary>
+    public sealed record TrainHead(int ProjectId, long IssueId, string Key, string Kind, DateTimeOffset? BroughtCurrentAt);
+
+    /// <summary>
+    /// Every project whose merges column has a head, judged and ordered the
+    /// same way <see cref="ScanAsync"/> judges its own walk - read-only, and
+    /// asked on every heartbeat, so it pays for nothing a scan already would
+    /// not.
+    /// </summary>
+    public async Task<IReadOnlyList<TrainHead>> TrainHeadsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var statuses = await OrderedStatusesAsync(ct);
+        if (Columns.Merges(statuses) is not { } merges) return [];
+
+        var inTrain = await db.Issues.AsNoTracking()
+            .Where(i => i.StatusId == merges.Id)
+            .OrderBy(i => i.Rank).ThenBy(i => i.Id)
+            .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .ToListAsync(ct);
+        if (inTrain.Count == 0) return [];
+
+        var tree = await PriorityTree.ForAsync(db, ct);
+
+        // The same fold ScanAsync's own FamilyGate wraps as IsWaiting, read
+        // directly rather than through it: a merges column is a handful of
+        // rows, and FamilyGate.ForAsync reads the whole board to answer the
+        // same question this already has the tree for.
+        var waiting = tree.WaitingIds(statuses).Keys.ToHashSet();
+        var merging = inTrain.Where(i => !waiting.Contains(i.Id)).ToList();
+        if (merging.Count == 0) return [];
+
+        var effective = merging.ToDictionary(i => i.Id, i => tree.Effective(i.Id));
+
+        var ids = merging.Select(i => i.Id).ToList();
+        var verdicts = await MergeChecksAsync(ids, ct);
+        var builds = await BuildChecksAsync(ids, ct);
+
+        var (judged, slots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
+
+        var byId = merging.ToDictionary(i => i.Id);
+        return slots
+            .Where(s => s.Value.IsHead)
+            .Select(s =>
+            {
+                var issue = byId[s.Key];
+                return new TrainHead(
+                    issue.ProjectId, issue.Id, IssueKey.Format(issue.Project!.Key, issue.Number),
+                    judged[s.Key].Kind, issue.BroughtCurrentAt);
+            })
+            .ToList();
     }
 
     // ---- The loop's own policy ----
