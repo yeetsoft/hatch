@@ -4147,7 +4147,7 @@ public enum RunnerBoardDrift
 /// itself.
 /// </summary>
 /// <remarks>
-/// The seven bounds are <em>reported</em>, not requested: they are what this
+/// The six bounds are <em>reported</em>, not requested: they are what this
 /// process started with, and they are written only when the row is being
 /// created. A restart of the same loop sends them again and the server ignores
 /// them, which is what stops a restart from undoing an operator's edit.
@@ -4196,17 +4196,17 @@ public enum RunnerBoardDrift
 /// does not make it look new.
 /// </param>
 /// <param name="Tags">
-/// This runner's own tags, written on every beat like <see cref="Remotes"/> -
-/// refused whole per <see cref="RunnerTags.Normalise"/> rather than capped
-/// or dropped entry by entry, since a tag is a decision and a heartbeat is
-/// not the one to guess it.
+/// Ignored; a runner's tags are never taken off a beat, the old route or the
+/// session route alike. A tag is a decision and a heartbeat is not the one to
+/// make it - only <see cref="RunnerPatchRequest.Tags"/> moves them. Kept on
+/// the wire so an older CLI still sending it is not refused for the sake of it.
 /// </param>
 /// <param name="Projects">
-/// The project keys this runner was started bound to (<c>--project</c>), read
-/// only on a fresh <c>loop</c> beat, with the other four bounds: it sets the
-/// row's list, and none given clears it. On any other beat it is ignored.
-/// Normalised server-side (trimmed, upper-cased, de-duplicated); a key is not
-/// checked against the projects here, since dispatch is where one is judged.
+/// The project keys this runner is bound to (<c>--project</c>) - a fact about
+/// the process, like <see cref="Remotes"/>: carried on every beat, overwritten
+/// each time, never a seed-once field. None given clears it. Normalised
+/// server-side (trimmed, upper-cased, de-duplicated); a key is not checked
+/// against the projects here, since dispatch is where one is judged.
 /// </param>
 /// <param name="Standing">
 /// Whether this runner was started inside one of the checkouts it is
@@ -4216,7 +4216,7 @@ public enum RunnerBoardDrift
 /// <param name="Fresh">
 /// True only on the first answered beat of a loop process that carried no
 /// night state, i.e. one typed by hand or the first start under a supervisor:
-/// the seven bounds in this body are then the flags it was started with, and
+/// the six bounds in this body are then the flags it was started with, and
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
@@ -4237,9 +4237,9 @@ public enum RunnerBoardDrift
 /// <param name="Spent">The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</param>
 /// <param name="Host">The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</param>
 /// <param name="RefusesDangerous">
-/// Whether this runner was started refusing dangerous work. Seeded once, like
-/// <see cref="Tags"/>: the first beat that says writes it onto the row, and
-/// from then on only <c>PATCH</c> moves it. Absent says nothing.
+/// Whether this runner refuses dangerous work - a fact about the process,
+/// like <see cref="Remotes"/>: carried on every beat, overwritten each time,
+/// never a seed-once field. Absent leaves the row alone.
 /// </param>
 /// <param name="ThrottledUntil">
 /// This runner is over its own <c>--max-tokens-per-hour</c> and expects to be
@@ -4342,10 +4342,9 @@ public record RunnerUsageWindowDto(
 /// answered back on the same heartbeat that asked.
 /// </param>
 /// <param name="Tags">
-/// The row's tags as they stand, <see cref="RunnerDto.Tags"/> - seeded once
-/// from this runner's own first heartbeat and from then on only a <c>PATCH</c>
-/// moves them, so a later beat reads back what the board set rather than what
-/// it just said.
+/// The row's tags as they stand, <see cref="RunnerDto.Tags"/> - never taken
+/// off a beat, only a <c>PATCH</c> moves them, so a later beat reads back
+/// what the board set rather than what it just said.
 /// </param>
 /// <param name="Order">
 /// The order this heartbeat picked up and is clearing by answering it - null
@@ -4353,13 +4352,10 @@ public record RunnerUsageWindowDto(
 /// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
 /// </param>
 /// <param name="Projects">
-/// The project keys the row is bound to, <see cref="RunnerDto.Projects"/> - in
-/// the order they were given, empty where it is bound to none.
+/// No longer answered (null); removed with its last reader in HA-2047.
 /// </param>
 /// <param name="RefusesDangerous">
-/// The row's <see cref="RunnerDto.RefusesDangerous"/> as it stands. Null means
-/// this Hatch does not answer it (an older Hatch); a current Hatch always
-/// answers true or false.
+/// No longer answered (null); removed with its last reader in HA-2047.
 /// </param>
 public record RunnerInstructionDto(
     string State,
@@ -4397,15 +4393,6 @@ public record RunnerInstructionDto(
 /// heartbeat's own tags, this is the one write that reaches a row after its
 /// first beat has seeded it.
 /// </param>
-/// <param name="Projects">
-/// Absent leaves the row's project bound alone, an empty list clears it, a
-/// list sets it. A key that names no project is refused, naming it.
-/// </param>
-/// <param name="RefusesDangerous">
-/// Absent leaves the row alone; true or false sets it. A bool, not the string
-/// tri-state of the numbers, since there is nothing to clear: false is the
-/// off position.
-/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -4413,8 +4400,6 @@ public record RunnerPatchRequest(
     string? MaxSpend = null,
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
-    IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null,
     string? MaxTokens = null,
     string? MaxTokensPerHour = null);
 

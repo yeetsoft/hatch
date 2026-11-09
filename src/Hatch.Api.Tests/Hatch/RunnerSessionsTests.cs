@@ -231,11 +231,16 @@ public class RunnerSessionsTests
     }
 
     [Fact]
-    public void Instruct_ANullRefusesDangerous_AnswersFalse()
+    public void Instruct_NeverAnswersProjectsOrRefusesDangerous()
     {
-        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan");
+        var session = Session();
+        session.Projects = "AER";
+        session.RefusesDangerous = true;
 
-        Assert.False(dto.RefusesDangerous);
+        var dto = RunnerSessions.Instruct(session, null, "here:/checkouts/one", "Nathan");
+
+        Assert.Null(dto.Projects);
+        Assert.Null(dto.RefusesDangerous);
     }
 
     // ---- MarkGoneAsync ----

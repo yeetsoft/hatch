@@ -62,9 +62,11 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(List<ProjectDto>))]
 [JsonSerializable(typeof(DreamDto))]
 [JsonSerializable(typeof(AttentionDto))]
+[JsonSerializable(typeof(RunnerMintedDto))]
 
 // What is written.
 [JsonSerializable(typeof(IssueCreateRequest))]
+[JsonSerializable(typeof(CreateRunnerRequest))]
 [JsonSerializable(typeof(CommentCreateRequest))]
 [JsonSerializable(typeof(DreamCreateRequest))]
 [JsonSerializable(typeof(MessageDeliverRequest))]
