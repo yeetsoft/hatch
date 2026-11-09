@@ -793,4 +793,216 @@ public sealed class DetectTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => Detect.RealProbe("/bin/sh", ["-c", "sleep 30"], TimeSpan.FromSeconds(30), cancel.Token));
     }
+
+    // ---- RunAsync -----------------------------------------------------
+
+    private static string CombinedPath(params FakePath[] tools) =>
+        string.Join(System.IO.Path.PathSeparator, tools.Select(tool => tool.Directory));
+
+    [Fact]
+    public async Task RunAsync_detects_all_six_concurrently_matching_the_default_dependency_list()
+    {
+        using var make = new FakePath(FileNames("make")[0]);
+        using var dotnet = new FakePath(FileNames("dotnet")[0]);
+        using var node = new FakePath(FileNames("node")[0]);
+        using var pwsh = new FakePath(FileNames("pwsh")[0]);
+        using var postgres = new FakePath(FileNames("postgres")[0]);
+        var browsers = Root();
+        try
+        {
+            Populate(browsers);
+
+            var answers = new Dictionary<string, ProbeResult>
+            {
+                ["make"] = Said(DebianMake),
+                ["dotnet"] = Said(DotnetSdks),
+                ["node"] = Said(Node),
+                ["pwsh"] = Said(Pwsh),
+                ["postgres"] = Said(PostgresServer),
+            };
+
+            var detection = await Detect.RunAsync(
+                CombinedPath(make, dotnet, node, pwsh, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
+                ByTool(answers), CancellationToken.None);
+
+            Assert.Equal(
+                Dependencies.Default.Rows.Select(row => row.Id).OrderBy(id => id, StringComparer.Ordinal),
+                detection.Results.Select(result => result.Id));
+            Assert.All(detection.Results, result => Assert.True(result.Present));
+        }
+        finally { Remove(browsers); }
+    }
+
+    [Fact]
+    public async Task RunAsync_keeps_the_other_five_when_one_probe_hangs()
+    {
+        using var make = new FakePath(FileNames("make")[0]);
+        using var dotnet = new FakePath(FileNames("dotnet")[0]);
+        using var node = new FakePath(FileNames("node")[0]);
+        using var pwsh = new FakePath(FileNames("pwsh")[0]);
+        using var postgres = new FakePath(FileNames("postgres")[0]);
+        var browsers = Root();
+        try
+        {
+            Populate(browsers);
+
+            var answers = new Dictionary<string, ProbeResult>
+            {
+                ["dotnet"] = Said(DotnetSdks),
+                ["node"] = Said(Node),
+                ["pwsh"] = Said(Pwsh),
+                ["postgres"] = Said(PostgresServer),
+            };
+
+            Probe hangsOnMake = (file, _, _, _) =>
+            {
+                var name = System.IO.Path.GetFileNameWithoutExtension(file);
+                return Task.FromResult(name == "make" ? Hung : answers[name]);
+            };
+
+            var detection = await Detect.RunAsync(
+                CombinedPath(make, dotnet, node, pwsh, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
+                hangsOnMake, CancellationToken.None);
+
+            var byId = detection.Results.ToDictionary(result => result.Id);
+            Assert.False(byId["make"].Present);
+            Assert.True(byId["dotnet"].Present);
+            Assert.True(byId["node"].Present);
+            Assert.True(byId["pwsh"].Present);
+            Assert.True(byId["postgres"].Present);
+            Assert.True(byId["playwright-browsers"].Present);
+        }
+        finally { Remove(browsers); }
+    }
+
+    // ---- Merge / Missing ------------------------------------------------
+
+    [Fact]
+    public void Merge_drops_a_declared_version_the_detected_one_satisfies_but_keeps_one_it_does_not()
+    {
+        var detection = new Detection([new DetectorResult("dotnet", true, "10.0.100", null)]);
+
+        var merged = detection.Merge(["dotnet@10", "dotnet@8"]);
+
+        Assert.Equal(["dotnet@10.0.100", "dotnet@8"], merged);
+    }
+
+    [Fact]
+    public void Merge_keeps_a_bare_declared_id_detection_never_saw()
+    {
+        var detection = new Detection([new DetectorResult("node", false, null, "not on PATH")]);
+
+        var merged = detection.Merge(["node"]);
+
+        Assert.Equal(["node"], merged);
+    }
+
+    [Fact]
+    public void Merge_drops_a_bare_declared_id_detection_already_found()
+    {
+        var detection = new Detection([new DetectorResult("node", true, "22.11.0", null)]);
+
+        var merged = detection.Merge(["node"]);
+
+        Assert.Equal(["node@22.11.0"], merged);
+    }
+
+    [Fact]
+    public void Merge_never_removes_a_detected_entry()
+    {
+        var detection = new Detection([new DetectorResult("make", true, null, null)]);
+
+        var merged = detection.Merge([]);
+
+        Assert.Equal(["make"], merged);
+    }
+
+    [Fact]
+    public void Merge_orders_ordinally_by_id_and_deduplicates()
+    {
+        var detection = new Detection(
+        [
+            new DetectorResult("pwsh", true, "7.5.0", null),
+            new DetectorResult("make", true, null, null),
+        ]);
+
+        var merged = detection.Merge(["make", "node@5", "node@5"]);
+
+        Assert.Equal(["make", "node@5", "pwsh@7.5.0"], merged);
+    }
+
+    [Fact]
+    public void Missing_answers_absent_ids_not_already_declared()
+    {
+        var detection = new Detection(
+        [
+            new DetectorResult("make", true, null, null),
+            new DetectorResult("node", false, null, "not on PATH"),
+            new DetectorResult("postgres", false, null, "no postgres"),
+        ]);
+
+        Assert.Equal(["postgres"], detection.Missing(["node"]));
+    }
+
+    // ---- ReadDeclared -----------------------------------------------------
+
+    [Fact]
+    public void ReadDeclared_on_a_good_file_answers_its_entries()
+    {
+        var root = Root();
+        try
+        {
+            var path = System.IO.Path.Combine(root, "dependencies.json");
+            System.IO.File.WriteAllText(path, """{"dependencies":["make",{"id":"dotnet","version":"10"}]}""");
+
+            var entries = Detect.ReadDeclared(path, out var problem);
+
+            Assert.Null(problem);
+            Assert.Equal(["make", "dotnet@10"], entries);
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void ReadDeclared_on_a_missing_file_answers_empty_with_no_problem()
+    {
+        var root = Root();
+        try
+        {
+            var entries = Detect.ReadDeclared(System.IO.Path.Combine(root, "missing.json"), out var problem);
+
+            Assert.Empty(entries);
+            Assert.Null(problem);
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void ReadDeclared_on_a_bad_file_names_the_path_in_the_problem()
+    {
+        var root = Root();
+        try
+        {
+            var path = System.IO.Path.Combine(root, "dependencies.json");
+            System.IO.File.WriteAllText(path, "not json");
+
+            var entries = Detect.ReadDeclared(path, out var problem);
+
+            Assert.Empty(entries);
+            Assert.StartsWith(path, problem);
+        }
+        finally { Remove(root); }
+    }
+
+    // ---- Lookup -------------------------------------------------------
+
+    [Fact]
+    public void Lookup_finds_the_real_Path_key_by_PATH_on_windows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var env = new Dictionary<string, string?> { ["Path"] = @"C:\some\path" };
+
+        Assert.Equal(@"C:\some\path", Detect.Lookup(env)("PATH"));
+    }
 }

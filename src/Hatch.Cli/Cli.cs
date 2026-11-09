@@ -41,6 +41,9 @@ public sealed record Cli(
     /// </summary>
     public bool Clones { get; init; }
 
+    /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
+    public IReadOnlyList<string> Has { get; init; } = [];
+
     public DateTimeOffset Now => Clock.GetLocalNow();
 
     public int OffsetMinutes => Board.OffsetMinutes(Now);
