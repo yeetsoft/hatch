@@ -101,12 +101,20 @@ The heartbeat table a running loop writes is a bridge, joined to the key by
 name, that HA-1937 retires.
 
 - **Where it is minted.** **Manage → API keys**, admin only. A key is minted by
-  *creating a runner* (`POST /api/hatch/runners`): no key may mint, revoke or
-  re-own a key, only a person at that screen. The form takes **Name** ("What
-  the audit trail will call it") and **Belongs to** ("Whose tickets this key's
-  `--mine` will reach"), then **Mint key**. The secret is shown once, on the
-  page, and the response is sent `no-store`, so it is never shown again. A name
-  already held, by a key revoked or not, is refused.
+  *creating a runner* (`POST /api/hatch/runners`): no key may mint, rotate,
+  revoke or re-own a key, only a person at that screen. The form takes **Name**
+  ("What the audit trail will call it") and **Belongs to** ("Whose tickets
+  this key's `--mine` will reach"), then **Mint key**. The secret is shown
+  once, on the page, and the response is sent `no-store`, so it is never shown
+  again. A name already held, by a key revoked or not, is refused.
+- **Replacing a secret.** An admin rotates a runner with
+  `POST /api/hatch/runners/{name}/rotate`; a new secret is made at once and
+  shown once, sent `no-store`; the old secret is refused from the next call (a
+  `401`), so every loop using it needs the new one; the name, owner, tags,
+  bounds, sessions, omissions and attribution carry over, and the key's prefix
+  and a `rotatedAt` time are updated; a revoked runner cannot be rotated
+  (`409`) — rotate to replace a leaked secret and keep the runner working,
+  revoke to stop it. [`api-reference`](api-reference) has the route.
 - **What a key reaches.** Everything under `/api/hatch`, less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
