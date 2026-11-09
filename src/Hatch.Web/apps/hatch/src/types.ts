@@ -2545,6 +2545,12 @@ export interface ApiKeyCreateRequest {
   ownerPersonId?: string;
 }
 
+/** A freshly minted runner's key. Mirrors RunnerMintedDto. */
+export interface RunnerMinted {
+  runner: Runner;
+  secret: string;
+}
+
 // ---- Revision ----
 
 /** The four answers a drift comparison can give, mirroring RevisionDrift in

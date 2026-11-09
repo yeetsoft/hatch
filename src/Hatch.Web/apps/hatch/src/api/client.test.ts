@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
   getActivity,
+  getApiKeys,
   getAttachments,
   getChangelogReport,
   getPlan,
@@ -9,9 +10,12 @@ import {
   getWorkLogHistory,
   getWorkLogSessions,
   liftRunnerOmission,
+  mintApiKey,
   omitRunner,
   orderRunner,
+  revokeApiKey,
   searchIssues,
+  setApiKeyOwner,
   setStatusRunnerTags,
   uploadAttachment,
   withdrawOrder,
@@ -81,6 +85,65 @@ describe('runner orders', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+});
+
+describe('API keys', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('getApiKeys reads /api/hatch/runners with no live flag, and maps the rows', async () => {
+    const rows = [{ name: 'Claude', apiKeyId: 'k1', firstSeenAt: '2026-09-07T00:00:00Z' }] as Runner[];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(rows), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getApiKeys();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/hatch/runners', expect.objectContaining({}));
+    expect(result).toEqual([
+      { id: 'k1', name: 'Claude', prefix: '', createdAt: '2026-09-07T00:00:00Z', lastUsedAt: null, revokedAt: null, owner: null },
+    ]);
+  });
+
+  it('mintApiKey POSTs the request to /api/hatch/runners and maps the answer', async () => {
+    const runner = { name: 'Claude', apiKeyId: 'k1', firstSeenAt: '2026-09-07T00:00:00Z' } as Runner;
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ runner, secret: 'hatch_ak_thesecret' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await mintApiKey({ name: 'Claude', ownerPersonId: 'p1' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners',
+      expect.objectContaining({ method: 'POST', body: '{"name":"Claude","ownerPersonId":"p1"}' }),
+    );
+    expect(result.secret).toBe('hatch_ak_thesecret');
+  });
+
+  it('revokeApiKey POSTs to the named runner, escaped', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await revokeApiKey('here:/x');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/revoke',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('setApiKeyOwner PUTs the owner, null clearing it', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await setApiKeyOwner('Claude', null);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/Claude/owner',
+      expect.objectContaining({ method: 'PUT', body: '{"personId":null}' }),
     );
   });
 });

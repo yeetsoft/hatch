@@ -71,7 +71,7 @@ export function ApiKeysPage() {
   async function revoke(key: ApiKey) {
     setBusy(true);
     try {
-      await revokeApiKey(key.id);
+      await revokeApiKey(key.name);
       setError(null);
     } catch (err) {
       setError(message(err));
@@ -85,7 +85,7 @@ export function ApiKeysPage() {
   async function changeOwner(key: ApiKey, personId: string) {
     setChangingOwner(key.id);
     try {
-      await setApiKeyOwner(key.id, personId || null);
+      await setApiKeyOwner(key.name, personId || null);
       setError(null);
     } catch (err) {
       setError(message(err));
