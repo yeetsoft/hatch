@@ -496,6 +496,8 @@ public class AdminSurfaceTests
         "RunnersController.DeleteRunnerOrder",
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
@@ -748,6 +750,8 @@ public class AdminSurfaceTests
         "RunnersController.DeleteRunnerOrder",
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
 
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
@@ -929,6 +933,8 @@ public class AdminSurfaceTests
     [
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
+        "RunnersController.RevokeRunner",
+        "RunnersController.SetRunnerOwner",
     ];
 
     private static readonly string[] UserOutsideHatch =
