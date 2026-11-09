@@ -4910,6 +4910,15 @@ input.hatch-inline-title-input {
   flex-wrap: wrap;
 }
 
+/* The declared reason, read-only here as it is in the facts panel - muted
+   rather than the ink the title above it uses, so it reads as a secondary
+   fact rather than another heading. */
+.hatch-peek-nocode {
+  font-size: var(--t-label);
+  color: var(--muted);
+  margin: 0;
+}
+
 /* The band under the pill: the same wash, leading edge and radius as the
    status picker's (.hatch-peek-status, App.css:1044) and the issue page's
    status bar (.hatch-status-bar, App.css:1458), coloured by the effective
@@ -5089,6 +5098,21 @@ input.hatch-inline-title-input {
   color: var(--danger-ink);
   font-size: var(--t-micro);
   font-weight: 700;
+  line-height: 1.6;
+}
+
+/* Finished with no code, in the neutral --line/--muted pair rather than
+   --success or --danger: nothing went wrong and nothing was approved in
+   advance, so a tint borrowed from either mark would read as the wrong
+   fact. */
+.hatch-card-nocode {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--line);
+  color: var(--muted);
+  font-size: var(--t-micro);
   line-height: 1.6;
 }
 

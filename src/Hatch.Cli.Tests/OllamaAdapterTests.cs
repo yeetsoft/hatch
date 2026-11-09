@@ -649,4 +649,10 @@ public sealed class OllamaAdapterTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
             throw exception;
     }
+
+    [Fact]
+    public void Executable_is_null_even_with_a_configured_binary()
+    {
+        Assert.Null(new OllamaAdapter(configured: _bin).Executable);
+    }
 }

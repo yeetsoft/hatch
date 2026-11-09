@@ -429,4 +429,16 @@ public sealed class GrokAdapterTests : IDisposable
             "the 'gpt-7-nova' model is not supported when using Codex with a ChatGPT account", endedAt));
         Assert.Null(adapter.RecogniseModelRefusal("model \"llama3:70b\" not found, try pulling it first", endedAt));
     }
+
+    [Fact]
+    public void Executable_is_the_configured_binary_when_it_exists()
+    {
+        Assert.Equal(_bin, new GrokAdapter(_bin).Executable);
+    }
+
+    [Fact]
+    public void Executable_is_null_for_a_configured_path_that_does_not_exist()
+    {
+        Assert.Null(new GrokAdapter("/does/not/exist").Executable);
+    }
 }
