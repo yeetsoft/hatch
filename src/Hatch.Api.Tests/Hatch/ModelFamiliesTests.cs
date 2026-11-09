@@ -89,6 +89,29 @@ public class ModelFamiliesTests
             ModelFamilies.Default.Refusal("nonsense-1"));
     }
 
+    [Theory]
+    [InlineData("gpt-6-luna", "claude", "pinned to gpt-6-luna, a codex model - this runner's agent is claude")]
+    [InlineData("claude-opus-5", "codex", "pinned to claude-opus-5, a claude model - this runner's agent is codex")]
+    [InlineData("qwen3-coder:30b", "claude", "pinned to qwen3-coder:30b, an ollama model - this runner's agent is claude")]
+    [InlineData("opus", "claude", null)]
+    [InlineData("claude-opus-5", "claude", null)]
+    [InlineData("nonsense-1", "claude", null)]
+    public void WrongAgent_NamesTheOwnerOfAPinnedIdOnlyWhenItIsAnotherAgents(string model, string agent, string? expected)
+    {
+        Assert.Equal(expected, ModelFamilies.Default.WrongAgent(model, agent));
+    }
+
+    [Fact]
+    public void NotOffered_NamesTheRunnersAgentWhenItHasOne()
+    {
+        Assert.Equal(
+            "HA-12 in Breakdown runs on fable - this runner's claude does not offer it",
+            ModelFamilies.NotOffered("HA-12", "Breakdown", "fable", "claude"));
+        Assert.Equal(
+            "HA-12 in Breakdown runs on fable - this runner does not offer it",
+            ModelFamilies.NotOffered("HA-12", "Breakdown", "fable", null));
+    }
+
     [Fact]
     public void Normalise_AbsentTouchesNothing()
     {
