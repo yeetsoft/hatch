@@ -10299,6 +10299,126 @@ public class WorkControllerTests
         Assert.NotNull(verdictRow.AppliedAt);
     }
 
+    /// <summary>A check on the review column, which <c>Columns.Approves</c> needs: <c>CheckingAsync</c>'s own playbook ends at Checking, so a second one runs Checking to Review.</summary>
+    private async Task<int> ReviewCheckAsync(Harness h)
+    {
+        await h.CheckingAsync();
+        var playbook = Playbook(h.Checking, h.Review, "", "sonnet", isCheck: true);
+        h.Db.Playbooks.Add(playbook);
+        await h.Db.SaveChangesAsync();
+        return playbook.Id;
+    }
+
+    private async Task<EfHatchStatus> AddApprovedColumnAsync(Harness h)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        return approved;
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOnReviewWithPrAndMergeColumnNext_MovesToMergeColumn()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        var approved = await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        var moved = Value(await h.Work.VerdictWork(Key(issue), token, ct: default));
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(approved.Id, moved.StatusId);
+        Assert.Equal(approved.Id, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
+        Assert.Equal(playbookId, payload.GetProperty("playbookId").GetInt32());
+        Assert.Equal("check", payload.GetProperty("approved").GetString());
+        AssertColumns(e, h.Review, approved.Id);
+
+        var comments = row.Comments.OrderBy(c => c.Id).ToList();
+        Assert.Equal(2, comments.Count);
+        Assert.NotEqual(EfHatchComment.Verdict, comments[0].Kind);
+        Assert.Equal("Approved by checking → review's passing verdict.", comments[0].Body);
+        Assert.Equal(EfHatchComment.Verdict, comments[1].Kind);
+        Assert.Equal("looks right", comments[1].Body);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOnNoPullRequest_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Review);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_SettingOff_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await ReviewCheckAsync(h);
+        await AddApprovedColumnAsync(h);
+        var issue = await h.FileAsync("task", "being checked", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Review);
+    }
+
+    [Fact]
+    public async Task VerdictWork_Pass_FromNotReviewColumn_FallsBackToTarget()
+    {
+        var h = await NewAsync();
+        var playbookId = await h.CheckingAsync();
+        await AddApprovedColumnAsync(h);
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "being checked", h.Checking);
+        await h.SetPullRequestAsync(issue, "https://example.com/pr/1");
+        var token = await h.ClaimAsync(issue, playbookId: playbookId);
+        await h.RecordVerdictAsync(issue, playbookId, token, CheckVerdicts.Pass, findings: "looks right");
+
+        await h.Work.VerdictWork(Key(issue), token, ct: default);
+
+        await AssertPassFellBackAsync(h, issue, h.Checking);
+    }
+
+    /// <summary>The pass went where <c>Columns.Target</c> sends it - review, whether it came from review or from checking - with no approval written.</summary>
+    private static async Task AssertPassFellBackAsync(Harness h, EfHatchIssue issue, int from)
+    {
+        var row = await h.Db.Issues.Include(i => i.Events).Include(i => i.Comments).FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Review, row.StatusId);
+
+        var e = Assert.Single(row.Events);
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(CheckVerdicts.Pass, payload.GetProperty("verdict").GetString());
+        Assert.False(payload.TryGetProperty("approved", out _));
+        AssertColumns(e, from, h.Review);
+
+        var comment = Assert.Single(row.Comments);
+        Assert.Equal(EfHatchComment.Verdict, comment.Kind);
+        Assert.Equal("looks right", comment.Body);
+    }
+
     [Fact]
     public async Task VerdictWork_FirstFail_ReturnsTheIssueToImplementation()
     {

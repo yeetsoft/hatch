@@ -3939,6 +3939,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// the runner reports about itself, never a person's to set. Empty for a
 /// runner that has said none, rather than null.
 /// </param>
+/// <param name="Has">
+/// The dependencies this runner says it has, normalised per
+/// <see cref="DependencySet.Normalise"/> and in the order it gave them. A fact
+/// the runner reports about itself, never a person's to set. Empty for a
+/// runner that has said none, rather than null.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3984,12 +3990,14 @@ public record RunnerDto(
     long? TokensUsed = null,
     long? TokensLastHour = null,
     DateTimeOffset? ThrottledUntil = null,
-    IReadOnlyList<string> Models = null!)
+    IReadOnlyList<string> Models = null!,
+    IReadOnlyList<string> Has = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
     public IReadOnlyList<string> Models { get; init; } = Models ?? [];
+    public IReadOnlyList<string> Has { get; init; } = Has ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
 }
 
@@ -4121,6 +4129,12 @@ public enum RunnerBoardDrift
 /// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
 /// whole, or kept whole, per <see cref="RunnerModels.Normalise"/>.
 /// </param>
+/// <param name="Has">
+/// The dependencies this runner has - a fact about the process, written on
+/// every beat like <see cref="Remotes"/>, never seeded once and never a
+/// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
+/// whole, or kept whole, per <see cref="DependencySet.Normalise"/>.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4156,7 +4170,8 @@ public record RunnerHeartbeatRequest(
     long? MaxTokensPerHour = null,
     long? TokensUsed = null,
     long? TokensLastHour = null,
-    IReadOnlyList<string>? Models = null);
+    IReadOnlyList<string>? Models = null,
+    IReadOnlyList<string>? Has = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
