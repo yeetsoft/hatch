@@ -36,10 +36,12 @@ describe('ScopeControl', () => {
     expect(html).toContain('All projects');
     expect(html).toContain('hatch-menu__trigger--accent');
     expect(html).not.toContain('hatch-scope-control__chip');
+    expect(html).toContain('hatch-menu__caret');
   });
 
   it('shows one chip for the scoped project and none for the rest', () => {
     const html = trigger(render(three, ['AER']));
+    expect(html).toContain('hatch-menu__caret');
     expect([...html.matchAll(/hatch-scope-control__chip/g)]).toHaveLength(1);
     expect(html).toContain('AER');
     expect(html).not.toContain('>HA<');

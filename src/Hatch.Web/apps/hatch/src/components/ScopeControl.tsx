@@ -1,4 +1,4 @@
-import { Menu, ProjectMark, markVars } from '@hatch/ui';
+import { Menu, MenuCaret, ProjectMark, markVars } from '@hatch/ui';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { toggleChoice } from '../lib/checklist';
 import type { Project } from '../types';
@@ -44,9 +44,13 @@ export function ScopeControl({
                   {project.key}
                 </span>
               ))}
+            <MenuCaret />
           </button>
         ) : (
-          <button {...props}>All projects</button>
+          <button {...props}>
+            All projects
+            <MenuCaret />
+          </button>
         )
       }
     >
