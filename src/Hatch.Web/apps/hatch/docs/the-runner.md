@@ -336,7 +336,9 @@ agent advertises that agent's default instead of a list that would be refused.
 the row carries whatever the last beat said, so changing `HATCH_MODELS` or
 pulling a model on an ollama server shows on the next heartbeat. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
-`hatch runners` closes a row with `  models haiku sonnet`.
+`hatch runners` closes a row with `  models haiku sonnet`. The Runners page
+draws the dependencies a runner has the same way, as `has dotnet 10.0.100,
+node 22.11.0`, under the repositories line in a row's details.
 
 ### Has
 

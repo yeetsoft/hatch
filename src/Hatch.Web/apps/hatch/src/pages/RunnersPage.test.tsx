@@ -31,6 +31,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   tags: [],
   projects: [],
   models: [],
+  has: [],
   drives: [],
   clones: null,
   mine: null,
@@ -305,6 +306,19 @@ describe('RunnersPage RunnerDetails', () => {
 
   it('draws nothing from modelsLabel when there are none', () => {
     expect(renderDetails(runner({ models: [] }))).not.toContain('models');
+  });
+
+  it('draws the dependencies a runner has', () => {
+    expect(renderDetails(runner({ has: ['node@22.11.0'] }))).toContain('has node 22.11.0');
+  });
+
+  it('draws nothing from hasLabel when there are none', () => {
+    expect(renderDetails(runner({ has: [] }))).not.toContain('has ');
+  });
+
+  it('draws the has line after the repositories line', () => {
+    const html = renderDetails(runner({ repositories: ['a'], has: ['node@22.11.0'] }));
+    expect(html.indexOf('has node 22.11.0')).toBeGreaterThan(html.indexOf('a'));
   });
 });
 
