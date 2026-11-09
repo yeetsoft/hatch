@@ -22,6 +22,8 @@ The sections, in order:
 - **Empty states** — what each "nothing" says, and which words it uses.
 - **The list** — the glyph and its ranking, the row's three lines, the sort,
   and where Create runner sits.
+- **The detail** — the five sections, grouped by who writes each field, what
+  each saves, and where its refusal lands.
 
 ## Routes and layout
 
@@ -235,3 +237,113 @@ flush>`. It carries `aria-current="page"` when selected (see
   states](#empty-states)).
 - **It is on the list header only.** On the phone `/runners/:name` draws no
   layout heading (see [Phone](#phone)), so the button is absent there.
+
+## The detail
+
+The detail is the right pane on the desk and `/runners/:name` on the phone —
+five `<Card>` sections, each headed `<h2 className="hatch-section-title">`, in
+this order: Identity and key, What it may work, Bounds, Live sessions, Recent
+sessions. Each section owns its own save and its own refusal line; nothing
+here repeats [Who sees what](#who-sees-what).
+
+### Identity and key
+
+Name, prefix (`<code>`), `createdAt`, and last used —
+`lastUsedLabel(lastUsedAt)`, today in
+[`lib/apiKeys.ts`](../src/Hatch.Web/apps/hatch/src/lib/apiKeys.ts), folded into
+[`lib/runners.ts`](../src/Hatch.Web/apps/hatch/src/lib/runners.ts) — are muted
+text here, never inputs; `rotatedAt` and `revokedAt` draw only when set. **The
+header line beside the name carries `Behind`** when any live session's
+`boardDrift === 'Behind'` and **`Rebuild`** when any live session's
+`sourceDrift === 'Behind'` — both move from the runner to the session (HA-1937's
+`revision`/`sequence`/`builtAt`/`sourceRevision`/`sourceSequence`).
+
+- **Owner** is a `<select>` of people and "nobody", admin only, saved on
+  change and disabled while saving —
+  [`ApiKeysPage.tsx`](../src/Hatch.Web/apps/hatch/src/pages/ApiKeysPage.tsx)'s
+  `changeOwner`/`setApiKeyOwner` pattern, becoming `PUT
+  /api/hatch/runners/{name}/owner` (HA-1936). Everyone else reads it as text:
+  `for`, or "no owner".
+- **`Rotate key`** (`Button`, default `secondary`) and **`Revoke`**
+  (`variant="danger"`) are admin only and absent on a revoked runner.
+  Confirmations belong to HA-1982 ("Creating, rotating and revoking"); this
+  section only places the buttons.
+- **A failed save draws `text-danger` inside this `Card`**, never at the
+  page's top: `RunnersPage.tsx`'s `topRefusal` line is dropped entirely, and
+  every section below states its own refusal once, where its own control is.
+
+### What it may work
+
+Two editable fields in one `.hatch-field-grid`, saved together: Tags
+(`RunnerTagsField`, one per line, empty is any runner) and Under (plain input,
+hint "An epic to stay inside, like AER-930. Empty is the whole board.", with a
+link to `/issues/{under}` beside it when set — `BoundsSummary`'s under-link,
+lifted here). `Button variant="primary"` "Save settings" and "Revert" —
+`BoundsForm`/`boundsOf`/`boundsChanged`'s pattern, narrowed to `{ tags, under
+}` and its own PATCH.
+
+- **Below, read-only "Declared by its sessions"**: Projects is the union of
+  every live session's declared `projects` ("every project" when none; hint
+  "Does not change the merge train", today's `RunnerProjectsField` hint —
+  projects stop being PATCHable, HA-1938). Dangerous is Yes/No per live
+  session, one line per `where` (Yes when that session's `refusesDangerous` is
+  false, i.e. `--dangerous` is `on`). Closing sentence: "From `--project` and
+  `--dangerous` on each loop. Not editable here."
+- **`under` is drawn once, here** — Bounds opens with "Also held under
+  {under}", linked, instead of redrawing it (HA-1941).
+
+### Bounds
+
+The five ceilings in `.hatch-field-grid`: Max runs, Max spend, Max tokens this
+run, Max tokens per hour, Until (`MomentField`) — `BoundsForm`'s fields, with
+`tags`/`projects` dropped (moved to [What it may
+work](#what-it-may-work)) and `under` reduced to an opening echo: "Also held
+under {under}", linked, when set.
+
+- Intro line: "Ceilings. A session's own flags narrow these and never raise
+  them."
+- **A sum line above the fields**, over live sessions: runs,
+  `moneyPhrase(spend)`, `compactTokens(tokens)`, `compactTokens(tokens this
+  hour)` — `groupByHost`'s `totalRuns`/`totalSpent` reduce, widened to tokens.
+- **`(default)` beside the label itself**, not just the hint, when
+  `maxTokensSource`/`maxTokensPerHourSource` is `'default'`: `<Field
+  label={<>Max tokens this run{isDefault && <Text tone="muted"> (default)</Text>}</>}
+  hint={tokenFieldHint(...)}>`; `tokenFieldHint` is unchanged.
+- Saved on a button only — "Save bounds"/"Revert", `BoundsForm`'s pattern
+  narrowed to the five.
+- **Refusal routing**: a `400` naming a token flag (`tokenFieldOf`) draws as
+  that field's `Field error` (today's `formRefusal`); every other refusal is
+  `text-danger` above this section's save row, never at the page's top.
+
+### Live sessions
+
+- **Heading row**: `Pause all`/`Stop all` draw when `canControl` and at least
+  one live loop session. `Stop all` opens a `Modal` "Stop {n} sessions after
+  their current increment?" with `Leave it`/`Stop all` —
+  `ApiKeysPage.tsx`'s revoke-modal shape. `Pause all` opens no modal.
+- **Multi-host note**: sessions spanning more than one distinct `host` draw a
+  new `.hatch-runner-note` (`--warn-bg` ground, `--warn-ink` text) listing the
+  hosts: "This key is in use from {n} machines. Tags and bounds are per
+  runner, so a key is meant to be one machine."
+- **One `<li>` per live session**, ordered `startedAt` ascending then `where`
+  (blocks never reorder as they beat): a head (glyph, `where` in `--mono`,
+  state words, `agoPhrase(lastSeenAt)`); a claim line (the claim key as a
+  link, its last `line`, or muted "nothing yet" — today's `Row` third cell);
+  controls (Pause/Resume, Stop after this one, order controls — lifted
+  verbatim from `Row`, acting on the session's id rather than the runner's
+  name); runs, spend, and `TokenBudget` (widened from `Runner` to a session's
+  `maxTokens`/`maxTokensPerHour`/`tokensUsed`/`tokensLastHour`/sources);
+  effective bounds (the session's narrowed
+  `under`/`maxRuns`/`maxSpend`/`maxTokens`/`maxTokensPerHour`/`untilAt`,
+  `BoundsSummary`'s phrasing minus tags/projects); and a closed `<details>`
+  "Machine": `host`, `os`/`arch`, `agent`/`agentVersion`, CLI build
+  (`runnerBuildLabel`), `username`, `ip` ("as the server saw it"), `container`,
+  `startedAt`, declared `projects` and dangerous Yes/No, `repositories`
+  (`repositoriesLabel`), `drives` (`drivesLabel`) — null fields omitted, for an
+  older CLI (HA-1940).
+
+### Recent sessions
+
+Omitted entirely when empty, by the renders-nothing discipline. A `<Table
+scroll>`: Where, Kind, Started, Ended, Runs, Spent, Tokens; newest first, at
+most 20 — the server's own retention (HA-1937); no controls.
