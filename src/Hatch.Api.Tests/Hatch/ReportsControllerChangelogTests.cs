@@ -386,7 +386,7 @@ public class ReportsControllerChangelogTests
     // ---- Who may read it ----
 
     [Fact]
-    public void TheRoute_AcceptsTheHatchScope()
+    public void TheRoute_AcceptsAKey()
     {
         var guard = typeof(ReportsController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)

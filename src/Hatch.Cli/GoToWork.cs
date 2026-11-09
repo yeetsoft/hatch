@@ -412,6 +412,15 @@ public sealed class Tally
             return;
         }
 
+        // The same for a model the account cannot spawn: the ticket is clean
+        // and waiting for a runner that can serve it, and three of these in a
+        // row is a runner with the wrong model, not three broken increments.
+        if (report.Unservable)
+        {
+            _interrupted.Add($"hatch:   unservable  {report.Key}  {report.Outcome}");
+            return;
+        }
+
         // A sixth list, and not a failure: the board ordered this ticket put
         // down for an emergency, which says nothing about whether the
         // increment itself was going well - three of these in a row must not

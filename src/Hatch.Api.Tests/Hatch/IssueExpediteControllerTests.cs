@@ -268,7 +268,7 @@ public class IssueExpediteControllerTests
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
 
-        // No scope named: priority decides what the loop reaches for first, so
+        // No key accepted: priority decides what the loop reaches for first, so
         // a key that could set one could put its own ticket at the front of
         // every night.
         Assert.NotNull(guard);
@@ -283,7 +283,7 @@ public class IssueExpediteControllerTests
         await h.PriorityAsync(issue.Key, PriorityLevels.EmergencyName);
 
         // It rides IssueDto and IssueCardDto, both of which IssuesController
-        // hands out to the hatch scope: an agent is entitled to know why it was
+        // hands out to a key: an agent is entitled to know why it was
         // sent where it was sent.
         var read = await h.ReadAsync(issue.Key);
         Assert.True(read.Expedited);

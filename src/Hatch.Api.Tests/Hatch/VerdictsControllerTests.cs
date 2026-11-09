@@ -44,7 +44,7 @@ public class VerdictsControllerTests
     }
 
     [Fact]
-    public async Task PassOrFail_IsKept_ByAHatchScopedKeyCaller()
+    public async Task PassOrFail_IsKept_ByAKeyCaller()
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
@@ -129,7 +129,7 @@ public class VerdictsControllerTests
     // ---- The gate ----
 
     [Fact]
-    public void WritingOne_IsOpenToAHatchScopedKey()
+    public void WritingOne_IsOpenToAKey()
     {
         var guard = typeof(VerdictsController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)

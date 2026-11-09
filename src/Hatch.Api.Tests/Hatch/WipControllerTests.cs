@@ -18,15 +18,15 @@ public class WipControllerTests
     // ---- The one narrowing ----
 
     [Fact]
-    public void TheRoutesAreScopedTheWayTheClaimAndTheRunnerBoundAre()
+    public void TheRoutesAcceptKeysTheWayTheClaimAndTheRunnerBoundDo()
     {
-        Assert.True(Scope(nameof(WipController.GetWip))!.AcceptKey);
+        Assert.True(Guard(nameof(WipController.GetWip))!.AcceptKey);
 
-        var put = Scope(nameof(WipController.PutWip));
+        var put = Guard(nameof(WipController.PutWip));
         Assert.NotNull(put);
         Assert.False(put.AcceptKey);
 
-        // No class-level attribute for the PUT to inherit a scope from.
+        // No class-level attribute for the PUT to inherit a key acceptance from.
         Assert.Empty(typeof(WipController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
@@ -277,7 +277,7 @@ public class WipControllerTests
     private static string BadRequestValue(ActionResult? result) =>
         Assert.IsType<BadRequestObjectResult>(result).Value as string ?? "";
 
-    private static RequireRoleAttribute? Scope(string method) =>
+    private static RequireRoleAttribute? Guard(string method) =>
         typeof(WipController).GetMethod(method)!
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
@@ -322,7 +322,6 @@ public class WipControllerTests
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
-                    Scopes = [ApiKeyScopes.Hatch],
                     CreatedAt = Now,
                 },
             }

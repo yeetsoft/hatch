@@ -932,11 +932,10 @@ public sealed class ConfigCommandTests : IDisposable
                 new Replies(),
                 environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
                 meProbe: (_, _, _) => Task.FromResult<MeDto?>(
-                    new MeDto("key", "ada-key", "admin", true, false, false, "Ada", ["hatch"])))
+                    new MeDto("key", "ada-key", "admin", true, false, false, "Ada")))
             .RunAsync(["--show"], default);
 
         Assert.Contains("identity:         key \"ada-key\", owned by Ada", Said);
-        Assert.DoesNotContain("scopes", Said);
     }
 
     [Fact]

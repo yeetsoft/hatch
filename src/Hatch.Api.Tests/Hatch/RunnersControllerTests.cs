@@ -2708,24 +2708,24 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public void TheThreeRoutes_AreScopedTheWayTheClaimAndThePlaybookAre()
+    public void TheThreeRoutes_AcceptKeysTheWayTheClaimAndThePlaybookDo()
     {
         // The heartbeat and the read are a dispatcher's - a runner that could
         // not say it was alive would leave a page that could only be empty. The
         // write is a person's, because it is the budget.
-        Assert.True(Scope(nameof(RunnersController.Heartbeat))!.AcceptKey);
-        Assert.True(Scope(nameof(RunnersController.GetRunners))!.AcceptKey);
-        Assert.True(Scope(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.Heartbeat))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunners))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
 
-        var patch = Scope(nameof(RunnersController.PatchRunner));
+        var patch = Guard(nameof(RunnersController.PatchRunner));
         Assert.NotNull(patch);
         Assert.False(patch.AcceptKey);
 
-        // And no class-level attribute for the PATCH to inherit a scope from.
+        // And no class-level attribute for the PATCH to inherit a key acceptance from.
         Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
 
-    private static RequireRoleAttribute? Scope(string method) =>
+    private static RequireRoleAttribute? Guard(string method) =>
         typeof(RunnersController).GetMethod(method)!
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
@@ -2892,7 +2892,6 @@ public class RunnersControllerTests
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
-                    Scopes = [ApiKeyScopes.Hatch],
                     CreatedAt = Now,
                     OwnerPersonId = keyOwner is null ? null : id,
                     Owner = keyOwner is null ? null : new EfPerson { Id = id, Name = "Owner", Role = keyOwner.Value, CreatedAt = Now, UpdatedAt = Now },

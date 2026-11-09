@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// says: an override raises what an agent is spent, and an edge states a fact
 /// about the work - that these two things must land in order. A planning
 /// session that has just filed five stories is exactly who should chain them,
-/// so this rides the ordinary scope-accepting guard the rest of the module
+/// so this rides the ordinary key-accepting guard the rest of the module
 /// carries.
 /// </summary>
 /// <remarks>
