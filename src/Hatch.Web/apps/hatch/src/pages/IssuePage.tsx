@@ -38,6 +38,7 @@ import { OmittedRunners } from '../components/OmittedRunners';
 import { PriorityControl } from '../components/PriorityControl';
 import { PreApprovalControl } from '../components/PreApprovalControl';
 import { RunnerTagsField } from '../components/RunnerTagsField';
+import { NoCodeField } from '../components/NoCodeField';
 import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
@@ -87,6 +88,7 @@ import { mayRefresh } from '../lib/refresh';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { fromComment, openQuestions } from '../lib/questions';
+import { writeNoCode } from '../lib/noCode';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
@@ -156,6 +158,8 @@ export function IssuePage() {
   const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
   /* A dangerous-reason save is already out - the same shape as `runnerTagsBusy`. */
   const [dangerousBusy, setDangerousBusy] = useState(false);
+  const [noCodeBusy, setNoCodeBusy] = useState(false);
+  const [noCodeError, setNoCodeError] = useState<string | null>(null);
   /* The runner whose lift is out, or null - OmittedRunners' own busy flag. */
   const [omissionLifting, setOmissionLifting] = useState<string | null>(null);
   /* Every live runner's name, null while unread - OmittedRunners uses this to
@@ -436,6 +440,28 @@ export function IssuePage() {
       }
       await load();
       return true;
+    },
+    [key, load],
+  );
+
+  /* Saves the no-code reason through the sibling lib call, which never throws -
+     its refusal goes to `noCodeError`, beside the field, not the page's own
+     `error`. */
+  const saveNoCode = useCallback(
+    async (reason: string): Promise<boolean> => {
+      setNoCodeError(null);
+      setNoCodeBusy(true);
+      try {
+        const refusal = await writeNoCode(key, reason);
+        if (refusal !== null) {
+          setNoCodeError(refusal);
+          return false;
+        }
+        await load();
+        return true;
+      } finally {
+        setNoCodeBusy(false);
+      }
     },
     [key, load],
   );
@@ -834,6 +860,7 @@ export function IssuePage() {
 
           <DangerousOwnField reason={issue.dangerousOwn} busy={dangerousBusy} onSave={(reason) => void saveDangerous(reason)} />
           <DangerousInherited from={issue.dangerousFrom} reason={issue.dangerous} />
+          <NoCodeField noCode={issue.noCode ?? null} busy={noCodeBusy} error={noCodeError} onSave={saveNoCode} />
 
           <OmittedRunners
             omissions={issue.omittedRunners}
