@@ -98,19 +98,8 @@ var memberSlot = RunnerSet.SlotFrom(environment);
 // refuse for want of the origin it is there to ask for.
 if (command == "config")
 {
-    var fold = Settings.Layers(checkoutEnv, environment, profileFile: profileFile);
-    var configured = fold("HATCH_RUNNER").Value;
-    // The name the profile file was chosen by, like profileFile above: an
-    // explicit name needs only its shape to be valid; otherwise the active one,
-    // and only when resolving it succeeded - a refusal leaves a dangling name.
-    var configProfileName = profileArg is not null && Settings.ValidProfileName(profileArg)
-        ? profileArg
-        : Settings.TryResolveProfile(null, environment, out var activeProfile, out _, out _) ? activeProfile : null;
-    var configRunnerName = await ResolveRunnerAsync(
-        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, configProfileName, CancellationToken.None);
-
     return await new ConfigCommand(
-            say, new Input(), environment, checkoutEnv, configRunnerName, Root: root,
+            say, new Input(), environment, checkoutEnv, Root: root,
             ProfileName: profileArg, ProfilePath: profileFile)
         .RunAsync(rest, CancellationToken.None);
 }
