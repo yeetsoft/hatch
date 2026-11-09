@@ -917,6 +917,16 @@ is still live, seeded fresh if not; `409`s ("`<key> is already the runner on
 <where>`") only for `fresh: true`, `kind: loop`, and a live session already at
 that `where`. It answers a `RunnerInstructionDto`, now carrying `sessionId`.
 
+The body also takes six machine fields - `os`, `arch`, `agentVersion`,
+`container`, `username`, `processStartedAt` - stored on the session; an
+absent field leaves the stored value alone, and a string over its column's
+length is capped, not refused. `ip` is never read from the body - a session's
+`ip` is the address the server read off the connection (after
+`UseForwardedHeaders` rewrites it from `X-Forwarded-For`), refreshed on every
+beat regardless of what else the body says. `RunnerSessionDto` carries all
+seven - `os`, `arch`, `agentVersion`, `container`, `username`,
+`processStartedAt`, `ip` - beside the rest of the session.
+
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
 under the same key; `404`s an id that is not this key's own.
