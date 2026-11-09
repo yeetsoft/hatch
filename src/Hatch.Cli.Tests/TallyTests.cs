@@ -421,6 +421,24 @@ public sealed class TallyTests
     }
 
     [Fact]
+    public void A_narrowed_model_is_carried_in_the_state_a_restart_hands_over()
+    {
+        var narrowing = new ModelNarrowing();
+        var now = DateTimeOffset.UtcNow;
+        narrowing.Narrow("opus", now.AddHours(1), now);
+
+        var state = new Tally(TimeProvider.System) { Narrowing = narrowing }.ToState();
+
+        Assert.Equal([new NarrowedModel("opus", now.AddHours(1))], state.Narrowed);
+    }
+
+    [Fact]
+    public void A_tally_with_no_narrowing_carries_none()
+    {
+        Assert.Empty(new Tally(TimeProvider.System).ToState().Narrowed);
+    }
+
+    [Fact]
     public void The_unpriced_count_survives_a_restart()
     {
         var first = new Tally(TimeProvider.System);

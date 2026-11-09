@@ -290,4 +290,18 @@ public sealed class ClaudeAdapterTests : IDisposable
         Adapter().BuildHeadless(request).Environment.TryGetValue("HATCH_RUNNER", out var inherited);
 
         Assert.Equal(Environment.GetEnvironmentVariable("HATCH_RUNNER"), inherited);
-    }}
+    }
+
+    [Fact]
+    public void RecogniseModelRefusal_reads_the_credits_sentence()
+    {
+        var endedAt = DateTimeOffset.Parse("2026-09-28T22:00:00+00:00");
+
+        var refusal = Adapter().RecogniseModelRefusal(
+            "Fable 5.1 requires usage credits. Switch to another model to continue.", endedAt);
+
+        Assert.NotNull(refusal);
+        Assert.Equal("Fable 5.1", refusal!.Value.Model);
+        Assert.Null(refusal.Value.ResetAt);
+    }
+}

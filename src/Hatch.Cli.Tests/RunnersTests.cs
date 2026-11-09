@@ -138,6 +138,23 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_with_every_model_narrowed_carries_an_empty_list_rather_than_null()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        // Carried, since a fresh start forgets what was narrowed before it.
+        Assert.True(new NightState { Restarts = 1, Narrowed = [new("opus", null)] }.Write(h.NightState));
+        var runtime = h.Supervised with { Adapter = new FakeAdapter { Models = ["opus"] } };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal([], beat.Models);
+    }
+
+    [Fact]
     public async Task A_beat_from_an_adapter_naming_no_models_carries_null()
     {
         using var h = new Harness();

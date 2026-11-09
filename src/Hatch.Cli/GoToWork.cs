@@ -216,6 +216,9 @@ public sealed class Tally
     /// <summary>What the keyboard has decided - null where this run reads no keys at all.</summary>
     public Controls? Controls { get; init; }
 
+    /// <summary>The models the runner has stopped offering - what a restart carries over. Null where nothing narrows.</summary>
+    public ModelNarrowing? Narrowing { get; init; }
+
     /// <summary>
     /// Whether this run is over, and why - asked before every increment and
     /// through every wait. One method, because "every exit path" is not
@@ -507,6 +510,7 @@ public sealed class Tally
         LetGo = _letGo,
         Interrupted = _interrupted,
         Preempted = _preempted,
+        Narrowed = Narrowing?.ToState(_clock.GetUtcNow()) ?? [],
         ExhaustedUntil = ExhaustedUntil,
         ExhaustedKnown = ExhaustedKnown,
         ExhaustedAt = ExhaustedAt,
@@ -1066,8 +1070,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SetDir = runtime.SetDir,
                 Slot = runtime.Slot,
                 Controls = runtime.Controls,
+                Narrowing = runtime.Narrowing,
                 Standby = standby,
             };
+
+            // A fresh start has carried nothing, which clears the store.
+            runtime.Narrowing.Load(carried?.Narrowed, runtime.Clock.GetUtcNow());
 
             // The host recreates the set's directory on every start, so after a
             // restart every ledger is gone while this member's night state still
@@ -1724,6 +1732,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// The tags are still sent every beat, but the server takes them only on a
     /// row's first-ever beat; after that the row is the board's, the answer
     /// carries it back, and <see cref="Fold"/> adopts it.
+    /// <c>Has</c> is sent on every beat, unconditionally, empty list included,
+    /// so a machine with nothing clears whatever an older start advertised.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
@@ -1751,6 +1761,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,

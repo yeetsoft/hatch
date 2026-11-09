@@ -14,7 +14,8 @@ public sealed class RunnersCommandTests
         string name = "runner-1", string? claimKey = null, DateTimeOffset? lastSeenAt = null,
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
         IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null,
-        long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null) =>
+        long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null,
+        IReadOnlyList<string>? has = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -22,7 +23,7 @@ public sealed class RunnersCommandTests
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
             ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
-            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models);
+            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -73,6 +74,23 @@ public sealed class RunnersCommandTests
         var lines = h.Said.Split('\n');
         Assert.EndsWith("  projects FIL AER", lines.Single(l => l.StartsWith("bound", StringComparison.Ordinal)));
         Assert.DoesNotContain("projects", lines.Single(l => l.StartsWith("free", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_with_dependencies_closes_with_them_before_its_projects_and_a_row_with_none_does_not()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "told", projects: ["HA"], has: ["dotnet@10.0.100", "node@22.11.0", "pwsh"]),
+            ARunner(name: "silent"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.Contains("  has dotnet 10.0.100, node 22.11.0, pwsh  projects HA", lines.Single(l => l.StartsWith("told", StringComparison.Ordinal)));
+        Assert.DoesNotContain("has", lines.Single(l => l.StartsWith("silent", StringComparison.Ordinal)));
     }
 
     [Fact]

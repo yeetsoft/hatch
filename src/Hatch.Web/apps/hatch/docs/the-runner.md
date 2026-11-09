@@ -337,13 +337,22 @@ valid Ollama id (`name:tag`) is left out rather than refusing the beat.
 checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
 agent advertises that agent's default instead of a list that would be refused.
 
+**A runner can stop offering a model for a while.** Until a time, or for the
+rest of the run, a narrowed model is left off the list the beat sends, whatever
+`HATCH_MODELS` or the agent's default says, and it is back once the time
+passes. A supervisor restart keeps what is narrowed; a fresh start forgets it.
+Where every model is narrowed the beat sends an empty list, which clears the
+row's models, rather than none, which would leave the last list standing.
+
 **Every heartbeat writes the list.** Unlike tags, the board does not own it:
 the row carries whatever the last beat said, so changing `HATCH_MODELS` or
 pulling a model on an ollama server shows on the next heartbeat. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
-`hatch runners` closes a row with `  models haiku sonnet`. The Runners page
-draws the dependencies a runner has the same way, as `has dotnet 10.0.100,
-node 22.11.0`, under the repositories line in a row's details.
+`hatch runners` closes a row with `  models haiku sonnet`. `hatch runners`
+itself closes a row with `  has dotnet 10.0.100, node 22.11.0` the same way.
+The Runners page draws the dependencies a runner has the same way, as `has
+dotnet 10.0.100, node 22.11.0`, under the repositories line in a row's
+details.
 
 ### Has
 

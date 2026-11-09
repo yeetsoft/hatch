@@ -320,4 +320,18 @@ public sealed class CodexAdapterTests : IDisposable
         Assert.Equal("hatch_ak_test", Adapter().BuildHeadless(request).Environment["HATCH_KEY"]);
         Assert.Equal("https://example.hatch", Adapter().BuildAttached(request).Environment["HATCH_BASE"]);
         Assert.Equal("hatch_ak_test", Adapter().BuildAttached(request).Environment["HATCH_KEY"]);
-    }}
+    }
+
+    [Fact]
+    public void RecogniseModelRefusal_reads_the_unsupported_model_sentence()
+    {
+        var endedAt = DateTimeOffset.Parse("2026-09-28T22:00:00+00:00");
+
+        var refusal = Adapter().RecogniseModelRefusal(
+            "the 'gpt-7-nova' model is not supported when using Codex with a ChatGPT account", endedAt);
+
+        Assert.NotNull(refusal);
+        Assert.Equal("gpt-7-nova", refusal!.Value.Model);
+        Assert.Null(refusal.Value.ResetAt);
+    }
+}

@@ -413,4 +413,20 @@ public sealed class GrokAdapterTests : IDisposable
         Assert.Equal("hatch_ak_test", adapter.BuildAttached(request).Environment["HATCH_KEY"]);
 
         adapter.Release(request);
-    }}
+    }
+
+    [Fact]
+    public void RecogniseModelRefusal_answers_null_for_every_known_sentence()
+    {
+        var endedAt = DateTimeOffset.Parse("2026-09-28T22:00:00+00:00");
+        var adapter = (IAgentAdapter)Adapter();
+
+        Assert.Null(adapter.RecogniseModelRefusal(
+            "Fable 5.1 requires usage credits. Switch to another model to continue.", endedAt));
+        Assert.Null(adapter.RecogniseModelRefusal(
+            "There's an issue with the selected model (claude-opus-9). It may not exist or you may not have access to it.", endedAt));
+        Assert.Null(adapter.RecogniseModelRefusal(
+            "the 'gpt-7-nova' model is not supported when using Codex with a ChatGPT account", endedAt));
+        Assert.Null(adapter.RecogniseModelRefusal("model \"llama3:70b\" not found, try pulling it first", endedAt));
+    }
+}
