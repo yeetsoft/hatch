@@ -55,6 +55,20 @@ runner whose own agent is not that family skips the row rather than running it
 under the wrong CLI, and says so; the ticket then waits for a runner of that
 agent, and a board with none leaves it sitting rather than guessing.
 
+A row's model is also a statement about which runners can take it. An alias is
+taken only by a runner that offers it - `haiku sonnet opus fable` by default,
+narrowed by `HATCH_MODELS` and by what the runner learned its account cannot
+spawn - and a pinned id only by a runner of that agent. A runner that cannot is
+folded from the row in `hatch queue` with the sentence in [the
+runner](the-runner#models), so the row is never claimed and then dropped; the
+runner's own skip above is the backstop, and the board folds first. A board
+where **no live runner** offers the row's tier does not loop and does not look
+finished: the ticket waits, and the attention panel's **Waiting on a runner**
+list names it with *no live runner offers fable*
+([watching the loop](watching-the-loop#what-is-waiting-on-you)), until a person
+starts a runner that offers it or changes the row's model - a playbook change
+goes through a proposal, as the page says further down.
+
 `Effort` is exactly what the agent CLI's own effort flag accepts — a value it
 does not recognise is one the CLI refuses at spawn time, not one the Playbooks
 page catches first.

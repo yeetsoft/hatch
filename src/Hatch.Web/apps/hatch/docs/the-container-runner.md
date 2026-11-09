@@ -18,7 +18,19 @@ type the word `runner`.
 
 **What the image carries:** `git`, `openssh-client`, `curl`, `gh`, the
 `claude`, `codex` and `grok` CLIs, and `hatch`. It carries **no language
-runtime**: no .NET, no Node, no Python, no compilers. So it can plan, break
+runtime**: no .NET, no Node, no Python, no compilers.
+
+The container advertises what it has like any runner, and its Dockerfile
+installs none of `make`, `dotnet`, `node`, `pwsh`, Playwright's browsers or a
+Postgres. So for a repository that declares a toolchain in
+`.hatch/dependencies.json`, the board folds it from that project's development
+steps ([what a repository needs](the-runner#what-a-repository-needs)), and it
+still takes breakdown, analysis and review. The runner that *can* build such a
+repository is the one built from the project's own image
+([HA-1874](/apps/hatch/issues/HA-1874)). A container whose operator bakes in its own
+toolchain declares it with `HATCH_HAS` ([the runner](the-runner#has)).
+
+So it can plan, break
 work down, analyse a repository and write code in any repository at all, and
 it can commit and push what it wrote. It **cannot build or test** a repository
 whose toolchain it does not have, and no general image has everybody's. For a
