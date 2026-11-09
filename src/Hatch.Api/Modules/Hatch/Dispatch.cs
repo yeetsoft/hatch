@@ -2087,7 +2087,11 @@ public sealed class Dispatch(
     /// column strictly left of the one it stands in (HA-394); and last, a
     /// pre-approved issue standing in the review column whose branch
     /// <see cref="MergeWork.Judge"/> would merge or bring current, with a
-    /// mergeable column to carry it to (HA-560) - asked last so nothing that is
+    /// mergeable column to carry it to (HA-560), unless a check playbook row
+    /// already covers that exact move (<see cref="ChecksInto"/> true of the
+    /// same <paramref name="to"/> and <paramref name="playbook"/>), in which
+    /// case the check's own plain advance carries it instead and this kind
+    /// does not fire (HA-1592) - asked last so nothing that is
     /// already one of the first five changes meaning. A top-level epic is
     /// carried by the second arm only on the move that lands it in the
     /// implementation column, so the move off the backlog stays a person's
@@ -2154,6 +2158,7 @@ public sealed class Dispatch(
             && Columns.Advance(statuses, from) is { MergesPullRequest: true }
             && effectivePreApproval == PreApprovalLevels.PreApproved
             && issue.PullRequestUrl is { Length: > 0 }
+            && !(to is not null && ChecksInto(issue, from, to, playbook, statuses))
             && MergeWork.Judge(
                    issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                    verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now,
