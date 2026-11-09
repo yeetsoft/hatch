@@ -43,7 +43,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
-    RunnerSessions sessions) : ControllerBase
+    RunnerSessions sessions, Dispatch dispatch) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -328,6 +328,8 @@ public class RunnersController(
             await db.SaveChangesAsync(ct);
         }
 
+        await ReinstateAsync(key.Name, now, ct);
+
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         var site = await siteSettings.GetAsync(ct);
         var forName = (await ForAsync(ct))?.Name ?? key.Name;
@@ -409,7 +411,7 @@ public class RunnersController(
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
-                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), null,
+                return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
             }
             catch (DbUpdateException)
@@ -443,7 +445,7 @@ public class RunnersController(
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas));
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), order,
+        return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
@@ -457,6 +459,100 @@ public class RunnersController(
     /// null on its row.
     /// </summary>
     private async Task<Actor?> ForAsync(CancellationToken ct) => await actors.PrincipalAsync(ct);
+
+    /// <summary>The name an answer nobody pressed is written under - the same shape <see cref="IssueClaimController"/>'s own constant takes, mirrored rather than shared, since that one is private.</summary>
+    private const string HatchActor = "Hatch";
+
+    /// <summary>
+    /// This runner's own beat, reinstating any project it had been passed over
+    /// on: the runner answering is proof enough that it is live again, so the
+    /// project it drives is given a fresh window rather than being passed over
+    /// again on the very same call that just reinstated it - HA-2092's
+    /// correction 2.
+    /// </summary>
+    private async Task ReinstateAsync(string runner, DateTimeOffset now, CancellationToken ct)
+    {
+        var reinstated = await db.Projects.Where(p => p.TrainStalledDriver == runner).ToListAsync(ct);
+        if (reinstated.Count == 0) return;
+
+        foreach (var project in reinstated)
+        {
+            project.TrainStalledDriver = null;
+            if (project.TrainWatchedIssueId is not null) project.TrainWatchedSince = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// <see cref="Runners.DriversAsync"/>, folded through this heartbeat's own
+    /// reinstatement and HA-2076's stall watch - the one place a beat's
+    /// instruction and the train's own pass-over can never disagree, because
+    /// both read the same election.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> TrainDriversAsync(
+        string runner, DateTimeOffset now, CancellationToken ct)
+    {
+        await ReinstateAsync(runner, now, ct);
+
+        var before = await runners.DriversAsync(db, keys, now, ct);
+        var driverByProject = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (name, keys_) in before)
+            foreach (var key in keys_)
+                driverByProject[key] = name;
+
+        var heads = await dispatch.TrainHeadsAsync(now, ct);
+        var headByProject = heads.ToDictionary(h => h.ProjectId);
+
+        var projects = await db.Projects.ToListAsync(ct);
+        var stalled = new List<(EfHatchProject Project, long IssueId, string PassedOver)>();
+
+        foreach (var project in projects)
+        {
+            var head = headByProject.GetValueOrDefault(project.Id);
+            var hasDriver = driverByProject.TryGetValue(project.Key, out var passedOver);
+
+            if (TrainWatch.Observe(project, head, hasDriver, now, TimeSpan.FromSeconds(runners.TrainStallSeconds)) && head is not null)
+                stalled.Add((project, head.IssueId, passedOver!));
+        }
+
+        if (stalled.Count == 0)
+        {
+            await db.SaveChangesAsync(ct);
+            return before;
+        }
+
+        foreach (var (project, _, passedOver) in stalled)
+        {
+            project.TrainStalledDriver = passedOver;
+            project.TrainWatchedSince = now;
+        }
+        await db.SaveChangesAsync(ct);
+
+        var after = await runners.DriversAsync(db, keys, now, ct);
+        var driverByProjectAfter = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (name, keys_) in after)
+            foreach (var key in keys_)
+                driverByProjectAfter[key] = name;
+
+        foreach (var (project, issueId, passedOver) in stalled)
+        {
+            var elected = driverByProjectAfter.GetValueOrDefault(project.Key);
+            if (await db.Issues.FirstOrDefaultAsync(i => i.Id == issueId, ct) is not { } issue) continue;
+
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = HatchActor,
+                Kind = EfHatchIssueEvent.DriverStalled,
+                Payload = JsonSerializer.Serialize(new { passedOver, elected }),
+                At = now,
+            });
+            issue.UpdatedAt = now;
+        }
+        await db.SaveChangesAsync(ct);
+
+        return after;
+    }
 
     /// <summary>
     /// Whether <see cref="GetRunners"/> may answer with every row, or only the
