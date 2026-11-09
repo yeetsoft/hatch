@@ -1104,6 +1104,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("integer");
 
+                    b.Property<bool>("NoCodeCloses")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("NoCodeClosesAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NoCodeClosesBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<bool>("OnePullRequest")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

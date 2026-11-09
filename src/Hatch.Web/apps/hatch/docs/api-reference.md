@@ -58,6 +58,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/binds-tracker` | **person** | Sets `bindsTracker`, clearing it elsewhere |
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
 | PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
+| PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -83,6 +84,8 @@ own repository, so turning it on takes it from whichever project had it, and the
 stories-on-epics PUT body is `ProjectStoriesOnEpicsWriteRequest(StoriesOnEpics)`, and resending the
 value a project already holds writes nothing. The check-approves-merge PUT body is
 `ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
+already holds writes nothing, the audit fields included. The no-code-closes PUT body is
+`ProjectNoCodeClosesWriteRequest(NoCodeCloses)`, and resending the value a project
 already holds writes nothing, the audit fields included. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
@@ -104,7 +107,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner.
 
 ## Columns
 
@@ -1189,7 +1192,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **42** person-only paths on this page,
+on this page with both) - there are **43** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1204,6 +1207,7 @@ PUT    /projects/{id}/playbooks-source
 PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
 PUT    /projects/{id}/check-approves-merge
+PUT    /projects/{id}/no-code-closes
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips
