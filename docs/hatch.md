@@ -7951,6 +7951,25 @@ three failures that end a night - the same treatment a usage limit and a
 preemption get, and for the same reason: a runner refusing work it cannot do
 is the loop working correctly, not a broken increment.
 
+**Neither is a model the runner cannot spawn.** A session the account refused
+to spawn a model on - recognised from what it said on its way out, the same
+way a usage limit is - ends the increment unservable: no stall comment, no
+mark, no question, the same treatment a usage limit and a preemption get, and
+for the same reason - the session did not get to say whether what it left is
+fit to publish, so the runner does not either. The one comment names the
+model, says until when this runner no longer offers it - or that it is off
+for the rest of this run, where the account gave no reset - and carries the
+branch and sha that were pushed (or why not, per checkout) and the agent's
+resume command. The terminal says the same thing once - `hatch: {model} is
+off this runner's list until {clock}` (or `for the rest of this run`) - never
+again for the same model until the narrowing itself changes, and from that
+moment the model is off the list the next beat sends and the next pass's
+picker offers: a row pinned to it is folded into the skip list rather than
+claimed. A restart carries this, the same way it carries a usage limit's
+wait; a fresh start forgets it. The night's tally counts it as
+**interrupted**, not one of the three failures that end a night, for the same
+reason a usage limit and a preemption are not either.
+
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket
 that can try again by itself in fifteen minutes does not need to cost a

@@ -951,3 +951,7 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   bound to repositories this runner has no checkout of.
 - **`hatch: could not reach <origin> for 90s - ...`** See [when a call
   fails](cli-reference#when-a-call-fails).
+- **`hatch: {model} is off this runner's list until {clock}`** (or `for the
+  rest of this run`). The account refused the model, so the runner stops
+  offering it until then - a restart carries this, a fresh start forgets it -
+  and the ticket gets a comment with the branch, sha and resume command.

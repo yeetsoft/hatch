@@ -789,6 +789,93 @@ public sealed class GoToWorkTests
         Assert.Contains("opus", Beats(h)[0].Models!);
     }
 
+    /// <summary>
+    /// HA-1990: a session that reports <c>Unservable</c> says the terminal
+    /// line once, narrows the model from that moment, and releases the claim
+    /// unservable - never a stall, since <see cref="Lifecycle.LeaveAsync"/>
+    /// takes the one-comment branch instead of the tidy one.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refusal_says_the_terminal_line_once_and_releases_unservable_not_stalled()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
+                Fixtures.Json));
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Say.Said, l => l == "hatch: fable is off this runner's list for the rest of this run");
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=unservable", released.Query, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+    }
+
+    /// <summary>
+    /// HA-1990/HA-1988 end to end: once a model is narrowed, the next pass's
+    /// own <see cref="Picker"/> folds a row pinned to it into the skip list
+    /// rather than claiming it.
+    /// </summary>
+    [Fact]
+    public async Task A_narrowed_model_is_skipped_by_the_pickers_own_pass()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "fable") });
+        // A fresh start forgets anything narrowed before it began (as
+        // A_fresh_start_forgets_what_was_narrowed_and_offers_every_model
+        // proves), so the narrowing has to arrive the way a real one would -
+        // carried across a restart - rather than being set directly on this
+        // runtime just before the run.
+        Carrying(h, new NightState { Restarts = 1, Narrowed = [new("fable", null)] });
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync(["--once"], default));
+
+        Assert.Contains(h.Say.Said, l => l.Contains("skipped - one this agent cannot take", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("no longer offers it", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// <see cref="ModelNarrowing.Narrow"/>'s own "true only when changed"
+    /// contract, read through the terminal: two increments refused on the
+    /// same model with the same <c>Until</c> say the one line only once.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refused_twice_with_the_same_until_says_the_terminal_line_once()
+    {
+        using var h = new Harness();
+        // No model pinned on the row itself, so narrowing after the first
+        // refusal does not fold the second pass's claim into the skip list -
+        // the same ticket is picked up, refused, and released unservable
+        // again, and it is Narrow()'s own dedupe this test is after.
+        OneTicket(h);
+        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(
+                Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
+                Fixtures.Json));
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        // Both within the one run, so the loop's own "fresh start forgets
+        // everything" reset only happens once, before the first pass.
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
+
+        Assert.Single(h.Say.Said, l => l == "hatch: fable is off this runner's list for the rest of this run");
+    }
+
     [Fact]
     public async Task A_loop_restarted_from_a_state_file_written_before_narrowing_offers_every_model()
     {
