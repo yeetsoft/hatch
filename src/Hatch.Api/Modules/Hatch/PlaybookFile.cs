@@ -285,13 +285,9 @@ public static class PlaybookFile
     /// </summary>
     internal static string? InvalidModel(string model, ModelFamilies? families = null)
     {
-        if (EfHatchPlaybook.IsValidModel(model, families)) return null;
-
-        var examples = string.Join("; ",
-            (families ?? ModelFamilies.Default).Rows.Select(r => $"{r.Example} for {r.Agent}"));
-
-        return $"a model is one of {string.Join(", ", EfHatchPlaybook.ModelAliases)}, " +
-               $"or a pinned id of a supported agent ({examples}) - not \"{model}\"";
+        return EfHatchPlaybook.IsValidModel(model, families)
+            ? null
+            : (families ?? ModelFamilies.Default).Refusal(model);
     }
 
     /// <summary>The same, for the thinking budget.</summary>

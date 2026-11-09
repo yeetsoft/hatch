@@ -3933,6 +3933,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// first heartbeat that says, and from then on only <c>PATCH</c> moves it.
 /// Never null on the wire: a row that was never told reads false.
 /// </param>
+/// <param name="Models">
+/// The models this runner says it can run, normalised per
+/// <see cref="RunnerModels.Normalise"/> and in the order it gave them. A fact
+/// the runner reports about itself, never a person's to set. Empty for a
+/// runner that has said none, rather than null.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3977,11 +3983,13 @@ public record RunnerDto(
     string MaxTokensPerHourSource = "none",
     long? TokensUsed = null,
     long? TokensLastHour = null,
-    DateTimeOffset? ThrottledUntil = null)
+    DateTimeOffset? ThrottledUntil = null,
+    IReadOnlyList<string> Models = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+    public IReadOnlyList<string> Models { get; init; } = Models ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
 }
 
@@ -4107,6 +4115,12 @@ public enum RunnerBoardDrift
 /// <param name="MaxTokensPerHour">The cap on tokens per hour, on the same terms as <see cref="MaxTokens"/>.</param>
 /// <param name="TokensUsed">The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</param>
 /// <param name="TokensLastHour">The tokens used in the last hour, on the terms <see cref="Runs"/> has.</param>
+/// <param name="Models">
+/// The models this runner can run - a fact about the process, written on
+/// every beat like <see cref="Remotes"/>, never seeded once and never a
+/// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
+/// whole, or kept whole, per <see cref="RunnerModels.Normalise"/>.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4141,7 +4155,8 @@ public record RunnerHeartbeatRequest(
     long? MaxTokens = null,
     long? MaxTokensPerHour = null,
     long? TokensUsed = null,
-    long? TokensLastHour = null);
+    long? TokensLastHour = null,
+    IReadOnlyList<string>? Models = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
