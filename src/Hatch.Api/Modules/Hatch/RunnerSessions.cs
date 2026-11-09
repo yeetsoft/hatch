@@ -49,6 +49,22 @@ public sealed class RunnerSessions(Runners runners)
     }
 
     /// <summary>
+    /// The same write as <see cref="MarkGoneAsync"/>, across every key at
+    /// once rather than one - the one <c>UPDATE</c> a read of the whole table,
+    /// such as <see cref="RunnersController.GetRunners"/>, needs instead of a
+    /// call per key.
+    /// </summary>
+    /// <returns>How many sessions this call ended.</returns>
+    public Task<int> MarkAllGoneAsync(HatchContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = runners.Cutoff(now);
+
+        return db.RunnerSessions
+            .Where(s => s.EndedAt == null && s.LastSeenAt < cutoff)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.EndedAt, (DateTimeOffset?)now), ct);
+    }
+
+    /// <summary>
     /// Deletes every one of this key's ended sessions past the newest
     /// <see cref="HistoryDepth"/>, oldest first. Called only after a new
     /// session row has been inserted for the key, so the row just written is

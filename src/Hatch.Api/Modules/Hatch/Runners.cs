@@ -350,6 +350,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// checkout of it, by <see cref="Dispatch.HoldsCheckout"/> - the same rule
     /// <see cref="WorkController.GetReview"/> uses for its own eligibility, so
     /// the two can never disagree about which projects a runner can act on.
+    /// A candidate is drawn from a beat or from a live session, additively -
+    /// a key with two live sessions is one candidate name, elected at most
+    /// once, never a duplicate or a throw.
     /// </summary>
     /// <remarks>
     /// With the wall up, a project that has an owner is driven only by a
@@ -369,10 +372,11 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     /// and only moves when it drops out of <c>live</c>, the same lazy
     /// arithmetic <see cref="IsHere"/> already draws everywhere else. No
     /// sweep, no new table, no migration - every input already lives on
-    /// <see cref="EfHatchRunner"/> and <see cref="EfHatchProjectRepository"/>.
+    /// <see cref="EfHatchRunner"/>, <see cref="EfHatchRunnerSession"/> and
+    /// <see cref="EfHatchProjectRepository"/>.
     /// </remarks>
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> DriversAsync(
-        HatchContext db, DateTimeOffset now, CancellationToken ct)
+        HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
     {
         var cutoff = Cutoff(now);
 
@@ -388,6 +392,28 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             .Select(r => (r.Name, r.FirstSeenAt, r.ForPersonId, Repos: RepositoryDeclaration.From(
                 r.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), r.Standing, null)))
             .ToList();
+
+        // A session is exactly as electable as a beat - additive, the same
+        // rule Runner.IsLive draws - so a project whose only live claimant is
+        // a session still gets a driver. A session whose key no longer exists
+        // is skipped rather than thrown on.
+        var liveSessions = await db.RunnerSessions.AsNoTracking()
+            .Where(s => s.EndedAt == null && s.LastSeenAt >= cutoff && s.Kind == EfHatchRunner.LoopKind)
+            .ToListAsync(ct);
+
+        if (liveSessions.Count > 0)
+        {
+            var keysById = (await keys.ListApiKeysAsync(ct)).ToDictionary(k => k.Id);
+
+            candidates.AddRange(liveSessions
+                .Where(s => keysById.ContainsKey(s.ApiKeyId))
+                .Select(s =>
+                {
+                    var key = keysById[s.ApiKeyId];
+                    return (key.Name, s.StartedAt, key.OwnerPersonId, Repos: RepositoryDeclaration.From(
+                        s.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), s.Standing, null));
+                }));
+        }
 
         // Who a merge belongs to, per project, for the projects that have an
         // owner. Left empty with the wall down, where a role means nothing.
@@ -406,7 +432,14 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         }
 
         var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories).ToListAsync(ct);
-        var byRunner = live.ToDictionary(r => r.Name, _ => new List<string>(), StringComparer.Ordinal);
+
+        // From the candidates' own distinct names, not live.ToDictionary: two
+        // sessions under one key are two candidates of the same name, and a
+        // dictionary keyed straight off live's rows would throw on the second.
+        var byRunner = candidates
+            .Select(c => c.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToDictionary(name => name, _ => new List<string>(), StringComparer.Ordinal);
 
         foreach (var project in projects)
         {

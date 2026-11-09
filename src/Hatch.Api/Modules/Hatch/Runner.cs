@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// both null - but never both, since a row with neither is not a runner at
 /// all.
 /// </summary>
-public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchRunner? Beat)
+public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchRunner? Beat, IReadOnlyList<EfHatchRunnerSession>? Sessions = null)
 {
     /// <summary>The key's own name where there is a key, else the beat's - the identity this entry is drawn under.</summary>
     public string Name => Key?.Name ?? Beat!.Name;
@@ -32,26 +32,32 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     /// <summary>
     /// Whether this entry counts as <c>live</c>: a key with no beat has never
     /// run, and a beat past <see cref="Runners.DropBefore"/> is as good as
-    /// none.
+    /// none - unless one of <see cref="Sessions"/> is still live on its own
+    /// terms, additive to the beat's. A key that has never held a session is
+    /// exactly as live as before this existed.
     /// </summary>
-    public bool IsLive(Runners runners, DateTimeOffset now) => Beat is not null && !runners.IsDropped(Beat.LastSeenAt, now);
+    public bool IsLive(Runners runners, RunnerSessions sessions, DateTimeOffset now) =>
+        (Beat is not null && !runners.IsDropped(Beat.LastSeenAt, now)) ||
+        Sessions?.Any(s => sessions.IsLive(s, now)) == true;
 
     /// <summary>
-    /// Every key, config and heartbeat, joined by name - the key's own
-    /// <see cref="EfApiKey.Name"/> against <see cref="EfHatchRunner.Name"/>,
-    /// ordinal - and sorted <see cref="LastSeenAt"/> descending, then
-    /// <see cref="Name"/> ordinal, the order the read has always answered in.
-    /// Three whole reads and no filter, the way <see cref="Runners.HeldAsync"/>
-    /// reads its own table whole: the scale here is tens of rows, never
-    /// thousands.
+    /// Every key, config, heartbeat and session, joined by name or by id - the
+    /// key's own <see cref="EfApiKey.Name"/> against <see cref="EfHatchRunner.Name"/>,
+    /// ordinal, and every session grouped by its own <see cref="EfHatchRunnerSession.ApiKeyId"/>
+    /// - and sorted <see cref="LastSeenAt"/> descending, then <see cref="Name"/>
+    /// ordinal, the order the read has always answered in. Four whole reads
+    /// and no filter, the way <see cref="Runners.HeldAsync"/> reads its own
+    /// table whole: the scale here is tens of rows, never thousands.
     /// </summary>
     public static async Task<List<Runner>> JoinAsync(HatchContext db, IAuthService keys, CancellationToken ct)
     {
         var allKeys = await keys.ListApiKeysAsync(ct);
         var configs = await db.RunnerConfigs.AsNoTracking().ToListAsync(ct);
         var beats = await db.Runners.AsNoTracking().ToListAsync(ct);
+        var sessions = await db.RunnerSessions.AsNoTracking().ToListAsync(ct);
 
         var configsById = configs.ToDictionary(c => c.ApiKeyId);
+        var sessionsByKeyId = sessions.GroupBy(s => s.ApiKeyId).ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchRunnerSession>)g.ToList());
         var beatsByName = beats.ToDictionary(b => b.Name, StringComparer.Ordinal);
         var claimed = new HashSet<string>(StringComparer.Ordinal);
 
@@ -61,7 +67,8 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
             beatsByName.TryGetValue(key.Name, out var beat);
             if (beat is not null) claimed.Add(key.Name);
             configsById.TryGetValue(key.Id, out var config);
-            joined.Add(new Runner(key, config, beat));
+            sessionsByKeyId.TryGetValue(key.Id, out var ownSessions);
+            joined.Add(new Runner(key, config, beat, ownSessions));
         }
 
         foreach (var beat in beats)

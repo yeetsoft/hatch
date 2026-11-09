@@ -69,19 +69,23 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var (all, personId) = await VisibleAsync(ct);
 
+        // The in-memory provider cannot run the conditional UPDATE below -
+        // guarded the same way ProjectsController.cs does for its own sweep.
+        if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
+
         var joined = await Runner.JoinAsync(db, keys, ct);
         var visible = joined.Where(r => all || r.OwnerPersonId == personId).ToList();
-        if (live) visible = visible.Where(r => r.IsLive(runners, now)).ToList();
+        if (live) visible = visible.Where(r => r.IsLive(runners, sessions, now)).ToList();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var drivers = await runners.DriversAsync(db, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, now, ct));
 
         return dtos;
     }
@@ -96,17 +100,19 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var (all, personId) = await VisibleAsync(ct);
 
+        if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
+
         var joined = await Runner.JoinAsync(db, keys, ct);
         var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
         if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var drivers = await runners.DriversAsync(db, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
     }
 
     /// <summary>
@@ -174,7 +180,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -203,17 +209,33 @@ public class RunnersController(
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
-        SiteSettingsSnapshot site, CancellationToken ct)
+        SiteSettingsSnapshot site, DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
         var canControl = CanControl(ownerId, wallEnabled, callerPerson);
         var order = runner.Beat?.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, runner.Beat.OrderKey, runner.Beat.OrderedBy, runner.Beat.OrderedAt) : null;
 
-        return runners.Project(
+        var dto = runners.Project(
             runner, Holding(held, (runner.Name, runner.Beat?.Where ?? "")), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
             yours: Yours(ownerId, wallEnabled, callerPerson),
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+
+        if (runner.Sessions is not { Count: > 0 } own) return dto;
+
+        return dto with
+        {
+            Sessions = own
+                .OrderByDescending(s => s.StartedAt).ThenByDescending(s => s.Id)
+                .Select(s =>
+                {
+                    // An ended session must not borrow the live one's claim at
+                    // the same `where`.
+                    var claim = sessions.IsLive(s, now) ? Holding(held, (runner.Name, s.Where ?? "")) : null;
+                    return sessions.Project(s, runner.Config, claim, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+                })
+                .ToList(),
+        };
     }
 
     /// <summary>
@@ -388,7 +410,7 @@ public class RunnersController(
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
-                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), null,
+                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
             }
             catch (DbUpdateException)
@@ -422,7 +444,7 @@ public class RunnersController(
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas));
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order,
+        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
@@ -614,9 +636,9 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         return await ProjectAsync(
-            new Runner(aggregate.Key, config ?? aggregate.Config, beatRow),
-            await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+            new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
+            await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -659,12 +681,12 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var drivers = await runners.DriversAsync(db, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
         return new RunnerMintedDto(dto, rotated.Secret);
     }
 
@@ -776,7 +798,7 @@ public class RunnersController(
         return runners.Project(
             row,
             Holding(await runners.HeldAsync(db, claims, now, ct), (row.Name, row.Where ?? "")),
-            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
+            (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
             new RunnerOrderDto(kind, key, by, now),
