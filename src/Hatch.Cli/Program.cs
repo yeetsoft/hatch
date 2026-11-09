@@ -316,6 +316,14 @@ try
             return 1;
         }
 
+        // Once at start, concurrently - a supervisor restart is a new process,
+        // so it detects again with no code of its own. An id nobody declared
+        // says why once; one an operator declared with HATCH_HAS does not.
+        var detection = await Detect.RunAsync(
+            Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+        foreach (var id in detection.Missing(settings.Has))
+            say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
+
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
@@ -338,6 +346,7 @@ try
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
+            Has = detection.Merge(settings.Has),
             Readout = readoutState,
             Controls = controls,
         }.WithGit();
@@ -355,10 +364,18 @@ try
         };
     }
 
+    // `queue` makes no beat; the merged set is held for a later gate to read,
+    // not sent anywhere here. The other fourteen commands have no use for it.
+    Detection? queueDetection = null;
+    if (command == "queue")
+        queueDetection = await Detect.RunAsync(
+            Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+
     var cli = new Cli(board, say, new Input(), settings, runnerName)
     {
         Checkouts = checkouts,
         Clones = settings.Workspace is not null,
+        Has = queueDetection?.Merge(settings.Has) ?? [],
     };
 
     return command switch
