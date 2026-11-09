@@ -89,7 +89,8 @@ header instead. Never put it in a repository, either way.
 - `--show` says what is set and which layer each value came from, including an
   `identity:` line naming who `/api/hatch/me` says the caller is - printed as
   `<unreachable>` rather than failing when the origin is unset or does not
-  answer - and `has:`/`missing:`, detected quietly and merged with `HATCH_HAS`.
+  answer - and `has:`/`missing:`, plus an `<id> via:` line for each tool the
+  shell or `PATH` answered, detected quietly and merged with `HATCH_HAS`.
   What it prints is in [the runner](the-runner#what---show-prints).
 - `--origin <origin>` writes the origin alone, asking nothing, and leaves the
   key and everything else as they were.

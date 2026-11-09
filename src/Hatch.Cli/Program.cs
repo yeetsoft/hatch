@@ -312,6 +312,8 @@ try
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
         foreach (var id in detection.Missing(settings.Has))
             say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
+        foreach (var note in detection.FallbackNotes())
+            say.Complain($"hatch: {note}");
         var has = detection.Merge(settings.Has);
         board.Has = has;
 

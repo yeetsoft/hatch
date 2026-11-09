@@ -863,6 +863,70 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"{"missing:".PadRight(19)}dotnet, node, playwright-browsers, postgres, pwsh", Said);
     }
 
+    /// <summary>A <c>SHELL</c> that exists as a file, and a <c>PATH</c> directory that may hold a <c>node</c>.</summary>
+    private (IDictionary<string, string?> Environment, string Shell, string Node) ShellAndPath(bool nodeOnPath)
+    {
+        var shell = Path.Combine(_temp, "fakesh");
+        File.WriteAllText(shell, "");
+
+        var bin = Directory.CreateDirectory(Path.Combine(_temp, "bin")).FullName;
+        var node = Path.Combine(bin, "node");
+        if (nodeOnPath)
+        {
+            File.WriteAllText(node, "");
+            File.SetUnixFileMode(node, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal) { ["SHELL"] = shell, ["PATH"] = bin };
+        return (environment, shell, node);
+    }
+
+    [Fact]
+    public async Task Show_says_a_shell_found_a_dependency_by_the_shell_it_asked()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Windows reads PATH alone, so no result carries a Via.");
+
+        var (environment, shell, _) = ShellAndPath(nodeOnPath: false);
+        Probe probe = (file, _, _, _) => Task.FromResult(
+            file == shell ? new ProbeResult(true, 0, "hatch-probe\nv22.4.0\n") : new ProbeResult(false, -1, ""));
+
+        await Command(new Replies(), environment: environment, detectProbe: probe).RunAsync(["--show"], default);
+
+        Assert.Contains($"{"node via:".PadRight(19)}fakesh -l -i +m", Said);
+        Assert.Contains("node 22.4.0", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_a_dependency_was_read_from_PATH_after_the_shell_failed()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Windows reads PATH alone, so no result carries a Via.");
+
+        var (environment, shell, node) = ShellAndPath(nodeOnPath: true);
+        Probe probe = (file, _, _, _) => Task.FromResult(
+            file == shell ? new ProbeResult(true, 127, "")
+            : file == node ? new ProbeResult(true, 0, "v12.22.9\n")
+            : new ProbeResult(false, -1, ""));
+
+        await Command(new Replies(), environment: environment, detectProbe: probe).RunAsync(["--show"], default);
+
+        Assert.Contains($"{"node via:".PadRight(19)}PATH - `fakesh -l -i +m` exited with code 127", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_how_an_absent_dependency_was_looked_for()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Windows reads PATH alone, so no result carries a Via.");
+
+        var (environment, shell, _) = ShellAndPath(nodeOnPath: false);
+        Probe probe = (file, _, _, _) => Task.FromResult(
+            file == shell ? new ProbeResult(true, 127, "") : new ProbeResult(false, -1, ""));
+
+        await Command(new Replies(), environment: environment, detectProbe: probe).RunAsync(["--show"], default);
+
+        Assert.DoesNotContain("node via:", Said);
+        Assert.Contains("node", Said.Split('\n').Single(line => line.StartsWith("missing:")));
+    }
+
     [Fact]
     public async Task Show_says_it_is_not_in_a_checkout_when_it_is_not()
     {
