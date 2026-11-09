@@ -5,10 +5,12 @@ import type { DependencyFileDto } from '../types';
 import { shortSha } from './playbookFiles';
 
 /** What a parsed declaration says it needs: each entry's label, with its
-    version where it has one, joined by comma. */
+    version where it has one read as "or newer", joined by comma. */
 export function declarationSentence(file: DependencyFileDto): string {
   if (file.entries.length === 0) return 'declares no dependencies';
-  return 'needs ' + file.entries.map((e) => (e.version ? `${e.label} ${e.version}` : e.label)).join(', ');
+  return (
+    'needs ' + file.entries.map((e) => (e.version ? `${e.label} ${e.version} or newer` : e.label)).join(', ')
+  );
 }
 
 /** Why an invalid declaration was refused, with the last sha it was good at
