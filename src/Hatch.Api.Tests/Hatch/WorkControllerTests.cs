@@ -6132,6 +6132,113 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_ListsAReviewRowWithADoneChildInASettingOnProjectAsACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close, by the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task GetWork_OnAReviewRowWithADoneChildInASettingOnProject_NamesDoneAndIsAHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close, by the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(h.Done, work.ToStatus!.Id);
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Close, work.HopKind);
+        Assert.Null(work.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAnEpicWithOnlyAShelvedChildInASettingOnProjectAsACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("epic", "ready to close, by the setting", h.Review);
+        await h.FileAsync("story", "shelved", h.Shelved, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Theory]
+    [InlineData("story", "task")]
+    [InlineData("epic", "story")]
+    public async Task AParentWithAnOpenChildInASettingOnProject_IsNotACloseHop(string type, string childType)
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync(type, "still in flight", h.Review);
+        await h.FileAsync(childType, "still open", h.Todo, parentId: issue.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADoneChildInASettingOffProject_WhenNotPreApproved_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "neither pre-approved nor the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADoneChildButAPullRequestInASettingOnProject_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "has a pull request", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // Not an Approve hop either - it is not pre-approved.
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeChildlessTaskInASettingOnProject_WhenNotPreApproved_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "declared, but only the setting", h.Review);
+        await h.DeclareNoCodeAsync(issue, "nothing to push");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.NotNull(entry.Blocked);
+    }
+
+    [Fact]
     public async Task CloseHop_IsFoldedByALiveClaimSomebodyElseHolds()
     {
         var h = await NewAsync();
@@ -12322,6 +12429,14 @@ public class WorkControllerTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
             project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's check-approves-merge flag, written straight onto the row.</summary>
+        public async Task SetCheckApprovesMergeAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.CheckApprovesMerge = on;
             await Db.SaveChangesAsync();
         }
 
