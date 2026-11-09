@@ -1850,6 +1850,176 @@ public sealed class ConfigCommandTests : IDisposable
             $"HATCH_DANGEROUS:   maybe  (refused: \"maybe\" is not on or off)  ({ConfigPath})", Said);
     }
 
+    // ---- --models ----
+
+    [Fact]
+    public async Task Models_writes_the_joined_list_and_touches_nothing_else()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--models", "haiku", "--models", "sonnet"], default));
+
+        var lines = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", lines);
+        Assert.Contains("HATCH_BASE=https://kept", lines);
+        Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
+        Assert.Contains("HATCH_TAGS=gpu", lines);
+    }
+
+    [Fact]
+    public async Task Models_is_normalised_lowercased_and_deduplicated()
+    {
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--models", "Haiku", "--models", "haiku"], default));
+
+        Assert.Contains("HATCH_MODELS=haiku", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Models_alone_clears_what_was_there()
+    {
+        await Command(new Replies()).RunAsync(["--models", "haiku"], default);
+        Assert.Contains("HATCH_MODELS=haiku", File.ReadAllLines(ConfigPath));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--models"], default));
+
+        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_MODELS=", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("not-a-model")]
+    [InlineData("haiku,sonnet")]
+    [InlineData("gpt-6-luna")]
+    public async Task A_model_that_breaks_RunnerModels_is_refused_with_the_file_untouched(string bad)
+    {
+        await Command(new Replies()).RunAsync(["--models", "haiku"], default);
+        var before = File.ReadAllBytes(ConfigPath);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--models", bad], default));
+
+        Assert.StartsWith("hatch: ", Complained, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_model_of_another_agent_is_refused_against_the_configured_agent_and_accepted_for_it()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_AGENT=codex"]);
+
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--models", "claude-opus-4-1"], default));
+        Assert.Contains("this runner's agent is codex", Complained, StringComparison.Ordinal);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--models", "gpt-6-luna"], default));
+        Assert.Contains("HATCH_MODELS=gpt-6-luna", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Models_shaped_wrong_is_refused_and_nothing_is_written()
+    {
+        // A trailing bare --models.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--models", "haiku", "--models"], default));
+        Assert.False(File.Exists(ConfigPath));
+
+        // Two values with no --models between them.
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--models", "haiku", "sonnet"], default));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Models_is_left_in_the_file_by_every_other_write()
+    {
+        var checkout = Tree("checkout");
+        var clones = Path.Combine(_temp, "clones-models");
+        var logs = Path.Combine(_temp, "logs-models");
+        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
+        await Command(new Replies()).RunAsync(["--models", "haiku", "--models", "sonnet"], default);
+
+        await Command(new Replies()).RunAsync(["--repo", checkout], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--workspace", clones], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--log", logs], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+
+        var input = new Replies("https://hatch.example", "hatch_ak_written", "claude", "/opt/claude");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Models_needs_no_checkout_and_no_reachable_board()
+    {
+        var probed = false;
+        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
+        {
+            probed = true;
+            return Task.FromResult<string?>(null);
+        });
+
+        Assert.Equal(0, await cmd.RunAsync(["--models", "haiku"], default));
+        Assert.False(probed);
+    }
+
+    [Fact]
+    public async Task Here_models_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+
+        Assert.Equal(
+            0,
+            await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
+                .RunAsync(["--here", "--models", "haiku"], default));
+
+        Assert.Contains("HATCH_MODELS=haiku", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_prints_the_models_with_their_layer()
+    {
+        await Command(new Replies()).RunAsync(["--models", "haiku", "--models", "sonnet"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_MODELS:      haiku, sonnet  ({ConfigPath})", Said);
+    }
+
+    [Fact]
+    public async Task Show_with_no_models_says_the_agents_default()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains("HATCH_MODELS:      <unset - the agent's default>", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_a_bad_models_value_is_refused()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_MODELS=haiku,gpt-6-luna"]);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains(
+            $"HATCH_MODELS:      haiku,gpt-6-luna  (refused: \"gpt-6-luna\" is a codex model - this runner's agent is claude)  ({ConfigPath})",
+            Said);
+    }
+
     // ---- --here ----
 
     [Fact]

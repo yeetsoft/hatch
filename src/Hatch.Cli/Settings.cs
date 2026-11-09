@@ -30,7 +30,7 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS",
+        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
@@ -144,6 +144,13 @@ public sealed partial record Settings
     /// Seeds the runner's row once; the row is the board's after that.
     /// </summary>
     public bool RefusesDangerous { get; init; }
+
+    /// <summary>
+    /// The models this runner advertises from <c>HATCH_MODELS</c>, normalised
+    /// by <see cref="RunnerModels.Normalise"/> - null where nothing is set,
+    /// which means the agent's default.
+    /// </summary>
+    public IReadOnlyList<string>? Models { get; init; }
 
     /// <summary>
     /// What <c>HATCH_WORKSPACE</c> (or <c>--workspace</c>) says to turn the
@@ -414,6 +421,7 @@ public sealed partial record Settings
         var tagsRaw = Read("HATCH_TAGS");
         var logRaw = Read("HATCH_LOG");
         var dangerousRaw = Read("HATCH_DANGEROUS");
+        var modelsRaw = Read("HATCH_MODELS");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -464,6 +472,16 @@ public sealed partial record Settings
             return false;
         }
 
+        if (ParseModels(modelsRaw, agentRaw, out var models) is { } modelsSentence)
+        {
+            refusal = $"""
+                hatch: HATCH_MODELS - {modelsSentence}
+
+                  Fix it with `hatch config --models <model>...` (bare `--models` clears it), or change the exported variable.
+                """;
+            return false;
+        }
+
         if (OllamaAdapter.ParseTiers(ollamaTiersRaw, out var ollamaTiers) is { } tiersSentence)
         {
             refusal = $"""
@@ -496,6 +514,7 @@ public sealed partial record Settings
             LogDirectory = logRaw is null || IsLogOff(logRaw) ? null : IsLogOn(logRaw) ? DefaultLogPath() : logRaw,
             Tags = tags,
             RefusesDangerous = refusesDangerous,
+            Models = models,
             Sources = sources,
             KeyNote = ignoredKeyLayer() is { } ignoredKey
                 ? IgnoredKeySentence(
@@ -554,6 +573,31 @@ public sealed partial record Settings
 
         var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return RunnerTags.Normalise(list, out tags);
+    }
+
+    /// <summary>
+    /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
+    /// then run through <see cref="RunnerModels.Normalise"/> for
+    /// <paramref name="agent"/> (blank is claude) - null, blank, or nothing left after the split
+    /// answers null <paramref name="models"/> (the agent's default) with no
+    /// refusal. Answers the refusal sentence, or null once
+    /// <paramref name="models"/> is the normalised list. Public because
+    /// <c>ConfigCommand.Show</c> validates the same way.
+    /// </summary>
+    public static string? ParseModels(string? raw, string? agent, out IReadOnlyList<string>? models)
+    {
+        models = null;
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (list.Length == 0) return null;
+
+        // A blank agent is claude, as HATCH_AGENT is everywhere else.
+        if (RunnerModels.Normalise(list, string.IsNullOrWhiteSpace(agent) ? "claude" : agent, out var kept) is { } sentence)
+            return sentence;
+
+        models = kept;
+        return null;
     }
 
     /// <summary>
