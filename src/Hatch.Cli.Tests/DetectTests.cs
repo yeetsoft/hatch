@@ -72,6 +72,15 @@ public sealed class DetectTests
 
     private static readonly Probe NeverAsked = (_, _, _, _) => throw new InvalidOperationException("nothing is on PATH to ask");
 
+    /// <summary>Answers one <see cref="ProbeResult"/> when asked for <paramref name="shellFile"/>, another otherwise (the PATH probe), recording every call.</summary>
+    private static Probe ByShellOrPath(
+        string shellFile, ProbeResult shellAnswer, ProbeResult pathAnswer, List<(string File, string[] Args)>? calls = null) =>
+        (file, args, _, _) =>
+        {
+            calls?.Add((file, args));
+            return Task.FromResult(file == shellFile ? shellAnswer : pathAnswer);
+        };
+
     private static string[] FileNames(string name) =>
         OperatingSystem.IsWindows() ? [$"{name}.exe", $"{name}.cmd"] : [name];
 
@@ -328,6 +337,167 @@ public sealed class DetectTests
         var result = await Detect.Make(fake.Directory, Answering("something unexpected\n"), CancellationToken.None);
 
         Assert.Equal(new DetectorResult("make", true, null, null), result);
+    }
+
+    // ---- the login shell ----------------------------------------------
+
+    private const string ShellNode = "hatch-probe\nv22.4.0\n";
+
+    private const string PathNode = "v12.22.9\n";
+
+    [Fact]
+    public async Task A_shell_that_answers_beats_path_and_path_is_never_asked()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("node")[0]);
+        var calls = new List<(string File, string[] Args)>();
+
+        var result = await Detect.Node(
+            path.Directory, ByShellOrPath(shell.File, Said(ShellNode), Said(PathNode), calls), CancellationToken.None, shell.File);
+
+        Assert.Equal(new DetectorResult("node", true, "22.4.0", null, "fakesh -lic"), result);
+        var call = Assert.Single(calls);
+        Assert.Equal(shell.File, call.File);
+        Assert.Equal(["-lic", "printf 'hatch-probe\\n'; node --version"], call.Args);
+    }
+
+    [Fact]
+    public async Task A_shell_that_hangs_falls_back_to_path()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("node")[0]);
+
+        var result = await Detect.Node(path.Directory, ByShellOrPath(shell.File, Hung, Said(PathNode)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("12.22.9", result.Version);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("did not answer within 10 seconds", result.Why);
+    }
+
+    [Fact]
+    public async Task A_shell_that_exits_non_zero_falls_back_to_path()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("node")[0]);
+
+        var result = await Detect.Node(
+            path.Directory, ByShellOrPath(shell.File, Said("", exit: 127), Said(PathNode)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("12.22.9", result.Version);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("exited with code 127", result.Why);
+    }
+
+    [Fact]
+    public async Task A_shell_that_prints_no_marker_falls_back_to_path()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("node")[0]);
+
+        var result = await Detect.Node(
+            path.Directory, ByShellOrPath(shell.File, Said("v22.4.0\n"), Said(PathNode)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("12.22.9", result.Version);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("printed no marker", result.Why);
+    }
+
+    [Fact]
+    public async Task A_banner_before_the_marker_and_noise_after_it_still_parses()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("node")[0]);
+        const string output = "Welcome\nhatch-probe\nv22.4.0\ncompdef: unknown\n";
+
+        var result = await Detect.Node(path.Directory, ByShellOrPath(shell.File, Said(output), Said(PathNode)), CancellationToken.None, shell.File);
+
+        Assert.Equal("22.4.0", result.Version);
+        Assert.Equal("fakesh -lic", result.Via);
+    }
+
+    [Fact]
+    public async Task A_missing_path_still_asks_the_shell_and_finds_it_there()
+    {
+        using var shell = new FakePath("fakesh");
+
+        var result = await Detect.Node(null, Answering(ShellNode), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("22.4.0", result.Version);
+    }
+
+    [Fact]
+    public async Task A_missing_path_with_a_failing_shell_is_absent_with_the_usual_sentence()
+    {
+        using var shell = new FakePath("fakesh");
+
+        var result = await Detect.Node(null, Answering("", exit: 127), CancellationToken.None, shell.File);
+
+        Assert.False(result.Present);
+        Assert.Equal("`node` is not on PATH", result.Why);
+        Assert.Equal("PATH", result.Via);
+    }
+
+    [Fact]
+    public async Task Dotnet_through_the_shell_takes_the_highest_sdk_from_multi_line_output()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("dotnet")[0]);
+
+        var result = await Detect.Dotnet(
+            path.Directory, Answering("hatch-probe\n" + DotnetSdks), CancellationToken.None, shell.File);
+
+        Assert.Equal("10.0.100", result.Version);
+        Assert.Equal("fakesh -lic", result.Via);
+    }
+
+    [Fact]
+    public async Task With_no_shell_via_stays_null()
+    {
+        using var present = new FakePath(FileNames("make")[0]);
+        using var absent = new FakePath(FileNames("something-else")[0]);
+
+        var found = await Detect.Make(present.Directory, Answering(DebianMake), CancellationToken.None);
+        var missing = await Detect.Make(absent.Directory, NeverAsked, CancellationToken.None);
+
+        Assert.Null(found.Via);
+        Assert.Null(missing.Via);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    public void ShellFor_answers_null_with_nothing_to_offer(string? shellVariable, string? expected)
+    {
+        Assert.Equal(expected, Detect.ShellFor("linux", Env(("SHELL", shellVariable!))));
+    }
+
+    [Fact]
+    public void ShellFor_answers_null_when_the_named_file_does_not_exist()
+    {
+        var missing = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "hatch-detect-" + Guid.NewGuid().ToString("N"), "zsh");
+
+        Assert.Null(Detect.ShellFor("linux", Env(("SHELL", missing))));
+    }
+
+    [Fact]
+    public void ShellFor_answers_null_on_windows_even_with_a_real_shell()
+    {
+        using var shell = new FakePath("fakesh");
+
+        Assert.Null(Detect.ShellFor("windows", Env(("SHELL", shell.File))));
+    }
+
+    [Fact]
+    public void ShellFor_answers_the_trimmed_path_to_an_existing_file()
+    {
+        using var shell = new FakePath("fakesh");
+
+        Assert.Equal(shell.File, Detect.ShellFor("linux", Env(("SHELL", $"  {shell.File}  "))));
     }
 
     // ---- playwright / postgres --------------------------------------------
@@ -929,6 +1099,16 @@ public sealed class DetectTests
         var merged = detection.Merge(["make", "node@5", "node@5"]);
 
         Assert.Equal(["make", "node@5", "pwsh@7.5.0"], merged);
+    }
+
+    [Fact]
+    public void Merge_ignores_via_and_why_drops_a_satisfied_version_and_keeps_one_it_does_not()
+    {
+        var detection = new Detection([new DetectorResult("node", true, "22.4.0", null, "fakesh -lic")]);
+
+        var merged = detection.Merge(["node@22", "node@20"]);
+
+        Assert.Equal(["node@22.4.0", "node@20"], merged);
     }
 
     [Fact]
