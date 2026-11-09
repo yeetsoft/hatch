@@ -14,7 +14,7 @@ these calls; this page is for the ones it has no verb for).
 
 A person's browser carries a session cookie; a program sends `Authorization:
 Bearer hatch_ak_…`. [People, roles and keys](people-roles-and-keys) covers
-minting a key and what its one scope reaches - this page only says, route by
+minting a key and what a key reaches - this page only says, route by
 route, who may call it.
 
 **Issue routes take the display key** - `/issues/{key}`, case-insensitively,
@@ -920,8 +920,8 @@ long to reach a beat answered there.
 `/runners/names` is the same list whoever asks, and carries no `where`, owner
 or claim, which is why a new runner can read it to pick a free name.
 
-`/runner` and `/runner/download/{rid}` carry no scope at all, unlike every
-other Hatch-scoped read on this page - the audience is a person at a browser
+`/runner` and `/runner/download/{rid}` take no key, unlike every
+other read on this page - the audience is a person at a browser
 setting up a machine, and nobody's dispatcher needs to download the program
 it is already running as.
 
@@ -964,11 +964,10 @@ folder configured, `409`s while another run already holds the gate, and
 `/overnight/seen`.
 
 `/me` answers a `MeDto(Kind, Name, Role, Configured, CanSignOut, CanSignIn,
-Owner, Scopes)` - `kind: key` for an API key, naming its own name, its
-owner's name (`Owner`, null with no owner), its scopes (`Scopes`, null for
-every other kind) and its owner's role lowercased (`Role`, null with no
+Owner)` - `kind: key` for an API key, naming its own name, its
+owner's name (`Owner`, null with no owner) and its owner's role lowercased (`Role`, null with no
 owner); `kind: runner` for a wall-off runner header, naming its own name with
-`Owner` and `Scopes` both null; `kind: person` when a grant holds a person;
+`Owner` null; `kind: person` when a grant holds a person;
 `kind: local` with the wall off and the machine's own person speaking;
 `kind: none` with the wall off and nobody local either (an unidentified
 browser, still able to sign in); and `204` only for an unidentified browser
@@ -1118,7 +1117,7 @@ a read with no body to reject.
 
 ## Who may call what
 
-One scope, `hatch`, and it reaches everything under `/api/hatch` **less the
+A key reaches everything under `/api/hatch` **less the
 routes that take a person only**. A key that calls one of those gets a
 `403`, and that is the gate working as designed, not a misconfiguration -
 [People, roles and keys](people-roles-and-keys#api-keys) says the same thing
