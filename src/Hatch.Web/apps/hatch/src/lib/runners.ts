@@ -246,6 +246,16 @@ export function modelsLabel(runner: Runner): string | null {
   return runner.models.length === 0 ? null : `models ${runner.models.join(', ')}`;
 }
 
+/** A runner's dependencies, joined - or null where it has reported none. The `has ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an agent name reads as nothing. Each entry is `id` or `id@version`; the `@` becomes a space, since the version is a fact about the id, not part of it. */
+export function hasLabel(runner: Runner): string | null {
+  if (runner.has.length === 0) return null;
+  const entries = runner.has.map((entry) => {
+    const at = entry.indexOf('@');
+    return at === -1 ? entry : `${entry.slice(0, at)} ${entry.slice(at + 1)}`;
+  });
+  return `has ${entries.join(', ')}`;
+}
+
 /** Whether this runner was started with do-my-work or --mine, as the word for the row - or null, drawn the same as `clones`. */
 export function mineLabel(runner: Runner): string | null {
   return runner.mine ? 'own tickets only' : null;

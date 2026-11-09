@@ -23,6 +23,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   tags: [],
   projects: [],
   models: [],
+  has: [],
   drives: [],
   clones: null,
   mine: null,
