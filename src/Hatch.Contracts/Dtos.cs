@@ -1600,7 +1600,7 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// <param name="Move">The column the move starts from.</param>
 /// <param name="Missing">
 /// What no live runner has, in a sentence: <c>no live runner offers fable</c>,
-/// or <c>no live runner has pwsh 7 and playwright-browsers</c>.
+/// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
 

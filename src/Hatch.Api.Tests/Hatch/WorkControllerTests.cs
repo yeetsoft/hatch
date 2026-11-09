@@ -5297,7 +5297,7 @@ public class WorkControllerTests
         foreach (var issue in new[] { doing, conflicted, red })
         {
             var entry = queue.Single(e => e.Issue.Key == Key(issue));
-            Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), entry.Blocked);
+            Assert.Equal(NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), entry.Blocked);
             Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
         }
 
@@ -5332,6 +5332,20 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Dependencies_AVersionIsAMinimum_ANewerRunnerIsNotFolded()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("node", "22"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["node@24.1.0"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["node@22"])).Blocked);
+        Assert.Equal(
+            NeedsSentence(issue, "node 22 or newer", repo.Canonical, "node 21.6.0"),
+            Only(await h.Work.GetQueue(0, null, default, has: ["node@21.6.0"])).Blocked);
+    }
+
+    [Fact]
     public async Task Dependencies_NoHasSent_FoldsNothing()
     {
         var h = await NewAsync();
@@ -5359,7 +5373,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8", "node@20"]));
 
         Assert.Equal(
-            $"{Key(issue)} needs dotnet 10, make and node 22 " +
+            $"{Key(issue)} needs dotnet 10 or newer, make and node 22 or newer " +
             $"({one.Canonical} and {two.Canonical}'s {DependencyDeclaration.Path}) - " +
             "this runner has dotnet 8, no make and node 20",
             entry.Blocked);
@@ -5415,7 +5429,7 @@ public class WorkControllerTests
         Assert.Equal(Key(clear), next.Issue.Key);
 
         var named = Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@8"]));
-        Assert.Equal(NeedsSentence(folded, "dotnet 10", repo.Canonical, "dotnet 8"), named.Blocked);
+        Assert.Equal(NeedsSentence(folded, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), named.Blocked);
 
         Assert.Null(Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@10"])).Blocked);
     }
@@ -5442,7 +5456,7 @@ public class WorkControllerTests
         await AddLoopRunnerAsync(h, silent);
 
         var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: lacks));
-        Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), folded.Blocked);
+        Assert.Equal(NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), folded.Blocked);
         Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent)).Blocked);
@@ -5489,7 +5503,7 @@ public class WorkControllerTests
 
         Assert.Equal(new[] { b }, entry.Takers);
         Assert.Equal(
-            new RunnerReasonDto(a, NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8")),
+            new RunnerReasonDto(a, NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8")),
             entry.Untaken!.Single());
     }
 
@@ -5506,7 +5520,7 @@ public class WorkControllerTests
 
         var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
 
-        var sentence = NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8");
+        var sentence = NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8");
         Assert.Empty(entry.Takers!);
         Assert.Equal(
             new[] { a, b }.OrderBy(n => n, StringComparer.Ordinal).Select(n => new RunnerReasonDto(n, sentence)),

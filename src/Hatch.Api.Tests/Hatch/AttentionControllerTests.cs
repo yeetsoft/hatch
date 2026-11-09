@@ -1260,7 +1260,7 @@ public class AttentionControllerTests : IDisposable
         var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
         Assert.Equal(Key(issue), row.Key);
         Assert.Equal("in progress", row.Move);
-        Assert.Equal("no live runner has playwright-browsers and pwsh 7", row.Missing);
+        Assert.Equal("no live runner has playwright-browsers and pwsh 7 or newer", row.Missing);
 
         await h.RunnerAsync("host:/three", null, has: ["pwsh@7.4", "playwright-browsers"]);
 
