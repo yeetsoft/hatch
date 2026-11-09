@@ -1151,6 +1151,16 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("TrainStalledDriver")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<long?>("TrainWatchedIssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("TrainWatchedSince")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AutoHealBugStatusId");

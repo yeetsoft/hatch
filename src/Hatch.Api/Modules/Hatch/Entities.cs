@@ -200,6 +200,33 @@ public class EfHatchProject
     public DateTimeOffset? RepoSourcedAt { get; set; }
 
     /// <summary>
+    /// The runner this project's merge train has passed over for stalling its
+    /// head - see <see cref="TrainWatch.Observe"/> - or null while nobody has
+    /// been. A name rather than a foreign key, the same shape as
+    /// <see cref="RepoSourcedBy"/>: the trail has to keep reading after the
+    /// runner it named is gone. Written only by <see cref="RunnersController"/>,
+    /// and cleared the moment that same runner heartbeats again.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? TrainStalledDriver { get; set; }
+
+    /// <summary>
+    /// The merges-column head this project's train last saw acting - see
+    /// <see cref="TrainWatch.Observe"/> - or null while its head is not
+    /// <see cref="WorkKinds.Merge"/> or <see cref="WorkKinds.Update"/>. No
+    /// foreign key: the issue it names may move on from under it, which is
+    /// itself the signal that the clock below should restart.
+    /// </summary>
+    public long? TrainWatchedIssueId { get; set; }
+
+    /// <summary>
+    /// When <see cref="TrainWatchedIssueId"/> was first seen acting, or last
+    /// given a fresh window - by a clear, or by the runner it named being
+    /// passed over. Null exactly when <see cref="TrainWatchedIssueId"/> is.
+    /// </summary>
+    public DateTimeOffset? TrainWatchedSince { get; set; }
+
+    /// <summary>
     /// Whether a passing check on this project's pull request counts as the
     /// approval that lets it merge. Off by default. The close arm of
     /// <see cref="Dispatch.HopKind"/> reads it.
@@ -2325,6 +2352,19 @@ public class EfHatchIssueEvent
     /// nominated or written down in advance.
     /// </summary>
     public const string ClaimPreempted = "claim_preempted";
+
+    /// <summary>
+    /// This head has been judged <see cref="WorkKinds.Merge"/> or
+    /// <see cref="WorkKinds.Update"/> continuously past
+    /// <see cref="Runners.TrainStallSeconds"/>, and its driver has been passed
+    /// over for another live, eligible runner - see
+    /// <see cref="TrainWatch.Observe"/>. The payload carries
+    /// <c>{ passedOver, elected }</c>, runner names, with <c>elected</c> null
+    /// when nobody else was eligible. Written once per window, the same way a
+    /// restarted window writes the next one - never on a beat that finds the
+    /// clock already clear.
+    /// </summary>
+    public const string DriverStalled = "driver_stalled";
 
     public const string Commented = "commented";
 
