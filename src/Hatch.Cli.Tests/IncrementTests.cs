@@ -224,6 +224,114 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// A session the account refused for its model is released unservable and
+    /// writes nothing onto the ticket: no stall comment, no mark, no question.
+    /// </summary>
+    private static async Task<IncrementReport> RefusedAsync(Harness h, FakeAdapter adapter)
+    {
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "fable", "high", quiet: false, claim, default);
+
+        await claim.ReleaseAsync(report.ReleaseOutcome);
+        return report;
+    }
+
+    [Fact]
+    public async Task A_refused_model_is_unservable_and_leaves_the_ticket_clean()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised("Fable 5.1", null) };
+
+        var report = await RefusedAsync(h, adapter);
+
+        Assert.True(report.Unservable);
+        Assert.False(report.UsageLimited);
+        Assert.Equal("fable", report.UnservableModel);
+        Assert.Null(report.UnservableUntil);
+        Assert.Equal(ClaimOutcomes.Unservable, report.ReleaseOutcome);
+        Assert.Equal("fable is not one this runner can spawn", report.Outcome);
+        Assert.False(report.LetGo);
+        Assert.Contains(h.Say.Said, l => l.Contains("fable was refused, not spawnable on this account", StringComparison.Ordinal));
+
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/questions"));
+
+        // Nothing else was written to the ticket either - no mark, no move.
+        string[] allowed =
+        [
+            "/api/hatch/issues/AER-1/claim/heartbeat", "/api/hatch/issues/AER-1/work-log",
+            "/api/hatch/work/AER-1", "/api/hatch/issues/AER-1", "/api/hatch/issues/AER-1/questions", "/api/hatch/issues/AER-1/claim",
+        ];
+        Assert.All(h.Wire.Calls, c => Assert.Contains(c.Path, allowed));
+        Assert.Contains("outcome=unservable", Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim")).Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refusal_that_names_its_reset_carries_it()
+    {
+        using var h = new Harness();
+        var resetAt = DateTimeOffset.UtcNow.AddDays(2);
+        var adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised("Fable 5.1", resetAt) };
+
+        var report = await RefusedAsync(h, adapter);
+
+        Assert.True(report.Unservable);
+        Assert.Equal(resetAt.ToUnixTimeSeconds(), report.UnservableUntil!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task A_refusal_that_names_no_reset_reads_the_models_weekly_window()
+    {
+        using var h = new Harness();
+        var resetAt = DateTimeOffset.UtcNow.AddDays(3);
+        var adapter = new FakeAdapter
+        {
+            ModelRefused = new ModelRefusal.Recognised(null, null),
+            StreamUsage =
+            [
+                new UsageWindow("weekly", "Weekly", 0.4, DateTimeOffset.UtcNow.AddDays(1)),
+                new UsageWindow("weeklyModel", "Weekly (Opus)", 0.1, DateTimeOffset.UtcNow.AddDays(5)),
+                new UsageWindow("weeklyModel", "Weekly (Fable)", 1.0, resetAt),
+            ],
+        };
+
+        var report = await RefusedAsync(h, adapter);
+
+        Assert.True(report.Unservable);
+        Assert.Equal(resetAt.ToUnixTimeSeconds(), report.UnservableUntil!.Value.ToUnixTimeSeconds());
+    }
+
+    [Fact]
+    public async Task A_usage_limit_wins_over_a_model_refusal()
+    {
+        using var h = new Harness();
+        var adapter = new FakeAdapter
+        {
+            Limit = new UsageLimit.Recognised(DateTimeOffset.UtcNow.AddHours(1), true, "session"),
+            ModelRefused = new ModelRefusal.Recognised("Fable 5.1", null),
+        };
+
+        var report = await RefusedAsync(h, adapter);
+
+        Assert.True(report.UsageLimited);
+        Assert.False(report.Unservable);
+        Assert.NotEqual(ClaimOutcomes.Unservable, report.ReleaseOutcome);
+    }
+
+    /// <summary>
     /// HA-841: a board-wide playbook carries no file facts into the work-log row.
     /// </summary>
     [Fact]
