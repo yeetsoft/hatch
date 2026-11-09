@@ -100,6 +100,7 @@ public class ReportsController(
                     i.Held,
                     i.PullRequestUrl,
                     i.ClosedAt,
+                    i.NoCode,
                     Claim = new ClaimSnapshot(
                         i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                         i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -143,7 +144,8 @@ public class ReportsController(
                     OnePr: onePr,
                     OnePrOwn: onePrOwn,
                     OnePrFrom: onePrFrom,
-                    ClosedAt: i.ClosedAt);
+                    ClosedAt: i.ClosedAt,
+                    NoCode: i.NoCode);
             }
         }
 
@@ -603,6 +605,7 @@ public class ReportsController(
                 i.Held,
                 i.PullRequestUrl,
                 i.ClosedAt,
+                i.NoCode,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -644,7 +647,8 @@ public class ReportsController(
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
-                ClosedAt: i.ClosedAt);
+                ClosedAt: i.ClosedAt,
+                NoCode: i.NoCode);
         }
 
         return (cards, tree);

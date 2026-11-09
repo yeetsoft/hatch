@@ -331,6 +331,8 @@ export interface IssueCard {
   /** When this issue last entered a terminal column, or null. See
       IssueCardDto.ClosedAt. */
   closedAt?: string | null;
+  /** Why the issue finished with no code, or absent. See IssueCardDto.NoCode. */
+  noCode?: string | null;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.

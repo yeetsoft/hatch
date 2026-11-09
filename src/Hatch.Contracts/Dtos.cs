@@ -421,6 +421,7 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 /// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
+/// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -457,7 +458,8 @@ public record IssueCardDto(
     string? Dangerous = null,
     string? DangerousFrom = null,
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
-    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
+    string? NoCode = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

@@ -170,6 +170,7 @@ public class IssuesController(
                 i.Held,
                 i.PullRequestUrl,
                 i.ClosedAt,
+                i.NoCode,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -229,7 +230,8 @@ public class IssuesController(
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
-                ClosedAt: i.ClosedAt));
+                ClosedAt: i.ClosedAt,
+                NoCode: i.NoCode));
         }
 
         return cards;

@@ -1350,7 +1350,7 @@ public class WorkController(
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
                 i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
-                i.ClosedAt,
+                i.ClosedAt, i.NoCode,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -1388,7 +1388,8 @@ public class WorkController(
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
-                ClosedAt: c.ClosedAt));
+                ClosedAt: c.ClosedAt,
+                NoCode: c.NoCode));
         }
 
         var match = to is null
