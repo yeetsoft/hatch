@@ -26,6 +26,10 @@ The sections, in order:
   each saves, and where its refusal lands.
 - **Creating, rotating and revoking** — the create modal, the one-time secret
   panel, and the two confirmations.
+- **Components** — what the page reuses, changes, moves, adds and removes, by
+  name.
+- **Building it** — the order HA-1942 follows, the tests, and the renders that
+  close it.
 
 ## Routes and layout
 
@@ -446,3 +450,89 @@ secret and keep the runner working, rotate instead."
 The call is `POST /api/hatch/runners/{name}/revoke` (HA-1936). That revoking
 ends a runner's live sessions is taken from this design, not from either brief;
 if the revoke work lands differently, the body is the sentence to change.
+
+## Components
+
+Every name below exists on `main` today, or sits under **New** or **Moved**.
+Paths are under [`src/Hatch.Web`](../src/Hatch.Web): `@hatch/ui` is
+`packages/ui/src`, the app is `apps/hatch/src`.
+
+- **Reused unchanged, `@hatch/ui`:** `Card` (`flush`), `Table` (`scroll`),
+  `Modal` (`footer`), `Field`, `Button` (`as={Link}`), `Badge`, `Text`,
+  `EmptyState`.
+- **Changed in `@hatch/ui`, CSS only:** `PageHeader`. `PageHeader.css` wraps
+  below `PHONE_QUERY` so `actions` drop under the title (see [Create
+  runner](#create-runner)). There is no new `@hatch/ui` component and no new
+  token: `--warn-bg`, `--warn-ink`, `--primary-bg`, `--t-label`, `--t-micro` and
+  `--sp-5` all exist.
+- **Reused, `apps/hatch/src`:** `components/Command`, `RunnerTagsField` and
+  `MomentField`; `lib/useRunners` (`POLL_MS` stays 20 s), `lib/useMe` and
+  `usePhone` (`lib/viewport`). From `lib/runners.ts`: `boundsOf`,
+  `boundsChanged`, `boundsProblem`, `boundsRequest`, `tokenBudget`,
+  `tokenFieldHint`, `tokenFieldOf`, `activityWords`, `orderSentence`,
+  `isIssueKeyShape`, `runnerBuildLabel`, `repositoriesLabel` and `drivesLabel`.
+  `agoPhrase` (`lib/claim.ts`); `moneyPhrase` and `compactTokens`
+  (`lib/workLog.ts`). `ACTIVITY_TONES`, `runnerStrip` and `goToWork.ts` are
+  untouched.
+- **Moved into `lib/runners.ts`:** `lastUsedLabel` and `MAX_NAME_LENGTH`, today
+  in `lib/apiKeys.ts`.
+- **Reworked:** `runnerActivity` and `activityWords` take a session as well as a
+  runner, so `goToWork.ts` keeps calling them with a runner. `Row`'s controls
+  become `SessionControls`. `TokenBudget` widens from a runner to a session.
+  `BoundsSummary` becomes a session's effective bounds minus tags and projects.
+  `RunnerDetails` becomes the closed "Machine" `<details>`. `BoundsForm` splits
+  into a settings form (`{ tags, under }`) and a bounds form (the five
+  ceilings). These four live in `pages/RunnersPage.tsx` today and move out with
+  it.
+- **New, app-side (`components/`):** `RunnersLayout`, `RunnerList`, `RunnerRow`,
+  `RunnerGlyph`, `RunnerDetail`, `SessionBlock`, `SessionControls`,
+  `RecentSessions`, `CreateRunnerDialog` and `SecretPanel`.
+- **New CSS, `App.css`, tokens only:** `.hatch-page--split`,
+  `.hatch-runner-note`, and the glyph's own box, which is the one ornament
+  exception. Existing classes are reused: `hatch-page`, `hatch-section-title`,
+  `hatch-field-grid`, `hatch-runner-name` and `hatch-reorder--wrap`.
+- **Removed:** `pages/RunnersPage.tsx` and its test, `pages/ApiKeysPage.tsx`,
+  `lib/apiKeys.ts` and its test, `groupByHost`, `HostTotal`, and
+  `components/RunnerProjectsField.tsx` with its test (`RunnersPage` is its only
+  user). Also the `/api-keys` route in `App.tsx`, its `adminOnly` row in
+  `lib/nav.ts`, the `'/api-keys'` key in `docsCoverage.nav.test.ts` `SCREENS`,
+  and the `/api-keys` assertions in `lib/nav.test.ts`.
+- **Kept:** `pages/RunnerPage.tsx` (`/runner`, "Get the runner") and
+  `StatusRunnerTagsField`. The `ApiKeysPage` mention in a `lib/hatchSettings.ts`
+  comment is reworded.
+
+## Building it
+
+The order HA-1942 follows. Each step leaves the build and the tests green.
+
+1. `lib/runners.ts`: rank, per-session activity, live/gone, sort,
+   `lastUsedLabel` and `MAX_NAME_LENGTH`, with tests.
+2. `RunnerGlyph`, `RunnerRow`, `RunnerList`, `RunnersLayout`, the nested routes
+   in `App.tsx`, `.hatch-page--split`, and the `PageHeader` wrap.
+3. `RunnerDetail`, read-only: Identity, What it may work (read), Bounds (read),
+   `SessionBlock` and `RecentSessions`.
+4. Settings and bounds editing: two forms, each with its own PATCH and its own
+   refusal.
+5. `SessionControls`, Pause all, and the Stop all modal.
+6. `CreateRunnerDialog`, `SecretPanel`, the owner select, rotate and revoke.
+7. Remove the old pages and files under **Removed**, the nav row and the
+   `docsCoverage.nav` mapping, and update `watching-the-loop.md` and
+   `people-roles-and-keys.md` (grep `apps/hatch/docs` for `api-keys` and "API
+   keys").
+
+**Tests:**
+
+- **A rank table in `lib/runners.test.ts`:** each of gone, out of usage,
+  throttled, paused, stopping, working, idle and none, plus silence beating
+  usage.
+- **`RunnerGlyph` names each state in its `aria-label`.**
+- **The list:** its sort, the three empty states, and the three role variants
+  (admin, owner, viewer; wall-off draws owner).
+- **The create flow** shows the secret once with both commands in order, and
+  drops it on Done.
+- **A revoked runner has no actions.**
+
+**Renders:** per [`docs/browser-testing.md`](browser-testing.md), `/runners` and
+`/runners/:name`, on desk and `iPhone 14 Pro`, in light and dark, for: empty,
+one working runner, a gone runner, the create flow through the secret, and a
+revoked runner. The ticket gets the page, the profile and what was seen.
