@@ -1518,7 +1518,7 @@ public class AttentionControllerTests : IDisposable
 
         // The same gate /board and /questions carry: it is the same house data,
         // read from the nav strip instead of from a page.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Backups ----

@@ -420,7 +420,7 @@ public class AssigneeControllerTests
         // under "people only" an assignee is a dispatch gate, and a key that
         // could write one could hand itself work somebody had reserved.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(AssigneeController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
@@ -437,7 +437,7 @@ public class AssigneeControllerTests
 
         // Reading stays open, like everything else a dispatch needs: an agent
         // has to be able to say whose ticket it is leaving alone.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     [Fact]

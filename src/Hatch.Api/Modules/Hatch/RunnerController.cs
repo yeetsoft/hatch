@@ -15,8 +15,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// therefore the commit the downloaded `hatch` was built from too, rather than
 /// two versions that happen to be near each other.
 ///
-/// Plain <c>[RequireAdmin]</c> with no <c>AcceptScope</c>, matching
-/// <see cref="SettingsController"/> beside it rather than the Hatch-scoped
+/// Plain <c>[RequireAdmin]</c> with no <c>AcceptKey</c>, matching
+/// <see cref="SettingsController"/> beside it rather than the key-accepting
 /// reads elsewhere in the module: the audience is a person at a browser
 /// setting up a machine, and nobody's dispatcher needs to download the program
 /// it is already running as. Wherever the wall is off - every local install -

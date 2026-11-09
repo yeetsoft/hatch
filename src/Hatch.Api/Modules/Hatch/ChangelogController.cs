@@ -13,7 +13,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/changelog")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class ChangelogController(HatchContext db, TimeProvider time) : ControllerBase
 {
     /// <summary>The window when a caller resizes nothing: the newest fourteen days that shipped something.</summary>

@@ -27,7 +27,7 @@ public class RoleGateTests
         var gate = NewGate(caller, enabled: false);
 
         Assert.False(gate.Enabled);
-        var decision = await gate.EvaluateAsync("GET", "/apps/admin/", null, PersonRole.Admin, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("GET", "/apps/admin/", null, PersonRole.Admin, acceptKey: false, default);
 
         Assert.Equal(RoleOutcome.Dormant, decision.Outcome);
         Assert.True(decision.IsAllowed);
@@ -56,7 +56,7 @@ public class RoleGateTests
         var person = Person(role);
         var gate = NewGate(new StubCallerIdentity(Grant(person)));
 
-        var decision = await gate.EvaluateAsync("DELETE", "/api/zones/x", "10.0.0.7", minimum, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("DELETE", "/api/zones/x", "10.0.0.7", minimum, acceptKey: false, default);
 
         if (refusal is null)
         {
@@ -86,7 +86,7 @@ public class RoleGateTests
     {
         var gate = NewGate(new StubCallerIdentity(Grant(person: null)));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/people", "10.0.0.7", minimum, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/people", "10.0.0.7", minimum, acceptKey: false, default);
 
         Assert.Equal(RoleDecision.NoPerson, decision.Reason);
     }
@@ -102,7 +102,7 @@ public class RoleGateTests
     {
         var gate = NewGate(new StubCallerIdentity(null));
 
-        var decision = await gate.EvaluateAsync("GET", "/apps/admin/", "10.0.0.7", PersonRole.User, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("GET", "/apps/admin/", "10.0.0.7", PersonRole.User, acceptKey: false, default);
 
         Assert.Equal(RoleDecision.NoGrant, decision.Reason);
     }
@@ -119,14 +119,15 @@ public class RoleGateTests
         var key = Key("Claude", ApiKeyScopes.Hatch);
         var gate = NewGate(new StubCallerIdentity(null, key));
 
-        var accepted = await gate.EvaluateAsync("GET", "/api/hatch/board", null, minimum, ApiKeyScopes.Hatch, default);
+        var accepted = await gate.EvaluateAsync("GET", "/api/hatch/board", null, minimum, true, default);
         Assert.Equal(RoleOutcome.Key, accepted.Outcome);
         Assert.Same(key, accepted.ApiKey);
 
-        var mismatch = await gate.EvaluateAsync("GET", "/api/x", null, minimum, "other", default);
+        var otherGate = NewGate(new StubCallerIdentity(null, Key("Claude", "other")));
+        var mismatch = await otherGate.EvaluateAsync("GET", "/api/x", null, minimum, true, default);
         Assert.Equal(RoleDecision.ScopeMismatch, mismatch.Reason);
 
-        var notAccepted = await gate.EvaluateAsync("GET", "/api/people/x/sessions", null, minimum, acceptScope: null, default);
+        var notAccepted = await gate.EvaluateAsync("GET", "/api/people/x/sessions", null, minimum, acceptKey: false, default);
         Assert.Equal(RoleDecision.KeyNotAccepted, notAccepted.Reason);
     }
 
@@ -140,7 +141,7 @@ public class RoleGateTests
     {
         var caller = new StubCallerIdentity(Grant(Person(PersonRole.Admin)));
 
-        await NewGate(caller).EvaluateAsync("GET", "/apps/admin/", null, PersonRole.User, acceptScope: null, default);
+        await NewGate(caller).EvaluateAsync("GET", "/apps/admin/", null, PersonRole.User, acceptKey: false, default);
 
         Assert.Equal(1, caller.Asked);
     }

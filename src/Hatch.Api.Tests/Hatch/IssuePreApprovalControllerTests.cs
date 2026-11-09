@@ -191,7 +191,7 @@ public class IssuePreApprovalControllerTests
         // that could set one could carry its own ticket through the night
         // unattended.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssuePreApprovalController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));

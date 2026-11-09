@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
 {
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<StatusDto>>> GetStatuses(CancellationToken ct)
     {
         var statuses = await db.Statuses.AsNoTracking()
@@ -43,7 +43,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
     }
 
     [HttpPost]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<StatusDto>> CreateStatus(StatusCreateRequest request, CancellationToken ct)
     {
         var name = request.Name?.Trim();
@@ -74,7 +74,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
     }
 
     [HttpPatch("{id:int}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<StatusDto>> PatchStatus(int id, StatusPatchRequest request, CancellationToken ct)
     {
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -369,7 +369,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
     /// rather than left to the foreign key, which answers a 500.
     /// </remarks>
     [HttpDelete("{id:int}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<IActionResult> DeleteStatus(int id, CancellationToken ct)
     {
         var status = await db.Statuses.FirstOrDefaultAsync(s => s.Id == id, ct);

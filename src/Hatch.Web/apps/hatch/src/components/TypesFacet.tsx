@@ -22,8 +22,6 @@ export function TypesFacet({
       options={ISSUE_TYPES.map((type) => ({ value: type, text: type, count: counts[type] }))}
       chosen={filter.types}
       onChange={(next) => onChange({ ...filter, types: ISSUE_TYPES.filter((t) => next.includes(t)) })}
-      lockTitle="Keep at least one type"
-      allowNone
     />
   );
 }

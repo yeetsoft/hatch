@@ -377,7 +377,7 @@ public class IssueDependenciesControllerTests
         // scope: an edge is a statement about the work rather than about an
         // agent's budget, and a planning session that has just filed five
         // stories is exactly who should chain them.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
 
         Assert.All(
             new[] { nameof(IssueDependenciesController.AddDependency), nameof(IssueDependenciesController.RemoveDependency) },

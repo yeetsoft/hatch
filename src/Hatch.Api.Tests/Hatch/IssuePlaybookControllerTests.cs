@@ -266,7 +266,7 @@ public class IssuePlaybookControllerTests
         // an override is a playbook's power routed through another table, and
         // an agent that could set one could raise its own budget.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssuePlaybookController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));

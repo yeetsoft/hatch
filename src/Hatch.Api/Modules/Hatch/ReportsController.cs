@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/reports")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class ReportsController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
 {

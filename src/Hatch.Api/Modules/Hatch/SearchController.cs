@@ -17,7 +17,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/search")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class SearchController(
     HatchContext db,
     IActorDirectory actors,
