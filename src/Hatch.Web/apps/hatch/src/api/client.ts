@@ -15,6 +15,7 @@ import type {
   CommentCreateRequest,
   CumulativeFlow,
   DangerousRequest,
+  NoCodeRequest,
   Dream,
   DreamCreateRequest,
   DreamPatchRequest,
@@ -414,6 +415,9 @@ export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteReq
 
 export const setIssueDangerous = (key: string, request: DangerousRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
+
+export const setIssueNoCode = (key: string, request: NoCodeRequest) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/no-code`, { method: 'PUT', ...asJson(request) });
 
 export const omitRunner = (key: string, runner: string, request: OmitRunnerRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'PUT', ...asJson(request) });
