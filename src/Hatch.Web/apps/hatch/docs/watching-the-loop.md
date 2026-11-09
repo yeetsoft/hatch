@@ -78,11 +78,14 @@ runs, the agent it runs, the models it offers, its build - a short sha and how
 long ago, or `dev build` for one that hasn't been stamped - what it drives, the
 repositories it serves, and the dependencies it has - `has dotnet 10.0.100,
 node 22.11.0`, shown only when it reported any - then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
-not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert**.
+not just a day), and **Tags**, with **Save bounds** and **Revert**. **Projects**
+and **Refuse dangerous work** read in Bounds as the process's own report, but
+the form does not write either one: both are a fact the running process
+carries on every heartbeat, like its remotes, and only a new process started
+with different flags changes what the row shows.
 **Refuse dangerous work** stops the board handing that runner an issue flagged
-dangerous (see [`hatch dangerous`](cli-reference#dangerous) for the flag). It
-starts from the loop's `HATCH_DANGEROUS` setting, and from then on this checkbox
-is the one that counts; a change reaches a running loop on its next heartbeat.
+dangerous (see [`hatch dangerous`](cli-reference#dangerous) for the flag),
+from the loop's own `HATCH_DANGEROUS` setting.
 The row also carries an Order
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at
@@ -128,24 +131,25 @@ off` for none.
 
 The bounds are not seeded once the way tags are. Each fresh start of a loop -
 one started by hand, or the supervisor's first start - writes the bounds it
-was started with, **Projects** among them, onto its row on its first heartbeat, overwriting an edit made
+was started with onto its row on its first heartbeat, overwriting an edit made
 here and clearing any bound the row held for a flag the loop was not given.
 A supervisor restart does not: it keeps what the row holds, so an edit made
 here survives it. A row made by `hatch work` or `go-to-work --once` never
 takes bounds from that heartbeat.
 
-**Projects** is the one bound that is a list. A row bound to some shows
-`projects HA, AER` in Bounds, comma-separated; `hatch runners` prints the same
-binding space-separated, `projects HA AER`. The loop adopts a changed list on
-its very next heartbeat, saying so once - `hatch: the board set --project HA
-AER`, or `--project off` for none. It narrows which tickets this runner picks
-up, and nothing else: the merge train is unaffected, and an approved pull
-request in any project still merges on its own clock.
+**Projects** is a fact about the running process, not a bound or a form
+field: a row bound to some shows `projects HA, AER` in Bounds,
+comma-separated; `hatch runners` prints the same binding space-separated,
+`projects HA AER`. Unlike the bounds above, it is carried on every
+heartbeat of any kind - loop or `once` - and overwritten each time, saying so
+once on the loop's own terminal - `hatch: the board set --project HA AER`, or
+`--project off` for none. It narrows which tickets this runner picks up, and
+nothing else: the merge train is unaffected, and an approved pull request in
+any project still merges on its own clock. There is nowhere on this page to
+set it; only a new process started with `--project` changes what the row shows.
 
 The board's own **Go to Work** / **Pause** button writes this row's `state`
-the same way Pause/Resume here do, and a **Go to Work** press also writes
-`Projects`, the one bound above that is a list — both from the board, not
-from this page.
+the same way Pause/Resume here do.
 
 An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one

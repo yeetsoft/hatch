@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
@@ -405,83 +406,46 @@ public class RunnersControllerTests
     // ---- Tags ----
 
     [Fact]
-    public async Task AFirstHeartbeatNamingTags_StoresThemTrimmedAndLowercased()
+    public async Task ABeatCarryingTags_NeverWritesThem()
     {
         var h = await NewAsync();
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: [" Fast ", "GPU"]));
+        Assert.Null((await h.RowAsync()).Tags);
 
-        Assert.Equal(["fast", "gpu"], (await h.OneAsync()).Tags);
-    }
-
-    [Fact]
-    public async Task ALaterHeartbeat_NeverOverwritesTagsOnceTheRowHasAny()
-    {
-        var h = await NewAsync();
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: ["gpu"]));
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
-        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: []));
-        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
-    }
-
-    [Fact]
-    public async Task AFirstHeartbeatWithNoTags_LeavesTheRowOpenForALaterOneToSeedThem()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu"]));
 
         Assert.Equal(["gpu"], (await h.OneAsync()).Tags);
     }
 
     [Fact]
-    public async Task ABeatWithNoTags_LeavesAPreviouslyReportedRowUntouched()
+    public async Task ABeatWithAMalformedTag_IsNotRefused()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
 
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["has space"]));
+
+        Assert.Null((await h.RowAsync()).Tags);
+    }
+
+    [Fact]
+    public async Task GetRunners_AnswersTagsSortedRegardlessOfTheOrderAPatchNamedThemIn()
+    {
+        var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
-        Assert.Equal(["fast"], (await h.OneAsync()).Tags);
-    }
-
-    [Fact]
-    public async Task ATagThatBreaksTheRule_IsRefusedBeforeAnythingOnTheRowChanges()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
-        var seenAt = (await h.RowAsync()).LastSeenAt;
-        h.Time.Advance(TimeSpan.FromSeconds(10));
-
-        // Not BeatAsync: it throws on anything but a value, and this refusal
-        // is the assertion.
-        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Tags: ["has space"]), default);
-
-        Assert.Contains("a tag has no space or comma inside", Reason(refusal.Result), StringComparison.Ordinal);
-        var row = await h.RowAsync();
-        Assert.Equal("fast", row.Tags);
-        Assert.Equal(seenAt, row.LastSeenAt);
-    }
-
-    [Fact]
-    public async Task GetRunners_AnswersTagsSortedRegardlessOfTheOrderAHeartbeatNamedThemIn()
-    {
-        var h = await NewAsync();
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["gpu", "fast"]));
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: ["gpu", "fast"]));
 
         Assert.Equal(["fast", "gpu"], (await h.OneAsync()).Tags);
     }
 
     [Fact]
-    public async Task APatchChangingAnUnrelatedField_LeavesTagsExactlyAsAPriorHeartbeatLeftThem()
+    public async Task APatchChangingAnUnrelatedField_LeavesTagsExactlyAsAPriorPatchLeftThem()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: ["fast"]));
 
         await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
 
@@ -526,7 +490,8 @@ public class RunnersControllerTests
     public async Task APatchClearingTags_StoresEmptyAndAFollowingHeartbeatDoesNotReseedIt()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Tags: ["fast"]));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: ["fast"]));
 
         await h.PatchAsync(Runner, new RunnerPatchRequest(Tags: []));
         Assert.Equal("", (await h.RowAsync()).Tags);
@@ -538,7 +503,7 @@ public class RunnersControllerTests
     // ---- RefusesDangerous ----
 
     [Fact]
-    public async Task AFirstHeartbeatSayingRefusesDangerous_WritesItAndALaterOneNeverChangesIt()
+    public async Task ASecondBeatSayingFalseAfterTrue_ChangesRefusesDangerous()
     {
         var h = await NewAsync();
 
@@ -546,33 +511,7 @@ public class RunnersControllerTests
         Assert.True((await h.OneAsync()).RefusesDangerous);
 
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
-        Assert.True((await h.OneAsync()).RefusesDangerous);
-    }
-
-    [Fact]
-    public async Task AFirstHeartbeatSayingFalse_IsSeededToo_AndALaterTrueDoesNotUndoIt()
-    {
-        var h = await NewAsync();
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
-        Assert.False((await h.RowAsync()).RefusesDangerous);
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
-        Assert.False((await h.RowAsync()).RefusesDangerous);
-    }
-
-    [Fact]
-    public async Task AFirstHeartbeatThatSaidNothing_LeavesTheRowOpenForALaterOneToSeedIt()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
-        Assert.Null((await h.RowAsync()).RefusesDangerous);
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
-        Assert.True((await h.OneAsync()).RefusesDangerous);
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: false));
-        Assert.True((await h.OneAsync()).RefusesDangerous);
+        Assert.False((await h.OneAsync()).RefusesDangerous);
     }
 
     [Fact]
@@ -587,7 +526,7 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ARowNeverToldRefusesDangerous_ReadsFalseOnTheDtoAndOnTheInstruction()
+    public async Task ARowNeverToldRefusesDangerous_ReadsFalseOnTheDtoAndTheInstructionAnswersNull()
     {
         var h = await NewAsync();
 
@@ -595,34 +534,21 @@ public class RunnersControllerTests
 
         Assert.Null((await h.RowAsync()).RefusesDangerous);
         Assert.False((await h.OneAsync()).RefusesDangerous);
-        Assert.False(instruction.RefusesDangerous);
+        Assert.Null(instruction.RefusesDangerous);
     }
 
     [Fact]
-    public async Task APatchNamingRefusesDangerous_SetsItAndTheNextInstructionCarriesIt()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
-
-        var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(RefusesDangerous: true));
-        Assert.True(patched.RefusesDangerous);
-
-        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
-        Assert.True(instruction.RefusesDangerous);
-    }
-
-    [Fact]
-    public async Task APatchSayingFalseAfterABeatSaidTrue_SetsItFalseAndAFollowingBeatDoesNotUndoIt()
+    public async Task APatchBodyNamingRefusesDangerous_IsUnread()
     {
         var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
 
-        await h.PatchAsync(Runner, new RunnerPatchRequest(RefusesDangerous: false));
-        Assert.False((await h.OneAsync()).RefusesDangerous);
+        var request = JsonSerializer.Deserialize<RunnerPatchRequest>(
+            """{"refusesDangerous":false,"state":"paused"}""", new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var patched = await h.PatchAsync(Runner, request);
 
-        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(RefusesDangerous: true));
-        Assert.False((await h.OneAsync()).RefusesDangerous);
-        Assert.False(instruction.RefusesDangerous);
+        Assert.Equal(EfHatchRunner.Paused, patched.State);
+        Assert.True(patched.RefusesDangerous);
     }
 
     [Fact]
@@ -638,24 +564,16 @@ public class RunnersControllerTests
 
     // ---- Projects ----
 
-    private static async Task AddProjectAsync(Harness h, string key)
-    {
-        h.Db.Projects.Add(new EfHatchProject { Key = key, Name = key, CreatedAt = Now });
-        await h.Db.SaveChangesAsync();
-    }
-
     [Fact]
     public async Task AFreshLoopBeat_StoresTheNormalisedProjectsInTheOrderGiven()
     {
         var h = await NewAsync();
-        await AddProjectAsync(h, "FIL");
 
-        var answer = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
             Kind: "loop", Projects: ["fil", " AER", "FIL"], Fresh: true));
 
         Assert.Equal("FIL\nAER", (await h.RowAsync()).Projects);
         Assert.Equal(["FIL", "AER"], (await h.OneAsync()).Projects);
-        Assert.Equal(["FIL", "AER"], answer.Projects);
     }
 
     [Fact]
@@ -669,95 +587,48 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task AFreshLoopBeat_WithNoProjects_ClearsThem()
+    public async Task ABeatWithAnEmptyProjectsList_ClearsThem()
     {
         var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"], Fresh: true));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
 
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: []));
 
         Assert.Null((await h.RowAsync()).Projects);
         Assert.Empty((await h.OneAsync()).Projects);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData(false)]
-    public async Task ALoopBeat_ThatIsNotFresh_LeavesWhatAPersonSetProjectsToAlone(bool? fresh)
-    {
-        var h = await NewAsync();
-        await AddProjectAsync(h, "FIL");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
-        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: ["FIL", "AER"]));
-
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"], Fresh: fresh));
-
-        Assert.Equal(["FIL", "AER"], (await h.OneAsync()).Projects);
-    }
-
     [Fact]
-    public async Task AOnceBeat_EvenIfFresh_LeavesTheProjectsAlone()
+    public async Task ABeatWithNoProjects_LeavesThemAlone()
     {
         var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
 
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Projects: ["FIL"], Fresh: true));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
 
         Assert.Equal(["AER"], (await h.OneAsync()).Projects);
     }
 
     [Fact]
-    public async Task APatchNamingProjects_StoresThemInTheOrderGiven()
+    public async Task ASecondLoopBeat_ThatIsNotFresh_StillChangesProjects()
     {
         var h = await NewAsync();
-        await AddProjectAsync(h, "FIL");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
 
-        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: ["FIL", "AER"]));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["FIL"]));
 
-        Assert.Equal("FIL\nAER", (await h.RowAsync()).Projects);
+        Assert.Equal(["FIL"], (await h.OneAsync()).Projects);
     }
 
     [Fact]
-    public async Task APatchClearingProjects_StoresEmptyAndAFollowingNonFreshBeatDoesNotReseedIt()
+    public async Task AOnceBeat_ChangesProjectsToo()
     {
         var h = await NewAsync();
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
 
-        await h.PatchAsync(Runner, new RunnerPatchRequest(Projects: []));
-        Assert.Equal("", (await h.RowAsync()).Projects);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "once", Projects: ["FIL"]));
 
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
-        Assert.Equal("", (await h.RowAsync()).Projects);
-        Assert.Empty((await h.OneAsync()).Projects);
-    }
-
-    [Fact]
-    public async Task APatchThatDoesNotMentionProjects_LeavesThemAlone()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
-
-        await h.PatchAsync(Runner, new RunnerPatchRequest(State: "paused"));
-
-        Assert.Equal("AER", (await h.RowAsync()).Projects);
-    }
-
-    [Theory]
-    [InlineData("NOPE")]
-    [InlineData("AER", "NOPE")]
-    public async Task APatchNamingAProjectThatDoesNotExist_IsRefusedAndWritesNothing(params string[] keys)
-    {
-        var h = await NewAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Projects: ["AER"]));
-
-        var refusal = await h.Runners.PatchRunner(
-            Runner, new RunnerPatchRequest(State: "paused", Projects: keys), default);
-
-        Assert.Contains("there is no project NOPE", Reason(refusal.Result), StringComparison.Ordinal);
-        var row = await h.RowAsync();
-        Assert.Equal("AER", row.Projects);
-        Assert.Equal(EfHatchRunner.Running, row.State);
+        Assert.Equal(["FIL"], (await h.OneAsync()).Projects);
     }
 
     // ---- Out of Claude usage ----
@@ -2837,15 +2708,15 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task SettingWhichProjectsARunnerServes_IsClosedToAKey()
+    public async Task SettingARunnersTags_IsClosedToAKey()
     {
         var h = await NewAsync(program: true);
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
-        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Projects: ["AER"]), default);
+        var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Tags: ["gpu"]), default);
 
         Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
-        Assert.Null((await h.RowAsync()).Projects);
+        Assert.Null((await h.RowAsync()).Tags);
     }
 
     [Fact]
@@ -3290,7 +3161,7 @@ public class RunnersControllerTests
         var key = await h.AddKeyAsync(Runner);
 
         var patched = await h.PatchAsync(Runner, new RunnerPatchRequest(
-            MaxRuns: "7", Tags: ["gpu"], State: "paused", Projects: [], RefusesDangerous: true));
+            MaxRuns: "7", Tags: ["gpu"], State: "paused"));
 
         var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
         Assert.Equal(key.Id, config.ApiKeyId);
@@ -3676,6 +3547,49 @@ public class RunnersControllerTests
         Assert.Equal(2, await h.Db.RunnerSessions.CountAsync());
         Assert.Equal(EfHatchRunner.OnceKind, (await h.Db.RunnerSessions.AsNoTracking()
             .SingleAsync(s => s.Where == "here:/checkouts/two")).Kind);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ASecondBeat_ChangesRefusesDangerousAndProjects()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, RefusesDangerous: true, Projects: ["AER"]));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: Runner, RefusesDangerous: false, Projects: ["FIL"]));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.False(row.RefusesDangerous);
+        Assert.Equal("FIL", row.Projects);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatThatSaysNothing_LeavesRefusesDangerousAndProjectsAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, RefusesDangerous: true, Projects: ["AER"]));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.True(row.RefusesDangerous);
+        Assert.Equal("AER", row.Projects);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_TagsOnABeat_AreIgnored()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Tags: ["fast"]));
+
+        Value(result);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
     }
 
     [SkippableFact]
