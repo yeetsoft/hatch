@@ -1,3 +1,9 @@
+# What a build of this repository needs - make, dotnet 10, node 22, pwsh 7,
+# Playwright's browsers and a postgres - is declared in
+# .hatch/dependencies.json, which the board reads to decide which runners may
+# work development steps here. A tool or version this file starts needing
+# moves there in the same change.
+
 up:
 	docker compose up -d --build
 
