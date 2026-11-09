@@ -550,3 +550,5 @@ The properties above stop holding if any of these is done:
   says "Living Room", never a real room in a real house, and never a real domain.
 - [`src/Hatch.Web/apps/design/README.md`](../src/Hatch.Web/apps/design/README.md)
   — the gallery, app-side.
+- [`docs/runners-page-design.md`](runners-page-design.md) — the spec the Runners
+  page is built to.
