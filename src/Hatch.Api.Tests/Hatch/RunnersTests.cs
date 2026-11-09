@@ -81,6 +81,21 @@ public class RunnersTests
         Assert.Equal(new HatchOptions().RunnerGoneAfterSeconds, With(-5).GoneAfterSeconds);
     }
 
+    // ---- The train's stall horizon ----
+
+    [Fact]
+    public void TheTrainStallMinutes_AreReadAsSeconds()
+    {
+        Assert.Equal(300, WithTrainStall(5).TrainStallSeconds);
+    }
+
+    [Fact]
+    public void ATrainStallHorizonOfZeroOrNegative_FallsBackToTheDefault()
+    {
+        Assert.Equal(new HatchOptions().TrainStallMinutes * 60, WithTrainStall(0).TrainStallSeconds);
+        Assert.Equal(new HatchOptions().TrainStallMinutes * 60, WithTrainStall(-5).TrainStallSeconds);
+    }
+
     // ---- Liveness, with a session added in ----
 
     [Fact]
@@ -309,6 +324,9 @@ public class RunnersTests
 
     private static Runners With(int goneAfterSeconds = 90) =>
         new(Options.Create(new HatchOptions { RunnerGoneAfterSeconds = goneAfterSeconds }), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
+
+    private static Runners WithTrainStall(int trainStallMinutes) =>
+        new(Options.Create(new HatchOptions { TrainStallMinutes = trainStallMinutes }), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
 
     private static EfHatchRunner Row(string? line = null) => new()
     {

@@ -1197,6 +1197,57 @@ public class DispatchTests
         Assert.Equal($"{key} is in project {h.ProjectKey} - this runner is bound to FIL", row.Blocked);
     }
 
+    // ---- The merge train's own head, read on its own (HA-2092) ----
+
+    [Fact]
+    public async Task TrainHeadsAsync_NamesTheEligibleHeadBehindAHeldRowAheadOfIt()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+
+        var held = await h.FileAsync("story", "stuck", merges.Id, rank: 1);
+        held.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(held, MergeVerdicts.None);
+
+        var eligible = await h.FileAsync("story", "ready", merges.Id, rank: 2);
+        eligible.PullRequestUrl = "https://example.com/o/r/pull/2";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(eligible, MergeVerdicts.Clean);
+
+        var heads = await h.Dispatch.TrainHeadsAsync(Now, default);
+
+        var head = Assert.Single(heads);
+        Assert.Equal(IssueKey.Format(h.ProjectKey, eligible.Number), head.Key);
+        Assert.Equal(WorkKinds.Update, head.Kind);
+    }
+
+    [Fact]
+    public async Task TrainHeadsAsync_AProjectWithNoMergesColumnConfigured_IsEmpty()
+    {
+        var h = await NewAsync();
+
+        Assert.Empty(await h.Dispatch.TrainHeadsAsync(Now, default));
+    }
+
+    [Fact]
+    public async Task TrainHeadsAsync_AMergesColumnWithOnlyHeldRows_IsEmpty()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "merges", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+
+        var held = await h.FileAsync("story", "stuck", merges.Id);
+        held.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(held, MergeVerdicts.None);
+
+        Assert.Empty(await h.Dispatch.TrainHeadsAsync(Now, default));
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };

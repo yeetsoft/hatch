@@ -173,6 +173,7 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
 | `Hatch__StallResumeMinutes` | `15` | How long a marked issue is folded before the loop picks it back up on its own. |
 | `Hatch__StallResumeLimit` | `3` | How many consecutive stalls an issue may resume through before it holds for a person instead. |
+| `Hatch__TrainStallMinutes` | `10` | How long a merge train's head may be judged continuously mergeable before its driver is passed over to another live, eligible runner. |
 | `Hatch__DoneHorizonHours` | `48` | How long a card sits in a terminal column before the board stops handing it over. |
 | `Hatch__BackupPath` | empty | The folder inside the container the daily `pg_dump` copy is written to; empty means backups are off. |
 | `Hatch__BackupKeepDays` | `14` | How many days of copies are kept; a copy goes only past this age and only while that many newer copies remain; `0` keeps everything. |

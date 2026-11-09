@@ -1531,6 +1531,106 @@ public class RunnersControllerTests
         Assert.Equal(beat.Drives, patched.Drives);
     }
 
+    // ---- A stalled driver, passed over (HA-2092) ----
+    //
+    // The gone horizon is widened well past the stall window in every test
+    // here, so here:/one reads as live throughout without beating again -
+    // what hands the project to here:/two is the train's own stall rule
+    // alone, never the older rule that an ordinarily quiet driver loses its
+    // project.
+
+    [Fact]
+    public async Task AHeadMergeableLongerThanTheStallWindow_PassesItsDriverOverOnTheNextHeartbeat()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        var first = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal(["AER"], first.Drives);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var second = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Empty(second.Drives!);
+
+        // Past the ten-minute default, counted from the first beat that ever
+        // saw this head acting - not from here:/two's own first sight of it.
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        var passedOver = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], passedOver.Drives);
+        Assert.Equal("here:/one", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+    }
+
+    [Fact]
+    public async Task ThePassOver_WritesOneDriverStalledEventNamingBoth()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var key = IssueKey.Format("AER", head.Number);
+        var @event = Assert.Single(await h.EventsAsync(key), e => e.Kind == EfHatchIssueEvent.DriverStalled);
+        Assert.Equal("Hatch", @event.Actor);
+        var payload = JsonDocument.Parse(@event.Payload!).RootElement;
+        Assert.Equal("here:/one", payload.GetProperty("passedOver").GetString());
+        Assert.Equal("here:/two", payload.GetProperty("elected").GetString());
+
+        // A further beat inside the window the pass-over just opened writes
+        // none: the clock it restarted has not run out again.
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Single(await h.EventsAsync(key), e => e.Kind == EfHatchIssueEvent.DriverStalled);
+    }
+
+    [Fact]
+    public async Task ABeatUnderThePassedOverRunnersOwnName_ClearsItAndReElectsIt()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal("here:/one", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+
+        var reinstated = await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], reinstated.Drives);
+        Assert.Null((await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+    }
+
+    [Fact]
+    public async Task ATrainStallMinutesOfZeroOrNegative_FallsBackToTenMinutesRatherThanStallingAtOnce()
+    {
+        var h = await NewAsync(trainStallMinutes: 0, runnerGoneAfterSeconds: 3600);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.SeedMergingHeadAsync();
+
+        await h.BeatAsync("here:/one", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        // Short of the ten-minute default a configured zero falls back to -
+        // if zero instead meant "stall at once", this would already have
+        // been passed over.
+        h.Time.Advance(TimeSpan.FromMinutes(9));
+        var stillWaiting = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Empty(stillWaiting.Drives!);
+
+        h.Time.Advance(TimeSpan.FromMinutes(1).Add(TimeSpan.FromSeconds(1)));
+        var passedOver = await h.BeatAsync("here:/two", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+        Assert.Equal(["AER"], passedOver.Drives);
+    }
+
     // ---- Driving a project: whose runner may ----
 
     [Fact]
@@ -4264,6 +4364,59 @@ public class RunnersControllerTests
             return await Db.IssueEvents.Where(e => e.IssueId == issue.Id).OrderBy(e => e.At).ToListAsync();
         }
 
+        /// <summary>
+        /// A merges-column row with a clean, trunk-holding branch and a passed
+        /// build - the shared project's own train head, with nothing standing
+        /// in front of it - copied from WorkControllerTests's own
+        /// <c>VerdictAsync</c>/<c>BuildAsync</c> pattern, since this harness has
+        /// no merges column or checks of its own.
+        /// </summary>
+        public async Task<EfHatchIssue> SeedMergingHeadAsync(string title = "a thing", string remote = "https://example.com/o/r")
+        {
+            var merges = new EfHatchStatus { Name = "merges", SortOrder = 40, IsProtected = true, MergesPullRequest = true };
+            Db.Add(merges);
+            await Db.SaveChangesAsync();
+
+            var created = Created(await Issues.CreateIssue(new IssueCreateRequest(ProjectId, "story", title, null, null, null, null), default));
+            var issue = await Find(created.Key);
+            issue.StatusId = merges.Id;
+            issue.PullRequestUrl = $"{remote}/pull/1";
+            await Db.SaveChangesAsync();
+
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.MergeChecks.Add(new EfHatchMergeCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = "main",
+                TrunkSha = new string('a', 40),
+                Verdict = MergeVerdicts.Clean,
+                Branch = "aer-1-thing",
+                BranchSha = new string('b', 40),
+                HoldsTrunk = true,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+            Db.BuildChecks.Add(new EfHatchBuildCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Branch = "aer-1-thing",
+                Sha = new string('b', 40),
+                ShaSince = Now,
+                Verdict = BuildVerdicts.Passed,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+            await Db.SaveChangesAsync();
+
+            return issue;
+        }
+
         public required IAuthService Keys { get; init; }
 
         public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default, live: true));
@@ -4346,7 +4499,7 @@ public class RunnersControllerTests
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
         PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null,
         long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null,
-        string? connectionString = null)
+        string? connectionString = null, int? trainStallMinutes = null, int? runnerGoneAfterSeconds = null)
     {
         var db = connectionString is null
             ? new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)
@@ -4363,9 +4516,15 @@ public class RunnersControllerTests
         var keys = new AuthService(coreDb, Options.Create(new AuthOptions { Enabled = wall }), time, NullLogger<AuthService>.Instance);
         var claims = TestClaims.With();
         var runners = new Runners(
-            Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
+            Options.Create(new HatchOptions
+            {
+                RunnerGoneAfterSeconds = runnerGoneAfterSeconds ?? Horizon,
+                TrainStallMinutes = trainStallMinutes ?? new HatchOptions().TrainStallMinutes,
+            }),
             Options.Create(new AuthOptions { Enabled = wall }),
             revision ?? new StubRevision("dev", 0));
+        var actors = new StubActorDirectory();
+        var dispatch = new Dispatch(db, actors, claims, time);
 
         var id = personId ?? Guid.NewGuid();
         var caller = nobody
@@ -4386,14 +4545,13 @@ public class RunnersControllerTests
             }
             : new StubCaller { Person = new EfPerson { Id = id, Name = "Nathan", Role = role, CreatedAt = Now, UpdatedAt = Now } };
 
-        var actors = new StubActorDirectory();
         var sessions = new RunnerSessions(runners);
 
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
                 siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
-                sessions),
+                sessions, dispatch),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
