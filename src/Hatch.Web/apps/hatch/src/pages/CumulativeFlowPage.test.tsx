@@ -27,7 +27,7 @@ const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
   ...over,
 });
 
-const render = (data: CumulativeFlow, by: ColourBy = 'column'): string =>
+const render = (data: CumulativeFlow | null, by: ColourBy = 'column'): string =>
   renderToStaticMarkup(
     <CumulativeFlowBody answer={data} statuses={statuses} by={by} projects={projects} offsetMinutes={0} now={NOW} />,
   );
@@ -82,6 +82,16 @@ describe('CumulativeFlowBody', () => {
     expect(html).toContain(EMPTY);
     expect(html).toContain('2 column changes could not be placed');
   });
+
+  it('says no project is chosen for a null answer: no chart, no footnote, not the empty-range sentence', () => {
+    const html = render(null);
+
+    expect(html).toContain('No project is chosen.');
+    expect(html).not.toContain('<svg');
+    expect(html).not.toContain('hatch-cumulative-flow"');
+    expect(html).not.toContain(FOOTNOTE);
+    expect(html).not.toContain(EMPTY);
+  });
 });
 
 describe('under a scope', () => {
@@ -97,6 +107,18 @@ describe('under a scope', () => {
 
     expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
     expect(narrowed?.map((p) => p.key)).toEqual(['HA', 'AER']);
+  });
+
+  it('chooses nothing, so reads nothing, for an empty project param', () => {
+    expect(reportProjects(new URLSearchParams('project='), all, scope).chosen).toEqual([]);
+  });
+
+  it('still reads the scope for an unknown key or no param', () => {
+    expect(reportProjects(new URLSearchParams('project=ZZ'), all, scope).chosen.map((p) => p.key)).toEqual([
+      'HA',
+      'AER',
+    ]);
+    expect(reportProjects(new URLSearchParams(''), all, scope).chosen).not.toEqual([]);
   });
 
   it('ignores a project outside the scope', () => {

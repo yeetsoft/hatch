@@ -7610,6 +7610,17 @@ and puts it to the board with the trunk's sha, the bytes it found — or none,
 where the trunk has none — this runner's name, and the forge link `gh browse
 --no-browser` gives for the path on that trunk, where it has one.
 
+**The dependency file, read the same way.** For the same reason and on the same
+schedule — once per checkout that has an origin, whether or not anything of
+its is in review, and whether or not any project reads the file — the
+poll reads [`.hatch/dependencies.json`](#dependency-file) off the trunk, reusing
+the `ls-remote` heads already taken and fetching only where the sha moved. It
+reads the blob itself through git (`origin/<trunk>:<path>`, never a file the
+worktree has checked out, whose line endings the tree may have rewritten),
+and puts it to the board with the trunk's sha, the bytes it found — or none,
+where the trunk has none — this runner's name, and the forge link `gh browse
+--no-browser` gives for the path on that trunk, where it has one.
+
 **A fresh `failed` read branches before it is ever put to the board.** Where
 the stored row's `ProjectKey` is one `runtime.Readout.Drives` says this runner
 drives, and that sha's `RerunCount` is under the cap — three, enough for a

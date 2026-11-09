@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { CopyMarkdownButton } from '../components/CopyMarkdownButton';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { ChangelogReportBody } from './ChangelogReportPage';
-import { quietGapWords } from '../lib/changelogReport';
+import { changelogReportEmptyWords, quietGapWords } from '../lib/changelogReport';
 import { reportProjects } from '../lib/timeline';
 import type {
   ChangelogReport,
@@ -54,7 +54,7 @@ const entry = (key: string, over: Partial<ChangelogReportEntry> = {}): Changelog
   ...over,
 });
 
-const render = (answer: ChangelogReport, level: 'epic' | 'story' = 'story', loose = false): string =>
+const render = (answer: ChangelogReport | null, level: 'epic' | 'story' = 'story', loose = false): string =>
   renderToStaticMarkup(
     <MemoryRouter>
       <ChangelogReportBody
@@ -185,6 +185,14 @@ describe('ChangelogReportBody', () => {
   it('heads each bucket with bucketLabel', () => {
     expect(render(report())).toContain('<h2>Wednesday, November 4, 2026</h2>');
   });
+
+  it('says no project is chosen for a null report, ahead of the empty-range sentence', () => {
+    const html = render(null);
+
+    expect(html).toContain('No project is chosen.');
+    expect(html).not.toContain('hatch-changelog-day');
+    expect(html).not.toContain(changelogReportEmptyWords());
+  });
 });
 
 describe('CopyMarkdownButton', () => {
@@ -223,6 +231,18 @@ describe('under a scope', () => {
 
     expect(chosen.map((p) => p.key)).toEqual(['HA', 'AER']);
     expect(narrowed?.map((p) => p.id)).toEqual([1, 2]);
+  });
+
+  it('chooses nothing, so reads nothing, for an empty project param', () => {
+    expect(reportProjects(new URLSearchParams('project='), projects, scope).chosen).toEqual([]);
+  });
+
+  it('still reads the scope for an unknown key or no param', () => {
+    expect(reportProjects(new URLSearchParams('project=ZZ'), projects, scope).chosen.map((p) => p.key)).toEqual([
+      'HA',
+      'AER',
+    ]);
+    expect(reportProjects(new URLSearchParams(''), projects, scope).chosen).not.toEqual([]);
   });
 
   it('ignores a project param outside the scope', () => {

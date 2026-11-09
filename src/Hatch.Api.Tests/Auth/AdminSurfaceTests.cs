@@ -807,6 +807,118 @@ public class AdminSurfaceTests
         "RunnerController.Download",
     ];
 
+    /// <summary>
+    /// The audit of what an API key may reach: every action whose attribute
+    /// names an AcceptScope, which is the only thing that lets a key in. Adding
+    /// a route here is a decision about what an agent may do unattended, not a
+    /// bookkeeping step - make it on purpose.
+    /// </summary>
+    private static readonly string[] AcceptsKey =
+    [
+        "ActivityController.GetActivity",
+        "AssigneeController.GetAssignees",
+        "AttachmentsController.GetAttachment",
+        "AttachmentsController.GetAttachments",
+        "AttentionController.GetAttention",
+        "BackupController.GetBackup",
+        "BoardController.GetBoard",
+        "BroughtCurrentController.PutBroughtCurrent",
+        "BuildCheckController.PutBuildCheck",
+        "ChangelogController.GetChangelog",
+        "DependencyFileController.GetDependencyFiles",
+        "DependencyFileController.PutDependencyFile",
+        "DreamsController.AddDream",
+        "DreamsController.DeleteDream",
+        "DreamsController.EditDream",
+        "DreamsController.GetDreams",
+        "ImagesController.GetImage",
+        "ImportController.Import",
+        "ImportController.Preview",
+        "ImportController.PreviewText",
+        "IssueClaimController.Heartbeat",
+        "IssueClaimController.ReleaseClaim",
+        "IssueClaimController.TakeClaim",
+        "IssueDangerousController.PutIssueDangerous",
+        "IssueDependenciesController.AddDependency",
+        "IssueDependenciesController.RemoveDependency",
+        "IssueDreamsController.GetIssueDreams",
+        "IssueDreamsController.PutIssueDreams",
+        "IssueMessagesController.Deliver",
+        "IssueNoCodeController.PutIssueNoCode",
+        "IssueOnePrController.PutIssueOnePr",
+        "IssueReleaseNoteController.PutIssueReleaseNote",
+        "IssueRunnerOmissionsController.DeleteOmittedRunner",
+        "IssueRunnerOmissionsController.PutOmittedRunner",
+        "IssueRunnerTagsController.PutIssueRunnerTags",
+        "IssueThreadController.AddComment",
+        "IssueThreadController.GetComments",
+        "IssueThreadController.GetEvents",
+        "IssueWorkLogController.GetWorkLog",
+        "IssueWorkLogController.PostEntry",
+        "IssuesController.BulkEdit",
+        "IssuesController.CreateIssue",
+        "IssuesController.DeleteIssue",
+        "IssuesController.GetIssue",
+        "IssuesController.MoveIssue",
+        "IssuesController.PatchIssue",
+        "IssuesController.SearchIssues",
+        "LandingController.PutLanding",
+        "MeController.GetMe",
+        "MergeCheckController.PutMergeCheck",
+        "OvernightController.GetOvernight",
+        "PlanController.GetIssuePlan",
+        "PlanController.GetPlan",
+        "PlaybookFileController.GetPlaybookFiles",
+        "PlaybookFileController.PutPlaybookFile",
+        "PlaybookProposalsController.GetProposal",
+        "PlaybookProposalsController.GetProposals",
+        "PlaybookProposalsController.SubmitProposal",
+        "PlaybooksController.GetPlaybooks",
+        "ProjectsController.CreateProject",
+        "ProjectsController.DeleteProject",
+        "ProjectsController.GetLogo",
+        "ProjectsController.GetMembers",
+        "ProjectsController.GetProjects",
+        "ProjectsController.GetRepositories",
+        "ProjectsController.PatchProject",
+        "PullRequestStateController.PutPullRequestState",
+        "QuestionsController.GetIssueQuestions",
+        "QuestionsController.GetQuestions",
+        "ReportsController.GetChangelogReport",
+        "ReportsController.GetCumulativeFlow",
+        "ReportsController.GetFlow",
+        "ReportsController.GetTimeline",
+        "RunnersController.GetRunnerNames",
+        "RunnersController.GetRunners",
+        "RunnersController.Heartbeat",
+        "SearchController.GetSearch",
+        "SettingsController.GetClaudeToken",
+        "SettingsController.GetCredential",
+        "StatusesController.CreateStatus",
+        "StatusesController.DeleteStatus",
+        "StatusesController.GetStatuses",
+        "StatusesController.PatchStatus",
+        "TrunkBuildBugController.PostBug",
+        "TrunkBuildController.GetTrunkBuilds",
+        "TrunkBuildController.PutTrunkBuild",
+        "UtilizationController.Get",
+        "VerdictsController.PostVerdict",
+        "WipController.GetWip",
+        "WorkController.ClosedWork",
+        "WorkController.GetNextWork",
+        "WorkController.GetQueue",
+        "WorkController.GetReview",
+        "WorkController.GetWork",
+        "WorkController.HopWork",
+        "WorkController.LandedWork",
+        "WorkController.MergedWork",
+        "WorkController.PushbackWork",
+        "WorkController.VerdictWork",
+        "WorkLogController.GetByPlaybook",
+        "WorkLogController.GetHistory",
+        "WorkLogController.GetSessions",
+    ];
+
     private static readonly string[] UserOutsideHatch =
     [
         "PeopleController.GetAll",
@@ -835,6 +947,25 @@ public class AdminSurfaceTests
             var expected = IsHatch(method) && !PersonOnly.Contains(name) ? ApiKeyScopes.Hatch : null;
 
             Assert.True(expected == scope, $"{name} accepts scope '{scope}', audited at '{expected}'");
+        }
+    }
+
+    [Fact]
+    public void TheRoutesThatAcceptAKeyAreExactlyTheCheckedInList()
+    {
+        var actual = GuardedActions()
+            .Where(a => RequiredRole(a.Method)!.AcceptScope is not null)
+            .Select(a => a.Name)
+            .ToHashSet();
+
+        foreach (var name in actual.Except(AcceptsKey).OrderBy(n => n, StringComparer.Ordinal))
+        {
+            Assert.Fail($"{name} accepts a key, and is not in the audited list");
+        }
+
+        foreach (var name in AcceptsKey.Except(actual).OrderBy(n => n, StringComparer.Ordinal))
+        {
+            Assert.Fail($"{name} is in the audited list of routes that accept a key, and does not");
         }
     }
 
@@ -876,7 +1007,7 @@ public class AdminSurfaceTests
     {
         var all = ActionsWhere(guarded: true).Concat(ActionsWhere(guarded: false)).ToHashSet();
 
-        foreach (var action in Guarded.Concat(DeliberatelyOpen))
+        foreach (var action in Guarded.Concat(DeliberatelyOpen).Concat(AcceptsKey))
         {
             Assert.Contains(action, all);
         }
