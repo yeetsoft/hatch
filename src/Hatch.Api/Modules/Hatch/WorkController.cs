@@ -738,14 +738,33 @@ public class WorkController(
 
         if (verdict.Verdict == CheckVerdicts.Pass)
         {
-            var target = Columns.Target(statuses, from)!;
+            var approvedColumn = Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge);
+            var approves = approvedColumn is not null && !string.IsNullOrWhiteSpace(issue.PullRequestUrl);
+            var target = approves ? approvedColumn! : Columns.Target(statuses, from)!;
+
             issue.Events.Add(new EfHatchIssueEvent
             {
                 Actor = actor,
                 Kind = EfHatchIssueEvent.StatusChanged,
-                Payload = JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
+                Payload = approves
+                    ? JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId), ("approved", "check")))
+                    : JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("verdict", CheckVerdicts.Pass), ("playbookId", playbookId))),
                 At = now,
             });
+
+            if (approves)
+            {
+                var playbook = await db.Playbooks.Include(p => p.FromStatus).Include(p => p.ToStatus)
+                    .FirstAsync(p => p.Id == playbookId, ct);
+                db.Comments.Add(new EfHatchComment
+                {
+                    IssueId = issue.Id,
+                    Author = actor,
+                    Body = $"Approved by {playbook.FromStatus!.Name} → {playbook.ToStatus!.Name}'s passing verdict.",
+                    CreatedAt = now,
+                });
+            }
+
             issue.Rank = await ranks.BottomAsync(target.Id, ct);
             issue.StatusId = target.Id;
             issue.ClosedAt = Columns.ClosedAt(from, target, now, issue.ClosedAt);

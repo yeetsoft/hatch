@@ -154,6 +154,85 @@ public class ColumnsTests
     }
 
     [Fact]
+    public void Approves_FlagOnFromReviewWithMergeColumnNext_NamesIt()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var merges = S(4, "Merges", 40, isProtected: true, mergesPullRequest: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, merges, done };
+
+        Assert.Equal(merges.Id, Columns.Approves(board, review, true)?.Id);
+    }
+
+    [Fact]
+    public void Approves_FlagOff_IsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var merges = S(4, "Merges", 40, isProtected: true, mergesPullRequest: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, merges, done };
+
+        Assert.Null(Columns.Approves(board, review, false));
+    }
+
+    [Fact]
+    public void Approves_NoMergeColumnAfterReview_IsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var done = S(4, "Done", 40, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, done };
+
+        Assert.Null(Columns.Approves(board, review, true));
+    }
+
+    [Fact]
+    public void Approves_FromNotReviewColumn_IsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var merges = S(4, "Merges", 40, isProtected: true, mergesPullRequest: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, merges, done };
+
+        Assert.Null(Columns.Approves(board, doing, true));
+    }
+
+    [Fact]
+    public void Approves_NextColumnMergesButNotProtected_IsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        // Terminal, so review stays the awaiting-review column and only the
+        // protected test can refuse: an unprotected non-terminal column would
+        // itself be what AwaitingReview measures.
+        var done = S(4, "Done", 40, terminal: true, mergesPullRequest: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, done };
+
+        Assert.Null(Columns.Approves(board, review, true));
+    }
+
+    [Fact]
+    public void Approves_NextColumnProtectedButNotMerges_IsNull()
+    {
+        var todo = S(1, "To Do", 10);
+        var doing = S(2, "Doing", 20);
+        var review = S(3, "Review", 30);
+        var gate = S(4, "Gate", 40, isProtected: true);
+        var done = S(5, "Done", 50, terminal: true);
+        var board = new List<EfHatchStatus> { todo, doing, review, gate, done };
+
+        Assert.Null(Columns.Approves(board, review, true));
+    }
+
+    [Fact]
     public void RenamedBoard_SendBackIsMeasuredByPosition_NotByName()
     {
         var alpha = S(1, "Alpha", 10);
