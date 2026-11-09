@@ -22,6 +22,13 @@ public sealed record PreemptionInfo(string EmergencyKey, string EmergencyTitle, 
 /// </summary>
 public sealed record HardLimitInfo(long Tokens, int? Requests, string? SessionId);
 
+/// <summary>
+/// What a session said on its way out, when it ended because the account
+/// refused to spawn its model - everything <see cref="Lifecycle.LeaveAsync"/>
+/// needs to push what it left and write the one comment about it.
+/// </summary>
+public sealed record ModelRefusalInfo(string Model, DateTimeOffset? Until, string? SessionId);
+
 /// <summary>What <see cref="Lifecycle.LeaveAsync"/> learned on its way out.</summary>
 /// <param name="HasPullRequest">
 /// Whether a pull request is recorded on the issue - or, for a task that shares
@@ -204,9 +211,16 @@ public sealed class Lifecycle(Runtime runtime)
     /// one addition: a continuation task is filed under the ticket first, and the
     /// comment names it.
     /// </param>
+    /// <param name="modelRefusal">
+    /// The session ended because the account refused to spawn the model the
+    /// playbook named - the same push-then-one-comment path a usage limit and a
+    /// preemption take, for the same reason: the session did not get to say
+    /// whether what it left is fit to publish, so the runner does not either.
+    /// </param>
     public async Task<LeaveOutcome> LeaveAsync(
         WorkDto work, Checkouts.Choice chosen, bool ownsTicket, CancellationToken ct,
-        UsageLimitInfo? limit = null, PreemptionInfo? preempted = null, HardLimitInfo? hardLimit = null)
+        UsageLimitInfo? limit = null, PreemptionInfo? preempted = null, HardLimitInfo? hardLimit = null,
+        ModelRefusalInfo? modelRefusal = null)
     {
         var key = work.Issue.Key;
         var branchKey = Branches.KeyOf(work);
@@ -222,7 +236,7 @@ public sealed class Lifecycle(Runtime runtime)
             }
 
             var pushed = new List<(string Path, LimitPushed Result)>();
-            if (limit is not null || preempted is not null || hardLimit is not null)
+            if (limit is not null || preempted is not null || hardLimit is not null || modelRefusal is not null)
                 foreach (var (path, baseBranch) in chosen.Resets)
                     pushed.Add((path, runtime.Workspace(path, baseBranch).PushForLimit(branchKey, Branches.TitleOf(work))));
 
@@ -270,6 +284,12 @@ public sealed class Lifecycle(Runtime runtime)
                 return new LeaveOutcome(pullRequest, false, filed?.Key);
             }
 
+            if (modelRefusal is not null)
+            {
+                await runtime.Board.CommentAsync(key, UnservableBody(modelRefusal, chosen, pushed, lines), ct);
+                return new LeaveOutcome(pullRequest, false);
+            }
+
             // A task on its story's branch is not owed a pull request of its own:
             // the story's closeout opens the one, so "pushed with none recorded"
             // is the design for it and not a branch nobody can find a review for.
@@ -305,6 +325,21 @@ public sealed class Lifecycle(Runtime runtime)
               + $"treating it as an hour away, until {UsageLimit.Clock(limit.ResetAt, known: false, runtime.Clock)}.";
 
         return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, limit.SessionId, runtime.Adapter);
+    }
+
+    /// <summary>
+    /// The one comment a model refusal writes: which model this runner no
+    /// longer offers, until when (or that it is off for the rest of this run),
+    /// the branch and sha that were pushed (or why not, per checkout), and the
+    /// session to rejoin. Modelled on <see cref="UsageLimitBody"/>.
+    /// </summary>
+    private string UnservableBody(
+        ModelRefusalInfo modelRefusal, Checkouts.Choice chosen, IReadOnlyList<(string Path, LimitPushed Result)> pushed, IReadOnlyList<string> tidyLines)
+    {
+        var when = modelRefusal.Until is { } at ? $"until {UsageLimit.Clock(at, known: false, runtime.Clock)}" : "for the rest of this run";
+        var body = $"This runner's {runtime.Adapter.DisplayName} no longer offers {modelRefusal.Model}, {when}.";
+
+        return body + PushedTidyAndResumeBody(chosen, pushed, tidyLines, modelRefusal.SessionId, runtime.Adapter);
     }
 
     /// <summary>
