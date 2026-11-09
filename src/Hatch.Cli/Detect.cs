@@ -27,7 +27,7 @@ public sealed record Detection(IReadOnlyList<DetectorResult> Results)
     /// What this runner advertises: every present result as <c>id</c> or
     /// <c>id@version</c>, plus every <paramref name="declared"/> entry
     /// detection did not already cover - dropped only where a present result
-    /// shares its id and <see cref="DependencyVersion.Satisfies"/> the
+    /// shares its id and <see cref="DependencyVersion.Matches"/> the
     /// declared version against the detected one, a bare declared id included.
     /// Never removes a detected entry. Ordered ordinal by id, detected before
     /// declared within one id - stable, since <see cref="Enumerable.OrderBy"/>
@@ -55,7 +55,7 @@ public sealed record Detection(IReadOnlyList<DetectorResult> Results)
     {
         var (id, version) = Split(declaredEntry);
         var detected = Results.FirstOrDefault(result => result.Present && result.Id == id);
-        return detected is not null && DependencyVersion.Satisfies(version, detected.Version);
+        return detected is not null && DependencyVersion.Matches(version, detected.Version);
     }
 
     private static string AsEntry(DetectorResult result) => result.Version is null ? result.Id : $"{result.Id}@{result.Version}";
