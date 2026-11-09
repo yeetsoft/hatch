@@ -330,6 +330,384 @@ public sealed class DetectTests
         Assert.Equal(new DetectorResult("make", true, null, null), result);
     }
 
+    // ---- playwright / postgres --------------------------------------------
+
+    private static Func<string, string?> Env(params (string Name, string Value)[] pairs)
+    {
+        var map = pairs.ToDictionary(pair => pair.Name, pair => pair.Value);
+        return name => map.TryGetValue(name, out var value) ? value : null;
+    }
+
+    /// <summary>Answers by the tool's name without its extension, and records each name it was asked.</summary>
+    private static Probe ByTool(Dictionary<string, ProbeResult> answers, List<string>? asked = null, List<string[]>? args = null) =>
+        (file, probeArgs, _, _) =>
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(file);
+            asked?.Add(name);
+            args?.Add(probeArgs);
+            return Task.FromResult(answers[name]);
+        };
+
+    private static ProbeResult Said(string output, int exit = 0) => new(true, exit, output);
+
+    private static readonly ProbeResult Hung = new(false, -1, "");
+
+    private const string PostgresServer = "postgres (PostgreSQL) 17.2 (Debian 17.2-1.pgdg120+1)\n";
+
+    private const string PgCtl = "pg_ctl (PostgreSQL) 16.4\n";
+
+    private const string PgIsReady = "pg_isready (PostgreSQL) 16.4\n";
+
+    private const string NoPostgres =
+        "no `postgres`, `pg_ctl` or `pg_isready` on PATH, and no Docker daemon answered `docker info`";
+
+    private static string Root()
+    {
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "hatch-detect-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(root);
+        return root;
+    }
+
+    private static void Remove(string root)
+    {
+        try { System.IO.Directory.Delete(root, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Makes <paramref name="dir"/> and puts a file, or only a subdirectory, in it.</summary>
+    private static void Populate(string dir, bool subdirectory = false)
+    {
+        System.IO.Directory.CreateDirectory(dir);
+        if (subdirectory) System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, "chromium-1148"));
+        else System.IO.File.WriteAllText(System.IO.Path.Combine(dir, ".links"), "");
+    }
+
+    [Theory]
+    [InlineData("windows", "LOCALAPPDATA", new string[] { "ms-playwright" }, false)]
+    [InlineData("windows", "LOCALAPPDATA", new string[] { "ms-playwright" }, true)]
+    [InlineData("macos", "HOME", new string[] { "Library", "Caches", "ms-playwright" }, false)]
+    [InlineData("macos", "HOME", new string[] { "Library", "Caches", "ms-playwright" }, true)]
+    [InlineData("linux", "HOME", new string[] { ".cache", "ms-playwright" }, false)]
+    [InlineData("linux", "HOME", new string[] { ".cache", "ms-playwright" }, true)]
+    public void Playwright_is_found_in_its_default_cache(string os, string variable, string[] below, bool subdirectory)
+    {
+        var root = Root();
+        try
+        {
+            Populate(System.IO.Path.Combine([root, .. below]), subdirectory);
+
+            var result = Detect.PlaywrightBrowsers(os, Env((variable, root)));
+
+            Assert.Equal(new DetectorResult("playwright-browsers", true, null, null), result);
+        }
+        finally { Remove(root); }
+    }
+
+    [Theory]
+    [InlineData("windows", "LOCALAPPDATA", new string[] { "ms-playwright" })]
+    [InlineData("macos", "HOME", new string[] { "Library", "Caches", "ms-playwright" })]
+    [InlineData("linux", "HOME", new string[] { ".cache", "ms-playwright" })]
+    public void Playwright_is_absent_when_the_cache_is_missing_or_empty(string os, string variable, string[] below)
+    {
+        var root = Root();
+        try
+        {
+            var dir = System.IO.Path.Combine([root, .. below]);
+
+            var missing = Detect.PlaywrightBrowsers(os, Env((variable, root)));
+            System.IO.Directory.CreateDirectory(dir);
+            var empty = Detect.PlaywrightBrowsers(os, Env((variable, root)));
+
+            foreach (var result in new[] { missing, empty })
+            {
+                Assert.Equal("playwright-browsers", result.Id);
+                Assert.False(result.Present);
+                Assert.Null(result.Version);
+                Assert.Contains(dir, result.Why);
+                Assert.Contains("missing or empty", result.Why);
+            }
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void Playwright_browsers_path_overrides_a_populated_default()
+    {
+        var root = Root();
+        try
+        {
+            Populate(System.IO.Path.Combine(root, ".cache", "ms-playwright"));
+            var elsewhere = System.IO.Path.Combine(root, "elsewhere");
+
+            var result = Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("PLAYWRIGHT_BROWSERS_PATH", elsewhere)));
+
+            Assert.False(result.Present);
+            Assert.Contains(elsewhere, result.Why);
+
+            Populate(elsewhere);
+            Assert.True(Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("PLAYWRIGHT_BROWSERS_PATH", elsewhere))).Present);
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void Playwright_browsers_path_set_without_a_home_is_still_read()
+    {
+        var root = Root();
+        try
+        {
+            Populate(root);
+
+            Assert.True(Detect.PlaywrightBrowsers("windows", Env(("PLAYWRIGHT_BROWSERS_PATH", root))).Present);
+        }
+        finally { Remove(root); }
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_blank_playwright_browsers_path_is_ignored(string blank)
+    {
+        var root = Root();
+        try
+        {
+            Populate(System.IO.Path.Combine(root, ".cache", "ms-playwright"));
+
+            var result = Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("PLAYWRIGHT_BROWSERS_PATH", blank)));
+
+            Assert.True(result.Present);
+        }
+        finally { Remove(root); }
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData(" 0 ")]
+    public void Playwright_browsers_path_zero_is_absent_even_when_the_default_exists(string zero)
+    {
+        var root = Root();
+        try
+        {
+            Populate(System.IO.Path.Combine(root, ".cache", "ms-playwright"));
+
+            var result = Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("PLAYWRIGHT_BROWSERS_PATH", zero)));
+
+            Assert.False(result.Present);
+            Assert.Contains("node_modules", result.Why);
+            Assert.Contains("HATCH_HAS", result.Why);
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void On_linux_xdg_cache_home_is_honoured_over_home()
+    {
+        var root = Root();
+        try
+        {
+            var xdg = System.IO.Path.Combine(root, "xdg");
+            Populate(System.IO.Path.Combine(root, ".cache", "ms-playwright"));
+
+            var missing = Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("XDG_CACHE_HOME", xdg)));
+            Assert.False(missing.Present);
+            Assert.Contains(System.IO.Path.Combine(xdg, "ms-playwright"), missing.Why);
+
+            Populate(System.IO.Path.Combine(xdg, "ms-playwright"));
+            Assert.True(Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("XDG_CACHE_HOME", xdg))).Present);
+        }
+        finally { Remove(root); }
+    }
+
+    [Fact]
+    public void On_linux_a_blank_xdg_cache_home_falls_back_to_home()
+    {
+        var root = Root();
+        try
+        {
+            Populate(System.IO.Path.Combine(root, ".cache", "ms-playwright"));
+
+            Assert.True(Detect.PlaywrightBrowsers("linux", Env(("HOME", root), ("XDG_CACHE_HOME", " "))).Present);
+        }
+        finally { Remove(root); }
+    }
+
+    [Theory]
+    [InlineData("windows", "LOCALAPPDATA")]
+    [InlineData("macos", "HOME")]
+    [InlineData("linux", "HOME")]
+    public void Playwright_is_absent_when_the_variable_that_locates_the_cache_is_not_set(string os, string variable)
+    {
+        foreach (var env in new[] { Env(), Env((variable, "  ")) })
+        {
+            var result = Detect.PlaywrightBrowsers(os, env);
+
+            Assert.False(result.Present);
+            Assert.Equal($"`{variable}` is not set, so there is no Playwright cache to look in", result.Why);
+        }
+    }
+
+    [Fact]
+    public void An_unknown_os_throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => Detect.PlaywrightBrowsers("freebsd", Env()));
+    }
+
+    [Theory]
+    [InlineData("postgres (PostgreSQL) 17.2 (Debian 17.2-1.pgdg120+1)\n", "17.2")]
+    [InlineData("pg_ctl (PostgreSQL) 16.4\n", "16.4")]
+    [InlineData("postgres (PostgreSQL) 18devel\n", "18")]
+    [InlineData("postgres (PostgreSQL) 17beta1\n", "17")]
+    [InlineData("(PostgreSQL) 16.4", "16.4")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("psql 17", null)]
+    [InlineData("Client: Docker Engine 27.3.1\n", null)]
+    public void Postgres_reads_the_number_after_its_marker(string? output, string? expected)
+    {
+        var version = Detect.ParsePostgres(output);
+
+        Assert.Equal(expected, version);
+        Assert.Null(DependencyVersion.Problem(version));
+    }
+
+    [Theory]
+    [InlineData("postgres", PostgresServer, "17.2")]
+    [InlineData("pg_ctl", PgCtl, "16.4")]
+    [InlineData("pg_isready", PgIsReady, "16.4")]
+    public async Task Postgres_is_found_by_any_one_of_its_binaries(string name, string output, string expected)
+    {
+        using var fake = new FakePath(FileNames(name)[0]);
+        var asked = new List<string>();
+        var args = new List<string[]>();
+
+        var result = await Detect.Postgres(fake.Directory, ByTool(new() { [name] = Said(output) }, asked, args), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", true, expected, null), result);
+        Assert.Equal([name], asked);
+        Assert.Equal(["--version"], Assert.Single(args));
+    }
+
+    [Fact]
+    public async Task Postgres_asks_postgres_before_pg_ctl()
+    {
+        using var first = new FakePath(FileNames("postgres")[0]);
+        using var second = new FakePath(FileNames("pg_ctl")[0]);
+        var asked = new List<string>();
+        var answers = new Dictionary<string, ProbeResult> { ["postgres"] = Said(PostgresServer), ["pg_ctl"] = Said(PgCtl) };
+
+        var result = await Detect.Postgres(
+            string.Join(System.IO.Path.PathSeparator, first.Directory, second.Directory), ByTool(answers, asked), CancellationToken.None);
+
+        Assert.Equal("17.2", result.Version);
+        Assert.Equal(["postgres"], asked);
+    }
+
+    [Fact]
+    public async Task A_binary_beats_docker_and_docker_is_never_asked()
+    {
+        using var binary = new FakePath(FileNames("pg_isready")[0]);
+        using var docker = new FakePath(FileNames("docker")[0]);
+        var asked = new List<string>();
+        var answers = new Dictionary<string, ProbeResult> { ["pg_isready"] = Said(PgIsReady), ["docker"] = Said("") };
+
+        var result = await Detect.Postgres(
+            string.Join(System.IO.Path.PathSeparator, binary.Directory, docker.Directory), ByTool(answers, asked), CancellationToken.None);
+
+        Assert.True(result.Present);
+        Assert.DoesNotContain("docker", asked);
+    }
+
+    [Fact]
+    public async Task A_binary_that_prints_no_version_is_present_with_none()
+    {
+        using var fake = new FakePath(FileNames("postgres")[0]);
+
+        var result = await Detect.Postgres(fake.Directory, ByTool(new() { ["postgres"] = Said("something unexpected\n") }), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", true, null, null), result);
+    }
+
+    [Fact]
+    public async Task With_no_binary_a_docker_daemon_that_answers_is_present_with_no_version()
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+        var args = new List<string[]>();
+
+        var result = await Detect.Postgres(fake.Directory, ByTool(new() { ["docker"] = Said("Client: Docker Engine 27.3.1\n") }, args: args), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", true, null, null), result);
+        Assert.Equal(["info"], Assert.Single(args));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_docker_that_fails_or_hangs_is_absent_with_both_routes_named(bool hangs)
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+
+        var result = await Detect.Postgres(fake.Directory, ByTool(new() { ["docker"] = hangs ? Hung : Said("", exit: 1) }), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", false, null, NoPostgres), result);
+    }
+
+    [Fact]
+    public async Task With_nothing_on_path_postgres_is_absent_and_nothing_is_asked()
+    {
+        using var fake = new FakePath(FileNames("something-else")[0]);
+
+        var result = await Detect.Postgres(fake.Directory, NeverAsked, CancellationToken.None);
+        var none = await Detect.Postgres(null, NeverAsked, CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", false, null, NoPostgres), result);
+        Assert.Equal(result, none);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_binary_that_hangs_or_fails_leaves_the_next_to_answer(bool hangs)
+    {
+        using var first = new FakePath(FileNames("postgres")[0]);
+        using var second = new FakePath(FileNames("pg_ctl")[0]);
+        var asked = new List<string>();
+        var answers = new Dictionary<string, ProbeResult>
+        {
+            ["postgres"] = hangs ? Hung : Said("postgres: error\n", exit: 1),
+            ["pg_ctl"] = Said(PgCtl),
+        };
+
+        var result = await Detect.Postgres(
+            string.Join(System.IO.Path.PathSeparator, first.Directory, second.Directory), ByTool(answers, asked), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", true, "16.4", null), result);
+        Assert.Equal(["postgres", "pg_ctl"], asked);
+    }
+
+    [Fact]
+    public async Task A_binary_that_hangs_leaves_docker_to_answer()
+    {
+        using var binary = new FakePath(FileNames("postgres")[0]);
+        using var docker = new FakePath(FileNames("docker")[0]);
+        var answers = new Dictionary<string, ProbeResult> { ["postgres"] = Hung, ["docker"] = Said("") };
+
+        var result = await Detect.Postgres(
+            string.Join(System.IO.Path.PathSeparator, binary.Directory, docker.Directory), ByTool(answers), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("postgres", true, null, null), result);
+    }
+
+    [Fact]
+    public async Task A_cancelled_postgres_probe_propagates()
+    {
+        using var fake = new FakePath(FileNames("postgres")[0]);
+        Probe cancelled = (_, _, _, _) => throw new OperationCanceledException();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => Detect.Postgres(fake.Directory, cancelled, CancellationToken.None));
+    }
+
     // ---- the real probe ---------------------------------------------------
 
     [Fact]
