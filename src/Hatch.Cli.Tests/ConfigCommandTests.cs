@@ -897,7 +897,7 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_prints_a_keys_identity_with_its_owner_and_scopes()
+    public async Task Show_prints_a_keys_identity_with_its_owner()
     {
         await Command(
                 new Replies(),
@@ -906,7 +906,8 @@ public sealed class ConfigCommandTests : IDisposable
                     new MeDto("key", "ada-key", "admin", true, false, false, "Ada", ["hatch"])))
             .RunAsync(["--show"], default);
 
-        Assert.Contains("identity:         key \"ada-key\", owned by Ada, scopes: hatch", Said);
+        Assert.Contains("identity:         key \"ada-key\", owned by Ada", Said);
+        Assert.DoesNotContain("scopes", Said);
     }
 
     [Fact]
