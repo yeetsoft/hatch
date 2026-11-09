@@ -88,7 +88,7 @@ Of the board's own hops, only the approve hop crosses a protected column's gate.
 
 A check's pass applied from the review column crosses the same gate, on a project with *A passing check approves the merge* turned on: that setting is the owner's or approver's own permission too, given on the project rather than the ticket, and the apply carries it out the same way the approve hop carries a pre-approval out. See `docs/hatch.md`, 'Check' for the column rule and 'The five paths past the terminal guard' for why it is a path and not a hole.
 
-Trying the move any other way answers with a 403 — the gate working, not a scope being wrong.
+Trying the move any other way answers with a 403 — the gate working, not a fault in the key.
 
 ## The merge train
 
