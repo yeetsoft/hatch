@@ -2298,6 +2298,10 @@ export interface Runner {
       one that has reported none, including an older CLI that predates the
       field. */
   models: string[];
+  /** The dependencies this runner has - `id` or `id@version`, from its own
+      heartbeat. Mirrors RunnerDto.Has; empty, never null, for one that has
+      reported none. */
+  has: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;

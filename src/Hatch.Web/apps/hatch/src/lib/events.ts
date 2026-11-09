@@ -25,8 +25,12 @@ export function describe(event: IssueEvent): string {
      crossed), and an approve or close hop carried by a pre-approval
      (WorkController's `HopKinds.Approve`/`.Close`, both writing the same
      `preapproved` flag), and a close the project's own setting made, with no
-     pre-approval behind it (`approved: 'setting'`). Rendered before the
-     ordinary from/to line, which it is a variant of. */
+     pre-approval behind it (`approved: 'setting'`). Beside them, and not a hop:
+     a pass WorkController's `VerdictWork` lands in the merge column, because
+     the project has *A passing check approves the merge* on, carries
+     `approved: 'check'` - a person never reads the ticket before it moves -
+     but is rendered here too, as another variant of the plain from/to line.
+     Rendered before the ordinary from/to line, which it is a variant of. */
   if (event.kind === 'status_changed' && event.payload?.express === true) {
     return `${short(from)} → ${short(to)}, express`;
   }
@@ -50,6 +54,9 @@ export function describe(event: IssueEvent): string {
   }
   if (event.kind === 'status_changed' && event.payload?.approved === 'setting') {
     return `${short(from)} → ${short(to)}, closed by the project's setting`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.approved === 'check') {
+    return `${short(from)} → ${short(to)}, approved by a passing check`;
   }
 
   /* express_changed is retired - HA-538 renamed its controller - but old rows
