@@ -3375,3 +3375,59 @@ public class EfHatchRunner
     /// <summary>When the order was placed.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
 }
+
+/// <summary>
+/// The board's settings for one runner key - what an operator has chosen for
+/// it, as against <see cref="EfHatchRunner"/>, which is what the process
+/// reports about itself. Keyed by the API key's id and related to nothing, so
+/// a config outlives any one process the key starts.
+/// </summary>
+/// <remarks>
+/// Nothing reads this table yet; it is the board-facing half the runner will
+/// take its bounds from once something does.
+/// </remarks>
+[Table("RunnerConfigs")]
+public class EfHatchRunnerConfig
+{
+    /// <summary>
+    /// The API key this config belongs to. A bare <see cref="Guid"/> with no
+    /// navigation and no foreign key, because <c>EfApiKey</c> lives in the core
+    /// schema and a module never references another module's entities
+    /// (Modules/README.md) - the same shape as
+    /// <see cref="EfHatchOvernightSeen.PersonId"/>. Never generated: the id is
+    /// the key's, not this row's.
+    /// </summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public Guid ApiKeyId { get; set; }
+
+    /// <summary>
+    /// The tags this runner carries, as a jsonb array in the order they were
+    /// written - normalised, case folded and deduplicated by
+    /// <see cref="Hatch.Contracts.RunnerTags"/> before a tag ever reaches this
+    /// column. Empty, not null, the way <see cref="EfHatchProject.RunnerTags"/>
+    /// is, so <c>EnsureCreated</c> and every migrated row read back "[]".
+    /// </summary>
+    public string Tags { get; set; } = "[]";
+
+    /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxUnderLength)]
+    public string? Under { get; set; }
+
+    /// <summary>The cap on increments, as <see cref="EfHatchRunner.MaxRuns"/>.</summary>
+    public int? MaxRuns { get; set; }
+
+    /// <summary>The cap on dollars, as <see cref="EfHatchRunner.MaxSpend"/>.</summary>
+    public decimal? MaxSpend { get; set; }
+
+    /// <summary>The cap on tokens for the whole run, as <see cref="EfHatchRunner.MaxTokens"/>.</summary>
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The cap on tokens per hour, as <see cref="EfHatchRunner.MaxTokensPerHour"/>.</summary>
+    public long? MaxTokensPerHour { get; set; }
+
+    /// <summary>When to stop, always as an instant, as <see cref="EfHatchRunner.UntilAt"/>.</summary>
+    public DateTimeOffset? UntilAt { get; set; }
+
+    /// <summary>When this config was last written.</summary>
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
