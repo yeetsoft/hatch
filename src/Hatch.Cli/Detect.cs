@@ -20,7 +20,8 @@ public sealed record DetectorResult(string Id, bool Present, string? Version, st
 /// <summary>
 /// Whether <c>make</c>, <c>dotnet</c>, <c>node</c> and <c>pwsh</c> are on
 /// <c>PATH</c>, and which version, within a probe that cannot outlast
-/// <see cref="ProbeTimeout"/>.
+/// <see cref="ProbeTimeout"/>; whether a Playwright browsers cache exists; and
+/// whether Postgres is reachable, as a binary or as a Docker daemon.
 /// </summary>
 /// <remarks>
 /// A detector writes nothing to stderr; the caller does, with the sentence it
@@ -47,6 +48,107 @@ public static class Detect
 
     public static Task<DetectorResult> Pwsh(string? path, Probe probe, CancellationToken ct) =>
         Walk("pwsh", ["--version"], path, probe, ParsePwsh, ct);
+
+    /// <summary>
+    /// Whether the Playwright browsers cache holds anything. Reads only
+    /// <paramref name="env"/>, so the caller passes the host's variables and a
+    /// test passes its own; <paramref name="os"/> is <c>windows</c>,
+    /// <c>macos</c> or <c>linux</c>.
+    /// </summary>
+    public static DetectorResult PlaywrightBrowsers(string os, Func<string, string?> env)
+    {
+        const string id = "playwright-browsers";
+        if (os is not ("windows" or "macos" or "linux"))
+            throw new ArgumentOutOfRangeException(nameof(os), os, "expected windows, macos or linux");
+
+        var overridden = env("PLAYWRIGHT_BROWSERS_PATH");
+        string dir;
+        if (!string.IsNullOrWhiteSpace(overridden))
+        {
+            if (overridden.Trim() == "0")
+                return new DetectorResult(id, false, null,
+                    "`PLAYWRIGHT_BROWSERS_PATH=0` keeps browsers inside `node_modules`, where detection cannot look; declare them with `HATCH_HAS=playwright-browsers`");
+            dir = overridden;
+        }
+        else
+        {
+            string? root;
+            string name;
+            switch (os)
+            {
+                case "windows":
+                    name = "LOCALAPPDATA";
+                    root = env(name);
+                    dir = Path.Combine(root ?? "", "ms-playwright");
+                    break;
+                case "macos":
+                    name = "HOME";
+                    root = env(name);
+                    dir = Path.Combine(root ?? "", "Library", "Caches", "ms-playwright");
+                    break;
+                default:
+                    var xdg = env("XDG_CACHE_HOME");
+                    if (!string.IsNullOrWhiteSpace(xdg))
+                    {
+                        name = "XDG_CACHE_HOME";
+                        root = xdg;
+                        dir = Path.Combine(xdg, "ms-playwright");
+                    }
+                    else
+                    {
+                        name = "HOME";
+                        root = env(name);
+                        dir = Path.Combine(root ?? "", ".cache", "ms-playwright");
+                    }
+                    break;
+            }
+
+            if (string.IsNullOrWhiteSpace(root))
+                return new DetectorResult(id, false, null, $"`{name}` is not set, so there is no Playwright cache to look in");
+        }
+
+        return HoldsAnything(dir)
+            ? new DetectorResult(id, true, null, null)
+            : new DetectorResult(id, false, null, $"Playwright cache `{dir}` is missing or empty");
+    }
+
+    /// <summary>
+    /// A Postgres server tool on <c>PATH</c> that answers <c>--version</c>, else
+    /// a Docker daemon that answers <c>info</c>. A tool that hangs or fails
+    /// leaves the next to be asked, so this can wait up to four probe timeouts.
+    /// </summary>
+    public static async Task<DetectorResult> Postgres(string? path, Probe probe, CancellationToken ct)
+    {
+        const string id = "postgres";
+
+        foreach (var name in new[] { "postgres", "pg_ctl", "pg_isready" })
+        {
+            if (Reach.Find(name, path) is not { } file) continue;
+
+            var probed = await probe(file, ["--version"], ProbeTimeout, ct);
+            if (probed.Completed && probed.ExitCode == 0)
+                return new DetectorResult(id, true, ParsePostgres(probed.Output), null);
+        }
+
+        if (Reach.Find("docker", path) is { } docker)
+        {
+            var probed = await probe(docker, ["info"], ProbeTimeout, ct);
+            if (probed.Completed && probed.ExitCode == 0)
+                return new DetectorResult(id, true, null, null);
+        }
+
+        return new DetectorResult(id, false, null,
+            "no `postgres`, `pg_ctl` or `pg_isready` on PATH, and no Docker daemon answered `docker info`");
+    }
+
+    /// <summary><c>postgres (PostgreSQL) 17.2 (Debian 17.2-1)</c> is <c>17.2</c>; output without the marker is null.</summary>
+    public static string? ParsePostgres(string? output)
+    {
+        const string marker = "(PostgreSQL) ";
+
+        var at = (output ?? "").IndexOf(marker, StringComparison.Ordinal);
+        return at < 0 ? null : Leading(output![(at + marker.Length)..]);
+    }
 
     /// <summary><c>GNU Make 4.3</c> is <c>4.3</c>: the first non-blank line, which is all the copyright lines after it are not.</summary>
     public static string? ParseMake(string? output) => Leading(FirstLine(output));
@@ -184,6 +286,18 @@ public static class Detect
             return new DetectorResult(name, false, null, $"{command} exited with code {probed.ExitCode}");
 
         return new DetectorResult(name, true, parse(probed.Output), null);
+    }
+
+    private static bool HoldsAnything(string dir)
+    {
+        try
+        {
+            return Directory.Exists(dir) && Directory.EnumerateFileSystemEntries(dir).Any();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static string? FirstLine(string? output) =>
