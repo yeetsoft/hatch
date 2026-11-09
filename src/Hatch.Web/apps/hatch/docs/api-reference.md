@@ -733,6 +733,33 @@ content over the stored cap, and writes no event - there is no issue to
 write one on, and no question, since a bad playbooks file is this row's own
 state rather than a stall.
 
+### Dependency files
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/dependency-files` | key | Every stored verdict of what a repository's trunk actually carries at `.hatch/dependencies.json` |
+| PUT | `/dependency-files` | key | Replaces the stored row for one repository's trunk, from a runner's poll of the file |
+
+`/dependency-files` is not that same edge the playbook matrix above draws:
+it is not the matrix, it is a cache of what a runner's poll actually found
+on disk at a repository-sourced project's trunk - a fact a key reports about
+a file, not an edit to Hatch's own instructions - so both its `GET` and its
+`PUT` stay key-open, the same reasoning `/playbook-files` takes.
+
+`DependencyFileDto` carries `Remote`, `Canonical`, `Trunk`, `Sha`, `State`
+(`parsed`, `invalid` or `absent`), `Hash` (the stored content's SHA-256),
+`Entries` (each a resolved `Id`, current `Label` and optional `Version`,
+from `DependencyDeclaration.Parse`), `Problem`, `LastGoodSha`/`LastGoodHash`,
+`Url`, `CheckedAt`, `Runner` and `CheckedBy`.
+
+**Refusals worth naming.** `PUT` 400s an empty remote, trunk, sha or runner,
+non-base64 or non-UTF-8 content, or content over the stored cap, and writes
+no event - there is no issue to write one on, and no question, since a bad
+dependencies file is this row's own state rather than a stall. An unknown
+dependency id is not one of these refusals: `DependencyDeclaration.Parse`
+folds it into the same `Problem` any other shape failure produces, so it
+reaches the stored row as `state: invalid`, not a 400.
+
 ### Playbook proposals
 
 | Method | Path | Who | What it does |

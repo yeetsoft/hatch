@@ -1276,7 +1276,7 @@ public sealed record ConfigCommand(
     {
         { Kind: "runner" } => $"calls go out as \"{me.Name}\"",
         { Kind: "key", Owner: null } => $"key \"{me.Name}\"",
-        { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}, scopes: {string.Join(", ", me.Scopes ?? [])}",
+        { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}",
         _ => "<unreachable>",
     };
 

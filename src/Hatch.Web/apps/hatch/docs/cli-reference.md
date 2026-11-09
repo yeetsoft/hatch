@@ -627,7 +627,7 @@ hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
 - A 2xx prints the body untouched, so it pipes to `jq`. A non-2xx exits 1 and
   prints the refusal, since here the refusal is the answer someone asked for.
   A 403 prints the API's own reason - a role-gate code, or a plain sentence -
-  except `key_not_accepted` and `scope_mismatch`, where it means the key is
+  except `key_not_accepted`, where it means the key is
   working and the route is not one a key may take.
 
 What a call writes is whatever the route does, and the actor is the key's name
@@ -835,8 +835,8 @@ hatch: 404 - no such issue or route: <path>
 A `403` prints the API's own reason where it has one - a role-gate code such
 as `hatch: 403 - not_admin`, or a plain sentence such as `hatch: 403 - only an
 owner or approver of AER may move work into "approved"`. The fixed sentence
-above is kept for the two codes that really are a scope refusal,
-`key_not_accepted` and `scope_mismatch`, where it replaces the code outright,
+above is kept for the one code that really is a key refusal,
+`key_not_accepted` (a key on a route that takes no key), where it replaces the code outright,
 and for a `403` with an empty body, where there is no reason in the answer to
 print - worded by whether a key was sent at all.
 
@@ -853,9 +853,9 @@ slowly is a different case. Every call gives up after two minutes, whatever
 The two `401`s tell apart a key that was sent and refused from no key sent at
 all to a Hatch that wants one: the first sends you to check the key, the second
 to `hatch config`. A `403` is the gate and not a fault - it names its own
-cause, which is the API's own reason rather than always a scope. [401 and
+cause, which is the API's own reason. [401 and
 403](people-roles-and-keys#401-and-403) has both from the other side, and
-[People, roles and keys](people-roles-and-keys) has what a key's scopes reach.
+[People, roles and keys](people-roles-and-keys) has what a key may and may not do.
 Anything else is `hatch: <code> - <body>`, with the body's own sentence where
 it has one.
 

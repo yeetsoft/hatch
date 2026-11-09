@@ -1861,6 +1861,75 @@ public class EfHatchPlaybookFile
 }
 
 /// <summary>
+/// What a repository's trunk holds at <see cref="DependencyDeclaration.Path"/>,
+/// as of the last time something checked - the parsed entries, or why there
+/// are none. One row per repository per trunk, keyed on <see cref="Canonical"/>
+/// and <see cref="Trunk"/>, the same shape <see cref="EfHatchPlaybookFile"/> is.
+/// </summary>
+[Table("DependencyFiles")]
+[Index(nameof(Canonical), nameof(Trunk), IsUnique = true)]
+public class EfHatchDependencyFile
+{
+    public const int MaxRemoteLength = EfHatchTrunkBuild.MaxRemoteLength;
+    public const int MaxRefLength = EfHatchTrunkBuild.MaxRefLength;
+    public const int MaxShaLength = EfHatchTrunkBuild.MaxShaLength;
+    public const int MaxHashLength = 64; // lower-hex SHA-256
+    public const int MaxUrlLength = EfHatchTrunkBuild.MaxCheckUrlLength;
+    public const int MaxProblemLength = 2000;
+
+    public const string ParsedState = "parsed";
+    public const string AbsentState = "absent";
+    public const string InvalidState = "invalid";
+    public static readonly string[] States = [ParsedState, AbsentState, InvalidState];
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    [MaxLength(MaxRemoteLength)] public required string Remote { get; set; }
+    [MaxLength(MaxRemoteLength)] public required string Canonical { get; set; }
+    [MaxLength(MaxRefLength)] public required string Trunk { get; set; }
+    [MaxLength(MaxShaLength)] public required string Sha { get; set; }
+
+    [MaxLength(10)] public required string State { get; set; } // one of States
+
+    [MaxLength(MaxHashLength)] public string? Hash { get; set; }
+
+    /// <summary>jsonb; see <see cref="ReadEntries"/>/<see cref="WriteEntries"/> below. Null when <see cref="State"/> is not <see cref="ParsedState"/>.</summary>
+    public string? Entries { get; set; }
+
+    [MaxLength(MaxProblemLength)] public string? Problem { get; set; }
+
+    [MaxLength(MaxShaLength)] public string? LastGoodSha { get; set; }
+    [MaxLength(MaxHashLength)] public string? LastGoodHash { get; set; }
+
+    [MaxLength(MaxUrlLength)] public string? Url { get; set; }
+
+    public required DateTimeOffset CheckedAt { get; set; }
+    [MaxLength(ClaimRequest.MaxRunnerLength)] public required string Runner { get; set; }
+    [MaxLength(Common.PersonName.MaxChars)] public required string CheckedBy { get; set; }
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static string? WriteEntries(IReadOnlyList<DeclaredDependency> entries) =>
+        entries.Count == 0 ? null : JsonSerializer.Serialize(entries, Json);
+
+    /// <summary>The stored list, or empty. A row that will not parse reads as empty rather than throwing the verdict away.</summary>
+    public static IReadOnlyList<DeclaredDependency> ReadEntries(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored)) return [];
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<DeclaredDependency>>(stored, Json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+}
+
+/// <summary>
 /// The verdict a check session wrote about an issue - pass or fail, and
 /// whatever findings came with it. One row per claim: a second write under the
 /// same <see cref="ClaimToken"/> replaces the first, the way a merge or build

@@ -235,7 +235,7 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   resolved active one, or `<none>`; the `runner:` line below and an unset
   `HATCH_WORKSPACE:` line name it in turn;
 - the runner's name, and where it came from;
-- who `/api/hatch/me` says the caller is - the key, its owner and its scopes,
+- who `/api/hatch/me` says the caller is - the key and its owner,
   or that calls go out as a named runner - or `<unreachable>` when there is
   no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
@@ -682,7 +682,7 @@ file:             <per-user config>/config
 checkout:         <checkout-a>/scripts/.env  (written by --here)
 profile:          <none>
 runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
@@ -711,7 +711,7 @@ file:             <per-user config>/config
 checkout:         <checkout-b>/scripts/.env  (written by --here)
 profile:          <profile-b>  (<per-user config>/profiles/<profile-b>)
 runner:           <checkout-b>  (<per-user config>/runners)  (profile: <profile-b>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
@@ -741,7 +741,7 @@ carries no layer. The key prints as its first twelve and last four
 characters, or `(set)` when it is short, never in full.
 
 The `identity:` line calls `/api/hatch/me` with whatever origin and key are
-folded above, and names the key, its owner and its scopes, or - for a runner
+folded above, and names the key and its owner, or - for a runner
 header instead of a key - that calls go out as its name. It prints
 `<unreachable>` without calling out at all when no origin is set, and the
 same when the call itself fails, so `--show` keeps working fully offline.
