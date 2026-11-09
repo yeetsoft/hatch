@@ -798,6 +798,13 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/backup/run` | **person** | Runs one backup attempt, capped at two minutes, and answers the same shape `GET /backup` does |
 | GET | `/me` | key | Who, or what, is calling - a browser or a key or a runner - for the nav strip |
 
+A runner is a key. `GET /runners` joins each key to its config - the
+`RunnerConfigs` row, by the key's id - and to its heartbeat row, by name
+(`Runner.JoinAsync`); a key that has never run is listed, not live. A heartbeat
+no key claims is still listed, with its key fields null. The heartbeat table is
+a bridge that HA-1937 retires. `?live=true` keeps the entries whose heartbeat
+is not past `Runners.DropBefore`.
+
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
 clones, `mine`, `standing`, where it runs, which agent spawned it, and
@@ -1132,7 +1139,7 @@ a read with no body to reject.
 A key reaches everything under `/api/hatch` **less the
 routes that take a person only**. A key that calls one of those gets a
 `403`, and that is the gate working as designed, not a misconfiguration -
-[People, roles and keys](people-roles-and-keys#api-keys) says the same thing
+[People, roles and keys](people-roles-and-keys#runners-and-their-keys) says the same thing
 in prose, grouped by what the route does; this list is the route-by-route
 version it already points to, and should not repeat or contradict it.
 

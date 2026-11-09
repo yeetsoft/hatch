@@ -262,6 +262,6 @@ That refusal is deliberate. An agent that could widen its own instructions and
 its own budget is a loop with no end. A session that thinks a row is wrong
 proposes the change instead, through [proposed changes](#proposed-changes) —
 `POST /api/hatch/playbook-proposals` — and says so on the ticket. What a
-key may and may not do is in [people, roles and keys](people-roles-and-keys#api-keys),
+key may and may not do is in [people, roles and keys](people-roles-and-keys#runners-and-their-keys),
 and [what a session is told](what-a-session-is-told) shows the same rule
 from the prompt's side.
