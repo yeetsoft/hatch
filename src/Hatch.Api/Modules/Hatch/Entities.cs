@@ -3641,6 +3641,12 @@ public class EfHatchRunnerSession
     /// <summary>Whether this session refused dangerous work, as <see cref="EfHatchRunner.RefusesDangerous"/>.</summary>
     public bool? RefusesDangerous { get; set; }
 
+    /// <summary>The models this session says it can run, newline-joined in the order given, as <see cref="EfHatchRunner.Models"/>.</summary>
+    public string? Models { get; set; }
+
+    /// <summary>The dependencies this session says it has, newline-joined in the order given, as <see cref="EfHatchRunner.Has"/>.</summary>
+    public string? Has { get; set; }
+
     /// <summary><see cref="RunnerOrderKinds.Work"/> or <see cref="RunnerOrderKinds.Pass"/>, as <see cref="EfHatchRunner.OrderKind"/>.</summary>
     [MaxLength(RunnerOrderKinds.MaxLength)]
     public string? OrderKind { get; set; }

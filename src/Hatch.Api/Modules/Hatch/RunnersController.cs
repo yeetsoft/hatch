@@ -221,6 +221,12 @@ public class RunnersController(
             yours: Yours(ownerId, wallEnabled, callerPerson),
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
 
+        // A beat-less key with no legacy row still has what its live loop
+        // sessions declared, the same union RunnerDeclaration.OfAsync folds.
+        var loop = runner.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList() ?? [];
+        if (dto.Models.Count == 0) dto = dto with { Models = RunnerDeclaration.Declared(null, loop.Select(s => s.Models)) };
+        if (dto.Has.Count == 0) dto = dto with { Has = RunnerDeclaration.Declared(null, loop.Select(s => s.Has)) };
+
         if (runner.Sessions is not { Count: > 0 } own) return dto;
 
         return dto with
@@ -281,10 +287,9 @@ public class RunnersController(
     /// longer heartbeat through this verb; it is still visible and still
     /// controllable by every other route.</para>
     ///
-    /// <para><c>tags</c>, <c>models</c> and <c>has</c> on the body are
-    /// neither validated nor stored here: a session has no column for any of
-    /// them, and they are silently dropped, the same as an older Hatch
-    /// ignoring a field it has never heard of.</para>
+    /// <para><c>tags</c> on the body is neither validated nor stored here: a
+    /// session has no column for it, and it is silently dropped, the same as
+    /// an older Hatch ignoring a field it has never heard of.</para>
     /// </remarks>
     [HttpPost("sessions")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
@@ -292,6 +297,9 @@ public class RunnersController(
     {
         if (await caller.ApiKeyAsync(ct) is not { } key)
             return StatusCode(403, "a session heartbeat is the bearer key's, not a name or a header");
+
+        if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
+        if (DependencySet.Normalise(request.Has, out var normalisedHas) is { } hasRefusal) return BadRequest(hasRefusal);
 
         var kind = request.Kind?.Trim().ToLowerInvariant() switch
         {
@@ -316,7 +324,7 @@ public class RunnersController(
         EfHatchRunnerSession session;
         if (live is null)
         {
-            session = SeedSession(key.Id, kind, where, line, request, now);
+            session = SeedSession(key.Id, kind, where, line, request, now, Joined(normalisedModels), Joined(normalisedHas));
             db.RunnerSessions.Add(session);
             await db.SaveChangesAsync(ct);
             await sessions.TrimHistoryAsync(db, key.Id, ct);
@@ -324,7 +332,7 @@ public class RunnersController(
         else
         {
             session = live;
-            TouchSession(session, kind, line, now, request);
+            TouchSession(session, kind, line, now, request, Joined(normalisedModels), Joined(normalisedHas));
             await db.SaveChangesAsync(ct);
         }
 
@@ -1360,11 +1368,12 @@ public class RunnersController(
     /// <summary>
     /// A session that has never run before, seeded with what the process
     /// started with - <see cref="Seed"/>'s own field list, minus
-    /// <c>Models</c>, <c>Has</c>, <c>Tags</c> and <c>ForPersonId</c>, none of
-    /// which a session has a column for.
+    /// <c>Tags</c> and <c>ForPersonId</c>, none of which a session has a
+    /// column for.
     /// </summary>
     private static EfHatchRunnerSession SeedSession(
-        Guid apiKeyId, string kind, string? where, string? line, RunnerHeartbeatRequest request, DateTimeOffset now)
+        Guid apiKeyId, string kind, string? where, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
+        string? models, string? has)
     {
         var keys = ProjectKeys(request.Projects);
 
@@ -1409,6 +1418,8 @@ public class RunnersController(
             ThrottledUntil = request.ThrottledUntil,
             Usage = Utilization.Serialise(request.Usage),
             UsageReadAt = request.UsageReadAt,
+            Models = models,
+            Has = has,
         };
     }
 
@@ -1416,13 +1427,14 @@ public class RunnersController(
     /// A session that already exists: last seen, line, and the facts about
     /// what it served - <see cref="Touch"/>'s own field list, minus
     /// <c>Kind</c> (a <c>once</c> beat must not turn a loop session into a
-    /// <c>once</c> one), <c>Tags</c>, <c>Models</c>, <c>Has</c>,
-    /// <c>ForPersonId</c>, the <c>Fresh</c> bounds block and the order
-    /// read-and-clear - none of which a session answers to, or which this
-    /// route never reads or writes (<c>OrderKind</c>/<c>OrderedAt</c>).
+    /// <c>once</c> one), <c>Tags</c>, <c>ForPersonId</c>, the <c>Fresh</c>
+    /// bounds block and the order read-and-clear - none of which a session
+    /// answers to, or which this route never reads or writes
+    /// (<c>OrderKind</c>/<c>OrderedAt</c>).
     /// </summary>
     private static void TouchSession(
-        EfHatchRunnerSession session, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request)
+        EfHatchRunnerSession session, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
+        string? models, string? has)
     {
         session.LastSeenAt = now;
 
@@ -1455,6 +1467,10 @@ public class RunnersController(
         if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        // An empty list clears it: Joined answers null for one, the same as Touch.
+        if (request.Models is not null) session.Models = models;
+        if (request.Has is not null) session.Has = has;
 
         // A fact about the process, like Where and Remotes - the same rule Touch draws for a beat.
         if (request.RefusesDangerous is not null) session.RefusesDangerous = request.RefusesDangerous;
