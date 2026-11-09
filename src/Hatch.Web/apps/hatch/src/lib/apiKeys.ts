@@ -6,10 +6,38 @@
    page remembers to clear - is what makes "the list never carries it" a thing
    a test can pin. */
 
-import type { ApiKey, ApiKeyMinted } from '../types';
+import type { ApiKey, ApiKeyMinted, Runner, RunnerMinted } from '../types';
 
 /** Mirrors EfApiKey.MaxNameLength. */
 export const MAX_NAME_LENGTH = 120;
+
+/** A runner row as the keys page shows it, or null for a heartbeat no key
+    claims - this page only lists keys, so that row is dropped rather than
+    drawn. */
+export function runnerAsKey(r: Runner): ApiKey | null {
+  if (r.apiKeyId === null || r.apiKeyId === undefined) return null;
+  return {
+    id: r.apiKeyId,
+    name: r.name,
+    prefix: r.prefix ?? '',
+    createdAt: r.createdAt ?? r.firstSeenAt,
+    lastUsedAt: r.lastUsedAt ?? null,
+    revokedAt: r.revokedAt ?? null,
+    owner: r.ownerPersonId && r.for ? { id: r.ownerPersonId, name: r.for } : null,
+  };
+}
+
+/** Every runner row that is a key, in the order the server sent them. */
+export function runnersAsKeys(rows: Runner[]): ApiKey[] {
+  return rows.flatMap((r) => runnerAsKey(r) ?? []);
+}
+
+/** A freshly minted runner, as the keys page's secret panel wants it. */
+export function mintedAsKey(m: RunnerMinted): ApiKeyMinted {
+  const key = runnerAsKey(m.runner);
+  if (key === null) throw new Error('a freshly minted runner has no key');
+  return { key, secret: m.secret };
+}
 
 /** Live keys and revoked ones, each in the order the server sent them. */
 export function partitionKeys(keys: ApiKey[]): { live: ApiKey[]; revoked: ApiKey[] } {

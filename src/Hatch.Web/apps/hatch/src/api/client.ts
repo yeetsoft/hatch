@@ -1,10 +1,9 @@
+import { mintedAsKey, runnersAsKeys } from '../lib/apiKeys';
 import { HttpError, refusalSentence } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
   ActivityPage,
-  ApiKey,
   ApiKeyCreateRequest,
-  ApiKeyMinted,
   AssigneeDirectory,
   AssigneeRequest,
   Attachment,
@@ -75,6 +74,7 @@ import type {
   Revision,
   Runner,
   RunnerDownloads,
+  RunnerMinted,
   RunnerOrderRequest,
   RunnerPatchRequest,
   SearchResult,
@@ -639,21 +639,23 @@ export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'PO
 
 // ---- API keys ----
 //
-// Admin only, every one: a person who is not an Admin gets a 403 `not_admin`,
-// and a key gets one too - a key cannot mint a key.
+// Every key is a runner now, so these read and write /api/hatch/runners and
+// map the wire shape back to the ApiKey the page already knows. Admin only,
+// every one: a person who is not an Admin gets a 403 `not_admin`, and a key
+// gets one too - a key cannot mint a key.
 
-export const getApiKeys = () => fetchJson<ApiKey[]>('/api/auth/keys');
+export const getApiKeys = () => fetchJson<Runner[]>('/api/hatch/runners').then(runnersAsKeys);
 
 /** The response carries the secret, once. Nothing else ever will. */
 export const mintApiKey = (request: ApiKeyCreateRequest) =>
-  fetchJson<ApiKeyMinted>('/api/auth/keys', { method: 'POST', ...asJson(request) });
+  fetchJson<RunnerMinted>('/api/hatch/runners', { method: 'POST', ...asJson(request) }).then(mintedAsKey);
 
-export const revokeApiKey = (id: string) =>
-  fetchJson<void>(`/api/auth/keys/${seg(id)}/revoke`, { method: 'POST' });
+export const revokeApiKey = (name: string) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/revoke`, { method: 'POST' });
 
 /** Changes or clears whose tickets a key's `--mine` reaches. Admin only, like the rest of this file. */
-export const setApiKeyOwner = (id: string, personId: string | null) =>
-  fetchJson<void>(`/api/auth/keys/${seg(id)}/owner`, { method: 'PUT', ...asJson({ personId }) });
+export const setApiKeyOwner = (name: string, personId: string | null) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/owner`, { method: 'PUT', ...asJson({ personId }) });
 
 // ---- Settings ----
 //
