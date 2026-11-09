@@ -3481,7 +3481,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
-| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the claim's own runner row only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
+| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the holding session, or to the one runner row the beat kept live (never to every row at the checkout), only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
@@ -3572,12 +3572,15 @@ reading, carried one hop further. The runner reports it on the heartbeat it
 already sends — `Usage` and `UsageReadAt` beside `Exhausted` in
 `RunnerHeartbeatRequest` — and, while an increment runs, on the claim
 heartbeat too (`usage` and `usageReadAt` on `ClaimHeartbeatRequest`, written to
-the claim's own runner row only when the row holds nothing newer), a third
+the holding session, or the one runner row the beat kept live, only when that
+record holds nothing newer), a third
 carrier beside the `/usage` probe and the stream. Hatch keeps it against the
 person the calling key belongs to, the same resolution `--mine` already takes
 (`IActorDirectory.PrincipalAsync`). Bob's runner's numbers never appear under
-Alice's name, because each is kept on Bob's and Alice's own rows and the
-endpoint only ever answers the caller's own.
+Alice's name, because each is kept on Bob's and Alice's own rows and sessions
+and the endpoint only ever answers the caller's own: it reads the person's
+runner rows and the sessions of the keys they own, and the freshest whole
+reading wins.
 
 This is HA-120's answered question — *session stream* over a Hatch-held
 battery — applied to the nav: it costs a number that only moves while a
@@ -5549,15 +5552,23 @@ has been, and it is also what makes the same runner's second heartbeat, before
 it releases, find nobody left to tell it — its own event is already on the
 row, so it answers a plain `204` the second time, having already reacted once.
 
-**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt` and
-nothing else, so the claim heartbeat and the claim release (the runner's own
-lane, not the operator's tokenless clobber) both touch the holding runner's
-row directly, the moment either happens — an unconditional `ExecuteUpdateAsync`
-against `Runners`, matching zero rows harmlessly where a heartbeat races the
-runner's own first `POST /api/hatch/runners/{name}`. Without this, a runner
-that has just released would read as *gone* rather than *free* for as long as
-its row's own last beat was stale, which is exactly the moment rule 5 needs to
-answer correctly.
+**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt`, so the
+claim heartbeat and the claim release (the runner's own lane, not the
+operator's tokenless clobber) both mark the holding loop as heard from, the
+moment either happens, in exactly one place — the caller's own record, by an
+unconditional `ExecuteUpdateAsync`. Under a key that is the live (not ended)
+session of that key at the claim's checkout, which is what a current CLI beats.
+Failing that it is the runner row named by `ClaimedBy` (the wall off, where the
+holder is the runner's own name). Failing both, for an older CLI beating
+`POST /api/hatch/runners/{name}` under a key named otherwise, it is the single
+row at the checkout that was live when the claim was taken; a row under a
+superseded name was already gone by then and is never revived, and a checkout
+with a live session never reaches this step. A heartbeat that races the
+runner's own first beat matches nothing, harmlessly. The beat's usage reading
+goes to that same record and no other. (Rule 5 itself still reads runner rows
+alone; sessions are a separate gap.) Without this, a runner that has just
+released would read as *gone* rather than *free* for as long as its last beat
+was stale, which is exactly the moment rule 5 needs to answer correctly.
 
 ### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 

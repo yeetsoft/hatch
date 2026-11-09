@@ -476,7 +476,7 @@ public sealed class Dispatch(
 
     /// <summary>
     /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
-    /// does - the freshest whole reading across its runners - and judged twice:
+    /// does - the freshest whole reading across its runners and sessions - and judged twice:
     /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
     /// <see cref="ScanAsync"/>, only when some candidate actually reads at
     /// economy or low level, and read once regardless of how many candidates
@@ -492,11 +492,7 @@ public sealed class Dispatch(
             return new PaceReadings(noAccount, noAccountLow);
         }
 
-        var runners = await db.Runners.AsNoTracking()
-            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
-            .ToListAsync(ct);
-
-        var reading = Utilization.Of(runners, time.GetUtcNow());
+        var reading = await Utilization.ReadAsync(db, keys, principal.Id, time.GetUtcNow(), ct);
         if (reading is null)
         {
             var noReading = EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one");

@@ -10,7 +10,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// My own Claude headroom - the battery in the nav strip.
 ///
 /// Not the account's own endpoint, proxied: the reading is whatever this
-/// caller's own runners last reported on their heartbeat, off the session's own
+/// caller's own runners and sessions last reported on their heartbeat, off the session's own
 /// stream (see <see cref="RunnersController"/> and HA-134's decisions). What
 /// crosses the wire is Hatch's own vocabulary - <c>window</c>, <c>label</c>,
 /// <c>tone</c> - and nothing shaped like the account it came from.
@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 [ApiController]
 [Route("api/hatch/utilization")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
-public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time) : ControllerBase
+public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time, IAuthService keys) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<UtilizationReading>> Get(CancellationToken ct)
@@ -34,11 +34,7 @@ public class UtilizationController(HatchContext db, IActorDirectory actors, Time
         var principal = await actors.PrincipalAsync(ct);
         if (principal is null) return NoContent();
 
-        var runners = await db.Runners.AsNoTracking()
-            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
-            .ToListAsync(ct);
-
-        var reading = Utilization.Of(runners, time.GetUtcNow());
+        var reading = await Utilization.ReadAsync(db, keys, principal.Id, time.GetUtcNow(), ct);
         return reading is null ? NoContent() : reading;
     }
 }
