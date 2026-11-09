@@ -1570,6 +1570,71 @@ public class IssueClaimTests
         Assert.Equal(7, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Percent);
     }
 
+    // ---- A touch names the holder by ClaimedBy, not by Where ----
+
+    private const string SharedWhere = "somewhere:/checkouts/shared";
+
+    private static EfApiKey LiveLoopKey() => new()
+    {
+        Name = "live-loop",
+        Prefix = "hatch_ak_x",
+        Hash = [1],
+        CreatedAt = Now,
+    };
+
+    [SkippableFact]
+    public async Task ABeat_BumpsOnlyTheRowNamedByClaimedBy()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = LiveLoopKey();
+        var ghostSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("ghost", ghostSeenAt, where: SharedWhere);
+        await h.AddRunnerAsync("live-loop", Now, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.Equal(Now.AddSeconds(10), (await h.RunnerAsync("live-loop")).LastSeenAt);
+        Assert.Equal(ghostSeenAt, (await h.RunnerAsync("ghost")).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithTheToken_BumpsOnlyTheRowNamedByClaimedBy()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = LiveLoopKey();
+        var ghostSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("ghost", ghostSeenAt, where: SharedWhere);
+        await h.AddRunnerAsync("live-loop", Now, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.Claims.ReleaseClaim(issue, token, default);
+
+        Assert.Equal(Now.AddSeconds(10), (await h.RunnerAsync("live-loop")).LastSeenAt);
+        Assert.Equal(ghostSeenAt, (await h.RunnerAsync("ghost")).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task ABeatWhoseClaimedByNamesNoRow_TouchesNothing()
+    {
+        await using var h = await NewAsync();
+        var seenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync(Runner, seenAt, where: Runner);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.Equal(seenAt, (await h.RunnerAsync(Runner)).LastSeenAt);
+    }
+
     [SkippableFact]
     public async Task ABeatWithNoUsableReading_LeavesTheRowsReadingAsSeeded()
     {
@@ -1845,15 +1910,16 @@ public class IssueClaimTests
         /// </summary>
         public async Task AddRunnerAsync(
             string name, DateTimeOffset lastSeenAt, Guid? forPersonId = null,
-            DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null)
+            DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null,
+            string? where = null, DateTimeOffset? firstSeenAt = null)
         {
             var db = Connect();
             db.Runners.Add(new EfHatchRunner
             {
                 Name = name,
-                Where = name,
+                Where = where ?? name,
                 Kind = EfHatchRunner.LoopKind,
-                FirstSeenAt = lastSeenAt,
+                FirstSeenAt = firstSeenAt ?? lastSeenAt,
                 LastSeenAt = lastSeenAt,
                 State = EfHatchRunner.Running,
                 ForPersonId = forPersonId,
