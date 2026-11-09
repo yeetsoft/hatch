@@ -667,6 +667,8 @@ internal partial class Program
         "                     unset, takes it. Seeds the runner's row once, then the board owns it",
         "  HATCH_MODELS       comma-separated models this runner advertises; unset means the",
         "                     agent's default",
+        "  HATCH_HAS          comma-separated dependencies (id or id@version) this machine has that",
+        "                     detection cannot see; adds to what detection finds, never removes",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",
