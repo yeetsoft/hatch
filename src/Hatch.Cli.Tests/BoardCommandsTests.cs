@@ -379,6 +379,52 @@ public sealed class BoardCommandsTests
     }
 
     /// <summary>
+    /// The model fold is a sentence the server writes too, and prints the same way.
+    /// </summary>
+    [Fact]
+    public async Task A_row_folded_for_its_model_prints_the_servers_sentence_unchanged()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-4 in Todo runs on fable - this runner's claude does not offer it";
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        {
+            new QueueEntryDto(
+                Fixtures.Issue("AER-4", type: "task"), Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(4, "In Review"), sentence, BlockedKind: BlockedKinds.Other),
+        });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Equal($"AER-4  [task]  In Progress  {sentence}", h.Said);
+    }
+
+    /// <summary>
+    /// A bare board declares nothing, and one given a source sends a
+    /// <c>model=</c> each, read afresh on every call, then its agent.
+    /// </summary>
+    [Fact]
+    public async Task The_board_declares_models_and_agent_only_where_given_them_and_reads_them_afresh()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+        IReadOnlyList<string> offered = ["haiku", "sonnet"];
+        h.Board.Models = () => offered;
+        h.Board.Agent = "claude";
+        await h.Board.QueueAsync([], null, 0, default);
+        offered = ["haiku"];
+        await h.Board.QueueAsync([], null, 0, default);
+
+        var reads = h.Wire.To("GET", "/api/hatch/work/queue");
+        Assert.DoesNotContain("model=", reads[0].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("agent=", reads[0].Query, StringComparison.Ordinal);
+        Assert.Contains("model=haiku&model=sonnet&agent=claude", reads[1].Query, StringComparison.Ordinal);
+        Assert.Contains("model=haiku&agent=claude", reads[2].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("model=sonnet", reads[2].Query, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The project fold is a sentence the server writes too, and prints the same way.
     /// </summary>
     [Fact]

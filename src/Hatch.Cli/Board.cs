@@ -21,6 +21,22 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
 
     /// <summary>
+    /// The models this runner can spawn, read afresh at each dispatch read and
+    /// sent as one <c>model=</c> each, so the board folds a move whose model the
+    /// runner does not offer. A delegate rather than a list because the board is
+    /// built before the adapter, and what the runner offers shrinks mid-run as a
+    /// model is narrowed; a list fixed at construction would go stale. Empty
+    /// sends none, and the board then judges the agent alone.
+    /// </summary>
+    public Func<IReadOnlyList<string>> Models { get; set; } = () => [];
+
+    /// <summary>
+    /// The agent this runner spawns, sent as <c>agent=</c> on every dispatch read
+    /// so the board folds a move that runs on another one; null sends nothing.
+    /// </summary>
+    public string? Agent { get; set; }
+
+    /// <summary>
     /// Whether this runner sends <c>dangerous=false</c> on every dispatch read, so the
     /// board leaves work flagged dangerous for a runner that takes it - and it follows
     /// the board's own answer once a heartbeat gives one.
@@ -234,6 +250,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         if (heldToken is { } token) parts.Add($"heldToken={token}");
         parts.AddRange(DeclareParts(checkouts, clones));
         parts.AddRange(TagParts());
+        parts.AddRange(ModelParts());
         parts.AddRange(DangerousParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
@@ -387,12 +404,14 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
     /// per checkout that has one, and <c>standing=true</c> where one of them is
     /// the process's own, then a repeatable <c>tag=</c> per tag this runner
-    /// carries, then a repeatable <c>project=</c> per project it is bound to.
+    /// carries, then a repeatable <c>model=</c> per model it offers and its
+    /// <c>agent=</c>, then a repeatable <c>project=</c> per project it is bound to.
     /// Prefixed with <c>&amp;</c> for a query that already has something in
     /// it, which every caller's does.
     /// </summary>
     private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
         DeclareParts(checkouts, clones).Concat(TagParts())
+            .Concat(ModelParts())
             .Concat(DangerousParts())
             .Concat(ProjectParts())
             .ToList() is { Count: > 0 } parts
@@ -400,6 +419,12 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
             : "";
 
     private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
+
+    private IEnumerable<string> ModelParts()
+    {
+        foreach (var model in Models()) yield return $"model={Uri.EscapeDataString(model)}";
+        if (!string.IsNullOrWhiteSpace(Agent)) yield return $"agent={Uri.EscapeDataString(Agent)}";
+    }
 
     private IEnumerable<string> DangerousParts() => RefusesDangerous ? ["dangerous=false"] : [];
 

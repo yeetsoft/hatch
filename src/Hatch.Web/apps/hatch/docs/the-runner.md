@@ -351,6 +351,15 @@ row's models, rather than none, which would leave the last list standing.
 the row carries whatever the last beat said, so changing `HATCH_MODELS` or
 pulling a model on an ollama server shows on the next heartbeat. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
+
+**The models and the agent ride on every dispatch read too.** `hatch queue`,
+`hatch next`, `hatch work KEY` and the loop's own pass send one `model=` per
+model the runner offers - less any narrowed, read afresh each time - and
+`agent=` for its agent; a hop sends neither. A move whose model the runner
+does not offer is folded for it, with the board's own sentence: *"HA-12 in
+Breakdown runs on fable - this runner's claude does not offer it"*. So a runner
+never claims a ticket only to refuse it. A runner that offers no list, or has
+narrowed every model, sends no `model=` and the board judges the agent alone.
 `hatch runners` closes a row with `  models haiku sonnet`. `hatch runners`
 itself closes a row with `  has dotnet 10.0.100, node 22.11.0` the same way.
 The Runners page draws the dependencies a runner has the same way, as `has
