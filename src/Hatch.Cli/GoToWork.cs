@@ -1780,7 +1780,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
                 Where: runtime.Where,
-                // A once beat shares its name with the loop's row, and a fresh
+                // A once beat joins the session at the same `where`, and a fresh
                 // tally's zeros would blank the loop's totals, so it names host only.
                 Runs: once ? null : tally.Runs,
                 Spent: once ? null : tally.Spent,
