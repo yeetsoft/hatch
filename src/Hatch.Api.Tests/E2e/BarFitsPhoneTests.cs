@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.Playwright;
 using System.Net.Http.Json;
@@ -187,11 +186,10 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
         return found;
     }
 
-    /// <summary>A project and an issue under it, filed the way any caller files them with the wall off: naming itself with the runner header.</summary>
+    /// <summary>A project and an issue under it, filed the way any caller files them with the wall off: the local person may file everything this test files.</summary>
     private static async Task<string> FileAnIssueAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(

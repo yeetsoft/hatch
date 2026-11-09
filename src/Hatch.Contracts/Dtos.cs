@@ -4443,8 +4443,7 @@ public record CredentialDto(string ProtectedToken);
 /// <param name="Kind">
 /// <c>person</c> (a grant holds a person), <c>local</c> (the wall is off and
 /// the machine's own person is speaking), <c>none</c> (the wall is off and
-/// nobody local answered either), <c>key</c> (an API key), or <c>runner</c>
-/// (a wall-off runner header).
+/// nobody local answered either), or <c>key</c> (an API key).
 /// </param>
 /// <param name="Name">What events written from this caller will say.</param>
 /// <param name="Role">

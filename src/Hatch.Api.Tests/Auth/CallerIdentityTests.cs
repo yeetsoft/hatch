@@ -211,21 +211,6 @@ public class CallerIdentityTests
         Assert.Equal(CallerIdentity.Unattributed, await identity.ActorNameAsync(default));
     }
 
-    /// <summary>The runner names itself, so enrolling people takes nothing from it.</summary>
-    [Fact]
-    public async Task WithAPersonEnrolled_TheRunnerHeaderStillNamesAProgram()
-    {
-        var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
-        var auth = new StubAuthService { AnyPerson = true };
-
-        var identity = NewIdentity(context, auth);
-
-        Assert.Equal("host:/src", await identity.ActorNameAsync(default));
-        Assert.True(await identity.IsProgramAsync(default));
-        Assert.Equal(0, auth.AnyPersonAsked);
-    }
-
     /// <summary>With the wall up neither local branch is reached, so the People table is never asked.</summary>
     [Fact]
     public async Task WithTheWallUp_NobodyIsAskedWhetherAnyPersonIsEnrolled()
@@ -259,27 +244,26 @@ public class CallerIdentityTests
     }
 
     /// <summary>
-    /// A process that went to the trouble of naming itself is telling the truth
-    /// about not being the person at the keyboard - so the header wins, and the
-    /// caller reads as a program.
+    /// An old header a caller might still send means nothing any more: with
+    /// the wall off and no key, the caller is still the local person, and
+    /// never a program.
     /// </summary>
     [Fact]
-    public async Task WithTheWallOff_TheRunnerHeaderNamesAProgram()
+    public async Task WithTheWallOff_AStrayHeaderIsInertAndTheLocalPersonAnswers()
     {
         var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
+        context.Request.Headers["X-An-Old-Header-A-Caller-Might-Still-Send"] = "host:/src";
 
         var identity = NewIdentity(context, new StubAuthService());
         var local = await identity.LocalAsync(default);
 
-        Assert.Equal(new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src"), local);
-        Assert.Equal("host:/src", await identity.ActorNameAsync(default));
-        Assert.True(await identity.IsProgramAsync(default));
+        Assert.Equal(ActorKind.Person, local?.Kind);
+        Assert.False(await identity.IsProgramAsync(default));
     }
 
-    /// <summary>A key is the more specific answer, and it is a row - the header does not get to shadow one.</summary>
+    /// <summary>A bare bearer key is a program - the only lane left that can be one.</summary>
     [Fact]
-    public async Task ABearerKey_OutranksTheRunnerHeader()
+    public async Task ABearerKey_MakesTheCallerAProgram()
     {
         var key = new EfApiKey
         {
@@ -291,7 +275,6 @@ public class CallerIdentityTests
         };
 
         var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
         context.SetApiKey(key);
 
         var identity = NewIdentity(context, new StubAuthService());
@@ -303,7 +286,7 @@ public class CallerIdentityTests
 
     /// <summary>A browser signed in as somebody is who that request is from, wall or no wall.</summary>
     [Fact]
-    public async Task AGrantsPerson_OutranksBoth()
+    public async Task AGrantsPerson_OutranksTheLocalLane()
     {
         var person = new EfPerson
         {
@@ -316,7 +299,6 @@ public class CallerIdentityTests
         grant.Person = person;
 
         var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
         context.SetAuthGrant(grant);
 
         var identity = NewIdentity(context, new StubAuthService());
@@ -326,16 +308,21 @@ public class CallerIdentityTests
         Assert.False(await identity.IsProgramAsync(default));
     }
 
-    /// <summary>
-    /// The braces to AuthMiddleware's belt. The middleware strips the header
-    /// wherever the wall is up; this refuses to read it even when something
-    /// else put it there, so neither alone is load-bearing.
-    /// </summary>
+    /// <summary>No existing test combines the wall being up with a bearer key; this is it.</summary>
     [Fact]
-    public async Task WithTheWallOn_TheLaneIsClosedAndTheHeaderIsIgnored()
+    public async Task WithTheWallOn_ABearerKeyIsStillAProgram()
     {
+        var key = new EfApiKey
+        {
+            Id = Guid.NewGuid(),
+            Name = "Claude",
+            Prefix = "hatch_ak_abc",
+            Hash = AuthTokens.Hash("hatch_ak_secret"),
+            CreatedAt = DateTimeOffset.UnixEpoch,
+        };
+
         var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
+        context.SetApiKey(key);
 
         var settings = new CountingSiteSettings();
         var identity = NewIdentity(
@@ -344,26 +331,11 @@ public class CallerIdentityTests
             new AuthOptions { Enabled = true, CookieName = "hatch_grant", LocalPerson = { Name = "Ada" } },
             settings);
 
-        Assert.Null(await identity.LocalAsync(default));
-        Assert.Equal(CallerIdentity.Unattributed, await identity.ActorNameAsync(default));
-        Assert.False(await identity.IsProgramAsync(default));
+        Assert.True(await identity.IsProgramAsync(default));
 
         // Not a micro-optimization: a settings read on the hot path of every
         // request under a wall would be a query answering a question that mode
         // does not ask.
-        Assert.Equal(0, settings.Reads);
-    }
-
-    /// <summary>A runner costs no query - the settings read is on the person branch alone.</summary>
-    [Fact]
-    public async Task ARunner_CostsNoSettingsRead()
-    {
-        var context = NewContext();
-        context.Request.Headers[LocalCaller.RunnerHeader] = "host:/src";
-
-        var settings = new CountingSiteSettings();
-        await NewIdentity(context, new StubAuthService(), null, settings).LocalAsync(default);
-
         Assert.Equal(0, settings.Reads);
     }
 

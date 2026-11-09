@@ -83,13 +83,6 @@ public class LocalCallerTests
         Assert.Equal(expected, LocalCaller.PersonSpeaks(signInConfigured, anyPersonEnrolled));
     }
 
-    [Fact]
-    public void ARunnersId_IsTheSameEveryTimeAndDifferentPerName()
-    {
-        Assert.Equal(LocalCaller.RunnerIdFor("host:/src"), LocalCaller.RunnerIdFor("host:/src"));
-        Assert.NotEqual(LocalCaller.RunnerIdFor("host:/src"), LocalCaller.RunnerIdFor("host:/other"));
-    }
-
     /// <summary>
     /// The one thing about the local person that is not allowed to move.
     /// Renaming yourself must not orphan every issue you were assigned, so the
@@ -100,36 +93,5 @@ public class LocalCallerTests
     public void TheLocalPersonsId_IsFixedAndNotDerivedFromTheirName()
     {
         Assert.Equal(new Guid("10ca1000-0000-4000-8000-000000000001"), LocalCaller.PersonId);
-        Assert.NotEqual(LocalCaller.PersonId, LocalCaller.RunnerIdFor(LocalCaller.DefaultName));
-    }
-
-    [Fact]
-    public void ARunnerName_IsSanitizedButNotHeldToThePersonRule()
-    {
-        // A path is a legitimate name for a program and is not a first name, so
-        // TryNormalize's grapheme rule is deliberately not applied here.
-        var deep = "host:/Users/somebody/code/a/rather/deeply/nested/checkout/of/this/repository/indeed";
-        Assert.Equal(deep, LocalCaller.RunnerName(deep));
-
-        Assert.Equal("host:/src", LocalCaller.RunnerName("  host:/src\n"));
-        Assert.Equal("host:/src", LocalCaller.RunnerName("host:‮/src"));
-    }
-
-    [Fact]
-    public void ARunnerThatSaidNothingUsable_HasNoName()
-    {
-        Assert.Null(LocalCaller.RunnerName(null));
-        Assert.Null(LocalCaller.RunnerName(""));
-        Assert.Null(LocalCaller.RunnerName("   "));
-        Assert.Null(LocalCaller.RunnerName("‮​"));
-    }
-
-    /// <summary>The column is finite even for a runner that names itself with a novel.</summary>
-    [Fact]
-    public void AnOverLongRunnerName_IsClippedToTheColumn()
-    {
-        var clipped = LocalCaller.RunnerName(new string('x', PersonName.MaxChars + 50));
-
-        Assert.Equal(PersonName.MaxChars, clipped?.Length);
     }
 }

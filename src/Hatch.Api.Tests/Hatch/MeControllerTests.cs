@@ -137,18 +137,21 @@ public class MeControllerTests
         Assert.True(Value(await controller.GetMe(default)).Configured);
     }
 
-    /// <summary>A runner is a program that named itself, so it is answered by that name, with no owner to report.</summary>
+    /// <summary>
+    /// A Key-kind Local is unreachable now that LocalAsync never answers one,
+    /// but MeController shouldn't special-case it either way - it matches
+    /// neither the key branch nor <c>{Kind: ActorKind.Person}</c>, so it falls
+    /// through to the same no-content answer as an unidentified browser's own
+    /// null.
+    /// </summary>
     [Fact]
-    public async Task ARunner_IsAnsweredByItsOwnName()
+    public async Task ALocalActorThatIsNotAPerson_IsNoContent()
     {
-        var runner = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+        var notAPerson = new Actor(ActorKind.Key, Guid.NewGuid(), "host:/src");
 
-        var me = Value(await NewController(runner).GetMe(default));
+        var result = await NewController(notAPerson).GetMe(default);
 
-        Assert.Equal("runner", me.Kind);
-        Assert.Equal("host:/src", me.Name);
-        Assert.Null(me.Role);
-        Assert.Null(me.Owner);
+        Assert.IsType<NoContentResult>(result.Result);
     }
 
     private static MeController NewController(

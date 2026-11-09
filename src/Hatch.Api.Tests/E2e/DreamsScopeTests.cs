@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -156,11 +155,10 @@ public class DreamsScopeTests(ITestOutputHelper output)
         return read;
     }
 
-    /// <summary>Three projects, filed the way any caller files them with the wall off - naming itself with the runner header - a dream leaning toward each, and one toward none. Returns each project's id as the facet's option value, by key.</summary>
+    /// <summary>Three projects, filed the way any caller files them with the wall off - the local person may file everything this test files - a dream leaning toward each, and one toward none. Returns each project's id as the facet's option value, by key.</summary>
     private static async Task<Dictionary<string, string>> FileDreamsAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         var ids = new Dictionary<string, string>();
         foreach (var key in Keys)

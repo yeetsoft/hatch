@@ -400,7 +400,7 @@ public class AssigneeControllerTests
     {
         var h = await NewAsync();
         h.Actors.AddPerson("Ada", LocalCaller.PersonId);
-        h.Actors.Me = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+        h.Actors.Me = new Actor(ActorKind.Key, Guid.NewGuid(), "host:/src");
 
         Assert.Null(Value(await h.Assignee.GetAssignees(default)).Me);
     }

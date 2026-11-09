@@ -1908,16 +1908,15 @@ export interface ExhaustedRunner {
 
 /** Who is at the browser. Mirrors MeDto.
 
-    Answered in both modes; 204 (read as null) only for a key or runner, which
-    is nobody the bar should draw. */
+    Answered in both modes; 204 (read as null) only for a key, which is
+    nobody the bar should draw. */
 export interface Me {
   /** `local` when the wall is off, `person` when a grant holds a person, `none`
       when the wall is off and nobody local answered either - a browser that has
-      not signed in. `key` and `runner` mirror the two other MeDto.Kind values,
-      but a browser never actually receives either - only a Bearer key or an
-      X-Hatch-Runner header reaches those branches, and a browser's fetch sends
-      neither. */
-  kind: 'local' | 'person' | 'none' | 'key' | 'runner';
+      not signed in. `key` mirrors MeDto's other Kind value, but a browser
+      never actually receives it - only a Bearer key reaches that branch, and
+      a browser's fetch sends none. */
+  kind: 'local' | 'person' | 'none' | 'key';
   /** What events written from this browser will say. Empty for `none`. */
   name: string;
   /** Null for `local`, which has no role to gate on. */

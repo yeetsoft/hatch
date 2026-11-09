@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -115,13 +114,12 @@ public class BoardNarrowColumnsTests(ITestOutputHelper output)
     /// <summary>
     /// A project and two tasks - "Alpha" stays where a new task lands and "Beta" moves to the first
     /// board column, or the second if that is where Alpha is - then the number of columns the board
-    /// draws and the zero-based index of the column each card is in. Filed the way any caller files them with the wall off: naming
-    /// itself with the runner header.
+    /// draws and the zero-based index of the column each card is in. Filed the way any caller files
+    /// them with the wall off: the local person may file everything this test files.
     /// </summary>
     private static async Task<(int Columns, int Alpha, int Beta)> SeedAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
         var alpha = await PostAsync<IssueCreateRequest, IssueDto>(
