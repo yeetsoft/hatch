@@ -22,19 +22,13 @@ export function partitionKeys(keys: ApiKey[]): { live: ApiKey[]; revoked: ApiKey
 /**
  * Why this mint would be refused before it is sent, or null. The server says
  * the same things and stays the authority - this only keeps a button from
- * being pressed to be told what the form already knows. Scopes are not checked: the
- * server allows none, and a key with none simply reaches nothing.
+ * being pressed to be told what the form already knows.
  */
 export function mintProblem(name: string): string | null {
   const trimmed = name.trim();
   if (trimmed.length === 0) return 'A key needs a name - it is what the audit trail will call it.';
   if (trimmed.length > MAX_NAME_LENGTH) return `A key name is at most ${MAX_NAME_LENGTH} characters.`;
   return null;
-}
-
-/** Adds the scope if it is not selected, removes it if it is. */
-export function toggleScope(selected: string[], scope: string): string[] {
-  return selected.includes(scope) ? selected.filter((s) => s !== scope) : [...selected, scope];
 }
 
 /** The secret on its way to a screen once, or nothing. */
@@ -44,8 +38,6 @@ export type SecretPanel = { key: ApiKey; secret: string } | null;
 export const showSecret = (minted: ApiKeyMinted): SecretPanel => ({ key: minted.key, secret: minted.secret });
 
 export const dismissSecret = (): SecretPanel => null;
-
-export const scopesLabel = (scopes: string[]): string => (scopes.length === 0 ? 'none' : scopes.join(', '));
 
 export const ownerLabel = (owner: ApiKey['owner']): string => owner?.name ?? 'nobody';
 

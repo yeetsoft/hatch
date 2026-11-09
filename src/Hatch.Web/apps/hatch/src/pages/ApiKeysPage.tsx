@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, EmptyState, Field, Modal, PageHeader, Table, Text } from '@hatch/ui';
-import { getApiKeyScopes, getApiKeys, getAuthMe, getPeople, mintApiKey, revokeApiKey, setApiKeyOwner } from '../api/client';
+import { getApiKeys, getAuthMe, getPeople, mintApiKey, revokeApiKey, setApiKeyOwner } from '../api/client';
 import { Command } from '../components/Command';
 import {
   dismissSecret,
@@ -8,9 +8,7 @@ import {
   mintProblem,
   ownerLabel,
   partitionKeys,
-  scopesLabel,
   showSecret,
-  toggleScope,
   type SecretPanel,
 } from '../lib/apiKeys';
 import { message } from '../lib/errors';
@@ -30,11 +28,9 @@ import type { ApiKey } from '../types';
 export function ApiKeysPage() {
   const { me, isAdmin } = useMe();
   const { data: keys, error, setError, reload } = useLoaded(getApiKeys);
-  const { data: scopes } = useLoaded(getApiKeyScopes);
   const { data: people } = useLoaded(getPeople);
 
   const [name, setName] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
   const [owner, setOwner] = useState('');
   const [minting, setMinting] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -59,13 +55,8 @@ export function ApiKeysPage() {
   async function mint() {
     setMinting(true);
     try {
-      setSecret(
-        showSecret(
-          await mintApiKey({ name: name.trim(), scopes: selected, ownerPersonId: owner || undefined }),
-        ),
-      );
+      setSecret(showSecret(await mintApiKey({ name: name.trim(), ownerPersonId: owner || undefined })));
       setName('');
-      setSelected([]);
       setRefusal(null);
       await reload();
     } catch (err) {
@@ -133,23 +124,6 @@ export function ApiKeysPage() {
         <Field label="Name" hint="What the audit trail will call it.">
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field
-          label="Scopes"
-          hint="What the key may reach. A key with none reaches nothing."
-        >
-          <div className="hatch-keys-scopes">
-            {(scopes ?? []).map((scope) => (
-              <label key={scope} className="hatch-keys-scope">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(scope)}
-                  onChange={() => setSelected(toggleScope(selected, scope))}
-                />
-                {scope}
-              </label>
-            ))}
-          </div>
-        </Field>
         <Field label="Belongs to" hint="Whose tickets this key's --mine will reach.">
           <select value={owner} onChange={(e) => setOwner(e.target.value)}>
             {(people ?? []).map((person) => (
@@ -176,7 +150,6 @@ export function ApiKeysPage() {
               <tr>
                 <th>Name</th>
                 <th>Prefix</th>
-                <th>Scopes</th>
                 <th>Owner</th>
                 <th>Created</th>
                 <th>Last used</th>
@@ -193,7 +166,6 @@ export function ApiKeysPage() {
                   <td>
                     <code>{key.prefix}</code>
                   </td>
-                  <td>{scopesLabel(key.scopes)}</td>
                   <td>
                     {key.revokedAt ? (
                       ownerLabel(key.owner)

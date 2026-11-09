@@ -3197,18 +3197,6 @@ input.hatch-inline-title-input {
 }
 
 /* ---- The API keys page ---- */
-.hatch-keys-scopes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-4);
-}
-
-.hatch-keys-scope {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
 /* A revoked key is still a fact worth reading, so it is dimmed and not hidden. */
 .hatch-keys-revoked {
   opacity: 0.55;
