@@ -761,9 +761,9 @@ public class IssueClaimTests
         // The from/to shape ParentChanged and DependencyAdded take, so the
         // page's event line needs no new case. A runner letting go and a person
         // prising a ticket loose are told apart by the kind.
-        Assert.Equal((null, "Nathan on somewhere:/checkouts/one"), Payload(events[0]));
-        Assert.Equal(("Nathan on somewhere:/checkouts/one", null), Payload(events[1]));
-        Assert.Equal(("Nathan on elsewhere:/checkouts/two", null), Payload(events[3]));
+        Assert.Equal((null, "Nathan at somewhere:/checkouts/one"), Payload(events[0]));
+        Assert.Equal(("Nathan at somewhere:/checkouts/one", null), Payload(events[1]));
+        Assert.Equal(("Nathan at elsewhere:/checkouts/two", null), Payload(events[3]));
     }
 
     /// <summary>
@@ -1891,6 +1891,7 @@ public class IssueClaimTests
             db.Runners.Add(new EfHatchRunner
             {
                 Name = name,
+                Where = name,
                 Kind = EfHatchRunner.LoopKind,
                 FirstSeenAt = lastSeenAt,
                 LastSeenAt = lastSeenAt,
