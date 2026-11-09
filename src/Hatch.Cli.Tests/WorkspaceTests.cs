@@ -44,6 +44,11 @@ public abstract class RepoFixture : IDisposable
 
     protected Workspace Ws() => new(_work, "main", _said.Add, _complained.Add, Run);
 
+    /// <summary>A workspace whose <c>checkout -B</c> is refused with the stderr given; every other call is real git.</summary>
+    protected Workspace WsRefusingCheckout(string stderr) =>
+        new(_work, "main", _said.Add, _complained.Add,
+            (dir, args) => args.Contains("checkout") && args.Contains("-B") ? (128, "", stderr) : Run(dir, args));
+
     /// <summary>A branch on origin, made from the trunk by somebody else.</summary>
     protected void Publish(string branch, string file, string content, bool reset = true)
     {
@@ -122,7 +127,7 @@ public abstract class RepoFixture : IDisposable
     /// A pool rather than one shell because the three classes run side by side.
     /// Windows makes processes without forking, and keeps the plain spawn.
     /// </remarks>
-    private static (int Code, string Output, string Error) Run(string dir, string[] args)
+    protected static (int Code, string Output, string Error) Run(string dir, string[] args)
     {
         if (OperatingSystem.IsWindows()) return Spawn(dir, args);
 
@@ -471,6 +476,48 @@ public sealed class WorkspaceTests : RepoFixture
         Assert.Equal(Reset.Never, Ws().Prepare());
         Assert.True(File.Exists(Path.Combine(_work, ".git", "MERGE_HEAD")));
         Assert.Contains(_complained, l => l.Contains("did not start it"));
+    }
+
+    private const string WorktreeRefusal = "fatal: 'main' is already used by worktree at '/elsewhere/main'";
+
+    [Fact]
+    public void A_refused_trunk_checkout_says_what_git_complained_of()
+    {
+        var ws = WsRefusingCheckout($"{WorktreeRefusal}\nhint: second line\n");
+
+        Assert.Equal(Reset.Never, ws.Prepare());
+
+        Assert.Contains($"hatch: could not put the tree on main - {WorktreeRefusal}", _complained);
+        Assert.DoesNotContain(_complained, l => l.Contains("hint:"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\n")]
+    public void A_refused_trunk_checkout_with_no_stderr_adds_nothing(string stderr)
+    {
+        var ws = WsRefusingCheckout(stderr);
+
+        Assert.Equal(Reset.Never, ws.Prepare());
+
+        Assert.Contains("hatch: could not put the tree on main", _complained);
+        Assert.DoesNotContain(_complained, l => l.StartsWith("hatch: could not put the tree on main") && (l.EndsWith('-') || l.Contains("()")));
+    }
+
+    [Theory]
+    [InlineData("fatal: a reason git gave\nhint: second line\n", " - fatal: a reason git gave")]
+    [InlineData("", "")]
+    [InlineData("\n", "")]
+    public void A_refused_branch_checkout_says_what_git_complained_of(string stderr, string because)
+    {
+        Publish("ha-31-thing", "x.txt", "x");
+        Ws().Prepare();
+
+        var entry = WsRefusingCheckout(stderr).Enter("HA-31", "Thing", "ha-31-thing");
+
+        Assert.Equal(BranchKind.Failed, entry.Kind);
+        Assert.Equal($"could not put the tree on ha-31-thing{because}", entry.Problem);
+        Assert.Contains($"hatch:   {entry.Problem}", _complained);
     }
 
     // ---- The copy on this machine ----

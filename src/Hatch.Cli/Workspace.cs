@@ -315,9 +315,10 @@ public sealed partial class Workspace(
         // -B rather than a checkout and then a reset: it creates the trunk in a
         // checkout that never had it, moves it in one that has drifted, and
         // lands on it either way.
-        if (!Git("checkout", "--quiet", "-B", trunk, $"refs/remotes/origin/{trunk}").Ok)
+        var put = Git("checkout", "--quiet", "-B", trunk, $"refs/remotes/origin/{trunk}");
+        if (!put.Ok)
         {
-            complain($"hatch: could not put the tree on {trunk}");
+            complain($"hatch: could not put the tree on {trunk}{put.Because}");
             return Reset.Never;
         }
 
@@ -491,6 +492,9 @@ public sealed partial class Workspace(
 
         /// <summary>What git complained of, first line, for a sentence that is not a transcript.</summary>
         public string Why => Err.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? "";
+
+        /// <summary><see cref="Why"/> as a trailing cause - empty when git said nothing.</summary>
+        public string Because => Why.Length > 0 ? $" - {Why}" : "";
     }
 
     private Ran Git(params string[] args)
