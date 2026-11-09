@@ -15,6 +15,7 @@ import {
   trunkIconTone,
   trunkIconWords,
   waitedWords,
+  waitingOnARunnerEmptyWords,
 } from '../lib/attention';
 import { lastSuccessWords } from '../lib/backup';
 import { playbookFileWords } from '../lib/mergeCheck';
@@ -114,8 +115,8 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 }
 
 /**
- * The Human half of what the loop is waiting on a person for: a backup that
- * needs attention, deadlocked issues, trunk builds that fail, pull requests
+ * The Human half of what the loop is waiting on a person for: issues waiting
+ * on a runner, a backup that needs attention, deadlocked issues, trunk builds that fail, pull requests
  * to review, pull requests approved but not merging, issues landed but not
  * done, questions to answer - in that order, the order somebody would work
  * through them.
@@ -144,13 +145,45 @@ export function AttentionHuman({
   const landingHeld = attention?.landingHeld ?? [];
   const noCodeHeld = attention?.noCodeHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
+  const waitingOnARunner = attention?.waitingOnARunner ?? [];
   const backup = attention?.backup ?? null;
 
   return (
     <>
-      {/* First, since a database with no copy outranks everything under it.
-          Unlike its siblings it has no empty state: a healthy or unconfigured
-          install must see nothing at all. */}
+      {/* First, since it is the only one a person fixes by changing a runner,
+          not the panel. Always drawn, with an empty state. */}
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Waiting on a runner</h3>
+
+        {waitingOnARunner.length === 0 ? (
+          <p className="hatch-attention-empty">{waitingOnARunnerEmptyWords()}</p>
+        ) : (
+          <>
+            <ul className="hatch-attention-rows">
+              {waitingOnARunner.map((w) => (
+                <li key={w.key}>
+                  <Link className="hatch-attention-row" to={`/issues/${w.key}`}>
+                    <span className="hatch-attention-row-head">
+                      <span className="hatch-attention-key">{w.key}</span>
+                      <span className="hatch-attention-title">{w.title}</span>
+                    </span>
+                    <span className="hatch-attention-files">{`in ${w.move} - ${w.missing}`}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {/* Once, and outside every row: each row is already a link, and an
+                anchor inside an anchor is invalid. */}
+            <Link className="hatch-attention-row" to="/runners">
+              <span className="hatch-attention-files">See the Runners page</span>
+            </Link>
+          </>
+        )}
+      </section>
+
+      {/* Next, since a database with no copy outranks everything under it.
+          Unlike Waiting on a runner it has no empty state: a healthy or
+          unconfigured install must see nothing at all. */}
       {backup && (
         <section className="hatch-attention-section">
           <h3 className="hatch-attention-heading">Backups</h3>
