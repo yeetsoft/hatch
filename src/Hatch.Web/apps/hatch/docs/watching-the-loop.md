@@ -189,8 +189,10 @@ hour, day, week or month, at the level a stakeholder reads - epics, or the
 stories under them. Cumulative flow carries its own **Projects**
 control (drawn only where there is more than one project) - a checkbox per
 project rather than the Timeline's one at a time - so the scope can be
-narrowed to some of the projects, not just none or all; beside it, a
-**Colour by** control (also drawn only where there is more than one project)
+narrowed to any of the projects. **All** and **None** sit at the foot of the
+list, **All** greyed out while every project is ticked and **None** while
+nothing is; **None** draws "No project is chosen." in place of the chart.
+Beside it, a **Colour by** control (also drawn only where there is more than one project)
 cuts the same stack by project instead of by column. Hovering a row of
 **Projects** shows **Only**, which keeps that project alone (on a touch screen
 it is always shown). A ticket counts as in
@@ -210,7 +212,8 @@ for anybody else looking at the same board.
 The Changelog opens on the last two weeks, not ninety days, with the same
 window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**
 (drawn only where there is more than one) is a checkbox per project, as in
-Cumulative flow. **Bucket** - hour, day, week or month, day to begin with -
+Cumulative flow, with the same **All** and **None**; **None** draws the same
+sentence, "No project is chosen.", in place of the list. **Bucket** - hour, day, week or month, day to begin with -
 sets how finely the window is cut: each bucket is a section headed by its own
 date, and a stretch with nothing in it between two buckets is a line, "Quiet
 from" one date "to" another. **Level** picks what a bucket holds, and the page
