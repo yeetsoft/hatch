@@ -271,6 +271,18 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 
 ## What a runner advertises
 
+A runner tells the board three facts, each owned differently. *Tags* are a
+person's decision: the first beat that names any seeds the row, and after
+that the row is where they live, moved only by a `PATCH` on it. *Models* -
+what its agent can spawn - and *has* - what its machine has - are
+detections instead: every beat overwrites the row, and no page or `PATCH`
+edits them, so a value can never say a machine has a tool it does not. Each
+of the three is judged on every dispatch read (`hatch queue`, `next`, `work
+KEY`, the loop's own pass) and never on a hop, and each is opt-in on the
+wire: a caller sending no `tag=`, `model=`/`agent=` or `has=` is folded by
+nothing for it, which is why an older CLI and the issue page are unaffected.
+[Models](#models) and [Has](#has) below have each detection in full.
+
 A tag is a word a project's, a ticket's, or one of its ancestors' runner tags
 require. A project that requires `gpu` is only worked by a runner that carries
 `gpu`, and a ticket or an ancestor that requires a tag of its own adds to the
@@ -321,9 +333,9 @@ hatch config --models haiku --models sonnet
 `--models` is repeatable, and bare `--models` clears them. A comma inside one
 value is refused (`--models haiku,sonnet` is one unknown id, not two), with
 nothing written. So is a pinned id of a different agent than `HATCH_AGENT`
-(blank is `claude`): `"gpt-6-luna" is a codex model - this runner's agent is
-claude`. A bad `HATCH_MODELS` in a file or the environment refuses every
-command with the same sentence, after `hatch: HATCH_MODELS -`. It is
+(blank is `claude`): `"qwen3-coder:30b" is an ollama model - this runner's
+agent is claude`. A bad `HATCH_MODELS` in a file or the environment refuses
+every command with the same sentence, after `hatch: HATCH_MODELS -`. It is
 machine-bound, so a profile still reads it from the per-user file.
 
 **What the default is.** Unset, a runner advertises what its agent can spawn:
@@ -341,8 +353,8 @@ agent advertises that agent's default instead of a list that would be refused.
 rest of the run, a narrowed model is left off the list the beat sends, whatever
 `HATCH_MODELS` or the agent's default says, and it is back once the time
 passes. A per-model weekly window the `/usage` probe finds spent narrows that
-model until the window resets, and the terminal says so once:
-`hatch: opus is off this runner's list until …`. A supervisor restart keeps what is
+model until the window resets, and the terminal says so once - see [When it
+will not run](#when-it-will-not-run). A supervisor restart keeps what is
 narrowed; a fresh start forgets it.
 Where every model is narrowed the beat sends an empty list, which clears the
 row's models, rather than none, which would leave the last list standing.
@@ -358,13 +370,17 @@ model the runner offers - less any narrowed, read afresh each time - and
 `agent=` for its agent; a hop sends neither. A move whose model the runner
 does not offer is folded for it, with the board's own sentence: *"HA-12 in
 Breakdown runs on fable - this runner's claude does not offer it"*. So a runner
-never claims a ticket only to refuse it. A runner that offers no list, or has
-narrowed every model, sends no `model=` and the board judges the agent alone.
-`hatch runners` closes a row with `  models haiku sonnet`. `hatch runners`
-itself closes a row with `  has dotnet 10.0.100, node 22.11.0` the same way.
-The Runners page draws the dependencies a runner has the same way, as `has
-dotnet 10.0.100, node 22.11.0`, under the repositories line in a row's
-details.
+never claims a ticket only to refuse it. A playbook or an issue pinned to a
+model id rather than an alias is choosing an agent, not a list ([model and
+effort](playbooks#model-and-effort)); a move pinned to another agent's id is
+folded the same way, with the board's own clause after the ticket key, as
+`queue` shows it: *"pinned to gpt-6-luna, a codex model - this runner's
+agent is claude"*. A runner that offers no list, or has narrowed every
+model, sends no `model=` and the board judges the agent alone.
+`hatch runners` closes a row with `  models haiku sonnet` and then `  has
+dotnet 10.0.100, node 22.11.0`. The Runners page draws the dependencies a
+runner has the same way, as `has dotnet 10.0.100, node 22.11.0`, under the
+repositories line in a row's details.
 
 ### Has
 
@@ -971,6 +987,20 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
 - **`hatch: could not reach <origin> for 90s - ...`** See [when a call
   fails](cli-reference#when-a-call-fails).
 - **`hatch: {model} is off this runner's list until {clock}`** (or `for the
-  rest of this run`). The account refused the model, so the runner stops
-  offering it until then - a restart carries this, a fresh start forgets it -
-  and the ticket gets a comment with the branch, sha and resume command.
+  rest of this run`):
+  - the increment ends released `unservable` - the model is one the account
+    cannot spawn, learned from the one refusal;
+  - the terminal's tally lists it as
+    `hatch:   unservable  HA-12  fable is not one this runner can spawn`
+    (three spaces after `hatch:`, two after `unservable` and the key, as
+    `GoToWork.cs:420` writes it);
+  - the ticket gets one comment, *"This runner's Claude no longer offers
+    fable, until 3:40am."* (or *"..., for the rest of this run."*), then the
+    branch, sha and resume command (`Lifecycle.cs:340`; `Claude` is the
+    adapter's display name);
+  - it is **not a stall**: no let-go comment, no mark, no question, not one
+    of the three failed increments - the next pass does not take that
+    ticket, because the beat drops the model and the board folds it with
+    the model sentence in `### Models`;
+  - a restart keeps the narrowing, a fresh start forgets it
+    ([one increment and the loop](one-increment-and-the-loop#stalls)).
