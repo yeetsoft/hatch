@@ -168,10 +168,9 @@ to sign-in instead.
 - **What the CLI prints for a `403`** is the API's own reason: a role-gate
   code prints as itself (`hatch: 403 - not_admin`), and a plain-sentence
   refusal prints that sentence (`hatch: 403 - only an owner or approver of
-  AER may move work into "approved"`). The one exception is `key_not_accepted`
-  and `scope_mismatch`, where the fixed sentence `hatch: 403 - the key is
-  good and this route is not one it may take (CLAUDE.md).` replaces the code
-  outright, since those two really are a scope refusal. An empty body still
+  AER may move work into "approved"`). The one exception is `key_not_accepted`,
+  where the fixed sentence `hatch: 403 - the key is good and this route is
+  not one it may take (CLAUDE.md).` replaces the code outright. An empty body still
   gets a fixed sentence, worded by whether a key was sent at all.
 
 ## Whose tickets `--mine` reaches

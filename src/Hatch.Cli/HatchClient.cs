@@ -462,14 +462,14 @@ public sealed class HatchClient : IDisposable
         // fixed sentence - worded by whether a key was even sent, the same
         // split as the two Unauthorized arms above. A body with a reason -
         // a role-gate code or a plain sentence - prints that reason instead,
-        // except the two role-gate codes that are a scope refusal in
-        // disguise, where the fixed hint replaces the code outright rather
-        // than sitting beside it.
+        // except key_not_accepted (a key reached a route that takes none),
+        // where the fixed hint replaces the code outright rather than
+        // sitting beside it.
         HttpStatusCode.Forbidden when answer.Body.Trim().Length == 0 && Keyed =>
             "hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).",
         HttpStatusCode.Forbidden when answer.Body.Trim().Length == 0 =>
             "hatch: 403 - no key was sent, and this route is refused anyway (CLAUDE.md).",
-        HttpStatusCode.Forbidden when Sentence(answer.Body) is "key_not_accepted" or "scope_mismatch" =>
+        HttpStatusCode.Forbidden when Sentence(answer.Body) is "key_not_accepted" =>
             "hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).",
         HttpStatusCode.Forbidden =>
             $"hatch: 403 - {Sentence(answer.Body)}",
