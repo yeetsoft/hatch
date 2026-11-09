@@ -141,6 +141,15 @@ public class WorkController(
     /// model id is folded with <see cref="ModelFamilies.WrongAgent"/>. Blank
     /// is absent.
     /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence.
+    /// </param>
     [HttpGet("next")]
     public async Task<ActionResult<WorkDto>> GetNextWork(
         [FromQuery] int offsetMinutes = 0,
@@ -156,8 +165,11 @@ public class WorkController(
         [FromQuery] bool? dangerous = null,
         [FromQuery] string? runner = null,
         [FromQuery] List<string>? model = null,
-        [FromQuery] string? agent = null)
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
         if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
 
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
@@ -165,7 +177,7 @@ public class WorkController(
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var scan = await _dispatch.ScanAsync(
             offsetMinutes, ancestorKey, heldToken, repos, mine, ct, tags: tags, projects: ProjectKeys(project),
-            asking: Asking(runner), models: models);
+            asking: Asking(runner), models: models, has: hasDeclared);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // The first clear row of the queue, and nothing else. Not a second
@@ -176,7 +188,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, Asking(runner), ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), ct);
     }
 
     /// <summary>
@@ -263,6 +275,16 @@ public class WorkController(
     /// Ignored beside <paramref name="asRunner"/>, which reads
     /// <see cref="EfHatchRunner.Agent"/>, exactly as <paramref name="model"/> is.
     /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence. Ignored, though still validated, beside
+    /// <paramref name="asRunner"/>: that row's own <see cref="EfHatchRunner.Has"/> is read instead.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -282,8 +304,11 @@ public class WorkController(
         [FromQuery] bool? dangerous = null,
         [FromQuery] string? runner = null,
         [FromQuery] List<string>? model = null,
-        [FromQuery] string? agent = null)
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
         if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
 
         if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
@@ -318,6 +343,7 @@ public class WorkController(
             mine = declared.Mine;
             tags = declared.Tags;
             models = declared.Models;
+            hasDeclared = declared.Has;
             projects = declared.Projects.ToList();
             principal = declared.Principal;
         }
@@ -327,7 +353,7 @@ public class WorkController(
         }
 
         var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
-            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models);
+            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         // One projection for the whole list. The per-issue one would be three
@@ -519,6 +545,15 @@ public class WorkController(
     /// <param name="agent">
     /// The agent the caller's runner drives - see <see cref="GetNextWork"/>.
     /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, repeatable - an
+    /// <c>id</c> or <c>id@version</c>, see <see cref="DependencySet.Normalise"/>.
+    /// A move that runs the issue's code, whose project's bound repositories
+    /// declare a dependency none of these satisfies - or whose
+    /// <c>.hatch/dependencies.json</c> is invalid - is folded. Absent folds
+    /// nothing; a hop is never folded. A bad entry is refused with a 400
+    /// carrying the same sentence.
+    /// </param>
     [HttpGet("{key}")]
     public async Task<ActionResult<WorkDto>> GetWork(
         string key, [FromQuery] Guid? heldToken = null,
@@ -530,8 +565,11 @@ public class WorkController(
         [FromQuery] bool? dangerous = null,
         [FromQuery] string? runner = null,
         [FromQuery] List<string>? model = null,
-        [FromQuery] string? agent = null)
+        [FromQuery] string? agent = null,
+        [FromQuery] List<string>? has = null)
     {
+        if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
+
         if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
 
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
@@ -561,6 +599,7 @@ public class WorkController(
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
             tags,
             models,
+            hasDeclared,
             Asking(runner),
             ct);
     }
@@ -1277,6 +1316,11 @@ public class WorkController(
     /// The scan's own for a loop's dispatch, for the same reason as
     /// <paramref name="tags"/>.
     /// </param>
+    /// <param name="has">
+    /// What the caller's runner has - see <see cref="HasDeclaration"/>. The
+    /// scan's own for a loop's dispatch, for the same reason as
+    /// <paramref name="tags"/>.
+    /// </param>
     /// <param name="asking">
     /// The caller's own runner name, for <see cref="Dispatch.OmissionFold"/> -
     /// the same name the scan folded on, so a row it called clear on omission
@@ -1285,7 +1329,7 @@ public class WorkController(
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, RunnerAsking? asking, CancellationToken ct)
+        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
         var to = Columns.Target(statuses, from);
@@ -1391,10 +1435,12 @@ public class WorkController(
             : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
+        var requirement = has.Judged ? await _dispatch.DependencyRequirementAsync(issue.Project!, ct) : null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking, models: models);
+            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking, models: models,
+            has: has, requirement: requirement);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
