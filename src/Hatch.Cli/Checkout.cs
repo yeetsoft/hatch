@@ -125,69 +125,10 @@ public static class Checkout
     }
 
     /// <summary>
-    /// Who the board says is holding a claim: <c>HATCH_RUNNER</c>'s override,
-    /// the name this checkout already chose, or a fresh one off the cast list.
-    /// </summary>
-    /// <remarks>
-    /// <para>The one method every caller goes through -
-    /// <see cref="Program"/>, <see cref="GoToWorkCommand"/>,
-    /// <see cref="WorkCommand"/> and <c>hatch config</c>'s own default - so a
-    /// checkout cannot be named one thing by one command and another by a
-    /// second. A fresh choice is recorded before it is returned, which is what
-    /// makes the second call in one process, and every call in the next one,
-    /// find the same name here rather than reaching <see cref="RunnerNames.Choose"/>
-    /// again.</para>
-    ///
-    /// <para><paramref name="board"/> is null wherever there is nothing to ask
-    /// yet - <c>hatch config</c>'s own bootstrap, before an origin is even on
-    /// disk - and a board that cannot be reached (too old to have the route, or
-    /// simply down) is read the same way <see cref="RunnersController.Heartbeat"/>'s
-    /// own <c>409</c> is: the local record is the backstop for a fresh choice,
-    /// and the server's refusal on the first heartbeat is the one a bad guess
-    /// cannot get past.</para>
-    ///
-    /// <para>There is no own-<see cref="Where"/> exclusion here: every live name
-    /// the board answers is taken, this checkout's own included. That is fine -
-    /// a checkout whose record file was deleted while its own runner is still
-    /// live chooses a fresh name rather than re-taking the live one, and the
-    /// old row ages out on its own once that runner stops heartbeating.</para>
-    /// </remarks>
-    public static async Task<string> RunnerAsync(
-        string? configured, string host, string root, string? profile, Board? board, CancellationToken ct, string? runnersPath = null)
-    {
-        if (!string.IsNullOrWhiteSpace(configured)) return Cap(configured.Trim());
-
-        var canonical = Canonical(root);
-        var recordPath = runnersPath ?? RunnerNames.Record.DefaultPath();
-        var key = RunnerNames.Record.Key(profile, canonical);
-        var recorded = RunnerNames.Record.Read(recordPath);
-        if (recorded.TryGetValue(key, out var already)) return Cap(already);
-
-        var taken = new HashSet<string>(recorded.Values, StringComparer.OrdinalIgnoreCase);
-
-        if (board is not null)
-        {
-            try
-            {
-                foreach (var name in await board.RunnerNamesAsync(ct)) taken.Add(name);
-            }
-            catch (HatchException)
-            {
-                // Unreachable, or too old to have the route. Nothing here can
-                // end a night over a name.
-            }
-        }
-
-        var chosen = RunnerNames.Choose(host, canonical, taken);
-        RunnerNames.Record.Set(recordPath, profile, canonical, chosen);
-        return Cap(chosen);
-    }
-
-    /// <summary>
     /// The machine and checkout a runner runs from: the short hostname and the
     /// path, because it is read by a person deciding which box to go and look
-    /// at. Kept apart from <see cref="Runner"/> now that the runner's name is a
-    /// character and this is a fact drawn beside it.
+    /// at. Kept apart from the runner's name, which is its key's, and is a fact
+    /// drawn beside it.
     /// </summary>
     /// <remarks>
     /// The path here is the one that was typed, not <see cref="Canonical"/>'s -

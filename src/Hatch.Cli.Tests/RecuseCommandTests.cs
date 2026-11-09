@@ -3,7 +3,7 @@ using System.Net;
 namespace Hatch.Cli.Tests;
 
 /// <summary>
-/// <c>recuse</c> - <c>omit</c> for this checkout's own runner name.
+/// <c>recuse</c> - <c>omit</c> for the runner name its key carries.
 /// </summary>
 public sealed class RecuseCommandTests
 {
@@ -70,13 +70,13 @@ public sealed class RecuseCommandTests
     }
 
     [Fact]
-    public async Task A_checkout_with_no_runner_name_is_refused_before_any_call()
+    public async Task A_blank_runner_name_is_refused_saying_a_key_names_the_runner_before_any_call()
     {
         using var h = new CliHarness();
 
         Assert.Equal(1, await new RecuseCommand(h.Cli with { RunnerName = "" }).RunAsync(["AER-5", "why"], default));
 
-        Assert.Contains("no runner name to recuse", h.Complained);
+        Assert.Contains("recuse needs a key - a runner's name is its key's; run `hatch config`", h.Complained);
         Assert.Empty(h.Wire.Calls);
     }
 

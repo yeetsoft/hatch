@@ -2,7 +2,7 @@ namespace Hatch.Cli;
 
 /// <summary>
 /// An issue's work kept off this checkout's own runner: <c>omit</c>, for the
-/// name the checkout already resolved.
+/// name the key carries.
 /// </summary>
 /// <remarks>
 /// Open to a key, as <see cref="OmitCommand"/> is. What a session calls on its
@@ -35,7 +35,7 @@ public sealed class RecuseCommand(Cli cli)
 
         if (string.IsNullOrWhiteSpace(cli.RunnerName))
         {
-            cli.Say.Complain("hatch: this checkout has no runner name to recuse - set HATCH_RUNNER or run `hatch config`");
+            cli.Say.Complain("hatch: recuse needs a key - a runner's name is its key's; run `hatch config`");
             return 1;
         }
 

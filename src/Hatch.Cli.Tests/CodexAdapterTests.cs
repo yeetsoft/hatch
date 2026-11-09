@@ -303,15 +303,6 @@ public sealed class CodexAdapterTests : IDisposable
     }
 
     [Fact]
-    public void The_spawned_session_names_the_runner_that_dispatched_it()
-    {
-        var request = Request() with { RunnerName = "test:/checkout" };
-
-        Assert.Equal("test:/checkout", Adapter().BuildHeadless(request).Environment["HATCH_RUNNER"]);
-        Assert.Equal("test:/checkout", Adapter().BuildAttached(request).Environment["HATCH_RUNNER"]);
-    }
-
-    [Fact]
     public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
     {
         var request = Request() with { Settings = new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" } };

@@ -24,7 +24,7 @@ public sealed class CliHarness : IDisposable
         In = new Replies(replies ?? []);
 
         var settings = new Settings { Base = "https://hatch.example", Key = key, HeartbeatSeconds = 0 };
-        _client = new HatchClient(settings, "test:/checkout", Wire);
+        _client = new HatchClient(settings, Wire);
 
         Cli = new Cli(new Board(_client), Say, In, settings, "test:/checkout")
         {

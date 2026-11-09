@@ -262,15 +262,6 @@ public sealed class ClaudeAdapterTests : IDisposable
     }
 
     [Fact]
-    public void The_spawned_session_names_the_runner_that_dispatched_it()
-    {
-        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "test:/checkout");
-
-        Assert.Equal("test:/checkout", Adapter().BuildHeadless(request).Environment["HATCH_RUNNER"]);
-        Assert.Equal("test:/checkout", Adapter().BuildAttached(request).Environment["HATCH_RUNNER"]);
-    }
-
-    [Fact]
     public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
     {
         var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true,
@@ -280,16 +271,7 @@ public sealed class ClaudeAdapterTests : IDisposable
         Assert.Equal("hatch_ak_test", Adapter().BuildHeadless(request).Environment["HATCH_KEY"]);
         Assert.Equal("https://example.hatch", Adapter().BuildAttached(request).Environment["HATCH_BASE"]);
         Assert.Equal("hatch_ak_test", Adapter().BuildAttached(request).Environment["HATCH_KEY"]);
-    }
-
-    [Fact]
-    public void A_session_with_no_runner_name_leaves_HATCH_RUNNER_as_it_inherited_it()
-    {
-        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "");
-
-        Adapter().BuildHeadless(request).Environment.TryGetValue("HATCH_RUNNER", out var inherited);
-
-        Assert.Equal(Environment.GetEnvironmentVariable("HATCH_RUNNER"), inherited);
+        Assert.DoesNotContain("HATCH_RUNNER", Adapter().BuildHeadless(request).Environment.Keys);
     }
 
     [Fact]

@@ -2905,7 +2905,7 @@ public sealed class IncrementTests
         using var _h = h;
 
         Assert.False(report.PlaybookStale);
-        Assert.Equal(h.Runtime.RunnerName, Assert.Single(h.Sessions.Spawned).RunnerName);
+        Assert.Single(h.Sessions.Spawned);
         Assert.True(report.Moved);
         Assert.Single(h.Sessions.Spawned);
         Assert.Contains($"heads {h.Root}", h.Workspace.Calls);
