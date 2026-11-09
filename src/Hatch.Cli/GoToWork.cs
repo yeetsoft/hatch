@@ -1774,7 +1774,6 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 MaxTokensPerHour: tally.MaxTokensPerHour,
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
-                Tags: runtime.Settings.Tags,
                 Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,

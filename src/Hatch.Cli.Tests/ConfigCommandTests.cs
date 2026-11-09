@@ -987,14 +987,14 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Tag_keeps_the_Ollama_host_and_tiers()
+    public async Task Dangerous_keeps_the_Ollama_host_and_tiers()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         File.WriteAllLines(
             ConfigPath,
             ["HATCH_BASE=https://kept", "HATCH_OLLAMA_HOST=http://kept:11434", "HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b"]);
 
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu"], default));
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(ConfigPath);
         Assert.Contains("HATCH_OLLAMA_HOST=http://kept:11434", written);
@@ -1354,165 +1354,6 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>", Said);
     }
 
-    // ---- --tag ----
-
-    [Fact]
-    public async Task Tag_writes_the_joined_list_and_touches_nothing_else()
-    {
-        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
-
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default));
-
-        var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu,linux", written);
-        Assert.Contains("HATCH_BASE=https://kept", written);
-    }
-
-    [Fact]
-    public async Task Tag_is_normalised_lowercased_and_deduplicated()
-    {
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "GPU", "--tag", "gpu"], default));
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_alone_clears_what_was_there()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag"], default));
-
-        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_TAGS=", StringComparison.Ordinal));
-    }
-
-    [Theory]
-    [InlineData("gpu big")]
-    [InlineData("a,b")]
-    [InlineData("123456789012345678901234567890123")]
-    public async Task A_tag_that_breaks_RunnerTags_is_refused_with_nothing_written(string badTag)
-    {
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", badTag], default));
-
-        Assert.Contains("a tag", Complained, StringComparison.Ordinal);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Nine_tags_are_refused_with_nothing_written()
-    {
-        var args = new List<string>();
-        for (var i = 0; i < 9; i++)
-        {
-            args.Add("--tag");
-            args.Add($"tag{i}");
-        }
-
-        Assert.Equal(1, await Command(new Replies()).RunAsync([.. args], default));
-
-        Assert.Contains("at most 8 tags", Complained, StringComparison.Ordinal);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task A_refused_tag_leaves_an_existing_file_untouched()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        var before = File.ReadAllBytes(ConfigPath);
-
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu big"], default));
-
-        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_shaped_wrong_is_refused_and_nothing_is_written()
-    {
-        // A trailing bare --tag.
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag"], default));
-        Assert.False(File.Exists(ConfigPath));
-
-        // Two values with no --tag between them.
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "linux"], default));
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_needs_no_checkout_and_no_reachable_board()
-    {
-        var probed = false;
-        var cmd = Command(new Replies(), root: null, probe: (_, _) =>
-        {
-            probed = true;
-            return Task.FromResult<string?>(null);
-        });
-
-        Assert.Equal(0, await cmd.RunAsync(["--tag", "gpu"], default));
-        Assert.False(probed);
-    }
-
-    [Fact]
-    public async Task Show_lists_the_tags_with_the_layer()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default);
-
-        await Command(new Replies()).RunAsync(["--show"], default);
-
-        Assert.Contains($"HATCH_TAGS:        gpu, linux  ({ConfigPath})", Said);
-    }
-
-    [Fact]
-    public async Task Show_with_no_tags_says_unset()
-    {
-        await Command(new Replies()).RunAsync(["--show"], default);
-        Assert.Contains("HATCH_TAGS:        <unset>", Said);
-    }
-
-    [Fact]
-    public async Task Origin_after_tag_leaves_the_tags_in_the_file()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--origin", "https://new"], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Key_after_tag_leaves_the_tags_in_the_file()
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Repo_after_tag_leaves_the_tags_in_the_file()
-    {
-        var a = Tree("a");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--repo", a], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Workspace_after_tag_leaves_the_tags_in_the_file()
-    {
-        var dir = Path.Combine(_temp, "clones");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--workspace", dir], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
     // ---- --log ----
 
     [Fact]
@@ -1590,7 +1431,7 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", "off"], default);
         Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
         Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
@@ -1605,15 +1446,15 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Tag_after_log_and_log_after_tag_keep_both()
+    public async Task Dangerous_after_log_and_log_after_dangerous_keep_both()
     {
         var logs = Path.Combine(_temp, "logs-both");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
 
         await Command(new Replies()).RunAsync(["--log", logs], default);
 
         var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.Contains($"HATCH_LOG={logs}", written);
     }
 
@@ -1692,7 +1533,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Dangerous_writes_the_word_and_touches_nothing_else(string typed, string written)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_MODELS=opus"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--dangerous", typed], default));
 
@@ -1700,7 +1541,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_DANGEROUS={written}", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_MODELS=opus", lines);
     }
 
     [Fact]
@@ -1733,7 +1574,7 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", "off"], default);
         Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--models", "opus"], default);
         Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--log", logs], default);
@@ -1751,16 +1592,16 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Log_and_tag_after_dangerous_and_dangerous_after_them_keep_all_three()
+    public async Task Log_and_models_after_dangerous_and_dangerous_after_them_keep_all_three()
     {
         var logs = Path.Combine(_temp, "logs-three");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--models", "opus"], default);
         await Command(new Replies()).RunAsync(["--log", logs], default);
 
         await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
 
         var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_MODELS=opus", written);
         Assert.Contains($"HATCH_LOG={logs}", written);
         Assert.Contains("HATCH_DANGEROUS=off", written);
     }
@@ -1839,7 +1680,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Models_writes_the_joined_list_and_touches_nothing_else()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_HAS=dotnet"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--models", "haiku", "--models", "sonnet"], default));
 
@@ -1847,7 +1688,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_MODELS=haiku,sonnet", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_HAS=dotnet", lines);
     }
 
     [Fact]
@@ -1924,9 +1765,6 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", clones], default);
         Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
-
         await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
         Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
 
@@ -1978,7 +1816,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Has_writes_the_joined_list_and_touches_nothing_else()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_MODELS=opus"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--has", "dotnet@10", "--has", "node"], default));
 
@@ -1986,7 +1824,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_HAS=dotnet@10,node", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_MODELS=opus", lines);
     }
 
     [Fact]
@@ -2058,9 +1896,6 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--workspace", clones], default);
-        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
-
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
         Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--models", "haiku"], default);
@@ -2143,18 +1978,6 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     // ---- --here ----
-
-    [Fact]
-    public async Task Here_tag_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
-    {
-        var (root, checkoutEnv) = HereCheckout();
-
-        Assert.Equal(
-            0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--tag", "gpu"], default));
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(checkoutEnv));
-        Assert.False(File.Exists(ConfigPath));
-    }
 
     [Fact]
     public async Task Here_origin_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
@@ -2263,17 +2086,17 @@ public sealed class ConfigCommandTests : IDisposable
     /// the per-user file always carries.
     /// </summary>
     [Fact]
-    public async Task Here_tag_with_no_prior_checkout_file_writes_only_the_tag()
+    public async Task Here_dangerous_with_no_prior_checkout_file_writes_only_the_word()
     {
         var (root, checkoutEnv) = HereCheckout();
 
         Assert.Equal(
             0,
             await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
-                .RunAsync(["--here", "--tag", "breakdown"], default));
+                .RunAsync(["--here", "--dangerous", "off"], default));
 
         var written = File.ReadAllLines(checkoutEnv).Where(l => l.Length > 0 && l[0] != '#').ToArray();
-        Assert.Equal(["HATCH_TAGS=breakdown"], written);
+        Assert.Equal(["HATCH_DANGEROUS=off"], written);
     }
 
     /// <summary>
@@ -2282,7 +2105,7 @@ public sealed class ConfigCommandTests : IDisposable
     /// own - so neither leaks into the file <c>--here</c> writes.
     /// </summary>
     [Fact]
-    public async Task Here_tag_carries_forward_only_the_checkout_files_own_lines()
+    public async Task Here_dangerous_carries_forward_only_the_checkout_files_own_lines()
     {
         var (root, checkoutEnv) = HereCheckout("HATCH_BASE=https://this-checkout");
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
@@ -2295,11 +2118,11 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(
             0,
             await Command(new Replies(), environment: environment, root: root, checkoutEnv: checkoutEnv)
-                .RunAsync(["--here", "--tag", "gpu"], default));
+                .RunAsync(["--here", "--dangerous", "off"], default));
 
         var written = File.ReadAllLines(checkoutEnv);
         Assert.Contains("HATCH_BASE=https://this-checkout", written);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_KEY=", StringComparison.Ordinal));
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
     }
@@ -2319,7 +2142,7 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Here_outside_a_checkout_is_refused_with_the_exact_sentence()
     {
-        var code = await Command(new Replies(), root: null).RunAsync(["--here", "--tag", "gpu"], default);
+        var code = await Command(new Replies(), root: null).RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("hatch: --here writes this checkout's scripts/.env - run it inside one", Complained);
@@ -2332,7 +2155,7 @@ public sealed class ConfigCommandTests : IDisposable
         var (root, checkoutEnv) = HereCheckout();
 
         var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv, checkoutIgnoresEnv: _ => false)
-            .RunAsync(["--here", "--tag", "gpu"], default);
+            .RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("is not ignored by this checkout's git", Complained);
@@ -2399,11 +2222,11 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var (rootA, checkoutEnvA) = HereCheckout();
         Assert.Equal(
-            0, await Command(new Replies(), root: rootA, checkoutEnv: checkoutEnvA).RunAsync(["--here", "--tag", "x"], default));
+            0, await Command(new Replies(), root: rootA, checkoutEnv: checkoutEnvA).RunAsync(["--here", "--dangerous", "off"], default));
 
         var (rootB, checkoutEnvB) = HereCheckout();
         Assert.Equal(
-            0, await Command(new Replies(), root: rootB, checkoutEnv: checkoutEnvB).RunAsync(["--tag", "x", "--here"], default));
+            0, await Command(new Replies(), root: rootB, checkoutEnv: checkoutEnvB).RunAsync(["--dangerous", "off", "--here"], default));
 
         var linesA = File.ReadAllLines(checkoutEnvA).Where(l => l.Length > 0 && l[0] != '#');
         var linesB = File.ReadAllLines(checkoutEnvB).Where(l => l.Length > 0 && l[0] != '#');
@@ -2425,16 +2248,16 @@ public sealed class ConfigCommandTests : IDisposable
     // ---- --profile ----
 
     [Fact]
-    public async Task Profile_tag_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    public async Task Profile_models_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
     {
         var profilePath = Profile();
 
         Assert.Equal(
             0,
             await Command(new Replies(), profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "gpu"], default));
+                .RunAsync(["--models", "opus"], default));
 
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(profilePath));
+        Assert.Contains("HATCH_MODELS=opus", File.ReadAllLines(profilePath));
         Assert.False(File.Exists(ConfigPath));
     }
 
@@ -2518,17 +2341,17 @@ public sealed class ConfigCommandTests : IDisposable
     /// for.
     /// </summary>
     [Fact]
-    public async Task Profile_tag_with_no_prior_profile_file_writes_only_the_tag()
+    public async Task Profile_dangerous_with_no_prior_profile_file_writes_only_the_word()
     {
         var profilePath = Profile();
 
         Assert.Equal(
             0,
             await Command(new Replies(), profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "breakdown"], default));
+                .RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(profilePath).Where(l => l.Length > 0 && l[0] != '#').ToArray();
-        Assert.Equal(["HATCH_TAGS=breakdown"], written);
+        Assert.Equal(["HATCH_DANGEROUS=off"], written);
     }
 
     /// <summary>
@@ -2538,7 +2361,7 @@ public sealed class ConfigCommandTests : IDisposable
     /// <c>--profile</c> writes.
     /// </summary>
     [Fact]
-    public async Task Profile_tag_carries_forward_only_the_profiles_own_lines()
+    public async Task Profile_dangerous_carries_forward_only_the_profiles_own_lines()
     {
         var profilePath = Profile("HATCH_BASE=https://this-profile");
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
@@ -2551,11 +2374,11 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(
             0,
             await Command(new Replies(), environment: environment, profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "gpu"], default));
+                .RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(profilePath);
         Assert.Contains("HATCH_BASE=https://this-profile", written);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_KEY=", StringComparison.Ordinal));
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
     }
@@ -2579,7 +2402,7 @@ public sealed class ConfigCommandTests : IDisposable
         var profilePath = Profile();
 
         var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv, profileName: "work", profilePath: profilePath)
-            .RunAsync(["--here", "--tag", "gpu"], default);
+            .RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("hatch: --here and --profile write to two different places - pick one", Complained);
@@ -2596,7 +2419,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Invalid_profile_name_is_refused_before_anything_is_written()
     {
         var code = await Command(new Replies(), profileName: "li z", profilePath: null)
-            .RunAsync(["--tag", "gpu"], default);
+            .RunAsync(["--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("is not a valid profile name", Complained);
@@ -2608,14 +2431,14 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Show_with_an_explicit_profile_names_Layer_Profile_for_every_value_it_supplies()
     {
-        var profilePath = Profile("HATCH_BASE=https://from-profile", "HATCH_TAGS=gpu");
+        var profilePath = Profile("HATCH_BASE=https://from-profile", "HATCH_DANGEROUS=off");
 
         var code = await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--show"], default);
 
         Assert.Equal(0, code);
         Assert.Contains($"profile:          work  ({profilePath})", Said);
         Assert.Contains($"HATCH_BASE:        https://from-profile  ({profilePath})", Said);
-        Assert.Contains($"HATCH_TAGS:        gpu  ({profilePath})", Said);
+        Assert.Contains($"HATCH_DANGEROUS:   off - this runner refuses dangerous work  ({profilePath})", Said);
     }
 
     [Fact]

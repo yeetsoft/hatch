@@ -230,7 +230,7 @@ public sealed class OllamaAdapter : CodexAdapter
     /// refusal in entry order as one sentence naming the entry as typed, with
     /// <paramref name="tiers"/> left empty, or null once every entry is
     /// accepted. The sentence does not name the variable: the caller does, as
-    /// it does for <see cref="Settings.ParseTags"/>.
+    /// it does for <see cref="Settings.ParseModels"/>.
     /// </summary>
     /// <remarks>
     /// Each entry splits on its first <c>=</c> only, so a colon in an id is

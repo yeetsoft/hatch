@@ -766,7 +766,7 @@ public sealed class Harness : IDisposable
         Directory.CreateDirectory(Path.Combine(Root, ".git"));
 
         Clock = clock ?? TimeProvider.System;
-        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, Tags = tags ?? [], RefusesDangerous = refusesDangerous, Models = models, Has = has ?? [] };
+        var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, RefusesDangerous = refusesDangerous, Models = models, Has = has ?? [] };
         _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
@@ -801,7 +801,7 @@ public sealed class Harness : IDisposable
 
         Runtime = new Runtime(
             Settings: settings,
-            Board: new Board(_client, settings.Tags, settings.RefusesDangerous) { Has = settings.Has },
+            Board: new Board(_client, refusesDangerous: settings.RefusesDangerous) { Has = settings.Has, Tags = tags ?? [] },
             Sessions: Sessions,
             Adapter: new ClaudeAdapter(),
             Say: Say,
@@ -816,9 +816,10 @@ public sealed class Harness : IDisposable
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
             SourceRevision = () => SourceRevision,
-            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), settings.Tags, settings.RefusesDangerous)
+            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), refusesDangerous: settings.RefusesDangerous)
             {
                 Has = settings.Has,
+                Tags = tags ?? [],
                 Models = () => Runtime.AdvertisedModels() ?? [],
                 Agent = Runtime.Adapter.Id,
             },
