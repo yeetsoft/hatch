@@ -846,7 +846,7 @@ public sealed class WorkCommand(Runtime runtime)
     /// "what model" since it beats the playbook the same way it does
     /// everywhere else named is resolved; or carrying denied-tools rules this
     /// agent's adapter cannot honour; or pinned to a model its server has not
-    /// pulled.
+    /// pulled; or pinned to a model the runner has stopped offering.
     /// </summary>
     private bool RefuseRow(WorkDto work, string? model)
     {
@@ -865,6 +865,12 @@ public sealed class WorkCommand(Runtime runtime)
         if (!runtime.Adapter.CanServe(model ?? work.Playbook?.Model, out var unserved))
         {
             runtime.Say.Complain($"hatch: {work.Issue.Key} - {unserved}");
+            return true;
+        }
+
+        if (runtime.Narrowing.Refusal(model ?? work.Playbook?.Model, runtime.Settings.Agent, runtime.Clock.GetUtcNow(), runtime.Clock) is { } narrowed)
+        {
+            runtime.Say.Complain($"hatch: {work.Issue.Key} - {narrowed}");
             return true;
         }
 
