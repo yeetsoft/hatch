@@ -126,6 +126,9 @@ public static class Detect
 
         var results = await Task.WhenAll(make, dotnet, node, pwsh, postgres, playwright);
 
+        if (shell is not null && !Console.IsInputRedirected && !OperatingSystem.IsWindows())
+            Tty.TryReclaimForeground();
+
         return new Detection(results.OrderBy(result => result.Id, StringComparer.Ordinal).ToArray());
     }
 
