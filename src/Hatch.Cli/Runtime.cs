@@ -95,6 +95,9 @@ public sealed record Runtime(
     /// <summary>This member's slot in a runner set, from <c>HATCH_SET_SLOT</c>; null for slot 1 and for a lone runner.</summary>
     public int? Slot { get; init; }
 
+    /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
+    public IReadOnlyList<string> Has { get; init; } = [];
+
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
     public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter);
