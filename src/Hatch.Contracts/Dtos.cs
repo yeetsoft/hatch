@@ -1455,6 +1455,14 @@ public record ReviewDto(
 /// it is a person's. Null when no backup path is configured or all is well, on
 /// every board shape. Defaults to null so an older client still reads.
 /// </param>
+/// <param name="WaitingOnARunner">
+/// Every issue whose next move is clear but that no live runner can take,
+/// because every live, running, not-out-of-usage runner's own declaration folds
+/// it on the model it runs on or on a development dependency its project's
+/// repository asks for - and on nothing else. Ordered by tier, then rank. Empty,
+/// not null, when there is none or no runner is live, on every board shape.
+/// Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1469,7 +1477,8 @@ public record AttentionDto(
     IReadOnlyList<LandingHeldDto>? LandingHeld = null,
     IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
-    BackupAttentionDto? Backup = null);
+    BackupAttentionDto? Backup = null,
+    IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1574,6 +1583,17 @@ public record NoCodeHeldDto(string Key, string Title, string Type, string Reason
 /// </summary>
 /// <param name="Sentence">The queue's own words, starting <c>deadlocked - </c>.</param>
 public record DeadlockedDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// An issue whose next move is clear, and that no live runner can take - see
+/// <see cref="AttentionDto.WaitingOnARunner"/>.
+/// </summary>
+/// <param name="Move">The column the move starts from.</param>
+/// <param name="Missing">
+/// What no live runner has, in a sentence: <c>no live runner offers fable</c>,
+/// or <c>no live runner has pwsh 7 and playwright-browsers</c>.
+/// </param>
+public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
 
 // ---- The board ----
 

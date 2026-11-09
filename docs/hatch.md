@@ -3488,7 +3488,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/playbook-proposals/reject-all` | POST | The same person-only gate as the row above. Marks every [pending proposal](#playbook-proposal) rejected, touching no playbook row. `{ proposalIds }` — the exact set the caller last read as pending. `409` naming the reload where that set has changed underneath it. A decided proposal naming an issue gets a `playbook_proposal_rejected` event |
 | `/import/preview`, `/import/preview-text`, `/import` | POST | See [the importer](#the-importer) |
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
-| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
+| `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
 | `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key or a keyless runner, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
 | `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
@@ -3795,6 +3795,10 @@ answer worth having, and it is the one it gives most of the time.
     { "key": "AER-18", "title": "A task that needed no change",
       "type": "task",
       "reason": "the setting was already what the ticket asked for" }
+  ],
+  "waitingOnARunner": [
+    { "key": "AER-19", "title": "A story that runs on fable", "type": "story",
+      "move": "todo", "missing": "no live runner offers fable" }
   ]
 }
 ```
@@ -4046,6 +4050,34 @@ heartbeat that says it is not clears the board's record at once - which is how
 a person overrides the wait: restarting the loop by hand starts a fresh night
 that carries nothing forward, and its first heartbeat clears whatever the
 board remembered.
+
+### A move no live runner can take
+
+`waitingOnARunner` lists every issue whose next move is clear, but that no live
+runner can take: every live runner's own declaration folds it on the
+[model fold and the dependency fold](#what-a-pass-skipped), and on nothing
+else. A runner is live when it is being heard from, running, and not out of
+usage - the same test a peer is held to when one runner's let-go ticket is left
+for another. Each entry is `key`, `title`, `type`, `move` (the column the move
+starts from) and `missing`, ordered by tier, then rank, as the queue is.
+
+The list is empty when no runner is live - the existing "no runner" condition
+says that - and when every gap is met by some live runner. A runner that never
+declared models or what it has is never counted as lacking them: one that
+declared neither empties the list, and a check is skipped where no live runner
+declared that capability. `missing` takes one of two shapes, joined with `; `
+when a move needs both:
+
+- `no live runner offers fable` - the move runs on a model alias no live
+  runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
+  pinned id.
+- `no live runner has pwsh 7 and playwright-browsers` - the project's bound
+  repositories declare dependencies no live runner's `has` satisfies; an
+  invalid dependencies file is named as it is.
+
+A split fleet lists nothing, deliberately: where one runner lacks the model
+and another lacks the tool, no single sentence is true of all of them, and the
+move may yet be taken once either is fixed.
 
 ## The leaderboard
 

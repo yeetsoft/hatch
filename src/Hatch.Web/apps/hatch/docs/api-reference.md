@@ -1111,7 +1111,13 @@ the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
 or through a chain, on something itself waiting on it - and the backup's
 own trouble (`backup`), null when `Hatch__BackupPath` is unset or the
-backup is healthy.
+backup is healthy. `waitingOnARunner` lists the issues whose next move is
+clear but that no live runner can take, because every live runner's own
+declaration folds it on the model it runs on or on a development dependency
+its project's repository asks for; each entry carries `key`, `title`, `type`,
+`move` (the column the move starts from) and `missing` (what no live runner
+has), ordered by tier and then rank, and the list is empty when no runner is
+live.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
