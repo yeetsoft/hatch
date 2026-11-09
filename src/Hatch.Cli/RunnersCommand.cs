@@ -22,8 +22,9 @@ public sealed class RunnersCommand(Cli cli)
         "  One line per runner that has spoken to this Hatch lately, most recently",
         "  heard from first: its name, what it is doing, the ticket it holds (or",
         "  none), and how long ago it last heartbeat. A row closes with the projects",
-        "  it is bound to and the models it advertises, where it has any. A caller",
-        "  with nothing to see prints one sentence saying so.",
+        "  it is bound to and the models it advertises, where it has any. The row",
+        "  is followed by one indented line per live session beneath it: where,",
+        "  agent, state. A caller with nothing to see prints one sentence saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
     ];
@@ -71,15 +72,45 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
         var ticketWidth = table.Max(r => r.Ticket.Length);
 
-        return table
-            .Select(r => r.Runner.PadRight(runnerWidth) + "  " + r.State.PadRight(stateWidth) + "  " + r.Ticket.PadRight(ticketWidth) + "  " + r.Heard)
+        var lines = new List<string>();
+        for (var i = 0; i < table.Count; i++)
+        {
+            var r = table[i];
+            lines.Add(r.Runner.PadRight(runnerWidth) + "  " + r.State.PadRight(stateWidth) + "  " + r.Ticket.PadRight(ticketWidth) + "  " + r.Heard);
+            if (i > 0) lines.AddRange(SessionLines(rows[i - 1], now));
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// One indented line per live session beneath a runner's own row - where,
+    /// agent, state, in that order, column-aligned over this runner's live
+    /// sessions alone. A session is live when it carries no end and has not
+    /// fallen past its runner's own gone horizon, since the in-memory provider
+    /// skips the lazy <c>EndedAt</c> write the server makes on this very read.
+    /// </summary>
+    private static IEnumerable<string> SessionLines(RunnerDto row, DateTimeOffset now)
+    {
+        var live = row.Sessions
+            .Where(s => s.EndedAt is null)
+            .Select(s => (Where: s.Where ?? "-", Agent: s.Agent ?? "-", State: State(s.LastSeenAt, row.GoneAfterSeconds, s.ExhaustedUntil, s.State, s.ClaimKey, now)))
+            .Where(s => s.State != "gone")
             .ToList();
+
+        if (live.Count == 0) yield break;
+
+        var whereWidth = live.Max(s => s.Where.Length);
+        var agentWidth = live.Max(s => s.Agent.Length);
+
+        foreach (var s in live)
+            yield return "  " + s.Where.PadRight(whereWidth) + "  " + s.Agent.PadRight(agentWidth) + "  " + s.State;
     }
 
     /// <summary>
@@ -131,13 +162,15 @@ public sealed class RunnersCommand(Cli cli)
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence
     /// beats everything, then a fact the runner reports about its own account,
-    /// then what it was asked to do, then what it is holding.
+    /// then what it was asked to do, then what it is holding. Shared between a
+    /// runner's own row and each of its sessions, which carry the same facts
+    /// under their own names.
     /// </summary>
-    private static string State(RunnerDto row, DateTimeOffset now) =>
-        (now - row.LastSeenAt).TotalSeconds > row.GoneAfterSeconds ? "gone"
-        : row.ExhaustedUntil is { } u && u > now ? "out of usage"
-        : row.State == "paused" ? "paused"
-        : row.State == "stopping" ? "stopping"
-        : row.ClaimKey is not null ? "working"
+    private static string State(DateTimeOffset lastSeenAt, int goneAfterSeconds, DateTimeOffset? exhaustedUntil, string state, string? claimKey, DateTimeOffset now) =>
+        (now - lastSeenAt).TotalSeconds > goneAfterSeconds ? "gone"
+        : exhaustedUntil is { } u && u > now ? "out of usage"
+        : state == "paused" ? "paused"
+        : state == "stopping" ? "stopping"
+        : claimKey is not null ? "working"
         : "idle";
 }

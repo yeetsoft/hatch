@@ -302,6 +302,12 @@ prints one sentence saying so. It writes nothing.
 
 - `--json` prints the endpoint's own answer and nothing else.
 
+A runner's row is followed by one indented line per session of its own that is
+still live: `  where  agent  state`, two spaces between columns, aligned over
+that runner's own live sessions alone. A session missing its `where` or its
+agent prints `-` in its place. A runner with no live session - a gone runner
+included - prints no line beneath it.
+
 A runner that has reported its own process adds `  on HOST`, `N runs` and
 `$X.XX` (the machine, the increments run and the dollars spent), then the
 tokens, before any projects, each only where it has said so. The tokens read
