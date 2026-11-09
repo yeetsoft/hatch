@@ -54,6 +54,7 @@ public class BoardController(
         bool Held,
         string? PullRequestUrl,
         DateTimeOffset? ClosedAt,
+        string? NoCode,
         ClaimSnapshot Claim);
 
     /// <summary>
@@ -84,6 +85,7 @@ public class BoardController(
         i.Held,
         i.PullRequestUrl,
         i.ClosedAt,
+        i.NoCode,
         new ClaimSnapshot(
             i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
             i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -222,7 +224,8 @@ public class BoardController(
                 ClosedAt: i.ClosedAt,
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
-                DangerousFrom: dangerousFrom);
+                DangerousFrom: dangerousFrom,
+                NoCode: i.NoCode);
         }
 
         var cards = issues.Select(Card).ToList();

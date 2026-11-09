@@ -250,6 +250,41 @@ public class BoardControllerTests
         Assert.DoesNotContain(board.PastHorizon, i => i.Key == storyKey);
     }
 
+    // ---- NoCode carried on the card (HA-2063) ----
+
+    [Fact]
+    public async Task NoCode_DeclaredAndUndeclaredCards_CarryTheReasonOrNull()
+    {
+        var h = await NewAsync();
+        var declared = await h.IssueAsync("bug", h.Done, closedAt: Now.AddHours(-1));
+        declared.NoCode = "the setting was already right";
+        declared.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+        var undeclared = await h.IssueAsync("bug", h.InProgress, closedAt: null);
+        var declaredKey = IssueKey.Format(h.ProjectKey, declared.Number);
+        var undeclaredKey = IssueKey.Format(h.ProjectKey, undeclared.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal("the setting was already right", Assert.Single(board.Issues, i => i.Key == declaredKey).NoCode);
+        Assert.Null(Assert.Single(board.Issues, i => i.Key == undeclaredKey).NoCode);
+    }
+
+    [Fact]
+    public async Task NoCode_DeclaredCardInADeferredColumn_StillCarriesTheReason()
+    {
+        var h = await NewAsync();
+        var deferred = await h.IssueAsync("bug", h.Deferred, closedAt: null);
+        deferred.NoCode = "the setting was already right";
+        deferred.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+        var deferredKey = IssueKey.Format(h.ProjectKey, deferred.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal("the setting was already right", Assert.Single(board.Issues, i => i.Key == deferredKey).NoCode);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
