@@ -6367,6 +6367,75 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_MovesItToDone()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var moved = Value(await h.Work.HopWork(Key(issue), null, null, null, default));
+        var row = await h.Db.Issues.FirstAsync(i => i.Id == issue.Id);
+
+        Assert.Equal(h.Done, moved.StatusId);
+        Assert.Equal(h.Done, row.StatusId);
+    }
+
+    [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_WritesOneStatusChangedEventCarryingApprovedSetting()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var e = Assert.Single(row.Events);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal(EfHatchIssueEvent.StatusChanged, e.Kind);
+        Assert.Equal("setting", payload.GetProperty("approved").GetString());
+        Assert.False(payload.TryGetProperty("preapproved", out _));
+        AssertColumns(e, h.Review, h.Done);
+    }
+
+    [Fact]
+    public async Task HopWork_OnASettingOnlyCloseRow_WritesTheClosedUnderTheSettingComment()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed under {Key(issue)}'s setting, a passing check approves the merge: every child is done.",
+            comment.Body);
+    }
+
+    [Fact]
+    public async Task HopWork_OnAPreApprovedCloseRowInASettingOnProject_KeepsThePreApprovalsPayloadAndComment()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id);
+        var payload = System.Text.Json.JsonDocument.Parse(Assert.Single(row.Events).Payload!).RootElement;
+        Assert.True(payload.GetProperty("preapproved").GetBoolean());
+        Assert.False(payload.TryGetProperty("approved", out _));
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal("Closed by its pre-approval on its own row: every child is done.", comment.Body);
+    }
+
+    [Fact]
     public async Task HopWork_OnACloseRow_Is409WhenAChildHasReopened()
     {
         var h = await NewAsync();
