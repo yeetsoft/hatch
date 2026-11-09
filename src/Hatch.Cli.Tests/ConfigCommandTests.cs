@@ -25,7 +25,8 @@ public sealed class ConfigCommandTests : IDisposable
         Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null,
         string? profileName = null,
         string? profilePath = null,
-        ConfigCommand.ProfileResolver? resolveProfile = null) =>
+        ConfigCommand.ProfileResolver? resolveProfile = null,
+        Probe? detectProbe = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
             checkoutEnv, runnerName, root)
         {
@@ -40,6 +41,10 @@ public sealed class ConfigCommandTests : IDisposable
             // No active profile unless a test says otherwise: the real one reads
             // the machine's own pointer, which no test may depend on.
             ResolveProfile = resolveProfile ?? NoActiveProfile,
+            // Nothing on this dictionary's own PATH resolves to a real tool, so
+            // the real probe is never actually called unless a test's own
+            // environment names a FakePath-style directory.
+            DetectProbe = detectProbe ?? Detect.RealProbe,
         };
 
     private static bool NoActiveProfile(
@@ -846,6 +851,30 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_RETRY_SECONDS:  30  (exported)", Said);
     }
 
+    // ---- --show: has / missing ----
+
+    /// <summary>Nothing on the test's own environment resolves, so every dependency is missing.</summary>
+    [Fact]
+    public async Task Show_prints_has_and_missing_with_nothing_detected_or_declared()
+    {
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"{"has:".PadRight(19)}none", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}dotnet, make, node, playwright-browsers, postgres, pwsh", Said);
+    }
+
+    [Fact]
+    public async Task Show_moves_a_declared_dependency_from_missing_to_has()
+    {
+        await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_HAS"] = "make" })
+            .RunAsync(["--show"], default);
+
+        Assert.Contains($"{"has:".PadRight(19)}make", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}dotnet, node, playwright-browsers, postgres, pwsh", Said);
+    }
+
     [Fact]
     public async Task Show_says_it_is_not_in_a_checkout_when_it_is_not()
     {
@@ -897,7 +926,7 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_prints_a_keys_identity_with_its_owner_and_scopes()
+    public async Task Show_prints_a_keys_identity_with_its_owner()
     {
         await Command(
                 new Replies(),
@@ -906,7 +935,8 @@ public sealed class ConfigCommandTests : IDisposable
                     new MeDto("key", "ada-key", "admin", true, false, false, "Ada", ["hatch"])))
             .RunAsync(["--show"], default);
 
-        Assert.Contains("identity:         key \"ada-key\", owned by Ada, scopes: hatch", Said);
+        Assert.Contains("identity:         key \"ada-key\", owned by Ada", Said);
+        Assert.DoesNotContain("scopes", Said);
     }
 
     [Fact]

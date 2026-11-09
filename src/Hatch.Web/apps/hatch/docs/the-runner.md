@@ -235,7 +235,7 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   resolved active one, or `<none>`; the `runner:` line below and an unset
   `HATCH_WORKSPACE:` line name it in turn;
 - the runner's name, and where it came from;
-- who `/api/hatch/me` says the caller is - the key, its owner and its scopes,
+- who `/api/hatch/me` says the caller is - the key and its owner,
   or that calls go out as a named runner - or `<unreachable>` when there is
   no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
@@ -252,6 +252,11 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   `off - this runner refuses dangerous work`, or a bad value with the sentence that refuses it;
 - `HATCH_MODELS:` as a comma-separated list, `<unset - the agent's default>`, or a bad
   value with the sentence that refuses it;
+- `has:` - what detection found merged with what `HATCH_HAS` declares, `id` or
+  `id version`, comma-separated, or `none`;
+- `missing:` - everything neither detection nor `HATCH_HAS` found, comma-separated,
+  or `none`. Detected here quietly: an absent id prints no line on stderr the
+  way it does for a beat;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -360,6 +365,20 @@ dependency Hatch knows - the list is dotnet, make, node, playwright-browsers,
 postgres, pwsh ``. A bad `HATCH_HAS` in a file or the environment refuses
 every command with the same sentence, after `hatch: HATCH_HAS -`. It is
 machine-bound, so a profile still reads it from the per-user file.
+
+**Detection runs once**, at the start of `go-to-work`, `do-my-work`, `work`
+and `queue`, concurrently across all six dependencies: `make`, `dotnet`,
+`node` and `pwsh` on `PATH` (and which version each answers), whether a
+Playwright browsers cache exists, and whether Postgres answers - a binary on
+`PATH`, or failing that a Docker daemon's `docker info`. None of the six can
+outlast five seconds alone, but Postgres tries three binaries and a daemon in
+turn before giving up, so it alone can take up to four times that. What
+detection finds is merged with what `HATCH_HAS` declares - a declared entry
+adds only what detection missed, never removing what detection found - and
+the merged set is what a beat advertises: the same one `hatch runners` and the
+Runners page draw, above. A supervisor restart is a new process, so it
+detects again with no code of its own; an id neither detection nor `HATCH_HAS`
+covers says why once on stderr, as `hatch: <id> not detected - <why>`.
 
 ## What a runner refuses
 
@@ -663,7 +682,7 @@ file:             <per-user config>/config
 checkout:         <checkout-a>/scripts/.env  (written by --here)
 profile:          <none>
 runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/config)
@@ -692,7 +711,7 @@ file:             <per-user config>/config
 checkout:         <checkout-b>/scripts/.env  (written by --here)
 profile:          <profile-b>  (<per-user config>/profiles/<profile-b>)
 runner:           <checkout-b>  (<per-user config>/runners)  (profile: <profile-b>)
-identity:         key "<name>", owned by <owner>, scopes: hatch
+identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 HATCH_KEY:         hatch_ak_xxx...xxxx  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
@@ -722,7 +741,7 @@ carries no layer. The key prints as its first twelve and last four
 characters, or `(set)` when it is short, never in full.
 
 The `identity:` line calls `/api/hatch/me` with whatever origin and key are
-folded above, and names the key, its owner and its scopes, or - for a runner
+folded above, and names the key and its owner, or - for a runner
 header instead of a key - that calls go out as its name. It prints
 `<unreachable>` without calling out at all when no origin is set, and the
 same when the call itself fails, so `--show` keeps working fully offline.

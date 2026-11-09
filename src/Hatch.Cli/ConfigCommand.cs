@@ -163,6 +163,13 @@ public sealed record ConfigCommand(
     public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
 
     /// <summary>
+    /// How <c>--show</c> detects, quietly - no stderr line for an absent id, the
+    /// way a beat's own detection complains. Replaced by a test, which has no
+    /// real tool to probe.
+    /// </summary>
+    public Probe DetectProbe { get; init; } = Detect.RealProbe;
+
+    /// <summary>
     /// How the written settings are proved. Replaced by a test, which has no
     /// origin to reach.
     /// </summary>
@@ -1269,7 +1276,7 @@ public sealed record ConfigCommand(
     {
         { Kind: "runner" } => $"calls go out as \"{me.Name}\"",
         { Kind: "key", Owner: null } => $"key \"{me.Name}\"",
-        { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}, scopes: {string.Join(", ", me.Scopes ?? [])}",
+        { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}",
         _ => "<unreachable>",
     };
 
@@ -1456,7 +1463,31 @@ public sealed record ConfigCommand(
             Say.Line($"{label}{shown}{where}{note}");
         }
 
+        // Quietly - no stderr line for an absent id, the way a beat's own
+        // detection complains; the HATCH_HAS line above already shows a
+        // refusal, so one is treated as declaring nothing here.
+        var declaredSentence = Settings.ParseHas(fold("HATCH_HAS").Value, out var declaredHas);
+        if (declaredSentence is not null) declaredHas = [];
+
+        var lookup = Detect.Lookup(Environment);
+        var detection = await Detect.RunAsync(lookup("PATH"), Detect.CurrentOs(), lookup, DetectProbe, ct);
+
+        Say.Line($"{"has:".PadRight(19)}{DrawHas(detection.Merge(declaredHas))}");
+        Say.Line($"{"missing:".PadRight(19)}{DrawHas(detection.Missing(declaredHas))}");
+
         return 0;
+    }
+
+    /// <summary>A dependency list for <c>--show</c>: <c>id@version</c> drawn as <c>id version</c>, joined by commas, <c>none</c> when empty.</summary>
+    private static string DrawHas(IReadOnlyList<string> entries)
+    {
+        if (entries.Count == 0) return "none";
+
+        return string.Join(", ", entries.Select(entry =>
+        {
+            var at = entry.IndexOf('@');
+            return at < 0 ? entry : $"{entry[..at]} {entry[(at + 1)..]}";
+        }));
     }
 
     /// <summary>Which layer, as a person would say it.</summary>
