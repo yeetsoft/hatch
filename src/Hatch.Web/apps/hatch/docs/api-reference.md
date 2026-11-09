@@ -1187,7 +1187,13 @@ declaration folds it on the model it runs on or on a development dependency
 its project's repository asks for; each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
-live.
+live. `trainStalled` lists the projects whose merge train passed its driver
+over and has not heard from that runner since, ordered by project key; each
+entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
+(null when no other runner was eligible), `headKey` (the issue at the head of
+the train) and `at`. It is empty, not null, when no train is stalled, and the
+panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
+counted, since a runner that died never checks in to clear it.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.

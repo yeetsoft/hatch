@@ -10,6 +10,7 @@ import {
   noCodeHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
+  trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
   trunkIconTone,
@@ -116,7 +117,7 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 
 /**
  * The Human half of what the loop is waiting on a person for: issues waiting
- * on a runner, a backup that needs attention, deadlocked issues, trunk builds that fail, pull requests
+ * on a runner, a backup that needs attention, stalled merge trains, deadlocked issues, trunk builds that fail, pull requests
  * to review, pull requests approved but not merging, issues landed but not
  * done, questions to answer - in that order, the order somebody would work
  * through them.
@@ -146,6 +147,7 @@ export function AttentionHuman({
   const noCodeHeld = attention?.noCodeHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
   const waitingOnARunner = attention?.waitingOnARunner ?? [];
+  const trainStalled = attention?.trainStalled ?? [];
   const backup = attention?.backup ?? null;
 
   return (
@@ -202,6 +204,29 @@ export function AttentionHuman({
                 <span className="hatch-attention-files">{lastSuccessWords(backup)}</span>
               </Link>
             </li>
+          </ul>
+        </section>
+      )}
+
+      {trainStalled.length > 0 && (
+        <section className="hatch-attention-section">
+          <h3 className="hatch-attention-heading">Stalled merge trains</h3>
+
+          <ul className="hatch-attention-rows">
+            {trainStalled.map((t) => (
+              <li key={t.projectKey}>
+                <Link className="hatch-attention-row" to={`/issues/${t.headKey}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{t.headKey}</span>
+                    <span className="hatch-attention-title">{t.projectName}</span>
+                  </span>
+                  {/* nowrap and ellipsis, and two runner names are long: the title keeps the whole sentence reachable. */}
+                  <span className="hatch-attention-files" title={trainStalledWords(t)}>
+                    {trainStalledWords(t)}
+                  </span>
+                </Link>
+              </li>
+            ))}
           </ul>
         </section>
       )}

@@ -1818,6 +1818,18 @@ export interface WaitingOnARunner {
   missing: string;
 }
 
+/** A project whose merge train passed its driver over, with the head issue it
+    stalled on and the runner elected in its place, or null when none was
+    eligible. Mirrors TrainStalledDto. */
+export interface TrainStalled {
+  projectKey: string;
+  projectName: string;
+  passedOverRunner: string;
+  electedRunner: string | null;
+  headKey: string;
+  at: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1891,6 +1903,11 @@ export interface Attention {
       a person's to fix, every time. Lights the control and draws no pill.
       Absent from a board that predates it. */
   waitingOnARunner?: WaitingOnARunner[];
+  /** The projects whose merge train passed a driver over and has not heard
+      from it since. Listed, not counted: the row stays until that runner next
+      checks in, and one that died never does. Absent from a board that
+      predates it. */
+  trainStalled?: TrainStalled[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
