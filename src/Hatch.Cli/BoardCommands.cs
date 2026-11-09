@@ -51,6 +51,10 @@ public sealed class BoardCommands(Cli cli)
         "  \"(epic, no session)\", \"(under <epic>, no session)\" or \"(pre-approved,",
         "  no session)\" is a hop: the loop carries it on itself with no session,",
         "  rather than spawning one.",
+        "",
+        "  The queue closes with one line per distinct thing no live runner",
+        "  offers or has, among the issues it just printed - a server too old to",
+        "  say so prints nothing extra.",
     ];
 
     /// <summary>
@@ -242,7 +246,60 @@ public sealed class BoardCommands(Cli cli)
         }
 
         foreach (var line in Draw(queue)) cli.Say.Line(line);
+
+        // Best-effort, as Idle.cs reads it: the rows above are the answer
+        // this command exists to give, and a footer that did not arrive must
+        // not turn a printed queue into an error.
+        AttentionDto? attention = null;
+        try
+        {
+            attention = await cli.Board.AttentionAsync(ct);
+        }
+        catch (HatchException)
+        {
+        }
+
+        if (attention?.WaitingOnARunner is { Count: > 0 } waiting)
+        {
+            if (under is { Length: > 0 } || mine)
+            {
+                var shown = queue.Select(q => q.Issue.Key).ToHashSet();
+                waiting = waiting.Where(w => shown.Contains(w.Key)).ToList();
+            }
+
+            if (waiting.Count > 0) cli.Say.Lines(Waiting(waiting));
+        }
+
         return 0;
+    }
+
+    /// <summary>
+    /// One line per distinct <see cref="WaitingOnARunnerDto.Missing"/> sentence,
+    /// commonest first and then alphabetically - <see cref="Digest.Of"/>'s own
+    /// order, over a different field.
+    /// </summary>
+    public static IReadOnlyList<string> Waiting(IReadOnlyList<WaitingOnARunnerDto> waiting)
+    {
+        var groups = waiting
+            .GroupBy(w => w.Missing)
+            .Select(g => (Count: g.Count(), Missing: g.Key))
+            .OrderByDescending(g => g.Count)
+            .ThenBy(g => g.Missing, StringComparer.Ordinal)
+            .ToList();
+
+        return groups.Select(g => WaitingLine(g.Count, g.Missing)).ToList();
+    }
+
+    private const string NoLiveRunnerPrefix = "no live runner ";
+
+    private static string WaitingLine(int n, string missing)
+    {
+        var noun = n == 1 ? "issue" : "issues";
+        var verb = n == 1 ? "waits" : "wait";
+
+        return missing.StartsWith(NoLiveRunnerPrefix, StringComparison.Ordinal) && !missing.Contains("; ")
+            ? $"{n} {noun} {verb} for a runner that {missing[NoLiveRunnerPrefix.Length..]}"
+            : $"{n} {noun} {verb}: {missing}";
     }
 
     /// <summary>
