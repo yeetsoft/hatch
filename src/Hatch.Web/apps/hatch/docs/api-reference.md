@@ -536,7 +536,7 @@ the second half of this page, after the board's own.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing) |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
@@ -572,7 +572,8 @@ the caller already holds, so re-reading a dispatch for a ticket it is already
 working is not folded as a conflict. `queue` instead takes `asRunner`, which
 answers off that named runner's own row - its repositories, `mine` and
 `ancestorKey` - rather than the query string, and may not be combined with
-any of them. The four write routes (`merged`, `pushback`, `closed`) take
+any of them; where that key holds live loop sessions, the answer is judged
+off its beat row and those sessions together, never the beat row alone. The four write routes (`merged`, `pushback`, `closed`) take
 `PullRequestMergedRequest`/`PullRequestPushbackRequest`/`PullRequestClosedRequest(Url,
 Runner)`, comparing `Url` against what is recorded on the issue; `verdict`
 takes only `heldToken`, naming the claim the verdict was recorded under;

@@ -1,6 +1,8 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -1332,6 +1334,49 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
     }
 
+    // ---- A session-only peer, and a beat beside a session of one key (HA-2036) ----
+
+    [Fact]
+    public async Task WaitingOnARunner_ASessionOnlyRunnerWithTheWrongAgent_ListsTheRow_AndASecondWithTheRightOneEmptiesIt()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "claude-opus-5");
+        var issue = await h.FileAsync("task", "pinned to claude", h.Todo);
+
+        var key = await h.AddKeyAsync("session-only");
+        await h.AddSessionAsync(key, "here:/one", agent: "codex");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("pinned to claude-opus-5 - no live runner's agent is claude", row.Missing);
+
+        await h.AddSessionAsync(key, "here:/two", agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ABeatAndASessionOfOneKey_AreTwoPeersNeverOne()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "claude-opus-5");
+        var issue = await h.FileAsync("task", "pinned to claude", h.Todo);
+
+        // The beat is paused, so it is not itself a live peer - but its row
+        // still exists under the same key, and a live session of that key
+        // is judged on its own, not folded away by the beat beside it.
+        var key = await h.AddKeyAsync("mixed");
+        await h.RunnerAsync(key.Name, null, state: "paused");
+        await h.AddSessionAsync(key, "here:/one", agent: "codex");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(Key(issue), row.Key);
+
+        await h.AddSessionAsync(key, "here:/two", agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
     // ---- The trunk half (HA-95) ----
 
     [Fact]
@@ -1788,6 +1833,7 @@ public class AttentionControllerTests : IDisposable
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
+        public required IAuthService Keys { get; init; }
         public required AttentionController Attention { get; init; }
         public required Microsoft.Extensions.Time.Testing.FakeTimeProvider Time { get; init; }
         public required BackupService Backup { get; init; }
@@ -1819,6 +1865,30 @@ public class AttentionControllerTests : IDisposable
                 ExhaustedUntil = exhaustedUntil,
                 Models = models is null ? null : string.Join('\n', models),
                 Has = has is null ? null : string.Join('\n', has),
+                Agent = agent,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
+        public async Task<EfApiKey> AddKeyAsync(string name)
+        {
+            var created = await Keys.CreateApiKeyAsync(name, null, default);
+            return created!.Key;
+        }
+
+        /// <summary>A live loop session for a key, placed directly - the session-carrying counterpart to <see cref="RunnerAsync"/>.</summary>
+        public async Task AddSessionAsync(EfApiKey key, string? where = null, string? agent = null, bool standing = true)
+        {
+            Db.RunnerSessions.Add(new EfHatchRunnerSession
+            {
+                ApiKeyId = key.Id,
+                Kind = EfHatchRunner.LoopKind,
+                State = EfHatchRunner.Running,
+                StartedAt = Time.GetUtcNow(),
+                LastSeenAt = Time.GetUtcNow(),
+                Where = where,
+                Standing = standing,
                 Agent = agent,
             });
             await Db.SaveChangesAsync();
@@ -2110,13 +2180,19 @@ public class AttentionControllerTests : IDisposable
 
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
         var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
+        var coreDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var keys = new AuthService(
+            coreDb, Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), time, NullLogger<AuthService>.Instance);
+        var sessions = new RunnerSessions(runners);
 
         var (backup, status, process) = NewBackup(time, backupPath);
 
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time), backup),
+            Keys = keys,
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup),
             Time = time,
             Backup = backup,
             Status = status,
@@ -2146,13 +2222,19 @@ public class AttentionControllerTests : IDisposable
 
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Now);
         var runners = new Runners(Microsoft.Extensions.Options.Options.Create(new HatchOptions()), Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
+        var coreDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var keys = new AuthService(
+            coreDb, Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), time, NullLogger<AuthService>.Instance);
+        var sessions = new RunnerSessions(runners);
 
         var (backup, status, process) = NewBackup(time, backupPath);
 
         return new Harness
         {
             Db = db,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time), backup),
+            Keys = keys,
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup),
             Time = time,
             Backup = backup,
             Status = status,

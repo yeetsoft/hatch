@@ -2,12 +2,14 @@ using System.Globalization;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
+using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -2313,6 +2315,57 @@ public class WorkControllerTests
 
         Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
         Assert.Equal(DeferralSentence(b, 3), Only(await h.Work.GetQueue(runner: b)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_ASessionOnlyPeerWithNoBeat_DefersTheLetGoTicketAsABeatDoes()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        var b = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(b, "here:/one", standing: true);
+
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_ABeatAndASessionOfOneKey_AreTwoPeersNeverOne()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B's own beat cannot take the ticket - it is paused - but a live
+        // session under the same key, standing on its own checkout, still
+        // can: the two are two peers, so A still defers.
+        var b = await h.AddKeyAsync(RunnerName());
+        await AddLoopRunnerAsync(h, b.Name, row => row.State = EfHatchRunner.Paused);
+        await h.AddSessionAsync(b, "here:/one", standing: true);
+
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_TheCallersOwnSiblingSession_NeverDefersItsOwnTicketBack()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = await h.AddKeyAsync(RunnerName());
+        await AddLoopRunnerAsync(h, a.Name);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a.Name);
+
+        // A second session under A's own key name is not a peer: the loop
+        // sends only its key name as `runner`, so a sibling session of the
+        // very key asking is excluded, the same way A's own beat is.
+        await h.AddSessionAsync(a, "here:/two", standing: true);
+
+        Assert.Null(Only(await h.Work.GetQueue(runner: a.Name)).Blocked);
     }
 
     // ---- Omitted runners on a named dispatch and a hop ----
@@ -5497,6 +5550,83 @@ public class WorkControllerTests
             Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "fil-box", null, ["AER"])).Blocked);
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, null, null, null, false, default, "aer-box")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerWithTwoLiveSessions_UnionsTheirProjects_AndRefusesDangerousIfEitherDoes()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("story", "in AER", h.InProgress);
+        issue.Dangerous = "load-tests the API";
+        await h.Db.SaveChangesAsync();
+
+        var key = await h.AddKeyAsync("two-sessions");
+        await h.AddSessionAsync(key, "here:/one", projects: ["FIL"], remotes: "https://example.com/o/r");
+        await h.AddSessionAsync(key, "here:/two", projects: ["FIL", "AER"], refusesDangerous: true, remotes: "https://example.com/o/r");
+
+        Assert.Equal(
+            $"{Key(issue)} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            Only(await h.Work.GetQueue(asRunner: key.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerWithOneLiveSessionAndNoBeat_IsAnsweredOffItsOwnDeclaration()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        var issue = await h.FileAsync("story", "in AER", h.InProgress);
+
+        var key = await h.AddKeyAsync("session-only");
+        await h.AddSessionAsync(key, "here:/one", projects: ["FIL"]);
+
+        Assert.Equal(
+            $"{Key(issue)} is in project AER - this runner is bound to FIL",
+            Only(await h.Work.GetQueue(asRunner: key.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerWhoseOnlySessionHasEndedOrAgedOut_Is400()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "clear", h.Todo);
+
+        var ended = await h.AddKeyAsync("ended-session");
+        var endedSession = await h.AddSessionAsync(ended, "here:/one");
+        endedSession.EndedAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(
+            $"there is no runner named {ended.Name}",
+            Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(asRunner: ended.Name)).Result).Value);
+
+        var aged = await h.AddKeyAsync("aged-session");
+        await h.AddSessionAsync(aged, "here:/one");
+        h.Time.Advance(TimeSpan.FromSeconds(91));
+
+        Assert.Equal(
+            $"there is no runner named {aged.Name}",
+            Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(asRunner: aged.Name)).Result).Value);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerWithABeatAndALiveSession_FoldsBoth()
+    {
+        var h = await NewAsync();
+        await h.AddProjectAsync("FIL");
+        var issue = await h.FileAsync("story", "in AER", h.InProgress);
+
+        var key = await h.AddKeyAsync("mixed");
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = key.Name, Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Projects = "FIL",
+        });
+        await h.Db.SaveChangesAsync();
+        await h.AddSessionAsync(key, "here:/one", projects: ["FIL", "AER"]);
+
+        Assert.Null(Only(await h.Work.GetQueue(asRunner: key.Name)).Blocked);
     }
 
     // ---- Runner tags, the union and where it comes from (HA-1367) ----
@@ -12935,6 +13065,8 @@ public class WorkControllerTests
 
         /// <summary>Who the house knows. Empty until a test says otherwise, which reads as "nobody is assigned to anything".</summary>
         public required StubActorDirectory Actors { get; init; }
+        public required IAuthService Keys { get; init; }
+        public required RunnerSessions Sessions { get; init; }
         public required WorkController Work { get; init; }
         public required PlaybooksController Playbooks { get; init; }
         public required StubCallerIdentity Caller { get; init; }
@@ -13723,6 +13855,43 @@ public class WorkControllerTests
             return repo;
         }
 
+        /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
+        public async Task<EfApiKey> AddKeyAsync(string name, Guid? ownerPersonId = null)
+        {
+            var created = await Keys.CreateApiKeyAsync(name, ownerPersonId, default);
+            return created!.Key;
+        }
+
+        /// <summary>
+        /// A live loop session for a key, carrying only the fields
+        /// <see cref="RunnerDeclaration"/>'s session overload actually reads.
+        /// </summary>
+        public async Task<EfHatchRunnerSession> AddSessionAsync(
+            EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
+            string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
+            bool? standing = null)
+        {
+            var session = new EfHatchRunnerSession
+            {
+                ApiKeyId = key.Id,
+                Kind = EfHatchRunner.LoopKind,
+                State = EfHatchRunner.Running,
+                StartedAt = at ?? Now,
+                LastSeenAt = at ?? Now,
+                Where = where,
+                Remotes = remotes,
+                Projects = projects is null ? null : string.Join('\n', projects),
+                RefusesDangerous = refusesDangerous,
+                Mine = mine,
+                Under = under,
+                Agent = agent,
+                Standing = standing,
+            };
+            Db.RunnerSessions.Add(session);
+            await Db.SaveChangesAsync();
+            return session;
+        }
+
         /// <summary>The project's own required tags, written straight onto the row.</summary>
         public async Task RequireTagsAsync(params string[] tags)
         {
@@ -13790,14 +13959,24 @@ public class WorkControllerTests
             Key = new EfApiKey { Name = "hatch-loop", Prefix = "hatch_ak_", Hash = [], CreatedAt = Now },
         };
 
+        var runners = new Runners(
+            Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
+        var coreDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var keys = new AuthService(
+            coreDb, Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), time, NullLogger<AuthService>.Instance);
+        var sessions = new RunnerSessions(runners);
+
         return new Harness
         {
             Db = db,
             Time = time,
             Actors = actors,
+            Keys = keys,
+            Sessions = sessions,
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
-                new RankService(db), caller, new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision())),
+                new RankService(db), caller, runners, keys, sessions),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())
             {
                 ControllerContext = new ControllerContext
