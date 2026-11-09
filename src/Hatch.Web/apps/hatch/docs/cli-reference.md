@@ -268,8 +268,8 @@ the attention panel draws, so the terminal and the panel cannot disagree.
 Narrowed to `--mine` or an ancestor key, the footer counts only the issues the
 rows above show; unnarrowed, it matches the panel. For example: `3 issues
 wait for a runner that offers fable` or `1 issue waits for a runner that has
-pwsh 7 and playwright-browsers`. A server too old to send the list prints
-nothing extra.
+pwsh 7 or newer and playwright-browsers`. A server too old to send the list
+prints nothing extra.
 
 ### changelog
 

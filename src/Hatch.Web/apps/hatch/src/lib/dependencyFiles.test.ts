@@ -22,7 +22,7 @@ const file = (over: Partial<DependencyFileDto> = {}): DependencyFileDto => ({
 });
 
 describe('declarationSentence', () => {
-  it('joins each entry by comma, with its version where it has one', () => {
+  it('joins each entry by comma, with "or newer" where it has a version', () => {
     const f = file({
       entries: [
         { id: 'dotnet', label: '.NET SDK', version: '10.0' },
@@ -31,7 +31,7 @@ describe('declarationSentence', () => {
       ],
     });
 
-    expect(declarationSentence(f)).toBe('needs .NET SDK 10.0, Node, make');
+    expect(declarationSentence(f)).toBe('needs .NET SDK 10.0 or newer, Node, make');
   });
 
   it('says so where the declaration names nothing', () => {

@@ -157,7 +157,7 @@ public class IssueClaimController(
 
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
-        await TouchRunnerAsync(claim.Runner, now, ct);
+        await TouchRunnerAsync(claim, now, ct);
         await WriteUsageAsync(claim.Runner, request, ct);
 
         if (await preemption.ForAsync(issue, ct) is not { } emergency) return NoContent();
@@ -272,7 +272,7 @@ public class IssueClaimController(
         // tokenless clobber must not read as this runner having just been
         // freshly heard from, or a runner that has gone unresponsive would
         // suppress a preemption that should fire the moment it is forced off.
-        if (token is not null) await TouchRunnerAsync(claim.Runner, now, ct);
+        if (token is not null) await TouchRunnerAsync(claim, now, ct);
 
         Log(
             issue,
@@ -347,7 +347,12 @@ public class IssueClaimController(
     /// write, with no token to fence against, matching
     /// <see cref="IssueClaims.TryRefreshAsync"/>'s own <c>ExecuteUpdateAsync</c>
     /// style rather than loading a tracked row for a second
-    /// <c>SaveChangesAsync</c>. A heartbeat racing the runner's own first
+    /// <c>SaveChangesAsync</c>. The claim's holder is found by <c>ClaimedBy</c>
+    /// against the row's <see cref="EfHatchRunner.Name"/> - its primary key, so
+    /// at most one row matches - and not by <see cref="EfHatchRunner.Where"/>,
+    /// which every row a checkout has ever had shares: touching by
+    /// <c>Where</c> kept ghost rows at that checkout live (HA-2074). A
+    /// heartbeat racing the runner's own first
     /// <c>POST /api/hatch/runners/{name}</c> matches no row and does nothing -
     /// fine, there is nothing yet to bump. This is what keeps
     /// <see cref="EfHatchRunner.LastSeenAt"/> the one fact
@@ -355,14 +360,15 @@ public class IssueClaimController(
     /// heartbeat or a claim release touches it, rather than only on the
     /// runner's own next beat.
     /// </summary>
-    private async Task TouchRunnerAsync(string? runner, DateTimeOffset now, CancellationToken ct)
+    private async Task TouchRunnerAsync(ClaimSnapshot claim, DateTimeOffset now, CancellationToken ct)
     {
-        if (runner is null) return;
+        if (claim.ClaimedBy is null || claim.Runner is null) return;
 
-        await db.Runners.Where(r => r.Where == runner).ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+        await db.Runners.Where(r => r.Name == claim.ClaimedBy)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
         if (await caller.ApiKeyAsync(ct) is not { } key) return;
-        await db.RunnerSessions.Where(s => s.ApiKeyId == key.Id && s.Where == runner)
+        await db.RunnerSessions.Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
     }
 

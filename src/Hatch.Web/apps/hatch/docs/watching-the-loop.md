@@ -307,14 +307,14 @@ Settings, where the folder is fixed.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
 and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
-`no live runner has pwsh 7 and playwright-browsers`; a move that needs both
-joins them with `; `. A pinned id reads `pinned to <id> - no live runner's
-agent is <agent>`. A board with no live runner at all lists nothing - that is
-the *no runner* condition, not this one - and neither does a split fleet, one
-runner lacking the model and another the tool, since no single sentence is
-true of all of them. With nothing to list, the group says *Nothing is waiting
-on a runner.* [hatch queue](cli-reference#queue) prints the same list at the
-terminal.
+`no live runner has pwsh 7 or newer and playwright-browsers`; a move that
+needs both joins them with `; `. A pinned id reads `pinned to <id> - no live
+runner's agent is <agent>`. A board with no live runner at all lists nothing -
+that is the *no runner* condition, not this one - and neither does a split
+fleet, one runner lacking the model and another the tool, since no single
+sentence is true of all of them. With nothing to list, the group says
+*Nothing is waiting on a runner.* [hatch queue](cli-reference#queue) prints
+the same list at the terminal.
 
 **Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section

@@ -34,10 +34,12 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     /// run, and a beat past <see cref="Runners.DropBefore"/> is as good as
     /// none - unless one of <see cref="Sessions"/> is still live on its own
     /// terms, additive to the beat's. A key that has never held a session is
-    /// exactly as live as before this existed.
+    /// exactly as live as before this existed. A retired beat never counts,
+    /// however recent its heartbeat - a session is its own fact and stays
+    /// additive regardless.
     /// </summary>
     public bool IsLive(Runners runners, RunnerSessions sessions, DateTimeOffset now) =>
-        (Beat is not null && !runners.IsDropped(Beat.LastSeenAt, now)) ||
+        (Beat is not null && Beat.RetiredAt is null && !runners.IsDropped(Beat.LastSeenAt, now)) ||
         Sessions?.Any(s => sessions.IsLive(s, now)) == true;
 
     /// <summary>

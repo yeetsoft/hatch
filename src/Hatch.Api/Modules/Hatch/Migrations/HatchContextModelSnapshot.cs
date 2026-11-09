@@ -1358,6 +1358,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Remotes")
                         .HasColumnType("text");
 
+                    b.Property<DateTimeOffset?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RetiredBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Revision")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");

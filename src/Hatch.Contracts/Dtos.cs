@@ -4000,6 +4000,8 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// When the runner's key last had its secret replaced - null while it never
 /// has been, or there is no key at all.
 /// </param>
+/// <param name="RetiredAt">When this row was retired - null for one that is not.</param>
+/// <param name="SupersededBy">The name of the row that superseded this one, read beside <paramref name="RetiredAt"/> - null for a row that is not retired.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4054,7 +4056,9 @@ public record RunnerDto(
     DateTimeOffset? RevokedAt = null,
     Guid? OwnerPersonId = null,
     IReadOnlyList<RunnerSessionDto> Sessions = null!,
-    DateTimeOffset? RotatedAt = null)
+    DateTimeOffset? RotatedAt = null,
+    DateTimeOffset? RetiredAt = null,
+    string? SupersededBy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.

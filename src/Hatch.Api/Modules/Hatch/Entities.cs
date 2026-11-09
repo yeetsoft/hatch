@@ -3436,6 +3436,19 @@ public class EfHatchRunner
 
     /// <summary>When the order was placed.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
+
+    /// <summary>
+    /// When this row was retired - a fact about the row, never a heartbeat:
+    /// written once, by the operation that supersedes it, on the same terms as
+    /// <see cref="ExhaustedUntil"/> except that nothing ever clears it. Null
+    /// means not retired; a row with this set is never live and never elected,
+    /// however recent its <see cref="LastSeenAt"/>.
+    /// </summary>
+    public DateTimeOffset? RetiredAt { get; set; }
+
+    /// <summary>The <see cref="Name"/> of the row that superseded this one, read beside <see cref="RetiredAt"/>.</summary>
+    [MaxLength(MaxNameLength)]
+    public string? RetiredBy { get; set; }
 }
 
 /// <summary>

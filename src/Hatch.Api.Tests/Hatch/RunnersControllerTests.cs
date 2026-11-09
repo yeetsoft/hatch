@@ -1426,6 +1426,98 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task ARetiredRow_IsNotLive_AndIsNotElected()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now.AddHours(-1), LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r", RetiredAt = Now,
+        });
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var row = Assert.Single(await h.ListAsync());
+        Assert.Equal("b:/tree", row.Name);
+        Assert.Equal(["AER"], row.Drives);
+    }
+
+    [Fact]
+    public async Task ARetiredRow_IsStillInListAll_WithTheMarkAndNoDrives()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now.AddHours(-1), LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r", RetiredAt = Now, RetiredBy = "b:/tree",
+        });
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.ListAllAsync();
+        var retired = rows.Single(r => r.Name == "a:/tree");
+        Assert.Equal(Now, retired.RetiredAt);
+        Assert.Equal("b:/tree", retired.SupersededBy);
+        Assert.Empty(retired.Drives!);
+
+        var live = rows.Single(r => r.Name == "b:/tree");
+        Assert.Null(live.RetiredAt);
+        Assert.Null(live.SupersededBy);
+    }
+
+    [Fact]
+    public async Task ARetiredRow_WithoutTheMark_IsLiveAndElected()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+
+        var row = new EfHatchRunner
+        {
+            Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, Remotes = "example.com/o/r",
+        };
+        h.Db.Runners.Add(row);
+        await h.Db.SaveChangesAsync();
+
+        var listed = Assert.Single(await h.ListAsync());
+        Assert.Equal(["AER"], listed.Drives);
+
+        row.RetiredAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Empty(await h.ListAsync());
+    }
+
+    [Fact]
+    public async Task ARetiredBeat_WithALiveSession_StillReadsLive()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("here:/tree");
+        h.Db.Runners.Add(new EfHatchRunner
+        {
+            Name = "here:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
+            State = EfHatchRunner.Running, RetiredAt = Now,
+        });
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/checkouts/one"));
+        await h.Db.SaveChangesAsync();
+
+        var row = Assert.Single(await h.ListAsync());
+        Assert.Equal(Now, row.RetiredAt);
+    }
+
+    [Fact]
     public async Task GetRunnersAndPatchRunner_AgreeWithTheRunnersOwnHeartbeat()
     {
         var h = await NewAsync();
