@@ -4996,6 +4996,186 @@ public class WorkControllerTests
         Assert.Null(queue.Single(e => e.Issue.Key == Key(normal)).Blocked);
     }
 
+    // ---- Models: a move the runner cannot spawn is folded ----
+
+    private static string NotOffered(EfHatchIssue issue, string column, string model, string? agent) =>
+        ModelFamilies.NotOffered(Key(issue), column, model, agent);
+
+    [Fact]
+    public async Task Queue_AnOverrideTheRunnerDoesNotOffer_IsFoldedInEveryColumnItStandsIn()
+    {
+        var h = await NewAsync();
+        var todo = await h.FileAsync("task", "wants fable", h.Todo);
+        var doing = await h.FileAsync("task", "also wants fable", h.InProgress);
+        await h.OverrideAsync(todo, model: "fable");
+        await h.OverrideAsync(doing, model: "fable");
+
+        var queue = Value(await h.Work.GetQueue(0, null, default, model: ["haiku", "sonnet"], agent: "claude"));
+
+        var foldedTodo = queue.Single(e => e.Issue.Key == Key(todo));
+        Assert.Equal(NotOffered(todo, "todo", "fable", "claude"), foldedTodo.Blocked);
+        Assert.Equal(BlockedKinds.Other, foldedTodo.BlockedKind);
+
+        var foldedDoing = queue.Single(e => e.Issue.Key == Key(doing));
+        Assert.Equal(NotOffered(doing, "in progress", "fable", "claude"), foldedDoing.Blocked);
+        Assert.Equal(BlockedKinds.Other, foldedDoing.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_AModelWithNoAgent_IsFoldedWithTheSentenceThatNamesNoAgent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, model: ["haiku"]));
+
+        Assert.Equal(NotOffered(issue, "todo", "fable", null), entry.Blocked);
+        Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_ADeclaredAlias_IsNotFolded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["haiku", "fable"], agent: "claude")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_NothingSent_FoldsNothingOnModels()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_APinnedIdOfAnotherAgent_IsFoldedWithTheWrongAgentSentence_AndOneOfTheRunnersOwnIsNot()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned", h.Todo);
+
+        await h.OverrideAsync(issue, model: "gpt-6-luna");
+        var wrong = Only(await h.Work.GetQueue(0, null, default, agent: "claude"));
+        Assert.Equal(ModelFamilies.Default.WrongAgent("gpt-6-luna", "claude"), wrong.Blocked);
+        Assert.Equal(BlockedKinds.Other, wrong.BlockedKind);
+
+        // Without an agent there is nothing to be wrong about.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, model: ["haiku"])).Blocked);
+
+        await h.OverrideAsync(issue, model: "claude-opus-5");
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AHop_IsNeverFoldedOnItsModel()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.OverrideAsync(issue, model: "fable");
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, model: ["haiku"], agent: "claude"));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Next_SkipsAFoldedRowToTheNextClearOne_AndWorkReturnsTheFoldedRowBlocked()
+    {
+        var h = await NewAsync();
+        var clear = await h.FileAsync("task", "runs on haiku", h.Todo);
+        var folded = await h.FileAsync("task", "wants fable", h.InProgress);
+        await h.OverrideAsync(clear, model: "haiku");
+        await h.OverrideAsync(folded, model: "fable");
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default, model: ["haiku"], agent: "claude"));
+        Assert.Equal(Key(clear), next.Issue.Key);
+
+        var named = Value(await h.Work.GetWork(Key(folded), null, default, model: ["haiku"], agent: "claude"));
+        Assert.Equal(NotOffered(folded, "in progress", "fable", "claude"), named.Blocked);
+
+        Assert.Null(Value(await h.Work.GetWork(Key(folded), null, default, model: ["fable"], agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_EveryRowFolded_IsNoContent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default, model: ["haiku"])).Result);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_ReadsTheRowsModelsAndAgent_AndARowThatNeverReportedFoldsNothing()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var offers = RunnerName();
+        var silent = RunnerName();
+        await AddLoopRunnerAsync(h, offers, r => { r.Agent = "claude"; r.Models = "haiku\nsonnet"; });
+        await AddLoopRunnerAsync(h, silent);
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: offers));
+        Assert.Equal(NotOffered(issue, "todo", "fable", "claude"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent)).Blocked);
+
+        // The query's own models are ignored beside the row's, as tag is.
+        Assert.NotNull(Only(await h.Work.GetQueue(0, null, default, asRunner: offers, model: ["fable"])).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatLacksTheModel_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var peer = await AddLoopRunnerAsync(h, b, r => { r.Agent = "claude"; r.Models = "haiku\nsonnet"; });
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+
+        peer.Models = "haiku\nsonnet\nfable";
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(
+            DeferralSentence(a, 7),
+            Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task Models_ABadEntry_IsRefusedWithTheRunnerModelsSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "anything", h.Todo);
+
+        var wrongAgent = RunnerModels.Normalise(["gpt-6-luna"], "claude", out _)!;
+        var nonsense = RunnerModels.Normalise(["nonsense"], null, out _)!;
+
+        Assert.Equal(wrongAgent, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, model: ["gpt-6-luna"], agent: "claude")).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetQueue(0, null, default, model: ["nonsense"])).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetNextWork(0, null, null, default, model: ["nonsense"])).Result).Value);
+        Assert.Equal(nonsense, Assert.IsType<BadRequestObjectResult>((await h.Work.GetWork(Key(issue), null, default, model: ["nonsense"])).Result).Value);
+    }
+
     // ---- Projects, a runner's own binding (HA-1535) ----
 
     [Fact]

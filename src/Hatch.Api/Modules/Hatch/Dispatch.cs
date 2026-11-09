@@ -54,6 +54,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// Null is <see cref="TagDeclaration.Unjudged"/>: a scan answering for the
     /// board and not for a runner folds nothing on tags, or on danger.
     /// </param>
+    /// <param name="models">
+    /// What the caller's runner offers, see <see cref="ModelDeclaration"/>.
+    /// Null is <see cref="ModelDeclaration.Unjudged"/>: a scan answering for
+    /// the board and not for a runner folds nothing on models.
+    /// </param>
     /// <param name="projects">
     /// The project keys this runner is bound to, repeatable - see
     /// <see cref="ProjectFold"/>. Null or empty folds nothing: a scan
@@ -77,9 +82,10 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
-        bool foldLetGo = true)
+        bool foldLetGo = true, ModelDeclaration? models = null)
     {
         tags ??= TagDeclaration.Unjudged;
+        models ??= ModelDeclaration.Unjudged;
 
         // Judged here, on the one entry every caller shares - the same place
         // ancestorKey's own unknown key is refused - so a refused scan never
@@ -293,6 +299,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         string? parkedByKey = null;
         string? parkedByLevel = null;
 
+        // Whether any row was folded on its model: the fold precedes the
+        // dependency and family folds, so such a row loses its WaitsOn and
+        // would hide a ring, as a tag or danger fold does.
+        var modelFolded = false;
+
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
             string? firstClearThisTier = null;
@@ -337,7 +348,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing, projectRepoSourced, tags: tags, projects: projects, asking: asking);
+                        landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models);
+                    if (!hop && ModelFold(issue, status, playbook, models) is not null) modelFolded = true;
 
                     var blocked = blocking.Sentence;
                     var kind = blocking.Kind;
@@ -415,6 +427,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 || (tags.Judged && candidates.Any(i => tree.EffectiveRunnerTags(i.Id).All.Count > 0))
                 || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
                 || (tags.RefusesDangerous && candidates.Any(i => tree.EffectiveDangerous(i.Id).Reason is not null))
+                || modelFolded
                 || projects is { Count: > 0 }
                 || (asking is not null && candidates.Any(i => tree.EffectiveOmittedRunners(i.Id).Any(o => o.Runner == asking.Name)))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
@@ -430,7 +443,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models);
     }
 
     /// <summary>
@@ -527,7 +540,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var scan = await ScanAsync(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
-            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false);
+            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -787,6 +800,31 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         tags.RefusesDangerous && gate.EffectiveDangerous(issue.Id).Reason is { } reason
             ? $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is flagged dangerous ({reason}) - this runner refuses dangerous work"
             : null;
+
+    /// <summary>
+    /// Why this caller's runner cannot spawn the move: the model it runs on -
+    /// the issue's override, else the matched playbook's - is an alias the
+    /// runner does not offer, or a pinned id of an agent other than the
+    /// runner's. Null for a scan that is <see cref="ModelDeclaration.Unjudged"/>,
+    /// and for a move that names no model. <paramref name="playbook"/> is the
+    /// row the move matched, the review row on a review self-move.
+    /// </summary>
+    internal static string? ModelFold(EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, ModelDeclaration models)
+    {
+        if (!models.Judged) return null;
+
+        var model = issue.ModelOverride ?? playbook?.Model;
+        if (string.IsNullOrWhiteSpace(model)) return null;
+
+        if (ModelFamilies.Aliases.Contains(model))
+            return models.Has.Count > 0 && !models.Has.Contains(model)
+                ? ModelFamilies.NotOffered(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model, models.Agent)
+                : null;
+
+        return models.Agent is not null && ModelFamilies.Default.AgentOf(model) is { } owner && owner != models.Agent
+            ? ModelFamilies.Default.WrongAgent(model, models.Agent)
+            : null;
+    }
 
     /// <summary>
     /// Why this caller's runner is not the one for the issue: the issue's own
@@ -1177,11 +1215,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
         IReadOnlyList<string>? projects = null,
-        RunnerAsking? asking = null) =>
+        RunnerAsking? asking = null,
+        ModelDeclaration? models = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
-            repoSourced, tags, projects, asking).Sentence;
+            repoSourced, tags, projects, asking, models).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -1217,7 +1256,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
         IReadOnlyList<string>? projects = null,
-        RunnerAsking? asking = null)
+        RunnerAsking? asking = null,
+        ModelDeclaration? models = null)
     {
         var hop = hopKind is not null;
 
@@ -1391,6 +1431,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         if (CodeGated(issue, from, to, hop, implementation, verdicts, builds)
             && DangerFold(issue, tags ?? TagDeclaration.Unjudged, gate) is { } dangerBlock)
             return new Blocking(dangerBlock, BlockedKinds.Other);
+
+        // A move the runner cannot spawn. Not a hop, which spawns nothing, and
+        // not an idle review self-move, which the review judge speaks for.
+        if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged) is { } modelBlock)
+            return new Blocking(modelBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
             || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
@@ -1965,7 +2010,7 @@ public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
     IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null,
-    TagDeclaration? Tags = null)
+    TagDeclaration? Tags = null, ModelDeclaration? Models = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -2105,6 +2150,36 @@ public sealed record TagDeclaration(IReadOnlyList<string> Has, bool Judged, bool
     {
         var refusal = RunnerTags.Normalise(raw, out var normalised);
         declaration = Of(refusal is null ? normalised : [], dangerous == false);
+        return refusal;
+    }
+}
+
+/// <summary>
+/// The models and agent a caller's runner offers, or that the scan answers for
+/// no runner at all. Only a declaration that names something is
+/// <see cref="Judged"/>: a runner that never reported models or an agent is
+/// <see cref="Unjudged"/> and folds nothing, rather than reading as "offers
+/// none". A judged declaration with no models still judges a pinned id against
+/// <see cref="Agent"/>, and folds no alias.
+/// </summary>
+public sealed record ModelDeclaration(IReadOnlyList<string> Has, string? Agent, bool Judged)
+{
+    public static readonly ModelDeclaration Unjudged = new([], null, false);
+
+    /// <summary>A stored row's declaration, taken as it is.</summary>
+    public static ModelDeclaration Of(IReadOnlyList<string>? has, string? agent) =>
+        new(has ?? [], string.IsNullOrWhiteSpace(agent) ? null : agent, (has?.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(agent));
+
+    /// <summary>
+    /// <paramref name="raw"/> and <paramref name="agent"/> run through
+    /// <see cref="RunnerModels.Normalise"/>. Returns the refusal sentence, or
+    /// null; on a refusal the declaration is <see cref="Unjudged"/>.
+    /// </summary>
+    public static string? From(IReadOnlyList<string>? raw, string? agent, out ModelDeclaration declaration)
+    {
+        agent = string.IsNullOrWhiteSpace(agent) ? null : agent;
+        var refusal = RunnerModels.Normalise(raw, agent, out var normalised);
+        declaration = refusal is null ? Of(normalised, agent) : Unjudged;
         return refusal;
     }
 }
