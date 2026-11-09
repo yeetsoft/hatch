@@ -240,6 +240,22 @@ public sealed class OllamaAdapterTests : IDisposable
     }
 
     [Fact]
+    public void RecogniseModelRefusal_recognises_its_own_sentence_and_not_codexs()
+    {
+        var endedAt = DateTimeOffset.Parse("2026-09-28T12:00:00+00:00");
+
+        Assert.Null(new OllamaAdapter().RecogniseModelRefusal(
+            "the 'gpt-7-nova' model is not supported when using Codex with a ChatGPT account", endedAt));
+
+        var refusal = new OllamaAdapter().RecogniseModelRefusal(
+            "model \"llama3:70b\" not found, try pulling it first", endedAt);
+
+        Assert.NotNull(refusal);
+        Assert.Equal("llama3:70b", refusal!.Value.Model);
+        Assert.Null(refusal.Value.ResetAt);
+    }
+
+    [Fact]
     public void WriteHooks_answers_null_and_no_codex_home_is_set()
     {
         Assert.Null(new OllamaAdapter().WriteHooks(Path.GetTempPath(), "AER-1", "hatch", null));
