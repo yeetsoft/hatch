@@ -302,6 +302,12 @@ reported (for example `Darwin 23.6.0`), not something the CLI looks up. A
 session missing its `where`, agent or OS prints `-` in its place. A runner with
 no live session - a gone runner included - prints no line beneath it.
 
+`--json` carries more than this plain-text line shows: the full set the
+endpoint answers under each session - `os`, `arch`, `agentVersion`,
+`container`, `username`, `processStartedAt`, and `ip` (the server's own
+reading of the connection, never sent by the CLI) - where the table above
+prints only `os`.
+
 A runner that has reported its own process adds `  on HOST`, `N runs` and
 `$X.XX` (the machine, the increments run and the dollars spent), then the
 tokens, before any projects, each only where it has said so. The tokens read

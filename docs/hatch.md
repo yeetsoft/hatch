@@ -8725,6 +8725,23 @@ wins, and a tie reads as the session's own, not the ceiling's
 (`RunnerSessions.Effective`/`Narrow`) — the same rule a beat already follows
 against the site default above.
 
+**A session's heartbeat carries six machine fields, plus `ip`.**
+`RunnerSessions.Project` is the one projection that fills
+`RunnerSessionDto` — `os`, `arch`, `agentVersion`, `container`, `username`,
+`processStartedAt`, `ip` — for every reader of a session: the heartbeat's
+own answer, `GET /runners`, and `hatch runners --json`. The six named first
+come off the heartbeat's body (`RunnerHeartbeatRequest`) and are missing for
+a session run by a CLI old enough to predate them. `ip` is not one of the
+six and has no body field at all —
+`RunnersController.SessionHeartbeat` reads it off
+`HttpContext.Connection.RemoteIpAddress`, which `UseForwardedHeaders` has
+already rewritten from the proxy's forwarded header before the controller
+runs, so it is the server's own reading of the connection, never the CLI's
+say. That reading is taken whenever the connection has one, regardless of
+CLI version — a session from a CLI old enough to send none of the six still
+carries `ip`. Nothing else is collected: no environment variable, no
+process id, no MAC address.
+
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
 

@@ -165,6 +165,16 @@ the ticket claimable again at once; the runner notices and stops at its next
 heartbeat, within a minute by default, so until then its session may still
 push or move the ticket.
 
+A session's heartbeat carries six machine fields - `os`, `arch`,
+`agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`,
+seven in all. The six come from the CLI itself and are missing for a session
+run by a CLI old enough to predate them; `ip` is never one of the six - it
+is the server's own reading of the connection, taken after the forwarded
+header from the proxy in front of it is applied, so it is set on every
+session regardless of CLI version, including one that sends none of the
+other six. Nothing else is collected: no environment variable, no process
+id, no MAC address.
+
 ## Overnight
 
 **Agents → Overnight** is the newest night: the run of landings nearest the

@@ -925,7 +925,9 @@ length is capped, not refused. `ip` is never read from the body - a session's
 `UseForwardedHeaders` rewrites it from `X-Forwarded-For`), refreshed on every
 beat regardless of what else the body says. `RunnerSessionDto` carries all
 seven - `os`, `arch`, `agentVersion`, `container`, `username`,
-`processStartedAt`, `ip` - beside the rest of the session.
+`processStartedAt`, `ip` - beside the rest of the session. That same
+`RunnerSessionDto` is what `GET /runners` answers under each runner's
+`sessions`, and what `hatch runners --json` prints unchanged.
 
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
