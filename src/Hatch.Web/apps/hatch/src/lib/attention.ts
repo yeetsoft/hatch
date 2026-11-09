@@ -53,6 +53,10 @@ export type AttentionTone = 'rest' | 'asking';
  * so a backup that is failing or stale is a person's to fix, every time.
  * Healthy and unconfigured both arrive as null, and add nothing.
  *
+ * `waitingOnARunner` counts for the same reason as `deadlocked`: no loop is on
+ * it, a move no live runner can take sits until a person fixes the runner (a
+ * model or a tool), so every row is a person's.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -67,6 +71,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.landingHeld?.length ?? 0) +
     (attention.noCodeHeld?.length ?? 0) +
     (attention.deadlocked?.length ?? 0) +
+    (attention.waitingOnARunner?.length ?? 0) +
     (attention.backup ? 1 : 0)
   );
 }
@@ -75,7 +80,7 @@ export function attentionCount(attention: Attention | null): number {
  * What the bar's attention pills add up to at phone width, where they fold
  * into one count: exactly the four sections that draw a pill - deadlocked,
  * trunk, review and question. Deliberately not `attentionCount`, which also
- * counts `approvedHeld`, `landingHeld`, `noCodeHeld` and `backup`: those light the control and have
+ * counts `approvedHeld`, `landingHeld`, `noCodeHeld`, `waitingOnARunner` and `backup`: those light the control and have
  * a row in the panel, but no pill, so a total that included them would not
  * be the sum of the pills it stands in for.
  */
@@ -221,6 +226,9 @@ export const noCodeHeldEmptyWords = (): string => 'Nothing finished with no code
 
 /** The empty state of the "Deadlocked" section. */
 export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
+
+/** The empty state of the "Waiting on a runner" section. */
+export const waitingOnARunnerEmptyWords = (): string => 'Nothing is waiting on a runner.';
 
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';
