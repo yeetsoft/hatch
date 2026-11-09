@@ -2623,7 +2623,9 @@ entries the file parsed to, or the one sentence saying why it did not. Like a
 [playbook file](#playbook-file), a dependencies file is a fact about a
 repository's trunk and nobody's issue, so it is not keyed on one. An entry is
 an id — one of the dependencies Hatch knows, from `Dependencies.Default` — and
-an optional `version`, a string of one to three dotted whole numbers.
+an optional `version`, a string of one to three dotted whole numbers. The
+operator-facing form is [What a repository
+needs](../src/Hatch.Web/apps/hatch/docs/the-runner.md#what-a-repository-needs).
 
 **One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
 reason a playbook file's own key is: two projects may bind one repository with
@@ -4831,7 +4833,7 @@ missing configuration:
     *"AER-12 is flagged dangerous (load-tests the API) - this runner refuses
     dangerous work"*, naming the issue asked about and the reason the flag
     carries, kind `other`. Waits on nobody. Said after the runner-tag item, so
-    a runner wrong on both hears about the tags, and before the dependency.
+    a runner wrong on both hears about the tags, and before the model item.
 12. The model the move would run on — the issue's own override, else the
     matched playbook's, else the review row's on the review self-move — is one
     the caller's runner cannot spawn: an alias the caller's `?model=` list lacks
@@ -4846,7 +4848,7 @@ missing configuration:
     offer it"* (*"... this runner does not offer it"* when no agent was sent),
     or *"pinned to gpt-6-luna, a codex model - this runner's agent is claude"*,
     kind `other`. Waits on nobody. Said after the dangerous item and before the
-    dependency.
+    toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
@@ -6847,7 +6849,7 @@ which one it failed is what `work/queue` reports:
     column, and on the review self-move while it is conflict or build work.
     Never a hop, and never the move into the implementation column. A caller
     that sends nothing, or `true`, folds nothing. Asked after the runner tag
-    above and before the dependency below. Kind `other`, and it waits on
+    above and before the model item below. Kind `other`, and it waits on
     nobody. See [the dispatcher](#the-dispatcher) for the exact sentence.
 14. **It is not on a model the caller's runner cannot spawn.** The model the
     move would run on — the issue's own override, else the matched playbook's,
@@ -6857,7 +6859,7 @@ which one it failed is what `work/queue` reports:
     a session is spawned for, in every column. Never a hop, which spawns
     nothing, and never an idle review self-move the verdict below already
     folds. A caller that sends neither param folds nothing. Asked after the
-    dangerous condition and before the dependency below. Kind `other`, and it
+    dangerous condition and before the toolchain item below. Kind `other`, and it
     waits on nobody. See [the dispatcher](#the-dispatcher) for the exact
     sentences.
 15. **It is not missing a development dependency its project's repositories
@@ -6871,7 +6873,7 @@ which one it failed is what `work/queue` reports:
     implementation column. A caller that sends no `?has=` folds nothing.
     `?asRunner=` and the let-go peer check read the row's `Has` instead, and a
     row that never reported it folds nothing. Asked after the dangerous
-    condition and the model one, and before the dependency below. Kind
+    condition and the model one, and before the dependency-edge item below. Kind
     `other`, and it waits on nobody. See [the dispatcher](#the-dispatcher) for
     the exact sentences.
 16. **Nothing it depends on is unfinished** — and only when the move is into the
@@ -8574,6 +8576,19 @@ Hatch. A row nobody has told reads as false. `GET /work/queue?asRunner=` reads
 it from the row, so a runner whose row says true has a flagged issue folded
 whatever `?dangerous=` said.
 
+**It also says what it can spawn and what it has, on every beat.** `models`
+and `has` ride every heartbeat beside `remotes` and `agent` — see [the
+runner](../src/Hatch.Web/apps/hatch/docs/the-runner.md#what-a-runner-advertises)
+for what each names. Both are tri-state: absent leaves the row alone, and an
+empty list clears it. Unlike tags, neither is owned by the board — there is no
+page or `PATCH` that edits them, and the row is overwritten with whatever the
+latest beat sent, the same way the repositories line is. On a dispatch read
+each rides the query string as `model=`, `agent=` and `has=`, and is judged by
+`Dispatch.ModelFold` and `Dispatch.DependencyFold`; `?asRunner=` and the let-go
+peer check read the row through `RunnerDeclaration` instead, so the two ways
+of asking agree. A repository names what it needs at
+[what a repository needs](../src/Hatch.Web/apps/hatch/docs/the-runner.md#what-a-repository-needs).
+
 **What it is working is not stored.** A row's ticket and the line beside it are
 read off whichever issue carries that runner's live claim at the moment of the
 request, the way an open question is computed rather than kept. A second copy
@@ -9125,6 +9140,14 @@ ten minutes; `queue` is where the counts turn back into tickets.
 - **File the wait, don't write it down.** Something that cannot start until a
   soak test finishes or a renewal window opens gets a `readyAt`, not a sentence
   in a description saying "not until March".
+- **Recuse when the repository cannot be built here.** A session is never
+  sent a development step on a runner that cannot build it — the board folds
+  it by the model and toolchain items — so a session that finds it cannot
+  build anyway, a tool missing that nothing declared, does not stall or
+  guess: it runs `hatch recuse KEY "<what is missing>"`, which ends the
+  increment and keeps that runner off the ticket (see
+  [Omitted runners](#omitted-runners)), and says on the ticket that the
+  repository should declare it in `.hatch/dependencies.json`.
 
 Every one of those calls writes an event carrying the key's name as the actor,
 so the trail says who did what without anybody being asked to record it.
