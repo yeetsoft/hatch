@@ -186,6 +186,8 @@ so the trail says who did what without anybody being asked to record it.
 
 - Build with `make` (`make build`, `make test-api`, `make test-web`), never a
   bare `dotnet` — the npm step needs the shell profile.
+  `.hatch/dependencies.json` is the machine-readable form of what a build needs;
+  a build that starts needing something new updates it in the same change.
 - Never commit unless asked.
 - No hardcoded domains, addresses, hostnames, or people, anywhere — including
   in plans and comments. See [`docs/ethos.md`](docs/ethos.md).
