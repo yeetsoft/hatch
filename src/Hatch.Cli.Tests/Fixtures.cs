@@ -213,6 +213,18 @@ public static class Fixtures
             [], null, null, null, url, DateTimeOffset.UnixEpoch, "runner", "hatch");
 
     /// <summary>
+    /// A dependency-file row as the board would hold it, current at the same
+    /// default remote and trunk sha as <see cref="PlaybookFile"/>, for the same
+    /// reason.
+    /// </summary>
+    public static DependencyFileDto DependencyFile(
+        string remote = "https://example.test/repo.git", string canonical = "example.test/repo",
+        string trunk = "main", string? sha = null, string? url = null) =>
+        new(
+            1, remote, canonical, trunk, sha ?? new string('a', 40), "parsed", "hash",
+            [], null, null, null, url, DateTimeOffset.UnixEpoch, "runner", "hatch");
+
+    /// <summary>
     /// The repo copy a dispatch was judged against - carried on <see
     /// cref="WorkDto.PlaybookFile"/>, read by <see cref="Increment.RunAsync"/>'s
     /// spawn-time check (HA-809).
