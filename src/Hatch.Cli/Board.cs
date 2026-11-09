@@ -143,6 +143,9 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
     public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);
 
+    /// <summary>What the Attention panel draws, so a terminal reading the same list cannot disagree with it.</summary>
+    public Task<AttentionDto?> AttentionAsync(CancellationToken ct) => Client.GetAsync<AttentionDto>("/api/hatch/attention", ct);
+
     /// <summary>
     /// A verdict on one issue's branch in one repository - see
     /// <see cref="MergeCheckRequest"/>. The remote is spelled the way this

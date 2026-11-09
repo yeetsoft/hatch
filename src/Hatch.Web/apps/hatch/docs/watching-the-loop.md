@@ -276,11 +276,15 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Backups**, **Deadlocked**, **Trunk builds that fail**, **Pull
-requests to review**, **Approved, not merging**, **Landed, not done**,
-**Questions to answer**. **Backups** appears only when the configured
-backup is failing or stale, and links to Settings, where the folder is
-fixed. **Agent** - things the loop is already on: **Branches that
+them: **Waiting on a runner**, **Backups**, **Deadlocked**, **Trunk builds
+that fail**, **Pull requests to review**, **Approved, not merging**,
+**Landed, not done**, **Questions to answer**. **Waiting on a runner** lists
+every issue whose next move no live runner can take for want of a model or a
+tool, and links to the Runners page, where each runner shows what it offers
+([the runner](the-runner#what-a-runner-advertises) covers what that is); like
+**Backups**, it lights the control and adds no pill to the bar. **Backups**
+appears only when the configured backup is failing or stale, and links to
+Settings, where the folder is fixed. **Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.

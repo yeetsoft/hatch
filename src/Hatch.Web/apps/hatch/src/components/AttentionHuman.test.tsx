@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, TrunkBuild } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -96,6 +96,15 @@ const deadlocked = (over: Partial<Deadlocked> = {}): Deadlocked => ({
   ...over,
 });
 
+const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunner => ({
+  key: 'AER-24',
+  title: 'A story that runs on fable',
+  type: 'story',
+  move: 'todo',
+  missing: 'no live runner offers fable',
+  ...over,
+});
+
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
   dialogProps = null;
@@ -103,11 +112,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws deadlocked first, then trunk builds, then pull requests, then questions, each with the panel’s own empty wording', () => {
+  it('draws waiting on a runner first, then deadlocked, trunk builds, pull requests, then questions, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual([
+      'Waiting on a runner',
       'Deadlocked',
       'Trunk builds that fail',
       'Pull requests to review',
@@ -117,6 +127,7 @@ describe('AttentionHuman', () => {
       'Questions to answer',
     ]);
 
+    const waitingAt = html.indexOf(waitingOnARunnerEmptyWords());
     const deadlockedAt = html.indexOf(deadlockedEmptyWords());
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
@@ -125,6 +136,8 @@ describe('AttentionHuman', () => {
     const noCodeHeldAt = html.indexOf(noCodeHeldEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
 
+    expect(waitingAt).toBeGreaterThan(-1);
+    expect(waitingAt).toBeLessThan(deadlockedAt);
     expect(deadlockedAt).toBeGreaterThan(-1);
     expect(deadlockedAt).toBeLessThan(trunkAt);
     expect(trunkAt).toBeLessThan(reviewAt);
@@ -134,7 +147,7 @@ describe('AttentionHuman', () => {
     expect(noCodeHeldAt).toBeLessThan(questionAt);
   });
 
-  it('draws Backups first, above Deadlocked, with the sentence, the last success and a link to Settings', () => {
+  it('draws Backups above Deadlocked, with the sentence, the last success and a link to Settings', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
         <AttentionHuman
@@ -146,8 +159,9 @@ describe('AttentionHuman', () => {
     );
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
-    expect(headings[0]).toBe('Backups');
-    expect(headings[1]).toBe('Deadlocked');
+    expect(headings[0]).toBe('Waiting on a runner');
+    expect(headings[1]).toBe('Backups');
+    expect(headings[2]).toBe('Deadlocked');
     expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
     expect(html).toContain('The last backup failed.');
     expect(html).toContain('Last successful backup:');
@@ -179,6 +193,35 @@ describe('AttentionHuman', () => {
       expect(html).not.toContain('Backups');
       expect(html).not.toContain('href="/settings"');
     }
+  });
+
+  it('shows the empty words when nothing is waiting on a runner, with no link to the Runners page', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ waitingOnARunner: [] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain(waitingOnARunnerEmptyWords());
+    expect(html).not.toContain('href="/runners"');
+  });
+
+  it('lists a waiting-on-a-runner row’s key, title and what is missing, linked to the issue and once to Runners', () => {
+    const row = waitingOnARunner();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ waitingOnARunner: [row, waitingOnARunner({ key: 'AER-25' })] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(waitingOnARunnerEmptyWords());
+    expect(html).toContain('>Waiting on a runner</h3>');
+    expect(html).toContain(row.key);
+    expect(html).toContain(row.title);
+    expect(html).toContain(`in ${row.move} - ${row.missing}`);
+    expect(html).toContain(`href="/issues/${row.key}"`);
+    expect(html.match(/href="\/runners"/g)).toHaveLength(1);
   });
 
   it('shows the empty words when nothing is deadlocked', () => {

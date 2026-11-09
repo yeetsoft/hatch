@@ -22,8 +22,9 @@ import {
   trunkIconTone,
   trunkIconWords,
   waitedWords,
+  waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, TrunkBuild } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -92,6 +93,15 @@ const deadlocked = (over: Partial<Deadlocked> = {}): Deadlocked => ({
   title: 'A story stuck in a ring',
   type: 'story',
   sentence: 'deadlocked - it waits on AER-22, which waits on it.',
+  ...over,
+});
+
+const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunner => ({
+  key: 'AER-24',
+  title: 'A story that runs on fable',
+  type: 'story',
+  move: 'todo',
+  missing: 'no live runner offers fable',
   ...over,
 });
 
@@ -205,6 +215,13 @@ describe('attentionCount', () => {
     expect(attentionCount(attention())).toBe(0);
   });
 
+  it('counts a waiting-on-a-runner row, adds it to the other sources, and counts an absent field as zero', () => {
+    // No loop is on a move no live runner can take, so every row is a person's to fix.
+    expect(attentionCount(attention({ waitingOnARunner: [waitingOnARunner(), waitingOnARunner({ key: 'AER-25' })] }))).toBe(2);
+    expect(attentionCount(attention({ reviews: [review()], waitingOnARunner: [waitingOnARunner()] }))).toBe(2);
+    expect(attentionCount(attention())).toBe(0);
+  });
+
   it('counts a backup as one row, adds it to the other sources, and counts null or absent as zero', () => {
     // Nothing in the loop will fix a folder, so it is a person's, every time.
     const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
@@ -268,6 +285,11 @@ describe('pillCount', () => {
 
     expect(pillCount(attention({ backup }))).toBe(0);
     expect(attentionCount(attention({ backup }))).toBe(1);
+  });
+
+  it('does not count a waiting-on-a-runner row, which lights the control but draws no pill', () => {
+    expect(pillCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(0);
+    expect(attentionCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(1);
   });
 
   it('is zero before the first answer', () => {
@@ -460,6 +482,12 @@ describe('approvedHeldEmptyWords', () => {
 describe('deadlockedEmptyWords', () => {
   it('says nothing is deadlocked', () => {
     expect(deadlockedEmptyWords()).toBe('Nothing is deadlocked.');
+  });
+});
+
+describe('waitingOnARunnerEmptyWords', () => {
+  it('says nothing is waiting on a runner', () => {
+    expect(waitingOnARunnerEmptyWords()).toBe('Nothing is waiting on a runner.');
   });
 });
 

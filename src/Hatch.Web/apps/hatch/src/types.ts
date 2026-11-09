@@ -1806,6 +1806,16 @@ export interface Deadlocked {
   sentence: string;
 }
 
+/** An issue whose next move no live runner can take, with the sentence naming
+    what is missing - a model or a tool. Mirrors WaitingOnARunnerDto. */
+export interface WaitingOnARunner {
+  key: string;
+  title: string;
+  type: string;
+  move: string;
+  missing: string;
+}
+
 /** The merge column's issues the loop is still progressing on its own - about
     to merge, about to update, or waiting on its own next poll. Mirrors
     ApprovedWaitingDto. */
@@ -1875,6 +1885,10 @@ export interface Attention {
       fix, every time. Null when backups are healthy or not configured. Absent
       from a board that predates it. */
   backup?: BackupAttention | null;
+  /** The issues whose next move no live runner can take, and what each lacks:
+      a person's to fix, every time. Lights the control and draws no pill.
+      Absent from a board that predates it. */
+  waitingOnARunner?: WaitingOnARunner[];
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
