@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-six tables.
+/// migration history, twenty-eight tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -44,6 +44,13 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     /// computes, not a row that belongs to an issue.
     /// </summary>
     public DbSet<EfHatchRunner> Runners => Set<EfHatchRunner>();
+
+    /// <summary>
+    /// What the board has chosen for each runner key, as against
+    /// <see cref="Runners"/>, which is what the processes report. Keyed by the
+    /// API key's id, with no foreign key into the core schema.
+    /// </summary>
+    public DbSet<EfHatchRunnerConfig> RunnerConfigs => Set<EfHatchRunnerConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -271,6 +278,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         // The same scale CostUsd has: what a runner reports having spent is
         // priced per token, and the CLI rounds it for display.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.Spent).HasPrecision(18, 8);
+
+        modelBuilder.Entity<EfHatchRunnerConfig>(e =>
+        {
+            // Mirrors EfHatchProject.RunnerTags' own default below, for the same
+            // reason: EnsureCreated must leave the same empty-array default a
+            // migrated row carries.
+            e.Property(c => c.Tags).HasColumnType("jsonb").HasDefaultValue("[]");
+            // The same scale EfHatchRunner.MaxSpend has.
+            e.Property(c => c.MaxSpend).HasPrecision(18, 2);
+        });
 
         // jsonb for the reason EfHatchWorkLogEntry.ModelUsage below is.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.Usage).HasColumnType("jsonb");
