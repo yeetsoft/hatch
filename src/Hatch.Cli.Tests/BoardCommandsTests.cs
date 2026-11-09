@@ -1222,4 +1222,75 @@ public sealed class BoardCommandsTests
         Assert.Contains("usage: hatch next", h.Complained);
         Assert.Empty(h.Wire.Calls);
     }
+
+    [Fact]
+    public void A_row_one_runner_alone_can_take_says_which()
+    {
+        var row = Fixtures.Row("AER-1", takers: ["host:/a"]);
+
+        Assert.Equal(
+            "AER-1  [task]  In Progress  -> In Review  (only host:/a can take this)",
+            BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
+    public void A_row_no_runner_can_take_names_each_runner_and_its_reason()
+    {
+        var row = Fixtures.Row(
+            "AER-2", takers: [],
+            untaken: [new RunnerReasonDto("host:/a", "it waits on AER-1"), new RunnerReasonDto("host:/b", "outside its scope: AER-9")]);
+
+        Assert.Equal(
+            "AER-2  [task]  In Progress  -> In Review  (no live runner can take this: host:/a: it waits on AER-1; host:/b: outside its scope: AER-9)",
+            BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
+    public void A_row_with_no_takers_to_name_or_two_or_more_is_silent()
+    {
+        var unsaid = Fixtures.Row("AER-3");
+        var two = Fixtures.Row("AER-4", takers: ["host:/a", "host:/b"]);
+        var noneAndNoReasons = Fixtures.Row("AER-5", takers: []);
+
+        Assert.Equal(
+            [
+                "AER-3  [task]  In Progress  -> In Review",
+                "AER-4  [task]  In Progress  -> In Review",
+                "AER-5  [task]  In Progress  -> In Review",
+            ],
+            BoardCommands.Draw([unsaid, two, noneAndNoReasons]));
+    }
+
+    [Fact]
+    public void A_folded_row_carries_the_takers_words_too()
+    {
+        var row = Fixtures.Row("AER-1", blocked: "it waits on AER-7", takers: ["host:/a"]);
+
+        Assert.Equal(
+            "AER-1  [task]  In Progress  it waits on AER-7  (only host:/a can take this)",
+            BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
+    public async Task The_queue_command_asks_for_the_takers()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", takers: ["host:/a"]) });
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Contains("takers=true", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+        Assert.Equal("AER-1  [task]  In Progress  -> In Review  (only host:/a can take this)", h.Said);
+    }
+
+    [Fact]
+    public async Task A_queue_read_that_is_not_the_queue_command_does_not_ask_for_the_takers()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+
+        Assert.DoesNotContain("takers=", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+    }
 }

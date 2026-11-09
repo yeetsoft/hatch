@@ -75,17 +75,20 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// Every issue a pass would look at, in the order it looks, each with the
     /// reason it would be folded past - or nothing, where it is clear. The
     /// runner's name, where it has one, is sent so the board can leave a ticket
-    /// that runner let go of to a different live runner.
+    /// that runner let go of to a different live runner. <paramref name="takers"/>
+    /// asks the board to say, per row, which live runners could take its next
+    /// step - only <c>queue</c> prints that, so a dispatch pass never asks.
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false, bool mine = false, string? runner = null)
+        bool clones = false, bool mine = false, string? runner = null, bool takers = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         var narrowed = mine ? "&mine=true" : "";
         var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
+        var who = takers ? "&takers=true" : "";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
