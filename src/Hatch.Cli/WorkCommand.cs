@@ -707,7 +707,10 @@ public sealed class WorkCommand(Runtime runtime)
                 var preempted = report is { Preempted: true }
                     ? new PreemptionInfo(report.PreemptedKey!, report.PreemptedTitle!, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted);
+                var modelRefusal = report is { Unservable: true }
+                    ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
+                    : null;
+                var left = await lifecycle.LeaveAsync(work, chosen, owned, CancellationToken.None, limit, preempted, modelRefusal: modelRefusal);
 
                 // Something happened - the ticket moved into review, or a
                 // conflict resolved, or a build fix pushed, on a branch judged

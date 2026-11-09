@@ -2248,6 +2248,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
             releaseOutcome = report.ReleaseOutcome;
             releaseReason = report.ReleaseReason;
 
+            // A fresh clock read, not the `now` taken before the session ran:
+            // the narrowing's own "until" is read against when it actually
+            // takes effect.
+            if (report.Unservable && report.UnservableModel is { Length: > 0 } unservableModel
+                && runtime.Narrowing.Narrow(unservableModel, report.UnservableUntil, runtime.Clock.GetUtcNow()))
+                SayNarrowed(unservableModel, report.UnservableUntil);
+
             try
             {
                 // Before the lease is let go, because the ticket is still this
@@ -2263,7 +2270,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 var hardLimit = report.HardLimited
                     ? new HardLimitInfo(report.HardLimitedAtTokens!.Value, report.HardLimitedAtRequests, report.SessionId)
                     : null;
-                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit);
+                var modelRefusal = report.Unservable
+                    ? new ModelRefusalInfo(report.UnservableModel!, report.UnservableUntil, report.SessionId)
+                    : null;
+                var left = await lifecycle.LeaveAsync(work, chosen, ownsTicket: !report.LostLease, ct, limit, preempted, hardLimit, modelRefusal);
 
                 // The session was killed before it could file anything itself -
                 // the filing above is the runner's, done after RunAsync already
@@ -2382,7 +2392,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         runtime.Say.Line($"hatch:   {tally.SoFar()}");
     }
 
-    /// <summary>Say once that a model has left this runner's list, and until when.</summary>
+    /// <summary>
+    /// Said once, the moment <see cref="ModelNarrowing.Narrow"/> actually
+    /// changes something - never again for the same model until the narrowing
+    /// itself changes. Shared with a spent weekly window's own narrowing, not
+    /// only an unservable increment's.
+    /// </summary>
     private void SayNarrowed(string model, DateTimeOffset? until) =>
         runtime.Say.Line(until is { } at
             ? $"hatch: {model} is off this runner's list until {UsageLimit.Clock(at, known: true, runtime.Clock)}"

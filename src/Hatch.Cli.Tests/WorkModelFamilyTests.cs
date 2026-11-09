@@ -54,6 +54,37 @@ public sealed class WorkModelFamilyTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("## The ticket", StringComparison.Ordinal));
     }
 
+    private const string NotOffered = "AER-1 in Todo runs on fable - this runner's claude does not offer it";
+
+    [Fact]
+    public async Task A_row_the_board_folds_for_its_model_refuses_with_the_boards_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1") with { Blocked = NotOffered });
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
+
+        Assert.Equal(2, code);
+        Assert.Contains($"hatch: AER-1 - {NotOffered}", h.Say.Complained);
+        Assert.Contains("agent=claude", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
+    [Fact]
+    public async Task A_dry_run_on_a_row_the_board_folds_for_its_model_refuses_and_prints_no_prompt()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1") with { Blocked = NotOffered });
+
+        var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default);
+
+        Assert.Equal(2, code);
+        Assert.Contains($"hatch: AER-1 - {NotOffered}", h.Say.Complained);
+        Assert.Contains("agent=claude", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("## The ticket", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task A_model_flag_naming_an_alias_beats_a_foreign_pinned_playbook()
     {
