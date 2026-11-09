@@ -42,7 +42,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
+    RunnerSessions sessions) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -68,19 +69,23 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var (all, personId) = await VisibleAsync(ct);
 
+        // The in-memory provider cannot run the conditional UPDATE below -
+        // guarded the same way ProjectsController.cs does for its own sweep.
+        if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
+
         var joined = await Runner.JoinAsync(db, keys, ct);
         var visible = joined.Where(r => all || r.OwnerPersonId == personId).ToList();
-        if (live) visible = visible.Where(r => r.IsLive(runners, now)).ToList();
+        if (live) visible = visible.Where(r => r.IsLive(runners, sessions, now)).ToList();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var drivers = await runners.DriversAsync(db, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
         var dtos = new List<RunnerDto>(visible.Count);
         foreach (var r in visible)
-            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, ct));
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, now, ct));
 
         return dtos;
     }
@@ -95,17 +100,19 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var (all, personId) = await VisibleAsync(ct);
 
+        if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
+
         var joined = await Runner.JoinAsync(db, keys, ct);
         var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
         if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var drivers = await runners.DriversAsync(db, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
     }
 
     /// <summary>
@@ -173,7 +180,7 @@ public class RunnersController(
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var dto = await ProjectAsync(
             new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), time.GetUtcNow(), ct);
 
         return new RunnerMintedDto(dto, created.Secret);
     }
@@ -200,19 +207,35 @@ public class RunnersController(
 
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
-        Runner runner, Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held,
+        Runner runner, Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
-        SiteSettingsSnapshot site, CancellationToken ct)
+        SiteSettingsSnapshot site, DateTimeOffset now, CancellationToken ct)
     {
         var ownerId = runner.OwnerPersonId;
         var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
         var canControl = CanControl(ownerId, wallEnabled, callerPerson);
         var order = runner.Beat?.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, runner.Beat.OrderKey, runner.Beat.OrderedBy, runner.Beat.OrderedAt) : null;
 
-        return runners.Project(
-            runner, Holding(held, runner.Name), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
+        var dto = runners.Project(
+            runner, Holding(held, (runner.Name, runner.Beat?.Where ?? "")), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
             yours: Yours(ownerId, wallEnabled, callerPerson),
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+
+        if (runner.Sessions is not { Count: > 0 } own) return dto;
+
+        return dto with
+        {
+            Sessions = own
+                .OrderByDescending(s => s.StartedAt).ThenByDescending(s => s.Id)
+                .Select(s =>
+                {
+                    // An ended session must not borrow the live one's claim at
+                    // the same `where`.
+                    var claim = sessions.IsLive(s, now) ? Holding(held, (runner.Name, s.Where ?? "")) : null;
+                    return sessions.Project(s, runner.Config, claim, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+                })
+                .ToList(),
+        };
     }
 
     /// <summary>
@@ -238,6 +261,78 @@ public class RunnersController(
             .OrderByDescending(r => r.LastSeenAt)
             .Select(r => r.Name)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The session-level heartbeat <see cref="RunnerSessions"/> answers to -
+    /// the bearer key alone, never a name or a header, so a loop restarting
+    /// under a different checkout name is still the same session as long as
+    /// its key and its <c>--where</c> have not changed.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Additive.</b> Nothing in this checkout's own loop calls this
+    /// yet - <c>GoToWork.cs</c> stays on <see cref="Heartbeat"/> until HA-1939
+    /// can mint a keyless install a key - so only the tests below exercise
+    /// it, the same note HA-2005 left on <see cref="EfHatchRunnerConfig"/>.</para>
+    ///
+    /// <para>The literal <c>sessions</c> segment beats <c>{name}</c> on
+    /// <c>POST</c> the same way <c>names</c> and <c>suggest-name</c> already
+    /// do - so a runner that happens to be named <c>sessions</c> can no
+    /// longer heartbeat through this verb; it is still visible and still
+    /// controllable by every other route.</para>
+    ///
+    /// <para><c>tags</c>, <c>models</c> and <c>has</c> on the body are
+    /// neither validated nor stored here: a session has no column for any of
+    /// them, and they are silently dropped, the same as an older Hatch
+    /// ignoring a field it has never heard of.</para>
+    /// </remarks>
+    [HttpPost("sessions")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerInstructionDto>> SessionHeartbeat(RunnerHeartbeatRequest request, CancellationToken ct)
+    {
+        if (await caller.ApiKeyAsync(ct) is not { } key)
+            return StatusCode(403, "a session heartbeat is the bearer key's, not a name or a header");
+
+        var kind = request.Kind?.Trim().ToLowerInvariant() switch
+        {
+            EfHatchRunner.OnceKind => EfHatchRunner.OnceKind,
+            _ => EfHatchRunner.LoopKind,
+        };
+
+        var now = time.GetUtcNow();
+        var line = Runners.Normalise(request.Line);
+        var where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+
+        await sessions.MarkGoneAsync(db, key.Id, now, ct);
+
+        var live = await db.RunnerSessions
+            .Where(s => s.ApiKeyId == key.Id && s.EndedAt == null && s.Where == where)
+            .OrderBy(s => s.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (request.Fresh == true && kind == EfHatchRunner.LoopKind && live is not null)
+            return Conflict($"{key.Name} is already the runner on {where ?? "an unnamed checkout"}");
+
+        EfHatchRunnerSession session;
+        if (live is null)
+        {
+            session = SeedSession(key.Id, kind, where, line, request, now);
+            db.RunnerSessions.Add(session);
+            await db.SaveChangesAsync(ct);
+            await sessions.TrimHistoryAsync(db, key.Id, ct);
+        }
+        else
+        {
+            session = live;
+            TouchSession(session, kind, line, now, request);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        var site = await siteSettings.GetAsync(ct);
+        var forName = (await ForAsync(ct))?.Name ?? key.Name;
+
+        return RunnerSessions.Instruct(session, config, key.Name, forName, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
@@ -315,7 +410,7 @@ public class RunnersController(
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
-                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), null,
+                return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), null,
                     defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
             }
             catch (DbUpdateException)
@@ -349,7 +444,7 @@ public class RunnersController(
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels), Joined(normalisedHas));
         await db.SaveChangesAsync(ct);
 
-        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order,
+        return Runners.Instruct(row, forName, (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
@@ -541,9 +636,9 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         return await ProjectAsync(
-            new Runner(aggregate.Key, config ?? aggregate.Config, beatRow),
-            await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, now, ct),
-            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+            new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
+            await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), now, ct);
     }
 
     /// <summary>
@@ -562,13 +657,47 @@ public class RunnersController(
     }
 
     /// <summary>
+    /// Replaces a runner's secret, answered once. Admin only, and never a key -
+    /// a key that could rotate could take over another runner's name.
+    /// </summary>
+    /// <remarks>
+    /// Config, heartbeat rows and sessions are untouched: they join to the key
+    /// by id or by name, and rotating only changes the key's hash, prefix and
+    /// <see cref="EfApiKey.RotatedAt"/>.
+    /// </remarks>
+    [HttpPost("{name}/rotate")]
+    [RequireAdmin]
+    public async Task<ActionResult<RunnerMintedDto>> RotateRunner(string name, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+        if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+        if (!key.IsLive(time.GetUtcNow())) return Conflict($"{runner}'s key is revoked");
+
+        if (await keys.RotateApiKeyAsync(key.Id, ct) is not { } rotated) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+
+        var now = time.GetUtcNow();
+        var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
+
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
+        return new RunnerMintedDto(dto, rotated.Secret);
+    }
+
+    /// <summary>
     /// Changes or clears whose tickets this runner's <c>--mine</c> reaches. Only
     /// an admin, and deliberately never the key itself: a key that could set its
     /// own owner could adopt anybody's tickets.
     /// </summary>
     [HttpPut("{name}/owner")]
     [RequireAdmin]
-    public async Task<IActionResult> SetRunnerOwner(string name, [FromBody] ApiKeyOwnerRequest? request, CancellationToken ct)
+    public async Task<IActionResult> SetRunnerOwner(string name, [FromBody] RunnerOwnerRequest? request, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (request?.PersonId is { } personId && await actors.ResolveAsync(ActorKind.Person, personId, ct) is null)
@@ -668,8 +797,8 @@ public class RunnersController(
         var site = await siteSettings.GetAsync(ct);
         return runners.Project(
             row,
-            Holding(await runners.HeldAsync(db, claims, now, ct), row.Name),
-            (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []),
+            Holding(await runners.HeldAsync(db, claims, now, ct), (row.Name, row.Where ?? "")),
+            (await runners.DriversAsync(db, keys, now, ct)).GetValueOrDefault(row.Name, []),
             ownerName,
             CanControl(row.ForPersonId, wallEnabled, callerPerson),
             new RunnerOrderDto(kind, key, by, now),
@@ -708,6 +837,217 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         return NoContent();
+    }
+
+    // ---- Session controls ----
+
+    /// <summary>
+    /// Sets one session's state, by its id - <see cref="PatchRunner"/>'s own
+    /// <c>State</c>, narrowed to the one session a session row names rather
+    /// than the beat every other session under the key shares.
+    /// </summary>
+    [HttpPatch("{name}/sessions/{id:int}")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<RunnerDto>> PatchRunnerSession(
+        string name, int id, RunnerSessionPatchRequest request, CancellationToken ct)
+    {
+        var (key, refusal) = await GateAsync(name, ct);
+        if (refusal is not null) return refusal;
+
+        var session = await SessionNamedAsync(key!.Id, id, ct);
+        if (session is null) return NotFound();
+
+        var sent = request.State?.Trim();
+        var state = sent?.ToLowerInvariant();
+        if (state is null || !EfHatchRunner.States.Contains(state))
+            return BadRequest($"a runner is {string.Join(", ", EfHatchRunner.States)} - not \"{sent}\"");
+
+        session.State = state;
+        await db.SaveChangesAsync(ct);
+
+        return await AnswerAsync(key.Name, ct);
+    }
+
+    /// <summary>
+    /// Orders one session to work a named ticket, or to pass on its next pick
+    /// - <see cref="PostRunnerOrder"/>'s own refusals and writes, narrowed to
+    /// the session a session row names.
+    /// </summary>
+    [HttpPost("{name}/sessions/{id:int}/order")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<RunnerDto>> PostRunnerSessionOrder(
+        string name, int id, RunnerOrderRequest request, CancellationToken ct)
+    {
+        var (key, refusal) = await GateAsync(name, ct);
+        if (refusal is not null) return refusal;
+
+        var session = await SessionNamedAsync(key!.Id, id, ct);
+        if (session is null) return NotFound();
+
+        var kind = request.Kind?.Trim().ToLowerInvariant();
+        if (kind is null || !RunnerOrderKinds.All.Contains(kind))
+            return BadRequest($"an order is {string.Join(", ", RunnerOrderKinds.All)} - not \"{request.Kind?.Trim()}\"");
+
+        EfHatchIssue? issue = null;
+        string? orderedKey = null;
+        if (kind == RunnerOrderKinds.Work)
+        {
+            if (request.Key is not { } wanted || wanted.Trim().Length == 0 || !IssueKey.TryParse(wanted, out var projectKey, out var number))
+                return BadRequest($"work names an issue, like AER-12 - not \"{request.Key?.Trim()}\"");
+
+            orderedKey = IssueKey.Format(projectKey, number);
+            issue = await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+            if (issue is null) return NotFound($"{orderedKey} does not exist");
+        }
+
+        if (session.Kind == EfHatchRunner.OnceKind)
+            return Conflict($"{key.Name} is a single increment and will never read an order back");
+
+        if (session.State == EfHatchRunner.Stopping)
+            return Conflict($"{key.Name} is stopping and will not take another order");
+
+        if (session.OrderKind is { Length: > 0 } heldKind)
+        {
+            var held = heldKind == RunnerOrderKinds.Work ? $"{heldKind} {session.OrderKey}" : heldKind;
+            return Conflict($"{key.Name} already holds an order to {held} - withdraw it first");
+        }
+
+        var now = time.GetUtcNow();
+        var by = await caller.ActorNameAsync(ct);
+
+        session.OrderKind = kind;
+        session.OrderKey = orderedKey;
+        session.OrderedBy = by;
+        session.OrderedAt = now;
+
+        if (issue is not null)
+        {
+            issue.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = by,
+                Kind = EfHatchIssueEvent.Ordered,
+                Payload = JsonSerializer.Serialize(new { runner = key.Name, by }),
+                At = now,
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return await AnswerAsync(key.Name, ct);
+    }
+
+    /// <summary>Withdraws whatever order one session holds - see <see cref="PostRunnerSessionOrder"/>.</summary>
+    [HttpDelete("{name}/sessions/{id:int}/order")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult> DeleteRunnerSessionOrder(string name, int id, CancellationToken ct)
+    {
+        var (key, refusal) = await GateAsync(name, ct);
+        if (refusal is not null) return refusal;
+
+        var session = await SessionNamedAsync(key!.Id, id, ct);
+        if (session is null) return NotFound();
+
+        if (session.OrderKind is null) return NoContent();
+
+        session.OrderKind = null;
+        session.OrderKey = null;
+        session.OrderedBy = null;
+        session.OrderedAt = null;
+        await db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
+    /// <summary>Pauses every live <c>loop</c> session under this key at once - see <see cref="FanOutAsync"/>.</summary>
+    [HttpPost("{name}/pause-all")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult> PauseAll(string name, CancellationToken ct) =>
+        await FanOutAsync(name, EfHatchRunner.Paused, ct);
+
+    /// <summary>Stops every live <c>loop</c> session under this key at once - see <see cref="FanOutAsync"/>.</summary>
+    [HttpPost("{name}/stop-all")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult> StopAll(string name, CancellationToken ct) =>
+        await FanOutAsync(name, EfHatchRunner.Stopping, ct);
+
+    /// <summary>
+    /// Sets <paramref name="state"/> on every live <c>loop</c> session under
+    /// this key, <c>once</c> sessions, ended sessions and sessions past the
+    /// horizon left untouched - <see cref="PauseAll"/> and
+    /// <see cref="StopAll"/>'s one write. Plain reads and writes, never
+    /// <c>ExecuteUpdateAsync</c>: the in-memory provider this controller's own
+    /// tests run against refuses a conditional <c>UPDATE</c>, the same reason
+    /// <see cref="RunnerSessions.MarkGoneAsync"/>'s own tests are
+    /// <c>SkippableFact</c>.
+    /// </summary>
+    private async Task<ActionResult> FanOutAsync(string name, string state, CancellationToken ct)
+    {
+        var (key, refusal) = await GateAsync(name, ct);
+        if (refusal is not null) return refusal;
+
+        var now = time.GetUtcNow();
+        var candidates = await db.RunnerSessions
+            .Where(s => s.ApiKeyId == key!.Id && s.Kind == EfHatchRunner.LoopKind && s.EndedAt == null)
+            .ToListAsync(ct);
+
+        foreach (var session in candidates.Where(s => sessions.IsLive(s, now))) session.State = state;
+
+        await db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// The four refusals every session control route shares before it touches
+    /// a session: not a person, a usable name, a key by that name, and
+    /// whether this caller controls it - <see cref="PatchRunner"/>'s own
+    /// order, narrowed to the key, since a session answers to the key that
+    /// holds it rather than to a beat row of its own.
+    /// </summary>
+    private async Task<(EfApiKey? Key, ActionResult? Refusal)> GateAsync(string name, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } personRefusal) return (null, personRefusal);
+        if (Named(name) is not { } runner) return (null, BadRequest(NameRefusal));
+        if (await KeyNamedAsync(runner, ct) is not { } key) return (null, NotFound());
+
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        if (!CanControl(key.OwnerPersonId, wallEnabled, callerPerson))
+            return (null, await ControlRefusalAsync(key.Name, key.OwnerPersonId, ct));
+
+        return (key, null);
+    }
+
+    /// <summary>
+    /// The one 403 sentence <see cref="PatchRunner"/>, <see cref="PostRunnerOrder"/>
+    /// and <see cref="DeleteRunnerOrder"/> already each paste their own copy
+    /// of - written once more here for the four session routes rather than a
+    /// fourth paste.
+    /// </summary>
+    private async Task<ObjectResult> ControlRefusalAsync(string runner, Guid? ownerPersonId, CancellationToken ct)
+    {
+        var forName = ownerPersonId is { } forId
+            ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? "its owner"
+            : "its owner";
+        return new ObjectResult($"only {forName}, or an admin, may control {runner}")
+            { StatusCode = StatusCodes.Status403Forbidden };
+    }
+
+    /// <summary>The session this key's id names, or null for one that is somebody else's or does not exist.</summary>
+    private Task<EfHatchRunnerSession?> SessionNamedAsync(Guid apiKeyId, int id, CancellationToken ct) =>
+        db.RunnerSessions.FirstOrDefaultAsync(s => s.Id == id && s.ApiKeyId == apiKeyId, ct);
+
+    /// <summary>The joined row by name, re-read after a session write and projected exactly as <see cref="RotateRunner"/> answers.</summary>
+    private async Task<RunnerDto> AnswerAsync(string name, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, name, StringComparison.Ordinal));
+        var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, keys, now, ct);
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
+
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, now, ct);
     }
 
     // ---- The one narrowing ----
@@ -948,13 +1288,130 @@ public class RunnersController(
     }
 
     /// <summary>
+    /// A session that has never run before, seeded with what the process
+    /// started with - <see cref="Seed"/>'s own field list, minus
+    /// <c>Models</c>, <c>Has</c>, <c>Tags</c> and <c>ForPersonId</c>, none of
+    /// which a session has a column for.
+    /// </summary>
+    private static EfHatchRunnerSession SeedSession(
+        Guid apiKeyId, string kind, string? where, string? line, RunnerHeartbeatRequest request, DateTimeOffset now)
+    {
+        var keys = ProjectKeys(request.Projects);
+
+        return new EfHatchRunnerSession
+        {
+            ApiKeyId = apiKeyId,
+            Kind = kind,
+            Where = where,
+            Host = Fits(request.Host, EfHatchRunner.MaxHostLength),
+            StartedAt = now,
+            LastSeenAt = now,
+            Line = line is { Length: > 0 } ? line : null,
+            LineAt = line is { Length: > 0 } ? now : null,
+            State = kind == EfHatchRunner.LoopKind && request.Standby == true
+                ? EfHatchRunner.Paused
+                : EfHatchRunner.Running,
+
+            Under = Fits(request.Under, EfHatchRunner.MaxUnderLength),
+            MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null,
+            MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null,
+            MaxTokens = request.MaxTokens is > 0 ? request.MaxTokens : null,
+            MaxTokensPerHour = request.MaxTokensPerHour is > 0 ? request.MaxTokensPerHour : null,
+            UntilAt = request.UntilAt,
+            Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
+
+            Remotes = Canonicalised(request.Remotes),
+            Clones = request.Clones,
+            Mine = request.Mine,
+            Standing = request.Standing,
+            Runs = request.Runs,
+            Spent = request.Spent,
+            TokensUsed = request.TokensUsed,
+            TokensLastHour = request.TokensLastHour,
+            Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
+            Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength),
+            Sequence = request.Sequence,
+            SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
+            SourceSequence = request.SourceSequence,
+            BuiltAt = request.BuiltAt,
+            RefusesDangerous = request.RefusesDangerous,
+            ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            ThrottledUntil = request.ThrottledUntil,
+            Usage = Utilization.Serialise(request.Usage),
+            UsageReadAt = request.UsageReadAt,
+        };
+    }
+
+    /// <summary>
+    /// A session that already exists: last seen, line, and the facts about
+    /// what it served - <see cref="Touch"/>'s own field list, minus
+    /// <c>Kind</c> (a <c>once</c> beat must not turn a loop session into a
+    /// <c>once</c> one), <c>Tags</c>, <c>Models</c>, <c>Has</c>,
+    /// <c>ForPersonId</c>, the <c>Fresh</c> bounds block and the order
+    /// read-and-clear - none of which a session answers to, or which this
+    /// route never reads or writes (<c>OrderKind</c>/<c>OrderedAt</c>).
+    /// </summary>
+    private static void TouchSession(
+        EfHatchRunnerSession session, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request)
+    {
+        session.LastSeenAt = now;
+
+        switch (line)
+        {
+            case null: break;
+            case "":
+                session.Line = null;
+                session.LineAt = null;
+                break;
+            default:
+                session.Line = line;
+                session.LineAt = now;
+                break;
+        }
+
+        if (request.Remotes is not null) session.Remotes = Canonicalised(request.Remotes);
+        if (request.Clones is not null) session.Clones = request.Clones;
+        if (request.Mine is not null) session.Mine = request.Mine;
+        if (request.Standing is not null) session.Standing = request.Standing;
+        if (request.Where is not null) session.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+        if (request.Runs is not null) session.Runs = request.Runs;
+        if (request.Spent is not null) session.Spent = request.Spent;
+        if (request.TokensUsed is not null) session.TokensUsed = request.TokensUsed;
+        if (request.TokensLastHour is not null) session.TokensLastHour = request.TokensLastHour;
+        if (request.Host is not null) session.Host = Fits(request.Host, EfHatchRunner.MaxHostLength);
+        if (request.Agent is not null) session.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
+        if (request.Revision is not null) session.Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength);
+        if (request.Sequence is not null) session.Sequence = request.Sequence;
+        if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
+        if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
+        if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        // Seeded once, never restated - the same rule Touch draws for a beat.
+        if (request.RefusesDangerous is not null && session.RefusesDangerous is null) session.RefusesDangerous = request.RefusesDangerous;
+
+        if (request.Exhausted == true) session.ExhaustedUntil = request.ExhaustedUntil;
+        else if (request.Exhausted == false) session.ExhaustedUntil = null;
+
+        // Loop-only, the same as Touch: a `once` beat shares the loop
+        // session's (key, where) and must not clear its own wait.
+        if (kind == EfHatchRunner.LoopKind) session.ThrottledUntil = request.ThrottledUntil;
+
+        if (Utilization.Serialise(request.Usage) is { } usage)
+        {
+            session.Usage = usage;
+            session.UsageReadAt = request.UsageReadAt;
+        }
+    }
+
+    /// <summary>
     /// What this runner holds, or null. Written out rather than reached for
     /// with <c>GetValueOrDefault</c>, which for a tuple hands back a pair of
     /// nulls that is not itself null - a claim on nothing, drawn as though it
     /// were one.
     /// </summary>
     private static (string Key, ClaimSnapshot Claim, string? Status)? Holding(
-        Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held, string name) =>
+        Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
+        (string Runner, string Where) name) =>
         held.TryGetValue(name, out var claim) ? claim : null;
 
     // ---- The two numbers ----

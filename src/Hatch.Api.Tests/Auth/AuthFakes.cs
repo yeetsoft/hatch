@@ -112,6 +112,11 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
 
     public List<Guid> KeysRevoked { get; } = [];
 
+    /// <summary>What RotateApiKeyAsync answers; null is how a test reaches the 404.</summary>
+    public ApiKeyCreated? RotateResult { get; set; }
+
+    public List<Guid> KeysRotated { get; } = [];
+
     /// <summary>Every owner change asked for, key id and the person id (or null, to clear).</summary>
     public List<(Guid Id, Guid? PersonId)> OwnersSet { get; } = [];
 
@@ -142,6 +147,12 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
         return Task.FromResult(RevokeKeyResult);
     }
 
+    public Task<ApiKeyCreated?> RotateApiKeyAsync(Guid id, CancellationToken ct)
+    {
+        KeysRotated.Add(id);
+        return Task.FromResult(RotateResult);
+    }
+
     public Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct)
     {
         OwnersSet.Add((id, personId));
@@ -167,7 +178,7 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
 /// A caller a test can set directly - the person, the key, or the local actor -
 /// without building a real <see cref="Microsoft.AspNetCore.Http.HttpContext"/>.
 /// For a controller or service that just needs "who is asking" answered a
-/// fixed way, the way <see cref="ApiKeysController"/> and
+/// fixed way, the way <c>RunnersController</c> and
 /// <see cref="Hatch.Api.Services.Auth.ActorDirectory.PrincipalAsync"/>'s
 /// callers do.
 /// </summary>

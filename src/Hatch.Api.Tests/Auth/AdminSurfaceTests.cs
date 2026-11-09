@@ -69,16 +69,6 @@ public class AdminSurfaceTests
         "AuthController.LinkGrantPerson",
         "AuthController.CreateInvite",
 
-        // API keys, and the one entry in this file with a second reason. They
-        // are credentials, so they belong beside the sessions above - and they
-        // carry no AcceptKey, so a key cannot mint a key. Allowing that would
-        // make the key system decorative, since a key could issue itself a
-        // second one.
-        "ApiKeysController.ListKeys",
-        "ApiKeysController.CreateKey",
-        "ApiKeysController.RevokeKey",
-        "ApiKeysController.SetOwner",
-
         // People. The writes above all, because Role is set here: an
         // unguarded PUT would let any enrolled device promote itself, which
         // makes the whole boundary a formality. The reads ask for User only -
@@ -491,12 +481,19 @@ public class AdminSurfaceTests
         "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
+        "RunnersController.SessionHeartbeat",
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.PatchRunnerSession",
+        "RunnersController.PostRunnerSessionOrder",
+        "RunnersController.DeleteRunnerSessionOrder",
+        "RunnersController.PauseAll",
+        "RunnersController.StopAll",
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
         // A related edge, cut the same way and for a different reason: under
@@ -748,9 +745,15 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.PatchRunnerSession",
+        "RunnersController.PostRunnerSessionOrder",
+        "RunnersController.DeleteRunnerSessionOrder",
+        "RunnersController.PauseAll",
+        "RunnersController.StopAll",
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
         // Marking the night as seen is a person's own mark, never a key's or
@@ -900,6 +903,7 @@ public class AdminSurfaceTests
         "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
+        "RunnersController.SessionHeartbeat",
         "SearchController.GetSearch",
         "SettingsController.GetClaudeToken",
         "SettingsController.GetCredential",
@@ -934,6 +938,7 @@ public class AdminSurfaceTests
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
     ];
 

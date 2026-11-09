@@ -14,7 +14,9 @@ namespace Hatch.Api.Modules.Hatch;
 /// than re-deriving a second opinion: two walks that could disagree about the
 /// order of the board is precisely the bug this class exists to prevent.
 /// </summary>
-public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time)
+public sealed class Dispatch(
+    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
+    IAuthService? keys = null, RunnerSessions? sessions = null)
 {
     // ---- The walk ----
 
@@ -385,7 +387,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                     // so a folded row parks nothing.
                     if (blocked is null && !hop && asking is not null && letGoBy.TryGetValue(issue.Id, out var by))
                     {
-                        peers ??= new PeerScans(this, db, asking, now, offsetMinutes);
+                        peers ??= new PeerScans(this, asking, now, offsetMinutes);
                         if (await peers.CouldTakeAsync(issue.Id, ct))
                         {
                             blocked = $"{by.Runner} let this go {Minutes((int)(now - by.At).TotalSeconds)} ago, " +
@@ -522,29 +524,21 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// peer's scan names no asker, so it defers nothing: the question is
     /// whether the ticket is takeable, not who would be asked next.
     /// </summary>
-    private sealed class PeerScans(Dispatch dispatch, HatchContext db, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
+    private sealed class PeerScans(Dispatch dispatch, RunnerAsking asking, DateTimeOffset now, int offsetMinutes)
     {
-        private List<EfHatchRunner>? _peers;
+        private List<Peer>? _peers;
         private readonly Dictionary<string, HashSet<long>> _takeable = [];
 
         public async Task<bool> CouldTakeAsync(long issueId, CancellationToken ct)
         {
-            _peers ??= await db.Runners.AsNoTracking()
-                .Where(r => r.Name != asking.Name
-                    && r.LastSeenAt >= asking.LiveSince
-                    && r.Kind == EfHatchRunner.LoopKind
-                    && r.State == EfHatchRunner.Running
-                    && (r.ExhaustedUntil == null || r.ExhaustedUntil <= now)
-                    && (r.UntilAt == null || r.UntilAt > now)
-                    && (r.MaxRuns == null || (r.Runs ?? 0) < r.MaxRuns))
-                .ToListAsync(ct);
+            _peers ??= await dispatch.LivePeersAsync(now, asking.LiveSince, asking.Name, ct);
 
             foreach (var peer in _peers)
             {
-                if (!_takeable.TryGetValue(peer.Name, out var ids))
+                if (!_takeable.TryGetValue(peer.Id, out var ids))
                 {
                     ids = await dispatch.TakeableByAsync(peer, offsetMinutes, ct);
-                    _takeable[peer.Name] = ids;
+                    _takeable[peer.Id] = ids;
                 }
 
                 if (ids.Contains(issueId)) return true;
@@ -555,13 +549,83 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     }
 
     /// <summary>
+    /// One peer a scan could defer to, or count as waiting: a beat and a
+    /// session of the same key are two of these, never one, because a key's
+    /// own several sessions can each hold a different ticket at a different
+    /// checkout. <see cref="Id"/> is the identity <see cref="PeerScans"/> and
+    /// <see cref="WaitingOnARunnerAsync"/> both key their own memoised scans
+    /// on - <c>"beat:" + Name</c> or <c>"session:" + session id</c>, never
+    /// <c>(Name, Where)</c>, since a beat and a session of one process can
+    /// share a <c>Where</c>.
+    /// </summary>
+    private sealed record Peer(string Id, string Name, RunnerDeclaration Declaration);
+
+    /// <summary>
+    /// Every peer that is here, running, and has budget left, excluding
+    /// <paramref name="excludeName"/> by key name - the loop sends only its
+    /// own key name as <c>runner</c>, never its <c>where</c>, so a caller
+    /// cannot otherwise be told apart from its own sibling sessions. A key
+    /// contributes a beat peer when its beat passes the live filter, plus one
+    /// session peer per live session, additively - exactly
+    /// <see cref="Runner.IsLive"/>'s own reading of the two, carried into who
+    /// counts as a peer.
+    /// </summary>
+    private async Task<List<Peer>> LivePeersAsync(DateTimeOffset now, DateTimeOffset liveSince, string? excludeName, CancellationToken ct)
+    {
+        var joined = keys is not null
+            ? await Runner.JoinAsync(db, keys, ct)
+            : (await db.Runners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
+
+        var peers = new List<Peer>();
+        foreach (var runner in joined)
+        {
+            if (string.Equals(runner.Name, excludeName, StringComparison.Ordinal)) continue;
+
+            if (runner.Beat is { } beat && IsLiveBeat(beat, now, liveSince))
+                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, await RunnerDeclaration.OfAsync(beat, actors, ct)));
+
+            if (sessions is null || runner.Sessions is null) continue;
+            foreach (var session in runner.Sessions)
+            {
+                if (!IsLiveSession(session, runner.Config, now, liveSince)) continue;
+                peers.Add(new Peer($"session:{session.Id}", runner.Name, await RunnerDeclaration.OfAsync(runner, [session], actors, ct)));
+            }
+        }
+
+        return peers;
+    }
+
+    /// <summary>A beat as a peer: here, running, and has budget left - the filter every peer read has always drawn.</summary>
+    private static bool IsLiveBeat(EfHatchRunner beat, DateTimeOffset now, DateTimeOffset liveSince) =>
+        beat.LastSeenAt >= liveSince
+        && beat.Kind == EfHatchRunner.LoopKind
+        && beat.State == EfHatchRunner.Running
+        && (beat.ExhaustedUntil == null || beat.ExhaustedUntil <= now)
+        && (beat.UntilAt == null || beat.UntilAt > now)
+        && (beat.MaxRuns == null || (beat.Runs ?? 0) < beat.MaxRuns);
+
+    /// <summary>A session as a peer: the same filter <see cref="IsLiveBeat"/> draws for a beat, its bounds narrowed against the key's own config.</summary>
+    private static bool IsLiveSession(EfHatchRunnerSession session, EfHatchRunnerConfig? config, DateTimeOffset now, DateTimeOffset liveSince)
+    {
+        if (session.EndedAt != null || session.LastSeenAt < liveSince) return false;
+        if (session.Kind != EfHatchRunner.LoopKind || session.State != EfHatchRunner.Running) return false;
+        if (session.ExhaustedUntil is { } exhaustedUntil && exhaustedUntil > now) return false;
+
+        var bounds = RunnerSessions.Effective(config, session);
+        if (bounds.UntilAt.Value is { } untilAt && untilAt <= now) return false;
+        if (bounds.MaxRuns.Value is { } maxRuns && (session.Runs ?? 0) >= maxRuns) return false;
+
+        return true;
+    }
+
+    /// <summary>
     /// The issues a scan on <paramref name="peer"/>'s own declaration finds
-    /// clear, or parked only behind higher-ranking work. A runner whose
+    /// clear, or parked only behind higher-ranking work. A peer whose
     /// declaration is refused - <c>Mine</c> with no owner - takes none.
     /// </summary>
-    private async Task<HashSet<long>> TakeableByAsync(EfHatchRunner peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableByAsync(Peer peer, int offsetMinutes, CancellationToken ct)
     {
-        var declared = await RunnerDeclaration.OfAsync(peer, actors, ct);
+        var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
 
         var scan = await ScanAsync(
@@ -578,27 +642,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     }
 
     /// <summary>
-    /// Every runner that is here, running, and has budget left - a peer as
-    /// <see cref="PeerScans"/> reads it, with no one excluded.
-    /// </summary>
-    private async Task<List<EfHatchRunner>> LiveRunnersAsync(DateTimeOffset now, DateTimeOffset liveSince, CancellationToken ct) =>
-        await db.Runners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= liveSince
-                && r.Kind == EfHatchRunner.LoopKind
-                && r.State == EfHatchRunner.Running
-                && (r.ExhaustedUntil == null || r.ExhaustedUntil <= now)
-                && (r.UntilAt == null || r.UntilAt > now)
-                && (r.MaxRuns == null || (r.Runs ?? 0) < r.MaxRuns))
-            .ToListAsync(ct);
-
-    /// <summary>
     /// <see cref="TakeableByAsync"/> with the peer's models and dependencies left
     /// unjudged: what it would take if it never folded on either. Every other
     /// field stays the peer's own.
     /// </summary>
-    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(EfHatchRunner peer, int offsetMinutes, CancellationToken ct)
+    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(Peer peer, int offsetMinutes, CancellationToken ct)
     {
-        var declared = await RunnerDeclaration.OfAsync(peer, actors, ct);
+        var declared = peer.Declaration;
         if (declared.Refusal is not null) return [];
 
         var scan = await ScanAsync(
@@ -615,41 +665,36 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     }
 
     /// <summary>
-    /// The issues whose next move is clear, that no live runner can take, because
-    /// every live runner's own declaration folds them on a model or on a
-    /// development dependency - and on nothing else. Empty where no runner is
-    /// live. A runner that never declared models or dependencies is never
+    /// The issues whose next move is clear, that no live peer can take, because
+    /// every live peer's own declaration folds them on a model or on a
+    /// development dependency - and on nothing else. Empty where no peer is
+    /// live. A peer that never declared models or dependencies is never
     /// counted as lacking them. Ordered by tier, then rank.
     /// </summary>
     public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
-        var live = await LiveRunnersAsync(time.GetUtcNow(), liveSince, ct);
-        var fleet = new List<(EfHatchRunner Runner, RunnerDeclaration Declaration)>();
-        foreach (var peer in live)
-        {
-            var declaration = await RunnerDeclaration.OfAsync(peer, actors, ct);
-            if (declaration.Refusal is null) fleet.Add((peer, declaration));
-        }
+        var now = time.GetUtcNow();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
 
         if (fleet.Count == 0) return [];
         var declared = fleet.Select(f => f.Declaration).ToList();
 
-        // A runner that judges neither can never fold on a toolchain, so no
+        // A fleet that judges neither can never fold on a toolchain, so no
         // issue is stuck on one - and an unprofiled fleet is spared the scans.
         if (declared.Any(d => !d.Models.Judged && !d.Has.Judged)) return [];
 
         HashSet<long>? stuck = null;
-        foreach (var (runner, _) in fleet)
+        foreach (var peer in fleet)
         {
-            var ids = await TakeableIgnoringToolchainByAsync(runner, offsetMinutes, ct);
+            var ids = await TakeableIgnoringToolchainByAsync(peer, offsetMinutes, ct);
             if (stuck is null) stuck = ids;
             else stuck.IntersectWith(ids);
             if (stuck.Count == 0) return [];
         }
 
-        foreach (var (runner, _) in fleet)
+        foreach (var peer in fleet)
         {
-            stuck!.ExceptWith(await TakeableByAsync(runner, offsetMinutes, ct));
+            stuck!.ExceptWith(await TakeableByAsync(peer, offsetMinutes, ct));
             if (stuck.Count == 0) return [];
         }
 

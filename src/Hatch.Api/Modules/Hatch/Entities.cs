@@ -3431,3 +3431,153 @@ public class EfHatchRunnerConfig
     /// <summary>When this config was last written.</summary>
     public required DateTimeOffset UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// One session a <see cref="EfHatchRunner"/> key has held - inert today, the
+/// same way <see cref="EfHatchRunnerConfig"/> was before anything read it.
+/// </summary>
+[Table("RunnerSessions")]
+[Index(nameof(ApiKeyId), nameof(Where))]
+[Index(nameof(ApiKeyId), nameof(LastSeenAt))]
+public class EfHatchRunnerSession
+{
+    /// <summary>Surrogate key - a key can hold many sessions over its life, unlike <see cref="EfHatchRunnerConfig.ApiKeyId"/>.</summary>
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+
+    /// <summary>
+    /// The API key this session belongs to. A bare <see cref="Guid"/> with no
+    /// navigation and no foreign key, the same shape as
+    /// <see cref="EfHatchRunnerConfig.ApiKeyId"/>.
+    /// </summary>
+    public required Guid ApiKeyId { get; set; }
+
+    /// <summary>The machine and checkout this session ran from, as <see cref="EfHatchRunner.Where"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxNameLength)]
+    public string? Where { get; set; }
+
+    /// <summary><see cref="EfHatchRunner.LoopKind"/> or <see cref="EfHatchRunner.OnceKind"/>, as <see cref="EfHatchRunner.Kind"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxKindLength)]
+    public required string Kind { get; set; }
+
+    /// <summary>The short name of the machine this session ran on, as <see cref="EfHatchRunner.Host"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxHostLength)]
+    public string? Host { get; set; }
+
+    /// <summary><see cref="EfHatchRunner.Running"/>, <see cref="EfHatchRunner.Paused"/> or <see cref="EfHatchRunner.Stopping"/>, as <see cref="EfHatchRunner.State"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxStateLength)]
+    public required string State { get; set; }
+
+    /// <summary>When this session began.</summary>
+    public required DateTimeOffset StartedAt { get; set; }
+
+    /// <summary>The last heartbeat this session sent, as <see cref="EfHatchRunner.LastSeenAt"/>.</summary>
+    public required DateTimeOffset LastSeenAt { get; set; }
+
+    /// <summary>When this session ended, or null while it is still going.</summary>
+    public DateTimeOffset? EndedAt { get; set; }
+
+    /// <summary>The last line this session printed while holding no claim, as <see cref="EfHatchRunner.Line"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxLineLength)]
+    public string? Line { get; set; }
+
+    /// <summary>When that line arrived, as <see cref="EfHatchRunner.LineAt"/>.</summary>
+    public DateTimeOffset? LineAt { get; set; }
+
+    /// <summary>The epic this session stayed inside, as <see cref="EfHatchRunner.Under"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxUnderLength)]
+    public string? Under { get; set; }
+
+    /// <summary>The cap on increments, as <see cref="EfHatchRunner.MaxRuns"/>.</summary>
+    public int? MaxRuns { get; set; }
+
+    /// <summary>The cap on dollars, as <see cref="EfHatchRunner.MaxSpend"/>.</summary>
+    public decimal? MaxSpend { get; set; }
+
+    /// <summary>The cap on tokens for the whole run, as <see cref="EfHatchRunner.MaxTokens"/>.</summary>
+    public long? MaxTokens { get; set; }
+
+    /// <summary>The cap on tokens per hour, as <see cref="EfHatchRunner.MaxTokensPerHour"/>.</summary>
+    public long? MaxTokensPerHour { get; set; }
+
+    /// <summary>When this session was told to stop, as <see cref="EfHatchRunner.UntilAt"/>.</summary>
+    public DateTimeOffset? UntilAt { get; set; }
+
+    /// <summary>The increments this session's loop ran, as <see cref="EfHatchRunner.Runs"/>.</summary>
+    public int? Runs { get; set; }
+
+    /// <summary>The priced spend of those increments, as <see cref="EfHatchRunner.Spent"/>.</summary>
+    public decimal? Spent { get; set; }
+
+    /// <summary>The tokens those increments used, as <see cref="EfHatchRunner.TokensUsed"/>.</summary>
+    public long? TokensUsed { get; set; }
+
+    /// <summary>The tokens used in the last hour, as <see cref="EfHatchRunner.TokensLastHour"/>.</summary>
+    public long? TokensLastHour { get; set; }
+
+    /// <summary>When this session's account was exhausted until, as <see cref="EfHatchRunner.ExhaustedUntil"/>.</summary>
+    public DateTimeOffset? ExhaustedUntil { get; set; }
+
+    /// <summary>When this session's token throttle was due to lift, as <see cref="EfHatchRunner.ThrottledUntil"/>.</summary>
+    public DateTimeOffset? ThrottledUntil { get; set; }
+
+    /// <summary>The account's usage windows this session last read, as <see cref="EfHatchRunner.Usage"/>.</summary>
+    public string? Usage { get; set; }
+
+    /// <summary>When this session read <see cref="Usage"/>, as <see cref="EfHatchRunner.UsageReadAt"/>.</summary>
+    public DateTimeOffset? UsageReadAt { get; set; }
+
+    /// <summary>The checkouts this session served, as <see cref="EfHatchRunner.Remotes"/>.</summary>
+    public string? Remotes { get; set; }
+
+    /// <summary>Whether this session made a clone for itself, as <see cref="EfHatchRunner.Clones"/>.</summary>
+    public bool? Clones { get; set; }
+
+    /// <summary>Whether this session was started with <c>do-my-work</c> or <c>--mine</c>, as <see cref="EfHatchRunner.Mine"/>.</summary>
+    public bool? Mine { get; set; }
+
+    /// <summary>Whether this session was started inside one of the checkouts it served, as <see cref="EfHatchRunner.Standing"/>.</summary>
+    public bool? Standing { get; set; }
+
+    /// <summary>The agent that ran this session, as <see cref="EfHatchRunner.Agent"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxAgentLength)]
+    public string? Agent { get; set; }
+
+    /// <summary>This session's own build identity, as <see cref="EfHatchRunner.Revision"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxRevisionLength)]
+    public string? Revision { get; set; }
+
+    /// <summary>This session's own commit count at build time, as <see cref="EfHatchRunner.Sequence"/>.</summary>
+    public int? Sequence { get; set; }
+
+    /// <summary>When this session's binary was written, as <see cref="EfHatchRunner.BuiltAt"/>.</summary>
+    public DateTimeOffset? BuiltAt { get; set; }
+
+    /// <summary>The sha of the source checkout this session was started from, as <see cref="EfHatchRunner.SourceRevision"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxRevisionLength)]
+    public string? SourceRevision { get; set; }
+
+    /// <summary>The commit count of <see cref="SourceRevision"/>, as <see cref="EfHatchRunner.SourceSequence"/>.</summary>
+    public int? SourceSequence { get; set; }
+
+    /// <summary>The project keys this session was bound to, as <see cref="EfHatchRunner.Projects"/>.</summary>
+    public string? Projects { get; set; }
+
+    /// <summary>Whether this session refused dangerous work, as <see cref="EfHatchRunner.RefusesDangerous"/>.</summary>
+    public bool? RefusesDangerous { get; set; }
+
+    /// <summary><see cref="RunnerOrderKinds.Work"/> or <see cref="RunnerOrderKinds.Pass"/>, as <see cref="EfHatchRunner.OrderKind"/>.</summary>
+    [MaxLength(RunnerOrderKinds.MaxLength)]
+    public string? OrderKind { get; set; }
+
+    /// <summary>The issue a <see cref="RunnerOrderKinds.Work"/> order named, as <see cref="EfHatchRunner.OrderKey"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxUnderLength)]
+    public string? OrderKey { get; set; }
+
+    /// <summary>Who placed the order, as <see cref="EfHatchRunner.OrderedBy"/>.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? OrderedBy { get; set; }
+
+    /// <summary>When the order was placed, as <see cref="EfHatchRunner.OrderedAt"/>.</summary>
+    public DateTimeOffset? OrderedAt { get; set; }
+}

@@ -452,7 +452,7 @@ a repository and do not build it. A runner that falls short is folded with the
 sentence quoted under [Has](#has).
 
 **An invalid file.** An invalid file folds the project's development steps with
-*"acme/repo's .hatch/dependencies.json is invalid at <sha> (<problem>) - fix it
+*"acme/repo's .hatch/dependencies.json is invalid at `<sha>` (`<problem>`) - fix it
 on the trunk"*. An absent file, or one no runner has read yet, folds nothing, so
 a repository that has not opted in is exactly as it was.
 

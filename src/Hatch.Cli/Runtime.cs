@@ -103,7 +103,7 @@ public sealed record Runtime(
 
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
-    public Picker Picker() => new(Board, RunnerName, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter, Narrowing, Clock);
+    public Picker Picker() => new(Board, RunnerName, Where, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter, Narrowing, Clock);
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine, RunnerName);
 
@@ -111,9 +111,10 @@ public sealed record Runtime(
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back
-    /// what it has been asked to do. Named by <see cref="RunnerName"/>, which
-    /// is the same string its claims carry - a runner has one identity, and the
-    /// row is keyed on it.
+    /// what it has been asked to do. Named by <see cref="RunnerName"/>; its
+    /// claims carry <see cref="Where"/> instead, the session's checkout rather
+    /// than the runner's own name, since one runner's several sessions each
+    /// hold at most one ticket at a different <see cref="Where"/>.
     /// </summary>
     public Runners Runners() => new(Board.Client, RunnerName);
 

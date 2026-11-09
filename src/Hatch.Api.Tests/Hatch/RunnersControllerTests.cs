@@ -20,6 +20,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// property the control surface rests on - that an agent cannot raise its own
 /// bounds.
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class RunnersControllerTests
 {
     private const string Runner = "here:/checkouts/one";
@@ -1157,7 +1158,7 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket", Where: Runner));
 
         var runner = await h.OneAsync();
 
@@ -1174,7 +1175,7 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Line: "claimed a ticket", Where: Runner));
 
         await h.ReleaseAsync(issue.Key);
 
@@ -1190,12 +1191,12 @@ public class RunnersControllerTests
         var h = await NewAsync();
         var issue = await h.FileAsync();
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
 
         // Past the lease, and the same arithmetic the board does: a claim
         // nothing has refreshed is not a claim.
         h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
 
         var runner = await h.OneAsync();
         Assert.Null(runner.ClaimKey);
@@ -1218,7 +1219,7 @@ public class RunnersControllerTests
     {
         var h = await NewAsync();
         var issue = await h.FileAsync();
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Where: Runner));
         await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api");
 
         // IssueClaimController's own heartbeat and release now touch the
@@ -1286,6 +1287,143 @@ public class RunnersControllerTests
 
         Assert.Equal(["second:/tree", "first:/tree"], (await h.ListAsync()).Select(r => r.Name));
     }
+
+    // ---- Sessions, and liveness drawn from one ----
+
+    [Fact]
+    public async Task Live_ListsAKeyWithOnlyALiveSession()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("session-only", (await h.OneAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Live_DropsAKeyWhoseOnlySessionIsPastTheHorizon()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+
+        Assert.Empty(await h.ListAsync());
+    }
+
+    [Fact]
+    public async Task AKeyWithNoSessions_HasAnEmptySessionsList()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Empty((await h.OneAsync()).Sessions);
+    }
+
+    [Fact]
+    public async Task ASessionOnlyKey_DrivesTheProject()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Drives);
+    }
+
+    [Fact]
+    public async Task TwoLiveSessionsUnderOneKey_DriveAsOneNameNeverTwiceNorAThrow()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("two-sessions");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now.AddSeconds(5), "here:/checkouts/two", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Drives);
+    }
+
+    [Fact]
+    public async Task AnOlderBeat_OutranksANewerSessionUnderAnotherName()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.BeatAsync("here:/beat", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var key = await h.AddKeyAsync("session-runner");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, h.Time.GetUtcNow(), "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.ListAsync();
+        Assert.Equal(["AER"], rows.Single(r => r.Name == "here:/beat").Drives);
+        Assert.Empty(rows.Single(r => r.Name == "session-runner").Drives!);
+    }
+
+    [Fact]
+    public async Task WithTheWallUp_AnOwnersSession_DrivesAnOwnedProject_OverAStrangersOlderBeat()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var owner = h.Actors.AddPerson("Owner");
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.AddMemberAsync(owner.Id, ProjectMemberRole.Owner);
+
+        await h.LoopBeatAsync("here:/stranger", stranger);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var key = await h.AddKeyAsync("owner-session", owner.Id);
+        h.Db.RunnerSessions.Add(NewSession(key.Id, h.Time.GetUtcNow(), "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.ListAsync();
+        Assert.Equal(["AER"], rows.Single(r => r.Name == "owner-session").Drives);
+        Assert.Empty(rows.Single(r => r.Name == "here:/stranger").Drives!);
+    }
+
+    [Fact]
+    public async Task GetRunner_ListsSessionsNewestFirst_TheLiveOneCarriesItsClaim_AnEndedOneDoesNot()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+
+        var older = NewSession(key.Id, Now, Runner);
+        older.EndedAt = Now;
+        h.Db.RunnerSessions.Add(older);
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var newer = NewSession(key.Id, h.Time.GetUtcNow(), Runner);
+        h.Db.RunnerSessions.Add(newer);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key, Runner, chatter: "working it");
+
+        var found = await h.GetAsync(Runner);
+
+        Assert.Equal(2, found!.Sessions.Count);
+        Assert.Equal(newer.Id, found.Sessions[0].Id);
+        Assert.Equal(issue.Key, found.Sessions[0].ClaimKey);
+        Assert.Equal(older.Id, found.Sessions[1].Id);
+        Assert.Null(found.Sessions[1].ClaimKey);
+    }
+
+    private static EfHatchRunnerSession NewSession(Guid apiKeyId, DateTimeOffset at, string? where, string? remotes = null) => new()
+    {
+        ApiKeyId = apiKeyId,
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        StartedAt = at,
+        LastSeenAt = at,
+        Where = where,
+        Remotes = remotes,
+    };
 
     // ---- Names ----
 
@@ -3006,6 +3144,17 @@ public class RunnersControllerTests
         Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
     }
 
+    [Fact]
+    public async Task Create_NoOwnerNamed_AndNobodyIsCalling_BelongsToNobody()
+    {
+        var h = await NewAsync(nobody: true);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.Null(minted.Runner.OwnerPersonId);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -3296,6 +3445,121 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(await h.RevokeAsync("nobody:/at/all"));
     }
 
+    // ---- Rotating a runner's secret ----
+
+    [Fact]
+    public async Task Rotate_ANewSecret_TheOldOneStopsVerifying_AndTheNewOneIsTheSameKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.Null(await h.Keys.VerifyApiKeyAsync(minted.Secret, default));
+        var verified = await h.Keys.VerifyApiKeyAsync(rotated.Secret, default);
+        Assert.NotNull(verified);
+        Assert.Equal(minted.Runner.ApiKeyId, verified!.Id);
+        Assert.Equal(Runner, verified.Name);
+    }
+
+    [Fact]
+    public async Task Rotate_UpdatesPrefixAndRotatedAt_OnTheAnswerAndOnGet()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+        Assert.Null(minted.Runner.RotatedAt);
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.NotNull(rotated.Runner.RotatedAt);
+        Assert.NotEqual(minted.Runner.Prefix, rotated.Runner.Prefix);
+
+        var fetched = await h.GetAsync(Runner);
+        Assert.Equal(rotated.Runner.Prefix, fetched?.Prefix);
+        Assert.Equal(rotated.Runner.RotatedAt, fetched?.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_KeepsOwnerTagsAndSessions()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var owner = h.Actors.AddPerson("Ada");
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner, OwnerPersonId: owner.Id, Tags: ["gpu"])));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var before = await h.GetAsync(Runner);
+
+        Value(await h.RotateAsync(Runner));
+
+        var after = await h.GetAsync(Runner);
+        Assert.Equal(before?.OwnerPersonId, after?.OwnerPersonId);
+        Assert.Equal(before?.Tags, after?.Tags);
+        Assert.Equal(before?.Sessions, after?.Sessions);
+        Assert.Equal(Runner, Assert.Single(await h.ListAllAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Rotate_IsSentNoStore()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        Value(await h.RotateAsync(Runner));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Rotate_OfANameNoKeyAnswersTo_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.IsType<NotFoundResult>((await h.RotateAsync(Runner)).Result);
+        Assert.IsType<NotFoundResult>((await h.RotateAsync("nobody:/at/all")).Result);
+    }
+
+    [Fact]
+    public async Task Rotate_OfARevokedKey_Is409_AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.RevokeKeyAsync(key.Id);
+        var hashBefore = (await h.Keys.ListApiKeysAsync(default)).Single().Hash;
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AKeyCaller_Is403()
+    {
+        var h = await NewAsync(program: true);
+        var key = await h.AddKeyAsync(Runner);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(hashBefore, Assert.Single(await h.Keys.ListApiKeysAsync(default)).Hash);
+    }
+
+    [Fact]
+    public async Task Rotate_ANameWithSlashes_ReachedByItsEscapedSegment()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        var rotated = Value(await h.RotateAsync(Uri.EscapeDataString(Runner)));
+
+        Assert.Equal(Runner, rotated.Runner.Name);
+    }
+
     [Fact]
     public async Task SetOwner_SetsAndClearsTheKeysOwner()
     {
@@ -3332,6 +3596,468 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(await h.SetOwnerAsync(Runner, ada.Id));
     }
 
+    // ---- The session heartbeat ----
+
+    [Fact]
+    public async Task SessionHeartbeat_WithNoKey_Is403BeforeAnyDatabaseCall()
+    {
+        var h = await NewAsync(nobody: true);
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(403, refusal.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatAtAFreeWhere_InsertsOneRowAndNarrowsItsBounds()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, MaxRuns = 5, UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, MaxRuns: 10));
+
+        var instruction = Value(result);
+        Assert.NotNull(instruction.SessionId);
+        Assert.Equal(5, instruction.MaxRuns);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatAtAnOccupiedWhere_Is409AndWritesNothing()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+        var before = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("hatch is already the runner on", refusal.Value!.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        var after = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(before.LastSeenAt, after.LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ANonFreshBeat_JoinsTheLiveSessionRatherThanInsertingAnother()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(Now.AddMinutes(1), row.LastSeenAt);
+        Assert.Equal(Now, row.StartedAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AOnceBeat_JoinsALoopSessionWithoutChangingItsKindAndElseInsertsItsOwn()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        Assert.Equal(EfHatchRunner.LoopKind, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Kind);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: "here:/checkouts/two"));
+
+        Assert.Equal(2, await h.Db.RunnerSessions.CountAsync());
+        Assert.Equal(EfHatchRunner.OnceKind, (await h.Db.RunnerSessions.AsNoTracking()
+            .SingleAsync(s => s.Where == "here:/checkouts/two")).Kind);
+    }
+
+    [SkippableFact]
+    public async Task GetRunners_StampsEndedAtOnASessionPastTheHorizon()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+        await h.ListAllAsync();
+
+        Assert.Equal(h.Time.GetUtcNow(), (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).EndedAt);
+    }
+
+    // ---- Session controls ----
+
+    [Fact]
+    public async Task PatchSession_SetsOneSessionsStateAndLeavesItsSiblingAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var one = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        var two = await h.SeedSessionAsync(key.Id, "loop", "here:/two");
+
+        await h.PatchSessionAsync(Runner, one.Id, new RunnerSessionPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == one.Id)).State);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == two.Id)).State);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("halt")]
+    public async Task PatchSession_ABadOrAbsentState_Is400AndWritesNothing(string? sent)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PatchRunnerSession(Runner, session.Id, new RunnerSessionPatchRequest(State: sent), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("a runner is running, paused, stopping", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task PatchSession_UnknownName_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refusal = await h.Runners.PatchRunnerSession("nowhere:/tree", 1, new RunnerSessionPatchRequest(State: "paused"), default);
+
+        Assert.IsType<NotFoundResult>(refusal.Result);
+    }
+
+    [Fact]
+    public async Task PatchSession_IdUnderAnotherKey_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.AddKeyAsync(Runner);
+        var other = await h.AddKeyAsync("here:/other");
+        var session = await h.SeedSessionAsync(other.Id, "loop");
+
+        var refusal = await h.Runners.PatchRunnerSession(Runner, session.Id, new RunnerSessionPatchRequest(State: "paused"), default);
+
+        Assert.IsType<NotFoundResult>(refusal.Result);
+    }
+
+    [Fact]
+    public async Task PatchSession_ByAnotherPerson_Is403NamingTheOwnerAndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PatchRunnerSession(Runner, session.Id, new RunnerSessionPatchRequest(State: "paused"), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("Alice", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task PatchSession_ByAnAdmin_IsAllowed()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        await h.PatchSessionAsync(Runner, session.Id, new RunnerSessionPatchRequest(State: "paused"));
+
+        Assert.Equal("paused", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task PatchSession_ByAKey_Is403AndWritesNothing()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PatchRunnerSession(Runner, session.Id, new RunnerSessionPatchRequest(State: "paused"), default);
+
+        Assert.Equal(403, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task OrderSession_Work_LandsOnTheSessionRowNotTheBeatOrSibling()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+        var one = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        var two = await h.SeedSessionAsync(key.Id, "loop", "here:/two");
+        var issue = await h.FileAsync();
+
+        await h.OrderSessionAsync(Runner, one.Id, new RunnerOrderRequest("work", issue.Key));
+
+        var ordered = await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == one.Id);
+        Assert.Equal("work", ordered.OrderKind);
+        Assert.Equal(issue.Key, ordered.OrderKey);
+        Assert.Equal("Nathan", ordered.OrderedBy);
+        Assert.NotNull(ordered.OrderedAt);
+
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == two.Id)).OrderKind);
+        Assert.Null((await h.RowAsync()).OrderKind);
+    }
+
+    [Fact]
+    public async Task OrderSession_Pass_LandsOnTheSessionRowWithNoKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        await h.OrderSessionAsync(Runner, session.Id, new RunnerOrderRequest("pass"));
+
+        var ordered = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("pass", ordered.OrderKind);
+        Assert.Null(ordered.OrderKey);
+    }
+
+    [Fact]
+    public async Task OrderSession_Work_WritesTheOrderedEvent()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        var issue = await h.FileAsync();
+
+        await h.OrderSessionAsync(Runner, session.Id, new RunnerOrderRequest("work", issue.Key));
+
+        var last = Assert.Single(await h.EventsAsync(issue.Key), e => e.Kind == EfHatchIssueEvent.Ordered);
+        Assert.Equal("Nathan", last.Actor);
+        Assert.Contains(Runner, last.Payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_ABadKind_Is400()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("sleep"), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("an order is work, pass", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_WorkWithNoKey_Is400()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("work"), default);
+
+        Assert.Equal(400, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("work names an issue", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_WorkNamingAnIssueThatDoesNotExist_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("work", "AER-999"), default);
+
+        Assert.Equal(404, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("AER-999", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_AOnceSession_Is409()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "once");
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("single increment", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_AStoppingSession_Is409()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        session.State = EfHatchRunner.Stopping;
+        await h.Db.SaveChangesAsync();
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("stopping", Reason(refusal.Result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OrderSession_AHeldOrder_Is409UntilWithdrawn()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        var issue = await h.FileAsync();
+        await h.OrderSessionAsync(Runner, session.Id, new RunnerOrderRequest("work", issue.Key));
+
+        var refusal = await h.Runners.PostRunnerSessionOrder(Runner, session.Id, new RunnerOrderRequest("pass"), default);
+
+        Assert.Equal(409, ((ObjectResult)refusal.Result!).StatusCode);
+        var reason = Reason(refusal.Result);
+        Assert.Contains("work", reason, StringComparison.Ordinal);
+        Assert.Contains(issue.Key, reason, StringComparison.Ordinal);
+        Assert.Contains("withdraw it first", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeleteSessionOrder_ClearsOnlyThatSessionsOrder()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var one = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        var two = await h.SeedSessionAsync(key.Id, "loop", "here:/two");
+        var issue = await h.FileAsync();
+        await h.OrderSessionAsync(Runner, one.Id, new RunnerOrderRequest("work", issue.Key));
+        await h.OrderSessionAsync(Runner, two.Id, new RunnerOrderRequest("pass"));
+
+        var result = await h.WithdrawSessionAsync(Runner, one.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == one.Id)).OrderKind);
+        Assert.Equal("pass", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == two.Id)).OrderKind);
+    }
+
+    [Fact]
+    public async Task DeleteSessionOrder_OnAnUnorderedSession_Is204AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var session = await h.SeedSessionAsync(key.Id, "loop");
+        var seenAt = session.LastSeenAt;
+
+        var result = await h.WithdrawSessionAsync(Runner, session.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal(seenAt, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).LastSeenAt);
+    }
+
+    [Fact]
+    public async Task PauseAll_OnlyPausesLiveLoopSessionsUnderThisKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        var other = await h.AddKeyAsync("here:/other");
+
+        var liveOne = await h.SeedSessionAsync(key.Id, "loop", "here:/one");
+        var liveTwo = await h.SeedSessionAsync(key.Id, "loop", "here:/two");
+        var once = await h.SeedSessionAsync(key.Id, "once", "here:/once");
+        var ended = await h.SeedSessionAsync(key.Id, "loop", "here:/ended", endedAt: Now);
+        var pastHorizon = await h.SeedSessionAsync(
+            key.Id, "loop", "here:/past", lastSeenAt: Now - TimeSpan.FromSeconds(Horizon + 1));
+        var othersSession = await h.SeedSessionAsync(other.Id, "loop", "here:/others");
+
+        var result = await h.PauseAllAsync(Runner);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal("paused", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == liveOne.Id)).State);
+        Assert.Equal("paused", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == liveTwo.Id)).State);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == once.Id)).State);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == ended.Id)).State);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == pastHorizon.Id)).State);
+        Assert.Equal("running", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == othersSession.Id)).State);
+    }
+
+    [Fact]
+    public async Task StopAll_SetsStoppingOnEveryLiveLoopSession()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.SeedSessionAsync(key.Id, "loop");
+
+        await h.StopAllAsync(Runner);
+
+        Assert.Equal("stopping", (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).State);
+    }
+
+    [Fact]
+    public async Task PauseAll_WithNoLiveSessions_IsStill204()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.SeedSessionAsync(key.Id, "once");
+
+        Assert.IsType<NoContentResult>(await h.PauseAllAsync(Runner));
+    }
+
+    [Fact]
+    public async Task PauseAll_UnknownName_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Assert.IsType<NotFoundResult>(await h.PauseAllAsync("nowhere:/tree"));
+    }
+
+    [Fact]
+    public async Task PauseAll_ByAnotherPerson_Is403NamingTheOwner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = Assert.IsType<ObjectResult>(await h.PauseAllAsync(Runner));
+
+        Assert.Equal(403, refusal.StatusCode);
+        Assert.Contains("Alice", refusal.Value!.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StopAll_ByAKey_Is403()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var key = await h.AddKeyAsync(Runner);
+        await h.SeedSessionAsync(key.Id, "loop");
+
+        var refusal = Assert.IsType<ObjectResult>(await h.StopAllAsync(Runner));
+
+        Assert.Equal(403, refusal.StatusCode);
+    }
+
+    [Fact]
+    public void TheSessionControlRoutes_ArePersonOnly()
+    {
+        Assert.False(Guard(nameof(RunnersController.PatchRunnerSession))!.AcceptKey);
+        Assert.False(Guard(nameof(RunnersController.PostRunnerSessionOrder))!.AcceptKey);
+        Assert.False(Guard(nameof(RunnersController.DeleteRunnerSessionOrder))!.AcceptKey);
+        Assert.False(Guard(nameof(RunnersController.PauseAll))!.AcceptKey);
+        Assert.False(Guard(nameof(RunnersController.StopAll))!.AcceptKey);
+    }
+
+    private static async Task<string> ConnectAsync()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the session heartbeat calls MarkGoneAsync and " +
+            "TrimHistoryAsync, which EF's in-memory provider cannot execute. Run `make test-api-db`, or " +
+            "point the variable at a scratch database.");
+
+        return await HatchDatabase.PrepareAsync();
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
@@ -3348,6 +4074,7 @@ public class RunnersControllerTests
         public required int ProjectId { get; init; }
         public required StubActorDirectory Actors { get; init; }
         public required Guid PersonId { get; init; }
+        public required StubCaller Caller { get; init; }
 
         private int nextRepoOrder;
 
@@ -3397,18 +4124,60 @@ public class RunnersControllerTests
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));
 
+        public async Task<ActionResult<RunnerInstructionDto>> SessionBeatAsync(RunnerHeartbeatRequest request) =>
+            await Runners.SessionHeartbeat(request, default);
+
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
 
         public async Task<IActionResult> RevokeAsync(string name) => await Runners.RevokeRunner(name, default);
 
+        /// <summary>Rotates a runner's secret, with the response the controller writes its headers to.</summary>
+        public async Task<ActionResult<RunnerMintedDto>> RotateAsync(string name)
+        {
+            Runners.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            return await Runners.RotateRunner(name, default);
+        }
+
         public async Task<IActionResult> SetOwnerAsync(string name, Guid? personId) =>
-            await Runners.SetRunnerOwner(name, new ApiKeyOwnerRequest(personId), default);
+            await Runners.SetRunnerOwner(name, new RunnerOwnerRequest(personId), default);
 
         public async Task<RunnerDto> OrderAsync(string name, RunnerOrderRequest request) =>
             Value(await Runners.PostRunnerOrder(name, request, default));
 
         public async Task<ActionResult> WithdrawAsync(string name) => await Runners.DeleteRunnerOrder(name, default);
+
+        public async Task<RunnerDto> PatchSessionAsync(string name, int id, RunnerSessionPatchRequest request) =>
+            Value(await Runners.PatchRunnerSession(name, id, request, default));
+
+        public async Task<RunnerDto> OrderSessionAsync(string name, int id, RunnerOrderRequest request) =>
+            Value(await Runners.PostRunnerSessionOrder(name, id, request, default));
+
+        public async Task<ActionResult> WithdrawSessionAsync(string name, int id) =>
+            await Runners.DeleteRunnerSessionOrder(name, id, default);
+
+        public async Task<ActionResult> PauseAllAsync(string name) => await Runners.PauseAll(name, default);
+
+        public async Task<ActionResult> StopAllAsync(string name) => await Runners.StopAll(name, default);
+
+        /// <summary>A session written straight to the table - no heartbeat, no Postgres - for the session control tests, which judge a row they placed themselves rather than one a beat produced.</summary>
+        public async Task<EfHatchRunnerSession> SeedSessionAsync(
+            Guid apiKeyId, string kind, string? where = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null)
+        {
+            var session = new EfHatchRunnerSession
+            {
+                ApiKeyId = apiKeyId,
+                Kind = kind,
+                Where = where,
+                State = EfHatchRunner.Running,
+                StartedAt = Now,
+                LastSeenAt = lastSeenAt ?? Now,
+                EndedAt = endedAt,
+            };
+            Db.RunnerSessions.Add(session);
+            await Db.SaveChangesAsync();
+            return session;
+        }
 
         /// <summary>An issue's own events, oldest first.</summary>
         public async Task<IReadOnlyList<EfHatchIssueEvent>> EventsAsync(string key)
@@ -3469,7 +4238,7 @@ public class RunnersControllerTests
         {
             var issue = await Find(key);
             issue.ClaimToken = Guid.NewGuid();
-            issue.ClaimedBy = "hatch";
+            issue.ClaimedBy = runner;
             issue.ClaimRunner = runner;
             issue.ClaimedAt = Time.GetUtcNow();
             issue.ClaimHeartbeatAt = Time.GetUtcNow();
@@ -3498,10 +4267,12 @@ public class RunnersControllerTests
     private static async Task<Harness> NewAsync(
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
         PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null,
-        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null)
+        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null,
+        string? connectionString = null)
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var db = connectionString is null
+            ? new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)
+            : new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
 
         var hatch = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         db.Add(hatch);
@@ -3526,6 +4297,7 @@ public class RunnersControllerTests
             {
                 Key = new EfApiKey
                 {
+                    Id = Guid.NewGuid(),
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
@@ -3537,11 +4309,13 @@ public class RunnersControllerTests
             : new StubCaller { Person = new EfPerson { Id = id, Name = "Nathan", Role = role, CreatedAt = Now, UpdatedAt = Now } };
 
         var actors = new StubActorDirectory();
+        var sessions = new RunnerSessions(runners);
 
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
-                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
+                sessions),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
@@ -3549,6 +4323,7 @@ public class RunnersControllerTests
             Actors = actors,
             PersonId = id,
             Keys = keys,
+            Caller = caller,
         };
     }
 

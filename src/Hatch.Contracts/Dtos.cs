@@ -3987,6 +3987,10 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// the runner reports about itself, never a person's to set. Empty for a
 /// runner that has said none, rather than null.
 /// </param>
+/// <param name="RotatedAt">
+/// When the runner's key last had its secret replaced - null while it never
+/// has been, or there is no key at all.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4040,7 +4044,8 @@ public record RunnerDto(
     DateTimeOffset? LastUsedAt = null,
     DateTimeOffset? RevokedAt = null,
     Guid? OwnerPersonId = null,
-    IReadOnlyList<RunnerSessionDto> Sessions = null!)
+    IReadOnlyList<RunnerSessionDto> Sessions = null!,
+    DateTimeOffset? RotatedAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4055,7 +4060,53 @@ public record RunnerDto(
 /// One session an api key behind a runner has open, read beside the key's
 /// own fields on <see cref="RunnerDto"/>.
 /// </summary>
-public record RunnerSessionDto(string Where, DateTimeOffset LastSeenAt);
+public record RunnerSessionDto(
+    int Id,
+    string? Where,
+    string Kind,
+    string? Host,
+    string State,
+    DateTimeOffset StartedAt,
+    DateTimeOffset LastSeenAt,
+    DateTimeOffset? EndedAt,
+    string? ClaimKey = null,
+    string? Line = null,
+    DateTimeOffset? LineAt = null,
+    string? ClaimStatus = null,
+    string? Under = null,
+    int? MaxRuns = null,
+    decimal? MaxSpend = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    DateTimeOffset? UntilAt = null,
+    int? Runs = null,
+    decimal? Spent = null,
+    long? TokensUsed = null,
+    long? TokensLastHour = null,
+    DateTimeOffset? ExhaustedUntil = null,
+    DateTimeOffset? ThrottledUntil = null,
+    string? Usage = null,
+    DateTimeOffset? UsageReadAt = null,
+    IReadOnlyList<string>? Remotes = null,
+    bool? Clones = null,
+    bool? Mine = null,
+    bool? Standing = null,
+    string? Agent = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null,
+    string? SourceRevision = null,
+    int? SourceSequence = null,
+    IReadOnlyList<string>? Projects = null,
+    bool? RefusesDangerous = null,
+    string? OrderKind = null,
+    string? OrderKey = null,
+    string? OrderedBy = null,
+    DateTimeOffset? OrderedAt = null)
+{
+    public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
+    public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
+}
 
 /// <summary>
 /// A freshly minted runner key, answered once at creation - the only time
@@ -4068,6 +4119,14 @@ public record RunnerMintedDto(RunnerDto Runner, string Secret);
 /// no tags reads as none.
 /// </summary>
 public record CreateRunnerRequest(string? Name, Guid? OwnerPersonId = null, IReadOnlyList<string>? Tags = null);
+
+/// <summary>
+/// Changes or clears an existing runner's owner. A record with one nullable
+/// field rather than a bare Guid in the URL, the same shape
+/// <c>LinkPersonRequest</c> takes and for the same reason: "nobody" is
+/// something the API can be told, not the absence of being told anything.
+/// </summary>
+public record RunnerOwnerRequest(Guid? PersonId);
 
 /// <summary>
 /// Where a runner's own reported build sits relative to the board's -
@@ -4315,7 +4374,9 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Projects = null,
     bool? RefusesDangerous = null,
     long? MaxTokens = null,
-    long? MaxTokensPerHour = null);
+    long? MaxTokensPerHour = null,
+    string? RunnerName = null,
+    int? SessionId = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -4356,6 +4417,14 @@ public record RunnerPatchRequest(
     bool? RefusesDangerous = null,
     string? MaxTokens = null,
     string? MaxTokensPerHour = null);
+
+/// <summary>
+/// Sets one session's state, by its id - <see cref="RunnerPatchRequest"/>'s
+/// own <c>State</c>, narrowed to the one session a session control route
+/// names rather than the whole key.
+/// </summary>
+/// <param name="State">One of <c>running</c>, <c>paused</c>, <c>stopping</c>. Not clearable - a session is always in one of the three.</param>
+public record RunnerSessionPatchRequest(string? State = null);
 
 /// <summary>
 /// An agent's credential as this Hatch holds it, wrapped for the wire.
