@@ -1229,6 +1229,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool?>("Mine")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Models")
+                        .HasColumnType("text");
+
                     b.Property<string>("OrderKey")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");

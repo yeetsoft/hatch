@@ -751,7 +751,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run), and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
@@ -812,6 +812,15 @@ expects to be back under that cap while it waits, written on every `loop` beat
 (so a beat that carries null clears it) and left alone by a `once` beat. It has
 no `PATCH` field.
 
+`models` is a fact the runner reports, written on every beat like `remotes`:
+an absent one leaves the row alone, `[]` clears it, and any other list replaces
+it, kept in the order given with repeats dropped. Any entry that breaks the
+`RunnerModels` rule - more than 100 entries, a blank entry, an entry that is
+neither an alias nor a pinned id of a known model family, or a pinned id of a
+different agent than the beat's `agent` - refuses the whole beat with a `400`
+carrying the rule's sentence, and the row is left exactly as it was (a refused
+first beat creates no row). It has no `PATCH` field.
+
 `refusesDangerous` follows the tags rule: the first heartbeat a name is seen
 under that carries it (true or false) seeds the row, a later beat with another
 value leaves the row alone, the instruction answers the row's value (always
@@ -854,7 +863,9 @@ Each row also carries the token side of the bounds: `maxTokens` and
 row holds it, `default` when it comes from the site default on `/settings`,
 `none` when there is no such bound anywhere - then `tokensUsed` and
 `tokensLastHour`, the loop's own running counts, and `throttledUntil`, the
-instant a waiting loop expects to be under its hourly cap, or null.
+instant a waiting loop expects to be under its hourly cap, or null. `models`
+is the runner's advertised models in the order given, `[]` for a row that never
+reported.
 `maxTokens` and `maxTokensPerHour` are the effective cap in either of the first
 two cases, so a row never makes the reader add the two together.
 
