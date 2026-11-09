@@ -1013,6 +1013,29 @@
   color: var(--mark-ink, var(--on-accent));
 }
 
+/* A fixed width, not another min-width: the shared .hatch-types-panel's
+   12rem (above) is sized for ChecklistFacet/MoreFilters's bare option
+   text and wraps this component's longer key-and-name rows (HA-1968). A
+   fixed width lets .hatch-scope-control__name's ellipsis actually
+   trigger for one long name, rather than the panel growing open-endedly
+   to fit it. 18rem clears the fixture's own "AAA — Project AAA" (17
+   characters) with room for an ordinary real name, and stays under the
+   phone's 361px menu-panel cap (Menu.css:218) with margin to spare. */
+.hatch-scope-control__panel {
+  width: 18rem;
+}
+
+/* flex: 1 and min-width: 0 let the name shrink inside the row's now-fixed
+   width, so the ellipsis is reachable instead of being pre-empted by the
+   row's own natural (unwrapped) content width. */
+.hatch-scope-control__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A card's assignee, claim mark and the rest, in a one-line row of their
    own so they never push the head into a second line the way the old
    single flex row did. Drawn only when the card carries at least one. */
