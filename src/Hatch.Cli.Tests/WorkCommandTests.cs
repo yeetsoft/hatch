@@ -61,6 +61,28 @@ public sealed class WorkCommandTests
         Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task The_one_off_heartbeat_carries_the_machine()
+    {
+        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch);
+        using var h = new Harness(machine: machine);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(machine.Os, beat.Os);
+        Assert.Equal(machine.Arch, beat.Arch);
+        Assert.Equal(machine.AgentVersion, beat.AgentVersion);
+        Assert.Equal(machine.Container, beat.Container);
+        Assert.Equal(machine.Username, beat.Username);
+        Assert.Equal(machine.ProcessStartedAt, beat.ProcessStartedAt);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

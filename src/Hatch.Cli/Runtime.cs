@@ -101,6 +101,9 @@ public sealed record Runtime(
     /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
     public IReadOnlyList<string> Has { get; init; } = [];
 
+    /// <summary>This process's own OS, arch, agent version, container, username and start time, read once at start.</summary>
+    public MachineFacts Machine { get; init; } = MachineFacts.None;
+
     public int OffsetMinutes => Board.OffsetMinutes(Clock.GetLocalNow());
 
     public Picker Picker() => new(Board, RunnerName, Where, Say, Checkouts, Root, Settings.BaseBranch, Settings.Workspace, MakeClone, Settings.Agent, Families, Adapter, Narrowing, Clock);

@@ -315,6 +315,10 @@ try
         var has = detection.Merge(settings.Has);
         board.Has = has;
 
+        // Once per process, same as detection above - a supervisor restart
+        // reads it again rather than carrying it over.
+        var machine = await MachineFacts.ReadAsync(adapter, Detect.RealProbe, cancelling.Token);
+
         var runtime = new Runtime(
             Settings: settings,
             Board: board,
@@ -338,6 +342,7 @@ try
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
             Has = has,
+            Machine = machine,
             Readout = readoutState,
             Controls = controls,
         }.WithGit();

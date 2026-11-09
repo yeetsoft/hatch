@@ -70,6 +70,9 @@ public sealed class OllamaAdapter : CodexAdapter
 
     public override string DisplayName => "Ollama";
 
+    /// <summary>No binary of its own - the server it talks to is not a CLI this process spawns.</summary>
+    public override string? Executable => null;
+
     /// <remarks>
     /// codex-cli 0.163.0, 2026-10-21: <c>--oss</c> and
     /// <c>--local-provider &lt;lmstudio|ollama&gt;</c> are in both
