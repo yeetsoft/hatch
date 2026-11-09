@@ -1196,6 +1196,142 @@ public class AttentionControllerTests : IDisposable
         Assert.Single(exhausted!);
     }
 
+    // ---- A move no live runner can take (HA-2013) ----
+
+    // The board's three playbooks, the implementation move running on <model>:
+    // without them every row folds "no playbook covers it".
+    private static async Task WaitingBoardAsync(Harness h, string model)
+    {
+        h.Db.AddRange(
+            Playbook(h.Todo, h.InProgress, "", model),
+            Playbook(h.InProgress, h.Review, "", "sonnet"));
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ListsAMoveEveryLiveRunnerLacksTheModelFor_UntilOneOffersIt()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        var issue = await h.FileAsync("task", "needs fable", h.Todo);
+        await h.RunnerAsync("host:/one", null, models: ["haiku", "sonnet"], agent: "claude");
+        await h.RunnerAsync("host:/two", null, models: ["sonnet"], agent: "claude");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(new WaitingOnARunnerDto(Key(issue), "needs fable", "task", "todo", "no live runner offers fable"), row);
+
+        await h.RunnerAsync("host:/three", null, models: ["sonnet", "fable"], agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_CountsNoRunnerThatIsStalePausedOrExhausted()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+        await h.RunnerAsync("host:/stale", null, lastSeenAt: h.Time.GetUtcNow().AddDays(-1), models: ["sonnet"], agent: "claude");
+        await h.RunnerAsync("host:/paused", null, models: ["sonnet"], agent: "claude", state: "paused");
+        await h.RunnerAsync("host:/spent", h.Time.GetUtcNow().AddHours(2), models: ["sonnet"], agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+
+        // The control: the same runner, live, is what makes it a row.
+        await h.RunnerAsync("host:/live", null, models: ["sonnet"], agent: "claude");
+        Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_NamesTheDependenciesNoLiveRunnerHas()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"), new DeclaredDependency("playwright-browsers", null));
+        // The move into implementation is never folded on a dependency, so the
+        // issue stands in progress: its move to review is code-gated.
+        var issue = await h.FileAsync("task", "needs a toolchain", h.InProgress);
+        await h.RunnerAsync("host:/one", null, has: ["dotnet@10"]);
+        await h.RunnerAsync("host:/two", null, has: ["node@22"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("in progress", row.Move);
+        Assert.Equal("no live runner has playwright-browsers and pwsh 7", row.Missing);
+
+        await h.RunnerAsync("host:/three", null, has: ["pwsh@7.4", "playwright-browsers"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_NeverCountsARunnerThatDeclaredNothingAsLackingIt()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+        await h.RunnerAsync("host:/profiled", null, models: ["sonnet"], agent: "claude");
+        await h.RunnerAsync("host:/unprofiled", null);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ASplitFleetListsNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs both", h.Todo);
+
+        // One runner has the tool but not the model, the other the model but not the tool.
+        await h.RunnerAsync("host:/tool", null, models: ["sonnet"], agent: "claude", has: ["pwsh@7"]);
+        await h.RunnerAsync("host:/model", null, models: ["fable"], agent: "claude", has: ["dotnet@10"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AnEmptyFleetAnswersEmpty_AndSoDoesABoardWhereEveryGapIsMet()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+
+        await h.RunnerAsync("host:/one", null, models: ["fable"], agent: "claude");
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_IsOrderedByTierThenRank()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        var late = await h.FileAsync("task", "late normal", h.Todo, rank: 4096);
+        var early = await h.FileAsync("task", "early normal", h.Todo, rank: 1024);
+        var urgent = await h.FileAsync("task", "urgent", h.Todo, rank: 8192);
+        urgent.Priority = PriorityLevels.Expedited;
+        await h.Db.SaveChangesAsync();
+        await h.RunnerAsync("host:/one", null, models: ["sonnet"], agent: "claude");
+
+        Assert.Equal(
+            [Key(urgent), Key(early), Key(late)],
+            Value(await h.Attention.GetAttention(default)).WaitingOnARunner!.Select(r => r.Key));
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_IsAnsweredEvenOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
     // ---- The trunk half (HA-95) ----
 
     [Fact]
@@ -1668,7 +1804,9 @@ public class AttentionControllerTests : IDisposable
         private int nextRepoOrder = 1;
 
         /// <summary>A runner row, placed directly - this is not RunnersController's own heartbeat rules to pin.</summary>
-        public async Task RunnerAsync(string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null)
+        public async Task RunnerAsync(
+            string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null, string[]? models = null,
+            string[]? has = null, string? agent = null, string state = "running")
         {
             Db.Runners.Add(new EfHatchRunner
             {
@@ -1676,9 +1814,30 @@ public class AttentionControllerTests : IDisposable
                 Kind = "loop",
                 FirstSeenAt = Time.GetUtcNow(),
                 LastSeenAt = lastSeenAt ?? Time.GetUtcNow(),
-                State = "running",
+                State = state,
                 Where = $"host:/checkouts/{name}",
                 ExhaustedUntil = exhaustedUntil,
+                Models = models is null ? null : string.Join('\n', models),
+                Has = has is null ? null : string.Join('\n', has),
+                Agent = agent,
+            });
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The state of a repository's <c>.hatch/dependencies.json</c> on a trunk, written straight to the table.</summary>
+        public async Task DependencyFileAsync(EfHatchProjectRepository repo, string trunk, params DeclaredDependency[] entries)
+        {
+            Db.DependencyFiles.Add(new EfHatchDependencyFile
+            {
+                Remote = repo.Remote,
+                Canonical = repo.Canonical,
+                Trunk = trunk,
+                Sha = new string('a', 40),
+                State = EfHatchDependencyFile.ParsedState,
+                Entries = EfHatchDependencyFile.WriteEntries(entries),
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
             });
             await Db.SaveChangesAsync();
         }

@@ -577,6 +577,155 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
             .ToHashSet();
     }
 
+    /// <summary>
+    /// Every runner that is here, running, and has budget left - a peer as
+    /// <see cref="PeerScans"/> reads it, with no one excluded.
+    /// </summary>
+    private async Task<List<EfHatchRunner>> LiveRunnersAsync(DateTimeOffset now, DateTimeOffset liveSince, CancellationToken ct) =>
+        await db.Runners.AsNoTracking()
+            .Where(r => r.LastSeenAt >= liveSince
+                && r.Kind == EfHatchRunner.LoopKind
+                && r.State == EfHatchRunner.Running
+                && (r.ExhaustedUntil == null || r.ExhaustedUntil <= now)
+                && (r.UntilAt == null || r.UntilAt > now)
+                && (r.MaxRuns == null || (r.Runs ?? 0) < r.MaxRuns))
+            .ToListAsync(ct);
+
+    /// <summary>
+    /// <see cref="TakeableByAsync"/> with the peer's models and dependencies left
+    /// unjudged: what it would take if it never folded on either. Every other
+    /// field stays the peer's own.
+    /// </summary>
+    private async Task<HashSet<long>> TakeableIgnoringToolchainByAsync(EfHatchRunner peer, int offsetMinutes, CancellationToken ct)
+    {
+        var declared = await RunnerDeclaration.OfAsync(peer, actors, ct);
+        if (declared.Refusal is not null) return [];
+
+        var scan = await ScanAsync(
+            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            tags: declared.Tags, projects: declared.Projects,
+            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
+            has: HasDeclaration.Unjudged);
+        if (scan.Failure is not null) return [];
+
+        return scan.Rows
+            .Where(r => r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
+            .Select(r => r.Issue.Id)
+            .ToHashSet();
+    }
+
+    /// <summary>
+    /// The issues whose next move is clear, that no live runner can take, because
+    /// every live runner's own declaration folds them on a model or on a
+    /// development dependency - and on nothing else. Empty where no runner is
+    /// live. A runner that never declared models or dependencies is never
+    /// counted as lacking them. Ordered by tier, then rank.
+    /// </summary>
+    public async Task<IReadOnlyList<WaitingOnARunnerDto>> WaitingOnARunnerAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    {
+        var live = await LiveRunnersAsync(time.GetUtcNow(), liveSince, ct);
+        var fleet = new List<(EfHatchRunner Runner, RunnerDeclaration Declaration)>();
+        foreach (var peer in live)
+        {
+            var declaration = await RunnerDeclaration.OfAsync(peer, actors, ct);
+            if (declaration.Refusal is null) fleet.Add((peer, declaration));
+        }
+
+        if (fleet.Count == 0) return [];
+        var declared = fleet.Select(f => f.Declaration).ToList();
+
+        // A runner that judges neither can never fold on a toolchain, so no
+        // issue is stuck on one - and an unprofiled fleet is spared the scans.
+        if (declared.Any(d => !d.Models.Judged && !d.Has.Judged)) return [];
+
+        HashSet<long>? stuck = null;
+        foreach (var (runner, _) in fleet)
+        {
+            var ids = await TakeableIgnoringToolchainByAsync(runner, offsetMinutes, ct);
+            if (stuck is null) stuck = ids;
+            else stuck.IntersectWith(ids);
+            if (stuck.Count == 0) return [];
+        }
+
+        foreach (var (runner, _) in fleet)
+        {
+            stuck!.ExceptWith(await TakeableByAsync(runner, offsetMinutes, ct));
+            if (stuck.Count == 0) return [];
+        }
+
+        var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        var rows = board.Rows.ToDictionary(r => r.Issue.Id);
+
+        var listed = new List<WaitingOnARunnerDto>();
+        foreach (var row in stuck!
+                     .Where(rows.ContainsKey)
+                     .Select(id => rows[id])
+                     .OrderByDescending(r => r.EffectivePriority)
+                     .ThenBy(r => r.Issue.Rank)
+                     .ThenBy(r => r.Issue.Id))
+        {
+            if (await MissingAcrossFleetAsync(row, declared, ct) is not { } missing) continue;
+
+            listed.Add(new WaitingOnARunnerDto(
+                IssueKey.Format(row.Issue.Project!.Key, row.Issue.Number), row.Issue.Title, row.Issue.Type, row.From.Name, missing));
+        }
+
+        return listed;
+    }
+
+    /// <summary>
+    /// What no live runner has, for one row: the model it runs on, and the
+    /// development dependencies its project's repositories ask for. Each check
+    /// reads only the declarations that judged that capability, and is skipped
+    /// where none did. Null where one runner is short on one thing and another on
+    /// another - a split fleet - since neither sentence is true of all of them.
+    /// </summary>
+    private async Task<string?> MissingAcrossFleetAsync(ScanRow row, IReadOnlyList<RunnerDeclaration> declared, CancellationToken ct)
+    {
+        var parts = new List<string>();
+
+        var withModels = declared.Where(d => d.Models.Judged).ToList();
+        if (withModels.Count > 0 && !string.IsNullOrWhiteSpace(row.Model))
+        {
+            var model = row.Model;
+            if (ModelFamilies.Aliases.Contains(model))
+            {
+                if (!withModels.Any(d => d.Models.Has.Count == 0 || d.Models.Has.Contains(model)))
+                    parts.Add($"no live runner offers {model}");
+            }
+            else if (ModelFamilies.Default.AgentOf(model) is { } owner)
+            {
+                if (!withModels.Any(d => d.Models.Agent is null || d.Models.Agent == owner))
+                    parts.Add($"pinned to {model} - no live runner's agent is {owner}");
+            }
+        }
+
+        var withHas = declared.Where(d => d.Has.Judged).ToList();
+        if (withHas.Count > 0)
+        {
+            var requirement = await DependencyRequirementAsync(row.Issue.Project!, ct);
+            if (requirement.Invalid is { } invalid)
+            {
+                parts.Add(invalid);
+            }
+            else
+            {
+                var needed = new List<string>();
+                foreach (var need in requirement.Needs
+                             .OrderBy(n => n.Id, StringComparer.Ordinal)
+                             .ThenBy(n => n.Version, StringComparer.Ordinal))
+                {
+                    if (withHas.Any(d => d.Has.VersionsOf(need.Id).Any(v => DependencyVersion.Satisfies(need.Version, v)))) continue;
+                    needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+                }
+
+                if (needed.Count > 0) parts.Add($"no live runner has {Listed(needed)}");
+            }
+        }
+
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
     private static string Minutes(int seconds)
     {
         var minutes = seconds / 60;
