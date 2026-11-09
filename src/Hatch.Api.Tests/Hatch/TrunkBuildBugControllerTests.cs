@@ -300,7 +300,7 @@ public class TrunkBuildBugControllerTests
             .Single();
 
         Assert.Equal(PersonRole.User, guard.Minimum);
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- A key's call ----

@@ -24,7 +24,7 @@ public class OvernightController(
     HatchContext db, ICallerIdentity caller, IActorDirectory directory, TimeProvider time) : ControllerBase
 {
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<OvernightDto>> GetOvernight(CancellationToken ct)
     {
         var principal = await directory.PrincipalAsync(ct);

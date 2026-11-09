@@ -11,8 +11,8 @@ namespace Hatch.Api.Controllers;
 /// Keys page, and nothing else.
 ///
 /// Plain <c>[RequireAdmin]</c> on the whole controller, with no
-/// <c>AcceptScope</c>, and that is the load-bearing line in this file: a key
-/// cannot mint a key. Allowing it would make the scope system decorative, since
+/// <c>AcceptKey</c>, and that is the load-bearing line in this file: a key
+/// cannot mint a key. Allowing it would make the key system decorative, since
 /// any key could quietly issue itself a second one carrying whatever it liked.
 /// Credentials are handed out by a person, at a screen, on purpose.
 /// </summary>

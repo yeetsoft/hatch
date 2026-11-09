@@ -32,7 +32,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<PlaybookDto>>> GetPlaybooks(CancellationToken ct)
     {
         var rows = await db.Playbooks.AsNoTracking()

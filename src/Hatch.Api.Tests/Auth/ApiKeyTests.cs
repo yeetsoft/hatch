@@ -234,7 +234,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
 
         Assert.Equal(RoleOutcome.Key, decision.Outcome);
         Assert.True(decision.IsAllowed);
@@ -246,7 +246,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.ScopeMismatch, decision.Reason);
@@ -263,7 +263,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude", ApiKeyScopes.Hatch));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptScope: null, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptKey: false, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
@@ -280,7 +280,7 @@ public class ApiKeyTests
         var person = new EfPerson { Name = "Ada", Role = PersonRole.Pending, CreatedAt = Now, UpdatedAt = Now };
         var gate = NewRoleGate(grant: Grant("Ada's iPhone", person));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, ApiKeyScopes.Hatch, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.PendingApproval, decision.Reason);

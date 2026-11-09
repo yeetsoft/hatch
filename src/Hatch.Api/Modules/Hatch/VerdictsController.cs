@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/verdicts")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class VerdictsController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>

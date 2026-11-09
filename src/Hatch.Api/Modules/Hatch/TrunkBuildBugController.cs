@@ -38,7 +38,7 @@ public class TrunkBuildBugController(
     /// settings instead, and only where that project has auto-filing on.
     /// </summary>
     [HttpPost("api/hatch/trunk-builds/{id:long}/bug")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PostBug(long id, TrunkBuildBugRequest? request, CancellationToken ct)
     {
         var row = await db.TrunkBuilds.Include(t => t.BugIssue).ThenInclude(i => i!.Project)

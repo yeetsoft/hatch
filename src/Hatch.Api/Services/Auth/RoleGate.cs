@@ -40,13 +40,13 @@ public record RoleDecision(RoleOutcome Outcome, EfPerson? Person, string? Reason
     public const string NotAdmin = "not_admin";
 
     /// <summary>
-    /// An API key reaching a route that accepts no scope at all. Every route
-    /// without an <c>AcceptScope</c> is one: minting credentials, revoking
+    /// An API key reaching a route that accepts no key at all. Every route
+    /// without <c>AcceptKey</c> is one: minting credentials, revoking
     /// sessions, editing the house. Those are the operator's, and a key is not a person.
     /// </summary>
     public const string KeyNotAccepted = "key_not_accepted";
 
-    /// <summary>An API key reaching a route that accepts a scope this key does not carry.</summary>
+    /// <summary>An API key reaching a route that accepts a key but this key does not carry the hatch scope.</summary>
     public const string ScopeMismatch = "scope_mismatch";
 
     public bool IsAllowed => Outcome != RoleOutcome.Refused;
@@ -87,18 +87,18 @@ public interface IRoleGate
     /// The decision for the current request. The three descriptive arguments
     /// are only ever the refusal log line's - the decision itself reads
     /// nothing but the caller's credential, <paramref name="minimum"/> and
-    /// <paramref name="acceptScope"/>.
+    /// <paramref name="acceptKey"/>.
     /// </summary>
     /// <param name="minimum">
     /// The lowest role this route serves. A Pending person is refused whatever
-    /// this is. It is never read for a key, which is decided on scope alone.
+    /// this is. It is never read for a key, which is decided on <paramref name="acceptKey"/> alone.
     /// </param>
-    /// <param name="acceptScope">
-    /// The scope this route is willing to accept from an API key, or null for
-    /// the ordinary case: no key. It changes nothing for a person -
-    /// a route that accepts a scope is not thereby open to a lower role.
+    /// <param name="acceptKey">
+    /// Whether this route is willing to accept an API key; false for the
+    /// ordinary case: no key. It changes nothing for a person -
+    /// a route that accepts a key is not thereby open to a lower role.
     /// </param>
-    Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, string? acceptScope, CancellationToken ct);
+    Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, bool acceptKey, CancellationToken ct);
 }
 
 /// <summary>
@@ -134,7 +134,7 @@ public class RoleGate(
     /// </summary>
     public bool Enabled => options.Enabled;
 
-    public async Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, string? acceptScope, CancellationToken ct)
+    public async Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, bool acceptKey, CancellationToken ct)
     {
         if (!Enabled) return RoleDecision.Dormant;
 
@@ -146,10 +146,11 @@ public class RoleGate(
         // same machine would have got.
         if (await caller.ApiKeyAsync(ct) is { } key)
         {
-            if (acceptScope is not { Length: > 0 })
+            if (!acceptKey)
                 return Refuse(RoleDecision.KeyNotAccepted, method, path, clientIp, null);
 
-            return key.HasScope(acceptScope)
+            // Interim: a key must still carry the hatch scope. A later task deletes this check.
+            return key.HasScope(ApiKeyScopes.Hatch)
                 ? RoleDecision.AllowKey(key)
                 : Refuse(RoleDecision.ScopeMismatch, method, path, clientIp, null);
         }

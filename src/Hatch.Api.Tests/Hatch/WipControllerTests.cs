@@ -20,11 +20,11 @@ public class WipControllerTests
     [Fact]
     public void TheRoutesAreScopedTheWayTheClaimAndTheRunnerBoundAre()
     {
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(WipController.GetWip))!.AcceptScope);
+        Assert.True(Scope(nameof(WipController.GetWip))!.AcceptKey);
 
         var put = Scope(nameof(WipController.PutWip));
         Assert.NotNull(put);
-        Assert.Null(put.AcceptScope);
+        Assert.False(put.AcceptKey);
 
         // No class-level attribute for the PUT to inherit a scope from.
         Assert.Empty(typeof(WipController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));

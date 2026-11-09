@@ -2713,13 +2713,13 @@ public class RunnersControllerTests
         // The heartbeat and the read are a dispatcher's - a runner that could
         // not say it was alive would leave a page that could only be empty. The
         // write is a person's, because it is the budget.
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.Heartbeat))!.AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunners))!.AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Scope(nameof(RunnersController.GetRunnerNames))!.AcceptScope);
+        Assert.True(Scope(nameof(RunnersController.Heartbeat))!.AcceptKey);
+        Assert.True(Scope(nameof(RunnersController.GetRunners))!.AcceptKey);
+        Assert.True(Scope(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
 
         var patch = Scope(nameof(RunnersController.PatchRunner));
         Assert.NotNull(patch);
-        Assert.Null(patch.AcceptScope);
+        Assert.False(patch.AcceptKey);
 
         // And no class-level attribute for the PATCH to inherit a scope from.
         Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));

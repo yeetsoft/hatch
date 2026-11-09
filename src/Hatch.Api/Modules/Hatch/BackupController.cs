@@ -23,7 +23,7 @@ public class BackupController(
     : ControllerBase
 {
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public ActionResult<BackupStatusDto> GetBackup() =>
         Map(backup.Copies(), status.Last, options.Value.BackupPath, backup.KeepDays);
 
