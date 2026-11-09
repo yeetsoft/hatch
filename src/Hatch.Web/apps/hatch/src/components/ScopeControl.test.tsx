@@ -48,6 +48,20 @@ describe('ScopeControl', () => {
     expect(html).not.toContain('>GL<');
   });
 
+  it('puts the hint on the scoped trigger itself, in the words its label carries, and on no chip', () => {
+    const html = trigger(render(three, ['HA', 'AER']));
+    const button = html.match(/<button[^>]*>/)?.[0] ?? '';
+    expect(button).toContain('title="Projects in scope: Hatch, Aerie"');
+    expect(button).toContain('aria-label="Projects in scope: Hatch, Aerie"');
+    expect(html.match(/<span class="hatch-scope-control__chip"[^>]*>/g)?.join('') ?? '').not.toContain('title=');
+    expect(html).not.toContain('title="Hatch"');
+  });
+
+  it('gives the unscoped trigger no title, since its text says it all', () => {
+    const button = trigger(render(three, [])).match(/<button[^>]*>/)?.[0] ?? '';
+    expect(button).not.toContain('title=');
+  });
+
   it('draws no project mark inside a scoped chip', () => {
     const html = trigger(render(three, ['AER']));
     expect(html).toContain('hatch-scope-control__chip');

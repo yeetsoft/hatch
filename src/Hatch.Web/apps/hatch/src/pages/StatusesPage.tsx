@@ -359,12 +359,17 @@ export function StatusesPage() {
                   </td>
                   <td>
                     <div className="hatch-reorder">
-                      <Button disabled={index === 0} aria-label={`Move ${status.name} left`} onClick={() => swap(statuses, index, -1)}>
+                      <Button
+                        disabled={index === 0}
+                        aria-label={`Move ${status.name} left`}
+                        title={`Move ${status.name} left`}
+                        onClick={() => swap(statuses, index, -1)}>
                         ←
                       </Button>
                       <Button
                         disabled={index === statuses.length - 1}
                         aria-label={`Move ${status.name} right`}
+                        title={`Move ${status.name} right`}
                         onClick={() => swap(statuses, index, 1)}
                       >
                         →

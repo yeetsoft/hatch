@@ -286,6 +286,12 @@ public class WorkController(
     /// carrying the same sentence. Ignored, though still validated, beside
     /// <paramref name="asRunner"/>: that row's own <see cref="EfHatchRunner.Has"/> is read instead.
     /// </param>
+    /// <param name="takers">
+    /// Fill each row's <see cref="QueueEntryDto.Takers"/> and
+    /// <see cref="QueueEntryDto.Untaken"/> with which live runners could take
+    /// it - see <see cref="Dispatch.TakersAsync"/>. False leaves both null,
+    /// the one scan a bare read never pays for.
+    /// </param>
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<QueueEntryDto>>> GetQueue(
         [FromQuery] int offsetMinutes = 0,
@@ -306,7 +312,8 @@ public class WorkController(
         [FromQuery] string? runner = null,
         [FromQuery] List<string>? model = null,
         [FromQuery] string? agent = null,
-        [FromQuery] List<string>? has = null)
+        [FromQuery] List<string>? has = null,
+        [FromQuery] bool takers = false)
     {
         if (HasDeclaration.From(has, out var hasDeclared) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -362,6 +369,10 @@ public class WorkController(
             asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
+        var taken = takers
+            ? await _dispatch.TakersAsync(offsetMinutes, runners.Cutoff(time.GetUtcNow()), ct)
+            : null;
+
         // One projection for the whole list. The per-issue one would be three
         // queries a row, which is what makes a scan of a board a thing nobody
         // runs twice.
@@ -381,7 +392,9 @@ public class WorkController(
             r.Model,
             r.DeniedTools,
             r.BlockedKind,
-            r.Deadlocked)).ToList();
+            r.Deadlocked,
+            taken?.GetValueOrDefault(r.Issue.Id)?.Takers,
+            taken?.GetValueOrDefault(r.Issue.Id)?.Untaken)).ToList();
     }
 
     /// <summary>

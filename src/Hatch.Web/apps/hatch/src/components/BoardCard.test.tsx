@@ -383,6 +383,7 @@ describe('BoardCard, carrying stories', () => {
       expect(html).toContain('title="AER-3 - Doing - needs me"');
       expect(html).toContain(`· 1 needs me`);
       expect(html).toContain(`aria-label="${stripLabel(3, 1, 1)}"`);
+expect(html).toContain(`title="${stripLabel(3, 1, 1)}"`);
       expect(html).toContain('aria-label="3 stories, 1 done, 1 needs you"');
     });
 
