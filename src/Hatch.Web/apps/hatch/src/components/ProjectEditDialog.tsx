@@ -11,6 +11,7 @@ import {
   getStatuses,
   patchProject,
   putProjectBindsTracker,
+  putProjectCheckApprovesMerge,
   putProjectStoriesOnEpics,
   putProjectLanding,
   putProjectLogo,
@@ -26,6 +27,7 @@ import { fileReflection } from '../lib/projectReflect';
 import {
   openProjectDraft,
   projectBindsTrackerDiff,
+  projectCheckApprovesMergeDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
@@ -48,6 +50,7 @@ import {
   type ProjectMembersDraft,
 } from '../lib/projectMembers';
 import { projectLogoUrl } from '../lib/projectLogo';
+import { hasMergeColumn } from '../lib/protectedColumns';
 import { moved, repositoryObjection, withoutRemote, withRemote } from '../lib/repositories';
 import { useLoaded } from '../lib/useLoaded';
 import type { Project } from '../types';
@@ -147,6 +150,7 @@ export function ProjectEditDialog({
     const landingDiff = projectLandingDiff(draft!);
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
+    const checkApprovesMergeDiff = projectCheckApprovesMergeDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
@@ -157,6 +161,7 @@ export function ProjectEditDialog({
       landingDiff === null &&
       repoSourcedDiff === null &&
       bindsTrackerDiff === null &&
+      checkApprovesMergeDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
@@ -175,6 +180,7 @@ export function ProjectEditDialog({
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
+      if (checkApprovesMergeDiff !== null) await putProjectCheckApprovesMerge(project!.id, checkApprovesMergeDiff);
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
@@ -468,6 +474,29 @@ export function ProjectEditDialog({
             <label>
               <input
                 type="checkbox"
+                checked={draft.checkApprovesMerge}
+                onChange={(e) => setDraft((d) => d && { ...d, checkApprovesMerge: e.target.checked })}
+              />
+              A passing check approves the merge
+            </label>
+            <p className="hatch-section-hint text-muted">
+              A check playbook's pass out of the review column lands the ticket in the protected Merges PR column, and
+              the runner merges it from there. Off, a person drags it there.
+            </p>
+            {statuses && !hasMergeColumn(statuses) && (
+              <p className="hatch-section-hint text-muted">
+                No column on the board is both Protected and Merges PR, so this does nothing until one is.
+              </p>
+            )}
+            {(project.checkApprovesMergeBy || project.checkApprovesMergeAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.checkApprovesMergeBy} on{' '}
+                {project.checkApprovesMergeAt ? new Date(project.checkApprovesMergeAt).toLocaleDateString() : ''}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
                 checked={draft.bindsTracker}
                 disabled={list.length === 0}
                 onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
@@ -501,6 +530,13 @@ export function ProjectEditDialog({
                 : `reflects every ${project.reflectionCadenceDays} day(s), next due ${project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : 'unknown'}`
             }.`}</p>
             <p>{runnerTagsSentence(project.runnerTags ?? [])}</p>
+            <p>
+              {project.checkApprovesMerge ? 'A passing check approves the merge' : 'A passing check does not approve the merge'}
+              {project.checkApprovesMergeBy || project.checkApprovesMergeAt
+                ? `, set by ${project.checkApprovesMergeBy ?? 'unknown'} on ${project.checkApprovesMergeAt ? new Date(project.checkApprovesMergeAt).toLocaleDateString() : 'an unknown date'}`
+                : ''}
+              .
+            </p>
             {project.bindsTracker && (
               <p>
                 Binds the tracker's own repository
