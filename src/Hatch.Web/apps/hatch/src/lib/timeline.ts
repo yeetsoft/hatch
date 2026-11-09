@@ -73,15 +73,19 @@ export function withFilter(
 }
 
 /** The projects whose key is among the URL's repeated `project` params
-    (trimmed, deduped), in `projects` order. Every project - not an empty
-    array - when that set is empty: no `project` param at all, or every key
-    given was unknown to `projects`. A report that read the chart down to
-    nothing because a link named a project this Hatch no longer has would be
-    a confusing kind of empty; this one is "every project" instead, and an
-    unknown key mixed with a known one is dropped silently, keeping the known
-    one. */
+    (trimmed, deduped), in `projects` order. An empty array when a `project`
+    param is present and every value is empty - `project=`, the choice of no
+    project at all, which `withProjects` writes. Every project when the set is
+    otherwise empty: no `project` param at all, or every key given was unknown
+    to `projects`. A report that read the chart down to nothing because a link
+    named a project this Hatch no longer has would be a confusing kind of
+    empty; this one is "every project" instead, and an unknown key mixed with
+    a known one is dropped silently, keeping the known one. */
 export function resolveProjects(params: URLSearchParams, projects: Project[]): Project[] {
-  const keys = new Set(params.getAll(PROJECT).map((key) => key.trim()));
+  const given = params.getAll(PROJECT).map((key) => key.trim());
+  if (given.length > 0 && given.every((key) => key === '')) return [];
+
+  const keys = new Set(given);
   const chosen = projects.filter((project) => keys.has(project.key));
 
   return chosen.length > 0 ? chosen : projects;
@@ -90,18 +94,24 @@ export function resolveProjects(params: URLSearchParams, projects: Project[]): P
 /** A copy of `params` with every `project` entry replaced by one per key in
     `keys`, in `allKeys` order - unless `keys` holds every key in `allKeys`,
     in which case none are written: All is the clean URL, the mirror of
-    `resolveProjects`' own fallback to every project. Every other param is
-    kept; the input is never mutated. */
+    `resolveProjects`' own fallback to every project. An empty `keys` writes
+    one empty `project=`, which `resolveProjects` reads back as no project.
+    Every other param is kept; the input is never mutated. */
 export function withProjects(params: URLSearchParams, keys: string[], allKeys: string[]): URLSearchParams {
   const next = new URLSearchParams(params);
   next.delete(PROJECT);
 
-  if (keys.length < allKeys.length) {
-    for (const key of allKeys) if (keys.includes(key)) next.append(PROJECT, key);
-  }
+  if (keys.length >= allKeys.length) return next;
+
+  if (keys.length === 0) next.append(PROJECT, '');
+  else for (const key of allKeys) if (keys.includes(key)) next.append(PROJECT, key);
 
   return next;
 }
+
+/** The reports' empty state when the Projects choice is empty - one wording,
+    like `changelogReportEmptyWords`. */
+export const noProjectWords = (): string => 'No project is chosen.';
 
 /** `picked` when it is fewer than `all`, else `undefined` - the read every
     project has always been, so a report that names no project asks the server

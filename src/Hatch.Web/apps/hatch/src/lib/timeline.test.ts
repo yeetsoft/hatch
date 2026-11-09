@@ -10,6 +10,7 @@ import {
   foldRows,
   makeScale,
   narrowedTo,
+  noProjectWords,
   reportProjects,
   resolveCreator,
   resolveProject,
@@ -525,6 +526,21 @@ describe('resolveProjects', () => {
   it('dedupes a repeated key', () => {
     expect(resolveProjects(params('project=HA&project=HA'), projects)).toEqual([projects[0]]);
   });
+
+  it('is no project when the param is present and empty', () => {
+    expect(resolveProjects(params('project='), projects)).toEqual([]);
+    expect(resolveProjects(params('project=&project='), projects)).toEqual([]);
+    expect(resolveProjects(params('project=%20'), projects)).toEqual([]);
+  });
+
+  it('reads an empty value beside a key as that key', () => {
+    expect(resolveProjects(params('project=&project=HA'), projects)).toEqual([projects[0]]);
+  });
+
+  it('keeps an unknown key and no param as every project', () => {
+    expect(resolveProjects(params('project=ZZ'), projects)).toEqual(projects);
+    expect(resolveProjects(params(''), projects)).toEqual(projects);
+  });
 });
 
 describe('withProjects', () => {
@@ -551,11 +567,30 @@ describe('withProjects', () => {
     expect(withProjects(params('from=a&to=b'), ['HA'], allKeys).get('from')).toBe('a');
   });
 
+  it('writes exactly one empty project param for no keys, keeping the rest', () => {
+    const written = withProjects(params('from=a'), [], allKeys);
+
+    expect(written.getAll('project')).toEqual(['']);
+    expect(written.get('from')).toBe('a');
+  });
+
+  it('round-trips an empty choice through project=', () => {
+    const projects = allKeys.map((key, i) => ({ id: i, key }) as Project);
+
+    expect(resolveProjects(withProjects(params('project=HA'), [], allKeys), projects)).toEqual([]);
+  });
+
   it('does not mutate its input', () => {
     const input = params('project=HA');
     withProjects(input, ['AER'], allKeys);
 
     expect(input.toString()).toBe('project=HA');
+  });
+});
+
+describe('noProjectWords', () => {
+  it('is the sentence', () => {
+    expect(noProjectWords()).toBe('No project is chosen.');
   });
 });
 
