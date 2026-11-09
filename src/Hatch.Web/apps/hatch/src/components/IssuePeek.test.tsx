@@ -174,6 +174,30 @@ describe('IssuePeek', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the reason a ticket was finished with no code', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render(noop, { noCode: 'the setting was already right' });
+
+    expect(html).toContain('Finished with no code: the setting was already right');
+  });
+
+  it('shows no no-code row on a ticket that was not declared finished with no code', () => {
+    vi.stubGlobal('window', {
+      matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+      navigator: {},
+      location: { pathname: '/apps/hatch/' },
+    });
+
+    const html = render();
+
+    expect(html).not.toContain('Finished with no code');
+  });
+
   it('draws nothing for open questions on a card with none', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),

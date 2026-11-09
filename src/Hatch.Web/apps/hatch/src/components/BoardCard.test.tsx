@@ -178,6 +178,37 @@ describe('BoardCard CardFace', () => {
     expect(marks).toContain('title="Dangerous - load-tests the API"');
   });
 
+  it('wears the no-code mark, with the reason in its title, when finished with no code', () => {
+    const noCode = card({ noCode: 'the setting was already right' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={noCode} waiting={false} terminal={false} project={project()} />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('hatch-card-nocode');
+    expect(marks).toContain('title="Finished with no code - the setting was already right"');
+  });
+
+  it('wears no no-code mark on a card that was not declared finished with no code', () => {
+    const bare = card();
+    const html = renderToStaticMarkup(
+      <CardPreview card={bare} waiting={false} terminal={false} project={project()} />,
+    );
+
+    expect(html).not.toContain('hatch-card-nocode');
+  });
+
+  it('wears both the pre-approved and no-code marks when the card is both', () => {
+    const both = card({ preApproval: 'preapproved', express: true, noCode: 'the setting was already right' });
+    const html = renderToStaticMarkup(
+      <CardPreview card={both} waiting={false} terminal={false} project={project()} />,
+    );
+
+    const marks = between(html, '<div class="hatch-card-marks">');
+    expect(marks).toContain('hatch-card-preapproved');
+    expect(marks).toContain('hatch-card-nocode');
+  });
+
   it('draws every enhancer together on the marks row, in order, ending in the assignee', () => {
     const full = card({
       priority: 'expedited',
