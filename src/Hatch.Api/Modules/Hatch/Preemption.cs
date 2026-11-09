@@ -122,12 +122,13 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
     private async Task<bool> AnyRunnerFreeAsync(DateTimeOffset now, CancellationToken ct)
     {
         var held = await runners.HeldAsync(db, claims, now, ct);
+        var holding = held.Keys.Select(k => k.Runner).ToHashSet(StringComparer.Ordinal);
 
         var live = await db.Runners.AsNoTracking()
             .Where(r => r.LastSeenAt >= runners.Cutoff(now))
             .Select(r => r.Name)
             .ToListAsync(ct);
 
-        return live.Any(name => !held.ContainsKey(name));
+        return live.Any(name => !holding.Contains(name));
     }
 }

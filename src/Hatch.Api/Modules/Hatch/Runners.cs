@@ -292,13 +292,16 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         : (null, "none");
 
     /// <summary>
-    /// Every live claim, by the runner holding it. The key is
-    /// <see cref="EfHatchIssue.ClaimRunner"/> read backwards, which is what
-    /// makes "what is this runner working" a question with one answer and no
-    /// second copy to keep in step - shared between <see cref="RunnersController"/>'s
-    /// own read and <see cref="Preemption"/>'s rule 5, rather than kept twice.
+    /// Every live claim, by the runner and the <c>where</c> holding it. The key
+    /// is <see cref="EfHatchIssue.ClaimedBy"/> and <see cref="EfHatchIssue.ClaimRunner"/>
+    /// read backwards, which is what makes "what is this runner working, at
+    /// this checkout" a question with one answer and no second copy to keep in
+    /// step - shared between <see cref="RunnersController"/>'s own read and
+    /// <see cref="Preemption"/>'s rule 5, rather than kept twice. One runner's
+    /// several sessions each hold at most one ticket at a different
+    /// <c>where</c>, so the runner's name alone is not a key.
     /// </summary>
-    public async Task<Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)>> HeldAsync(
+    public async Task<Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)>> HeldAsync(
         HatchContext db, IssueClaims claims, DateTimeOffset now, CancellationToken ct)
     {
         var rows = await db.Issues.AsNoTracking()
@@ -321,7 +324,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
 
         return rows
             .Select(i => (
-                Runner: i.ClaimRunner!,
+                Runner: i.ClaimedBy!,
+                Where: i.ClaimRunner!,
                 Key: IssueKey.Format(i.Key, i.Number),
                 Claim: new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner, i.ClaimedAt,
@@ -329,17 +333,16 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                     i.ClaimQuietLimitSeconds),
                 i.Status))
             .Where(i => claims.IsLive(i.Claim, now))
-            // A runner holds one ticket at a time by construction, and the most
-            // recent heartbeat is the one to draw if something ever leaves two
-            // behind - a row about the wrong ticket is worse than a row about
-            // none.
-            .GroupBy(i => i.Runner, StringComparer.Ordinal)
+            // A runner holds one ticket at a time per checkout by construction,
+            // and the most recent heartbeat is the one to draw if something ever
+            // leaves two behind - a row about the wrong ticket is worse than a
+            // row about none.
+            .GroupBy(i => (i.Runner, i.Where))
             .ToDictionary(
                 g => g.Key,
                 g => g.OrderByDescending(i => i.Claim.HeartbeatAt)
                     .Select(i => (i.Key, i.Claim, i.Status))
-                    .First(),
-                StringComparer.Ordinal);
+                    .First());
     }
 
     /// <summary>

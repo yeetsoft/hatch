@@ -178,7 +178,7 @@ public class IssueClaimController(
         {
             IssueId = emergency.Id,
             Author = HatchActor,
-            Body = $"{claim.ClaimedBy} on {claim.Runner} was preempted here, putting down {victimKey} - {issue.Title}.",
+            Body = $"{claim.ClaimedBy} at {claim.Runner} was preempted here, putting down {victimKey} - {issue.Title}.",
             Kind = EfHatchComment.Note,
             CreatedAt = now,
         });
@@ -355,10 +355,16 @@ public class IssueClaimController(
     /// heartbeat or a claim release touches it, rather than only on the
     /// runner's own next beat.
     /// </summary>
-    private Task TouchRunnerAsync(string? runner, DateTimeOffset now, CancellationToken ct) =>
-        runner is null
-            ? Task.CompletedTask
-            : db.Runners.Where(r => r.Name == runner).ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+    private async Task TouchRunnerAsync(string? runner, DateTimeOffset now, CancellationToken ct)
+    {
+        if (runner is null) return;
+
+        await db.Runners.Where(r => r.Where == runner).ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+
+        if (await caller.ApiKeyAsync(ct) is not { } key) return;
+        await db.RunnerSessions.Where(s => s.ApiKeyId == key.Id && s.Where == runner)
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+    }
 
     /// <summary>
     /// Hands the holding runner's usage reading to its own row, so
@@ -380,7 +386,7 @@ public class IssueClaimController(
             return Task.CompletedTask;
 
         return db.Runners
-            .Where(r => r.Name == runner && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
+            .Where(r => r.Where == runner && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
             .ExecuteUpdateAsync(
                 s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
     }
@@ -403,7 +409,7 @@ public class IssueClaimController(
     }
 
     /// <summary>The holder as the trail names one: who, and from where.</summary>
-    private static string Holder(string? who, string? runner) => $"{who} on {runner}";
+    private static string Holder(string? who, string? runner) => $"{who} at {runner}";
 
     /// <summary>
     /// The trail row for a lapsed lease - its own shape, because

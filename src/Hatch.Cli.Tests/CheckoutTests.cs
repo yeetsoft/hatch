@@ -103,7 +103,10 @@ public sealed class CheckoutTests : IDisposable
 
         // The pid file is still there and the process behind it is not - a
         // machine that rebooted, or a kill -9. That is litter, not a lock.
-        using var taken = LoopLock.Take(tree, _temp, out var refusal, alive: _ => false);
+        // say suppresses the default Console.Error write: it is process-wide,
+        // and xunit runs classes in parallel (races LiveTerminalTests, which
+        // captures it for real).
+        using var taken = LoopLock.Take(tree, _temp, out var refusal, alive: _ => false, say: _ => { });
 
         Assert.NotNull(taken);
         Assert.Equal("", refusal);

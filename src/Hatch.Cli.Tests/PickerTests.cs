@@ -23,7 +23,7 @@ public sealed class PickerTests
         Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null,
         string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null,
         ModelNarrowing? narrowing = null, TimeProvider? clock = null) =>
-        new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null,
+        new(h.Board, "test:/checkout", "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null,
             agent: agent, families: families, adapter: adapter, narrowing: narrowing, clock: clock);
 
     /// <summary>Claude's family and one more, so a runner can be the other agent.</summary>
@@ -41,6 +41,30 @@ public sealed class PickerTests
         await MakePicker(h).PickAsync(null, 0, default, Harness.Beat);
 
         Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", Queue).Single().Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_claim_carries_the_sessions_where_not_the_runners_own_name()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picker = new Picker(
+            h.Board, "runner-name", "somewhere:/different-checkout", h.Say, h.Runtime.Checkouts, h.Root, null);
+
+        var picked = await picker.PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal(
+            "somewhere:/different-checkout",
+            h.Wire.To("POST", Claimed).Single().Read<ClaimRequest>().Runner);
+
+        await picked.Claim!.ReleaseAsync();
     }
 
     [Fact]
@@ -693,7 +717,7 @@ public sealed class PickerTests
         h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var picker = new Picker(
-            h.Board, "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, (_, _) => new ThrowingClone());
+            h.Board, "test:/checkout", "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, (_, _) => new ThrowingClone());
 
         var failed = await Assert.ThrowsAsync<PickFailedException>(
             () => picker.PickAsync(null, 0, default, Harness.Beat));
@@ -723,7 +747,7 @@ public sealed class PickerTests
         h.Clone.Error = "could not clone";
 
         var picker = new Picker(
-            h.Board, "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, h.Clone.Factory);
+            h.Board, "test:/checkout", "test:/checkout", h.Say, h.Runtime.Checkouts, h.Root, null, workspace, h.Clone.Factory);
 
         var picked = await picker.PickAsync(null, 0, default, Harness.Beat);
 

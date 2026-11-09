@@ -107,7 +107,7 @@ public sealed record Picked(
 /// walks on rather than spawning into it.</para>
 /// </remarks>
 public sealed class Picker(
-    Board board, string runner, Terminal say,
+    Board board, string runner, string where, Terminal say,
     IReadOnlyList<CheckoutEntry> checkouts, string standingRoot, string? standingBaseBranch,
     string? workspace = null, Func<string, string, IClone>? clone = null,
     string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null,
@@ -235,7 +235,7 @@ public sealed class Picker(
                     Hopped: new HoppedIssue(key, entry.FromStatus.Name, entry.ToStatus?.Name ?? "?", HopReason(entry.HopKind, entry.HopUnder)));
             }
 
-            var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat);
+            var (claim, refused) = await Claim.TakeAsync(board.Client, key, where, ct, heartbeat);
 
             if (refused is { Held: true })
             {
@@ -409,7 +409,7 @@ public sealed class Picker(
         if (why is null && narrowing?.Refusal(model, agent, _clock.GetUtcNow(), _clock) is { } narrowed) why = narrowed;
         if (why is not null) return Declined($"{key} - {why}");
 
-        var (claim, refused) = await Claim.TakeAsync(board.Client, key, runner, ct, heartbeat, playbookId: work.Playbook?.Id);
+        var (claim, refused) = await Claim.TakeAsync(board.Client, key, where, ct, heartbeat, playbookId: work.Playbook?.Id);
         if (claim is null) return Declined($"{key} - {refused?.Sentence ?? "the claim was refused"}");
 
         try
