@@ -46,6 +46,19 @@ describe('ScopeControl', () => {
     expect(html).not.toContain('>GL<');
   });
 
+  it('draws no project mark inside a scoped chip', () => {
+    const html = trigger(render(three, ['AER']));
+    expect(html).toContain('hatch-scope-control__chip');
+    expect(html).not.toContain('hatch-project-mark');
+    expect(html).toMatch(/<span class="hatch-scope-control__chip"[^>]*>AER<\/span>/);
+  });
+
+  it('keeps an icon project out of the scoped chip but in its panel row', () => {
+    const html = render([{ key: 'HA', name: 'Hatch', icon: 'rocket' }, ...three.slice(1)] as Project[], ['HA']);
+    expect(trigger(html)).not.toContain('<svg');
+    expect(rows(html)[0]).toContain('<svg');
+  });
+
   it('lists every project in the panel, scoped or not', () => {
     const html = render(three, ['AER']);
     expect(rows(html)).toHaveLength(3);

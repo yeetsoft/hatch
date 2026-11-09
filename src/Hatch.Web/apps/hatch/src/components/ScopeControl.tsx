@@ -39,8 +39,7 @@ export function ScopeControl({
             {projects
               .filter((project) => keys.includes(project.key))
               .map((project) => (
-                <span key={project.key} className="hatch-scope-control__chip" style={markVars(project.color)}>
-                  <ProjectMark size="sm" letters={project.key} color={project.color} icon={project.icon} title={project.name} />
+                <span key={project.key} className="hatch-scope-control__chip" style={markVars(project.color)} title={project.name}>
                   {project.key}
                 </span>
               ))}

@@ -995,8 +995,9 @@
 }
 
 /* The chips ScopeControl's trigger wears, one per scoped project, each tinted
-   from the inline --mark-color/--mark-ink markVars sets on it - not inherited
-   from the ProjectMark inside, which paints its own separate instance. */
+   from the inline --mark-color/--mark-ink markVars sets on it. A chip holds the
+   key as text alone: a ProjectMark inside would be a disc of the pill's own
+   colour, so the key would read twice. */
 .hatch-scope-control--scoped {
   display: inline-flex;
   gap: var(--sp-1);
