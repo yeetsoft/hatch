@@ -96,6 +96,27 @@ public sealed class WorkCommandTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task The_one_off_heartbeat_carries_has(bool has)
+    {
+        string[] dependencies = has ? ["dotnet@10.0.100", "pwsh"] : [];
+        using var h = new Harness();
+        var runtime = h.Runtime with { Has = dependencies };
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        Bookkeeping(h, "AER-1");
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+            .Read<RunnerHeartbeatRequest>();
+        Assert.NotNull(beat.Has);
+        Assert.Equal(dependencies, beat.Has);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task The_next_read_carries_the_tags(bool tagged)
     {
         using var h = new Harness(tags: tagged ? ["gpu", "c++"] : null);
