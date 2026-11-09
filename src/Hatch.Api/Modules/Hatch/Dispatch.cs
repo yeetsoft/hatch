@@ -718,6 +718,100 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// A peer's own takeable rows, as a <see cref="Scan"/> rather than the
+    /// ids <see cref="TakeableByAsync"/> narrows to - <see cref="TakersAsync"/>
+    /// needs a row's own <see cref="ScanRow.Blocked"/> sentence for a peer
+    /// that cannot take it, not only the ones that can.
+    /// </summary>
+    private async Task<Scan> PeerRowsAsync(Peer peer, int offsetMinutes, CancellationToken ct)
+    {
+        var declared = peer.Declaration;
+        return await ScanAsync(
+            offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
+            tags: declared.Tags, projects: declared.Projects,
+            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
+            has: declared.Has);
+    }
+
+    /// <summary>
+    /// <see cref="TakersAsync"/>'s answer for one row: the live runners -
+    /// named once each, a beat and its sessions sharing a name - that could
+    /// take it right now, and why each of the rest cannot.
+    /// </summary>
+    public sealed record StepTakers(IReadOnlyList<string> Takers, IReadOnlyList<RunnerReasonDto> Untaken);
+
+    /// <summary>
+    /// For every row the board judges actionable, which live runners could
+    /// take it, and why each that cannot cannot - the queue's
+    /// <c>takers=true</c> read. Keyed by issue id; every judged row gets an
+    /// entry, including one with no takers at all. Empty where no live
+    /// runner exists, or where the board scan itself fails.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
+        if (fleet.Count == 0) return new Dictionary<long, StepTakers>();
+
+        var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
+        if (board.Failure is not null) return new Dictionary<long, StepTakers>();
+
+        var judged = board.Rows
+            .Where(r => r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
+            .Select(r => r.Issue.Id)
+            .ToList();
+        if (judged.Count == 0) return new Dictionary<long, StepTakers>();
+
+        var groups = fleet
+            .GroupBy(p => p.Name, StringComparer.Ordinal)
+            .Select(g => g.ToList())
+            .ToList();
+
+        var scans = new Dictionary<string, Scan>();
+        foreach (var peer in fleet)
+            scans[peer.Id] = await PeerRowsAsync(peer, offsetMinutes, ct);
+
+        var result = new Dictionary<long, StepTakers>();
+        foreach (var id in judged)
+        {
+            var takers = new List<string>();
+            var untaken = new List<RunnerReasonDto>();
+
+            foreach (var group in groups)
+            {
+                var takes = group.Any(peer =>
+                {
+                    var scan = scans[peer.Id];
+                    return scan.Failure is null && scan.Rows.Any(r =>
+                        r.Issue.Id == id && (r.Blocked is null || r.BlockedKind == BlockedKinds.Turn));
+                });
+
+                if (takes)
+                {
+                    takers.Add(group[0].Name);
+                    continue;
+                }
+
+                var first = group[0];
+                var firstScan = scans[first.Id];
+                var reason = firstScan.Failure
+                    ?? firstScan.Rows.FirstOrDefault(r => r.Issue.Id == id)?.Blocked
+                    ?? $"outside its scope: {first.Declaration.Under}";
+                untaken.Add(new RunnerReasonDto(first.Name, reason));
+            }
+
+            takers.Sort(StringComparer.Ordinal);
+            result[id] = new StepTakers(
+                takers,
+                takers.Count < 2
+                    ? untaken.OrderBy(u => u.Runner, StringComparer.Ordinal).ToList()
+                    : []);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// What no live runner has, for one row: the model it runs on, and the
     /// development dependencies its project's repositories ask for. Each check
     /// reads only the declarations that judged that capability, and is skipped
