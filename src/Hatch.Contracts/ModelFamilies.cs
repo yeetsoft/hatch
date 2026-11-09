@@ -56,4 +56,19 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
         return $"a model is one of {string.Join(", ", Aliases)}, " +
                $"or a pinned id of a supported agent ({examples}) - not \"{model}\"";
     }
+
+    /// <summary>The sentence <c>hatch</c> prints for a row pinned to another agent's <paramref name="model"/>, or null when <paramref name="agent"/> may take it.</summary>
+    public string? WrongAgent(string? model, string? agent) =>
+        AgentOf(model) is { } owner && owner != agent
+            ? $"pinned to {model}, {Article(owner)} {owner} model - this runner's agent is {agent}"
+            : null;
+
+    /// <summary>The sentence a board or runner prints when <paramref name="key"/>'s <paramref name="column"/> runs on a <paramref name="model"/> no runner here offers.</summary>
+    public static string NotOffered(string key, string column, string model, string? agent) =>
+        string.IsNullOrWhiteSpace(agent)
+            ? $"{key} in {column} runs on {model} - this runner does not offer it"
+            : $"{key} in {column} runs on {model} - this runner's {agent} does not offer it";
+
+    /// <summary>"an" before a vowel-initial word, "a" otherwise.</summary>
+    private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
 }
