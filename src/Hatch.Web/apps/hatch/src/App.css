@@ -1727,6 +1727,16 @@ button.hatch-card-stories:focus-visible {
   }
 }
 
+/* A finger's height, the same 44px floor as .hatch-btn and the bar's controls
+   (Button.css, above): this button carries neither class, so it is reached
+   here. The row grows to take it; the desk's 18px button is untouched. */
+@media (pointer: coarse) {
+  .hatch-types-only {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .hatch-types-name {
   text-transform: capitalize;
 }
