@@ -141,12 +141,11 @@ takes bounds from that heartbeat.
 field: a row bound to some shows `projects HA, AER` in Bounds,
 comma-separated; `hatch runners` prints the same binding space-separated,
 `projects HA AER`. Unlike the bounds above, it is carried on every
-heartbeat of any kind - loop or `once` - and overwritten each time, saying so
-once on the loop's own terminal - `hatch: the board set --project HA AER`, or
-`--project off` for none. It narrows which tickets this runner picks up, and
-nothing else: the merge train is unaffected, and an approved pull request in
-any project still merges on its own clock. There is nowhere on this page to
-set it; only a new process started with `--project` changes what the row shows.
+heartbeat of any kind - loop or `once` - and overwritten each time. It
+narrows which tickets this runner picks up, and nothing else: the merge
+train is unaffected, and an approved pull request in any project still
+merges on its own clock. There is nowhere on this page to set it; only a
+new process started with `--project` changes what the row shows.
 
 The board's own **Go to Work** / **Pause** button writes this row's `state`
 the same way Pause/Resume here do.

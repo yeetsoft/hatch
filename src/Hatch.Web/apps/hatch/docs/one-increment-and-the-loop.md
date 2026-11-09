@@ -267,8 +267,7 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
-   (`the board set --max-runs 3`, or `the board set --project FIL AER` - `--project off`
-   for none). Then the bounds, [below](#bounds-timeouts-and-stopping).
+   (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
    This is the one moment no claim is held. A one-off order from the page
    (work a named ticket, or take one ordinary pass) is read here too, and runs
    as the next increment even while paused, counting like any other.

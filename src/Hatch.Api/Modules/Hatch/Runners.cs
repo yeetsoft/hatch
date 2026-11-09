@@ -275,8 +275,6 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
             runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
-            Projects: null,
-            RefusesDangerous: null,
             Effective(runner.MaxTokens, defaultMaxTokens).Cap,
             Effective(runner.MaxTokensPerHour, defaultMaxTokensPerHour).Cap);
 

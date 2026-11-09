@@ -526,15 +526,14 @@ public class RunnersControllerTests
     }
 
     [Fact]
-    public async Task ARowNeverToldRefusesDangerous_ReadsFalseOnTheDtoAndTheInstructionAnswersNull()
+    public async Task ARowNeverToldRefusesDangerous_ReadsFalseOnTheDto()
     {
         var h = await NewAsync();
 
-        var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
 
         Assert.Null((await h.RowAsync()).RefusesDangerous);
         Assert.False((await h.OneAsync()).RefusesDangerous);
-        Assert.Null(instruction.RefusesDangerous);
     }
 
     [Fact]

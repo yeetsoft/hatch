@@ -4351,12 +4351,6 @@ public record RunnerUsageWindowDto(
 /// where there was none, or where this beat was not a <c>loop</c> beat (see
 /// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
 /// </param>
-/// <param name="Projects">
-/// No longer answered (null); removed with its last reader in HA-2047.
-/// </param>
-/// <param name="RefusesDangerous">
-/// No longer answered (null); removed with its last reader in HA-2047.
-/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -4367,8 +4361,6 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Drives = null,
     IReadOnlyList<string>? Tags = null,
     RunnerOrderDto? Order = null,
-    IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null,
     long? MaxTokens = null,
     long? MaxTokensPerHour = null,
     string? RunnerName = null,

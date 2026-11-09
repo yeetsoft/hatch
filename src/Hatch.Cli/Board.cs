@@ -48,18 +48,19 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
 
     /// <summary>
     /// Whether this runner sends <c>dangerous=false</c> on every dispatch read, so the
-    /// board leaves work flagged dangerous for a runner that takes it - and it follows
-    /// the board's own answer once a heartbeat gives one.
+    /// board leaves work flagged dangerous for a runner that takes it - set once from
+    /// <c>--dangerous</c>/<c>HATCH_DANGEROUS</c> for the life of the run, never read
+    /// back off a heartbeat.
     /// </summary>
     public bool RefusesDangerous { get; set; } = refusesDangerous;
 
     /// <summary>
     /// The project keys this runner is bound to on every scan, one
     /// <c>project=</c> each on a queue or next read; none where it is bound to
-    /// no project - and it follows the board's own list once a heartbeat
-    /// answers with one. A property rather than a constructor argument because
-    /// the board is rebuilt when a command is pointed at another checkout, and
-    /// the command assigns this after that.
+    /// no project - set once from <c>--project</c> for the life of the run, never
+    /// read back off a heartbeat. A property rather than a constructor argument
+    /// because the board is rebuilt when a command is pointed at another checkout,
+    /// and the command assigns this after that.
     /// </summary>
     public IReadOnlyList<string> Projects { get; set; } = [];
 
