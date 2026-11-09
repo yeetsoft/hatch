@@ -499,6 +499,38 @@ export interface PlaybookFilesDto {
   files: PlaybookFileDto[];
 }
 
+/** One dependency a repository's declaration names. Mirrors DependencyFileEntryDto. */
+export interface DependencyFileEntry {
+  id: string;
+  label: string;
+  version: string | null;
+}
+
+/** Mirrors DependencyFileDto. */
+export interface DependencyFileDto {
+  id: number;
+  remote: string;
+  canonical: string;
+  trunk: string;
+  sha: string;
+  state: string;
+  hash: string | null;
+  entries: DependencyFileEntry[];
+  problem: string | null;
+  lastGoodSha: string | null;
+  lastGoodHash: string | null;
+  url: string | null;
+  checkedAt: string;
+  runner: string;
+  checkedBy: string;
+}
+
+/** Mirrors DependencyFilesDto. */
+export interface DependencyFilesDto {
+  path: string;
+  files: DependencyFileDto[];
+}
+
 /** One runner's verdict on one repository. Mirrors MergeCheckDto. */
 export interface MergeCheck {
   /** The remote as the runner spelled it. */
