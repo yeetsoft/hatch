@@ -71,6 +71,14 @@ describe('describe', () => {
     ).toBe("In Review → Done, closed by the project's setting");
   });
 
+  it('marks a passing check as an approval, after the ordinary from/to', () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'Review', to: 'Merges', approved: 'check' } }),
+      ),
+    ).toBe('Review → Merges, approved by a passing check');
+  });
+
   it('reads an old express_changed row as the words it toggled', () => {
     expect(
       describeEvent(event({ kind: 'express_changed', payload: { from: false, to: true } })),
