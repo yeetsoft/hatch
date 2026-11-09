@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public sealed class Dispatch(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IAuthService? keys = null, RunnerSessions? sessions = null)
+    IAuthService? keys = null, RunnerSessions? sessions = null, Runners? runners = null)
 {
     // ---- The walk ----
 
@@ -257,6 +257,7 @@ public sealed class Dispatch(
         // order, since both calls read the same verdicts and builds fetched
         // above.
         IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
+        IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)> drivers = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
         if (merges is not null && byColumn.TryGetValue(merges.Id, out var inTrain))
         {
             // A task waiting on its story's pull request has none of its own to
@@ -264,6 +265,9 @@ public sealed class Dispatch(
             // checks at all would be elected head over a real pull request.
             var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
             (_, trainSlots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
+
+            if (keys is not null && runners is not null)
+                drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
         }
 
         // Resolved only when some candidate actually reads at economy or low
@@ -370,6 +374,7 @@ public sealed class Dispatch(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
+                        drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
                         has: has, requirement: requirement);
                     if (!hop && ModelFold(issue, status, playbook, models) is not null) modelFolded = true;
@@ -1693,6 +1698,7 @@ public sealed class Dispatch(
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
+        (string Name, DateTimeOffset LastSeenAt)? driver = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
@@ -1703,7 +1709,7 @@ public sealed class Dispatch(
         DependencyRequirement? requirement = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
-            implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
+            implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
             repoSourced, tags, projects, asking, models, has, requirement).Sentence;
 
     /// <summary>
@@ -1736,6 +1742,7 @@ public sealed class Dispatch(
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
+        (string Name, DateTimeOffset LastSeenAt)? driver = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
@@ -1787,6 +1794,17 @@ public sealed class Dispatch(
                 && judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
                 return new Blocking($"{judgement.Sentence} - waiting its turn behind {slot.HeadKey}, " +
                        $"position {slot.Position} in the train", BlockedKinds.Turn);
+
+            // A held or pushed-back row already explains itself - held,
+            // conflicted, a closed pull request, a catch-up timeout - the
+            // same reason the waiting clause above is not repeated here. Only
+            // a row that reads as actionable names who is acting on it.
+            if (judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
+                return new Blocking(
+                    driver is { } d
+                        ? $"{judgement.Sentence} - for the driver, last heard from {Minutes((int)(claimed.Now - d.LastSeenAt).TotalSeconds)} ago"
+                        : "no live runner is eligible to drive this project's merges",
+                    BlockedKinds.Other);
 
             return new Blocking(judgement.Sentence, BlockedKinds.Other);
         }
