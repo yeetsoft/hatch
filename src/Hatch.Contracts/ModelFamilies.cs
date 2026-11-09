@@ -15,6 +15,14 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
 {
     public IReadOnlyList<ModelFamily> Rows { get; } = rows;
 
+    /// <summary>
+    /// The model aliases the CLI resolves to whatever is current - the one
+    /// list, in the order a warning names them. Aliases rather than pinned
+    /// ids because a playbook says "the big one" and means it a year from
+    /// now; a pinned id is accepted too, for an operator who has a reason to pin.
+    /// </summary>
+    public static readonly string[] Aliases = ["haiku", "sonnet", "opus", "fable"];
+
     public static ModelFamilies Default { get; } = new([
         new ModelFamily("claude", "^claude-[a-z0-9][a-z0-9.-]{0,48}$", "claude-opus-5"),
         new ModelFamily("codex", "^gpt-[a-z0-9][a-z0-9.-]{0,48}$", "gpt-6-luna"),
@@ -38,5 +46,14 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
         }
 
         return null;
+    }
+
+    /// <summary>The sentence refusing <paramref name="model"/> as neither an alias nor a pinned id of a supported agent.</summary>
+    public string Refusal(string model)
+    {
+        var examples = string.Join("; ", Rows.Select(r => $"{r.Example} for {r.Agent}"));
+
+        return $"a model is one of {string.Join(", ", Aliases)}, " +
+               $"or a pinned id of a supported agent ({examples}) - not \"{model}\"";
     }
 }
