@@ -376,8 +376,8 @@ rows naming it on the Playbooks page - see [Playbooks](#playbooks)), with
 name and an instant, null until the first write, and `RunnerTags` (a JSON array
 of strings, `"[]"` default - which runners may work the project's tickets,
 written through its own route, `PUT /projects/{id}/runner-tags`; they are
-matched against a runner's *own* tags, which may be set from the Runners page
-rather than only `HATCH_TAGS` - see [Runners on the board](#runners-on-the-board)),
+matched against a runner's *own* tags, which are set from the Runners page -
+see [Runners on the board](#runners-on-the-board)),
 and `BindsTracker` (`bool`, default `false` - whether this project binds the
 tracker's own repository), with `BindsTrackerBy` and `BindsTrackerAt` beside it
 - who set it last and when, a name and an instant, null until the first write,
@@ -8633,27 +8633,29 @@ already does — so a `hatch work` run, or an older CLI build, leaves whatever a
 loop already reported in place rather than blanking it. `go-to-work --once`
 shares the loop's own heartbeat and reports the same way, once.
 
-**It also says what it is tagged, once.** The first heartbeat a name is ever
-seen under that names tags seeds the row with them; every heartbeat after that
-leaves them alone, an absent field and a sent one alike. The Runners page, or a
-`PATCH` on the row, is what moves them from here on. The answer carries the
-row's tags back, and the loop adopts them on its next beat — saying so once,
-`hatch: the board set --tag ...`, or `--tag off` for none — so the very next
-dispatch read carries the board's list rather than the one the process started
-with. An older Hatch answers with none, which the loop reads as "leave my own
-alone". The Runners page draws them beside the repositories line, drawing
-nothing for a runner that has none. `hatch work`'s own one-off heartbeat
-carries none of this, and an older CLI never sends it at all, so either leaves a
+**Tags are the board's alone.** No heartbeat ever seeds them onto a row — old
+route or session route alike — only a `PATCH` on the row, from the Runners
+page or directly, sets them. The answer carries the row's tags back, and the
+loop adopts them on its next beat — saying so once, `hatch: the board set
+--tag ...`, or `--tag off` for none — so the very next dispatch read carries
+the board's list rather than the one the process started with. An older
+Hatch answers with none, which the loop reads as "leave my own alone". The
+Runners page draws them beside the repositories line, drawing nothing for a
+runner that has none. `hatch work`'s own one-off heartbeat carries none of
+this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
-**It also says whether it refuses dangerous work, once, the same way.** The
-first heartbeat a name is ever seen under that carries `refusesDangerous`
-(true or false) writes it onto the row; every later heartbeat leaves it alone,
-a different value included. A `PATCH` is the one write after that, and the
-answer carries the row's value back, true or false, never absent from a current
-Hatch. A row nobody has told reads as false. `GET /work/queue?asRunner=` reads
-it from the row, so a runner whose row says true has a flagged issue folded
-whatever `?dangerous=` said.
+**It also says whether it refuses dangerous work, and which projects it is
+bound to, on every beat.** `refusesDangerous` and `projects` ride every
+heartbeat beside `remotes` and `agent`, the same way `models` and `has` do
+below: absent leaves the row alone, and a sent value — `true`/`false` for the
+one, `[]` or a list of keys for the other — overwrites it. Neither is a
+`PATCH` field, and neither is answered back. A dispatch read declares them on
+the wire as `?dangerous=false` and a repeatable `?project=` would, and `GET
+/work/queue?asRunner=` still reads both off the row rather than off the query
+string, so a runner whose row says `refusesDangerous: true` has a flagged
+issue folded whatever `?dangerous=` said, and one bound to some projects has
+every ticket outside them folded the same way.
 
 **It also says what it can spawn and what it has, on every beat.** `models`
 and `has` ride every heartbeat beside `remotes` and `agent` — see [the
