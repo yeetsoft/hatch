@@ -66,6 +66,17 @@ const BarContext = createContext<MenuBarController | null>(null);
 const ItemContext = createContext<(() => void) | null>(null);
 const OpenContext = createContext<boolean>(false);
 
+/** The chevron a menu's default trigger ends with. Exported for a custom
+    `trigger`, which does not get one drawn for it, so that it can say "this
+    opens" the same way the other bar menus do. */
+export function MenuCaret() {
+  return (
+    <svg className="hatch-menu__caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+      <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** Whether the nearest enclosing `Menu`'s panel is open. `false` outside any
     menu - the same safe, render-anywhere default `ItemContext` already makes
     for a value with no menu around it - so a component carrying it is safe in
@@ -251,9 +262,7 @@ function MenuRoot({
       ) : (
         <button {...triggerProps}>
           {label}
-          <svg className="hatch-menu__caret" viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-            <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <MenuCaret />
         </button>
       )}
       {/* The outer box carries the gap between trigger and panel as padding, so

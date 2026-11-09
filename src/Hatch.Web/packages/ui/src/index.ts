@@ -34,7 +34,7 @@ export {
   hatchIconSvg,
 } from './brand/hatchMark';
 export type { HatchMarkSvgOptions, HatchIconSvgOptions } from './brand/hatchMark';
-export { Menu, useMenuOpen } from './components/Menu';
+export { Menu, MenuCaret, useMenuOpen } from './components/Menu';
 export type { MenuProps, MenuItemProps, MenuBarProps, MenuTriggerProps, MenuTone, MenuAlign } from './components/Menu';
 
 /* The primitives. Ordered the way a page is built rather than alphabetically:

@@ -229,6 +229,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
                 text: trigger.textContent.trim(),
                 scoped: trigger.classList.contains('hatch-scope-control--scoped'),
                 chips: document.querySelectorAll('{{Chip}}').length,
+                caret: trigger.querySelectorAll('.hatch-menu__caret').length,
               };
             }
             """);
@@ -250,6 +251,8 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             violations.Add($"unscoped: the trigger's colour {m.GetProperty("triggerColor")} is not a nav link's {m.GetProperty("linkColor")}");
         if (m.GetProperty("chips").GetInt32() != 0)
             violations.Add($"unscoped: {m.GetProperty("chips").GetInt32()} chip(s) drawn with nothing scoped");
+        if (m.GetProperty("caret").GetInt32() == 0)
+            violations.Add("unscoped: the trigger draws no caret");
         if (title != "Hatch") violations.Add($"unscoped: the tab title is \"{title}\", not \"Hatch\"");
 
         output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, "unscoped-light")}");
@@ -296,6 +299,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
                 text: trigger.textContent.trim(),
                 scoped: trigger.classList.contains('hatch-scope-control--scoped'),
                 chips: document.querySelectorAll('{{Chip}}').length,
+                caret: trigger.querySelectorAll('.hatch-menu__caret').length,
                 nav: document.querySelectorAll('{{NavSelector}}').length,
               };
             }
@@ -320,6 +324,8 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             violations.Add($"unscoped: the trigger reads \"{m.GetProperty("text").GetString()}\" and is not the unscoped one");
         if (m.GetProperty("chips").GetInt32() != 0)
             violations.Add($"unscoped: {m.GetProperty("chips").GetInt32()} chip(s) drawn with nothing scoped");
+        if (m.GetProperty("caret").GetInt32() == 0)
+            violations.Add("unscoped: the trigger draws no caret");
         if (title != "Hatch") violations.Add($"unscoped: the tab title is \"{title}\", not \"Hatch\"");
 
         await BoardFitsAsync(harness, deadline, "unscoped", violations);
