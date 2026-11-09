@@ -1509,7 +1509,7 @@ public class AttentionControllerTests : IDisposable
     // ---- The gate ----
 
     [Fact]
-    public void ReadingAttention_IsOpenToAHatchScopedKey()
+    public void ReadingAttention_IsOpenToAKey()
     {
         var guard = typeof(AttentionController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)

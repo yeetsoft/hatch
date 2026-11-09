@@ -5595,7 +5595,7 @@ public class WorkControllerTests
         // WorkController's own harness authenticates every call as a key
         // (StubCallerIdentity.Key) - the same caller every other test in this
         // file already uses. This test exists to say so out loud: a hop
-        // inherits the class's Hatch scope rather than a person-only route,
+        // inherits the class's AcceptKey rather than a person-only route,
         // because the loop is exactly who calls one.
         var h = await NewAsync();
         var issue = await h.FileAsync("story", "carried across", h.Todo);

@@ -96,7 +96,7 @@ public interface IAuthService
     /// hash, exactly as for an invite code - it is shown once and then gone.
     /// Returns null when the name is already taken.
     /// </summary>
-    Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct);
+    Task<ApiKeyCreated?> CreateApiKeyAsync(string name, Guid? ownerPersonId, CancellationToken ct);
 
     /// <summary>
     /// Stops a key working. Returns false if there was no such key, which a
@@ -366,7 +366,7 @@ public class AuthService(
     public async Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
         await db.ApiKeys.AsNoTracking().Include(k => k.Owner).OrderByDescending(k => k.CreatedAt).ToListAsync(ct);
 
-    public async Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct)
+    public async Task<ApiKeyCreated?> CreateApiKeyAsync(string name, Guid? ownerPersonId, CancellationToken ct)
     {
         // Checked rather than left to the unique index, because the index turns
         // a name somebody typed twice into a 500 and this turns it into a
@@ -379,7 +379,6 @@ public class AuthService(
             Name = name,
             Prefix = AuthTokens.ApiKeyPrefixOf(secret),
             Hash = AuthTokens.Hash(secret),
-            Scopes = [.. scopes],
             OwnerPersonId = ownerPersonId,
             CreatedAt = time.GetUtcNow(),
         };
@@ -387,7 +386,7 @@ public class AuthService(
         db.ApiKeys.Add(key);
         await db.SaveChangesAsync(ct);
 
-        logger.LogInformation("API key {KeyId} ({Name}) minted with scopes {Scopes}, owned by {OwnerPersonId}", key.Id, key.Name, key.Scopes, key.OwnerPersonId);
+        logger.LogInformation("API key {KeyId} ({Name}) minted, owned by {OwnerPersonId}", key.Id, key.Name, key.OwnerPersonId);
         return new ApiKeyCreated(key, secret);
     }
 

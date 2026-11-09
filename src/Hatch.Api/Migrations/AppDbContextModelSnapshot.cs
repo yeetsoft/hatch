@@ -94,10 +94,6 @@ namespace Hatch.Api.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.PrimitiveCollection<string[]>("Scopes")
-                        .IsRequired()
-                        .HasColumnType("text[]");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Hash")

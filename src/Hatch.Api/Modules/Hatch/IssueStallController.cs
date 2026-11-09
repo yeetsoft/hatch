@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// <para>Its own controller for the reason <see cref="IssuePreApprovalController"/>
 /// is, and cut the same way: no class-level attribute, so neither write below
-/// inherits a scope from anything - each says its own.</para>
+/// inherits key acceptance from anything - each says its own.</para>
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues")]

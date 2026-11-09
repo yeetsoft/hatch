@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// <para>Its own controller for the reason <see cref="IssueExpediteController"/>
 /// is, and cut the same way: no class-level attribute, so the writes below
-/// inherit no scope from anything. Pre-approval decides which gates the loop
+/// inherit no key acceptance from anything. Pre-approval decides which gates the loop
 /// may pass unattended, and that is a playbook's kind of power - a key that
 /// could set it could carry its own ticket through the night unattended, or
 /// approve it in advance (docs/hatch.md, "The one edge that is deliberately

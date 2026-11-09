@@ -74,7 +74,7 @@ public class SettingsController(
     /// </summary>
     /// <remarks>
     /// <para>Two gates, and they are independent on purpose. The attribute
-    /// accepts a Hatch-scoped key or a keyless runner, unlike the two routes
+    /// accepts a key or a keyless runner, unlike the two routes
     /// above it - a dispatcher is the ordinary caller here, and a person at a
     /// browser is the unusual one. Then the first line refuses everybody,
     /// caller and credential alike, wherever the wall is up: a credential that

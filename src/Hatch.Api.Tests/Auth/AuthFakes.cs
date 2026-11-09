@@ -108,7 +108,7 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     /// <summary>What CreateApiKeyAsync answers; null is how a test reaches the duplicate-name 409.</summary>
     public ApiKeyCreated? MintResult { get; set; }
 
-    public List<(string Name, IReadOnlyList<string> Scopes, Guid? OwnerPersonId)> KeysCreated { get; } = [];
+    public List<(string Name, Guid? OwnerPersonId)> KeysCreated { get; } = [];
 
     public List<Guid> KeysRevoked { get; } = [];
 
@@ -130,9 +130,9 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     public Task<IReadOnlyList<EfApiKey>> ListApiKeysAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<EfApiKey>>(Keys);
 
-    public Task<ApiKeyCreated?> CreateApiKeyAsync(string name, IReadOnlyList<string> scopes, Guid? ownerPersonId, CancellationToken ct)
+    public Task<ApiKeyCreated?> CreateApiKeyAsync(string name, Guid? ownerPersonId, CancellationToken ct)
     {
-        KeysCreated.Add((name, scopes, ownerPersonId));
+        KeysCreated.Add((name, ownerPersonId));
         return Task.FromResult(MintResult);
     }
 

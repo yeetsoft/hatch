@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 /// <remarks>
 /// Its own controller for one verb because of the class-level attribute it does
-/// not carry. <see cref="IssuesController"/> accepts the <c>hatch</c> scope on
+/// not carry. <see cref="IssuesController"/> accepts a key on
 /// every route it holds, so two more fields on <c>IssuePatchRequest</c> would
 /// be an agent that can raise its own budget - the exact edge
 /// <see cref="PlaybooksController"/> cuts on purpose (docs/hatch.md, "The one
