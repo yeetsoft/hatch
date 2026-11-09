@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/build-check")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class BuildCheckController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

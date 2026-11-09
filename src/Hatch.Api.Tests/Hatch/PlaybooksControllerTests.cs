@@ -341,7 +341,7 @@ public class PlaybooksControllerTests
             .SingleOrDefault();
 
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(PlaybooksController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
@@ -357,7 +357,7 @@ public class PlaybooksControllerTests
             .SingleOrDefault();
 
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(PlaybooksController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));

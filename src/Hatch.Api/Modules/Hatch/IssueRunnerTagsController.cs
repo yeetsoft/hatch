@@ -33,7 +33,7 @@ public class IssueRunnerTagsController(
     /// other edit in Hatch.
     /// </summary>
     [HttpPut("{key}/runner-tags")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PutIssueRunnerTags(string key, IssueRunnerTagsWriteRequest request, CancellationToken ct)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();

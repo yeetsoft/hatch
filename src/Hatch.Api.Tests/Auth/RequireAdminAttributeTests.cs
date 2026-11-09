@@ -91,20 +91,20 @@ public class RequireAdminAttributeTests
 
         await new RequireAdminAttribute().OnAuthorizationAsync(context);
 
-        Assert.Equal(("DELETE", "/api/zones/2b1a", "10.0.0.7", PersonRole.Admin, null), gate.LastAsked);
+        Assert.Equal(("DELETE", "/api/zones/2b1a", "10.0.0.7", PersonRole.Admin, false), gate.LastAsked);
     }
 
-    /// <summary>The level and the scope both reach the gate: what the attribute declares is what is asked.</summary>
+    /// <summary>The level and the key acceptance both reach the gate: what the attribute declares is what is asked.</summary>
     [Fact]
-    public async Task AsksForTheLevelAndScopeItDeclares()
+    public async Task AsksForTheLevelAndKeyAcceptanceItDeclares()
     {
         var gate = new StubRoleGate();
         var context = NewContext(gate);
 
-        await new RequireRoleAttribute(PersonRole.User) { AcceptScope = ApiKeyScopes.Hatch }.OnAuthorizationAsync(context);
+        await new RequireRoleAttribute(PersonRole.User) { AcceptKey = true }.OnAuthorizationAsync(context);
 
         Assert.Equal(PersonRole.User, gate.LastAsked.Minimum);
-        Assert.Equal(ApiKeyScopes.Hatch, gate.LastAsked.AcceptScope);
+        Assert.True(gate.LastAsked.AcceptKey);
     }
 
     private static AuthorizationFilterContext NewContext(IRoleGate gate)

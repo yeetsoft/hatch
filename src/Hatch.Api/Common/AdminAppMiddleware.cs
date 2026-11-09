@@ -61,10 +61,10 @@ public class AdminAppMiddleware(RequestDelegate next, IOptions<AuthOptions> opti
             context.Request.Path,
             context.Connection.RemoteIpAddress?.ToString(),
             PersonRole.User,
-            // No scope, deliberately: these are bundles for a browser to run,
+            // No key, deliberately: these are bundles for a browser to run,
             // and an API key has no browser. A key that asks for one gets the
             // same 404 a non-admin does.
-            acceptScope: null,
+            acceptKey: false,
             context.RequestAborted);
 
         if (decision.IsAllowed)

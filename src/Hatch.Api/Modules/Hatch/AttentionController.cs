@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/attention")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup) : ControllerBase
 {
     [HttpGet]

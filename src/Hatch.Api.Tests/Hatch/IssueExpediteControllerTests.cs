@@ -272,7 +272,7 @@ public class IssueExpediteControllerTests
         // a key that could set one could put its own ticket at the front of
         // every night.
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
     }
 
     [Fact]

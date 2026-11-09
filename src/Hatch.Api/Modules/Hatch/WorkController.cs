@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/work")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
     IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners) : ControllerBase

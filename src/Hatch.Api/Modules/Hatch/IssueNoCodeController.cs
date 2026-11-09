@@ -32,7 +32,7 @@ public class IssueNoCodeController(
     /// move <c>UpdatedAt</c>, the same as every other edit in Hatch.
     /// </summary>
     [HttpPut("{key}/no-code")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PutIssueNoCode(string key, NoCodeRequest request, CancellationToken ct)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();

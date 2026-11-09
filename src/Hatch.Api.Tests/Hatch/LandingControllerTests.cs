@@ -206,7 +206,7 @@ public class LandingControllerTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Harness ----

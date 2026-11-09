@@ -37,7 +37,7 @@ namespace Hatch.Api.Tests.Auth;
 ///   (docs/auth-architecture.md, "A person is an authorization input"), and a
 ///   global role has nothing to say about them.
 /// - **Two levels, and the level is not a judgement per action.** Everything
-///   under Modules/Hatch asks for User, with `AcceptScope = "hatch"` except the
+///   under Modules/Hatch asks for User, with `AcceptKey = true` except the
 ///   person-only routes named in <c>PersonOnly</c>; everything else that is
 ///   guarded asks for Admin, except the People reads, which ask for User so
 ///   that a Pending person - who is let into nothing - sees no names either.
@@ -71,7 +71,7 @@ public class AdminSurfaceTests
 
         // API keys, and the one entry in this file with a second reason. They
         // are credentials, so they belong beside the sessions above - and they
-        // carry no AcceptScope, so a key cannot mint a key. Allowing that would
+        // carry no AcceptKey, so a key cannot mint a key. Allowing that would
         // make the scope system decorative, since any key could issue itself a
         // second one carrying whatever it liked.
         "ApiKeysController.ListKeys",
@@ -659,7 +659,7 @@ public class AdminSurfaceTests
         // The one route in that class cut the other way, and the only endpoint
         // in Hatch that hands a live secret back out. It is here because it is
         // still guarded - a household member who is not an administrator is
-        // refused - but it carries AcceptScope = hatch, unlike its two
+        // refused - but it sets AcceptKey, unlike its two
         // siblings, because its ordinary caller is a keyless container runner
         // that has to authenticate a claude CLI it starts itself. What keeps
         // that from being a widening is a second gate the attribute cannot
@@ -809,7 +809,7 @@ public class AdminSurfaceTests
 
     /// <summary>
     /// The audit of what an API key may reach: every action whose attribute
-    /// names an AcceptScope, which is the only thing that lets a key in. Adding
+    /// sets AcceptKey, which is the only thing that lets a key in. Adding
     /// a route here is a decision about what an agent may do unattended, not a
     /// bookkeeping step - make it on purpose.
     /// </summary>
@@ -939,14 +939,14 @@ public class AdminSurfaceTests
     }
 
     [Fact]
-    public void HatchRoutesAcceptTheHatchScopeExactlyWhereTheyDidBefore()
+    public void HatchRoutesAcceptTheKeyExactlyWhereTheyDidBefore()
     {
         foreach (var (name, method) in GuardedActions())
         {
-            var scope = RequiredRole(method)!.AcceptScope;
-            var expected = IsHatch(method) && !PersonOnly.Contains(name) ? ApiKeyScopes.Hatch : null;
+            var accepts = RequiredRole(method)!.AcceptKey;
+            var expected = IsHatch(method) && !PersonOnly.Contains(name);
 
-            Assert.True(expected == scope, $"{name} accepts scope '{scope}', audited at '{expected}'");
+            Assert.True(expected == accepts, $"{name} accepts a key: {accepts}, audited at {expected}");
         }
     }
 
@@ -954,7 +954,7 @@ public class AdminSurfaceTests
     public void TheRoutesThatAcceptAKeyAreExactlyTheCheckedInList()
     {
         var actual = GuardedActions()
-            .Where(a => RequiredRole(a.Method)!.AcceptScope is not null)
+            .Where(a => RequiredRole(a.Method)!.AcceptKey)
             .Select(a => a.Name)
             .ToHashSet();
 

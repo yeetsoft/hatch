@@ -368,7 +368,7 @@ public class ReportsControllerFlowTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- What it leaves out ----

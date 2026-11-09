@@ -195,7 +195,7 @@ public class IssueWipLimitControllerTests
             .SingleOrDefault();
 
         Assert.NotNull(guard);
-        Assert.Null(guard.AcceptScope);
+        Assert.False(guard.AcceptKey);
 
         Assert.Empty(typeof(IssueWipLimitController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
