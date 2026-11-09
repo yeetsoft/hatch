@@ -2498,7 +2498,6 @@ export interface ApiKey {
   name: string;
   /** The leading characters of the secret - enough to match a row to a config file. */
   prefix: string;
-  scopes: string[];
   createdAt: string;
   lastUsedAt: string | null;
   revokedAt: string | null;
@@ -2515,7 +2514,6 @@ export interface ApiKeyMinted {
 /** Mirrors CreateApiKeyRequest. Omitted `ownerPersonId` defaults to the admin minting it. */
 export interface ApiKeyCreateRequest {
   name: string;
-  scopes: string[];
   ownerPersonId?: string;
 }
 

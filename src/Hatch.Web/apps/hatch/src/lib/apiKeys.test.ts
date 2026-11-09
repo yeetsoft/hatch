@@ -1,21 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  dismissSecret,
-  lastUsedLabel,
-  mintProblem,
-  ownerLabel,
-  partitionKeys,
-  scopesLabel,
-  showSecret,
-  toggleScope,
-} from './apiKeys';
+import { dismissSecret, lastUsedLabel, mintProblem, ownerLabel, partitionKeys, showSecret } from './apiKeys';
 import type { ApiKey } from '../types';
 
 const key = (over: Partial<ApiKey> = {}): ApiKey => ({
   id: 'k1',
   name: 'Claude',
   prefix: 'hatch_ak_ab',
-  scopes: ['hatch'],
   createdAt: '2026-09-08T12:00:00Z',
   lastUsedAt: null,
   revokedAt: null,
@@ -49,13 +39,6 @@ describe('mintProblem', () => {
   });
 });
 
-describe('toggleScope', () => {
-  it('adds and removes', () => {
-    expect(toggleScope([], 'hatch')).toEqual(['hatch']);
-    expect(toggleScope(['hatch'], 'hatch')).toEqual([]);
-  });
-});
-
 describe('the secret panel', () => {
   const minted = (secret: string) => ({ key: key(), secret });
 
@@ -75,11 +58,6 @@ describe('the secret panel', () => {
 });
 
 describe('labels', () => {
-  it('says none for no scopes', () => {
-    expect(scopesLabel([])).toBe('none');
-    expect(scopesLabel(['a', 'b'])).toBe('a, b');
-  });
-
   it('says never for a key that was never used', () => {
     expect(lastUsedLabel(null)).toBe('never');
     expect(lastUsedLabel('2026-09-08T12:00:00Z')).not.toBe('never');
