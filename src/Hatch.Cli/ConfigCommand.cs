@@ -36,7 +36,7 @@ public sealed record ConfigCommand(
     public static readonly string[] ConfigUsage =
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...",
+        "                     | --repo <path>... | --workspace <dir>",
         "                     | --models <model>... | --has <entry>...",
         "                     | --log on|<dir>|off | --dangerous on|off]",
         "                     [--here | --profile <name>]",
@@ -58,8 +58,6 @@ public sealed record ConfigCommand(
         "  hatch config --log off          ...keep none",
         "  hatch config --dangerous off    refuse work flagged dangerous",
         "  hatch config --dangerous on     ...take it, which is the default",
-        "  hatch config --tag <tag>        advertise this tag, repeatable",
-        "  hatch config --tag              ...alone, clears them",
         "  hatch config --models haiku --models sonnet",
         "                                  advertise these models, repeatable",
         "  hatch config --models           ...alone, clears them: the agent's default",
@@ -110,13 +108,6 @@ public sealed record ConfigCommand(
         "  machine - and `on`, or nothing written, takes it. It seeds this runner's row",
         "  on the board once; after that the row is the board's to change, so writing it",
         "  at a checkout whose runner already has a row changes nothing there.",
-        "",
-        "  --tag writes HATCH_TAGS: the tags this runner advertises, so a project's",
-        "  own runner tags can ask for one and only a runner carrying it is matched.",
-        "  A tag is a word a project's runner tags ask for - macos, gpu - at most 8",
-        "  on a runner, each at most 32 characters, lowercased, with no space or",
-        "  comma. A tag that breaks that rule is refused, naming it, with nothing",
-        "  written. Bare --tag clears the tags this runner advertises.",
         "",
         "  --models writes HATCH_MODELS: the models this runner advertises. Each is an",
         "  alias - haiku, sonnet, opus - or a pinned id of HATCH_AGENT's agent, at most",
@@ -251,7 +242,7 @@ public sealed record ConfigCommand(
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         // Anywhere in the argument list, and stripped before anything below
-        // ever sees it - so `--here --tag x` and `--tag x --here` both leave
+        // ever sees it - so `--here --repo x` and `--repo x --here` both leave
         // the same `args` for the dispatch that follows.
         var here = args.Contains("--here");
         if (here) args = [.. args.Where(a => a != "--here")];
@@ -313,8 +304,6 @@ public sealed record ConfigCommand(
 
         if (args.Length > 0 && args[0] == "--dangerous") return Dangerous(args, here);
 
-        if (args.Length > 0 && args[0] == "--tag") return Tag(args, here);
-
         if (args.Length > 0 && args[0] == "--models") return Models(args, here);
 
         if (args.Length > 0 && args[0] == "--has") return Has(args, here);
@@ -357,7 +346,6 @@ public sealed record ConfigCommand(
         var agent = overlay ? Carry("HATCH_AGENT") : agentShown;
         var repos = overlay ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
         var workspace = overlay ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = overlay ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
         var log = overlay ? Carry("HATCH_LOG") : fold("HATCH_LOG").Value ?? "";
         var dangerous = overlay ? Carry("HATCH_DANGEROUS") : fold("HATCH_DANGEROUS").Value ?? "";
         var models = overlay ? Carry("HATCH_MODELS") : fold("HATCH_MODELS").Value ?? "";
@@ -449,7 +437,7 @@ public sealed record ConfigCommand(
         }
 
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "");
 
@@ -522,7 +510,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -530,7 +517,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--origin");
 
@@ -617,7 +604,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -628,7 +614,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--key");
 
@@ -793,7 +779,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var agent = Field("HATCH_AGENT");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -811,7 +796,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--repo");
 
@@ -854,7 +839,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var agent = Field("HATCH_AGENT");
         var reposRaw = Field("HATCH_REPOS");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -869,7 +853,7 @@ public sealed record ConfigCommand(
         {
             // A word and not a directory: nothing to overlap and nothing to make.
             Write(
-                origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
+                origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin,
                 ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
                 path: overlayPath, overlay: overlay, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
@@ -891,7 +875,7 @@ public sealed record ConfigCommand(
         }
 
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--workspace");
 
@@ -929,7 +913,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
         var has = Field("HATCH_HAS");
@@ -961,7 +944,7 @@ public sealed record ConfigCommand(
         }
 
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: written, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--log");
 
@@ -1005,14 +988,13 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var models = Field("HATCH_MODELS");
         var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: written, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--dangerous");
 
@@ -1023,80 +1005,8 @@ public sealed record ConfigCommand(
     }
 
     /// <summary>
-    /// The tags this runner advertises, taken from the command line and
-    /// written without a question being asked - the mirror of <see cref="Repo"/>:
-    /// everything else is carried forward unchanged.
-    /// </summary>
-    /// <remarks>
-    /// Needs no <see cref="Root"/> of its own - only --here asks for one - and
-    /// unlike <see cref="OriginAsync"/> it needs no origin and makes no call -
-    /// there is nothing here a board could refuse.
-    /// </remarks>
-    private int Tag(string[] args, bool here)
-    {
-        var values = new List<string>();
-
-        // A bare --tag is the one shape with an odd count: it clears rather
-        // than pairing with a value. Anything else - a trailing bare --tag, two
-        // values with no --tag between them - is shaped wrong and refused.
-        if (args is not ["--tag"])
-        {
-            for (var i = 0; i < args.Length; i += 2)
-            {
-                if (args[i] != "--tag" || i + 1 >= args.Length)
-                    return Usage.Refuse(
-                        Say, "config --tag takes one or more tags, each after its own --tag", ConfigUsage);
-
-                values.Add(args[i + 1]);
-            }
-        }
-
-        // Checked before anything is written, and against the typed values
-        // rather than a comma-split of them - a `--tag a,b` is refused by the
-        // same rule that refuses a comma inside one tag, not split into two.
-        if (RunnerTags.Normalise(values, out var tags) is { } sentence)
-        {
-            Say.Complain($"hatch: {sentence}");
-            return 1;
-        }
-
-        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
-            : ProfileName is not null ? (ProfilePath, true)
-            : ((string?)null, false);
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
-        var overlayOnly = Settings.ReadFile(overlayPath);
-        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
-
-        var origin = Field("HATCH_BASE");
-        var key = Field("HATCH_KEY");
-        var claudeBin = Field("HATCH_CLAUDE_BIN");
-        var codexBin = Field("HATCH_CODEX_BIN");
-        var grokBin = Field("HATCH_GROK_BIN");
-        var ollamaHost = Field("HATCH_OLLAMA_HOST");
-        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
-        var agent = Field("HATCH_AGENT");
-        var reposRaw = Field("HATCH_REPOS");
-        var workspace = Field("HATCH_WORKSPACE");
-        var log = Field("HATCH_LOG");
-        var dangerous = Field("HATCH_DANGEROUS");
-        var models = Field("HATCH_MODELS");
-        var has = Field("HATCH_HAS");
-
-        var target = overlayPath ?? ConfigPath;
-        Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
-            path: overlayPath, overlay: overlay, mode: "--tag");
-
-        Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
-
-        Say.Line($"wrote {target}");
-        return 0;
-    }
-
-    /// <summary>
     /// The models this runner advertises, taken from the command line and
-    /// written without a question being asked - the mirror of <see cref="Tag"/>:
+    /// written without a question being asked - the mirror of <see cref="Repo"/>:
     /// everything else is carried forward unchanged.
     /// </summary>
     /// <remarks>
@@ -1148,7 +1058,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var has = Field("HATCH_HAS");
@@ -1156,7 +1065,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         var written = string.Join(',', models);
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: written, has: has,
             path: overlayPath, overlay: overlay, mode: "--models");
 
@@ -1219,7 +1128,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -1227,7 +1135,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         var written = string.Join(',', has);
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: written,
             path: overlayPath, overlay: overlay, mode: "--has");
 
@@ -1396,22 +1304,6 @@ public sealed record ConfigCommand(
                 continue;
             }
 
-            if (name == "HATCH_TAGS")
-            {
-                if (value is not { Length: > 0 })
-                {
-                    Say.Line($"{(name + ":").PadRight(19)}<unset>{note}");
-                    continue;
-                }
-
-                var sentence = Settings.ParseTags(value, out var parsed);
-                Say.Line(sentence is null
-                    ? $"{(name + ":").PadRight(19)}{string.Join(", ", parsed)}{where}{note}"
-                    : $"{(name + ":").PadRight(19)}{value}  (refused: {sentence}){where}{note}");
-
-                continue;
-            }
-
             if (name == "HATCH_MODELS")
             {
                 var sentence = Settings.ParseModels(value, fold("HATCH_AGENT").Value, out var parsed);
@@ -1506,7 +1398,7 @@ public sealed record ConfigCommand(
     /// <remarks>See <see cref="AtomicFile.Write"/> for how it is written whole.</remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
-        string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
+        string agent = "", string grokBin = "", string ollamaHost = "", string ollamaTiers = "",
         string log = "", string dangerous = "", string models = "", string has = "", string? path = null, bool overlay = false, string mode = "")
     {
         var target = path ?? ConfigPath;
@@ -1563,7 +1455,6 @@ public sealed record ConfigCommand(
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
         if (log.Length > 0) lines.Add($"HATCH_LOG={log}");
         if (dangerous.Length > 0) lines.Add($"HATCH_DANGEROUS={dangerous}");
-        if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
         if (models.Length > 0) lines.Add($"HATCH_MODELS={models}");
         if (has.Length > 0) lines.Add($"HATCH_HAS={has}");
 

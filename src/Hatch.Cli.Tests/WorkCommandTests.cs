@@ -77,8 +77,7 @@ public sealed class WorkCommandTests
 
         var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
             .Read<RunnerHeartbeatRequest>();
-        Assert.NotNull(beat.Tags);
-        Assert.Equal(tags, beat.Tags);
+        Assert.Null(beat.Tags);
 
         var call = h.Wire.To("GET", "/api/hatch/work/AER-1")[0];
         Assert.Contains("remote=", call.Query);

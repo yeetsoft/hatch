@@ -9,7 +9,7 @@ namespace Hatch.Cli;
 /// the trail says who did what without anybody being asked to record it. The
 /// work log is the deliberate exception - a meter reading is not a decision.
 /// </remarks>
-public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null, bool refusesDangerous = false)
+public sealed class Board(HatchClient client, bool refusesDangerous = false)
 {
     public HatchClient Client { get; } = client;
 
@@ -18,7 +18,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// none where it has none - and it follows the board's own list once a
     /// heartbeat answers with one.
     /// </summary>
-    public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
+    public IReadOnlyList<string> Tags { get; set; } = [];
 
     /// <summary>
     /// What this runner's machine has - detected and declared, merged - sent as

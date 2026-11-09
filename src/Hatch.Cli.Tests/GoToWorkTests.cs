@@ -338,7 +338,7 @@ public sealed class GoToWorkTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task The_heartbeat_and_the_queue_read_carry_the_tags(bool tagged)
+    public async Task The_heartbeat_carries_no_tags_and_the_queue_read_carries_the_boards(bool tagged)
     {
         string[] tags = tagged ? ["gpu", "linux"] : [];
         using var h = new Harness(tags: tags);
@@ -349,8 +349,7 @@ public sealed class GoToWorkTests
         var beat = h.Wire.Calls
             .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
             .Read<RunnerHeartbeatRequest>();
-        Assert.NotNull(beat.Tags);
-        Assert.Equal(tags, beat.Tags);
+        Assert.Null(beat.Tags);
 
         var call = h.Wire.To("GET", Queue)[0];
         Assert.Contains("remote=", call.Query);
