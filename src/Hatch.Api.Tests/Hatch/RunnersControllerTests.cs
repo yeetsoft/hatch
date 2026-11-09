@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
@@ -3784,6 +3785,113 @@ public class RunnersControllerTests
     }
 
     [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatWithTheMachineFields_StoresAllSevenAndProjectsThem()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
+
+        await h.SessionBeatAsync(
+            new RunnerHeartbeatRequest(
+                Kind: "loop", Fresh: true, Where: Runner, Os: "linux", Arch: "x64", AgentVersion: "1.2.3",
+                Container: true, Username: "ada", ProcessStartedAt: Now.AddMinutes(-5)),
+            ip: "203.0.113.9");
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("linux", row.Os);
+        Assert.Equal("x64", row.Arch);
+        Assert.Equal("1.2.3", row.AgentVersion);
+        Assert.True(row.Container);
+        Assert.Equal("ada", row.Username);
+        Assert.Equal(Now.AddMinutes(-5), row.ProcessStartedAt);
+        Assert.Equal("203.0.113.9", row.Ip);
+
+        var session = Assert.Single((await h.OneAsync()).Sessions);
+        Assert.Equal("linux", session.Os);
+        Assert.Equal("x64", session.Arch);
+        Assert.Equal("1.2.3", session.AgentVersion);
+        Assert.True(session.Container);
+        Assert.Equal("ada", session.Username);
+        Assert.Equal(Now.AddMinutes(-5), session.ProcessStartedAt);
+        Assert.Equal("203.0.113.9", session.Ip);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnOlderClisBeatWithNoMachineFields_LeavesThemNullButStoresTheIp()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner), ip: "203.0.113.9");
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(row.Os);
+        Assert.Null(row.Arch);
+        Assert.Null(row.AgentVersion);
+        Assert.Null(row.Username);
+        Assert.Null(row.ProcessStartedAt);
+        Assert.Null(row.Container);
+        Assert.Equal("203.0.113.9", row.Ip);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABodyNamingIp_NeverSetsIt()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        var request = JsonSerializer.Deserialize<RunnerHeartbeatRequest>(
+            """{"kind":"loop","where":"here:/checkouts/one","fresh":true,"ip":"6.6.6.6"}""",
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+
+        await h.SessionBeatAsync(request, ip: "203.0.113.9");
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("203.0.113.9", row.Ip);
+        Assert.Null(typeof(RunnerHeartbeatRequest).GetProperty("Ip"));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeatOmittingTheMachineFields_LeavesThemAloneButMovesTheIp()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(
+            new RunnerHeartbeatRequest(
+                Kind: "loop", Fresh: true, Where: Runner, Os: "linux", Arch: "x64", AgentVersion: "1.2.3",
+                Container: true, Username: "ada", ProcessStartedAt: Now.AddMinutes(-5)),
+            ip: "203.0.113.9");
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner), ip: "203.0.113.10");
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("linux", row.Os);
+        Assert.Equal("x64", row.Arch);
+        Assert.Equal("1.2.3", row.AgentVersion);
+        Assert.True(row.Container);
+        Assert.Equal("ada", row.Username);
+        Assert.Equal(Now.AddMinutes(-5), row.ProcessStartedAt);
+        Assert.Equal("203.0.113.10", row.Ip);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnOsLongerThanTheColumn_IsTruncated()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Os: new string('x', 200)));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(64, row.Os!.Length);
+    }
+
+    [SkippableFact]
     public async Task GetRunners_StampsEndedAtOnASessionPastTheHorizon()
     {
         var connectionString = await ConnectAsync();
@@ -4299,8 +4407,15 @@ public class RunnersControllerTests
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));
 
-        public async Task<ActionResult<RunnerInstructionDto>> SessionBeatAsync(RunnerHeartbeatRequest request) =>
-            await Runners.SessionHeartbeat(request, default);
+        public async Task<ActionResult<RunnerInstructionDto>> SessionBeatAsync(RunnerHeartbeatRequest request, string? ip = null)
+        {
+            if (ip is not null)
+                Runners.ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext { Connection = { RemoteIpAddress = IPAddress.Parse(ip) } },
+                };
+            return await Runners.SessionHeartbeat(request, default);
+        }
 
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
@@ -4418,6 +4533,8 @@ public class RunnersControllerTests
         }
 
         public required IAuthService Keys { get; init; }
+
+        public required AppDbContext CoreDb { get; init; }
 
         public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default, live: true));
 
@@ -4560,6 +4677,7 @@ public class RunnersControllerTests
             PersonId = id,
             Keys = keys,
             Caller = caller,
+            CoreDb = coreDb,
         };
     }
 

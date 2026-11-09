@@ -310,6 +310,7 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var line = Runners.Normalise(request.Line);
         var where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+        var ip = HttpContext?.Connection.RemoteIpAddress?.ToString();
 
         await sessions.MarkGoneAsync(db, key.Id, now, ct);
 
@@ -324,7 +325,7 @@ public class RunnersController(
         EfHatchRunnerSession session;
         if (live is null)
         {
-            session = SeedSession(key.Id, kind, where, line, request, now, Joined(normalisedModels), Joined(normalisedHas));
+            session = SeedSession(key.Id, kind, where, line, request, now, Joined(normalisedModels), Joined(normalisedHas), ip);
             db.RunnerSessions.Add(session);
             await db.SaveChangesAsync(ct);
             await sessions.TrimHistoryAsync(db, key.Id, ct);
@@ -332,7 +333,7 @@ public class RunnersController(
         else
         {
             session = live;
-            TouchSession(session, kind, line, now, request, Joined(normalisedModels), Joined(normalisedHas));
+            TouchSession(session, kind, line, now, request, Joined(normalisedModels), Joined(normalisedHas), ip);
             await db.SaveChangesAsync(ct);
         }
 
@@ -1369,11 +1370,12 @@ public class RunnersController(
     /// A session that has never run before, seeded with what the process
     /// started with - <see cref="Seed"/>'s own field list, minus
     /// <c>Tags</c> and <c>ForPersonId</c>, none of which a session has a
-    /// column for.
+    /// column for, plus the six machine fields and the connection's IP,
+    /// neither of which a beat has.
     /// </summary>
     private static EfHatchRunnerSession SeedSession(
         Guid apiKeyId, string kind, string? where, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        string? models, string? has)
+        string? models, string? has, string? ip)
     {
         var keys = ProjectKeys(request.Projects);
 
@@ -1420,6 +1422,13 @@ public class RunnersController(
             UsageReadAt = request.UsageReadAt,
             Models = models,
             Has = has,
+            Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
+            Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
+            AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
+            Container = request.Container,
+            Username = Fits(request.Username, EfHatchRunnerSession.MaxUsernameLength),
+            ProcessStartedAt = request.ProcessStartedAt,
+            Ip = Fits(ip, EfHatchRunnerSession.MaxIpLength),
         };
     }
 
@@ -1430,11 +1439,13 @@ public class RunnersController(
     /// <c>once</c> one), <c>Tags</c>, <c>ForPersonId</c>, the <c>Fresh</c>
     /// bounds block and the order read-and-clear - none of which a session
     /// answers to, or which this route never reads or writes
-    /// (<c>OrderKind</c>/<c>OrderedAt</c>).
+    /// (<c>OrderKind</c>/<c>OrderedAt</c>) - plus the six machine fields,
+    /// each absent leaving its stored value alone, and the connection's IP,
+    /// written on every beat regardless.
     /// </summary>
     private static void TouchSession(
         EfHatchRunnerSession session, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
-        string? models, string? has)
+        string? models, string? has, string? ip)
     {
         session.LastSeenAt = now;
 
@@ -1467,6 +1478,14 @@ public class RunnersController(
         if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
         if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        if (request.Os is not null) session.Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength);
+        if (request.Arch is not null) session.Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength);
+        if (request.AgentVersion is not null) session.AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength);
+        if (request.Username is not null) session.Username = Fits(request.Username, EfHatchRunnerSession.MaxUsernameLength);
+        if (request.Container is not null) session.Container = request.Container;
+        if (request.ProcessStartedAt is not null) session.ProcessStartedAt = request.ProcessStartedAt;
+        if (ip is not null) session.Ip = Fits(ip, EfHatchRunnerSession.MaxIpLength);
 
         // An empty list clears it: Joined answers null for one, the same as Touch.
         if (request.Models is not null) session.Models = models;

@@ -182,7 +182,14 @@ public sealed class RunnerSessions(Runners runners)
             OrderKind: session.OrderKind,
             OrderKey: session.OrderKey,
             OrderedBy: session.OrderedBy,
-            OrderedAt: session.OrderedAt);
+            OrderedAt: session.OrderedAt,
+            Os: session.Os,
+            Arch: session.Arch,
+            AgentVersion: session.AgentVersion,
+            Container: session.Container,
+            Username: session.Username,
+            ProcessStartedAt: session.ProcessStartedAt,
+            Ip: session.Ip);
     }
 
     /// <summary>
