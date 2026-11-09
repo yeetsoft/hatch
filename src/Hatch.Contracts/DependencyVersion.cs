@@ -23,12 +23,14 @@ public static class DependencyVersion
     }
 
     /// <summary>
-    /// Whether <paramref name="detected"/> meets <paramref name="declared"/>.
-    /// A null <paramref name="declared"/> asks for no version, so anything
-    /// satisfies it. Otherwise every declared component must exist in
-    /// <paramref name="detected"/> - read up to its first non-integer component,
-    /// however many there are - and be numerically equal. Components are compared
-    /// as digit strings, so one longer than any integer type simply never matches.
+    /// Whether <paramref name="detected"/> is at least <paramref name="declared"/>,
+    /// read as a minimum. A null <paramref name="declared"/> asks for no version,
+    /// so anything satisfies it. Otherwise <paramref name="detected"/> must have at
+    /// least as many components - read up to its first non-integer component,
+    /// however many there are - and the first component where the two differ, in
+    /// order, must favour <paramref name="detected"/>; all equal also satisfies it.
+    /// Components are compared as digit strings, so one longer than any integer
+    /// type simply outranks a shorter one rather than overflowing.
     /// </summary>
     public static bool Satisfies(string? declared, string? detected)
     {
@@ -39,12 +41,50 @@ public static class DependencyVersion
         var have = detected.Split('.').TakeWhile(IsInteger).ToArray();
         if (have.Length < want.Length) return false;
 
+        return Compare(want, have) <= 0;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="detected"/> and <paramref name="declared"/> name the
+    /// same fact - the exact-prefix test for comparing two facts, rather than a
+    /// declared version against a detected one. A null <paramref name="declared"/>
+    /// matches anything. Otherwise <paramref name="detected"/> must have at least as
+    /// many components - read up to its first non-integer component - and every one
+    /// of the first <paramref name="declared"/> components must be numerically equal.
+    /// Components are compared as digit strings, so one longer than any integer type
+    /// simply never matches.
+    /// </summary>
+    public static bool Matches(string? declared, string? detected)
+    {
+        if (declared is null) return true;
+        if (detected is null || Problem(declared) is not null) return false;
+
+        var want = declared.Split('.');
+        var have = detected.Split('.').TakeWhile(IsInteger).ToArray();
+        if (have.Length < want.Length) return false;
+
+        return Compare(want, have) == 0;
+    }
+
+    /// <summary>
+    /// Compares <paramref name="want"/> against the first <paramref name="want"/>.Length
+    /// components of <paramref name="have"/>, component by component as digit strings
+    /// via <see cref="Canonical"/>: a shorter canonical string is the smaller one, else
+    /// <see cref="string.CompareOrdinal(string?, string?)"/> decides. No integer parsing,
+    /// so nothing overflows. Negative when <paramref name="want"/> is smaller, positive
+    /// when it is larger, zero when every compared component is equal.
+    /// </summary>
+    private static int Compare(string[] want, string[] have)
+    {
         for (var i = 0; i < want.Length; i++)
         {
-            if (Canonical(want[i]) != Canonical(have[i])) return false;
+            var w = Canonical(want[i]);
+            var h = Canonical(have[i]);
+            var cmp = w.Length != h.Length ? w.Length.CompareTo(h.Length) : string.CompareOrdinal(w, h);
+            if (cmp != 0) return cmp;
         }
 
-        return true;
+        return 0;
     }
 
     // Non-empty and ASCII digits only: char.IsDigit would accept other scripts.
