@@ -37,7 +37,8 @@ public sealed record ConfigCommand(
     [
         "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
         "                     | --repo <path>... | --workspace <dir> | --tag <tag>...",
-        "                     | --models <model>... | --log on|<dir>|off | --dangerous on|off]",
+        "                     | --models <model>... | --has <entry>...",
+        "                     | --log on|<dir>|off | --dangerous on|off]",
         "                     [--here | --profile <name>]",
         "",
         "  hatch config                    asks for the origin, the key and the runner",
@@ -62,6 +63,10 @@ public sealed record ConfigCommand(
         "  hatch config --models haiku --models sonnet",
         "                                  advertise these models, repeatable",
         "  hatch config --models           ...alone, clears them: the agent's default",
+        "  hatch config --has dotnet@10 --has node",
+        "                                  declare what this machine has that detection",
+        "                                     cannot see, repeatable",
+        "  hatch config --has              ...alone, clears them",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
@@ -119,6 +124,13 @@ public sealed record ConfigCommand(
         "  belongs to another agent, is refused, naming it, with nothing written. Give",
         "  each its own --models - a comma inside one is refused. Bare --models",
         "  clears them, and the agent's default stands.",
+        "",
+        "  --has writes HATCH_HAS: the dependencies this machine declares that detection",
+        "  cannot see. Each is an id - dotnet, node, pwsh - or id@version, trimmed,",
+        "  lowercased and deduplicated. One the master list does not know is refused,",
+        "  naming the list, with nothing written. Give each its own --has - a comma",
+        "  inside one is refused. It adds to what detection finds and never removes.",
+        "  Bare --has clears them.",
         "",
         "  --here writes this checkout's scripts/.env instead of the per-user file -",
         "  combine it with any write above. Refused outside a checkout, with --runner",
@@ -298,6 +310,8 @@ public sealed record ConfigCommand(
 
         if (args.Length > 0 && args[0] == "--models") return Models(args, here);
 
+        if (args.Length > 0 && args[0] == "--has") return Has(args, here);
+
         if (args.Length > 0)
             return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
 
@@ -340,6 +354,7 @@ public sealed record ConfigCommand(
         var log = overlay ? Carry("HATCH_LOG") : fold("HATCH_LOG").Value ?? "";
         var dangerous = overlay ? Carry("HATCH_DANGEROUS") : fold("HATCH_DANGEROUS").Value ?? "";
         var models = overlay ? Carry("HATCH_MODELS") : fold("HATCH_MODELS").Value ?? "";
+        var has = overlay ? Carry("HATCH_HAS") : fold("HATCH_HAS").Value ?? "";
 
         var target = overlayPath ?? ConfigPath;
         Say.Line($"Writing {target}. Enter keeps what is shown in brackets.");
@@ -428,7 +443,7 @@ public sealed record ConfigCommand(
 
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "");
 
         if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(Root!), chosenRunner);
@@ -504,11 +519,12 @@ public sealed record ConfigCommand(
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--origin");
 
         // Rebuilt after the write and before HATCH_BASE is exported: `fold`
@@ -598,6 +614,7 @@ public sealed record ConfigCommand(
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
@@ -605,7 +622,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--key");
 
         Environment["HATCH_KEY"] = key;
@@ -773,6 +790,7 @@ public sealed record ConfigCommand(
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         // The reverse of the check `--workspace` makes: a checkout named here
         // that sits inside the workspace already configured is the same two
@@ -787,7 +805,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--repo");
 
         Environment["HATCH_REPOS"] = paths.Count > 0 ? string.Join(Path.PathSeparator, paths) : null;
@@ -833,6 +851,7 @@ public sealed record ConfigCommand(
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
@@ -844,7 +863,7 @@ public sealed record ConfigCommand(
             // A word and not a directory: nothing to overlap and nothing to make.
             Write(
                 origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
-                ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+                ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
                 path: overlayPath, overlay: overlay, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
             Say.Line($"wrote {target}");
@@ -866,7 +885,7 @@ public sealed record ConfigCommand(
 
         Write(
             origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--workspace");
 
         Environment["HATCH_WORKSPACE"] = dir;
@@ -906,6 +925,7 @@ public sealed record ConfigCommand(
         var tags = Field("HATCH_TAGS");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         var written = value.Trim();
@@ -935,7 +955,7 @@ public sealed record ConfigCommand(
 
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: written, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: written, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--log");
 
         Environment["HATCH_LOG"] = written;
@@ -981,11 +1001,12 @@ public sealed record ConfigCommand(
         var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: written, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: written, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--dangerous");
 
         Environment["HATCH_DANGEROUS"] = written;
@@ -1052,11 +1073,12 @@ public sealed record ConfigCommand(
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         Write(
             origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--tag");
 
         Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
@@ -1122,15 +1144,87 @@ public sealed record ConfigCommand(
         var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
+        var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         var written = string.Join(',', models);
         Write(
             origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: written,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: written, has: has,
             path: overlayPath, overlay: overlay, mode: "--models");
 
         Environment["HATCH_MODELS"] = models.Count > 0 ? written : null;
+
+        Say.Line($"wrote {target}");
+        return 0;
+    }
+
+    /// <summary>
+    /// The dependencies this machine declares, taken from the command line and
+    /// written without a question being asked - the mirror of <see cref="Models"/>:
+    /// everything else is carried forward unchanged.
+    /// </summary>
+    /// <remarks>
+    /// Needs no <see cref="Root"/> of its own - only --here asks for one - and
+    /// makes no call: nothing here is sent to the board or detected.
+    /// </remarks>
+    private int Has(string[] args, bool here)
+    {
+        var values = new List<string>();
+
+        // A bare --has is the one shape with an odd count: it clears rather
+        // than pairing with a value. Anything else is shaped wrong and refused.
+        if (args is not ["--has"])
+        {
+            for (var i = 0; i < args.Length; i += 2)
+            {
+                if (args[i] != "--has" || i + 1 >= args.Length)
+                    return Usage.Refuse(
+                        Say, "config --has takes one or more entries, each after its own --has", ConfigUsage);
+
+                values.Add(args[i + 1]);
+            }
+        }
+
+        // Checked before anything is written, against the typed values rather
+        // than a comma-split of them - a `--has a,b` is refused as the one
+        // unknown id it is, not split into two.
+        if (DependencySet.Normalise(values, out var has) is { } sentence)
+        {
+            Say.Complain($"hatch: {sentence}");
+            return 1;
+        }
+
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
+
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var agent = Field("HATCH_AGENT");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var reposRaw = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+        var tags = Field("HATCH_TAGS");
+        var log = Field("HATCH_LOG");
+        var dangerous = Field("HATCH_DANGEROUS");
+        var models = Field("HATCH_MODELS");
+
+        var target = overlayPath ?? ConfigPath;
+        var written = string.Join(',', has);
+        Write(
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: written,
+            path: overlayPath, overlay: overlay, mode: "--has");
+
+        Environment["HATCH_HAS"] = has.Count > 0 ? written : null;
 
         Say.Line($"wrote {target}");
         return 0;
@@ -1382,7 +1476,7 @@ public sealed record ConfigCommand(
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
         string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
-        string log = "", string dangerous = "", string models = "", string? path = null, bool overlay = false, string mode = "")
+        string log = "", string dangerous = "", string models = "", string has = "", string? path = null, bool overlay = false, string mode = "")
     {
         var target = path ?? ConfigPath;
 
@@ -1440,6 +1534,7 @@ public sealed record ConfigCommand(
         if (dangerous.Length > 0) lines.Add($"HATCH_DANGEROUS={dangerous}");
         if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
         if (models.Length > 0) lines.Add($"HATCH_MODELS={models}");
+        if (has.Length > 0) lines.Add($"HATCH_HAS={has}");
 
         AtomicFile.Write(target, lines);
     }

@@ -30,7 +30,8 @@ In order, left to right:
   cleanly or whose build has failed, and that increment starts and ends in
   the same column.
 - **Done** — shipped, and terminal. Only a person moves work into it, or the
-  close hop below.
+  close hop below, which carries a pre-approved parent, or a parent in a project
+  whose **A passing check approves the merge** setting is on.
 
 ## Who moves work
 
@@ -70,7 +71,8 @@ The hops the board makes are:
   is the one hop that moves a ticket left.
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
-- **Close** — a pre-approved parent in review with every child done, or a
+- **Close** — a parent in review with every child done, when it is pre-approved
+  or its project has **A passing check approves the merge** on, or a
   pre-approved ticket that declared it was finished with no code, goes into the
   first Done column to its right. A declared ticket that is not pre-approved
   waits in review for a person to close it.

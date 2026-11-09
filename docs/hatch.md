@@ -439,7 +439,8 @@ passing check approves the merge"*) to anyone else, and `404` on an unknown
 project. It has no repository or playbook precondition: turning it on for a
 project with no merge column is accepted. A change stamps `CheckApprovesMergeBy`
 and `CheckApprovesMergeAt`; re-sending the value the project already holds
-writes nothing, the stamp included. Nothing reads the flag yet.
+writes nothing, the stamp included. The close hop reads the flag, see [the
+hop](#the-hop).
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -3352,7 +3353,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/projects/{id}/runner-tags` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ tags }` — the whole list, replaced; trimmed, lower-cased and deduplicated, at most 8 tags of at most 32 characters, none with a space or comma. `403` naming the project's key from anybody but an owner, `400` naming the tag that breaks the rule (or the limit, on a list over 8), `404` on an unknown project. Re-sending the list it already holds writes nothing, and an empty list clears it |
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
-| `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing; nothing reads it yet |
+| `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -3406,7 +3407,7 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. The same `?runner=` also folds a ticket that runner is [omitted](#omitted-runners) from, its own or an ancestor's — see [the dispatcher](#the-dispatcher). Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=` and `?dangerous=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=` and `?dangerous=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; a name no live row answers to is a `400` naming it. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the four paths past the terminal guard](#the-four-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -4903,7 +4904,9 @@ order:
    own `Pushback`/`Hold`/`Pending` kinds hold it in review exactly as they
    would an issue with no pre-approval at all — this kind never fires for
    those.
-7. **close** — a [pre-approved](#pre-approval) parent standing in the
+7. **close** — a [pre-approved](#pre-approval) parent, or a parent in a
+   project whose *A passing check approves the merge* setting is on
+   ([`CheckApprovesMerge`](#project)), standing in the
    review column with *no* pull request recorded, every child done by its
    own type's rule — an epic's own fold ignores a deferred child the way
    [running an epic](#running-an-epic) describes, while a story, bug or
@@ -4917,7 +4920,10 @@ order:
    declared issue that does have open children still waits for them, and the
    rest of the kind - pre-approved, in review, no pull request recorded - holds
    for it as for any parent. The declaration is a statement that nothing was
-   built, so it needs no children to have been done in its place.
+   built, so it needs no children to have been done in its place. That
+   exception stays pre-approval-only: the setting is not a person's say-so
+   that nothing was built, so a declared issue in a project whose setting is
+   on, and not pre-approved, still waits in review for a person.
 
 Both are asked last, after sendback, so neither changes the meaning of a
 row that already qualifies for one of the first five.
@@ -4972,34 +4978,41 @@ Two answers, both `409`, and each carries the sentence a reader would see on
 Otherwise the move is made: the issue's rank is set with
 `RankService.BottomAsync`, the same as any other move, and the history gets
 one `status_changed` event naming the caller as the actor, carrying one of
-six shapes depending on which kind carried it: `{ from, to, express: true }`,
+seven shapes depending on which kind carried it: `{ from, to, express: true }`,
 `{ from, to, epic: true }`, `{ from, to, under: "<epicKey>" }`,
 `{ from, to, pulled: true }` for a parent pull, `{ from, to, sendback: true,
 length, limit }` naming the brief's own length and its playbook's own
-limit, or `{ from, to, preapproved: true }` — shared by the sixth kind and
+limit, `{ from, to, preapproved: true }` — shared by the sixth kind and
 the seventh, the only two that share a shape — the same shape
 `IssuesController.MoveIssue` writes, with one more field, so a card that
-passed a gate with nobody present says so on its own trail. The seventh kind
+passed a gate with nobody present says so on its own trail, or `{ from, to,
+approved: "setting" }` for a seventh-kind close carried by the project's
+*A passing check approves the merge* setting alone. The setting's close has no
+`preapproved` field, since nobody's pre-approval carried it; where a parent is
+both pre-approved and in a project whose setting is on, the pre-approval's own
+shape and comment are written, unchanged. The seventh kind
 carrying an issue that [declared itself finished with no
 code](#finished-with-no-code) adds `nocode: true` beside `preapproved: true`.
 
 Both the sixth and seventh kinds write a second thing in the same save as
 the move: a comment, naming the ancestor the pre-approval was read from
 where it is inherited, or saying it stands on the issue's own row where it
-is not (`WorkController.cs:616-648`). The approve hop's own comment quotes
+is not, or, for a close carried by the setting alone, naming the setting (`WorkController.cs:616-648`). The approve hop's own comment quotes
 `MergeWork.Judge`'s own sentence for the branch, the same sentence `hatch
 queue` would otherwise have printed for it: *"Approved by its pre-approval
 from AER-12: \<the merge judge's own sentence\>."* where the level is
 inherited, or *"Approved by its pre-approval on its own row: \<the merge
 judge's own sentence\>."* where it is the issue's own. The close hop's own
-comment is the fixed sentence every child being done already is: *"Closed
+comment is one of three, the fixed sentence every child being done already is: *"Closed
 by its pre-approval from AER-12: every child is done."*, or *"Closed by
 its pre-approval on its own row: every child is done."* on the issue's own
 level. For an issue that declared it [finished with no
 code](#finished-with-no-code) the comment says so and gives the reason:
 *"Closed by its pre-approval from AER-12: finished with no code -
 \<reason\>."*, or *"... on its own row: ..."*, and the `status_changed` event
-carries `nocode: true` beside `preapproved: true`.
+carries `nocode: true` beside `preapproved: true`. The third is the setting's:
+*"Closed under AER-12's setting, a passing check approves the merge: every
+child is done."*, written with the `approved: "setting"` payload above.
 
 **Why the server performs the hop, on its own route, rather than the CLI
 calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
@@ -5213,7 +5226,8 @@ refiled as new work.
 
 Once a parent - an epic or any other type - is verified and left standing in
 the review column, one more thing can carry it past the operator's press
-without one: a [pre-approved](#pre-approval) parent with no pull request
+without one: a [pre-approved](#pre-approval) parent, or a parent in a project
+whose *A passing check approves the merge* setting is on, with no pull request
 recorded, every child done by its own type's rule, is closed by the pass
 itself - the **close** hop - rather than waiting for it. See [the
 hop](#the-hop) for the fold it checks and the column it lands in, rather than
@@ -5828,14 +5842,17 @@ a branch is fine to ship.
 The **close** hop is the third, and it crosses the *terminal* fold instead,
 beside `/merged`: `Dispatch.Blocked`'s own terminal check reads
 `to.IsTerminal && hopKind != HopKinds.Close` (`Dispatch.cs:1249`), so a
-pre-approved parent in review with no pull request recorded, and every
-child done, is carried straight into the first terminal column right of
-review, with nobody pressing anything on the board. (A pre-approved issue that
-declared itself [finished with no code](#finished-with-no-code) is carried the
-same way with no children at all.) The reason is the same
+parent in review with no pull request recorded, and every child done, is
+carried straight into the first terminal column right of review, with nobody
+pressing anything on the board, for either of two reasons: it is
+pre-approved, or its project's *A passing check approves the merge* setting is
+on. (A pre-approved issue that declared itself [finished with no
+code](#finished-with-no-code) is carried the same way with no children at all;
+the setting does not carry that one.) The reason is the same
 as the approve hop's: the move is a decision an owner or approver already
-made in advance, carried out the moment the board can see it is true,
-rather than the operator's own press on a forge or a card.
+made in advance, whether on the issue or on the project's setting, carried out
+the moment the board can see it is true, rather than the operator's own press
+on a forge or a card.
 
 `POST /work/{key}/landed` is the fourth, and it crosses the terminal fold the
 way `/merged` does, for a project that has no pull request to merge: an
@@ -6812,10 +6829,11 @@ which one it failed is what `work/queue` reports:
     eighteenth condition's own fold governs it exactly as it would an issue
     with no pre-approval at all.
 
-    A pre-approved parent standing in the review column with no pull request
-    recorded, and no child left open by its own type's rule — an epic's own
-    fold ignores a deferred child, where anything else counts one open child
-    as enough to hold it — is a seventh kind of hop, carried past the terminal
+    A pre-approved parent, or a parent in a project whose *A passing check
+    approves the merge* setting is on, standing in the review column with no
+    pull request recorded, and no child left open by its own type's rule — an
+    epic's own fold ignores a deferred child, where anything else counts one
+    open child as enough to hold it — is a seventh kind of hop, carried past the terminal
     fold the first condition would otherwise raise, straight into the first
     terminal column strictly right of review. A childless pre-approved issue
     is never carried this way: nothing is filed under it for every child to be
