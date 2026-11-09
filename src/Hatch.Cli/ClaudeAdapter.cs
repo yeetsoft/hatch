@@ -49,6 +49,8 @@ public sealed class ClaudeAdapter(
 
     public string DisplayName => "Claude";
 
+    public string? Executable => _bin ?? (TryFind(configured, out var found, out _) ? found : null);
+
     public IUsageProbe Probe => this;
 
     public IHookOutputWriter HookOutput { get; } = new ClaudeHookOutputWriter();

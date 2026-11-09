@@ -106,6 +106,8 @@ public sealed class GrokAdapter : IAgentAdapter
         return true;
     }
 
+    public string? Executable => _bin ?? (TryFind(_configured, _path, out var found, out _) ? found : null);
+
     public bool CanSpawn(out string refusal)
     {
         if (_bin is not null)

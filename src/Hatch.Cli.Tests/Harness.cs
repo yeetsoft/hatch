@@ -759,7 +759,7 @@ public sealed class Harness : IDisposable
     /// </summary>
     public TimeProvider Clock { get; }
 
-    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false, IReadOnlyList<string>? models = null, IReadOnlyList<string>? has = null)
+    public Harness(TimeSpan? heartbeat = null, TimeProvider? clock = null, IReadOnlyList<string>? tags = null, bool refusesDangerous = false, IReadOnlyList<string>? models = null, IReadOnlyList<string>? has = null, MachineFacts? machine = null)
     {
         Temp = Directory.CreateTempSubdirectory("hatch-test-").FullName;
         Root = Path.Combine(Temp, "checkout");
@@ -825,6 +825,7 @@ public sealed class Harness : IDisposable
             },
             MakeClone = Clone.Factory,
             Clock = Clock,
+            Machine = machine ?? MachineFacts.None,
             // A temp file rather than the real Settings.UserConfigPath() -
             // otherwise every test that takes --repo would read and write the
             // machine actually running the suite.

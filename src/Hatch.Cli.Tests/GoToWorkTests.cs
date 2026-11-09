@@ -221,6 +221,45 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task The_heartbeat_carries_the_machine()
+    {
+        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch);
+        using var h = new Harness(machine: machine);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Equal(machine.Os, beat.Os);
+        Assert.Equal(machine.Arch, beat.Arch);
+        Assert.Equal(machine.AgentVersion, beat.AgentVersion);
+        Assert.Equal(machine.Container, beat.Container);
+        Assert.Equal(machine.Username, beat.Username);
+        Assert.Equal(machine.ProcessStartedAt, beat.ProcessStartedAt);
+    }
+
+    [Fact]
+    public async Task A_default_harness_sends_all_six_machine_facts_null()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.Os);
+        Assert.Null(beat.Arch);
+        Assert.Null(beat.AgentVersion);
+        Assert.Null(beat.Container);
+        Assert.Null(beat.Username);
+        Assert.Null(beat.ProcessStartedAt);
+    }
+
+    [Fact]
     public async Task A_loop_beat_carries_the_tallys_runs_and_spend_and_this_machine()
     {
         using var h = new Harness();
