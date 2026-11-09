@@ -125,10 +125,17 @@ public sealed record Runtime(
     /// model is narrowed, since an empty list clears the row's models and null
     /// would leave the stale ones.
     /// </summary>
-    public IReadOnlyList<string>? AdvertisedModels()
+    public IReadOnlyList<string>? AdvertisedModels() => Advertised(Settings, Adapter, Narrowing, Clock.GetUtcNow());
+
+    /// <summary>
+    /// <see cref="AdvertisedModels"/>'s rule without a <see cref="Runtime"/>, for
+    /// the commands that read the queue but spawn nothing.
+    /// </summary>
+    public static IReadOnlyList<string>? Advertised(
+        Settings settings, IAgentAdapter adapter, ModelNarrowing narrowing, DateTimeOffset now)
     {
-        var chosen = Settings.Models is not null && Adapter.Id == Settings.Agent ? Settings.Models : Adapter.Models;
-        return chosen.Count > 0 ? Narrowing.Offered(chosen, Clock.GetUtcNow()) : null;
+        var chosen = settings.Models is not null && adapter.Id == settings.Agent ? settings.Models : adapter.Models;
+        return chosen.Count > 0 ? narrowing.Offered(chosen, now) : null;
     }
 
     /// <summary>
@@ -199,7 +206,11 @@ public sealed record Runtime(
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous),
+        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous)
+        {
+            Models = () => AdvertisedModels() ?? [],
+            Agent = Adapter.Id,
+        },
         MakeClone = (remote, path) => new GitClone(remote, path),
     };
 }

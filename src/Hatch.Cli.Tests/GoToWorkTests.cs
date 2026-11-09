@@ -365,6 +365,56 @@ public sealed class GoToWorkTests
         }
     }
 
+    [Fact]
+    public async Task The_queue_and_work_reads_carry_the_models_this_runner_offers_and_its_agent()
+    {
+        using var h = new Harness(models: ["haiku", "sonnet"]);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        foreach (var read in reads)
+        {
+            Assert.Contains("model=haiku", read.Query);
+            Assert.Contains("model=sonnet", read.Query);
+            Assert.Contains("agent=claude", read.Query);
+            Assert.DoesNotContain("model=opus", read.Query);
+        }
+    }
+
+    [Fact]
+    public async Task With_no_models_given_the_reads_carry_everything_the_agent_offers()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var query = h.Wire.To("GET", Queue)[0].Query;
+        foreach (var alias in ModelFamilies.Aliases) Assert.Contains($"model={alias}", query);
+        Assert.Contains("agent=claude", query);
+    }
+
+    [Fact]
+    public async Task A_model_narrowed_mid_run_drops_off_the_next_read()
+    {
+        // Not through a pass: the loop loads its carried narrowing at start,
+        // which is none here, so a model narrowed beforehand is cleared.
+        using var h = new Harness();
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+
+        await h.Board.QueueAsync([], null, 0, default);
+        h.Runtime.Narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
+        await h.Board.QueueAsync([], null, 0, default);
+
+        var reads = h.Wire.To("GET", Queue);
+        Assert.Contains("model=opus", reads[0].Query);
+        Assert.DoesNotContain("model=opus", reads[1].Query);
+        Assert.Contains("model=sonnet", reads[1].Query);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -2656,6 +2706,23 @@ public sealed class GoToWorkTests
         Assert.Equal(2, h.Wire.Count("GET", Queue));
         Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_hop_declares_neither_models_nor_agent()
+    {
+        using var h = new Harness();
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        Assert.DoesNotContain("model=", call.Query);
+        Assert.DoesNotContain("agent=", call.Query);
     }
 
     [Theory]
