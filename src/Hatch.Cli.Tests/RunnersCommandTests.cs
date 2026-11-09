@@ -27,12 +27,12 @@ public sealed class RunnersCommandTests
             TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions);
 
     private static RunnerSessionDto ASession(
-        string where = "Fry:/code/hatch", string? agent = "claude", string state = "running",
-        string? claimKey = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null) =>
+        string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
+        string state = "running", string? claimKey = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null) =>
         new(
             Id: 1, Where: where, Kind: "loop", Host: null, State: state,
             StartedAt: Now - TimeSpan.FromHours(1), LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
-            EndedAt: endedAt, ClaimKey: claimKey, Agent: agent);
+            EndedAt: endedAt, ClaimKey: claimKey, Agent: agent, Os: os);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -232,8 +232,8 @@ public sealed class RunnersCommandTests
         h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
         {
             ARunner(name: "busy", sessions: [
-                ASession(where: "Fry:/code/hatch", agent: "claude", claimKey: "AER-12"),
-                ASession(where: "Leela:/code/aerie", agent: "codex", state: "paused"),
+                ASession(where: "Fry:/code/hatch", agent: "claude", os: "Darwin 23.6.0", claimKey: "AER-12"),
+                ASession(where: "Leela:/code/aerie", agent: "codex", os: "Ubuntu 22.04", state: "paused"),
             ]),
         });
 
@@ -241,8 +241,8 @@ public sealed class RunnersCommandTests
 
         var lines = h.Said.Split('\n');
         var at = Array.FindIndex(lines, l => l.StartsWith("busy", StringComparison.Ordinal));
-        Assert.Equal("  Fry:/code/hatch    claude  working", lines[at + 1]);
-        Assert.Equal("  Leela:/code/aerie  codex   paused", lines[at + 2]);
+        Assert.Equal("  Fry:/code/hatch    claude  Darwin 23.6.0  working", lines[at + 1]);
+        Assert.Equal("  Leela:/code/aerie  codex   Ubuntu 22.04   paused", lines[at + 2]);
     }
 
     [Fact]
@@ -295,7 +295,28 @@ public sealed class RunnersCommandTests
 
         var lines = h.Said.Split('\n');
         var at = Array.FindIndex(lines, l => l.StartsWith("quiet", StringComparison.Ordinal));
-        Assert.Equal("  Fry:/code/hatch  -  idle", lines[at + 1]);
+        Assert.Equal("  Fry:/code/hatch  -  Darwin 23.6.0  idle", lines[at + 1]);
+    }
+
+    [Fact]
+    public async Task A_session_with_no_os_prints_a_dash_and_its_sibling_stays_aligned()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "quiet", sessions: [
+                ASession(where: "Fry:/code/hatch", os: null),
+                ASession(where: "Leela:/code/aerie", os: "Ubuntu 22.04"),
+            ]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        var at = Array.FindIndex(lines, l => l.StartsWith("quiet", StringComparison.Ordinal));
+        var osWidth = "Ubuntu 22.04".Length;
+        Assert.Equal("  Fry:/code/hatch    claude  " + "-".PadRight(osWidth) + "  idle", lines[at + 1]);
+        Assert.Equal("  Leela:/code/aerie  claude  Ubuntu 22.04  idle", lines[at + 2]);
     }
 
     [Fact]

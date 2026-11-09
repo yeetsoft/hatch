@@ -5072,7 +5072,11 @@ exactly as they are from a review self-move.
    branch instead conflicts or its build has failed, `MergeWork.Judge`'s
    own `Pushback`/`Hold`/`Pending` kinds hold it in review exactly as they
    would an issue with no pre-approval at all — this kind never fires for
-   those.
+   those. Where a check playbook row already covers this exact move -
+   `Dispatch.ChecksInto` answering true of the same `to` and `playbook` the
+   scan already matched - this kind does not fire either: the check's own
+   plain advance already carries it, and pre-approval adds nothing past what
+   a passing check already would (HA-1592).
 7. **close** — a [pre-approved](#pre-approval) parent, or a parent in a
    project whose *A passing check approves the merge* setting is on
    ([`CheckApprovesMerge`](#project)), standing in the

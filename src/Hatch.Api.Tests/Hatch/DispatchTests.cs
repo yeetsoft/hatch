@@ -1248,6 +1248,32 @@ public class DispatchTests
         Assert.Empty(await h.Dispatch.TrainHeadsAsync(Now, default));
     }
 
+    // ---- The approve hop yields to the check (HA-1592) ----
+
+    [Fact]
+    public async Task ScanAsync_APreApprovedIssueWithACheckRowCoveringTheMove_IsNotAnApproveHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "ready, and a check also covers it", h.Review);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        await h.AddPlaybookAsync(h.Review, approved.Id, types: "story", isCheck: true);
+        await h.PreApprovedAsync(issue);
+        issue.PullRequestUrl = "https://example.com/o/r/pull/1";
+        await h.Db.SaveChangesAsync();
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        var row = RowFor(scan, issue);
+        Assert.False(row.Hop);
+        Assert.Null(row.HopKind);
+        Assert.Null(row.Blocked);
+        Assert.Equal(approved.Id, row.To!.Id);
+    }
+
     // ---- Deadlocks: the rows no pass will ever clear on its own ----
 
     private static readonly EfHatchStatus DeadlockStatus = new() { Name = "todo", SortOrder = 10 };
@@ -1610,7 +1636,7 @@ public class DispatchTests
 
         public async Task AddPlaybookAsync(
             int from, int to, string types = "", string model = "sonnet", string shape = "any",
-            int? briefLimit = null, int? projectId = null)
+            int? briefLimit = null, int? projectId = null, bool isCheck = false)
         {
             Db.Playbooks.Add(new EfHatchPlaybook
             {
@@ -1623,9 +1649,23 @@ public class DispatchTests
                 Effort = "high",
                 BriefLimit = briefLimit,
                 ProjectId = projectId,
+                IsCheck = isCheck,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             });
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task SetCheckApprovesMergeAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.CheckApprovesMerge = on;
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task PreApprovedAsync(EfHatchIssue issue)
+        {
+            issue.PreApproval = PreApprovalLevels.PreApproved;
             await Db.SaveChangesAsync();
         }
     }
