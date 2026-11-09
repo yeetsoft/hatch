@@ -13,6 +13,7 @@ import {
   patchProject,
   putProjectBindsTracker,
   putProjectCheckApprovesMerge,
+  putProjectNoCodeCloses,
   putProjectStoriesOnEpics,
   putProjectLanding,
   putProjectLogo,
@@ -30,6 +31,7 @@ import {
   openProjectDraft,
   projectBindsTrackerDiff,
   projectCheckApprovesMergeDiff,
+  projectNoCodeClosesDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
@@ -184,6 +186,7 @@ export function ProjectEditDialog({
     const repoSourcedDiff = projectRepoSourcedDiff(draft!);
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
     const checkApprovesMergeDiff = projectCheckApprovesMergeDiff(draft!);
+    const noCodeClosesDiff = projectNoCodeClosesDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
@@ -195,6 +198,7 @@ export function ProjectEditDialog({
       repoSourcedDiff === null &&
       bindsTrackerDiff === null &&
       checkApprovesMergeDiff === null &&
+      noCodeClosesDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
@@ -214,6 +218,7 @@ export function ProjectEditDialog({
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
       if (checkApprovesMergeDiff !== null) await putProjectCheckApprovesMerge(project!.id, checkApprovesMergeDiff);
+      if (noCodeClosesDiff !== null) await putProjectNoCodeCloses(project!.id, noCodeClosesDiff);
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
@@ -533,6 +538,24 @@ export function ProjectEditDialog({
             <label>
               <input
                 type="checkbox"
+                checked={draft.noCodeCloses}
+                onChange={(e) => setDraft((d) => d && { ...d, noCodeCloses: e.target.checked })}
+              />
+              A no-code declaration closes the ticket
+            </label>
+            <p className="hatch-section-hint text-muted">
+              A ticket that declared it finished with no code is carried from review to Done on the next pass, with no
+              person and no session. Off, only a pre-approved one is; the rest wait for a person.
+            </p>
+            {(project.noCodeClosesBy || project.noCodeClosesAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.noCodeClosesBy} on{' '}
+                {project.noCodeClosesAt ? new Date(project.noCodeClosesAt).toLocaleDateString() : ''}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
                 checked={draft.bindsTracker}
                 disabled={list.length === 0}
                 onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
@@ -570,6 +593,13 @@ export function ProjectEditDialog({
               {project.checkApprovesMerge ? 'A passing check approves the merge' : 'A passing check does not approve the merge'}
               {project.checkApprovesMergeBy || project.checkApprovesMergeAt
                 ? `, set by ${project.checkApprovesMergeBy ?? 'unknown'} on ${project.checkApprovesMergeAt ? new Date(project.checkApprovesMergeAt).toLocaleDateString() : 'an unknown date'}`
+                : ''}
+              .
+            </p>
+            <p>
+              {project.noCodeCloses ? 'A no-code declaration closes the ticket' : 'A no-code declaration does not close the ticket'}
+              {project.noCodeClosesBy || project.noCodeClosesAt
+                ? `, set by ${project.noCodeClosesBy ?? 'unknown'} on ${project.noCodeClosesAt ? new Date(project.noCodeClosesAt).toLocaleDateString() : 'an unknown date'}`
                 : ''}
               .
             </p>

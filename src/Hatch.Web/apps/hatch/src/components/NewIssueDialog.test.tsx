@@ -83,6 +83,9 @@ const PROJECT: Project = {
   checkApprovesMerge: false,
   checkApprovesMergeBy: null,
   checkApprovesMergeAt: null,
+  noCodeCloses: false,
+  noCodeClosesBy: null,
+  noCodeClosesAt: null,
 };
 
 const OTHER: Project = {
@@ -118,6 +121,9 @@ const OTHER: Project = {
   checkApprovesMerge: false,
   checkApprovesMergeBy: null,
   checkApprovesMergeAt: null,
+  noCodeCloses: false,
+  noCodeClosesBy: null,
+  noCodeClosesAt: null,
 };
 
 const noop = () => undefined;

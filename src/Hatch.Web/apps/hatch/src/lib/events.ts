@@ -25,7 +25,8 @@ export function describe(event: IssueEvent): string {
      crossed), and an approve or close hop carried by a pre-approval
      (WorkController's `HopKinds.Approve`/`.Close`, both writing the same
      `preapproved` flag), and a close the project's own setting made, with no
-     pre-approval behind it (`approved: 'setting'`). Beside them, and not a hop:
+     pre-approval behind it (`approved: 'setting'`), and a declared childless
+     ticket the project's no-code setting closed (`approved: 'nocode'`). Beside them, and not a hop:
      a pass WorkController's `VerdictWork` lands in the merge column, because
      the project has *A passing check approves the merge* on, carries
      `approved: 'check'` - a person never reads the ticket before it moves -
@@ -54,6 +55,9 @@ export function describe(event: IssueEvent): string {
   }
   if (event.kind === 'status_changed' && event.payload?.approved === 'setting') {
     return `${short(from)} → ${short(to)}, closed by the project's setting`;
+  }
+  if (event.kind === 'status_changed' && event.payload?.approved === 'nocode') {
+    return `${short(from)} → ${short(to)}, closed by the project's no-code setting`;
   }
   if (event.kind === 'status_changed' && event.payload?.approved === 'check') {
     return `${short(from)} → ${short(to)}, approved by a passing check`;

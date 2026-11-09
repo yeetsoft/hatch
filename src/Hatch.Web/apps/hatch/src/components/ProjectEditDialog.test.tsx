@@ -44,6 +44,9 @@ function project(overrides: Partial<Project>): Project {
     checkApprovesMerge: false,
     checkApprovesMergeBy: null,
     checkApprovesMergeAt: null,
+    noCodeCloses: false,
+    noCodeClosesBy: null,
+    noCodeClosesAt: null,
     runnerTags: [],
     ...overrides,
   };
@@ -201,6 +204,46 @@ describe('ProjectEditDialog', () => {
     const html = render(project({ canAdminister: false, checkApprovesMerge: false }));
 
     expect(html).toContain('A passing check does not approve the merge');
+  });
+
+  it('shows an owner the no-code-closes checkbox and its hint', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('A no-code declaration closes the ticket');
+    expect(html).toContain('A ticket that declared it finished with no code is carried');
+  });
+
+  it('shows an owner who set the no-code-closes flag, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        noCodeCloses: true,
+        noCodeClosesBy: 'Dana',
+        noCodeClosesAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the no-code-closes flag has never been written', () => {
+    const html = render(project({ canAdminister: true, noCodeClosesBy: null, noCodeClosesAt: null }));
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else a sentence, and no control, where a no-code declaration closes the ticket', () => {
+    const html = render(project({ canAdminister: false, noCodeCloses: true }));
+
+    expect(html).toContain('A no-code declaration closes the ticket');
+    expect(html).not.toContain('A ticket that declared it finished with no code is carried');
+  });
+
+  it('shows anyone else a sentence where a no-code declaration does not close the ticket', () => {
+    const html = render(project({ canAdminister: false, noCodeCloses: false }));
+
+    expect(html).toContain('A no-code declaration does not close the ticket');
+    expect(html).not.toContain('A ticket that declared it finished with no code is carried');
   });
 
   it('shows an owner the Board heading and the stories-on-epics checkbox', () => {
