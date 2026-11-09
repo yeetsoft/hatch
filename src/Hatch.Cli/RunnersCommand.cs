@@ -24,7 +24,8 @@ public sealed class RunnersCommand(Cli cli)
         "  none), and how long ago it last heartbeat. A row closes with the projects",
         "  it is bound to and the models it advertises, where it has any. The row",
         "  is followed by one indented line per live session beneath it: where,",
-        "  agent, state. A caller with nothing to see prints one sentence saying so.",
+        "  agent, OS, state. A caller with nothing to see prints one sentence",
+        "  saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
     ];
@@ -91,7 +92,7 @@ public sealed class RunnersCommand(Cli cli)
 
     /// <summary>
     /// One indented line per live session beneath a runner's own row - where,
-    /// agent, state, in that order, column-aligned over this runner's live
+    /// agent, OS, state, in that order, column-aligned over this runner's live
     /// sessions alone. A session is live when it carries no end and has not
     /// fallen past its runner's own gone horizon, since the in-memory provider
     /// skips the lazy <c>EndedAt</c> write the server makes on this very read.
@@ -100,7 +101,7 @@ public sealed class RunnersCommand(Cli cli)
     {
         var live = row.Sessions
             .Where(s => s.EndedAt is null)
-            .Select(s => (Where: s.Where ?? "-", Agent: s.Agent ?? "-", State: State(s.LastSeenAt, row.GoneAfterSeconds, s.ExhaustedUntil, s.State, s.ClaimKey, now)))
+            .Select(s => (Where: s.Where ?? "-", Agent: s.Agent ?? "-", Os: s.Os ?? "-", State: State(s.LastSeenAt, row.GoneAfterSeconds, s.ExhaustedUntil, s.State, s.ClaimKey, now)))
             .Where(s => s.State != "gone")
             .ToList();
 
@@ -108,9 +109,10 @@ public sealed class RunnersCommand(Cli cli)
 
         var whereWidth = live.Max(s => s.Where.Length);
         var agentWidth = live.Max(s => s.Agent.Length);
+        var osWidth = live.Max(s => s.Os.Length);
 
         foreach (var s in live)
-            yield return "  " + s.Where.PadRight(whereWidth) + "  " + s.Agent.PadRight(agentWidth) + "  " + s.State;
+            yield return "  " + s.Where.PadRight(whereWidth) + "  " + s.Agent.PadRight(agentWidth) + "  " + s.Os.PadRight(osWidth) + "  " + s.State;
     }
 
     /// <summary>
