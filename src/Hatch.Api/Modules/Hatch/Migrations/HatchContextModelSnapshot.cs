@@ -1438,6 +1438,159 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("RunnerConfigs", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchRunnerSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Agent")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("ApiKeyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("BuiltAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("Clones")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ExhaustedUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Line")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTimeOffset?>("LineAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxRuns")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("MaxSpend")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<long?>("MaxTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("MaxTokensPerHour")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool?>("Mine")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("OrderKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("OrderKind")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTimeOffset?>("OrderedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OrderedBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Projects")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("RefusesDangerous")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Remotes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Revision")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("Runs")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceRevision")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<int?>("SourceSequence")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("Spent")
+                        .HasPrecision(18, 8)
+                        .HasColumnType("numeric(18,8)");
+
+                    b.Property<bool?>("Standing")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTimeOffset?>("ThrottledUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("TokensLastHour")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("TokensUsed")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Under")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTimeOffset?>("UntilAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Usage")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("UsageReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Where")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApiKeyId", "LastSeenAt");
+
+                    b.HasIndex("ApiKeyId", "Where");
+
+                    b.ToTable("RunnerSessions", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchStatus", b =>
                 {
                     b.Property<int>("Id")
