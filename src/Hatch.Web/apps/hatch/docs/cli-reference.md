@@ -299,6 +299,10 @@ the keys space-separated. A runner bound to none ends its line as it always did.
 The Runners page writes the same list comma-separated, `projects HA, AER`; it is
 the same binding.
 
+A runner that advertises models closes its line with them after any projects,
+`  models haiku sonnet opus fable`, the ids space-separated; one that advertises
+none prints nothing extra ([the runner](the-runner#models)).
+
 ### show
 
 ```

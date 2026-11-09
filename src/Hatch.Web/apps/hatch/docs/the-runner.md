@@ -317,8 +317,24 @@ nothing written. So is a pinned id of a different agent than `HATCH_AGENT`
 (blank is `claude`): `"gpt-6-luna" is a codex model - this runner's agent is
 claude`. A bad `HATCH_MODELS` in a file or the environment refuses every
 command with the same sentence, after `hatch: HATCH_MODELS -`. It is
-machine-bound, so a profile still reads it from the per-user file. The
-setting is only recorded here; nothing is sent to the board yet.
+machine-bound, so a profile still reads it from the per-user file.
+
+**What the default is.** Unset, a runner advertises what its agent can spawn:
+for claude, codex and grok the four aliases, `haiku sonnet opus fable`; for
+ollama the ids its aliases are mapped to (`HATCH_OLLAMA_TIERS`), in alias order, then
+the models its server has pulled, sorted, up to 100. An ollama runner with
+nothing mapped and nothing pulled advertises none. A pulled name that is not a
+valid Ollama id (`name:tag`) is left out rather than refusing the beat.
+
+**`HATCH_MODELS` overrides the default only for its own agent.** It was
+checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
+agent advertises that agent's default instead of a list that would be refused.
+
+**Every heartbeat writes the list.** Unlike tags, the board does not own it:
+the row carries whatever the last beat said, so changing `HATCH_MODELS` or
+pulling a model on an ollama server shows on the next heartbeat. A runner that
+has nothing to advertise sends none and leaves the row's list as it was.
+`hatch runners` closes a row with `  models haiku sonnet`.
 
 ## What a runner refuses
 

@@ -382,6 +382,43 @@ public sealed class OllamaAdapterTests : IDisposable
     private static TagsWire Pulled(string name = Pinned) => new(body: $$"""{"models":[{"name":"{{name}}"}]}""");
 
     [Fact]
+    public void Models_are_the_mapped_ids_in_alias_order_then_the_pulled_ones_sorted()
+    {
+        // Through the interface, so the override is proven to be the one an
+        // IAgentAdapter caller reaches rather than the aliases default.
+        IAgentAdapter adapter = Adapter(
+            tiers: new Dictionary<string, string?> { ["opus"] = "big:70b", ["haiku"] = "tiny:1b" },
+            wire: new TagsWire(body: """{"models":[{"name":"zeta:1b"},{"name":"alpha:1b"},{"name":"tiny:1b"}]}"""));
+
+        Assert.Equal(["tiny:1b", "big:70b", "alpha:1b", "zeta:1b"], adapter.Models);
+    }
+
+    [Fact]
+    public void Models_drop_a_pulled_name_the_API_would_refuse()
+    {
+        IAgentAdapter adapter = Adapter(wire: new TagsWire(body: """{"models":[{"name":"has space:7b"},{"name":"llama3:8b"}]}"""));
+
+        Assert.Equal(["llama3:8b"], adapter.Models);
+    }
+
+    [Fact]
+    public void Models_before_the_list_was_read_are_only_the_mapped_ids()
+    {
+        IAgentAdapter adapter = new OllamaAdapter(
+            tiers: new Dictionary<string, string?> { ["sonnet"] = Pinned }, handler: new TagsWire());
+
+        Assert.Equal([Pinned], adapter.Models);
+    }
+
+    [Fact]
+    public void Models_with_nothing_mapped_and_nothing_pulled_are_empty()
+    {
+        IAgentAdapter adapter = Adapter();
+
+        Assert.Empty(adapter.Models);
+    }
+
+    [Fact]
     public void CanServe_a_pinned_id_in_the_pulled_list_is_true()
     {
         IAgentAdapter adapter = Adapter(wire: Pulled());
