@@ -15,6 +15,9 @@ public interface IAgentAdapter
     /// <summary>What a person reads where <see cref="Id"/> would read as code.</summary>
     string DisplayName { get; }
 
+    /// <summary>The binary this agent spawns, resolved without side effects, or null where it has none.</summary>
+    string? Executable => null;
+
     /// <summary>
     /// Whether there is anything to spawn, and the sentence saying why not.
     /// Asked before a claim is taken: an increment that cannot start should not

@@ -334,4 +334,16 @@ public sealed class CodexAdapterTests : IDisposable
         Assert.Equal("gpt-7-nova", refusal!.Value.Model);
         Assert.Null(refusal.Value.ResetAt);
     }
+
+    [Fact]
+    public void Executable_is_the_configured_binary_when_it_exists()
+    {
+        Assert.Equal(_bin, new CodexAdapter(_bin).Executable);
+    }
+
+    [Fact]
+    public void Executable_is_null_for_a_configured_path_that_does_not_exist()
+    {
+        Assert.Null(new CodexAdapter("/does/not/exist").Executable);
+    }
 }
