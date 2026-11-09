@@ -1340,6 +1340,11 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         var session = found.FirstOrDefault(w => w.Window == "session");
                         lastProbedResetsAt = session?.ResetsAt;
                         tally.CorrectExhausted(session);
+                        var spentAt = runtime.Clock.GetUtcNow();
+                        foreach (var (model, resetsAt) in ModelNarrowing.Spent(found, spentAt))
+                        {
+                            if (runtime.Narrowing.Narrow(model, resetsAt, spentAt)) SayNarrowed(model, resetsAt);
+                        }
                         runtime.Say.Line(session is not null
                             ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
                             : "hatch: probe found no session window");
@@ -2376,6 +2381,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         runtime.Say.Line($"hatch:   {named}");
         runtime.Say.Line($"hatch:   {tally.SoFar()}");
     }
+
+    /// <summary>Say once that a model has left this runner's list, and until when.</summary>
+    private void SayNarrowed(string model, DateTimeOffset? until) =>
+        runtime.Say.Line(until is { } at
+            ? $"hatch: {model} is off this runner's list until {UsageLimit.Clock(at, known: true, runtime.Clock)}"
+            : $"hatch: {model} is off this runner's list for the rest of this run");
 
     private async Task<bool> SayQuietlyAsync(
         SaidOnce paced, DateTimeOffset now, int interval, bool once,
