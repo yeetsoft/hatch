@@ -423,6 +423,61 @@ whose project needs a dependency this runner's set does not satisfy is folded
 for it with the board's own sentence, printed unchanged: `AER-1 needs dotnet
 10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8`. So a
 runner never claims a ticket only to find its machine cannot run it.
+[What a repository needs](#what-a-repository-needs) says where that need is
+written.
+
+## What a repository needs
+
+**The file.** A repository says what a build of it needs in
+`.hatch/dependencies.json` on the trunk of each repository a project binds. The
+shape is `{"dependencies": [ ... ]}`, and an entry is an id string or
+`{"id": ..., "version": ...}`. The ids are the master list - `make`, `dotnet`,
+`node`, `playwright-browsers`, `postgres`, `pwsh` - each declared once. A
+version is one to three dotted whole numbers, and it is met by any detected
+version whose leading components equal it: `10` is met by `10.0.100`, `22.11` is
+not met by `22.10.0`, and `22` means 22.x, not 22 or newer. A need the list
+lacks is a runner tag instead ([What a runner
+advertises](#what-a-runner-advertises)).
+
+**Where it is read.** The runner's poll reads the blob off the trunk through
+git, beside `.hatch/playbooks.yaml`, and reports it to `PUT
+/api/hatch/dependency-files` ([API reference](api-reference#dependency-files));
+the board parses the bytes itself. A project's need is the union over every
+repository it binds.
+
+**What it gates.** Development steps only: out of the implementation column, and
+the review self-move while it is conflict or build work. Never a hop, never the
+move into the implementation column, and never breakdown or analysis, which read
+a repository and do not build it. A runner that falls short is folded with the
+sentence quoted under [Has](#has).
+
+**An invalid file.** An invalid file folds the project's development steps with
+*"acme/repo's .hatch/dependencies.json is invalid at <sha> (<problem>) - fix it
+on the trunk"*. An absent file, or one no runner has read yet, folds nothing, so
+a repository that has not opted in is exactly as it was.
+
+**On the Projects page.** In Manage, Projects, editing a project shows what the
+board knows beside each bound repository: *needs dotnet 10, node 22, ...*,
+*declares no dependencies*, or *no runner has read its declaration yet*. An
+invalid file shows its problem and *last good sha* with the short sha where one
+parsed, and a **File** chip to the blob.
+
+**This repository's own file** is the worked example:
+
+```json
+{
+  "dependencies": [
+    "make",
+    { "id": "dotnet", "version": "10" },
+    { "id": "node", "version": "22" },
+    { "id": "pwsh", "version": "7" },
+    "playwright-browsers",
+    "postgres"
+  ]
+}
+```
+
+The Makefile's header comment points at it, so the two move together.
 
 ## What a runner refuses
 
