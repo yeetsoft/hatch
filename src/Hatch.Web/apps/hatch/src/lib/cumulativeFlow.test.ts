@@ -16,7 +16,6 @@ import {
   slots,
   stackAt,
   tallestTotal,
-  toggleProject,
   withColourBy,
 } from './cumulativeFlow';
 import { statusVars } from './color';
@@ -327,28 +326,11 @@ const projects = [
 ] as Project[];
 const allKeys = projects.map((p) => p.key);
 
-describe('toggleProject', () => {
-  it('adds a key that is absent, ordered by allKeys', () => {
-    expect(toggleProject(['HA'], 'PYC', allKeys)).toEqual(['HA', 'PYC']);
-  });
-
-  it('removes a key that is present', () => {
-    expect(toggleProject(['HA', 'AER'], 'HA', allKeys)).toEqual(['AER']);
-  });
-
-  it('leaves the last one checked unchanged, never emptying the chosen set', () => {
-    expect(toggleProject(['HA'], 'HA', allKeys)).toEqual(['HA']);
-  });
-
-  it('adds one back after it was toggled off', () => {
-    const one = toggleProject(allKeys, 'AER', allKeys);
-    expect(one).toEqual(['HA', 'PYC']);
-
-    expect(toggleProject(one, 'AER', allKeys)).toEqual(allKeys);
-  });
-});
-
 describe('projectsSummary', () => {
+  it('is None when no project is chosen', () => {
+    expect(projectsSummary([], projects)).toBe('None');
+  });
+
   it('is All when every project is chosen', () => {
     expect(projectsSummary(allKeys, projects)).toBe('All');
   });
