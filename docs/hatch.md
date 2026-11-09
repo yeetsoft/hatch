@@ -3140,10 +3140,16 @@ why it stops at exactly one.
 `EfApiKey` — `Name` (unique), `Prefix`, `Hash`,
 `CreatedAt`, `LastUsedAt`, `RevokedAt`.
 
+An `EfApiKey` is what a runner *is*. The board's settings for it live in
+`RunnerConfigs`, in the `hatch` schema, carrying the key's `ApiKeyId` with no
+foreign key, because the key is in core. The secret is shown once, when an
+admin creates the runner.
+
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
 letters and digits only because a key is copied through shells, YAML and JSON
 and every one of those has an opinion about punctuation. It is shown **exactly
-once**, at mint, on the admin app's **API keys** page.
+once**, at mint, in the response to `POST /api/hatch/runners`, which the admin
+app's **API keys** page makes.
 
 The `hatch_ak_` prefix is not decoration. It is there so that a string pasted
 into a config file, a log line or a commit is recognisable as a Hatch
@@ -8539,6 +8545,14 @@ has minted one, so "the wall is on" stands for "an admin has claimed this
 Hatch". `Dispatch`, `DriversAsync`, `HeldAsync` and the attention read are
 unscoped on purpose: they read the `Runners` table, not the route, and the
 filter is on the route only.
+
+**The runner is a key; the heartbeat is a bridge.** `GET /api/hatch/runners`
+joins three things: the key (`EfApiKey`), its config (the `RunnerConfigs` row,
+by the key's id) and the heartbeat row (the `Runners` table, by name). A key
+that has never run is listed, and is not live. A heartbeat no key claims is
+listed too, with its key fields null. `?live=true` keeps only the entries whose
+heartbeat is not past `Runners.DropBefore`. HA-1937 retires the `Runners` table
+for sessions, and with it this join by name.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,
