@@ -793,7 +793,14 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Recused = "recused";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused;
+    /// <summary>
+    /// The runner's model could not be spawned (it was refused). The increment
+    /// neither stalled nor did work, so <c>LetGo</c> steps over it as over
+    /// <see cref="Preempted"/>.
+    /// </summary>
+    public const string Unservable = "unservable";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused or Unservable;
 }
 
 /// <summary>
