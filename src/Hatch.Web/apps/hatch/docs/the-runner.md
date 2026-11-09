@@ -340,7 +340,10 @@ agent advertises that agent's default instead of a list that would be refused.
 **A runner can stop offering a model for a while.** Until a time, or for the
 rest of the run, a narrowed model is left off the list the beat sends, whatever
 `HATCH_MODELS` or the agent's default says, and it is back once the time
-passes. A supervisor restart keeps what is narrowed; a fresh start forgets it.
+passes. A per-model weekly window the `/usage` probe finds spent narrows that
+model until the window resets, and the terminal says so once:
+`hatch: opus is off this runner's list until …`. A supervisor restart keeps what is
+narrowed; a fresh start forgets it.
 Where every model is narrowed the beat sends an empty list, which clears the
 row's models, rather than none, which would leave the last list standing.
 
