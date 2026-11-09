@@ -47,6 +47,9 @@ without the flag.
 | `depends` | No | Only with a second key |
 | `one-pr` | No | Only with `on`, `off` or `inherit` |
 | `dangerous` | No | Only with a reason or `--clear` |
+| `omit` | No | Only with a runner and reason, or `--lift` |
+| `recuse` | No | Yes: omits this runner's own name |
+| `dream` | No | Yes: adds a dream |
 | `ask` | No | Yes: adds a question |
 | `questions` | No | No |
 | `answer` | No | Yes: answers a question |
@@ -73,7 +76,7 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
               | --repo <path>... | --tag <tag>... | --workspace <dir>
-              | --log on|<dir>|off | --dangerous on|off]
+              | --models <model>... | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -118,6 +121,13 @@ header instead. Never put it in a repository, either way.
   row once and the row is the board's after that, so it changes nothing for a
   runner that already has one ([the runner](the-runner#what-a-runner-refuses)).
   Any other value is refused, with nothing written.
+- `--models <model>...` writes `HATCH_MODELS`, the models this runner
+  advertises. Give each its own `--models` (`--models haiku --models sonnet`);
+  a bare `--models` clears them and the agent's default stands. Each is an alias
+  (`haiku`, `sonnet`, `opus`) or a pinned id of `HATCH_AGENT`'s agent, at most
+  100, trimmed and deduplicated. One that is neither, one of another agent, or a
+  comma inside one (`--models haiku,sonnet`) is refused, naming it, with nothing
+  written ([the runner](the-runner#models)).
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
@@ -253,7 +263,9 @@ hatch changelog [--days <n>] [--before <date>] [--project <KEY>] [--json]
 
 What shipped, as markdown: a heading per day, a bullet per feature carrying how
 much shipped beneath it, and an *Also* list of that day's fixes. A window with
-nothing in it prints one sentence saying so. It writes nothing.
+nothing in it prints one sentence saying so. It writes nothing. This is the
+agent-facing feed, unchanged; the web view is the Changelog report under
+Reports.
 
 - `--days <n>` is the newest *n* days that shipped something, not the last *n*
   calendar days. Seven by default.
@@ -287,6 +299,10 @@ the keys space-separated. A runner bound to none ends its line as it always did.
 The Runners page writes the same list comma-separated, `projects HA, AER`; it is
 the same binding.
 
+A runner that advertises models closes its line with them after any projects,
+`  models haiku sonnet opus fable`, the ids space-separated; one that advertises
+none prints nothing extra ([the runner](the-runner#models)).
+
 ### show
 
 ```
@@ -299,7 +315,7 @@ description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that
 ancestor. A ticket that requires a runner tag says so too, naming the project or
-the ancestor issue each tag beyond its own came from. None of those can be set from here: the key is a key, and each is a
+the ancestor issue each tag beyond its own came from. A ticket with omitted runners lists each one with its reason, who omitted it and how long ago, in the shape `hatch omit AER-12` reads, with `(from AER-3)` on one an ancestor carries, and says nothing of them when there are none. None of those can be set from here: the key is a key, and each is a
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it
 is doing - drawn from the ticket itself, so it shows for any holder and is
@@ -473,6 +489,62 @@ is refused and calls nothing, so clearing is always said as `--clear`. Open to
 a key. A task inherits the flag of the story or epic above it, and `hatch show`
 prints the reason with `(from AER-5)` after it when it is not the issue's own;
 it prints nothing for an issue that is not flagged.
+
+### omit
+
+```
+hatch omit AER-12 [<runner> "reason" | --lift <runner>]
+```
+
+The runners kept off an issue's work. With only the key it reads: each
+runner omitted, its reason, who omitted it and how long ago, or
+`omitted runners: none`. With more it writes:
+
+- `<runner> "reason"` omits that runner from the issue.
+- `--lift <runner>` lifts the issue's own omission of that runner.
+
+The reason is required, and is at most 200 characters, measured after
+trimming; a missing or blank one is refused and calls nothing. A task inherits
+the omissions of the story or epic above it, and the read names each one with
+`(from AER-3)` after it. An inherited omission is lifted on the ticket that
+carries it: asked of the task, `--lift` prints the refusal naming that ticket.
+Open to a key.
+
+### recuse
+
+```
+hatch recuse AER-12 "reason"
+```
+
+What a session calls on its way out: `omit` for this checkout's own runner
+name, the one `hatch config --show` prints. It makes the same write `omit`
+does, and says what it recorded: `recused <runner> from AER-12: <reason>`.
+
+The reason is required, and is at most 200 characters, measured after
+trimming; a missing, blank or overlong one is refused and calls nothing, and
+so is a checkout with no runner name. The dispatcher never hands the issue to
+this runner again, and neither does it hand it any task below the issue. Lift
+it with `hatch omit AER-12 --lift <runner>`. Open to a key.
+
+### dream
+
+```
+hatch dream "<words>" [--source <ref>] [--project AER]
+```
+
+Puts a half-thought on the Dream Board, the one a ticket is not yet the right
+shape for. The words are markdown, quoted as one argument, and are posted
+exactly as written after trimming. `--source` is free text saying where the
+dream came from: a session id, a URL. `--project` is a lean, not a home: the
+project key the dream points toward. A key nobody has is refused before any
+call is made, naming the key it could not find.
+
+The author is the key's name, set by the server and not by the command. It
+says what it posted: `posted dream <id> as <author>`. The dream appears on the
+Dreams screen at once, with its source beside it. A missing or blank set of
+words, a second bare argument and a flag `dream` does not take are refused and
+call nothing; the server's own refusal, a length cap for one, reaches the
+terminal as it is. Open to a key.
 
 ### ask
 
@@ -723,7 +795,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | Code | Meaning |
 |---|---|
 | `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, it was interrupted, or the `--mine` key belongs to nobody. |
-| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
+| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, a bad `HATCH_MODELS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
 | `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |

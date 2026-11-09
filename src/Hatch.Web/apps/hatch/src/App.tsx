@@ -1,5 +1,5 @@
-import { Fragment } from 'react';
-import { NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Fragment, useEffect } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Menu, TopBar } from '@hatch/ui';
 import './App.css';
 import { AttentionProvider } from './components/AttentionProvider';
@@ -13,12 +13,15 @@ import { NavUtilization } from './components/NavUtilization';
 import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
+import { ScopeControl } from './components/ScopeControl';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
+import { DreamsPage } from './pages/DreamsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SearchPage } from './pages/SearchPage';
 import { TimelinePage } from './pages/TimelinePage';
 import { CumulativeFlowPage } from './pages/CumulativeFlowPage';
+import { ChangelogReportPage } from './pages/ChangelogReportPage';
 import { LeaderboardPage } from './pages/LeaderboardPage';
 import { IssueRoute } from './pages/IssueRoute';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -31,12 +34,14 @@ import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
 import { OvernightPage } from './pages/OvernightPage';
-import { ChangelogPage } from './pages/ChangelogPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
 import { MeProvider, useMe } from './lib/useMe';
+import { scopedPath, scopeTitle } from './lib/scope';
+import { ScopeProvider, useScope } from './lib/useScope';
+import { hasMultipleProjects } from './lib/useProjects';
 import { HOME, HOME_LABEL, navRows } from './lib/nav';
 import { usePhone } from './lib/viewport';
 import { usePullToRefresh } from './lib/usePullToRefresh';
@@ -46,7 +51,9 @@ export function App() {
     <MeProvider>
       <AttentionProvider>
         <OvernightProvider>
-          <AppShell />
+          <ScopeProvider>
+            <AppShell />
+          </ScopeProvider>
         </OvernightProvider>
       </AttentionProvider>
     </MeProvider>
@@ -58,6 +65,15 @@ function AppShell() {
   const isPhone = usePhone();
   const location = useLocation();
   const pull = usePullToRefresh();
+  // ScopeProvider has already loaded the project list; a second useProjects()
+  // here would be a second fetch.
+  const { keys, allProjects, setScope } = useScope();
+
+  // The only document.title write in the app. `keys` keeps its identity until
+  // the scope changes, so this runs on a change of scope and not on a render.
+  useEffect(() => {
+    document.title = scopeTitle(keys);
+  }, [keys]);
 
   return (
     /* Above <Routes> and inside the router: a confirmation chicklet is raised
@@ -69,7 +85,7 @@ function AppShell() {
         <PullToRefresh {...pull} />
         <TopBar
           appName="Hatch"
-          homeHref={appHref(HOME)}
+          homeHref={appHref(scopedPath(HOME, keys))}
           /* The bar has no Board link: the logo is the way home, so it is
              named for where it goes and lit on the board. */
           homeLabel={HOME_LABEL}
@@ -77,8 +93,17 @@ function AppShell() {
           width="full"
           /* Below the phone breakpoint PrimaryNav is absent rather than
              hidden by CSS - its triggers must not sit in the tab order when
-             the same pages are reached from the gear's panel instead. */
-          leading={isPhone ? undefined : <PrimaryNav tone="accent" />}
+             the same pages are reached from the gear's panel instead. The
+             scope control goes with it: on a phone it is the strip under
+             the bar, below. */
+          leading={
+            isPhone ? undefined : (
+              <>
+                <PrimaryNav tone="accent" />
+                <ScopeControl projects={allProjects} keys={keys} onChange={setScope} />
+              </>
+            )
+          }
           trailing={
             <>
               {/* What the bar says about this session rather than about the
@@ -144,13 +169,23 @@ function AppShell() {
           }
         />
 
+        {/* Gated here as well as inside ScopeControl: the strip has padding, so
+            ungated it would draw an empty band on a one-project install. */}
+        {isPhone && hasMultipleProjects(allProjects) && (
+          <div className="hatch-scope-strip">
+            <ScopeControl projects={allProjects} keys={keys} onChange={setScope} />
+          </div>
+        )}
+
         <main className="hatch-content">
           <Routes>
             <Route path="/" element={<BoardPage />} />
             <Route path="/plan" element={<PlanPage />} />
+            <Route path="/dreams" element={<DreamsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/timeline" element={<TimelinePage />} />
             <Route path="/reports/cumulative-flow" element={<CumulativeFlowPage />} />
+            <Route path="/reports/changelog" element={<ChangelogReportPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/bulk" element={<BulkPage />} />
@@ -159,7 +194,7 @@ function AppShell() {
             <Route path="/playbooks" element={<PlaybooksPage />} />
             <Route path="/runners" element={<RunnersPage />} />
             <Route path="/overnight" element={<OvernightPage />} />
-            <Route path="/changelog" element={<ChangelogPage />} />
+            <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/issues/:key" element={<IssueRoute />} />
             <Route path="/import" element={<ImportPage />} />

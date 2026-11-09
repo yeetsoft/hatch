@@ -22,8 +22,8 @@ import { hasMultipleProjects } from '../lib/useProjects';
  *
  * A browser's first visit opens the board on every type (DEFAULT_FILTER); after
  * that it opens on the types last chosen there, and Reset returns to the
- * default. The last type drawn cannot be switched off, so the board never goes
- * blank from a checkbox.
+ * default. None is a choice too: it leaves the board blank on purpose, and the
+ * bar says so.
  */
 export function BoardFilters({
   filter,
@@ -33,6 +33,7 @@ export function BoardFilters({
   cards,
   showing,
   total,
+  scoped = false,
   collapsed = false,
   leading,
   trailing,
@@ -44,11 +45,15 @@ export function BoardFilters({
   cards: IssueCard[];
   /** The assignees this board actually has cards for - see assigneeFacets. */
   assignees: Assignee[];
-  /** The projects on the board - see BoardPage's getProjects read. */
+  /** The projects to offer - under a scope, the ones it names rather than
+      every project; see BoardPage's `offered`. */
   projects: Project[];
   /** How many cards survive the filter, and how many there are - the count is the only feedback a search box gives. */
   showing: number;
   total: number;
+  /** A scope is narrowing `projects` already, so the picker's empty choice
+      reads "All in scope" rather than "All projects". */
+  scoped?: boolean;
   /** Folds everything past the search box behind a "Filters" disclosure - the
       phone row (BoardPage, AC1): the search box and the toggle are what a
       phone user reaches for first, and the rest is one press away rather
@@ -75,7 +80,7 @@ export function BoardFilters({
           lit={filter.project !== ''}
           value={filter.project}
           options={[
-            { value: '', text: 'All projects', short: 'All' },
+            { value: '', text: scoped ? 'All in scope' : 'All projects', short: 'All' },
             ...projects.map((project) => ({
               value: project.key,
               text: `${project.key} — ${project.name}`,

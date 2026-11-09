@@ -14,6 +14,11 @@ const REPORTS: { to: string; title: string; answers: string }[] = [
     title: 'Cumulative flow',
     answers: 'How much work sat in each column over time, and where it is piling up.',
   },
+  {
+    to: '/reports/changelog',
+    title: 'Changelog',
+    answers: 'What landed in each day, week or month, at the level a stakeholder reads.',
+  },
 ];
 
 /** The front door to the Reports area: a card per report, each a link in. */

@@ -74,16 +74,17 @@ on this page.
 
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
-runs, the agent it runs, its build - a short sha and how long ago, or
-`dev build` for one that hasn't been stamped - what it drives, and the
-repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
-not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert** - and an Order
+runs, the agent it runs, the models it offers, its build - a short sha and how
+long ago, or `dev build` for one that hasn't been stamped - what it drives, and
+the repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
+not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), **Refuse dangerous work** (a checkbox), with **Save bounds** and **Revert**.
+**Refuse dangerous work** stops the board handing that runner an issue flagged
+dangerous (see [`hatch dangerous`](cli-reference#dangerous) for the flag). It
+starts from the loop's `HATCH_DANGEROUS` setting, and from then on this checkbox
+is the one that counts; a change reaches a running loop on its next heartbeat.
+The row also carries an Order
 control: a box for a ticket
-key with **Work this ticket**, and **Run one pass**. **Refuse dangerous work** stops
-the board handing that runner an issue flagged dangerous (see
-[`hatch dangerous`](cli-reference#dangerous) for the flag). It starts from the
-loop's `HATCH_DANGEROUS` setting, and from then on this checkbox is the one that
-counts; a change reaches a running loop on its next heartbeat. The loop takes an order at
+key with **Work this ticket**, and **Run one pass**. The loop takes an order at
 its next heartbeat, paused or running, then returns to what its state says.
 A press only records what the board wants:
 the runner reads it between increments, at its next heartbeat, never in the
@@ -101,6 +102,12 @@ The two token boxes take a token count, like `500k` or `2M`, and show it back
 as `500,000` when you leave the box. Empty clears the cap. A value that is not
 a token count blocks **Save bounds**. When the board refuses a value, the
 refusal appears under the field it names.
+
+**The two defaults a runner inherits when it holds no cap of its own** are
+set on Settings, by an admin only - with the wall off, anyone at the
+keyboard. A runner with none of its own runs under them, which is the
+`(default)` marker in Bounds and Token budget above, and the empty, hinted
+field below.
 
 A box reading the site default rather than a cap of its own shows empty, not
 the number it inherits - saving with no edit leaves it inheriting, rather
@@ -163,14 +170,17 @@ reader opens the Overnight page - for that reader alone, not board-wide.
 
 ## Leaderboard
 
-**Agents → Leaderboard** is every session's work-log row, board-wide. Pick a
-range - **Last 24 hours**, **Today**, **Last 7 days**, **Last 14 days**
-(the default), **Last 30 days**, or a pasted window - and narrow it to one
-issue and everything beneath it. Below the controls sit a spend-over-time
-graph, a **Top billing** list of the costliest sessions in the window, and a
-table of every session in it, sortable by tokens, requests, peak context,
-notional USD or when it ran. Nothing on this page writes - there is no
-control that could, and the server refuses a browser outright.
+**Agents → Leaderboard** is every session's work-log row, board-wide unless
+scoped. Pick a range - **Last 24 hours**, **Today**, **Last 7 days**, **Last
+14 days** (the default), **Last 30 days**, or a pasted window - and narrow it
+to one issue and everything beneath it. Below the controls sit a
+spend-over-time graph, a **Top billing** list of the costliest sessions in the
+window, and a table of every session in it, sortable by tokens, requests,
+peak context, notional USD or when it ran. Nothing on this page writes - there
+is no control that could, and the server refuses a browser outright. Under a
+scoped tab the graph, the list and the table all cover only sessions run
+against issues of the projects in scope, and the issue filter offers only
+those issues.
 [What a session is told](what-a-session-is-told#the-work-log-block) says what
 goes into one of these rows in the first place.
 
@@ -180,7 +190,17 @@ goes into one of these rows in the first place.
 History, and opens on a card per report. **Timeline** answers when each top-level epic was in flight,
 and how long its work sat in each column, drawn in the board's own column
 colours; **Cumulative flow** shows how much work sat in each column over time,
-and where it is piling up. A ticket counts as in flight while it stands in any
+and where it is piling up; **Changelog** lists what landed, bucketed by the
+hour, day, week or month, at the level a stakeholder reads - epics, or the
+stories under them. Cumulative flow carries its own **Projects**
+control (drawn only where there is more than one project) - a checkbox per
+project rather than the Timeline's one at a time - so the scope can be
+narrowed to some of the projects, not just none or all; beside it, a
+**Colour by** control (also drawn only where there is more than one project)
+cuts the same stack by project instead of by column. Hovering a row of
+**Projects** shows **Only**, which keeps that project alone (on a touch screen
+it is always shown). A ticket counts as in
+flight while it stands in any
 column after the first that is neither done nor parked - the first column is
 where work waits, a done column is where it ended, and a parked one is a
 siding, so a stretch in any of the three is a gap in the drawing.
@@ -193,11 +213,41 @@ list appears beside the controls naming each one, with **Show** beside it and **
 all** beneath, and what is hidden is remembered for this browser only, never
 for anybody else looking at the same board.
 
+The Changelog opens on the last two weeks, not ninety days, with the same
+window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**
+(drawn only where there is more than one) is a checkbox per project, as in
+Cumulative flow. **Bucket** - hour, day, week or month, day to begin with -
+sets how finely the window is cut: each bucket is a section headed by its own
+date, and a stretch with nothing in it between two buckets is a line, "Quiet
+from" one date "to" another. **Level** picks what a bucket holds, and the page
+opens on story: each epic that had stories close in the bucket is a heading,
+marked **Completed** where the epic itself closed there, with its stories
+beneath; at epic, each epic closed is a card. **Loose** is off to begin with;
+on, an **Also landed** list under each bucket adds the bugs and the stories
+with no epic that closed, at either level, with an emergency-priority one
+tinted. A window in which nothing landed says so. Every control writes itself
+to the address bar, leaving out what is still its default, so the address can
+be sent to somebody and opens on the same answer, and Back is not walked
+through each change.
+
+**Copy as Markdown**, beside the controls, puts the whole loaded answer on the
+clipboard - a `##` heading per bucket; at epic level a bullet per epic, its key
+a link, its title and how much sat beneath; at story level a bullet per epic,
+`(completed)` where it closed there, with its stories nested beneath. With
+**Loose** on, an `Also landed` heading, a `###` under its bucket, and a bullet
+per entry, an emergency one marked **Emergency**. Each key links to the issue
+on the Hatch the reader was on, and a quiet gap is left out. A window in which
+nothing landed pastes the same words the page shows. The button is not drawn
+where the browser has no clipboard access, and a copy the browser refuses is
+said so on the button itself.
+
 ## History and the work log
 
 These are two different things. **Track → History** is every event across
 every project, newest first, a hundred to a page, each one naming when it
-happened, the issue, what happened, who did it and what changed.
+happened, the issue, what happened, who did it and what changed. Under a
+scoped tab it lists only the events of the projects in scope, and paging walks
+those rows.
 [People, roles and keys](people-roles-and-keys) says who a key or a person
 can be.
 

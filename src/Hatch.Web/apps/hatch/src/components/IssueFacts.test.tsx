@@ -44,6 +44,8 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,
@@ -152,6 +154,7 @@ describe('IssueFacts', () => {
     expect(html).not.toContain('Stories at once');
     expect(html).not.toContain('Runner tags');
     expect(html).not.toContain('Dangerous');
+    expect(html).not.toContain('Omitted runners');
   });
 
   it('draws a Runner tags field with the union sentence when runnerTags is non-empty', () => {
@@ -173,5 +176,29 @@ describe('IssueFacts', () => {
 
     expect(html).toContain('Dangerous');
     expect(html).toContain('load-tests the API · inherited from HA-1');
+  });
+
+  it('draws an Omitted runners field with the reason for an own omission', () => {
+    const html = render(
+      issue({
+        omittedRunners: [{ runner: 'ci-box', reason: 'flaky disk', by: 'Pam Beesly', at: '2026-01-01T00:00:00Z', fromKey: null }],
+      }),
+    );
+
+    expect(html).toContain('Omitted runners');
+    expect(html).toContain('ci-box');
+    expect(html).toContain('flaky disk');
+    expect(html).not.toContain('from ');
+  });
+
+  it('names the source ticket when an omission is inherited', () => {
+    const html = render(
+      issue({
+        omittedRunners: [{ runner: 'ci-box', reason: null, by: 'ci-box', at: '2026-01-01T00:00:00Z', fromKey: 'AER-9' }],
+      }),
+    );
+
+    expect(html).toContain('ci-box');
+    expect(html).toContain('from AER-9');
   });
 });

@@ -78,4 +78,96 @@ public class ModelFamiliesTests
             ModelFamilies.Default.Rows.Where(r => r.Agent != agent),
             r => Assert.DoesNotMatch(r.Pattern, model));
     }
+
+    [Fact]
+    public void Refusal_IsTheSentenceAPlaybookModelHasAlwaysBeenRefusedWith()
+    {
+        Assert.Equal(
+            "a model is one of haiku, sonnet, opus, fable, " +
+            "or a pinned id of a supported agent (claude-opus-5 for claude; gpt-6-luna for codex; " +
+            "grok-4.7 for grok; qwen3-coder:30b for ollama) - not \"nonsense-1\"",
+            ModelFamilies.Default.Refusal("nonsense-1"));
+    }
+
+    [Fact]
+    public void Normalise_AbsentTouchesNothing()
+    {
+        Assert.Null(RunnerModels.Normalise(null, "claude", out var normalised));
+        Assert.Empty(normalised);
+    }
+
+    [Fact]
+    public void Normalise_LowercasesAnAliasAndKeepsAPinnedIdOfTheRunnersAgent()
+    {
+        Assert.Null(RunnerModels.Normalise([" Opus ", "SONNET", "claude-opus-5"], "claude", out var normalised));
+        Assert.Equal(["opus", "sonnet", "claude-opus-5"], normalised);
+    }
+
+    [Fact]
+    public void Normalise_RefusesAnotherAgentsIdWithTheWrongFamilySentence()
+    {
+        var refusal = RunnerModels.Normalise(["gpt-6-luna"], "claude", out var normalised);
+
+        Assert.Equal("\"gpt-6-luna\" is a codex model - this runner's agent is claude", refusal);
+        Assert.Empty(normalised);
+        Assert.Equal(
+            "\"claude-opus-5\" is a claude model - this runner's agent is ollama",
+            RunnerModels.Normalise(["claude-opus-5"], "ollama", out _));
+        Assert.Equal(
+            "\"grok-4.7\" is a grok model - this runner's agent is claude",
+            RunnerModels.Normalise(["grok-4.7"], "claude", out _));
+        Assert.Equal(
+            "\"claude-opus-5\" is a claude model - this runner's agent is codex",
+            RunnerModels.Normalise(["claude-opus-5"], "codex", out _));
+    }
+
+    [Fact]
+    public void Normalise_RefusesAnUnrecognisedIdWithTheModelSentence()
+    {
+        Assert.Equal(
+            ModelFamilies.Default.Refusal("nonsense-1"),
+            RunnerModels.Normalise(["opus", "nonsense-1"], "claude", out var normalised));
+        Assert.Empty(normalised);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalise_RefusesABlankEntry(string blank)
+    {
+        Assert.Equal("a model cannot be blank", RunnerModels.Normalise(["opus", blank], "claude", out _));
+    }
+
+    [Fact]
+    public void Normalise_DropsDuplicatesAndKeepsTheOrderGiven()
+    {
+        Assert.Null(RunnerModels.Normalise(
+            ["sonnet", "claude-opus-5", "OPUS", "sonnet", "claude-opus-5", "haiku"], "claude", out var normalised));
+        Assert.Equal(["sonnet", "claude-opus-5", "opus", "haiku"], normalised);
+    }
+
+    [Fact]
+    public void Normalise_RefusesMoreThanTheMaximum()
+    {
+        var many = Enumerable.Range(0, RunnerModels.MaxCount + 1).Select(i => $"claude-m{i}").ToList();
+
+        Assert.Equal("a runner advertises at most 100 models", RunnerModels.Normalise(many, "claude", out var normalised));
+        Assert.Empty(normalised);
+        Assert.Null(RunnerModels.Normalise(many.Take(RunnerModels.MaxCount).ToList(), "claude", out _));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("mystery")]
+    public void Normalise_AnAgentNoFamilyNamesSkipsOnlyTheFamilyCheck(string? agent)
+    {
+        Assert.Null(RunnerModels.Normalise(["opus", "gpt-6-luna", "claude-opus-5"], agent, out var normalised));
+        Assert.Equal(["opus", "gpt-6-luna", "claude-opus-5"], normalised);
+
+        Assert.Equal(
+            ModelFamilies.Default.Refusal("nonsense-1"),
+            RunnerModels.Normalise(["nonsense-1"], agent, out _));
+    }
 }

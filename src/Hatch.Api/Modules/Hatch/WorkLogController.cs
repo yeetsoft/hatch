@@ -88,6 +88,12 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// money no child holds, and a graph that dropped it would disagree with the
     /// meter on the issue page.
     /// </param>
+    /// <param name="projectId">
+    /// Narrows to sessions whose issue is in any of these projects; repeat it to
+    /// name several. None names every project. An id naming no project
+    /// contributes nothing and is not a refusal. ANDed with
+    /// <paramref name="ancestorKey"/> when both are given.
+    /// </param>
     [HttpGet("history")]
     public async Task<ActionResult<WorkLogHistoryDto>> GetHistory(
         [FromQuery] string? from,
@@ -95,6 +101,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         [FromQuery] string? bucket,
         [FromQuery] int offsetMinutes = 0,
         [FromQuery] string? ancestorKey = null,
+        [FromQuery] List<int>? projectId = null,
         CancellationToken ct = default)
     {
         if (offsetMinutes is < -1440 or > 1440)
@@ -136,7 +143,9 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         var (ancestorId, refusal) = await AncestorAsync(ancestorKey, ct);
         if (refusal is not null) return refusal;
 
-        return await WorkLogRollup.SeriesAsync(db, window, size, ancestorId, ct);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+
+        return await WorkLogRollup.SeriesAsync(db, window, size, ancestorId, projectIds, ct);
     }
 
     /// <summary>
@@ -170,6 +179,12 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// order.
     /// </param>
     /// <param name="limit">How many rows to list, 1 to <see cref="MaxSessions"/>.</param>
+    /// <param name="projectId">
+    /// Narrows to sessions whose issue is in any of these projects; repeat it to
+    /// name several. None names every project. An id naming no project
+    /// contributes nothing and is not a refusal. ANDed with
+    /// <paramref name="ancestorKey"/> when both are given.
+    /// </param>
     [HttpGet("sessions")]
     public async Task<ActionResult<WorkLogSessionsDto>> GetSessions(
         [FromQuery] string? from,
@@ -177,6 +192,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         [FromQuery] string? ancestorKey = null,
         [FromQuery] string? sort = null,
         [FromQuery] int limit = DefaultSessions,
+        [FromQuery] List<int>? projectId = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
@@ -217,7 +233,9 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         var (ancestorId, refusal) = await AncestorAsync(ancestorKey, ct);
         if (refusal is not null) return refusal;
 
-        return await WorkLogRollup.SessionsAsync(db, start, end, ancestorId, ranking, limit, ct);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+
+        return await WorkLogRollup.SessionsAsync(db, start, end, ancestorId, projectIds, ranking, limit, ct);
     }
 
     /// <summary>
@@ -235,19 +253,22 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// ones, null where the stored id no longer names a column.
     /// </remarks>
     /// <param name="projectId">
-    /// Narrows to one project's issues. An id that matches no project answers no
-    /// rows rather than a refusal.
+    /// Narrows to these projects' issues, repeatable; every project when absent
+    /// or empty. An id naming no project contributes nothing and is not a
+    /// refusal.
     /// </param>
     [HttpGet("by-playbook")]
     public async Task<ActionResult<WorkLogByPlaybookDto>> GetByPlaybook(
         [FromQuery] string? from,
         [FromQuery] string? to,
-        [FromQuery] int? projectId = null,
+        [FromQuery] List<int>? projectId = null,
         CancellationToken ct = default)
     {
         if (Range(from, to, out var start, out var end) is { } badRange) return badRange;
 
-        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectId, ct);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+
+        return await WorkLogRollup.ByPlaybookAsync(db, start, end, projectIds, ct);
     }
 
     /// <summary>

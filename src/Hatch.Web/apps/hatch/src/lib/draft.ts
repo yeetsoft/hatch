@@ -24,9 +24,12 @@ export const isDirty = (draft: Draft): boolean => normalizeEol(draft.text) !== n
 
 // A clean draft takes the new stored value the way it always has - silently,
 // since nothing of the editor's own is lost. A dirty one keeps its text and is
-// flagged, since one of the two would otherwise vanish with no report.
+// flagged, since one of the two would otherwise vanish with no report. A value
+// that is the draft's own text is neither: it is this draft's save landing (or
+// someone writing the same words), and there is nothing to report.
 export function receiveKnown(draft: Draft, value: string): Draft {
   if (value === draft.known) return draft;
+  if (normalizeEol(value) === normalizeEol(draft.text)) return openDraft(value);
   return isDirty(draft) ? { ...draft, known: value, changed: true } : openDraft(value);
 }
 

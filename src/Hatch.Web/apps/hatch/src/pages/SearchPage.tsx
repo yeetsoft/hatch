@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button, Card, EmptyState, PageHeader, Table } from '@hatch/ui';
 import { getSearch, getStatuses } from '../api/client';
@@ -15,10 +15,12 @@ import {
   isSearching,
   matchedWords,
   readSearch,
+  scrubbedProjectId,
   searchRequest,
   writeSearch,
 } from '../lib/search';
 import { useLoaded } from '../lib/useLoaded';
+import { useScope } from '../lib/useScope';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { ISSUE_TYPES } from '../types';
 import type { SearchHit, Status } from '../types';
@@ -38,7 +40,15 @@ export function SearchPage() {
   const filters = readSearch(params);
 
   const { data: statuses } = useLoaded<Status[]>(getStatuses);
-  const { projects } = useProjects();
+  const { projects, loaded: projectsLoaded } = useProjects();
+  const scope = useScope();
+  // Derived from this page's own `projects`, not `scope.projects`: the
+  // provider's list can land after this page's, and an empty one would scrub
+  // a chosen project before the page's own list has arrived.
+  const offered = useMemo(
+    () => (scope.isScoped ? projects.filter((p) => scope.keys.includes(p.key)) : projects),
+    [projects, scope.isScoped, scope.keys],
+  );
   const columns = [...(statuses ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const [draft, setDraft] = useState(filters.q);
@@ -60,6 +70,13 @@ export function SearchPage() {
     // arriving) must not restart the timer, or a quick re-render could starve it.
   }, [draft, filters.q, setParams]);
 
+  // A project in the URL that the scope no longer offers reads as none chosen.
+  useEffect(() => {
+    if (!projectsLoaded) return;
+    const scrubbed = scrubbedProjectId(filters.projectId, offered);
+    if (scrubbed !== filters.projectId) setParams(writeSearch({ ...filters, projectId: scrubbed }), { replace: true });
+  }, [offered, projectsLoaded, filters.projectId]);
+
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -67,7 +84,9 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [ledger] = useState(createLedger);
 
-  const key = writeSearch(filters).toString();
+  // The scope rides along: with no project chosen the request is the scope's,
+  // so a changed scope is a changed search.
+  const key = `${writeSearch(filters).toString()}#${scope.keys.join(',')}`;
 
   useEffect(() => {
     const ticket = ledger.begin();
@@ -76,7 +95,7 @@ export function SearchPage() {
     setLoading(true);
     setError(null);
 
-    getSearch(searchRequest(filters, 0)).then(
+    getSearch(searchRequest(filters, 0, scope.ids)).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setHits(result.hits);
@@ -100,7 +119,7 @@ export function SearchPage() {
     setLoadingMore(true);
     setError(null);
 
-    getSearch(searchRequest(filters, hits.length)).then(
+    getSearch(searchRequest(filters, hits.length, scope.ids)).then(
       (result) => {
         if (!ledger.isCurrent(ticket)) return;
         setHits((prev) => [...prev, ...result.hits]);
@@ -130,14 +149,14 @@ export function SearchPage() {
           onChange={(e) => setDraft(e.target.value)}
         />
 
-        {hasMultipleProjects(projects) && (
+        {hasMultipleProjects(offered) && (
           <Facet
             label="Project"
             lit={filters.projectId !== ''}
             value={filters.projectId}
             options={[
-              { value: '', text: 'All projects' },
-              ...projects.map((project) => ({ value: String(project.id), text: `${project.key} — ${project.name}` })),
+              { value: '', text: scope.isScoped ? 'All in scope' : 'All projects' },
+              ...offered.map((project) => ({ value: String(project.id), text: `${project.key} — ${project.name}` })),
             ]}
             onChange={(projectId) => setParams(writeSearch({ ...filters, projectId }))}
           />

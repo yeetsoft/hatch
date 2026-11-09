@@ -11,10 +11,15 @@ import {
   getBoard,
   getComments,
   getEvents,
+  getIssueDreams,
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
+  getRunnerNames,
+  getRunners,
   getWorkLog,
+  liftRunnerOmission,
+  omitRunner,
   patchIssue,
   patchIssuePlaybook,
   removeDependency,
@@ -28,12 +33,15 @@ import {
   setWipLimit,
 } from '../api/client';
 import { AssigneeField } from '../components/AssigneeField';
+import { QuestionOptions, Waiting } from '../components/OpenQuestions';
+import { OmittedRunners } from '../components/OmittedRunners';
 import { PriorityControl } from '../components/PriorityControl';
 import { PreApprovalControl } from '../components/PreApprovalControl';
 import { RunnerTagsField } from '../components/RunnerTagsField';
 import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
 import { ClaimPanel } from '../components/ClaimPanel';
 import { StallPanel } from '../components/StallPanel';
+import { IssueScopeNotice } from '../components/IssueScopeNotice';
 import { ClearClaimDialog } from '../components/ClearClaimDialog';
 import { Choice } from '../components/Choice';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -61,6 +69,7 @@ import { onePrSaid } from '../lib/onePr';
 import { childTypes } from '../lib/childTypes';
 import { parentCandidates, parentHint } from '../lib/parents';
 import { repoSourcedOverrideHint } from '../lib/playbookFiles';
+import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { moveBlocked } from '../lib/protectedColumns';
@@ -69,15 +78,15 @@ import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
 import { deleteQuestion } from '../lib/deletion';
+import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
 import { message } from '../lib/errors';
 import { heldBy } from '../lib/stall';
 import { WATCH_MS, claimMessages, messageState, watching } from '../lib/messages';
 import { mayRefresh } from '../lib/refresh';
-import { renderMarkdown } from '../lib/markdown';
 import { waitingChild } from '../lib/next';
 import { projectLogoUrl } from '../lib/projectLogo';
-import { openQuestions } from '../lib/questions';
+import { fromComment, openQuestions } from '../lib/questions';
 import { writeReleaseNote } from '../lib/releaseNote';
 import { newestFirst } from '../lib/thread';
 import { useCloseSubtree } from '../lib/useCloseSubtree';
@@ -95,13 +104,13 @@ import type {
   Board,
   ChildRollup,
   Comment,
+  Dream,
   Issue,
   IssueCard,
   IssueEvent,
   IssueRollup,
   IssueType,
   Project,
-  QuestionOption,
   RunnerTagSource,
   Status,
   Work,
@@ -119,6 +128,7 @@ export function IssuePage() {
   const move = useMoveProject((moved) => void navigate(`/issues/${moved.key}`));
   const [comments, setComments] = useState<Comment[]>([]);
   const [events, setEvents] = useState<IssueEvent[]>([]);
+  const [dreams, setDreams] = useState<Dream[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [rollup, setRollup] = useState<IssueRollup | null>(null);
   const [rollupError, setRollupError] = useState<string | null>(null);
@@ -146,6 +156,13 @@ export function IssuePage() {
   const [runnerTagsBusy, setRunnerTagsBusy] = useState(false);
   /* A dangerous-reason save is already out - the same shape as `runnerTagsBusy`. */
   const [dangerousBusy, setDangerousBusy] = useState(false);
+  /* The runner whose lift is out, or null - OmittedRunners' own busy flag. */
+  const [omissionLifting, setOmissionLifting] = useState<string | null>(null);
+  /* Every live runner's name, null while unread - OmittedRunners uses this to
+     flag a row naming a runner that is no longer on the board. */
+  const [runnerNames, setRunnerNames] = useState<string[] | null>(null);
+  /* The person-scoped runner names, offered in the omit form's picker. */
+  const [pickable, setPickable] = useState<string[]>([]);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
@@ -198,16 +215,18 @@ export function IssuePage() {
     );
 
     try {
-      const [loaded, loadedBoard, loadedComments, loadedEvents] = await Promise.all([
+      const [loaded, loadedBoard, loadedComments, loadedEvents, loadedDreams] = await Promise.all([
         getIssue(key),
         getBoard(),
         getComments(key),
         getEvents(key),
+        getIssueDreams(key),
       ]);
       setIssue(loaded);
       setBoard(loadedBoard);
       setComments(loadedComments);
       setEvents(loadedEvents);
+      setDreams(loadedDreams);
       setError(null);
     } catch (err) {
       setError(message(err));
@@ -232,6 +251,13 @@ export function IssuePage() {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
+
+  /* The two lists OmittedRunners' picker and "not a runner" badge draw from.
+     Read once on mount, not keyed on `key`: neither list is per issue. */
+  useEffect(() => {
+    getRunnerNames().then(setRunnerNames).catch(() => {});
+    getRunners().then((rows) => setPickable(rows.map((r) => r.name))).catch(() => {});
+  }, []);
 
   /* While a message to the agent is waiting under a live claim, and only then:
      the comments and the claim - not the whole eight-read `load` - every five
@@ -464,6 +490,34 @@ export function IssuePage() {
     [key, load],
   );
 
+  /* Lifting one of this issue's own omitted runners, the same shape saveDangerous is. */
+  const liftOmission = useCallback(
+    async (runner: string) => {
+      setOmissionLifting(runner);
+      try {
+        await liftRunnerOmission(key, runner);
+        await load();
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setOmissionLifting(null);
+      }
+    },
+    [key, load],
+  );
+
+  /* Posting a new omission. Resolves null once added, else the API's refusal
+     sentence, so OmittedRunners draws it in place rather than in the page's
+     `error`. */
+  const addOmission = useCallback(
+    async (runner: string, reason: string) => {
+      const r = await submitOmission(omitRunner, key, runner, reason);
+      if (r.ok) await load();
+      return r.ok ? null : r.refusal;
+    },
+    [key, load],
+  );
+
   /* Resume now or Hold for me - StallPanel's two buttons, both PutHold under
      the one busy flag, the same shape savePreApproval uses. */
   const saveHold = useCallback(
@@ -602,6 +656,8 @@ export function IssuePage() {
         }
       />
 
+      <IssueScopeNotice projectKey={issue.projectKey} />
+
       {error && <p className="text-danger">{error}</p>}
 
       {/* Above everything the page lets you change, because it is the one thing
@@ -610,7 +666,7 @@ export function IssuePage() {
           until this card is empty the ticket does not move. And deliberately
           not an IssueSection: collapsing this would let a reader hide the
           thing that's stopping the ticket. */}
-      <Waiting issueKey={key} comments={comments} obviated={obviated} onAnswered={() => void load()} onError={setError} />
+      <Waiting issueKey={key} questions={openQuestions(comments).map((t) => fromComment(t.question))} obviated={obviated} onAnswered={() => void load()} onError={setError} />
 
       {/* Beside Waiting and for the same reason: something else is acting on
           this ticket right now, and that is worth knowing before pressing
@@ -779,6 +835,15 @@ export function IssuePage() {
           <DangerousOwnField reason={issue.dangerousOwn} busy={dangerousBusy} onSave={(reason) => void saveDangerous(reason)} />
           <DangerousInherited from={issue.dangerousFrom} reason={issue.dangerous} />
 
+          <OmittedRunners
+            omissions={issue.omittedRunners}
+            runnerNames={runnerNames}
+            pickable={pickable}
+            liftingRunner={omissionLifting}
+            onLift={(runner) => void liftOmission(runner)}
+            onAdd={addOmission}
+          />
+
           {/* A story or a bug answers for its tasks, so it gets the control; a task under
               one that shares a pull request says so, since "why is there no PR
               on this" is the question that value answers. Anything else has no
@@ -895,6 +960,8 @@ export function IssuePage() {
         onAdd={(dependsOnKey) => saveDependency(() => addDependency(key, { dependsOnKey }))}
         onRemove={(dependsOnKey) => saveDependency(() => removeDependency(key, dependsOnKey))}
       />
+
+      <DreamsDrawnOn dreams={dreams} issueKey={issue.key} />
 
       <Description issue={issue} onSave={(description) => save({ description })} />
 
@@ -1054,6 +1121,21 @@ function Dependencies({
         )}
       </IssueSection>
     </>
+  );
+}
+
+function DreamsDrawnOn({ dreams, issueKey }: { dreams: Dream[]; issueKey: string }) {
+  if (dreams.length === 0) return null; // drawn only when there are rows - no empty 'Drew on' section
+  return (
+    <IssueSection id="drew-on" title="Drew on" count={dreams.length}>
+      <ul className="hatch-progress-list">
+        {dreams.map((dream) => (
+          <li key={dream.id} className="hatch-progress-row">
+            <Link to={`/dreams?issue=${issueKey}`}>{firstLine(dream.body)}</Link>
+          </li>
+        ))}
+      </ul>
+    </IssueSection>
   );
 }
 
@@ -1483,188 +1565,6 @@ function Description({ issue, onSave }: { issue: Issue; onSave: (description: st
         clampTo={coarse ? 3 : null}
       />
     </IssueSection>
-  );
-}
-
-/**
- * The questions on this issue that nobody has answered, each with a box to
- * answer it in.
- *
- * A box per question rather than one for the lot: an answer is bound to the
- * question it settles (CommentCreateRequest.answersId), which is what lets two
- * questions on one ticket be decided a day apart, and what makes "is this still
- * waiting" a fact rather than a reading of the thread.
- *
- * Threaded from the comments the page already has - see lib/questions.ts for
- * why this is not a second request.
- */
-function Waiting({
-  issueKey,
-  comments,
-  obviated,
-  onAnswered,
-  onError,
-}: {
-  issueKey: string;
-  comments: Comment[];
-  obviated: boolean;
-  onAnswered: () => void;
-  onError: (message: string) => void;
-}) {
-  const open = openQuestions(comments);
-  if (open.length === 0) return null;
-
-  return (
-    <Card as="section" className={obviated ? undefined : 'hatch-waiting'}>
-      <h2 className="hatch-section-title">
-        {obviated ? `Asked (${open.length})` : `Waiting on you (${open.length})`}
-      </h2>
-      <p className="text-muted">
-        {obviated
-          ? `${issueKey} shipped with these open. An answer is welcome, not needed.`
-          : `${issueKey} will not be picked up again until these are answered.`}
-      </p>
-
-      <ul className="hatch-question-list">
-        {open.map((thread) => (
-          <Asked key={thread.question.id} issueKey={issueKey} question={thread.question} onAnswered={onAnswered} onError={onError} />
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-/**
- * One question, and the answer being typed to it.
- *
- * Where the question offered choices, they are the interface: pressing one puts
- * its label in the box, and the box is still there for the case the asker did
- * not anticipate. That ordering is the whole point - a decision between named
- * things should cost one press, and the free text should be the escape hatch
- * rather than the only door.
- */
-function Asked({
-  issueKey,
-  question,
-  onAnswered,
-  onError,
-}: {
-  issueKey: string;
-  question: Comment;
-  onAnswered: () => void;
-  onError: (message: string) => void;
-}) {
-  const [body, setBody] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // Derived rather than held beside `body`: the highlight is "the box says
-  // exactly this option", and a second piece of state saying the same thing is
-  // a second thing that can come to disagree with the first.
-  const chosen = question.options?.find((o) => o.label === body)?.label ?? null;
-
-  async function submit() {
-    setSaving(true);
-    try {
-      await addComment(issueKey, { body, kind: 'answer', answersId: question.id });
-      setBody('');
-      onAnswered();
-    } catch (err) {
-      onError(message(err));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <li className="hatch-question">
-      <div className="hatch-comment-head">
-        <strong>{question.author}</strong>
-        <span className="text-muted">asked {new Date(question.createdAt).toLocaleString()}</span>
-      </div>
-
-      <div
-        className="hatch-markdown hatch-question-body"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(question.body) }}
-      />
-
-      {question.options && (
-        <QuestionOptions options={question.options} chosen={chosen} onChoose={(o) => setBody(o.label)} />
-      )}
-
-      <div className="hatch-answer-box">
-        <input
-          type="text"
-          value={body}
-          aria-label="Your answer"
-          placeholder={question.options ? 'Or say something else.' : 'The decision, in a sentence.'}
-          onChange={(e) => setBody(e.target.value)}
-          // A bare Enter sends: this is one line, an answer and not a piece of
-          // writing. An answer with a caveat under it is a comment, and the
-          // Comments box under the thread is where a composed reply goes. Not
-          // while an input method is composing - there Enter commits the
-          // candidate, and is not the operator's to send.
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing && body.trim() && !saving) void submit();
-          }}
-        />
-        <Button variant="primary" loading={saving} disabled={!body.trim()} onClick={() => void submit()}>
-          Answer
-        </Button>
-      </div>
-    </li>
-  );
-}
-
-/**
- * The answers a question offers.
- *
- * One component for both places they appear, because they are the same list
- * read for different reasons. With `onChoose` they are buttons, in the card
- * that is asking for a decision. Without it they are the record of what the
- * alternatives were, under the question in the thread - which is half of what
- * makes a decision legible later, and would be lost if the options were only
- * ever drawn while somebody could still press them.
- */
-function QuestionOptions({
-  options,
-  chosen,
-  onChoose,
-}: {
-  options: QuestionOption[];
-  chosen?: string | null;
-  onChoose?: (option: QuestionOption) => void;
-}) {
-  return (
-    <ul className={`hatch-options${onChoose ? '' : ' static'}`}>
-      {options.map((option) => {
-        const face = (
-          <>
-            <span className="hatch-option-label">
-              {option.label}
-              {option.recommended && <span className="hatch-option-recommended">recommended</span>}
-            </span>
-            {option.detail && <span className="hatch-option-detail">{option.detail}</span>}
-          </>
-        );
-
-        return (
-          <li key={option.label}>
-            {onChoose ? (
-              <button
-                type="button"
-                className={`hatch-option${chosen === option.label ? ' chosen' : ''}`}
-                aria-pressed={chosen === option.label}
-                onClick={() => onChoose(option)}
-              >
-                {face}
-              </button>
-            ) : (
-              <div className="hatch-option">{face}</div>
-            )}
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 

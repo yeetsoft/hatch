@@ -46,7 +46,7 @@ public static partial class SearchQuery
     /// to search for - which callers should treat as "no query", not "no results",
     /// because an empty search box means the whole list rather than none of it.
     /// </summary>
-    public static string? ToTsQuery(string? input)
+    public static string? ToTsQuery(string? input, bool anyWord = false)
     {
         if (string.IsNullOrWhiteSpace(input)) return null;
 
@@ -56,6 +56,6 @@ public static partial class SearchQuery
             .Take(MaxTerms)
             .ToList();
 
-        return terms.Count == 0 ? null : string.Join(" & ", terms.Select(t => $"{t}:*"));
+        return terms.Count == 0 ? null : string.Join(anyWord ? " | " : " & ", terms.Select(t => $"{t}:*"));
     }
 }

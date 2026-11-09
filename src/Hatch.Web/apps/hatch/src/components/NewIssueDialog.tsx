@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, EmptyState, Field, Modal } from '@hatch/ui';
 import { createIssue } from '../api/client';
+import { removeAttachmentLinks } from '../lib/attachmentList';
 import { resolveDefaultProject, readRememberedProject, writeRememberedProject } from '../lib/defaultProject';
+import { appendBlock } from '../lib/descriptionImage';
 import { message } from '../lib/errors';
 import { onePrToFile } from '../lib/onePr';
 import { parentCandidates, parentEmptyMessage, parentHint } from '../lib/parents';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
+import { AttachmentDropZone } from './AttachmentDropZone';
+import { AttachmentList } from './AttachmentList';
 import { IssuePicker } from './IssuePicker';
-import { MarkdownEditor } from './MarkdownEditor';
+import { MarkdownEditor, type MarkdownEditorHandle } from './MarkdownEditor';
 import { MomentField } from './MomentField';
 import { OnePrSteps, type OnePrSetting } from './OnePrControl';
 import { PreApprovalControl, type PreApproval } from './PreApprovalControl';
@@ -68,6 +72,7 @@ export function NewIssueDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { confirm } = useIssueConfirmations();
+  const editorRef = useRef<MarkdownEditorHandle>(null);
 
   const chosen = projectId ?? resolveDefaultProject(projects, defaultProjectKey, readRememberedProject());
 
@@ -136,120 +141,133 @@ export function NewIssueDialog({
 
   return (
     <Modal open={open} onClose={handleClose} title="New issue">
-      <div className="hatch-form">
-        {projects.length === 0 ? (
-          <EmptyState message="No projects yet. Make one on the Projects page first." />
-        ) : (
-          <>
-            <ProjectChooser legend="Project" projects={projects} value={chosen} onChange={setProjectId} />
+      <AttachmentDropZone
+        editor={editorRef}
+        onAppend={(text) => setDescription((d) => appendBlock(d, text))}
+        disabled={projects.length === 0}
+      >
+        <div className="hatch-form">
+          {projects.length === 0 ? (
+            <EmptyState message="No projects yet. Make one on the Projects page first." />
+          ) : (
+            <>
+              <ProjectChooser legend="Project" projects={projects} value={chosen} onChange={setProjectId} />
 
-            <Field label="Type">
-              <select value={type} onChange={(e) => {
-                  setType(e.target.value as IssueType);
-                  setOnePr('inherit');
-                }}>
-                {ISSUE_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </Field>
+              <Field label="Type">
+                <select value={type} onChange={(e) => {
+                    setType(e.target.value as IssueType);
+                    setOnePr('inherit');
+                  }}>
+                  {ISSUE_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-            {(type === 'story' || type === 'bug') && (
-              <Field
-                label="One pull request"
-                as="div"
-                hint={`Whether this ${type}'s tasks share its branch and open one pull request, merged once, instead of one each.`}
-              >
-                <OnePrSteps
-                  value={onePr}
-                  label={`Set the new ${type}'s one pull request setting`}
-                  busy={saving}
-                  onChange={setOnePr}
+              {(type === 'story' || type === 'bug') && (
+                <Field
+                  label="One pull request"
+                  as="div"
+                  hint={`Whether this ${type}'s tasks share its branch and open one pull request, merged once, instead of one each.`}
+                >
+                  <OnePrSteps
+                    value={onePr}
+                    label={`Set the new ${type}'s one pull request setting`}
+                    busy={saving}
+                    onChange={setOnePr}
+                  />
+                </Field>
+              )}
+
+              {/* `as="div"` for the reason on the issue page's Parent field: the
+                  popup would otherwise join the control's accessible name. */}
+              <Field label="Parent" as="div" hint={parentHint(type)}>
+                <IssuePicker
+                  label="Parent"
+                  value={parent}
+                  candidates={parents}
+                  emptyMessage={parentEmptyMessage(projectKey, type)}
+                  onChange={async (key) => setParentKey(key || null)}
                 />
               </Field>
-            )}
 
-            {/* `as="div"` for the reason on the issue page's Parent field: the
-                popup would otherwise join the control's accessible name. */}
-            <Field label="Parent" as="div" hint={parentHint(type)}>
-              <IssuePicker
-                label="Parent"
-                value={parent}
-                candidates={parents}
-                emptyMessage={parentEmptyMessage(projectKey, type)}
-                onChange={async (key) => setParentKey(key || null)}
+              <Field label="Title">
+                <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+              </Field>
+
+              <Field label="Description" as="div" hint="Markdown, rendered on the issue page.">
+                <MarkdownEditor
+                  value={description}
+                  onChange={setDescription}
+                  rows={6}
+                  className="hatch-grows"
+                  ariaLabel="Description"
+                  handle={editorRef}
+                />
+              </Field>
+
+              <AttachmentList
+                text={description}
+                onDeleted={(id) => setDescription((d) => removeAttachmentLinks(d, id))}
+                onDeleteError={setError}
               />
-            </Field>
 
-            <Field label="Title">
-              <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-            </Field>
-
-            <Field label="Description" as="div" hint="Markdown, rendered on the issue page.">
-              <MarkdownEditor
-                value={description}
-                onChange={setDescription}
-                rows={6}
-                className="hatch-grows"
-                ariaLabel="Description"
+              {/* Both optional, and both usually left empty. They are here rather than
+                  behind a second visit because the moment worth setting a ready date
+                  is the moment the thing is thought of - buy a certificate today,
+                  file the renewal for next August before closing the tab. */}
+              <MomentField
+                label="Ready"
+                hint="Folded off the board until this day."
+                value={readyAt}
+                onChange={setReadyAt}
               />
-            </Field>
+              <MomentField label="Due" value={dueAt} onChange={setDueAt} />
 
-            {/* Both optional, and both usually left empty. They are here rather than
-                behind a second visit because the moment worth setting a ready date
-                is the moment the thing is thought of - buy a certificate today,
-                file the renewal for next August before closing the tab. */}
-            <MomentField
-              label="Ready"
-              hint="Folded off the board until this day."
-              value={readyAt}
-              onChange={setReadyAt}
-            />
-            <MomentField label="Due" value={dueAt} onChange={setDueAt} />
+              <Field label="Priority" as="div">
+                <PriorityControl
+                  issueKey=""
+                  priority={priority}
+                  priorityOwn={priority}
+                  priorityFrom={null}
+                  directory={directory}
+                  busy={saving}
+                  onChange={setPriority}
+                />
+              </Field>
 
-            <Field label="Priority" as="div">
-              <PriorityControl
-                issueKey=""
-                priority={priority}
-                priorityOwn={priority}
-                priorityFrom={null}
-                directory={directory}
-                busy={saving}
-                onChange={setPriority}
-              />
-            </Field>
+              <Field label="Pre-approval" as="div">
+                <PreApprovalControl
+                  issueKey=""
+                  preApproval={clampedPreApproval}
+                  preApprovalOwn={clampedPreApproval}
+                  preApprovalFrom={null}
+                  directory={directory}
+                  canApprove={canApprove}
+                  busy={saving}
+                  onChange={setPreApproval}
+                />
+              </Field>
 
-            <Field label="Pre-approval" as="div">
-              <PreApprovalControl
-                issueKey=""
-                preApproval={clampedPreApproval}
-                preApprovalOwn={clampedPreApproval}
-                preApprovalFrom={null}
-                directory={directory}
-                canApprove={canApprove}
-                busy={saving}
-                onChange={setPreApproval}
-              />
-            </Field>
+              {error && <p className="text-danger">{error}</p>}
+            </>
+          )}
 
-            {error && <p className="text-danger">{error}</p>}
-          </>
-        )}
-
-        <div className="hatch-form-actions hatch-newissue-actions">
-          {keyPreview && <span className="hatch-key-preview">{keyPreview}</span>}
-          <div className="hatch-newissue-actions__buttons">
-            <Button onClick={handleClose}>Cancel</Button>
-            {projects.length > 0 && (
-              <Button variant="primary" loading={saving} disabled={chosen === null} onClick={() => void submit()}>
-                File it
-              </Button>
-            )}
+          <div className="hatch-form-actions hatch-newissue-actions">
+            {keyPreview && <span className="hatch-key-preview">{keyPreview}</span>}
+            <div className="hatch-newissue-actions__buttons">
+              <Button onClick={handleClose}>Cancel</Button>
+              {projects.length > 0 && (
+                <Button variant="primary" loading={saving} disabled={chosen === null} onClick={() => void submit()}>
+                  File it
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </AttachmentDropZone>
     </Modal>
   );
 }

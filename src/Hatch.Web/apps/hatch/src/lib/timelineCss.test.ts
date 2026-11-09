@@ -54,8 +54,8 @@ describe('the timeline styles', () => {
     expect(seen).toBeGreaterThan(10);
   });
 
-  it('fills a segment from its status, and Other from a neutral token', () => {
-    expect(declarationsIn(css, '.hatch-timeline-segment')['fill']).toBe('var(--status-color)');
+  it('fills a segment from its project if one is set, else its status, and Other from a neutral token', () => {
+    expect(declarationsIn(css, '.hatch-timeline-segment')['fill']).toBe('var(--mark-color, var(--status-color))');
     expect(declarationsIn(css, '.hatch-timeline-segment--other')['fill']).toBe('var(--line-strong)');
   });
 
@@ -75,8 +75,16 @@ describe('the timeline styles', () => {
     expect(declarationsIn(mediaBlock(), '.hatch-timeline-hidden__title')['display']).toBeUndefined();
   });
 
-  it('wraps the header on a phone, so the controls drop under the title', () => {
-    expect(declarationsIn(mediaBlock(), '.hatch-timeline-header')['flex-wrap']).toBe('wrap');
+  it('wraps the header at every width, so the controls drop under the title when they do not fit beside it', () => {
+    expect(declarationsIn(css, '.hatch-timeline-header')['flex-wrap']).toBe('wrap');
+    expect(declarationsIn(mediaBlock(), '.hatch-timeline-header')['flex-wrap']).toBeUndefined();
+    expect(declarationsIn(css, '.hatch-timeline-header .hatch-page-header__actions')['flex-wrap']).toBe('wrap');
+  });
+
+  it('keeps a floor under the header titles, from a token', () => {
+    expect(declarationsIn(css, '.hatch-timeline-header .hatch-page-header__titles')['flex']).toBe(
+      '1 1 calc(var(--measure-prose) / 2)',
+    );
   });
 
   it('gives the controls the facet height the board filters define for themselves', () => {

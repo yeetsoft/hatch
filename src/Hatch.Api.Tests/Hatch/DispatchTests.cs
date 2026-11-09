@@ -599,6 +599,129 @@ public class DispatchTests
         Assert.Contains("in todo is worked only by a runner advertising", RowFor(judged, c).Blocked);
     }
 
+    // ---- Omitted runners: a ticket kept off a runner, its own or an ancestor's say-so ----
+
+    private static async Task OmitAsync(Harness h, EfHatchIssue issue, string runner, string by, string? reason = "no toolchain")
+    {
+        h.Db.Add(new EfHatchIssueRunnerOmission
+        {
+            IssueId = issue.Id, RunnerName = runner, By = by, At = Now.AddMinutes(-3), Reason = reason,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    private static RunnerAsking Asking(string name) => new(name, Now.AddMinutes(-5));
+
+    [Fact]
+    public async Task ScanAsync_AnIssueWithItsOwnOmission_FoldsForThatRunnerOnlyAndSaysItRecusedItself()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+        await OmitAsync(h, issue, "gpu-1", by: "gpu-1");
+
+        var folded = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+        var other = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+        var unnamed = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Equal($"{key} is not worked by gpu-1 - it recused itself 3 minutes ago (no toolchain)", RowFor(folded, issue).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(folded, issue).BlockedKind);
+        Assert.Null(RowFor(other, issue).Blocked);
+        Assert.Null(RowFor(unnamed, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnIssueUnderAnOmittingGrandparent_FoldsNamingTheGrandparentAndWhoOmittedIt()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        var story = await h.FileAsync("story", "s", h.InProgress, parentId: epic.Id);
+        var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
+        var key = IssueKey.Format(h.ProjectKey, task.Number);
+        var epicKey = IssueKey.Format(h.ProjectKey, epic.Number);
+        await OmitAsync(h, epic, "gpu-1", by: "operator");
+
+        var folded = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+        var other = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+
+        Assert.Equal(
+            $"{key} is not worked by gpu-1 - operator omitted it on {epicKey} 3 minutes ago (no toolchain)",
+            RowFor(folded, task).Blocked);
+        Assert.Equal(BlockedKinds.Other, RowFor(folded, task).BlockedKind);
+        Assert.Null(RowFor(other, task).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AHopOmittedForTheRunner_StillFoldsForIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        await OmitAsync(h, issue, "gpu-1", by: "operator", reason: null);
+
+        var folded = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-1"));
+        var other = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default, asking: Asking("gpu-2"));
+
+        Assert.Equal($"{key} is not worked by gpu-1 - operator omitted it 3 minutes ago", RowFor(folded, issue).Blocked);
+        Assert.False(RowFor(folded, issue).Hop);
+        Assert.True(RowFor(other, issue).Hop);
+        Assert.Null(RowFor(other, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnIssueTagGatedAndOmittedForTheRunner_ReadsTheTagSentence()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        var issue = await h.FileAsync("story", "in todo", h.Todo);
+        await h.TagAsync(issue, "gpu");
+        var key = IssueKey.Format(h.ProjectKey, issue.Number);
+        await OmitAsync(h, issue, "gpu-1", by: "operator");
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            tags: TagDeclaration.Of([]), asking: Asking("gpu-1"));
+
+        Assert.Equal(
+            $"{key} is worked only by a runner advertising gpu - this runner advertises none",
+            RowFor(scan, issue).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AnOmissionFoldedRowOnAChild_HidesNoDeadlockRing()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Todo, h.InProgress);
+        await h.AddPlaybookAsync(h.InProgress, h.Review);
+        var p = await h.FileAsync("story", "p", h.InProgress);
+        var c = await h.FileAsync("task", "c", h.Todo, parentId: p.Id);
+        var x = await h.FileAsync("story", "x", h.Todo);
+        await h.DependsAsync(c, x);
+        await h.DependsAsync(x, p);
+        await OmitAsync(h, c, "gpu-1", by: "operator");
+
+        var scan = await h.Dispatch.ScanAsync(
+            0, null, null, RepositoryDeclaration.Undeclared, false, default,
+            markDeadlocks: true, asking: Asking("gpu-1"));
+
+        foreach (var issue in new[] { p, c, x })
+            Assert.True(RowFor(scan, issue).Deadlocked);
+
+        Assert.StartsWith("deadlocked - ", RowFor(scan, c).Blocked);
+        Assert.Contains("is not worked by gpu-1", RowFor(scan, c).Blocked);
+    }
+
     // ---- Dangerous: a runner that refuses it is never handed a flagged issue's code ----
 
     private static async Task FlagAsync(Harness h, EfHatchIssue issue, string reason = "load-tests the API")
@@ -739,6 +862,38 @@ public class DispatchTests
 
         Assert.Equal(("load-tests the API", IssueKey.Format(h.ProjectKey, story.Number)), tree.EffectiveDangerous(task.Id));
         Assert.Equal(("load-tests the API", (string?)null), tree.EffectiveDangerous(story.Id));
+    }
+
+    // ---- Omitted runners: the union of the ancestors' rows, the root-most winning ----
+
+    [Fact]
+    public async Task EffectiveOmittedRunners_ATwoLevelsDownTask_ReadsTheEpicsOmission_AndTheRootMostWinsOverItsOwn()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "e", h.Todo);
+        var story = await h.FileAsync("story", "s", h.Todo, parentId: epic.Id);
+        var task = await h.FileAsync("task", "t", h.Todo, parentId: story.Id);
+        var epicKey = IssueKey.Format(h.ProjectKey, epic.Number);
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = epic.Id, RunnerName = "gpu-1", By = "operator", At = Now });
+        await h.Db.SaveChangesAsync();
+
+        var tree = await PriorityTree.ForAsync(h.Db, default);
+
+        var effective = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
+        Assert.Equal("gpu-1", effective.Runner);
+        Assert.Equal(epicKey, effective.FromKey);
+        Assert.Empty(tree.OwnOmittedRunners(task.Id));
+
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = task.Id, RunnerName = "gpu-1", By = "operator", At = Now });
+        await h.Db.SaveChangesAsync();
+
+        tree = await PriorityTree.ForAsync(h.Db, default);
+
+        var still = Assert.Single(tree.EffectiveOmittedRunners(task.Id));
+        Assert.Equal("gpu-1", still.Runner);
+        Assert.Equal(epicKey, still.FromKey);
+        var own = Assert.Single(tree.OwnOmittedRunners(task.Id));
+        Assert.Null(own.FromKey);
     }
 
     // ---- Tags: the union an ancestor and the issue's own add to the project's ----
@@ -1128,6 +1283,88 @@ public class DispatchTests
         var rows = new[] { DRow(1, [], anyOf: true) };
 
         Assert.Empty(Deadlocks.Find(rows));
+    }
+
+    // ---- MatchWeave: the leftmost from-column covering epic ----
+
+    private static EfHatchPlaybook WeaveRow(int id, int fromSort, string types = "", int? projectId = null) => new()
+    {
+        Id = id,
+        FromStatusId = fromSort,
+        FromStatus = new EfHatchStatus { Name = $"c{fromSort}", SortOrder = fromSort },
+        ToStatusId = fromSort + 1,
+        Types = types,
+        Shape = EfHatchPlaybook.AnyShape,
+        Prompt = "do the thing",
+        Model = "sonnet",
+        Effort = "high",
+        ProjectId = projectId,
+        CreatedAt = Now,
+        UpdatedAt = Now,
+    };
+
+    [Fact]
+    public void MatchWeave_PicksTheLeftmostFromColumnCoveringEpic()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 30, "epic"), WeaveRow(2, 10, "epic"), WeaveRow(3, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_IgnoresARowThatDoesNotCoverEpic()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "task,bug"), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_TakesEmptyTypesAsCovering()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(1, Dispatch.MatchWeave(rows, 1)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_PrefersTheProjectRowOverTheBoardRowForTheSameColumn()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "epic"), WeaveRow(2, 10, "epic", projectId: 7) };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 7)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_IgnoresAProjectRowForAnotherProject()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "epic", projectId: 8), WeaveRow(2, 20, "epic") };
+
+        Assert.Equal(2, Dispatch.MatchWeave(rows, 7)!.Id);
+    }
+
+    [Fact]
+    public void MatchWeave_NothingCoveringEpic_IsNull()
+    {
+        var rows = new List<EfHatchPlaybook> { WeaveRow(1, 10, "task"), WeaveRow(2, 20, "bug,story") };
+
+        Assert.Null(Dispatch.MatchWeave(rows, 1));
+        Assert.Null(Dispatch.MatchWeave([], 1));
+    }
+
+    [Fact]
+    public void MatchWeave_OnAStockShapedSet_ReturnsTheBreakdownRow()
+    {
+        var rows = new List<EfHatchPlaybook>
+        {
+            WeaveRow(1, 20, "epic"),
+            WeaveRow(2, 20),
+            WeaveRow(3, 30),
+            WeaveRow(4, 30, "task,bug"),
+            WeaveRow(5, 10, "epic"),
+        };
+
+        Assert.Equal(5, Dispatch.MatchWeave(rows, 1)!.Id);
     }
 
     // ---- Helpers ----

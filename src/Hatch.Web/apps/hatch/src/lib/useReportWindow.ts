@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { resolveWindow, sameWindow, withWindow, type ReportWindow } from './reportWindow';
+import { DEFAULT_DAYS, resolveWindow, sameWindow, withWindow, type ReportWindow } from './reportWindow';
 
 /**
  * A report's window, off the URL, and the write that moves it: the `from` and
@@ -10,7 +10,7 @@ import { resolveWindow, sameWindow, withWindow, type ReportWindow } from './repo
  * Calls `useSearchParams` itself and touches nothing else in the URL beyond
  * `from`, `to` and `range`, so a report that keeps filters there keeps them.
  */
-export function useReportWindow(): {
+export function useReportWindow(defaultDays: number = DEFAULT_DAYS): {
   from: string;
   to: string;
   now: Date;
@@ -31,8 +31,8 @@ export function useReportWindow(): {
   const { from, to, now } = useMemo(() => {
     const now = new Date();
 
-    return { ...resolveWindow(new URLSearchParams(search), now, offsetMinutes), now };
-  }, [search, offsetMinutes]);
+    return { ...resolveWindow(new URLSearchParams(search), now, offsetMinutes, defaultDays), now };
+  }, [search, offsetMinutes, defaultDays]);
 
   /* Compares the resolved window, not the URL text, so a press that would land
      where the page already is - Today on the default, with no `from` or `to` in

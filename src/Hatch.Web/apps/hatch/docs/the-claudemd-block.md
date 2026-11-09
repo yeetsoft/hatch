@@ -52,13 +52,18 @@ the bulk endpoint and the plan reads. Read it on demand.
 ### Reaching Hatch
 
 `hatch` is the calls a working session actually makes — `board`, `next`,
-`queue`, `changelog`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `one-pr`, `dangerous`, `ask`,
+`queue`, `changelog`, `runners`, `show`, `comments`, `start`, `move`, `comment`, `pr`, `landed`, `verdict`, `depends`, `one-pr`, `dangerous`, `omit`, `recuse`, `dream`, `ask`,
 `questions`, `answer`, `config`, `use`, `standby`, `work`, `go-to-work`, `do-my-work`, and `api`
 for everything else. It finds a column by name rather than by id — on the
 letters and digits alone, so `todo` at a terminal reaches the column the board
 calls `To Do` — and folds off cards whose ready date has not arrived, exactly
 as the board does. `hatch --help` lists the surface and every subcommand
 takes `-h` for its own.
+
+Told to put the ideas from a conversation on the Dream Board, a session calls
+`hatch dream "<words>"` once per gleaning, with its own reference — a session
+id or a URL — in `--source`. The session decides what counts as a gleaning;
+nothing reads a transcript for it.
 
 Only `work`, `go-to-work`, `do-my-work` and `landed` need a checkout, because
 only those four are about a codebase — the checkout you are standing in, or one

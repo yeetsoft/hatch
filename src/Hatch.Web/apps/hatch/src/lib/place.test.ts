@@ -36,6 +36,8 @@ const card = (
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,

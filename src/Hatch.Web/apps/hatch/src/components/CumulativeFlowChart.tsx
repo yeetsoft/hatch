@@ -5,16 +5,18 @@ import {
   bandStyle,
   bands,
   breakdown,
+  cutKeys,
+  labelFor,
   momentLabel,
   peakLabel,
   pinAfter,
   pointIndexAt,
   slots,
 } from '../lib/cumulativeFlow';
-import type { PinAction } from '../lib/cumulativeFlow';
+import type { ColourBy, PinAction } from '../lib/cumulativeFlow';
 import { CHART_UNITS, ticks, todayX, xOf, type Scale } from '../lib/timeline';
 import { CumulativeFlowPin } from './CumulativeFlowPin';
-import type { CumulativeFlow, Status } from '../types';
+import type { CumulativeFlow, Project, Status } from '../types';
 
 /** Own to this component, as `SpendGraph.tsx`'s is. */
 const HEIGHT = 100;
@@ -42,6 +44,8 @@ const GAP = 12;
 export function CumulativeFlowChart({
   answer,
   statuses,
+  by,
+  projects,
   scale,
   offsetMinutes,
   now,
@@ -49,12 +53,15 @@ export function CumulativeFlowChart({
 }: {
   answer: CumulativeFlow;
   statuses: Status[];
+  by: ColourBy;
+  projects: Project[];
   scale: Scale;
   offsetMinutes: number;
   now: Date;
   locale?: string;
 }) {
-  const series = bands(answer, scale);
+  const keys = cutKeys(answer, by);
+  const series = bands(answer, scale, by);
   const today = todayX(scale, now);
   const slotted = slots(answer.points, scale);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -109,7 +116,7 @@ export function CumulativeFlowChart({
   };
 
   const hovered = pointer ? answer.points[pointer.index] : null;
-  const hoveredBreakdown = hovered ? breakdown(hovered, answer.columns, statuses) : null;
+  const hoveredBreakdown = hovered ? breakdown(hovered, keys, by, statuses) : null;
   const near =
     pointer !== null &&
     svgRef.current !== null &&
@@ -118,20 +125,16 @@ export function CumulativeFlowChart({
   return (
     <div className="hatch-cumulative-flow">
       <div className="hatch-cumulative-flow-legend">
-        {answer.columns.map((columnId) => {
-          const name = statuses.find((status) => status.id === columnId)?.name ?? 'Unknown';
-
-          return (
-            <span key={columnId} className="hatch-cumulative-flow-legend-item">
-              <span className="hatch-cumulative-flow-swatch" style={bandStyle(statuses, columnId)} />
-              {name}
-            </span>
-          );
-        })}
+        {keys.map((key) => (
+          <span key={key} className="hatch-cumulative-flow-legend-item">
+            <span className="hatch-cumulative-flow-swatch" style={bandStyle(by, key, statuses, projects)} />
+            {labelFor(by, key, statuses)}
+          </span>
+        ))}
 
         {/* Pushed to the far end, as the spend graph's own peak label is -
             the rule that does it is layout-only and not spend-specific. */}
-        <span className="hatch-spend-peak text-muted">{peakLabel(answer.points)}</span>
+        <span className="hatch-spend-peak text-muted">{peakLabel(answer.points, by)}</span>
       </div>
 
       <div className="hatch-cumulative-flow-body">
@@ -152,7 +155,7 @@ export function CumulativeFlowChart({
                 viewBox={`0 0 ${CHART_UNITS} ${HEIGHT}`}
                 preserveAspectRatio="none"
                 role="img"
-                aria-label={peakLabel(answer.points)}
+                aria-label={peakLabel(answer.points, by)}
                 tabIndex={0}
                 onPointerDown={onPress}
                 onPointerMove={onPointerMove}
@@ -163,10 +166,10 @@ export function CumulativeFlowChart({
               >
                 {series.map((band, i) => (
                   <polygon
-                    key={answer.columns[answer.columns.length - 1 - i]}
+                    key={keys[keys.length - 1 - i]}
                     className="hatch-timeline-segment"
                     points={bandPolygon(band, HEIGHT)}
-                    style={bandStyle(statuses, answer.columns[answer.columns.length - 1 - i])}
+                    style={bandStyle(by, keys[keys.length - 1 - i], statuses, projects)}
                   />
                 ))}
 
@@ -201,8 +204,8 @@ export function CumulativeFlowChart({
                   </div>
 
                   {hoveredBreakdown.rows.map((row) => (
-                    <div key={row.columnId} className="hatch-cumulative-flow-card-row">
-                      <span className="hatch-cumulative-flow-swatch" style={bandStyle(statuses, row.columnId)} />
+                    <div key={row.key} className="hatch-cumulative-flow-card-row">
+                      <span className="hatch-cumulative-flow-swatch" style={bandStyle(by, row.key, statuses, projects)} />
                       {row.name} {row.count}
                     </div>
                   ))}
@@ -218,8 +221,10 @@ export function CumulativeFlowChart({
 
         <CumulativeFlowPin
           point={pin === null ? null : answer.points[pin]}
-          columns={answer.columns}
+          keys={keys}
+          by={by}
           statuses={statuses}
+          projects={projects}
           step={answer.step}
           locale={locale}
         />

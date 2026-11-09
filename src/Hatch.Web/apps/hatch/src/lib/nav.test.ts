@@ -4,9 +4,9 @@ import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, navFor, navRows } from 
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
-// /reports/timeline and /reports/cumulative-flow from the Reports index,
-// and /changelog from the docs Reference section, never the nav; /docs/* is
-// the same page as /docs, for any path under it; / is the logo's and /docs the
+// /reports/timeline, /reports/cumulative-flow and /reports/changelog from the
+// Reports index, and /changelog from the docs Reference section, never the nav;
+// /docs/* is the same page as /docs, for any path under it; / is the logo's and /docs the
 // settings menu's and the phone list's (below), neither a bar entry; /settings and * (the
 // unknown-route fallback) are not pages a menu lists.
 const EXCLUDED_ROUTES = new Set([
@@ -15,6 +15,7 @@ const EXCLUDED_ROUTES = new Set([
   '/issues/:key',
   '/reports/timeline',
   '/reports/cumulative-flow',
+  '/reports/changelog',
   '/changelog',
   '/docs/*',
   '/settings',
@@ -49,6 +50,11 @@ describe('NAV', () => {
       expect(routes).toContain(to);
     }
   });
+
+  it('redirects /changelog to the report, replacing the entry, with the old page gone', () => {
+    expect(appSource).toContain('<Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />');
+    expect(appSource).not.toContain('ChangelogPage');
+  });
 });
 
 describe('the bar', () => {
@@ -66,10 +72,10 @@ describe('the bar', () => {
     expect(HOME_LABEL).toBe('Board');
   });
 
-  it('puts Plan, Reports and History under Track, in that order', () => {
+  it('puts Dreams, Plan, Reports and History under Track, in that order', () => {
     const track = NAV.find((entry) => entry.kind === 'group' && entry.label === 'Track');
     if (!track || track.kind !== 'group') throw new Error('Track not found');
-    expect(track.rows.map((row) => row.to)).toEqual(['/plan', '/reports', '/history']);
+    expect(track.rows.map((row) => row.to)).toEqual(['/dreams', '/plan', '/reports', '/history']);
   });
 
   it('no longer lists History under Manage', () => {
@@ -100,8 +106,8 @@ describe('activeGroup', () => {
     expect(activeGroup('/users')?.label).toBe('Manage');
   });
 
-  it('finds Track from Plan, Reports, History and a report under it', () => {
-    for (const path of ['/plan', '/reports', '/reports/timeline', '/history']) {
+  it('finds Track from Dreams, Plan, Reports, History and a report under it', () => {
+    for (const path of ['/dreams', '/plan', '/reports', '/reports/timeline', '/history']) {
       expect(activeGroup(path)?.label).toBe('Track');
     }
   });
@@ -144,9 +150,10 @@ describe('navRows', () => {
   }
 
   it('puts Search first with no group label, then Track under its heading', () => {
-    const rows = navRows(false).slice(0, 4);
+    const rows = navRows(false).slice(0, 5);
     expect(rows).toEqual([
       { to: '/search', label: 'Search', end: undefined, groupLabel: null },
+      { to: '/dreams', label: 'Dreams', groupLabel: 'Track' },
       { to: '/plan', label: 'Plan', groupLabel: 'Track' },
       { to: '/reports', label: 'Reports', groupLabel: 'Track' },
       { to: '/history', label: 'History', groupLabel: 'Track' },

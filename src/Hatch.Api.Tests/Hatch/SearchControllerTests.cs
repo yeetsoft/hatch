@@ -44,13 +44,15 @@ public class SearchControllerTests
             .ToDictionary(c => c.Key);
         foreach (var hit in result.Hits)
         {
-            // RunnerTagsOwn, RunnerTags and RunnerTagsFrom are lists, which a record compares by reference.
+            // The runner-tag and omitted-runner fields are lists, which a record compares by reference.
             Assert.Equal(
-                cards[hit.Card.Key] with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [] },
-                hit.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [] });
+                cards[hit.Card.Key] with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] },
+                hit.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] });
             Assert.Equal(cards[hit.Card.Key].RunnerTagsOwn, hit.Card.RunnerTagsOwn);
             Assert.Equal(cards[hit.Card.Key].RunnerTags, hit.Card.RunnerTags);
             Assert.Equal(cards[hit.Card.Key].RunnerTagsFrom, hit.Card.RunnerTagsFrom);
+            Assert.Equal(cards[hit.Card.Key].OmittedRunnersOwn, hit.Card.OmittedRunnersOwn);
+            Assert.Equal(cards[hit.Card.Key].OmittedRunners, hit.Card.OmittedRunners);
             Assert.Empty(hit.Matched);
         }
 
@@ -145,7 +147,7 @@ public class SearchControllerTests
         var a = await h.FileAsync(h.ProjectAId, "task", "in A");
         var b = await h.FileAsync(h.ProjectBId, "bug", "in B");
 
-        Assert.Equal([a.Key], (await h.SearchAsync(projectId: h.ProjectAId)).Hits.Select(x => x.Card.Key));
+        Assert.Equal([a.Key], (await h.SearchAsync(projectId: [h.ProjectAId])).Hits.Select(x => x.Card.Key));
         Assert.Equal([b.Key], (await h.SearchAsync(type: "bug")).Hits.Select(x => x.Card.Key));
         Assert.Equal(2, (await h.SearchAsync(statusId: a.StatusId)).Total);
 
@@ -153,7 +155,52 @@ public class SearchControllerTests
         Assert.Equal(0, unknown.Total);
         Assert.Empty(unknown.Hits);
 
-        Assert.Empty((await h.SearchAsync(projectId: h.ProjectAId, type: "bug")).Hits);
+        Assert.Empty((await h.SearchAsync(projectId: [h.ProjectAId], type: "bug")).Hits);
+    }
+
+    [Fact]
+    public async Task ProjectId_TwoIds_AnswerEitherProjects()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+        var b = await h.FileAsync(h.ProjectBId, "bug", "in B");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, h.ProjectBId]);
+
+        Assert.Equal(new[] { a.Key, b.Key }, hits.Hits.Select(x => x.Card.Key).OrderBy(k => k));
+    }
+
+    [Fact]
+    public async Task ProjectId_ARepeatedId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, h.ProjectAId]);
+
+        Assert.Equal([a.Key], hits.Hits.Select(x => x.Card.Key));
+    }
+
+    [Fact]
+    public async Task ProjectId_AnUnknownIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        var a = await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [h.ProjectAId, 999_999]);
+
+        Assert.Equal([a.Key], hits.Hits.Select(x => x.Card.Key));
+    }
+
+    [Fact]
+    public async Task ProjectId_AnUnknownIdAlone_AnswersNoHitsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await h.FileAsync(h.ProjectAId, "task", "in A");
+
+        var hits = await h.SearchAsync(projectId: [999_999]);
+
+        Assert.Empty(hits.Hits);
     }
 
     [Fact]
@@ -326,7 +373,7 @@ public class SearchControllerTests
         }
 
         public async Task<SearchDto> SearchAsync(
-            string? q = null, int? projectId = null, string? type = null, int? statusId = null,
+            string? q = null, List<int>? projectId = null, string? type = null, int? statusId = null,
             string? createdFrom = null, string? createdTo = null, string? closedFrom = null, string? closedTo = null,
             int limit = 50, int offset = 0) =>
             Value(await Search.GetSearch(q, projectId, type, statusId, createdFrom, createdTo, closedFrom, closedTo, limit, offset, default));
@@ -348,12 +395,14 @@ public class SearchControllerTests
         public bool Equals(SearchDto? x, SearchDto? y) =>
             x is not null && y is not null && x.Total == y.Total && x.Hits.Count == y.Hits.Count &&
             x.Hits.Zip(y.Hits).All(p =>
-                // RunnerTagsOwn, RunnerTags and RunnerTagsFrom are lists, which a record compares by reference.
-                p.First.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [] } ==
-                p.Second.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [] } &&
+                // The runner-tag and omitted-runner fields are lists, which a record compares by reference.
+                p.First.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] } ==
+                p.Second.Card with { RunnerTagsOwn = [], RunnerTags = [], RunnerTagsFrom = [], OmittedRunnersOwn = [], OmittedRunners = [] } &&
                 p.First.Card.RunnerTagsOwn.SequenceEqual(p.Second.Card.RunnerTagsOwn) &&
                 p.First.Card.RunnerTags.SequenceEqual(p.Second.Card.RunnerTags) &&
                 p.First.Card.RunnerTagsFrom.SequenceEqual(p.Second.Card.RunnerTagsFrom) &&
+                p.First.Card.OmittedRunnersOwn.SequenceEqual(p.Second.Card.OmittedRunnersOwn) &&
+                p.First.Card.OmittedRunners.SequenceEqual(p.Second.Card.OmittedRunners) &&
                 p.First.CreatedAt == p.Second.CreatedAt &&
                 p.First.ClosedAt == p.Second.ClosedAt && p.First.Matched.SequenceEqual(p.Second.Matched));
 

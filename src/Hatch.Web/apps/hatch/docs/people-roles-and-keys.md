@@ -113,7 +113,8 @@ hatch_ak_…`.
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's
-  record; image upload; marking the overnight view seen; running a backup.
+  record; attachment upload and delete; marking the
+  overnight view seen; running a backup.
   [`api-reference`](api-reference) has the route-by-route version.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the

@@ -24,9 +24,13 @@ export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   bug: ['epic', 'story', 'reflection'],
 };
 
-/** A stored image: `/api/hatch/images/{id}` serves it. */
-export interface HatchImage {
+/** A stored file: `/api/hatch/attachments/{id}` serves it. */
+export interface Attachment {
   id: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
 }
 
 export interface Project {
@@ -297,6 +301,11 @@ export interface IssueCard {
   /** The key of the ancestor `dangerous` comes from; null when it is this
       issue's own or there is none. See IssueCardDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** The runners this issue itself omits, one row each. See IssueCardDto.OmittedRunnersOwn. */
+  omittedRunnersOwn: RunnerOmission[];
+  /** The runners omitted for this issue: its own and every ancestor's. See
+      IssueCardDto.OmittedRunners. */
+  omittedRunners: RunnerOmission[];
   /** When an increment last left this ticket where it found it, or null.
       See IssueCardDto.StalledAt. */
   stalledAt: string | null;
@@ -629,6 +638,10 @@ export interface Issue {
   dangerous: string | null;
   /** See IssueCard.dangerousFrom and IssueDto.DangerousFrom. */
   dangerousFrom: string | null;
+  /** See IssueCard.omittedRunnersOwn and IssueDto.OmittedRunnersOwn. */
+  omittedRunnersOwn: RunnerOmission[];
+  /** See IssueCard.omittedRunners and IssueDto.OmittedRunners. */
+  omittedRunners: RunnerOmission[];
   /** Why the issue finished with no code, or absent. See IssueDto.NoCode. */
   noCode?: string | null;
   /** When noCode was declared. See IssueDto.NoCodeAt. */
@@ -759,6 +772,8 @@ export type IssueEventKind =
   | 'one_pr_changed'
   | 'runner_tags_changed'
   | 'dangerous_changed'
+  | 'runner_omitted'
+  | 'runner_omission_lifted'
   | 'release_note_changed'
   | 'wip_limit_changed'
   | 'dependency_added'
@@ -1002,6 +1017,21 @@ export interface DangerousRequest {
   reason: string;
 }
 
+/** One runner kept off an issue. `fromKey` is the ancestor the omission comes
+    from; null is the issue's own row. Mirrors RunnerOmissionDto. */
+export interface RunnerOmission {
+  runner: string;
+  reason: string | null;
+  by: string;
+  at: string;
+  fromKey: string | null;
+}
+
+/** Mirrors OmitRunnerRequest. */
+export interface OmitRunnerRequest {
+  reason: string | null;
+}
+
 /** A write to the runner tags a column requires. See StatusRunnerTagsWriteRequest (Hatch.Contracts). */
 export interface StatusRunnerTagsWriteRequest {
   tags: string[];
@@ -1094,7 +1124,8 @@ export interface IssueDependencyRequest {
     combine with AND; `parentKey: ''` is the one that cannot be said any other
     way - "no parent at all". */
 export interface IssueSearch {
-  projectId?: number | null;
+  /** One project, several (repeated once per id), or every project when absent. */
+  projectId?: number | number[] | null;
   type?: IssueType | null;
   statusId?: number | null;
   parentKey?: string | null;
@@ -1118,6 +1149,56 @@ export interface SearchHit {
 export interface SearchResult {
   total: number;
   hits: SearchHit[];
+}
+
+// ---- Dreams ----
+
+/** One dream: a line somebody wanted said, leaning toward a project or loose.
+    Mirrors DreamDto. */
+export interface Dream {
+  id: number;
+  body: string;
+  author: string;
+  source: string | null;
+  projectId: number | null;
+  projectKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The keys of the issues that drew on this dream. Never null. */
+  wovenInto: string[];
+}
+
+/** A page of dreams, and how many matched before paging. Mirrors DreamsPageDto. */
+export interface DreamsPage {
+  dreams: Dream[];
+  total: number;
+}
+
+/** What it takes to add a dream. Mirrors DreamCreateRequest. */
+export interface DreamCreateRequest {
+  body: string;
+  source?: string | null;
+  projectId?: number | null;
+}
+
+/** The four ways a weave press can draw its epic - mirrors DreamWeave.Modes. */
+export type WeaveMode = 'seed' | 'pressing' | 'common' | 'next';
+
+/** What it takes to press a weave. Mirrors DreamWeaveRequest. */
+export interface DreamWeaveRequest {
+  projectId: number;
+  mode: WeaveMode;
+  seed?: string;
+  dreamIds?: number[];
+}
+
+/** What it takes to edit a dream. Every field is independently
+    present-or-absent - DreamsController.EditDream reads a raw JsonElement,
+    so there is no server-side DTO this mirrors. */
+export interface DreamPatchRequest {
+  body?: string;
+  source?: string | null;
+  projectId?: number | null;
 }
 
 /** One edit for many issues. Null leaves a field alone and `''` clears it, the
@@ -1496,11 +1577,12 @@ export interface Timeline {
 }
 
 /** One grid step of a cumulative flow: the instant, and how many issues sat in
-    each column then, parallel to CumulativeFlow.columns. Mirrors
-    CumulativeFlowPointDto. */
+    each column then, parallel to CumulativeFlow.columns, and in each project,
+    parallel to CumulativeFlow.projects. Mirrors CumulativeFlowPointDto. */
 export interface CumulativeFlowPoint {
   at: string;
   counts: number[];
+  projectCounts: number[];
 }
 
 /** How many issues sat in each board column over time, one point per grid
@@ -1512,11 +1594,64 @@ export interface CumulativeFlow {
   /** The board's own columns, in board order, deferred columns excluded -
       parallel to each point's `counts`. */
   columns: number[];
+  /** The project keys in scope, in `/api/hatch/projects`'s own order -
+      parallel to each point's `projectCounts`. */
+  projects: string[];
   /** One per grid step, oldest first. */
   points: CumulativeFlowPoint[];
   /** Stretches in the range that named a column no longer on the board and
       were left out. */
   unresolved: number;
+}
+
+// ---- Changelog report ----
+
+/** Closed epics bucketed over a window, with the work beneath them. Mirrors
+    ChangelogReportDto. */
+export interface ChangelogReport {
+  from: string;
+  to: string;
+  bucket: string;
+  /** The depth the report groups at. */
+  level: 'epic' | 'story';
+  /** Whether work under no epic rides alongside the buckets - echoes the request. */
+  loose: boolean;
+  /** Newest first. */
+  buckets: ChangelogReportBucket[];
+}
+
+/** One bucket: the window it covers (`end` exclusive), the epics closed inside
+    it, and the loose work beside them. Mirrors ChangelogReportBucketDto. */
+export interface ChangelogReportBucket {
+  start: string;
+  end: string;
+  groups: ChangelogReportGroup[];
+  /** Closed bugs and parentless stories here when `loose` is set; [] otherwise,
+      and always [] at `level=story`. */
+  loose: ChangelogReportEntry[];
+}
+
+/** One closed epic as a bucket draws it. Mirrors ChangelogReportGroupDto. */
+export interface ChangelogReportGroup {
+  epic: IssueCard;
+  /** False when the group exists for a story closing under the epic rather
+      than the epic's own close; always true at `level=epic`. */
+  closedHere: boolean;
+  /** Every issue below the epic, at any depth. */
+  descendantCount: number;
+  stories: ChangelogReportEntry[];
+}
+
+/** One closed issue, as a group's `stories` or a bucket's `loose` draws it.
+    Mirrors ChangelogReportEntryDto. */
+export interface ChangelogReportEntry {
+  key: string;
+  title: string;
+  type: IssueType;
+  projectKey: string;
+  releaseNote: string | null;
+  closedAt: string;
+  priority: IssueCard['priority'];
 }
 
 // ---- The battery ----
@@ -2163,6 +2298,10 @@ export interface Runner {
       loop's first heartbeat that says, and from then on only a PATCH moves it.
       Never null: a row that was never told reads false. */
   refusesDangerous: boolean;
+  /** The models this runner offers - a fact from its own heartbeat, empty for
+      one that has reported none, including an older CLI that predates the
+      field. */
+  models: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;

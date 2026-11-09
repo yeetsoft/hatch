@@ -23,6 +23,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   tags: [],
   projects: [],
   refusesDangerous: false,
+  models: [],
   drives: [],
   clones: null,
   mine: null,
@@ -75,7 +76,7 @@ describe('planGoToWork', () => {
     expect(plan).toEqual({ mode: 'none' });
 
     const { calls, patch } = recorder();
-    await applyGoToWork(plan, '', patch);
+    await applyGoToWork(plan, '', [], patch);
     expect(calls).toEqual([]);
   });
 
@@ -110,17 +111,30 @@ describe('planGoToWork', () => {
     expect(plan.mode).toBe('go');
 
     const filtered = recorder();
-    await applyGoToWork(plan, 'FIL', filtered.patch);
+    await applyGoToWork(plan, 'FIL', [], filtered.patch);
     expect(filtered.calls).toEqual([
       ['a', { state: 'running', projects: ['FIL'] }],
       ['b', { state: 'running', projects: ['FIL'] }],
     ]);
 
     const all = recorder();
-    await applyGoToWork(plan, '', all.patch);
+    await applyGoToWork(plan, '', [], all.patch);
     expect(all.calls.map(([, b]) => b)).toEqual([
       { state: 'running', projects: [] },
       { state: 'running', projects: [] },
+    ]);
+  });
+
+  it('goes on the scope when no project is picked, in every body', async () => {
+    const plan = planGoToWork(
+      [runner({ name: 'a', state: 'paused' }), runner({ name: 'b', state: 'paused' })],
+      NOW,
+    );
+    const { calls, patch } = recorder();
+    await applyGoToWork(plan, '', ['AER', 'FIL'], patch);
+    expect(calls.map(([, b]) => b)).toEqual([
+      { state: 'running', projects: ['AER', 'FIL'] },
+      { state: 'running', projects: ['AER', 'FIL'] },
     ]);
   });
 
@@ -134,7 +148,7 @@ describe('planGoToWork', () => {
       NOW,
     );
     const { calls, patch } = recorder();
-    await applyGoToWork(plan, '', patch);
+    await applyGoToWork(plan, '', [], patch);
     expect(plan.mode).toBe('go');
     expect(calls.map(([n]) => n)).toEqual(['rest']);
   });
@@ -142,11 +156,34 @@ describe('planGoToWork', () => {
 
 describe('goToWorkBody', () => {
   it('pauses with a state alone', () => {
-    expect(goToWorkBody('pause', 'FIL')).toEqual({ state: 'paused' });
+    expect(goToWorkBody('pause', 'FIL', [])).toEqual({ state: 'paused' });
+  });
+
+  it('pause ignores both the project and the scope', () => {
+    expect(goToWorkBody('pause', 'FIL', ['AER'])).toEqual({ state: 'paused' });
+  });
+
+  it('starts on the picked project, which wins over the scope', () => {
+    expect(goToWorkBody('go', 'FIL', ['AER'])).toEqual({ state: 'running', projects: ['FIL'] });
+  });
+
+  it('falls back to the scope when no project is picked', () => {
+    expect(goToWorkBody('go', '', ['AER', 'FIL'])).toEqual({ state: 'running', projects: ['AER', 'FIL'] });
+  });
+
+  it('copies the scope rather than aliasing it', () => {
+    const scope = ['AER'];
+    const body = goToWorkBody('go', '', scope);
+    expect(body.projects).toEqual(scope);
+    expect(body.projects).not.toBe(scope);
+  });
+
+  it('starts on every project with neither a project nor a scope', () => {
+    expect(goToWorkBody('go', '', [])).toEqual({ state: 'running', projects: [] });
   });
 
   it('is a fresh object each call', () => {
-    expect(goToWorkBody('go', '')).not.toBe(goToWorkBody('go', ''));
+    expect(goToWorkBody('go', '', [])).not.toBe(goToWorkBody('go', '', []));
   });
 });
 
@@ -155,8 +192,8 @@ describe('applyGoToWork', () => {
     const plan = planGoToWork([runner({ name: 'a' }), runner({ name: 'b' })], NOW);
     const first = recorder();
     const second = recorder();
-    await applyGoToWork(plan, 'FIL', first.patch);
-    await applyGoToWork(plan, 'FIL', second.patch);
+    await applyGoToWork(plan, 'FIL', [], first.patch);
+    await applyGoToWork(plan, 'FIL', [], second.patch);
     expect(second.calls).toEqual(first.calls);
     expect(first.calls).toHaveLength(2);
   });
@@ -167,13 +204,13 @@ describe('applyGoToWork', () => {
       NOW,
     );
     const { calls, patch } = recorder(['b']);
-    await expect(applyGoToWork(plan, '', patch)).rejects.toThrow('b refused');
+    await expect(applyGoToWork(plan, '', [], patch)).rejects.toThrow('b refused');
     expect(calls.map(([n]) => n)).toEqual(['a', 'b', 'c']);
   });
 
   it('does nothing for loading, none or stopping', async () => {
     const { calls, patch } = recorder();
-    for (const mode of ['loading', 'none', 'stopping'] as const) await applyGoToWork({ mode }, '', patch);
+    for (const mode of ['loading', 'none', 'stopping'] as const) await applyGoToWork({ mode }, '', [], patch);
     expect(calls).toEqual([]);
   });
 });

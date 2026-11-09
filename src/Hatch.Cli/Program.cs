@@ -380,6 +380,9 @@ try
         "depends" => await new DependsCommand(cli).RunAsync(rest, cancelling.Token),
         "one-pr" => await new OnePrCommand(cli).RunAsync(rest, cancelling.Token),
         "dangerous" => await new DangerousCommand(cli).RunAsync(rest, cancelling.Token),
+        "omit" => await new OmitCommand(cli).RunAsync(rest, cancelling.Token),
+        "recuse" => await new RecuseCommand(cli).RunAsync(rest, cancelling.Token),
+        "dream" => await new DreamCommand(cli).RunAsync(rest, cancelling.Token),
         "ask" => await new QuestionCommands(cli).AskAsync(rest, cancelling.Token),
         "questions" => await new QuestionCommands(cli).QuestionsAsync(rest, cancelling.Token),
         "answer" => await new QuestionCommands(cli).AnswerAsync(rest, cancelling.Token),
@@ -501,7 +504,7 @@ internal partial class Program
     public static readonly string[] Commands =
     [
         "config", "use", "standby", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
-        "verdict", "depends", "one-pr", "dangerous", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
+        "verdict", "depends", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
 
@@ -578,6 +581,11 @@ internal partial class Program
         "  hatch one-pr AER-5 on        ...turn it on for this story (or off, or inherit)",
         "  hatch dangerous AER-12 \"why\"  flag it: running its work could destabilise a machine",
         "  hatch dangerous AER-12 --clear  ...clear the flag",
+        "  hatch omit AER-12              the runners omitted from it, and where each came from",
+        "  hatch omit AER-12 <runner> \"why\"  ...omit one; --lift <runner> lifts it",
+        "  hatch recuse AER-12 \"why\"    this runner is wrong for it: the board never hands it here again",
+        "  hatch dream \"<words>\"        put a half-thought on the Dream Board",
+        "  hatch dream \"<words>\" --source <ref> --project AER  ...say where it came from, and which project it leans toward",
         "  hatch ask AER-12 \"how should retries be scoped?\" \\",
         "      --recommend \"Per-node: one budget per node, so a slow node cannot starve\" \\",
         "      --option \"Global: one budget for the drain, simpler to reason about\"",
@@ -657,6 +665,8 @@ internal partial class Program
         "                     per-user file, a directory, or `off`; unset means no log",
         "  HATCH_DANGEROUS    `off` makes this runner refuse work flagged dangerous; `on`, or",
         "                     unset, takes it. Seeds the runner's row once, then the board owns it",
+        "  HATCH_MODELS       comma-separated models this runner advertises; unset means the",
+        "                     agent's default",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

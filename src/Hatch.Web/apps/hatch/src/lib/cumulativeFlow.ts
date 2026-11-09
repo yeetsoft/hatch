@@ -14,8 +14,44 @@
 
 import { CHART_UNITS, type Scale, xOf } from './timeline';
 import { statusVars } from './color';
-import type { Status } from '../types';
+import { toggleChoice } from './checklist';
+import { markVars } from '@hatch/ui';
+import type { Project, Status } from '../types';
 import type { CumulativeFlow, CumulativeFlowPoint } from '../types';
+
+/** What the stack is cut by: the board's own columns, or the projects in
+    scope. */
+export type ColourBy = 'column' | 'project';
+
+export const BY = 'by';
+
+/** `by` from the URL: `project` reads as such, absent or any other value as
+    `column` - the page's default. */
+export const resolveColourBy = (params: URLSearchParams): ColourBy =>
+  params.get(BY) === 'project' ? 'project' : 'column';
+
+/** `params` with `by` set to `by`, or cleared when `by` is the default
+    (`column`), so the URL never carries the default explicitly. Never
+    mutates `params`. */
+export function withColourBy(params: URLSearchParams, by: ColourBy): URLSearchParams {
+  const next = new URLSearchParams(params);
+  by === 'project' ? next.set(BY, 'project') : next.delete(BY);
+  return next;
+}
+
+/** The keys a cut stacks over: the board's columns, or the projects in
+    scope. */
+export const cutKeys = (answer: CumulativeFlow, by: ColourBy): (number | string)[] =>
+  by === 'project' ? answer.projects : answer.columns;
+
+/** One point's counts, cut the way `cutKeys` cuts the answer's own keys. */
+const cutCounts = (point: CumulativeFlowPoint, by: ColourBy): number[] =>
+  by === 'project' ? point.projectCounts : point.counts;
+
+/** One key's label: a column's status name (`Unknown` for one no longer on
+    the board), or a project's key, read back as a string. */
+export const labelFor = (by: ColourBy, key: number | string, statuses: Status[]): string =>
+  by === 'project' ? String(key) : statuses.find((status) => status.id === key)?.name ?? 'Unknown';
 
 /** One band's vertical extent at one instant, bottom-up: `lower` is its
     baseline, `upper` its top. */
@@ -51,9 +87,11 @@ export interface BandPoint {
 }
 
 /** The grand total at every point, the tallest of them all - `0` for `[]`,
-    which guards `Math.max()` on empty rather than returning `-Infinity`. */
-export function tallestTotal(points: CumulativeFlowPoint[]): number {
-  return points.reduce((tallest, point) => Math.max(tallest, point.counts.reduce((a, b) => a + b, 0)), 0);
+    which guards `Math.max()` on empty rather than returning `-Infinity`. Cut
+    by `by`, though `tallestTotal` is the same value either way: the two
+    cuts are over the same total at every point, by construction. */
+export function tallestTotal(points: CumulativeFlowPoint[], by: ColourBy): number {
+  return points.reduce((tallest, point) => Math.max(tallest, cutCounts(point, by).reduce((a, b) => a + b, 0)), 0);
 }
 
 /**
@@ -64,14 +102,14 @@ export function tallestTotal(points: CumulativeFlowPoint[]): number {
  * Fractions are against `tallestTotal`, guarded `0` rather than `NaN` when
  * the answer has no points or every count in it is zero.
  */
-export function bands(answer: CumulativeFlow, scale: Scale): BandPoint[][] {
-  const tallest = tallestTotal(answer.points);
-  const series: BandPoint[][] = answer.columns.map(() => []);
+export function bands(answer: CumulativeFlow, scale: Scale, by: ColourBy): BandPoint[][] {
+  const tallest = tallestTotal(answer.points, by);
+  const series: BandPoint[][] = cutKeys(answer, by).map(() => []);
 
   for (const point of answer.points) {
     const x = xOf(scale, point.at);
 
-    stackAt(point.counts).forEach((band, i) => {
+    stackAt(cutCounts(point, by)).forEach((band, i) => {
       series[i].push({
         x,
         lowerFraction: tallest > 0 ? band.lower / tallest : 0,
@@ -96,7 +134,7 @@ export function bandPolygon(band: BandPoint[], height: number): string {
 
 /** The top of the scale, drawn above the bands so a shape has a size, as
     `lib/spend.ts`'s `peakLabel` is. */
-export const peakLabel = (points: CumulativeFlowPoint[]): string => `peaking at ${tallestTotal(points)}`;
+export const peakLabel = (points: CumulativeFlowPoint[], by: ColourBy): string => `peaking at ${tallestTotal(points, by)}`;
 
 /** One point's hoverable slot, `{x, width}` in the pane's own units: a
  * Voronoi cell on x, its edges at the midpoint to each neighbour - except the
@@ -137,13 +175,15 @@ export function pointIndexAt(points: CumulativeFlowPoint[], scale: Scale, x: num
     names as `Unknown`. */
 export function breakdown(
   point: CumulativeFlowPoint,
-  columns: number[],
+  keys: (number | string)[],
+  by: ColourBy,
   statuses: Status[],
-): { rows: { columnId: number; name: string; count: number }[]; total: number } {
-  const rows = columns.map((columnId, i) => ({
-    columnId,
-    name: statuses.find((status) => status.id === columnId)?.name ?? 'Unknown',
-    count: point.counts[i],
+): { rows: { key: number | string; name: string; count: number }[]; total: number } {
+  const counts = cutCounts(point, by);
+  const rows = keys.map((key, i) => ({
+    key,
+    name: labelFor(by, key, statuses),
+    count: counts[i],
   }));
 
   return { rows, total: rows.reduce((sum, row) => sum + row.count, 0) };
@@ -158,10 +198,18 @@ export function momentLabel(at: string, step: CumulativeFlow['step'], locale?: s
   return step === 'hour' ? `${day} ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : day;
 }
 
-/** The custom properties a band is painted with - its column's own colour,
-    as `segmentStyle` (lib/timeline.ts) paints a timeline segment. */
-export function bandStyle(statuses: Status[], statusId: number): Record<string, string> {
-  return statusVars(statuses.find((status) => status.id === statusId)?.color);
+/** The custom properties a band is painted with - its column's or its
+    project's own colour, as `segmentStyle` (lib/timeline.ts) paints a
+    timeline segment. */
+export function bandStyle(
+  by: ColourBy,
+  key: number | string,
+  statuses: Status[],
+  projects: Project[],
+): Record<string, string> {
+  return by === 'project'
+    ? markVars(projects.find((project) => project.key === key)?.color)
+    : statusVars(statuses.find((status) => status.id === key)?.color);
 }
 
 /** Whether there is anything to draw: no points, or every count in every
@@ -195,4 +243,32 @@ export function pinAfter(pin: number | null, count: number, action: PinAction): 
     case 'step':
       return pin === null ? count - 1 : Math.min(count - 1, Math.max(0, pin + action.delta));
   }
+}
+
+/** Adds or removes one project's key, which is what a list of checkboxes
+    does to the chosen set - `toggleType` (lib/filter.ts) and this are both
+    over `toggleChoice` (lib/checklist.ts).
+    Unticking the only one left returns `chosen` unchanged, so the control can
+    never empty the chart itself. */
+export function toggleProject(chosen: string[], key: string, allKeys: string[]): string[] {
+  const next = toggleChoice(chosen, key, allKeys);
+  if (next.length === 0) return chosen;
+
+  return next;
+}
+
+/** What the Projects control says: `All`, `All but AE` for all but one, else
+    the chosen keys joined with `, ` - `typesSummary`'s own shape, shorter for
+    having no plural to look up. */
+export function projectsSummary(chosen: string[], projects: Project[]): string {
+  if (chosen.length >= projects.length) return 'All';
+  if (chosen.length === projects.length - 1) {
+    const missing = projects.find((project) => !chosen.includes(project.key));
+    if (missing) return `All but ${missing.key}`;
+  }
+
+  return projects
+    .filter((project) => chosen.includes(project.key))
+    .map((project) => project.key)
+    .join(', ');
 }

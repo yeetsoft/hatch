@@ -56,8 +56,11 @@ public record ProjectDto(
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
 }
 
-/// <summary>A stored image, as the markdown that shows it will name it: <c>/api/hatch/images/{id}</c>.</summary>
-public record ImageDto(Guid Id);
+/// <summary>
+/// A stored file, as the list and the upload describe it. The bytes are not
+/// here: <c>GET /api/hatch/attachments/{id}</c> serves them.
+/// </summary>
+public record AttachmentDto(Guid Id, string FileName, string ContentType, long Size, DateTimeOffset CreatedAt);
 
 /// <summary>
 /// A new project. <paramref name="Key"/> is checked against
@@ -319,6 +322,17 @@ public record AssigneeDto(string Kind, Guid Id, string Name);
 public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> Tags);
 
 /// <summary>
+/// One runner an issue is kept off - its own omission, or one inherited from
+/// an ancestor.
+/// </summary>
+/// <param name="Runner">The runner's name.</param>
+/// <param name="Reason">Why it is omitted; null where none was given.</param>
+/// <param name="By">Who omitted it.</param>
+/// <param name="At">When it was omitted.</param>
+/// <param name="FromKey">The key of the ancestor the omission comes from; null when it is the issue's own.</param>
+public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTimeOffset At, string? FromKey);
+
+/// <summary>
 /// A card. What the board draws, and nothing more - descriptions and comments
 /// are a detail-page request, because the board holds every issue in the house
 /// and shipping every description with it would make the first paint the
@@ -405,6 +419,8 @@ public record RunnerTagSourceDto(string Kind, string Key, IReadOnlyList<string> 
 /// <param name="DangerousOwn">The reason this issue's own row carries, or null where it is not flagged itself - see <see cref="EfHatchIssue.Dangerous"/>.</param>
 /// <param name="Dangerous">The reason that applies: this issue's own, else the nearest flagged ancestor's, else null - see <see cref="PriorityTree.EffectiveDangerous"/>.</param>
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
+/// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
+/// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -439,7 +455,9 @@ public record IssueCardDto(
     IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom = null!,
     string? DangerousOwn = null,
     string? Dangerous = null,
-    string? DangerousFrom = null)
+    string? DangerousFrom = null,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -447,6 +465,8 @@ public record IssueCardDto(
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
 }
 
 /// <summary>
@@ -618,6 +638,8 @@ public record IssueClaimDto(
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 /// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>.</param>
 /// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
+/// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
+/// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -674,7 +696,9 @@ public record IssueDto(
     string? Dangerous = null,
     string? DangerousFrom = null,
     string? NoCode = null,
-    DateTimeOffset? NoCodeAt = null)
+    DateTimeOffset? NoCodeAt = null,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -682,6 +706,8 @@ public record IssueDto(
     public IReadOnlyList<string> RunnerTagsOwn { get; init; } = RunnerTagsOwn ?? [];
     public IReadOnlyList<string> RunnerTags { get; init; } = RunnerTags ?? [];
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
+    public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
 }
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
@@ -759,7 +785,15 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Preempted = "preempted";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted;
+    /// <summary>
+    /// The session recused this runner from the ticket (<c>hatch recuse</c>);
+    /// not a drop - the omission, not the let-go count, is what keeps the
+    /// ticket off this runner, so <c>LetGo</c> stops at it as at
+    /// <see cref="Worked"/>.
+    /// </summary>
+    public const string Recused = "recused";
+
+    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused;
 }
 
 /// <summary>
@@ -1106,6 +1140,29 @@ public record CommentDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? DeliveredAt = null,
     string? DeliveredTo = null);
+
+/// <summary>One dream: a line somebody wanted said, leaning toward a project or loose.</summary>
+/// <param name="WovenInto">The keys of the issues that drew on this dream, ordered by project key then issue number. Never null.</param>
+public record DreamDto(
+    long Id, string Body, string Author, string? Source,
+    int? ProjectId, string? ProjectKey, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
+    IReadOnlyList<string> WovenInto);
+
+/// <summary>What it takes to add a dream. <see cref="ProjectId"/> is the lean, and may be left out.</summary>
+public record DreamCreateRequest(string Body, string? Source = null, int? ProjectId = null);
+
+/// <summary>
+/// What a weave press sends to file the epic it asks for - see
+/// <c>DreamWeaveController</c> and <c>DreamWeave</c>.
+/// </summary>
+/// <param name="ProjectId">The project the epic is born in. Nullable so a missing one is a sentence ("an epic needs a home"), not a bound default.</param>
+/// <param name="Mode">One of <c>DreamWeave.Modes</c> - <c>seed</c>, <c>pressing</c>, <c>common</c> or <c>next</c>. Nullable for the same reason as <see cref="ProjectId"/>.</param>
+/// <param name="Seed">The free text behind mode <c>seed</c>; required there, and refused on every other mode.</param>
+/// <param name="DreamIds">The dreams the person had on screen when they pressed, if any.</param>
+public record DreamWeaveRequest(int? ProjectId, string? Mode, string? Seed = null, IReadOnlyList<long>? DreamIds = null);
+
+/// <summary>A page of dreams, and how many matched before paging.</summary>
+public record DreamsPageDto(IReadOnlyList<DreamDto> Dreams, int Total);
 
 /// <summary>
 /// Mark messages as read, and get back the ones this call marked.
@@ -1963,6 +2020,20 @@ public record DangerousRequest(string? Reason)
 }
 
 /// <summary>
+/// Omitting a runner from an issue. A null or empty reason is stored as no
+/// reason, not as a clear.
+/// </summary>
+/// <param name="Reason">Why the runner is omitted. Trimmed before it is stored.</param>
+public record OmitRunnerRequest(string? Reason)
+{
+    /// <summary>
+    /// The longest reason the server will accept, measured after trimming. Here
+    /// rather than on the entity because both sides of the wire need it.
+    /// </summary>
+    public const int MaxLength = 200;
+}
+
+/// <summary>
 /// An issue's declaration that it finished with no code. Empty or whitespace
 /// clears it; an absent or null reason is refused, so clearing is something the
 /// caller says.
@@ -2027,6 +2098,9 @@ public record AssigneeDirectoryDto(AssigneeDto? Me, IReadOnlyList<AssigneeDto> A
 /// </remarks>
 public record IssueDependencyRequest(string DependsOnKey);
 
+/// <summary>Replaces the set of dreams an issue drew on, with the dream ids it should now carry.</summary>
+public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
+
 // ---- Work ----
 
 /// <summary>
@@ -2089,8 +2163,8 @@ public record IssueDependencyRequest(string DependsOnKey);
 /// <param name="LetGo">
 /// How many increments in a row let this ticket go without moving it: this
 /// issue's releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
-/// counted back to the first release whose outcome was
-/// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume, or
+/// counted back to the first release whose outcome was <see cref="ClaimOutcomes.Worked"/>
+/// or <see cref="ClaimOutcomes.Recused"/>, a status change, a person's resume, or
 /// an answer a person wrote - whichever comes first. A release with no outcome,
 /// a hold, and an answer written by a lapse, are skipped rather than counted or
 /// stopped at. Zero on
@@ -2625,10 +2699,11 @@ public record TimelineDto(
     IReadOnlyList<string> Creators,
     int Unresolved);
 
-/// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column then.</summary>
+/// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column, and in each project, then.</summary>
 /// <param name="At">The grid point, in <see cref="CumulativeFlowDto.Step"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
 /// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>. A terminal column counts only what closed inside the window, so it starts at zero at the grid's first point rather than at whatever it already held.</param>
-public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts);
+/// <param name="ProjectCounts">Parallel to <see cref="CumulativeFlowDto.Projects"/>: how many issues sat in each project at <paramref name="At"/>, cut from the same stretches as <paramref name="Counts"/> and so summing to the same total.</param>
+public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts, IReadOnlyList<int> ProjectCounts);
 
 /// <summary>
 /// How many issues sat in each board column over time: one point per grid
@@ -2638,6 +2713,7 @@ public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Count
 /// <param name="To">The end of the range the answer covers, as resolved.</param>
 /// <param name="Step">The grid's bucket size: <c>hour</c>, <c>day</c> or <c>week</c>.</param>
 /// <param name="Columns">The board's columns, in board order, deferred columns excluded — parallel to each point's <see cref="CumulativeFlowPointDto.Counts"/>.</param>
+/// <param name="Projects">The project keys in scope, in <c>/api/hatch/projects</c>'s own order — parallel to each point's <see cref="CumulativeFlowPointDto.ProjectCounts"/>.</param>
 /// <param name="Points">One per grid step, oldest first.</param>
 /// <param name="Unresolved">Stretches in the range that named a column no longer on the board and were left out.</param>
 public record CumulativeFlowDto(
@@ -2645,6 +2721,7 @@ public record CumulativeFlowDto(
     DateTimeOffset To,
     string Step,
     IReadOnlyList<int> Columns,
+    IReadOnlyList<string> Projects,
     IReadOnlyList<CumulativeFlowPointDto> Points,
     int Unresolved);
 
@@ -3145,6 +3222,64 @@ public record ChangelogEntryDto(
 
 /// <summary>One calendar month and how many issues closed in it - the jump control's own count.</summary>
 public record ChangelogMonthDto(string Month, int Count);
+
+// ---- Changelog report ----
+
+/// <summary>
+/// Closed top-level epics, bucketed over a range - see <c>ChangelogReport.Fold</c>
+/// for how a bucket is cut. A different shape from <see cref="ChangelogDto"/>,
+/// which is the changelog feed's own answer, not this report's.
+/// </summary>
+/// <param name="Level">The depth this report groups at - <c>"epic"</c> or <c>"story"</c>.</param>
+/// <param name="Loose">Whether work under no epic rides alongside the buckets - echoes the request.</param>
+public record ChangelogReportDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    string Bucket,
+    string Level,
+    bool Loose,
+    IReadOnlyList<ChangelogReportBucketDto> Buckets);
+
+/// <summary>One bucket: the window it covers, the epics closed inside it, and the loose work beside them.</summary>
+/// <param name="Groups">
+/// One entry per epic closed in this bucket at <c>level=epic</c>; at <c>level=story</c>,
+/// one entry per epic with a story closed in this bucket, or whose own close falls
+/// in it, or both.
+/// </param>
+/// <param name="Loose">Closed bugs (any parent) and parentless stories here when loose=true - [] when false, and always [] at level=story.</param>
+public record ChangelogReportBucketDto(
+    DateTimeOffset Start,
+    DateTimeOffset End,
+    IReadOnlyList<ChangelogReportGroupDto> Groups,
+    IReadOnlyList<ChangelogReportEntryDto> Loose);
+
+/// <summary>One closed epic, as a bucket draws it, with the work beneath it.</summary>
+/// <param name="ClosedHere">
+/// Whether the epic itself closed in this bucket - always true at <c>level=epic</c>;
+/// at <c>level=story</c>, false is possible, when the group exists for a story
+/// closing under the epic rather than the epic's own close.
+/// </param>
+/// <param name="DescendantCount">Every issue below this epic, at any depth - see <c>Rollup.Tree.DescendantCount</c>.</param>
+/// <param name="Stories">The epic's own closed children - always empty until a later story fills it in.</param>
+public record ChangelogReportGroupDto(
+    IssueCardDto Epic,
+    bool ClosedHere,
+    int DescendantCount,
+    IReadOnlyList<ChangelogReportEntryDto> Stories);
+
+/// <summary>
+/// One closed issue, as a group's <c>Stories</c> or a bucket's <c>Loose</c> will
+/// draw it - settled here, on this task, though neither list is filled in until
+/// the story that reads children does.
+/// </summary>
+public record ChangelogReportEntryDto(
+    string Key,
+    string Title,
+    string Type,
+    string ProjectKey,
+    string? ReleaseNote,
+    DateTimeOffset ClosedAt,
+    string Priority);
 
 // ---- Runners ----
 
@@ -3798,6 +3933,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// first heartbeat that says, and from then on only <c>PATCH</c> moves it.
 /// Never null on the wire: a row that was never told reads false.
 /// </param>
+/// <param name="Models">
+/// The models this runner says it can run, normalised per
+/// <see cref="RunnerModels.Normalise"/> and in the order it gave them. A fact
+/// the runner reports about itself, never a person's to set. Empty for a
+/// runner that has said none, rather than null.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -3842,11 +3983,13 @@ public record RunnerDto(
     string MaxTokensPerHourSource = "none",
     long? TokensUsed = null,
     long? TokensLastHour = null,
-    DateTimeOffset? ThrottledUntil = null)
+    DateTimeOffset? ThrottledUntil = null,
+    IReadOnlyList<string> Models = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
     public IReadOnlyList<string> Tags { get; init; } = Tags ?? [];
+    public IReadOnlyList<string> Models { get; init; } = Models ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
 }
 
@@ -3972,6 +4115,12 @@ public enum RunnerBoardDrift
 /// <param name="MaxTokensPerHour">The cap on tokens per hour, on the same terms as <see cref="MaxTokens"/>.</param>
 /// <param name="TokensUsed">The tokens those increments have used so far, on the terms <see cref="Runs"/> has.</param>
 /// <param name="TokensLastHour">The tokens used in the last hour, on the terms <see cref="Runs"/> has.</param>
+/// <param name="Models">
+/// The models this runner can run - a fact about the process, written on
+/// every beat like <see cref="Remotes"/>, never seeded once and never a
+/// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
+/// whole, or kept whole, per <see cref="RunnerModels.Normalise"/>.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4006,7 +4155,8 @@ public record RunnerHeartbeatRequest(
     long? MaxTokens = null,
     long? MaxTokensPerHour = null,
     long? TokensUsed = null,
-    long? TokensLastHour = null);
+    long? TokensLastHour = null,
+    IReadOnlyList<string>? Models = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

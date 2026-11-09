@@ -23,6 +23,7 @@ import {
   runnerStrip,
   tagsLabel,
   projectsLabel,
+  modelsLabel,
   topRefusal,
   tokenBudget,
   tokenFieldHint,
@@ -56,6 +57,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   tags: [],
   projects: [],
   refusesDangerous: false,
+  models: [],
   drives: [],
   clones: null,
   mine: null,
@@ -425,6 +427,16 @@ describe('tagsLabel', () => {
   it('joins one or more tags', () => {
     expect(tagsLabel(runner({ tags: ['gpu'] }))).toBe('gpu');
     expect(tagsLabel(runner({ tags: ['gpu', 'macos'] }))).toBe('gpu, macos');
+  });
+});
+
+describe('modelsLabel', () => {
+  it('is null for a runner that has reported none', () => {
+    expect(modelsLabel(runner())).toBeNull();
+  });
+
+  it('prefixes the models with the word, since a bare list reads as nothing', () => {
+    expect(modelsLabel(runner({ models: ['haiku', 'sonnet', 'opus'] }))).toBe('models haiku, sonnet, opus');
   });
 });
 

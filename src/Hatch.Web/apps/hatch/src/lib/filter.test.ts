@@ -13,6 +13,7 @@ import {
   readBoardProject,
   readBoardTypes,
   revealType,
+  scrubbedProject,
   toggleType,
   toggleWaiting,
   typeCounts,
@@ -69,6 +70,8 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,
@@ -132,6 +135,10 @@ describe('filterCards', () => {
 
   it('keeps only the chosen types', () => {
     expect(filterCards(cards, filter({ types: ['bug'] })).map((c) => c.key)).toEqual(['AER-2']);
+  });
+
+  it('draws nothing for an empty choice of types', () => {
+    expect(filterCards(cards, filter({ types: [] }))).toEqual([]);
   });
 
   it('takes more than one type at a time', () => {
@@ -222,6 +229,7 @@ describe('isFiltering', () => {
 
   it('is true once anything is narrowed', () => {
     expect(isFiltering(filter({ types: ['bug'] }))).toBe(true);
+    expect(isFiltering(filter({ types: [] }))).toBe(true);
     expect(isFiltering(filter({ query: 'cert' }))).toBe(true);
     expect(isFiltering(filter({ waiting: true }))).toBe(true);
     expect(isFiltering(filter({ assignee: UNASSIGNED }))).toBe(true);
@@ -340,9 +348,11 @@ describe('toggleType', () => {
     expect(toggleType(DEFAULT_FILTER, 'bug').types).toEqual(['epic', 'reflection', 'story', 'task']);
   });
 
-  it('will not remove the only type left, and hands back the same filter', () => {
+  it('removes the only type left, giving an empty choice in a new object', () => {
     const one = filter({ types: ['bug'] });
-    expect(toggleType(one, 'bug')).toBe(one);
+    const none = toggleType(one, 'bug');
+    expect(none.types).toEqual([]);
+    expect(none).not.toBe(one);
   });
 
   it('leaves the rest of the filter alone', () => {
@@ -361,12 +371,20 @@ describe('revealType', () => {
     expect(revealType(DEFAULT_FILTER, 'epic')).toBe(DEFAULT_FILTER);
   });
 
+  it('draws the filed type from an empty choice', () => {
+    expect(revealType(filter({ types: [] }), 'task').types).toEqual(['task']);
+  });
+
   it('leaves the rest of the filter alone', () => {
     expect(revealType({ ...DEFAULT_FILTER, query: 'cert' }, 'task').query).toBe('cert');
   });
 });
 
 describe('typesSummary', () => {
+  it('says None for an empty choice', () => {
+    expect(typesSummary([])).toBe('None');
+  });
+
   it('says All for every type and All but for the one missing', () => {
     expect(typesSummary([...ISSUE_TYPES])).toBe('All');
     expect(typesSummary(DEFAULT_FILTER.types)).toBe('All');
@@ -445,7 +463,7 @@ describe('readBoardTypes / writeBoardTypes', () => {
     expect(readBoardTypes()).toEqual(['task']);
   });
 
-  it.each([['an empty list', '[]'], ['only unknowns', '["initiative"]'], ['non-JSON', 'epic,task'], ['a string', '"task"'], ['an object', '{}']])(
+  it.each([['only unknowns', '["initiative"]'], ['non-JSON', 'epic,task'], ['a string', '"task"'], ['an object', '{}']])(
     'falls back to the default for %s',
     (_, stored) => {
       stubStorage({ [BOARD_TYPES_STORAGE_KEY]: stored });
@@ -453,6 +471,20 @@ describe('readBoardTypes / writeBoardTypes', () => {
       expect(readBoardTypes()).toEqual(DEFAULT_TYPES);
     },
   );
+
+  it('reads a stored empty list as none, not as the default', () => {
+    stubStorage({ [BOARD_TYPES_STORAGE_KEY]: '[]' });
+
+    expect(readBoardTypes()).toEqual([]);
+  });
+
+  it('round-trips an empty choice', () => {
+    stubStorage();
+
+    writeBoardTypes([]);
+
+    expect(readBoardTypes()).toEqual([]);
+  });
 
   it('falls back to the default when storage throws', () => {
     stubStorage({}, true);
@@ -515,5 +547,25 @@ describe('readBoardProject / writeBoardProject / initialProject', () => {
     stubStorage();
 
     expect(initialProject(null)).toBe('');
+  });
+});
+
+describe('scrubbedProject', () => {
+  const offered = [{ key: 'AER' }, { key: 'FIL' }];
+
+  it('keeps a project the picker offers', () => {
+    expect(scrubbedProject('AER', offered)).toBe('AER');
+  });
+
+  it('scrubs a remembered key for a project not offered', () => {
+    expect(scrubbedProject('ZED', offered)).toBe('');
+  });
+
+  it('scrubs when the picker is hidden for one offered project', () => {
+    expect(scrubbedProject('AER', [{ key: 'AER' }])).toBe('');
+  });
+
+  it('is already empty and stays so', () => {
+    expect(scrubbedProject('', offered)).toBe('');
   });
 });

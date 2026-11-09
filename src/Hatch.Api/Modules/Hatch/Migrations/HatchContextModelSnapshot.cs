@@ -24,6 +24,40 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Bytes")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Attachments", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchBuildCheck", b =>
                 {
                     b.Property<long>("Id")
@@ -150,27 +184,74 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Comments", "hatch");
                 });
 
-            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchImage", b =>
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDream", b =>
                 {
-                    b.Property<Guid>("Id")
+                    b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("bigint");
 
-                    b.Property<byte[]>("Bytes")
-                        .IsRequired()
-                        .HasColumnType("bytea");
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<string>("ContentType")
+                    b.Property<string>("Author")
                         .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)");
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("setweight(to_tsvector('english', \"Body\"), 'A')", true);
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
-                    b.ToTable("Images", "hatch");
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
+
+                    b.ToTable("Dreams", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>
+                {
+                    b.Property<long>("DreamId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("DreamId", "IssueId");
+
+                    b.HasIndex("IssueId");
+
+                    b.ToTable("DreamThreads", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
@@ -445,6 +526,31 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.HasIndex("IssueId", "At");
 
                     b.ToTable("IssueEvents", "hatch");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssueRunnerOmission", b =>
+                {
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RunnerName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("By")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.HasKey("IssueId", "RunnerName");
+
+                    b.ToTable("IssueRunnerOmissions", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchLanding", b =>
@@ -1123,6 +1229,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool?>("Mine")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Models")
+                        .HasColumnType("text");
+
                     b.Property<string>("OrderKey")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
@@ -1583,6 +1692,35 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDream", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDreamThread", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchDream", "Dream")
+                        .WithMany()
+                        .HasForeignKey("DreamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany()
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Dream");
+
+                    b.Navigation("Issue");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Parent")
@@ -1632,6 +1770,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
                         .WithMany("Events")
+                        .HasForeignKey("IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+                });
+
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssueRunnerOmission", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithMany("RunnerOmissions")
                         .HasForeignKey("IssueId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1829,6 +1978,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Landings");
 
                     b.Navigation("MergeChecks");
+
+                    b.Navigation("RunnerOmissions");
 
                     b.Navigation("Verdicts");
 

@@ -10,6 +10,7 @@ import {
   CREATOR,
   PROJECT,
   makeScale,
+  narrowedTo,
   resolveCreator,
   resolveProject,
   foldRows,
@@ -17,9 +18,11 @@ import {
   unresolvedPhrase,
   withFilter,
 } from '../lib/timeline';
+import { projectsInScope } from '../lib/scope';
 import { hiddenEntries, readHidden, toggleHidden, writeHidden } from '../lib/timelineHidden';
 import { useLoaded } from '../lib/useLoaded';
 import { useReportWindow } from '../lib/useReportWindow';
+import { useScope } from '../lib/useScope';
 import type { Project, Status, Timeline } from '../types';
 
 /** The reads this page is made of, arriving together so a chart is never drawn
@@ -82,17 +85,50 @@ export function TimelineBody({ timeline, statuses, offsetMinutes, now, expanded,
 }
 
 /**
+ * The projects a Timeline offers, reads and filters to: `offered`, those in the
+ * tab's scope (every project when `keys` is empty); `chosen`, the one the URL's
+ * `project` key names among them, `null` for a key outside the scope or naming
+ * nothing; and `ids` to send, the chosen project or else the offered ones, left
+ * `undefined` when that is every project so nothing is sent.
+ *
+ * Pure, and used by both the load and the render, so the wiring is testable
+ * without a DOM runner to drive `useLoaded`.
+ */
+export function timelineProjects(projects: Project[], keys: string[], projectKey: string) {
+  const offered = projectsInScope(projects, keys);
+  const chosen = resolveProject(new URLSearchParams({ [PROJECT]: projectKey }), offered);
+
+  return { offered, chosen, ids: narrowedTo(chosen ? [chosen] : offered, projects)?.map((p) => p.id) };
+}
+
+/**
  * When the work happened: every epic as a row of coloured stretches, one per
  * column it sat in, with its children a click away.
+ *
+ * Under a scoped tab it offers, reads and filters only the scope's projects.
+ * Nothing is fetched until the project list is known, so the first request is
+ * already the right one - the reader is a component of its own so that wait is
+ * not inside `load`.
+ */
+export function TimelinePage() {
+  const { keys, isScoped, loaded } = useScope();
+
+  if (!loaded) return <p className="text-muted">Loading…</p>;
+
+  return <TimelineReader keys={keys} isScoped={isScoped} />;
+}
+
+/**
+ * What the Timeline holds, within the tab's scope.
  *
  * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
  * falls back to the last ninety days; the controls write `from` and `to`. The
  * URL also carries `project` (a key) and `creator` (a name), which the filters
  * write and the read is scoped by. Which rows are open is page state and never
  * the URL, since a pasted link should open the same range and not somebody's
- * half-unfolded view.
+ * half-unfolded view. A `project` outside the scope is ignored, not rewritten.
  */
-export function TimelinePage() {
+function TimelineReader({ keys, isScoped }: { keys: string[]; isScoped: boolean }) {
   const [params, setParams] = useSearchParams();
 
   const { from, to, now, offsetMinutes, move } = useReportWindow();
@@ -109,13 +145,14 @@ export function TimelinePage() {
 
     /* The read waits on the project list rather than going out beside it,
        because the URL holds a key - the thing a person would type or paste -
-       and the API takes an id. A key naming no project falls back to every
-       project, which is what the picker will be showing anyway. */
-    const chosen = resolveProject(new URLSearchParams({ [PROJECT]: projectKey }), projects);
-    const timeline = await getTimeline({ from, to, projectId: chosen?.id, createdBy: creator || null });
+       and the API takes an id. A key outside the scope, or naming nothing,
+       falls back to every project in scope, which is what the picker will be
+       showing anyway. */
+    const { ids } = timelineProjects(projects, keys, projectKey);
+    const timeline = await getTimeline({ from, to, projectId: ids, createdBy: creator || null });
 
     return { timeline, statuses, projects };
-  }, [from, to, projectKey, creator]);
+  }, [from, to, projectKey, creator, keys]);
 
   const { data, error } = useLoaded<TimelineView>(load);
 
@@ -135,7 +172,7 @@ export function TimelinePage() {
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const chosen = resolveProject(params, data.projects);
+  const { offered, chosen } = timelineProjects(data.projects, keys, projectKey);
 
   return (
     <div className="hatch-page">
@@ -156,12 +193,13 @@ export function TimelinePage() {
               onMove={move}
             />
             <TimelineFilters
-              projects={data.projects}
+              projects={offered}
               project={chosen?.key ?? ''}
               creators={data.timeline.creators}
               creator={creator}
               onProject={chooseProject}
               onCreator={chooseCreator}
+              scoped={isScoped}
             />
             <TimelineHidden
               entries={hiddenEntries(data.timeline, [...hidden])}

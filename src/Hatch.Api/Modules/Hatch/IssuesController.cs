@@ -82,7 +82,7 @@ public class IssuesController(
     /// </param>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<IssueCardDto>>> SearchIssues(
-        [FromQuery] int? projectId,
+        [FromQuery] List<int>? projectId,
         [FromQuery] string? type,
         [FromQuery] int? statusId,
         [FromQuery] string? parentKey,
@@ -95,7 +95,8 @@ public class IssuesController(
 
         var query = db.Issues.AsNoTracking().AsQueryable();
 
-        if (projectId is { } project) query = query.Where(i => i.ProjectId == project);
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        if (projectIds.Count > 0) query = query.Where(i => projectIds.Contains(i.ProjectId));
         if (type is not null) query = query.Where(i => i.Type == type);
         if (statusId is { } status) query = query.Where(i => i.StatusId == status);
 
@@ -187,6 +188,8 @@ public class IssuesController(
             var (onePr, onePrOwn, onePrFrom) = priorities.EffectiveOnePr(i.Id);
             var (effectiveRunnerTags, effectiveRunnerTagsFrom) = priorities.EffectiveRunnerTags(i.Id);
             var (dangerous, dangerousFrom) = priorities.EffectiveDangerous(i.Id);
+            var omittedRunnersOwn = priorities.OwnOmittedRunners(i.Id);
+            var omittedRunners = priorities.EffectiveOmittedRunners(i.Id);
 
             cards.Add(new IssueCardDto(
                 IssueKey.Format(i.ProjectKey, i.Number),
@@ -213,6 +216,8 @@ public class IssuesController(
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
+                OmittedRunnersOwn: omittedRunnersOwn,
+                OmittedRunners: omittedRunners,
                 PriorityFrom: effectiveFrom,
                 PreApproval: PreApprovalLevels.Name(effectivePreApproval),
                 PreApprovalOwn: PreApprovalLevels.Name(i.PreApproval),

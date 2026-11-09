@@ -24,6 +24,7 @@
 import type { Project, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
 import { statusVars } from './color';
 import { dayLabel } from './leaderboard';
+import { projectsInScope } from './scope';
 
 /** x is percent of the pane, so the scale is resolution-free and the component
     can place a tick with a `left: x%` or a viewBox of this width. */
@@ -69,6 +70,60 @@ export function withFilter(
   else next.delete(name);
 
   return next;
+}
+
+/** The projects whose key is among the URL's repeated `project` params
+    (trimmed, deduped), in `projects` order. Every project - not an empty
+    array - when that set is empty: no `project` param at all, or every key
+    given was unknown to `projects`. A report that read the chart down to
+    nothing because a link named a project this Hatch no longer has would be
+    a confusing kind of empty; this one is "every project" instead, and an
+    unknown key mixed with a known one is dropped silently, keeping the known
+    one. */
+export function resolveProjects(params: URLSearchParams, projects: Project[]): Project[] {
+  const keys = new Set(params.getAll(PROJECT).map((key) => key.trim()));
+  const chosen = projects.filter((project) => keys.has(project.key));
+
+  return chosen.length > 0 ? chosen : projects;
+}
+
+/** A copy of `params` with every `project` entry replaced by one per key in
+    `keys`, in `allKeys` order - unless `keys` holds every key in `allKeys`,
+    in which case none are written: All is the clean URL, the mirror of
+    `resolveProjects`' own fallback to every project. Every other param is
+    kept; the input is never mutated. */
+export function withProjects(params: URLSearchParams, keys: string[], allKeys: string[]): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.delete(PROJECT);
+
+  if (keys.length < allKeys.length) {
+    for (const key of allKeys) if (keys.includes(key)) next.append(PROJECT, key);
+  }
+
+  return next;
+}
+
+/** `picked` when it is fewer than `all`, else `undefined` - the read every
+    project has always been, so a report that names no project asks the server
+    for none. */
+export function narrowedTo(picked: Project[], all: Project[]): Project[] | undefined {
+  return picked.length < all.length ? picked : undefined;
+}
+
+/** What a report page needs of its project list: `offered`, the projects in the
+    tab's scope (every project when `keys` is empty); `chosen`, the ones the
+    URL's `project` params name among `offered`, falling back to `offered`; and
+    `narrowed`, `chosen` when it is fewer than every project in `projects`, else
+    `undefined`. */
+export function reportProjects(
+  params: URLSearchParams,
+  projects: Project[],
+  keys: string[],
+): { offered: Project[]; chosen: Project[]; narrowed: Project[] | undefined } {
+  const offered = projectsInScope(projects, keys);
+  const chosen = resolveProjects(params, offered);
+
+  return { offered, chosen, narrowed: narrowedTo(chosen, projects) };
 }
 
 /** A window as two epoch-millisecond instants. */

@@ -196,4 +196,14 @@ lists it separately.
 **Reports** turns this page's own mechanics into pictures: the Timeline
 report draws when each epic was in flight and how long its work sat in each
 column; Cumulative flow draws how much work sat in each column over time,
-and where it is piling up.
+and where it is piling up, and a **Colour by** control lets that same stack
+be cut by project instead of by column.
+
+The Timeline, Cumulative flow and Changelog reports each follow the tab's
+[scope](the-board-and-its-columns#scoping-a-tab-to-projects), and their project
+control works within it. Under a scope it lists only the scope's projects, and
+*all* means every project in scope: the Timeline's empty choice then reads **All
+in scope** rather than **All projects**, and the other two reports tick every
+one of the scope's projects to begin with. A `?project=` in the address that
+lies outside the scope is ignored, not rewritten. A scope of one project draws
+no control at all, since there is nothing to choose between.

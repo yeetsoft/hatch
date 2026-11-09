@@ -85,7 +85,12 @@ On a desktop window the header is one row, left to right: **Search**,
 (*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
 the work queue, the flow view and **+** (New issue). **Search** rests narrow
 and widens while you type in it. **Project** shows only its key (or **All**)
-when closed, and its open list keeps the full names. **Needs me** shows the
+when closed, and its open list keeps the full names. **Types** opens a checkbox per
+type, each with the number of cards it holds; hovering a row shows **Only**,
+which keeps that row alone (on a touch screen it is always shown). **All** and
+**None** sit at its foot: **None** leaves the board blank on purpose, with the
+count reading *0 of N*, and **×** brings every type back. The choice, None
+included, is remembered in this browser. **Needs me** shows the
 cards holding a question nobody has answered. **…** opens the filters kept
 out of the row, today the **Assignee** choice; the button is lit while one of
 them is set, and the count still includes it. **×** returns every filter to
@@ -97,7 +102,12 @@ The **Project** picker is drawn only when Hatch has more than one project,
 and **All projects** is a choice like any other. It and the type filter are
 remembered per browser, in `localStorage`, across pages, reloads and
 restarts. A `?project=KEY` link opens that project whatever this browser
-remembers, and the browser remembers it afterwards.
+remembers, and the browser remembers it afterwards. A second control in the
+bar scopes the whole tab to projects: see
+[Scoping a tab to projects](#scoping-a-tab-to-projects). Under a scope the
+picker lists only the scope's projects, its empty choice reads **All in
+scope**, it is not drawn when the scope holds one project, and a
+`?project=` or remembered project outside the scope is dropped.
 
 A column that shows no card is drawn at half the width of one that does, so
 empty columns stop pushing the busy ones off screen. That covers a column with
@@ -109,16 +119,96 @@ width, since the fold is work one click away. A drag does not widen the narrow
 columns; each is still a full-height drop target. The phone's stacked layout
 is unchanged.
 
+## Scoping a tab to projects
+
+Above the board, the bar carries a second control: which projects *this
+browser tab* is looking at. Scoped, it shows each project's mark and key,
+filled; unscoped, it reads **All projects**. Opening it shows every
+project as a checkbox — ticking or unticking one writes the scope
+immediately, and unticking the last one means every project again, same
+as never scoping at all.
+
+The scope lives in the address bar, as `?scope=KEY,KEY` — project keys,
+comma-separated. A link you click carries the tab's own scope forward; a
+link you paste or are sent means exactly what it says, with no
+browser memory behind it, so two tabs can hold two different scopes at
+once. Projects, Statuses, Playbooks, Runners, Overnight, Get the runner,
+Users, API keys, Settings and Docs ignore it — none of them is an issue
+list. Later sections on this page, and this app's other pages, say where
+else it reaches.
+
+In a Hatch with three projects, `AER`, `FIL` and `GEO`, three tabs can each
+look at one of them:
+
+1. Open the board. The control reads **All projects**, with every box ticked.
+2. Untick `FIL` and `GEO`. The address gains `?scope=AER` and the tab's title
+   becomes `AER - Hatch`.
+3. Duplicate the tab. The copy opens on the same address, so it starts on the
+   same scope, `AER`.
+4. In the copy, tick `FIL` and untick `AER`. Its address becomes
+   `?scope=FIL` and its title `FIL - Hatch`; the first tab is untouched.
+5. Duplicate once more and, in that copy, untick `FIL` and tick `GEO`. Its
+   address becomes `?scope=GEO` and its title `GEO - Hatch`. Three tabs,
+   three scopes, three titles, side by side.
+
+**A link you click keeps the scope; a link you paste means what it says.**
+
+On the board, cards of projects outside the scope are not drawn, and are not
+counted in *N hidden by the filter* (nor in *N of M*), because the scope sits
+upstream of the filter row. **New issue** offers only the scope's projects
+and opens on the first of them when the filter and the remembered project are
+outside it. **Go to Work** starts your runners on the picker's project, else
+on the scope's projects, else on every project.
+
+An issue outside the tab's scope still opens from a link, says so under its
+header, and offers to add its project to the tab in one press.
+
+**Manage → Bulk edit** finds only the scope's issues: its Project filter lists
+the scope's projects and its results are theirs. Its *move to project* target
+is deliberately not narrowed, because moving an issue out of a scope is an
+edit, and the result names the issues that left. **Manage → Import** offers
+only the scope's projects in its Project chooser, and has the project already
+chosen when the scope holds one. See
+[Import and bulk edit](issues#import-and-bulk-edit).
+
+**Track → History** and **Agents → Leaderboard** follow the scope too.
+[History](watching-the-loop#history-and-the-work-log) lists only the events
+of the projects in scope, and the
+[Leaderboard](watching-the-loop#leaderboard) covers only the sessions run
+against their issues.
+
+**Plan** follows the scope too. Its project picker lists only the scope's
+projects, reads **All in scope**, and is not drawn for a one-project scope;
+picking none draws the epics of every project in scope. A `?project=` outside
+the scope is dropped from the address.
+
+**Search** follows the scope too. Its Project filter lists only the scope's
+projects, reads **All in scope**, and is not drawn for a one-project scope;
+with none chosen the results are those of every project in scope. A
+`?projectId=` outside the scope is dropped from the address.
+
+**Track → Dreams** follows the scope too. Its list holds the dreams of the
+projects in scope and every dream that leans toward no project, which always
+shows. Its Project filter, the **Lean** chooser under the composer and the
+**Project** chooser under **Weave an epic** list only the scope's projects,
+**None** stays on **Lean**, and the filter is not drawn for a one-project
+scope. A `?projectId=` outside the scope is dropped from the address. See
+[Dreams](dreams#finding-one).
+
+**Reports → Timeline, Cumulative flow and Changelog** follow the scope too.
+Each one's project control lists only the scope's projects, and is not drawn
+for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
+
 ## Go to Work and Pause
 
 The green **Go to Work** / **Pause** button sits leftmost in the header. It
 drives only your own loop runners — a loop started by hand or on standby
 (see [Starting it at login](the-runner#starting-it-at-login)) — never
 another person's, whatever your role. **Go to Work** sets each of yours to
-running and bounds it to the project the picker holds, or every project
-when **All projects** is picked; **Pause** pauses the running ones. The
-press alone sets the project — changing the picker afterwards moves nothing
-until the next press. A press lands at the runner's next heartbeat: at once
+running and bounds it to the project the picker holds, or the tab's scope,
+or every project when **All projects** is picked; **Pause** pauses the
+running ones. The press alone sets the project — changing the picker
+afterwards moves nothing until the next press. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
 With none of yours on, the button is disabled and the status says "No
 runner"; press it to find the link to start one.

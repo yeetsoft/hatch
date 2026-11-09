@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
 /// Hatch's slice of the Hatch database: the <c>hatch</c> schema, its own
-/// migration history, twenty-three tables.
+/// migration history, twenty-six tables.
 /// </summary>
 public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(options), IModuleContext
 {
@@ -15,16 +15,19 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchProjectMember> ProjectMembers => Set<EfHatchProjectMember>();
     public DbSet<EfHatchOvernightSeen> OvernightSeen => Set<EfHatchOvernightSeen>();
     public DbSet<EfHatchProjectLogo> ProjectLogos => Set<EfHatchProjectLogo>();
-    public DbSet<EfHatchImage> Images => Set<EfHatchImage>();
+    public DbSet<EfHatchAttachment> Attachments => Set<EfHatchAttachment>();
     public DbSet<EfHatchStatus> Statuses => Set<EfHatchStatus>();
     public DbSet<EfHatchIssue> Issues => Set<EfHatchIssue>();
     public DbSet<EfHatchComment> Comments => Set<EfHatchComment>();
+    public DbSet<EfHatchDream> Dreams => Set<EfHatchDream>();
     public DbSet<EfHatchIssueEvent> IssueEvents => Set<EfHatchIssueEvent>();
     public DbSet<EfHatchPlaybook> Playbooks => Set<EfHatchPlaybook>();
     public DbSet<EfHatchPlaybookProposal> PlaybookProposals => Set<EfHatchPlaybookProposal>();
     public DbSet<EfHatchPlaybookProposalChange> PlaybookProposalChanges => Set<EfHatchPlaybookProposalChange>();
     public DbSet<EfHatchWipLimit> WipLimits => Set<EfHatchWipLimit>();
     public DbSet<EfHatchIssueDependency> Dependencies => Set<EfHatchIssueDependency>();
+    public DbSet<EfHatchIssueRunnerOmission> RunnerOmissions => Set<EfHatchIssueRunnerOmission>();
+    public DbSet<EfHatchDreamThread> DreamThreads => Set<EfHatchDreamThread>();
     public DbSet<EfHatchWorkLogEntry> WorkLog => Set<EfHatchWorkLogEntry>();
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
@@ -231,6 +234,36 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        // An edge has no meaning without either row, so deleting either takes
+        // it, in both directions. No inverse navigation on the dream or the
+        // issue for either end - two collections told apart only by name, and
+        // nothing reads them.
+        modelBuilder.Entity<EfHatchDreamThread>(e =>
+        {
+            e.HasKey(t => new { t.DreamId, t.IssueId });
+
+            e.HasOne(t => t.Dream)
+                .WithMany()
+                .HasForeignKey(t => t.DreamId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(t => t.Issue)
+                .WithMany()
+                .HasForeignKey(t => t.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Cascade: an omission means nothing once the issue it names is gone.
+        modelBuilder.Entity<EfHatchIssueRunnerOmission>(e =>
+        {
+            e.HasKey(o => new { o.IssueId, o.RunnerName });
+
+            e.HasOne(o => o.Issue)
+                .WithMany(i => i.RunnerOmissions)
+                .HasForeignKey(o => o.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Two places, because a spend cap is dollars and cents and the default
         // scale would refuse the number an operator types into the box.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.MaxSpend).HasPrecision(18, 2);
@@ -398,6 +431,16 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(t => t.Failing).HasColumnType("jsonb");
         });
 
+        // A dream outlives the project it leaned toward - SetNull, the same
+        // shape as EfHatchTrunkBuild.BugIssueId above.
+        modelBuilder.Entity<EfHatchDream>(e =>
+        {
+            e.HasOne(d => d.Project)
+                .WithMany()
+                .HasForeignKey(d => d.ProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
@@ -439,12 +482,22 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             modelBuilder.Entity<EfHatchWorkLogEntry>()
                 .HasIndex(w => w.SearchVector)
                 .HasMethod("GIN");
+
+            modelBuilder.Entity<EfHatchDream>()
+                .Property(d => d.SearchVector)
+                .HasComputedColumnSql(
+                    """setweight(to_tsvector('english', "Body"), 'A')""",
+                    stored: true);
+            modelBuilder.Entity<EfHatchDream>()
+                .HasIndex(d => d.SearchVector)
+                .HasMethod("GIN");
         }
         else
         {
             modelBuilder.Entity<EfHatchIssue>().Ignore(i => i.SearchVector);
             modelBuilder.Entity<EfHatchComment>().Ignore(c => c.SearchVector);
             modelBuilder.Entity<EfHatchWorkLogEntry>().Ignore(w => w.SearchVector);
+            modelBuilder.Entity<EfHatchDream>().Ignore(d => d.SearchVector);
         }
 
         base.OnModelCreating(modelBuilder);

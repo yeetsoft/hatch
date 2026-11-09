@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, summarize } from './bulk';
-import type { BulkForm } from './bulk';
+import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from './bulk';
+import type { BulkForm, Filters } from './bulk';
 
 const form = (over: Partial<BulkForm> = {}): BulkForm => ({ ...EMPTY_FORM, ...over });
+const filters = (over: Partial<Filters> = {}): Filters => ({ ...NO_FILTERS, ...over });
 const KEYS = ['AER-1', 'AER-2'];
+const SCOPE = [1, 2];
 
 describe('buildBulkEdit', () => {
   it('sends nothing when nothing was chosen', () => {
@@ -112,5 +114,71 @@ describe('summarize', () => {
         rekeyed: [{ from: 'AER-1', to: 'BER-5' }],
       }),
     ).toBe('1 changed, 1 moved to BER');
+  });
+});
+
+describe('movedOutOfScope', () => {
+  const inAer = (key: string): boolean => key === 'AER';
+
+  it('names nothing when nothing was moved', () => {
+    expect(movedOutOfScope([], inAer)).toEqual([]);
+  });
+
+  it('names only the keys that landed outside the scope', () => {
+    const rekeyed = [
+      { from: 'FIL-1', to: 'AER-7' },
+      { from: 'AER-2', to: 'FIL-3' },
+    ];
+    expect(movedOutOfScope(rekeyed, inAer)).toEqual(['FIL-3']);
+  });
+
+  it('names nothing when everything is in scope', () => {
+    expect(movedOutOfScope([{ from: 'AER-2', to: 'FIL-3' }], () => true)).toEqual([]);
+  });
+});
+
+describe('bulkSearch', () => {
+  it('searches every project in the scope when none is chosen', () => {
+    expect(bulkSearch(filters(), SCOPE).projectId).toEqual([1, 2]);
+  });
+
+  it('leaves the project out of the request when unscoped and none is chosen', () => {
+    expect(bulkSearch(filters(), []).projectId).toBeNull();
+  });
+
+  it('narrows to the chosen project when it is in the scope', () => {
+    expect(bulkSearch(filters({ projectId: 2 }), SCOPE).projectId).toEqual([2]);
+  });
+
+  it('ignores a chosen project the scope has since left behind', () => {
+    expect(bulkSearch(filters({ projectId: 3 }), SCOPE).projectId).toEqual([1, 2]);
+  });
+
+  it('lets any chosen project through when unscoped', () => {
+    expect(bulkSearch(filters({ projectId: 3 }), []).projectId).toEqual([3]);
+  });
+
+  it('keeps "no parent at all" apart from "any parent"', () => {
+    expect(bulkSearch(filters({ parentKey: '' }), SCOPE).parentKey).toBe('');
+    expect(bulkSearch(filters({ parentKey: KEEP }), SCOPE).parentKey).toBeNull();
+    expect(bulkSearch(filters({ parentKey: 'AER-9' }), SCOPE).parentKey).toBe('AER-9');
+  });
+
+  it('trims the text and drops it when nothing is left', () => {
+    expect(bulkSearch(filters({ text: '  needle ' }), SCOPE).text).toBe('needle');
+    expect(bulkSearch(filters({ text: '' }), SCOPE).text).toBeNull();
+    expect(bulkSearch(filters({ text: '   ' }), SCOPE).text).toBeNull();
+  });
+
+  it('sends type, column and ancestor only when set', () => {
+    const empty = bulkSearch(filters(), SCOPE);
+    expect(empty.type).toBeNull();
+    expect(empty.statusId).toBeNull();
+    expect(empty.ancestorKey).toBeNull();
+
+    const set = bulkSearch(filters({ type: 'bug', statusId: 3, ancestorKey: 'AER-1' }), SCOPE);
+    expect(set.type).toBe('bug');
+    expect(set.statusId).toBe(3);
+    expect(set.ancestorKey).toBe('AER-1');
   });
 });

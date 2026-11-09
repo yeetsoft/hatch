@@ -148,7 +148,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             maxTokensPerHour.Source,
             runner.TokensUsed,
             runner.TokensLastHour,
-            runner.ThrottledUntil);
+            runner.ThrottledUntil,
+            runner.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
     }
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch

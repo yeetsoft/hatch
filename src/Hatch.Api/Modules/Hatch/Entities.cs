@@ -201,7 +201,8 @@ public class EfHatchProject
 
     /// <summary>
     /// Whether a passing check on this project's pull request counts as the
-    /// approval that lets it merge. Off by default. Nothing reads it yet.
+    /// approval that lets it merge. Off by default. The close arm of
+    /// <see cref="Dispatch.HopKind"/> reads it.
     /// Written only by <see cref="ProjectsController.PutCheckApprovesMerge"/>.
     /// </summary>
     public bool CheckApprovesMerge { get; set; }
@@ -415,28 +416,46 @@ public class EfHatchProjectLogo
 }
 
 /// <summary>
-/// One image pasted into a description or a comment, stored as bytes in
-/// Postgres for the same reason <see cref="EfHatchProjectLogo"/> is: bytes in
-/// the row ride the existing backup and the disaster-recovery path unchanged,
-/// and a row cannot disagree with a file on a volume.
+/// One file pasted or uploaded into a description or a comment, stored as
+/// bytes in Postgres for the same reason <see cref="EfHatchProjectLogo"/> is:
+/// bytes in the row ride the existing backup and the disaster-recovery path
+/// unchanged, and a row cannot disagree with a file on a volume.
 ///
 /// Belongs to no issue. The New issue dialog accepts a paste before the issue
-/// has a key, so an image gets an id of its own and the markdown that shows it
-/// is the only thing that points here. Nothing collects an image whose draft
-/// was discarded.
+/// has a key, so a file gets an id of its own and the markdown or the issue
+/// that names it is the only pointer to it. Nothing collects an orphan.
 /// </summary>
-[Table("Images")]
-public class EfHatchImage
+[Table("Attachments")]
+public class EfHatchAttachment
 {
     [Key]
     public Guid Id { get; set; }
 
-    /// <summary>The image exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
+    /// <summary>The file exactly as it was accepted. Not re-encoded: what was validated is what is served.</summary>
     public required byte[] Bytes { get; set; }
 
-    /// <summary>Sniffed from the bytes, never taken from the request's Content-Type - see <see cref="EfHatchProjectLogo.ContentType"/>.</summary>
-    [MaxLength(64)]
+    /// <summary>
+    /// Sniffed for an image, declared otherwise - see
+    /// <see cref="EfHatchProjectLogo.ContentType"/>.
+    /// </summary>
+    [MaxLength(255)]
     public required string ContentType { get; set; }
+
+    /// <summary>The name it is served under. For an image, <c>image.&lt;ext&gt;</c>, from the sniffed type.</summary>
+    [MaxLength(255)]
+    public required string FileName { get; set; }
+
+    /// <summary>The byte count, kept alongside the bytes rather than computed, so a listing never has to load them.</summary>
+    public required long Size { get; set; }
+
+    /// <summary>
+    /// A bare <see cref="Guid"/> and not a foreign key, for the reason
+    /// <see cref="EfHatchIssue.AssigneePersonId"/> is one: Hatch owns its own
+    /// schema and its own migration history, and a constraint from a module
+    /// into <c>public.People</c> is the compile-time coupling Modules/README.md
+    /// exists to prevent.
+    /// </summary>
+    public Guid? CreatedById { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
 }
@@ -1257,6 +1276,7 @@ public class EfHatchIssue
     public ICollection<EfHatchLanding> Landings { get; set; } = [];
     public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
+    public ICollection<EfHatchIssueRunnerOmission> RunnerOmissions { get; set; } = [];
 
     public static bool IsValidType(string? type) => type is not null && Types.Contains(type);
 }
@@ -1406,6 +1426,63 @@ public class EfHatchComment
     public string? DeliveredTo { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A half-thought, not yet an issue - see docs/hatch.md, "Dream". No event
+/// trail: <see cref="UpdatedAt"/> is its whole history.
+/// </summary>
+[Table("Dreams")]
+public class EfHatchDream
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public required string Body { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Author { get; set; }
+
+    [MaxLength(500)]
+    public string? Source { get; set; }
+
+    /// <summary>The project this dream leans toward, or null. A lean, not a home - see this type's own <c>ProjectId</c>/<c>Project</c> FK config in HatchContext.</summary>
+    public int? ProjectId { get; set; }
+    public EfHatchProject? Project { get; set; }
+
+    /// <summary>
+    /// <see cref="Body"/> weighted A - see <see cref="SearchQuery"/>. Never
+    /// assigned in code.
+    /// </summary>
+    public NpgsqlTsVector SearchVector { get; private set; } = null!;
+
+    public required DateTimeOffset CreatedAt { get; set; }
+    public required DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One dream read as drawn on by one issue - see docs/hatch.md, "Dream".
+/// </summary>
+/// <remarks>
+/// No <c>[Key]</c> on either FK - a composite key cannot be expressed with
+/// data annotations, so <see cref="HatchContext.OnModelCreating"/> carries
+/// it. No inverse navigation on either end - two collections told apart
+/// only by name, and nothing reads them, the same choice
+/// <see cref="EfHatchIssueDependency"/> already made for the same reason.
+/// </remarks>
+[Table("DreamThreads")]
+public class EfHatchDreamThread
+{
+    public required long DreamId { get; set; }
+    public EfHatchDream? Dream { get; set; }
+
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string Actor { get; set; }
+
+    public required DateTimeOffset At { get; set; }
 }
 
 /// <summary>
@@ -1983,6 +2060,20 @@ public class EfHatchIssueEvent
     public const string DangerousChanged = "dangerous_changed";
 
     /// <summary>
+    /// A runner was omitted from an issue, or the reason it is omitted was
+    /// rewritten - see <see cref="EfHatchIssueRunnerOmission"/>. The payload is
+    /// <c>{ runner, reason, from }</c>: <c>from</c> is the reason it replaced,
+    /// null when the omission is new or had none.
+    /// </summary>
+    public const string RunnerOmitted = "runner_omitted";
+
+    /// <summary>
+    /// An issue's own omission of a runner was lifted - see <see
+    /// cref="EfHatchIssueRunnerOmission"/>. The payload is <c>{ runner }</c>.
+    /// </summary>
+    public const string RunnerOmissionLifted = "runner_omission_lifted";
+
+    /// <summary>
     /// An issue's no-code declaration changed - see <see cref="EfHatchIssue.NoCode"/>.
     /// The payload is <c>{ from, to }</c>, either side null, and <c>moved</c>
     /// names the column when a move into one left of review cleared it.
@@ -2045,6 +2136,13 @@ public class EfHatchIssueEvent
 
     /// <summary>The reverse - see <see cref="DependencyAdded"/>.</summary>
     public const string DependencyRemoved = "dependency_removed";
+
+    /// <summary>
+    /// `PUT /issues/{key}/dreams` replaced the set of dreams this issue drew
+    /// on - see HA-1722. The payload is `{ from, to }`, both sides every dream
+    /// id sorted ascending.
+    /// </summary>
+    public const string DreamsWoven = "dreams_woven";
 
     /// <summary>
     /// A runner took the lease on this issue - see
@@ -2229,14 +2327,6 @@ public class EfHatchPlaybook
     /// </summary>
     public static readonly string[] Efforts = ["low", "medium", "high", "xhigh", "max"];
 
-    /// <summary>
-    /// The model aliases the CLI resolves to whatever is current. Aliases
-    /// rather than pinned ids because a playbook says "the big one" and means
-    /// it a year from now; a pinned id is accepted too, for an operator who
-    /// has a reason to pin.
-    /// </summary>
-    public static readonly string[] ModelAliases = ["haiku", "sonnet", "opus", "fable"];
-
     public const string AnyShape = "any";
     public const string LeafShape = "leaf";
     public const string ParentShape = "parent";
@@ -2415,7 +2505,7 @@ public class EfHatchPlaybook
 
     public static bool IsValidModel(string? model, ModelFamilies? families = null) =>
         model is not null &&
-        (ModelAliases.Contains(model) || (families ?? ModelFamilies.Default).AgentOf(model) is not null);
+        (ModelFamilies.Aliases.Contains(model) || (families ?? ModelFamilies.Default).AgentOf(model) is not null);
 
     public static bool IsValidShape(string? shape) =>
         shape is not null && Shapes.Contains(shape);
@@ -2633,6 +2723,31 @@ public class EfHatchIssueDependency
     public required string CreatedBy { get; set; }
 
     public required DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A runner this issue skips, and why - see docs/hatch.md, "Decisions taken".
+/// </summary>
+/// <remarks>
+/// No <c>[Key]</c> on either half of the primary key - a composite key cannot
+/// be expressed with data annotations, so <see cref="HatchContext.OnModelCreating"/>
+/// carries it, the same as <see cref="EfHatchDreamThread"/>.
+/// </remarks>
+[Table("IssueRunnerOmissions")]
+public class EfHatchIssueRunnerOmission
+{
+    public required long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(EfHatchRunner.MaxNameLength)]
+    public required string RunnerName { get; set; }
+
+    public string? Reason { get; set; }
+
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string By { get; set; }
+
+    public required DateTimeOffset At { get; set; }
 }
 
 /// <summary>
@@ -3090,6 +3205,14 @@ public class EfHatchRunner
     /// same as <see cref="Remotes"/>.
     /// </summary>
     public string? Tags { get; set; }
+
+    /// <summary>
+    /// The models this runner says it can run, newline-joined in the order
+    /// given - a fact about the running process, overwritten on every
+    /// heartbeat that names any and never seeded once like
+    /// <see cref="Tags"/>. Null is never said, and reads as none.
+    /// </summary>
+    public string? Models { get; set; }
 
     /// <summary>
     /// Whether this runner refuses dangerous work. Seeded once by a heartbeat

@@ -11,14 +11,13 @@
    the drag it was in the middle of. */
 
 import { UNASSIGNED, assigneeToken, compareAssignees } from './assignee';
+import { toggleChoice } from './checklist';
 import { ISSUE_TYPES } from '../types';
 import type { Assignee, IssueCard, IssueType } from '../types';
 
 export interface CardFilter {
-  /** The types to draw, in `ISSUE_TYPES` order. Never empty: the last one
-      drawn cannot be switched off (`toggleType`), so a board never goes blank
-      from ticking boxes, and there is no "empty means all" to tell apart from
-      "empty means none". */
+  /** The types to draw, in `ISSUE_TYPES` order, and may be empty. There is no
+      "empty means all": empty means none, and the board says so. */
   types: IssueType[];
   /** What was typed in the search box, raw. */
   query: string;
@@ -58,13 +57,16 @@ export const BOARD_TYPES_STORAGE_KEY = 'hatch.board.types';
 /** The stored types, or the default - try/catch for the same reason
     `readBoardView` does one: localStorage throws in a partitioned or
     locked-down context, and the board still has to render. Restores the
-    `CardFilter.types` invariant: in `ISSUE_TYPES` order, types this build does
-    not have dropped, and never empty. Always a fresh array, so nothing holding
-    the result can mutate `DEFAULT_TYPES`. */
+    `CardFilter.types` invariant: in `ISSUE_TYPES` order and types this build
+    does not have dropped. A stored empty list is a choice - none - and reads
+    back as `[]`; a non-empty list with no type this build knows is not, and
+    falls back to the default. Always a fresh array, so nothing holding the
+    result can mutate `DEFAULT_TYPES`. */
 export function readBoardTypes(): IssueType[] {
   try {
     const stored: unknown = JSON.parse(window.localStorage.getItem(BOARD_TYPES_STORAGE_KEY) ?? 'null');
     if (Array.isArray(stored)) {
+      if (stored.length === 0) return [];
       const known = ISSUE_TYPES.filter((type) => stored.includes(type));
       if (known.length > 0) return known;
     }
@@ -117,6 +119,17 @@ export function writeBoardProject(key: string): void {
     this browser remembers, since it names a project somebody meant to land
     on; absent or empty, this browser's last choice stands. */
 export const initialProject = (fromUrl: string | null): string => fromUrl || readBoardProject();
+
+/** `project` as the picker would actually offer it: itself when `offered`
+    names that key, else `''` - including when `offered.length < 2`, since
+    the picker is hidden then and a lit filter could never be cleared by
+    hand. A scope outside of which `project` falls, or a remembered key for a
+    project this browser's scope no longer offers, both read this way. */
+export function scrubbedProject(project: string, offered: { key: string }[]): string {
+  if (project === '') return '';
+  if (offered.length < 2) return '';
+  return offered.some((p) => p.key === project) ? project : '';
+}
 
 /** Whether this filter is hiding anything, which is what decides if the board
     says so out loud, and if Reset is drawn. */
@@ -219,11 +232,9 @@ export function assigneeFacets(cards: IssueCard[]): Assignee[] {
 export const toggleWaiting = (filter: CardFilter): CardFilter => ({ ...filter, waiting: !filter.waiting });
 
 /** Adds or removes one type, which is what a list of checkboxes does to a
-    filter. Unticking the only one left returns the filter itself, unchanged. */
+    filter. Unticking the only one left gives `types: []`, which draws nothing. */
 export function toggleType(filter: CardFilter, type: IssueType): CardFilter {
-  const next = filter.types.includes(type) ? filter.types.filter((t) => t !== type) : [...filter.types, type];
-  if (next.length === 0) return filter;
-  return { ...filter, types: ISSUE_TYPES.filter((t) => next.includes(t)) };
+  return { ...filter, types: toggleChoice(filter.types, type, ISSUE_TYPES) };
 }
 
 /** Draws a type if it is not drawn already. Filing an issue of a hidden type
@@ -252,9 +263,11 @@ const PLURALS: Record<IssueType, string> = {
   bug: 'bugs',
 };
 
-/** What the Types control says: `All`, `All but tasks` for three, and for one
-    or two the ones drawn (`Epics, stories`). */
+/** What the Types control says: `None` for an empty choice, `All`,
+    `All but tasks` for four, and for one to three the ones drawn
+    (`Epics, stories`). */
 export function typesSummary(types: IssueType[]): string {
+  if (types.length === 0) return 'None';
   if (types.length >= ISSUE_TYPES.length) return 'All';
   if (types.length === ISSUE_TYPES.length - 1) {
     const missing = ISSUE_TYPES.find((type) => !types.includes(type));

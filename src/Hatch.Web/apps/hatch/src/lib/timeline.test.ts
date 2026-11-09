@@ -9,8 +9,11 @@ import {
   creatorChoices,
   foldRows,
   makeScale,
+  narrowedTo,
+  reportProjects,
   resolveCreator,
   resolveProject,
+  resolveProjects,
   segmentStyle,
   segmentTitle,
   tickUnit,
@@ -19,6 +22,7 @@ import {
   toggled,
   unresolvedPhrase,
   withFilter,
+  withProjects,
   xOf,
 } from './timeline';
 import {
@@ -492,6 +496,136 @@ describe('resolveProject', () => {
 
   it('never reads an id as a key', () => {
     expect(resolveProject(params('project=1'), projects)).toBeNull();
+  });
+});
+
+describe('resolveProjects', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+    { id: 3, key: 'PYC' },
+  ] as Project[];
+
+  it('finds the projects named by repeated keys, in projects order', () => {
+    expect(resolveProjects(params('project=PYC&project=HA'), projects)).toEqual([projects[0], projects[2]]);
+  });
+
+  it('drops an unknown key silently, keeping a known one alongside it', () => {
+    expect(resolveProjects(params('project=HA&project=ZZ'), projects)).toEqual([projects[0]]);
+  });
+
+  it('is every project when every key given is unknown', () => {
+    expect(resolveProjects(params('project=ZZ&project=YY'), projects)).toEqual(projects);
+  });
+
+  it('is every project when there is no project param at all', () => {
+    expect(resolveProjects(params(''), projects)).toEqual(projects);
+  });
+
+  it('dedupes a repeated key', () => {
+    expect(resolveProjects(params('project=HA&project=HA'), projects)).toEqual([projects[0]]);
+  });
+});
+
+describe('withProjects', () => {
+  const allKeys = ['HA', 'AER', 'PYC'];
+
+  it('writes one project param per key, in allKeys order', () => {
+    expect(withProjects(params(''), ['PYC', 'HA'], allKeys).getAll('project')).toEqual(['HA', 'PYC']);
+  });
+
+  it('replaces whatever project params were already there', () => {
+    expect(withProjects(params('project=ZZ&project=HA'), ['AER'], allKeys).getAll('project')).toEqual(['AER']);
+  });
+
+  it('writes no project param at all when every key is chosen - the All round trip', () => {
+    const written = withProjects(params('project=HA'), allKeys, allKeys);
+
+    expect(written.has('project')).toBe(false);
+    expect(resolveProjects(written, allKeys.map((key, i) => ({ id: i, key }) as Project))).toEqual(
+      allKeys.map((key, i) => ({ id: i, key })),
+    );
+  });
+
+  it('keeps every other param', () => {
+    expect(withProjects(params('from=a&to=b'), ['HA'], allKeys).get('from')).toBe('a');
+  });
+
+  it('does not mutate its input', () => {
+    const input = params('project=HA');
+    withProjects(input, ['AER'], allKeys);
+
+    expect(input.toString()).toBe('project=HA');
+  });
+});
+
+describe('narrowedTo', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+  ] as Project[];
+
+  it('is the picked projects when they are fewer than all', () => {
+    expect(narrowedTo([projects[1]], projects)).toEqual([projects[1]]);
+  });
+
+  it('is undefined when every project is picked', () => {
+    expect(narrowedTo(projects, projects)).toBeUndefined();
+  });
+
+  it('is undefined on a single-project install', () => {
+    expect(narrowedTo([projects[0]], [projects[0]])).toBeUndefined();
+  });
+});
+
+describe('reportProjects', () => {
+  const projects = [
+    { id: 1, key: 'HA' },
+    { id: 2, key: 'AER' },
+    { id: 3, key: 'PYC' },
+  ] as Project[];
+  const inScope = [projects[0], projects[1]];
+
+  it('offers, chooses and narrows to the scope when no project is named', () => {
+    const got = reportProjects(params(''), projects, ['HA', 'AER']);
+
+    expect(got.offered).toEqual(inScope);
+    expect(got.chosen).toEqual(inScope);
+    expect(got.narrowed).toEqual(inScope);
+  });
+
+  it('drops a project param outside the scope', () => {
+    const got = reportProjects(params('project=PYC'), projects, ['HA', 'AER']);
+
+    expect(got.chosen).toEqual(inScope);
+    expect(got.narrowed).toEqual(inScope);
+  });
+
+  it('chooses a project inside the scope', () => {
+    const got = reportProjects(params('project=AER'), projects, ['HA', 'AER']);
+
+    expect(got.chosen).toEqual([projects[1]]);
+    expect(got.narrowed).toEqual([projects[1]]);
+  });
+
+  it('does not narrow with no scope and no param', () => {
+    const got = reportProjects(params(''), projects, []);
+
+    expect(got.offered).toEqual(projects);
+    expect(got.chosen).toEqual(projects);
+    expect(got.narrowed).toBeUndefined();
+  });
+
+  it('writes the clean URL for All in scope', () => {
+    const { offered } = reportProjects(params('project=HA'), projects, ['HA', 'AER']);
+
+    expect(
+      withProjects(
+        params('project=HA'),
+        ['HA', 'AER'],
+        offered.map((p) => p.key),
+      ).has('project'),
+    ).toBe(false);
   });
 });
 

@@ -112,6 +112,17 @@ public sealed record Runtime(
     public Runners Runners() => new(Board.Client, RunnerName);
 
     /// <summary>
+    /// The models a beat advertises: <c>HATCH_MODELS</c> where it was set and
+    /// validated for the agent the adapter is, else the adapter's own list.
+    /// Null where that list is empty, so the beat leaves the row's models be.
+    /// </summary>
+    public IReadOnlyList<string>? AdvertisedModels()
+    {
+        var chosen = Settings.Models is not null && Adapter.Id == Settings.Agent ? Settings.Models : Adapter.Models;
+        return chosen.Count > 0 ? chosen : null;
+    }
+
+    /// <summary>
     /// The same board, quiet - what the idle poll reads with, since it says
     /// nothing about weather today, the way a claim's own heartbeat does not
     /// either. See <see cref="HatchClient.Quiet"/>.

@@ -50,6 +50,12 @@ public interface IAgentAdapter
         return true;
     }
 
+    /// <summary>
+    /// What this agent can spawn, as the beat advertises it: the aliases unless
+    /// the adapter knows better. Empty where it can name none.
+    /// </summary>
+    IReadOnlyList<string> Models => ModelFamilies.Aliases;
+
     /// <summary>The unattended spawn - stdout read by a caller, stdin closed once the prompt is written.</summary>
     ProcessStartInfo BuildHeadless(SessionRequest request);
 

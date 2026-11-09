@@ -42,10 +42,12 @@ import {
   isFiltering,
   readBoardTypes,
   revealType,
+  scrubbedProject,
   writeBoardProject,
   writeBoardTypes,
 } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
+import { cardsInScope } from '../lib/scope';
 import { aimAt } from '../lib/aim';
 import { getFlowBoard } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
@@ -71,6 +73,7 @@ import { useCloseSubtree } from '../lib/useCloseSubtree';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useLoaded } from '../lib/useLoaded';
 import { useRunners } from '../lib/useRunners';
+import { useScope } from '../lib/useScope';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone, useStandalone } from '../lib/viewport';
 import { useWipOverride } from '../lib/useWipOverride';
@@ -168,6 +171,15 @@ export function BoardPage() {
   });
   const { projects, byKey: projectsByKey, loaded } = useProjects();
   const showProjectMark = hasMultipleProjects(projects);
+  const scope = useScope();
+  /* Derived from this page's own `projects`, not `scope.projects`:
+     `useProjects` fetches per call, so the provider's list can land after
+     this page's, and an empty `scope.projects` would scrub every project
+     key below before this page's own list has even landed. */
+  const offered = useMemo(
+    () => (scope.isScoped ? projects.filter((p) => scope.keys.includes(p.key)) : projects),
+    [projects, scope.isScoped, scope.keys],
+  );
   /* The one runners read on this page: the queue modal lists the rows and the
      Go to Work button plans from them. The 20s poll re-renders, which is enough
      to age a silent runner to gone, since the plan takes its own clock. */
@@ -199,8 +211,9 @@ export function BoardPage() {
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
      does, since flipping a filter is not a place worth six presses of Back -
      and a change to the types is remembered. The types are compared by
-     reference: toggleType and revealType hand back a fresh array when they
-     change anything, and every other change spreads the filter and keeps it. */
+     reference: the Types control hands back a fresh array on every change,
+     and so does revealType, while every other change spreads the filter and
+     keeps it. */
   const changeFilter = useCallback(
     (next: CardFilter) => {
       setFilter((prev) => {
@@ -291,16 +304,18 @@ export function BoardPage() {
     // Projects have not loaded yet - an empty list here is "not fetched",
     // not "no projects exist", and must not be read as the latter.
     if (!loaded) return;
-    // A key in the URL that names no project reads as all projects, and
-    // the param is dropped - the picker has nothing to show it as chosen.
+    // A key in the URL or remembered that names no offered project reads as
+    // all in scope, and the param is dropped - the picker has nothing to
+    // show it as chosen.
     setFilter((prev) => {
-      if (prev.project === '' || projects.some((p) => p.key === prev.project)) return prev;
+      const scrubbed = scrubbedProject(prev.project, offered);
+      if (scrubbed === prev.project) return prev;
       const nextParams = new URLSearchParams(params);
       nextParams.delete(PROJECT);
       setParams(nextParams, { replace: true });
-      return { ...prev, project: '' };
+      return { ...prev, project: scrubbed };
     });
-  }, [projects, loaded]);
+  }, [offered, loaded]);
 
   // A few pixels before a mouse drag begins, so the same element can be a link
   // and a card - tapping one opens the issue, dragging one moves it. A touch
@@ -313,13 +328,13 @@ export function BoardPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const cards = board?.issues;
+  const cards = cardsInScope(board?.issues ?? [], scope.keys);
   /* Decided on the whole board, never on `vis`: a story is carried because of
      where its epic stands, not because a filter happens to show it, so the
      type filter hiding an epic hides the stories it carries too. */
   const { carried: carriedKeys, storiesByEpic } = useMemo(
-    () => carried(board?.issues ?? [], board?.pastHorizon ?? [], board?.statuses ?? [], projectsByKey),
-    [board, projectsByKey],
+    () => carried(cards, cardsInScope(board?.pastHorizon ?? [], scope.keys), board?.statuses ?? [], projectsByKey),
+    [board, cards, projectsByKey, scope.keys],
   );
   /* Which epics have folded their stories away, kept per browser. */
   const [collapsedEpics, setCollapsedEpics] = useState(readCollapsedEpics);
@@ -338,11 +353,11 @@ export function BoardPage() {
      the whole board, exactly as lib/lineage.ts's docstring requires, so a
      parent hidden by the type filter still costs its children no depth. */
   const visible: LineageCard[] = useMemo(() => {
-    const vis = filterCards(cards ?? [], filter, storiesByEpic);
+    const vis = filterCards(cards, filter, storiesByEpic);
     const carriedCards = vis.filter((c) => !carriedKeys.has(c.key));
     const statusIds: number[] = [];
     for (const c of carriedCards) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
-    return statusIds.flatMap((id) => lineage(cards ?? [], carriedCards.filter((c) => c.statusId === id)));
+    return statusIds.flatMap((id) => lineage(cards, carriedCards.filter((c) => c.statusId === id)));
   }, [cards, filter, carriedKeys, storiesByEpic]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
@@ -413,7 +428,7 @@ export function BoardPage() {
 
   /* Derived from the whole board rather than from what survives the filter,
      so choosing somebody does not empty the list you chose them from. */
-  const assignees = useMemo(() => assigneeFacets(cards ?? []), [cards]);
+  const assignees = useMemo(() => assigneeFacets(cards), [cards]);
 
   /**
    * One move path for a drop and a press: apply it optimistically, send it,
@@ -680,10 +695,11 @@ export function BoardPage() {
         filter={filter}
         onChange={changeFilter}
         assignees={assignees}
-        projects={projects}
-        cards={board.issues}
+        projects={offered}
+        scoped={scope.isScoped}
+        cards={cards}
         showing={visible.length}
-        total={board.issues.length - carriedKeys.size}
+        total={cards.length - carriedKeys.size}
         collapsed={isPhone}
         leading={
           isPhone && (
@@ -700,7 +716,7 @@ export function BoardPage() {
         }
         trailing={
           <>
-            <GoToWorkControl plan={goToWork} status={status} project={filter.project} reload={reloadRunners} isPhone={isPhone} />
+            <GoToWorkControl plan={goToWork} status={status} project={filter.project} scope={scope.keys} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (
@@ -761,7 +777,7 @@ export function BoardPage() {
                 key={status.id}
                 status={status}
                 cards={visible.filter((i) => i.statusId === status.id)}
-                hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
+                hidden={cards.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                 filtering={isFiltering(filter)}
                 found={found}
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
@@ -809,7 +825,7 @@ export function BoardPage() {
                   status={status}
                   narrow={narrow.has(status.id)}
                   cards={visible.filter((i) => i.statusId === status.id)}
-                  hidden={board.issues.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
+                  hidden={cards.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
                   filtering={isFiltering(filter)}
                   dropping={dragging !== null && over === status.id}
                   lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
@@ -854,7 +870,7 @@ export function BoardPage() {
 
       <NewIssueDialog
         open={filing}
-        projects={projects}
+        projects={offered}
         candidates={board.issues}
         defaultProjectKey={filter.project}
         directory={directory}

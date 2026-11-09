@@ -3648,7 +3648,46 @@ public class IssuesControllerTests
         await h.CreateAsync("task", "house work");
         await h.CreateAsync("task", "ops work", projectId: h.OtherProjectId);
 
-        Assert.Equal(["OPS-1"], await h.SearchAsync(projectId: h.OtherProjectId));
+        Assert.Equal(["OPS-1"], await h.SearchAsync(projectId: [h.OtherProjectId]));
+    }
+
+    [Fact]
+    public async Task ASearchByTwoProjectIds_AnswersEitherProjects()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "house work");
+        await h.CreateAsync("task", "ops work", projectId: h.OtherProjectId);
+
+        Assert.Equal(
+            ["AER-1", "OPS-1"],
+            (await h.SearchAsync(projectId: [h.ProjectId, h.OtherProjectId])).OrderBy(k => k));
+    }
+
+    [Fact]
+    public async Task ASearchByARepeatedProjectId_CountsOnce_SameAsOnce()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "house work");
+
+        Assert.Equal(["AER-1"], await h.SearchAsync(projectId: [h.ProjectId, h.ProjectId]));
+    }
+
+    [Fact]
+    public async Task ASearchByAnUnknownProjectIdMixedWithAKnownOne_AnswersTheKnownOnesRatherThanRefusing()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "house work");
+
+        Assert.Equal(["AER-1"], await h.SearchAsync(projectId: [h.ProjectId, 999_999]));
+    }
+
+    [Fact]
+    public async Task ASearchByAnUnknownProjectIdAlone_AnswersNoHitsRatherThanARefusal()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "house work");
+
+        Assert.Empty(await h.SearchAsync(projectId: [999_999]));
     }
 
     [Fact]
@@ -4343,7 +4382,7 @@ public class IssuesControllerTests
 
         /// <summary>The keys a filter finds, in the order the endpoint returns them.</summary>
         public async Task<IReadOnlyList<string>> SearchAsync(
-            int? projectId = null,
+            List<int>? projectId = null,
             string? type = null,
             int? statusId = null,
             string? parentKey = null,

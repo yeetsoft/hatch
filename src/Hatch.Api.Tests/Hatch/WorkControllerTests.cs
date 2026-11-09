@@ -2030,6 +2030,19 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task LetGo_StopsAtARecusedRelease()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped, recused, then dropped once", h.Todo);
+
+        await Released(h, issue, Now, ClaimOutcomes.Dropped);
+        await Released(h, issue, Now.AddMinutes(1), ClaimOutcomes.Recused);
+        await Released(h, issue, Now.AddMinutes(2), ClaimOutcomes.Dropped);
+
+        Assert.Equal(1, Value(await h.Work.GetWork(Key(issue), null, default)).LetGo);
+    }
+
+    [Fact]
     public async Task LetGo_StopsAtAStatusChange()
     {
         var h = await NewAsync();
@@ -2122,6 +2135,27 @@ public class WorkControllerTests
 
         Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(runner: b)).Issue.Key);
         Assert.IsType<NoContentResult>((await h.Work.GetNextWork(runner: a)).Result);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerOmittedFromTheTicket_IsNotOneThatCouldTakeIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await AddLoopRunnerAsync(h, b);
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issue.Id, RunnerName = b, By = "operator", At = Now.AddMinutes(-3) });
+        await h.Db.SaveChangesAsync();
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B's own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        // A third live runner that is not omitted could take it, so A defers again.
+        await AddLoopRunnerAsync(h, RunnerName());
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
     }
 
     [Fact]
@@ -2279,6 +2313,70 @@ public class WorkControllerTests
 
         Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
         Assert.Equal(DeferralSentence(b, 3), Only(await h.Work.GetQueue(runner: b)).Blocked);
+    }
+
+    // ---- Omitted runners on a named dispatch and a hop ----
+
+    private static async Task OmitAsync(Harness h, EfHatchIssue issue, string runner, string by, string? reason = null)
+    {
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issue.Id, RunnerName = runner, By = by, At = Now.AddMinutes(-3), Reason = reason });
+        await h.Db.SaveChangesAsync();
+    }
+
+    private static string OmissionSentence(EfHatchIssue issue, string runner, string prefix = "operator omitted it") =>
+        $"{Key(issue)} is not worked by {runner} - {prefix} 3 minutes ago";
+
+    [Fact]
+    public async Task GetWork_WithRunner_FoldsAnIssueOmittedForIt()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "omitted for A", h.Todo);
+        var a = RunnerName();
+        await OmitAsync(h, issue, a, by: "operator");
+
+        Assert.Equal(OmissionSentence(issue, a), Value(await h.Work.GetWork(Key(issue), runner: a)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), runner: RunnerName())).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue))).Blocked);
+
+        var own = await h.FileAsync("task", "recused by A", h.Todo);
+        await OmitAsync(h, own, a, by: a);
+        Assert.Equal(OmissionSentence(own, a, "it recused itself"), Value(await h.Work.GetWork(Key(own), runner: a)).Blocked);
+    }
+
+    [Fact]
+    public async Task Hop_WithRunner_OmittedForIt_Is409AndWritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Todo);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Todo);
+        var a = RunnerName();
+        await OmitAsync(h, issue, a, by: "operator");
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default, runner: a);
+
+        var response = (ObjectResult)result.Result!;
+        Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
+        Assert.Contains(OmissionSentence(issue, a), response.Value?.ToString());
+        Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
+
+        var other = await h.Work.HopWork(Key(issue), null, null, null, default, runner: RunnerName());
+        Assert.Equal(h.InProgress, Value(other).StatusId);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunner_FoldsAnOmittedIssueWithNoRunnerParameter()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "omitted for A", h.Todo);
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        await OmitAsync(h, issue, a, by: "operator");
+
+        var forA = Only(await h.Work.GetQueue(asRunner: a));
+        Assert.Equal(OmissionSentence(issue, a), forA.Blocked);
+        Assert.Equal(BlockedKinds.Other, forA.BlockedKind);
+        Assert.Null(Only(await h.Work.GetQueue()).Blocked);
     }
 
     // ---- HA-395: whether the last move was a send-back, carried to the next session ----
@@ -6031,6 +6129,113 @@ public class WorkControllerTests
 
         Assert.False(entry.Hop);
         Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAReviewRowWithADoneChildInASettingOnProjectAsACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close, by the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task GetWork_OnAReviewRowWithADoneChildInASettingOnProject_NamesDoneAndIsAHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to close, by the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal(h.Done, work.ToStatus!.Id);
+        Assert.True(work.Hop);
+        Assert.Equal(HopKinds.Close, work.HopKind);
+        Assert.Null(work.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsAnEpicWithOnlyAShelvedChildInASettingOnProjectAsACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("epic", "ready to close, by the setting", h.Review);
+        await h.FileAsync("story", "shelved", h.Shelved, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Theory]
+    [InlineData("story", "task")]
+    [InlineData("epic", "story")]
+    public async Task AParentWithAnOpenChildInASettingOnProject_IsNotACloseHop(string type, string childType)
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync(type, "still in flight", h.Review);
+        await h.FileAsync(childType, "still open", h.Todo, parentId: issue.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADoneChildInASettingOffProject_WhenNotPreApproved_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "neither pre-approved nor the setting", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task AParentWithADoneChildButAPullRequestInASettingOnProject_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "has a pull request", h.Review);
+        await h.FileAsync("task", "the only child", h.Done, parentId: issue.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        // Not an Approve hop either - it is not pre-approved.
+        Assert.False(entry.Hop);
+        Assert.Contains("no runner has checked its branch", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeChildlessTaskInASettingOnProject_WhenNotPreApproved_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("task", "declared, but only the setting", h.Review);
+        await h.DeclareNoCodeAsync(issue, "nothing to push");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.NotNull(entry.Blocked);
     }
 
     [Fact]
@@ -12224,6 +12429,14 @@ public class WorkControllerTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == (projectId ?? ProjectId));
             project.RepoSourced = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's check-approves-merge flag, written straight onto the row.</summary>
+        public async Task SetCheckApprovesMergeAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.CheckApprovesMerge = on;
             await Db.SaveChangesAsync();
         }
 

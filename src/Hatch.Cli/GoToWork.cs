@@ -427,11 +427,15 @@ public sealed class Tally
         // flagged. A conflict that was resolved is something the night got
         // done, though the ticket did not move, and so is a fix pushed to a
         // failing build - and so is work filed under the ticket, though it
-        // stayed put.
+        // stayed put. A recusal belongs to the same list for the same reason -
+        // nothing needs to be done about it either, so it must never reach the
+        // stalled list.
         if (report.HardLimited && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
         else if (report.Clamped && report.Filed.Count > 0 && !report.Moved && !report.Resolved && !report.FixPushed) _clamped.Add($"hatch:   clamped  {report.Key}  {report.Outcome}");
         else if (report.Moved || report.Resolved || report.FixPushed || report.Filed.Count > 0) _moved.Add($"hatch:   moved    {report.Key}  {report.Outcome}");
-        else if (report.LetGo) _letGo.Add($"hatch:   let go   {report.Key}  {report.Outcome}");
+        else if (report.LetGo || report.Recused) _letGo.Add(report.Recused
+            ? $"hatch:   recused  {report.Key}  {report.Outcome}"
+            : $"hatch:   let go   {report.Key}  {report.Outcome}");
         else _stalled.Add($"hatch:   stalled  {report.Key}  {report.Outcome}");
 
         // A lost lease is not a failure. It is the loop working correctly on a
@@ -1747,6 +1751,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,
                 Clones: runtime.Settings.Workspace is not null,

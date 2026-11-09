@@ -10,7 +10,7 @@ public sealed class TallyTests
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
-        bool quietStopped = false) =>
+        bool quietStopped = false, bool recused = false, string? recusedReason = null) =>
         new()
         {
             Key = key,
@@ -20,6 +20,8 @@ public sealed class TallyTests
             Moved = moved,
             Stalled = !moved && filed == 0,
             LetGo = letGo,
+            Recused = recused,
+            RecusedReason = recusedReason,
             ExitCode = exit,
             Cost = cost,
             TotalTokens = totalTokens,
@@ -982,6 +984,37 @@ public sealed class TallyTests
 
         Assert.Contains(say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
         Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1782: a recused increment is filed with the let-go ones - nothing needs doing about it - and never as stalled.</summary>
+    [Fact]
+    public void A_recused_ticket_is_in_the_let_go_list_and_not_the_stalled_one()
+    {
+        var say = new Transcript();
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", moved: false, recused: true, recusedReason: "needs a GPU"));
+        tally.StopWhy = "--once, and the pass is done";
+        tally.Print(say);
+
+        Assert.Contains(say.Said, l => l.Contains("recused  AER-1", StringComparison.Ordinal));
+        Assert.Contains(say.Said, l => l.Contains("recused itself (needs a GPU)", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("stalled  AER-1", StringComparison.Ordinal));
+        Assert.DoesNotContain(say.Said, l => l.Contains("let go   AER-1", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-1782: a recusing session exits zero, so three in a row do not arm the three-strikes stop.</summary>
+    [Fact]
+    public void Three_recused_tickets_in_a_row_do_not_end_the_night()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 0, moved: false, recused: true));
+        tally.Record(Report("AER-2", exit: 0, moved: false, recused: true));
+        tally.Record(Report("AER-3", exit: 0, moved: false, recused: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
     }
 
     /// <summary>A session that exited zero without moving its ticket still does not count toward three failures in a row.</summary>

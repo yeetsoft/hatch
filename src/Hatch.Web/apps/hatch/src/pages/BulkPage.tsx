@@ -6,25 +6,40 @@ import { MomentField } from '../components/MomentField';
 import { ProjectChooser } from '../components/ProjectChooser';
 import { StatusPill } from '../components/StatusPill';
 import { TypeBadge } from '../components/TypeBadge';
-import { EMPTY_FORM, KEEP, buildBulkEdit, isEmptyForm, summarize } from '../lib/bulk';
-import type { BulkForm } from '../lib/bulk';
+import { EMPTY_FORM, KEEP, NO_FILTERS, buildBulkEdit, bulkSearch, isEmptyForm, movedOutOfScope, summarize } from '../lib/bulk';
+import type { BulkForm, Filters } from '../lib/bulk';
 import { message } from '../lib/errors';
 import { bulkBlocked } from '../lib/protectedColumns';
 import { truncate } from '../lib/text';
+import { useScope } from '../lib/useScope';
+import { hasMultipleProjects } from '../lib/useProjects';
 import { ISSUE_TYPES } from '../types';
-import type { Board, IssueBulkResult, IssueCard, IssueSearch, IssueType, Project } from '../types';
+import type { Board, IssueBulkResult, IssueCard, IssueType, Project } from '../types';
 
-/** The filter, before it is turned into a query. '' is "any", which is not a value the API takes. */
-interface Filters {
-  projectId: number | '';
-  type: IssueType | '';
-  statusId: number | '';
-  parentKey: string;
-  ancestorKey: string;
-  text: string;
+/** The Project filter: the projects it is given, and nothing at all when there is only one to pick. */
+export function BulkProjectFilter({
+  projects,
+  value,
+  onChange,
+}: {
+  projects: Project[];
+  value: number | '';
+  onChange: (projectId: number | '') => void;
+}) {
+  if (!hasMultipleProjects(projects)) return null;
+  return (
+    <Field label="Project">
+      <select value={value} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}>
+        <option value="">— any —</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.key} — {p.name}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
 }
-
-const NO_FILTERS: Filters = { projectId: '', type: '', statusId: '', parentKey: KEEP, ancestorKey: '', text: '' };
 
 /**
  * Find some issues, change one thing about all of them.
@@ -39,6 +54,7 @@ const NO_FILTERS: Filters = { projectId: '', type: '', statusId: '', parentKey: 
  * person, or by an agent - cannot be swept into an edit nobody saw.
  */
 export function BulkPage() {
+  const scope = useScope();
   const [board, setBoard] = useState<Board | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const projectsByKey = useMemo(() => new Map(projects.map((p) => [p.key, p])), [projects]);
@@ -54,6 +70,16 @@ export function BulkPage() {
   const [error, setError] = useState<string | null>(null);
   const descendantsName = useId();
 
+  // The bar's control replaces the URL and leaves this page mounted. What was
+  // found, ticked and filtered under the old scope may not belong to the new one.
+  const scopeKey = scope.keys.join(',');
+  useEffect(() => {
+    setResults(null);
+    setChosen(new Set());
+    setOutcome(null);
+    setFilters(NO_FILTERS);
+  }, [scopeKey]);
+
   useEffect(() => {
     Promise.all([getBoard(), getProjects()])
       .then(([loadedBoard, loadedProjects]) => {
@@ -67,18 +93,7 @@ export function BulkPage() {
     setSearching(true);
     setOutcome(null);
     try {
-      const query: IssueSearch = {
-        projectId: filters.projectId === '' ? null : filters.projectId,
-        type: filters.type === '' ? null : filters.type,
-        statusId: filters.statusId === '' ? null : filters.statusId,
-        // KEEP is "any parent"; the empty string is a filter of its own -
-        // "no parent at all" - and has to reach the API as one.
-        parentKey: filters.parentKey === KEEP ? null : filters.parentKey,
-        ancestorKey: filters.ancestorKey || null,
-        text: filters.text.trim() || null,
-      };
-
-      const found = await searchIssues(query);
+      const found = await searchIssues(bulkSearch(filters, scope.ids));
       setResults(found);
       // Everything found starts ticked: the filter is the selection, and the
       // ticks are there to take things back out of it.
@@ -89,7 +104,7 @@ export function BulkPage() {
     } finally {
       setSearching(false);
     }
-  }, [filters]);
+  }, [filters, scope.ids]);
 
   async function apply() {
     const request = buildBulkEdit([...chosen], form);
@@ -98,12 +113,13 @@ export function BulkPage() {
     setApplying(true);
     try {
       const result = await bulkEditIssues(request);
-      setOutcome(result);
       setError(null);
       // Re-run the filter rather than patching the rows in place: an edit that
       // moved issues out of the filter should take them off this list, and the
-      // server is the one that knows what still matches.
+      // server is the one that knows what still matches. The outcome is set
+      // after, since a search clears it.
       await search();
+      setOutcome(result);
     } catch (err) {
       setError(message(err));
     } finally {
@@ -111,10 +127,14 @@ export function BulkPage() {
     }
   }
 
-  if (!board) return <p className="text-muted">{error ?? 'Loading…'}</p>;
+  // The provider loads its own project list; until it lands the scope reads as
+  // unscoped, and a Find pressed now would not be.
+  const scopeReady = scope.projects.length > 0 || projects.length === 0;
+  if (!board || !scopeReady) return <p className="text-muted">{error ?? 'Loading…'}</p>;
 
   const statuses = board.statuses;
-  const issues = board.issues;
+  const issues = board.issues.filter((i) => scope.inScope(i.projectKey));
+  const leftScope = outcome ? movedOutOfScope(outcome.rekeyed, scope.inScope) : [];
   const request = buildBulkEdit([...chosen], form);
   const selected = (results ?? []).filter((issue) => chosen.has(issue.key));
   const selectedStatus = form.statusId === '' ? null : statuses.find((s) => s.id === form.statusId) ?? null;
@@ -132,19 +152,11 @@ export function BulkPage() {
       <Card>
         <h2 className="hatch-section-title">Find</h2>
         <div className="hatch-field-grid">
-          <Field label="Project">
-            <select
-              value={filters.projectId}
-              onChange={(e) => setFilters({ ...filters, projectId: e.target.value === '' ? '' : Number(e.target.value) })}
-            >
-              <option value="">— any —</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.key} — {p.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <BulkProjectFilter
+            projects={scope.projects}
+            value={filters.projectId}
+            onChange={(projectId) => setFilters({ ...filters, projectId })}
+          />
 
           <Field label="Type">
             <select value={filters.type} onChange={(e) => setFilters({ ...filters, type: e.target.value as IssueType | '' })}>
@@ -206,6 +218,41 @@ export function BulkPage() {
           </Button>
         </div>
       </Card>
+
+      {outcome && (
+        <Card>
+          <div className="hatch-bulk-outcome">
+            <p>{summarize(outcome)}</p>
+            {leftScope.length > 0 && (
+              <p>
+                Left this tab's scope:{' '}
+                {leftScope.map((key, n) => (
+                  <span key={key}>
+                    {n > 0 && ', '}
+                    <code>{key}</code>
+                  </span>
+                ))}
+              </p>
+            )}
+            {outcome.failures.length > 0 && (
+              <ul className="hatch-bulk-failures">
+                {outcome.failures.map((failure) => (
+                  <li key={failure.key}>
+                    <code>{failure.key}</code> — {failure.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {outcome.rekeyed.length > 0 && (
+              <ul className="hatch-bulk-rekeyed">
+                {outcome.rekeyed.map((pair) => (
+                  <li key={pair.from}><code>{pair.from}</code> → <code>{pair.to}</code></li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
+      )}
 
       {results && results.length === 0 && <EmptyState message="Nothing matches that filter." />}
 
@@ -341,28 +388,6 @@ export function BulkPage() {
                 {isEmptyForm(form) ? 'Nothing to apply' : `Apply to ${chosen.size}`}
               </Button>
             </div>
-
-            {outcome && (
-              <div className="hatch-bulk-outcome">
-                <p>{summarize(outcome)}</p>
-                {outcome.failures.length > 0 && (
-                  <ul className="hatch-bulk-failures">
-                    {outcome.failures.map((failure) => (
-                      <li key={failure.key}>
-                        <code>{failure.key}</code> — {failure.reason}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {outcome.rekeyed.length > 0 && (
-                  <ul className="hatch-bulk-rekeyed">
-                    {outcome.rekeyed.map((pair) => (
-                      <li key={pair.from}><code>{pair.from}</code> → <code>{pair.to}</code></li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
           </Card>
 
           <Card flush>

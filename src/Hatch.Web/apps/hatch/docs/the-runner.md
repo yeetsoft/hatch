@@ -209,6 +209,8 @@ HATCH_LOG            where its log goes (on: the logs folder beside the
                      work or go-to-work run keeps one file there, named on
                      its first line
 HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
+HATCH_MODELS         the models this runner advertises, comma-separated
+                     (default: the agent's)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -246,6 +248,8 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   goes to (the `logs` folder beside the per-user file, for `on`);
 - `HATCH_DANGEROUS:` as `<unset - takes dangerous work>`, `on - takes dangerous work`,
   `off - this runner refuses dangerous work`, or a bad value with the sentence that refuses it;
+- `HATCH_MODELS:` as a comma-separated list, `<unset - the agent's default>`, or a bad
+  value with the sentence that refuses it;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -295,6 +299,43 @@ A runner that falls short of what a project requires is not refused outright:
 worked only by a runner advertising macos and xcode - this runner
 advertises linux"* (*"... advertises none"* for a runner with no tags at all).
 
+### Models
+
+A runner can say which models it offers. `HATCH_MODELS` is a comma-separated
+list - aliases (`haiku`, `sonnet`, `opus`, lowercased) or pinned ids - trimmed
+and deduplicated, at most 100. It is read from the same four layers as any
+other setting, and unset means the agent's default.
+
+```
+HATCH_MODELS=haiku,sonnet
+hatch config --models haiku --models sonnet
+```
+
+`--models` is repeatable, and bare `--models` clears them. A comma inside one
+value is refused (`--models haiku,sonnet` is one unknown id, not two), with
+nothing written. So is a pinned id of a different agent than `HATCH_AGENT`
+(blank is `claude`): `"gpt-6-luna" is a codex model - this runner's agent is
+claude`. A bad `HATCH_MODELS` in a file or the environment refuses every
+command with the same sentence, after `hatch: HATCH_MODELS -`. It is
+machine-bound, so a profile still reads it from the per-user file.
+
+**What the default is.** Unset, a runner advertises what its agent can spawn:
+for claude, codex and grok the four aliases, `haiku sonnet opus fable`; for
+ollama the ids its aliases are mapped to (`HATCH_OLLAMA_TIERS`), in alias order, then
+the models its server has pulled, sorted, up to 100. An ollama runner with
+nothing mapped and nothing pulled advertises none. A pulled name that is not a
+valid Ollama id (`name:tag`) is left out rather than refusing the beat.
+
+**`HATCH_MODELS` overrides the default only for its own agent.** It was
+checked against `HATCH_AGENT`, so a run whose `--agent` flag chose another
+agent advertises that agent's default instead of a list that would be refused.
+
+**Every heartbeat writes the list.** Unlike tags, the board does not own it:
+the row carries whatever the last beat said, so changing `HATCH_MODELS` or
+pulling a model on an ollama server shows on the next heartbeat. A runner that
+has nothing to advertise sends none and leaves the row's list as it was.
+`hatch runners` closes a row with `  models haiku sonnet`.
+
 ## What a runner refuses
 
 A ticket can be flagged dangerous: security testing, load testing, anything
@@ -319,6 +360,13 @@ runner's row; after that **the row is where it lives**, and `hatch config
 --dangerous` typed at a checkout whose runner already has a row changes nothing
 on the board. A running loop adopts the row's answer on its next heartbeat and
 says so once: `hatch: the board set --dangerous off` (or `on`).
+
+A runner can also refuse one ticket rather than every dangerous one: a session
+that decides the work is not one this runner can do runs `hatch recuse AER-12
+"reason"` and stops there. The board stops handing that runner this ticket,
+and the increment ends with `hatch: AER-12 - <runner> recused itself
+(<reason>), going on to the next` - no stall comment, no mark, no question.
+`hatch omit AER-12 --lift <runner>` undoes it.
 
 ## The runner's name
 

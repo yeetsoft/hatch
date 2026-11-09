@@ -47,6 +47,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>What the board says when the module migrations did not run (BoardPage.tsx).</summary>
     public const string BoardTrailingSelector = ".hatch-filter-trailing";
 
+    public const string TypesOnlySelector = ".hatch-types-only";
+
     public const string RunnersCardSelector = ".hatch-card--flush";
 
     /// <summary>Every control a Runners row draws in its group: the buttons, and the ticket input.</summary>
@@ -109,6 +111,31 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             })(),
             trailing: [...trailing.children].map((element) => ({
               name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
+              box: plain(element.getBoundingClientRect()),
+            })),
+          };
+        }
+        """;
+
+    /// <summary>
+    /// Runs in the page and reads the open Types panel: every Only button's box
+    /// and the box of the menu panel that holds them. A <c>DOMRect</c> does not
+    /// serialise, so each is copied to a plain object.
+    /// </summary>
+    private const string MeasureTypesOnlyScript = """
+        (onlySelector) => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const only = [...document.querySelectorAll(onlySelector)];
+          const panel = only.length === 0 ? null : only[0].closest('.hatch-menu__panel');
+          const root = document.scrollingElement;
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
+            panel: panel === null ? null : plain(panel.getBoundingClientRect()),
+            only: only.map((element) => ({
+              name: element.getAttribute('aria-label') || element.textContent.trim(),
               box: plain(element.getBoundingClientRect()),
             })),
           };
@@ -303,6 +330,70 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     public Task GoToAsync(Deadline deadline, string path) =>
         deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
 
+    /// <summary>The running host's services, for a case that seeds its own rows once <see cref="StartHostAsync"/> has returned.</summary>
+    public IServiceProvider Services => factory!.Services;
+
+    /// <summary>Clicks the first element matching <paramref name="selector"/>, once it is visible and enabled.</summary>
+    public Task ClickAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"clicking {selector}", () => page!.Locator(selector).First.ClickAsync());
+
+    /// <summary>Picks the option whose value is <paramref name="value"/> in the first <c>select</c> matching <paramref name="selector"/>, firing the events a person's pick would.</summary>
+    public Task SelectOptionAsync(Deadline deadline, string selector, string value) =>
+        deadline.BoundAsync($"choosing {value} in {selector}", () => page!.Locator(selector).First.SelectOptionAsync(value));
+
+    /// <summary>Selects everything in whichever element holds the page's focus.</summary>
+    public Task SelectAllAsync(Deadline deadline) =>
+        deadline.BoundAsync("selecting all", () => page!.Keyboard.PressAsync("ControlOrMeta+A"));
+
+    /// <summary>
+    /// Inserts <paramref name="text"/> as one operation, with no per-key
+    /// bracket pairing - unlike <c>Keyboard.TypeAsync</c>, which Monaco would
+    /// meet one key at a time, auto-closing <c>[</c>/<c>(</c> as they land.
+    /// </summary>
+    public Task InsertTextAsync(Deadline deadline, string text) =>
+        deadline.BoundAsync("inserting text", () => page!.Keyboard.InsertTextAsync(text));
+
+    /// <summary>
+    /// Arms a one-shot handler that accepts the next browser dialog
+    /// (<c>confirm</c>, <c>alert</c> or <c>prompt</c>) the page raises. Call
+    /// immediately before the click that raises it - a dialog fired before
+    /// this is armed is unhandled and the case hangs.
+    /// </summary>
+    public Task AcceptNextDialogAsync(Deadline deadline) =>
+        deadline.BoundAsync("arming the next dialog to accept", () =>
+        {
+            void Handler(object? s, IDialog d) { page!.Dialog -= Handler; _ = d.AcceptAsync(); }
+            page!.Dialog += Handler;
+            return Task.CompletedTask;
+        });
+
+    /// <summary><see cref="AcceptNextDialogAsync"/>'s mirror: dismisses the next dialog instead.</summary>
+    public Task DismissNextDialogAsync(Deadline deadline) =>
+        deadline.BoundAsync("arming the next dialog to dismiss", () =>
+        {
+            void Handler(object? s, IDialog d) { page!.Dialog -= Handler; _ = d.DismissAsync(); }
+            page!.Dialog += Handler;
+            return Task.CompletedTask;
+        });
+
+    /// <summary>Runs <paramref name="script"/> in the page, a function taking <paramref name="arg"/>.</summary>
+    public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
+
+    /// <summary>
+    /// Runs <paramref name="script"/> in the page against the first element matching
+    /// <paramref name="selector"/> - found by Playwright's own selector engine, which
+    /// knows <c>:has()</c> and <c>:text-is()</c> where a page script's own
+    /// <c>document.querySelector</c> does not. <paramref name="script"/> is a function
+    /// taking the matched element and then <paramref name="arg"/>.
+    /// </summary>
+    public Task<T> EvaluateOnAsync<T>(Deadline deadline, string phase, string selector, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.Locator(selector).First.EvaluateAsync<T>(script, arg));
+
+    /// <summary>Polls <paramref name="script"/> in the page until it answers truthy.</summary>
+    public Task WaitForFunctionAsync(Deadline deadline, string phase, string script, object? arg = null) =>
+        deadline.BoundAsync(phase, () => page!.WaitForFunctionAsync(script, arg));
+
     /// <summary>Drops every route a case installed, so the next load meets the real host: one context goes from a stubbed state to the state at rest.</summary>
     public Task UnrouteAllAsync(Deadline deadline) =>
         deadline.BoundAsync("removing the routes", () => context!.UnrouteAllAsync());
@@ -310,6 +401,19 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>The first element matching <paramref name="selector"/>, visible; the selector is in the phase so a stall names what it waited for.</summary>
     public Task WaitForVisibleAsync(Deadline deadline, string selector) =>
         deadline.BoundAsync($"waiting for {selector}", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Visible }));
+
+    /// <summary>The first element matching <paramref name="selector"/>, hidden or gone.</summary>
+    public Task WaitForHiddenAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"waiting for {selector} to hide", () => page!.Locator(selector).First.WaitForAsync(new() { State = WaitForSelectorState.Hidden }));
+
+    /// <summary>
+    /// Whether <paramref name="selector"/> matches a visible element right now - no
+    /// wait, so a negative assertion ("the overlay never appears") cannot pass
+    /// just by outrunning a redraw with a wait that times out and is swallowed.
+    /// False when nothing matches at all.
+    /// </summary>
+    public Task<bool> IsVisibleAsync(Deadline deadline, string selector) =>
+        deadline.BoundAsync($"checking {selector}", () => page!.Locator(selector).First.IsVisibleAsync());
 
     public Task WaitForTopBarAsync(Deadline deadline) =>
         deadline.BoundAsync("waiting for the top bar", () => page!.Locator(TopBar).WaitForAsync(new() { State = WaitForSelectorState.Visible }));
@@ -422,6 +526,23 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
                 .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
                 .ToList(),
             read.GetProperty("search").ValueKind == JsonValueKind.Null ? null : ReadBox(read.GetProperty("search")));
+    }
+
+    /// <summary>The open Types panel's Only buttons and the panel itself as the page stands; the panel must be open.</summary>
+    public async Task<TypesOnlyMeasurement> MeasureTypesOnlyAsync(Deadline deadline)
+    {
+        var read = await deadline.BoundAsync("measuring the Types panel", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureTypesOnlyScript, TypesOnlySelector));
+
+        return new TypesOnlyMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            read.GetProperty("coarsePointerMatches").GetBoolean(),
+            read.GetProperty("panel").ValueKind == JsonValueKind.Null ? null : ReadBox(read.GetProperty("panel")),
+            read.GetProperty("only").EnumerateArray()
+                .Select(c => (c.GetProperty("name").GetString()!, ReadBox(c.GetProperty("box"))))
+                .ToList());
     }
 
     /// <summary>Resizes the open page, for a case that asks about a width other than the launch profile's.</summary>

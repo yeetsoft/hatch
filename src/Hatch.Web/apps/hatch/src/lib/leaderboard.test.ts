@@ -5,13 +5,15 @@ import {
   capPhrase,
   dayLabel,
   emptiness,
+  inScopeCards,
   presetRange,
   rankedTop,
   rankingCaption,
   resolveQuery,
+  sessionWindow,
   windowPhrase,
 } from './leaderboard';
-import type { WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
+import type { IssueCard, WorkLogSession, WorkLogSessions, WorkLogTotals } from '../types';
 
 const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   sessions: 31,
@@ -220,6 +222,80 @@ describe('emptiness', () => {
     const scoped = emptiness(view({ firstSessionAt: null, lastSessionAt: null }), 'AER-12');
 
     expect(scoped?.text).toContain('under AER-12');
+  });
+});
+
+describe('sessionWindow', () => {
+  const query = { from: '2026-08-24T00:00:00Z', to: '2026-09-08T00:00:00Z', issue: null };
+
+  it('leaves projectId out when the scope has no ids', () => {
+    expect(sessionWindow(query, [])).toEqual({
+      from: query.from,
+      to: query.to,
+      ancestorKey: null,
+    });
+  });
+
+  it('names projectId when the scope has ids, and keeps the rest', () => {
+    expect(sessionWindow({ ...query, issue: 'AER-12' }, [2, 5])).toEqual({
+      from: query.from,
+      to: query.to,
+      ancestorKey: 'AER-12',
+      projectId: [2, 5],
+    });
+  });
+});
+
+describe('inScopeCards', () => {
+  const card = (key: string, projectKey: string): IssueCard => ({
+    key,
+    projectKey,
+    type: 'task',
+    title: `${key} title`,
+    statusId: 1,
+    rank: 1024,
+    parentKey: null,
+    readyAt: null,
+    dueAt: null,
+    openQuestions: 0,
+    assignee: null,
+    claim: null,
+    expedited: false,
+    priority: 'normal',
+    priorityOwn: 'normal',
+    priorityFrom: null,
+    preApproval: 'none',
+    preApprovalOwn: 'none',
+    preApprovalFrom: null,
+    runnerTags: [],
+    runnerTagsOwn: [],
+    runnerTagsFrom: [],
+    dangerousOwn: null,
+    dangerous: null,
+    dangerousFrom: null,
+    omittedRunnersOwn: [],
+    omittedRunners: [],
+    express: false,
+    stalledAt: null,
+    stalledWhy: null,
+    held: false,
+    pullRequestUrl: null,
+    onePr: false,
+    onePrOwn: null,
+    onePrFrom: null,
+  });
+
+  const cards = [card('AER-1', 'AER'), card('FIL-1', 'FIL'), card('AER-2', 'AER')];
+
+  it('keeps only the cards inScope admits, in order', () => {
+    expect(inScopeCards(cards, (projectKey) => projectKey === 'AER').map((c) => c.key)).toEqual([
+      'AER-1',
+      'AER-2',
+    ]);
+  });
+
+  it('returns every card when inScope admits everything', () => {
+    expect(inScopeCards(cards, () => true)).toEqual(cards);
   });
 });
 

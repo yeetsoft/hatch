@@ -193,7 +193,7 @@ beyond the standard ones.
 | DELETE | `/issues/{key}` | Deletes it; children are outdented, not deleted |
 | POST | `/issues/{key}/move` | The drag: a column and the neighbours it landed between |
 
-All eight are a key's. `GET /issues` takes `projectId`, `type`, `statusId`,
+All eight are a key's. `GET /issues` takes a repeatable `projectId`, `type`, `statusId`,
 `parentKey` (`""` means "no parent at all" - the one filter with no other way
 to write it), `ancestorKey` (anything below at any depth, not the issue
 itself) and `text` (a substring of the title, plus an exact key match), all
@@ -258,6 +258,8 @@ not mint an issue number - try again".
 | one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
+| omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
+| omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
@@ -266,12 +268,12 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `no-code` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
 filing it that way; runner-tags is a statement about which runner may
 pick the ticket up, not a power over the board, for the same reason, and
-dangerous is the same kind of statement; no-code
+dangerous is the same kind of statement, and so is omitted-runners; no-code
 is a statement of fact about the work, with the same reach as recording a pull
 request through `PATCH`, which is also key-open; landing
 is a fact a session or a poll reports about a repository and a sha, not a
@@ -291,7 +293,8 @@ two-level alias. `PreApprovalRequest(Level)` takes one of `none`, `express`,
 `OnePrRequest(Value)` takes `on`, `off` or `inherit`.
 `IssueRunnerTagsWriteRequest(Tags)` is the whole list, replaced; trimmed,
 lower-cased and deduplicated, at most 8 tags of at most 32 characters, none
-with a space or comma. `ReleaseNoteRequest`
+with a space or comma. `OmitRunnerRequest(Reason)` is an optional reason,
+trimmed, at most 200 characters; null or blank stores none. `ReleaseNoteRequest`
 is an optional `Note` plus the query parameter `heldToken` (a guid, program
 callers only) - null or blank clears it. `StallRequest(Why)` is one line,
 truncated. `HoldRequest(Held)` is a boolean. `IssuePlaybookRequest(Model?,
@@ -309,7 +312,11 @@ a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one
 over 200 characters after trimming; `404` for no such key; re-sending the reason
-it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
+it already holds writes nothing. `omitted-runners` 400s a blank runner name,
+one over the runner-name limit, and a reason over 200 characters after
+trimming; `404` for no such key, and on DELETE for an omission the ticket
+does not carry itself, naming the ancestor when one does; re-sending the
+reason it already holds writes nothing. `no-code` 400s an absent reason (send `""` to
 clear) and one over 200 characters after trimming, 409s while a pull request is
 recorded or a counted merge check found a branch, and `404` for no such key;
 re-sending the reason it already holds writes nothing. A later branch-finding
@@ -394,45 +401,129 @@ not, writes nothing and answers the issue unchanged - no error either way.
 | GET | `/plan/{key}` | One issue's rollup and its children's |
 | GET | `/assignees` | Everybody an issue could belong to, plus who the caller is |
 
-All four a key's. `/search` takes `q`, `projectId`, `type`, `statusId`,
+All four a key's. `/search` takes `q`, a repeatable `projectId`, `type`, `statusId`,
 `createdFrom`/`createdTo`, `closedFrom`/`closedTo`, `limit` (1-200, default
 50) and `offset`; with `q`, best match first and closed-ahead-of-open among
 equals, without it newest first (closed, else created). `/plan` takes an
-optional `projectId`. `/assignees` takes nothing, and answers an
+optional, repeatable `projectId`. `/assignees` takes nothing, and answers an
 `AssigneeDirectoryDto(Me?, Assignees)`. `docs/hatch-planning.md` has the
 plan's arithmetic in full.
 
 **Refusals.** `/search` 400s an invalid `type`, a `limit` outside 1-200, a
 negative `offset`, or an unparseable date bound. `/plan/{key}` 404s an
-unknown key; `/plan` with an unknown `projectId` answers an empty plan rather
-than a 404, since an empty or just-deleted project is a legal thing to look
-at.
+unknown key; `/plan` with a `projectId` naming no project answers an empty
+plan rather than a 404, since an empty or just-deleted project is a legal
+thing to look at - true of each id when several are given.
 
-## Images and import
+## Attachments, images and import
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| POST | `/images` | **person** | Uploads one (raw body, detected content-type) |
-| GET | `/images/{id}` | key | Fetches it |
+| GET | `/attachments` | key | Describes the files named in `ids`, in the order asked |
+| GET | `/attachments/{id}` | key | Downloads one, always as a file under its stored name |
+| POST | `/attachments` | **person** | Uploads one file (multipart `file`, up to 25 MB) |
+| DELETE | `/attachments/{id}` | **person** | Removes one |
+| GET | `/images/{id}` | key | The inline view of an attachment that is an image |
 | POST | `/import/preview` | key | What uploaded `.md` files would become; reads/writes nothing |
 | POST | `/import/preview-text` | key | The same, for a pasted title and body |
 | POST | `/import` | key | Files the approved tree: epic per doc, story per phase, task per checkbox |
 
-`ImageDto` is just `Id`. A preview's answer is the parsed tree, one doc per
+`AttachmentDto` is `Id`, `FileName`, `ContentType`, `Size` and `CreatedAt`; the
+bytes are only ever served by `GET /attachments/{id}`. `GET /images/{id}` is the inline view of an attachment, and answers 404 for a row that is not one of the four image types.
+A preview's answer is the parsed tree, one doc per
 file - the shape is internal to the importer and not worth repeating here.
 `preview-text`'s body is `PastedPlan(Title, Body)`. The import write's body
 is `ImportRequest(ProjectId, Docs)`, and its answer is
 `ImportResultDto(Epics, IssueCount)`, each epic an
 `ImportedEpicDto(Filename, Key, Title, StoryCount, TaskCount)`.
 
-**Refusals.** Image upload 403s a program caller outright - images are
-pasted by a person, not uploaded by an agent - and 400s an undetectable
-content type. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
+**Refusals.** Attachment upload and delete 403 a program caller outright -
+files are attached by a person, not by an agent. Upload 400s a request with
+no file, an empty file, and a file over 25 MB, and stores nothing; an image is
+stored under its detected type whatever its size, anything else under the
+type it was sent with, or `application/octet-stream` when that is missing or
+not a valid type. The name is the last path segment of the one sent, cut to
+255 characters, or `attachment` when nothing is left. `GET /attachments/{id}`
+404s an unknown id and answers `Content-Disposition: attachment` with
+`nosniff`, so a file labelled `text/html` is saved and never rendered.
+`GET /attachments` takes `ids` as a comma-separated list: it leaves out an id
+that is unknown, repeated or not a Guid, and 400s more than 100. `DELETE`
+404s an unknown id and writes no issue event. `preview` 400s a non-`.md` filename, a file over 1 MB, or more
 than 25 files. `preview-text` 400s an empty title or body, a title over the
 issue title cap, or a body over 1 MB. `import` 400s an empty or over-25
 `Docs` list, 404s an unknown `ProjectId`, 409s a board with no columns, and -
 like create and a project move - retries a numbering race up to five times
 before 409ing.
+
+## Dreams
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/dreams` | Dreams matching a search and/or a project, paged |
+| POST | `/dreams` | Adds one |
+| PATCH | `/dreams/{id}` | Edits one |
+| DELETE | `/dreams/{id}` | Removes one |
+| PUT | `/issues/{key}/dreams` | Replaces the set of dreams this issue drew on |
+| GET | `/issues/{key}/dreams` | The dreams this issue drew on, newest first |
+| POST | `/dreams/weave` | Files an epic in the breakdown column, briefed to be woven from the dreams (a person's, not a key's) |
+
+A dream is a line somebody wanted said - leaning toward a project, or loose.
+`/dreams` takes `q` (any word, not every word - unlike `/search`), a repeatable
+`projectId` (omitted or empty matches every dream, leaning and loose alike), `includeNoProject` (`true` adds every dream with no project to a non-empty `projectId` list, in the same ordered, counted, paged answer; with no `projectId` it changes nothing; default `false`), `issueKey` (only
+dreams woven into that issue), `loose` (`true` for only dreams woven into no
+issue at all), `limit` (1-200, default 50) and `offset`; with `q`, best match
+first, else newest first. `issueKey` and `loose` each AND with `q` and
+`projectId` as one more filter on the same query - each is a single
+`EXISTS`/`NOT EXISTS` against `DreamThreads`, not a lookup per dream. Its
+answer is `DreamsPageDto(Dreams, Total)`, each a
+`DreamDto(Id, Body, Author, Source, ProjectId, ProjectKey, CreatedAt, UpdatedAt, WovenInto)` -
+`WovenInto` the keys of the issues that drew on this dream, ordered by
+project key then issue number, empty where nothing has.
+POST's body is `DreamCreateRequest(Body, Source?, ProjectId?)`; `Author` is
+the caller. PATCH takes a raw JSON object rather than
+`DreamCreateRequest` - `{"body"?, "source"?, "projectId"?}` - so that a key
+left out leaves that field alone, where a key present with a JSON `null`
+clears it (`source` and `projectId` only; `body` takes a string, never
+`null`). A PATCH that changes nothing writes nothing and leaves `UpdatedAt`
+alone.
+
+`PUT /issues/{key}/dreams` takes `IssueDreamsWriteRequest(DreamIds)` - the
+whole set this issue should carry afterwards, duplicates collapsed. A request
+naming the set already there writes nothing, logs nothing and leaves
+`UpdatedAt` alone; otherwise it writes a `dreams_woven` issue event (see
+docs/hatch.md) and answers the resulting `DreamDto[]`, newest first. `GET
+/issues/{key}/dreams` is the same read, with no write.
+
+**Refusals.** `/dreams` 400s a `limit` outside 1-200 or a negative `offset`,
+the same as `/search`, and a malformed `issueKey`. POST 400s a blank or
+over-length `Body`, or a `Source` over 500 characters; both POST and PATCH
+404 an unknown `ProjectId`. PATCH and DELETE 404 an unknown `{id}`. `PUT
+/issues/{key}/dreams` and the `GET` beside it 404 an unparseable or unknown
+`{key}`; `PUT` 400s naming the first dream id in `DreamIds` that does not
+exist, writing nothing when it does.
+
+`POST /dreams/weave` is the one route under `/dreams` that files an issue
+rather than a dream - a person's, never a key's. Its body is
+`DreamWeaveRequest(ProjectId?, Mode?, Seed?, DreamIds?)`. `Mode` is one of
+four: `seed` draws the thread out of the dreams that bear on a free-text
+`Seed`; `pressing`, `common` and `next` take no seed and draw, respectively,
+on the thread the dreams return to with the most urgency, the thread the
+most dreams touch, and the nearest step toward the vision the dreams
+describe. `DreamIds` are the dreams the person had on screen when they
+pressed, if any - distinct, in the order sent, and merely a starting point
+handed to the session that weaves, not a binding set. The epic is born in
+the leftmost column a playbook row covers `epic` from (ties breaking the
+same way `MatchReflection` ranks them - a project-specific row before a
+board-wide one, then specificity, then id), titled and described by
+`DreamWeave.Title`/`Describe`, and answers `201` with the resulting
+`IssueDto`.
+
+**Refusals.** `403`s a key or a keyless runner outright. `400`s an unknown
+or missing `Mode`; a missing or blank `Seed` under mode `seed`; a `Seed`
+given under any other mode; a missing `ProjectId`; and the first id in
+`DreamIds` naming no dream, in the wording `PUT /issues/{key}/dreams` uses.
+`404`s an unknown `ProjectId`. `400`s with no playbook row covering `epic`
+on the project, naming the project's key and the Playbooks page.
 
 ## The loop's own routes
 
@@ -444,11 +535,11 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out |
 | GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false` and `?runner=` as on `/work/next` |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next` |
-| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags included |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false` as on `/work/next`; `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
+| POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
 | POST | `/work/{key}/pushback` | Carries a merge-column issue back to review once its branch conflicts or its build fails |
@@ -528,7 +619,7 @@ reason }` - `error` the sentence a person reads, `reason` one of `quiet`
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted` - and an optional
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused` - and an optional
 `reason` - only `quiet` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
@@ -660,7 +751,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is, and what the board would like it to do next |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run), and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
@@ -721,6 +812,15 @@ expects to be back under that cap while it waits, written on every `loop` beat
 (so a beat that carries null clears it) and left alone by a `once` beat. It has
 no `PATCH` field.
 
+`models` is a fact the runner reports, written on every beat like `remotes`:
+an absent one leaves the row alone, `[]` clears it, and any other list replaces
+it, kept in the order given with repeats dropped. Any entry that breaks the
+`RunnerModels` rule - more than 100 entries, a blank entry, an entry that is
+neither an alias nor a pinned id of a known model family, or a pinned id of a
+different agent than the beat's `agent` - refuses the whole beat with a `400`
+carrying the rule's sentence, and the row is left exactly as it was (a refused
+first beat creates no row). It has no `PATCH` field.
+
 `refusesDangerous` follows the tags rule: the first heartbeat a name is seen
 under that carries it (true or false) seeds the row, a later beat with another
 value leaves the row alone, the instruction answers the row's value (always
@@ -763,7 +863,9 @@ Each row also carries the token side of the bounds: `maxTokens` and
 row holds it, `default` when it comes from the site default on `/settings`,
 `none` when there is no such bound anywhere - then `tokensUsed` and
 `tokensLastHour`, the loop's own running counts, and `throttledUntil`, the
-instant a waiting loop expects to be under its hourly cap, or null.
+instant a waiting loop expects to be under its hourly cap, or null. `models`
+is the runner's advertised models in the order given, `[]` for a row that never
+reported.
 `maxTokens` and `maxTokensPerHour` are the effective cap in either of the first
 two cases, so a row never makes the reader add the two together.
 
@@ -885,12 +987,17 @@ range's length unless named, and answers the bucket size it actually used;
 `requests` or `peakContext`, each descending. Both take an optional
 `ancestorKey`, read inclusive of the issue itself - deliberately unlike the
 same parameter on `GET /issues` - so the graph, the table and the issue
-page's own meter can never describe different populations.
+page's own meter can never describe different populations. Both also take a
+repeatable `projectId`, narrowing to sessions whose issue is in any of those
+projects; none names every project, and an id naming no project contributes
+nothing rather than a refusal. It is ANDed with `ancestorKey` when both are
+given, and narrows the totals, the buckets and the `first`/`last` bounds
+alike.
 `/work-log/by-playbook` folds the same range by the playbook, transition,
-issue type, model and effort each session ran under, and takes `projectId`
-in place of `ancestorKey`; it answers every group, heaviest first by total
-tokens, with no sort or limit to choose, and an unknown `projectId` answers
-no rows rather than a refusal. Sessions from an older runner, which did not
+issue type, model and effort each session ran under, and takes a repeatable
+`projectId` in place of `ancestorKey`; it answers every group, heaviest first
+by total tokens, with no sort or limit to choose, and an id naming no project
+contributes nothing and is not a refusal. Sessions from an older runner, which did not
 record those, fold into one row of nulls, and a status name is the board's
 current one - null where the column has since gone.
 
@@ -902,19 +1009,24 @@ that named itself is refused here too, since it is an agent whether or not
 it carries a credential. `/activity` pages the same event trail
 `/issues/{key}/events` reads for one issue, across every issue instead,
 ordered the same way so one event never sorts differently between the two
-reads; it takes `limit` (1 to 500, default 100) and `offset`, and answers
-`hasMore` rather than a count. `/changelog` takes `before`, `projectId` and
+reads; it takes `limit` (1 to 500, default 100) and `offset`, and a
+repeatable `projectId` that narrows to events whose issue is in any of those
+projects (an id naming no project contributes nothing and is not a refusal),
+with `limit` and `offset` paging the narrowed rows, and answers `hasMore`
+rather than a count. `/changelog` takes `before`, a repeatable `projectId`
+(an id naming no project contributes nothing and is not a refusal) and
 `days` (default 14), answering the newest window of days that shipped
 something, with every closed month's own count beside it for the jump
-control - this is the same route the Changelog entry at the top of the
-app's nav draws from, not a page of its own.
+control - this is the feed agents read (`hatch changelog`), unchanged; no
+page of the app draws from it any more, since the Changelog report under
+Reports reads `/reports/changelog` instead.
 
 **Refusals worth naming.** `work-log`'s `POST` 400s a missing session id.
 `history` 400s an offset outside +-1440 minutes, an unrecognised bucket
 name, or a request whose buckets would exceed 1000. `sessions` 400s an
 unrecognised sort or a limit outside 1-500. `activity` 400s a limit outside
-1-500 or a negative offset. `changelog` 400s a window under one day or a
-project that does not exist. `history`/`sessions`/`by-playbook`/`changelog` all 400 an
+1-500 or a negative offset. `changelog` 400s a window under one day.
+`history`/`sessions`/`by-playbook`/`changelog` all 400 an
 unparseable range bound, in the order `to`, then `from`, then the inversion.
 
 ### Reports and the battery
@@ -922,16 +1034,27 @@ unparseable range bound, in the order `to`, then `from`, then the inversion.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/reports/timeline` | The top-level epics active in a range, and the work beneath each as stretches across the board's columns |
-| GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid; a terminal column baselines at zero at the window start and counts only what closed inside it |
+| GET | `/reports/cumulative-flow` | How many issues sat in each column over time, as a grid; a terminal column baselines at zero at the window start and counts only what closed inside it. The answer also carries `projectCounts` beside `counts`, cut by the same `project` scope, agreeing with it on the total at every point |
 | GET | `/reports/flow` | How work moved through the board in a range: per column what entered, left and stands, and how long it dwelled, plus the window's drops, hops, send-backs, questions and sessions - counts and durations only |
+| GET | `/reports/changelog` | Closed work, bucketed over a range rather than split by day - `level` is `epic` (closed top-level epics, the default) or `story` (closed stories grouped under their nearest epic). `bucket` is `hour`, `day`, `week` or `month` (day by default), aligned to the reader's own clock with `offsetMinutes`. `from`/`to` default to the changelog feed's own fourteen days; `projectId` is repeatable. `stories` answers empty until a later story; `loose`, at `level=epic`, carries closed bugs and parentless stories with `priority` |
 | GET | `/utilization` | The caller's own Claude headroom - the battery in the nav strip |
 | GET | `/attention` | What the loop is waiting on a person for, in one request |
 
-All five a key's. `timeline` takes `from`, `to` (default the ninety days
-ending now), `projectId` and `createdBy`; `cumulative-flow` takes only
-`from`/`to`, the same ninety-day default; `flow` takes `from`/`to` the same
-way, plus `projectId` and `type`, and 400s an unknown `type` or `projectId`.
-None of the three queries is itself bounded by the range - the fold needs an
+All six a key's. `timeline` takes `from`, `to` (default the ninety days
+ending now), a repeatable `projectId` and `createdBy`; `cumulative-flow`
+takes `from`/`to`, the same ninety-day default, plus a repeatable `project`,
+and 400s an unknown key; `flow` takes `from`/`to` the same way, plus a
+repeatable `projectId` and `type`, and 400s an unknown `type`. On `timeline`
+and `flow`, a `projectId` naming no project contributes nothing and is
+not a refusal - unlike `changelog`'s own, below. `changelog` takes `from`/`to`
+(default the **fourteen** days ending now), a repeatable `projectId`,
+`bucket` (default `day`),
+`offsetMinutes` (-1440..1440), `level` (`epic`, the default, or `story`) and
+`loose` (`true` or `false`, trimmed/case-insensitive, default `false`), and
+400s a bad range bound, an offset outside +-1440 minutes, an unrecognised
+bucket name, a `level` other than `epic` or `story`, a `loose` other than
+`true` or `false`, or any id in `projectId` that does not exist - in that order.
+None of the four queries is itself bounded by the range - the fold needs an
 issue's first move even where it falls outside it - but the ranges' bounds
 are. `utilization` answers a
 `UtilizationReading(State, ReadAt, Limits)` off whatever this caller's own
@@ -967,7 +1090,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **41** person-only paths on this page,
+on this page with both) - there are **42** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1000,7 +1123,8 @@ PUT    /issues/{key}/pre-approval
 PUT    /issues/{key}/express
 PUT    /issues/{key}/hold
 PATCH  /issues/{key}/playbook
-POST   /images
+POST   /attachments
+DELETE /attachments/{id}
 PATCH  /runners/{name}
 POST   /runners/{name}/order
 DELETE /runners/{name}/order
@@ -1015,8 +1139,8 @@ PATCH  /playbooks/{id}
 DELETE /playbooks/{id}
 ```
 
-Twenty-nine belong to a project, a column, the WIP section, a ticket's own
-fields, or image upload; the other twelve are a runner's own record (now
+Thirty belong to a project, a column, the WIP section, a ticket's own
+fields, or attachment upload and delete; the other twelve are a runner's own record (now
 three - the heartbeat's `PATCH` and the order's `POST`/`DELETE`), the
 `/runner` pair, Hatch's settings on both verbs, marking the overnight seen,
 running a backup, and the three playbook writes.

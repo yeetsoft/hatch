@@ -4,23 +4,31 @@ import {
   bandStyle,
   bands,
   breakdown,
+  cutKeys,
   isEmpty,
+  labelFor,
   momentLabel,
   peakLabel,
   pinAfter,
   pointIndexAt,
+  projectsSummary,
+  resolveColourBy,
   slots,
   stackAt,
   tallestTotal,
+  toggleProject,
+  withColourBy,
 } from './cumulativeFlow';
 import { statusVars } from './color';
-import type { CumulativeFlow, CumulativeFlowPoint, Status } from '../types';
+import { markVars } from '@hatch/ui';
+import type { CumulativeFlow, CumulativeFlowPoint, Project, Status } from '../types';
 
 const scale = { from: 0, to: 100 };
 
-const point = (at: number, counts: number[]): CumulativeFlowPoint => ({
+const point = (at: number, counts: number[], projectCounts: number[] = []): CumulativeFlowPoint => ({
   at: new Date(at).toISOString(),
   counts,
+  projectCounts,
 });
 
 const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
@@ -28,6 +36,7 @@ const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
   to: new Date(100).toISOString(),
   step: 'hour',
   columns: [1, 2, 3],
+  projects: [],
   points: [point(0, [3, 1, 2]), point(100, [0, 0, 0])],
   unresolved: 0,
   ...over,
@@ -59,17 +68,22 @@ describe('stackAt', () => {
 
 describe('tallestTotal', () => {
   it('is the tallest grand total across every point', () => {
-    expect(tallestTotal([point(0, [3, 1, 2]), point(1, [1, 1, 1])])).toBe(6);
+    expect(tallestTotal([point(0, [3, 1, 2]), point(1, [1, 1, 1])], 'column')).toBe(6);
   });
 
   it('is 0 for no points, guarding Math.max on empty', () => {
-    expect(tallestTotal([])).toBe(0);
+    expect(tallestTotal([], 'column')).toBe(0);
+  });
+
+  it('is the same total cut by project, by construction', () => {
+    const points = [point(0, [3, 1, 2], [4, 2]), point(1, [1, 1, 1], [2, 1])];
+    expect(tallestTotal(points, 'project')).toBe(tallestTotal(points, 'column'));
   });
 });
 
 describe('bands', () => {
   it('runs one series per column, bottom-up, scaled against the tallest total', () => {
-    const series = bands(answer(), scale);
+    const series = bands(answer(), scale, 'column');
 
     expect(series).toHaveLength(3);
     series.forEach((s) => expect(s).toHaveLength(2));
@@ -81,7 +95,7 @@ describe('bands', () => {
   });
 
   it('guards every fraction at 0, not NaN, when every count is zero', () => {
-    const series = bands(answer({ points: [point(0, [0, 0, 0])] }), scale);
+    const series = bands(answer({ points: [point(0, [0, 0, 0])] }), scale, 'column');
 
     for (const s of series) {
       expect(s[0].lowerFraction).toBe(0);
@@ -90,9 +104,21 @@ describe('bands', () => {
   });
 
   it('gives an empty series per column when there are no points', () => {
-    const series = bands(answer({ points: [] }), scale);
+    const series = bands(answer({ points: [] }), scale, 'column');
 
     expect(series).toEqual([[], [], []]);
+  });
+
+  it('runs one series per project when cut by project', () => {
+    const series = bands(
+      answer({ projects: ['HA', 'AER'], points: [point(0, [3, 1, 2], [4, 2])] }),
+      scale,
+      'project',
+    );
+
+    expect(series).toHaveLength(2);
+    expect(series[0][0]).toEqual({ x: 0, lowerFraction: 0, upperFraction: 2 / 6 });
+    expect(series[1][0]).toEqual({ x: 0, lowerFraction: 2 / 6, upperFraction: 1 });
   });
 });
 
@@ -109,7 +135,7 @@ describe('bandPolygon', () => {
 
 describe('peakLabel', () => {
   it('names the grand total at the tallest point', () => {
-    expect(peakLabel([point(0, [14, 3, 23])])).toBe('peaking at 40');
+    expect(peakLabel([point(0, [14, 3, 23])], 'column')).toBe('peaking at 40');
   });
 });
 
@@ -170,23 +196,33 @@ describe('pointIndexAt', () => {
 
 describe('breakdown', () => {
   it('lists every column in board order, with the total', () => {
-    expect(breakdown(point(0, [3, 1, 2]), [1, 2, 3], statuses)).toEqual({
+    expect(breakdown(point(0, [3, 1, 2]), [1, 2, 3], 'column', statuses)).toEqual({
       rows: [
-        { columnId: 1, name: 'To Do', count: 3 },
-        { columnId: 2, name: 'In Progress', count: 1 },
-        { columnId: 3, name: 'Done', count: 2 },
+        { key: 1, name: 'To Do', count: 3 },
+        { key: 2, name: 'In Progress', count: 1 },
+        { key: 3, name: 'Done', count: 2 },
       ],
       total: 6,
     });
   });
 
   it('names a column no longer on the board Unknown', () => {
-    expect(breakdown(point(0, [5, 2]), [1, 99], statuses)).toEqual({
+    expect(breakdown(point(0, [5, 2]), [1, 99], 'column', statuses)).toEqual({
       rows: [
-        { columnId: 1, name: 'To Do', count: 5 },
-        { columnId: 99, name: 'Unknown', count: 2 },
+        { key: 1, name: 'To Do', count: 5 },
+        { key: 99, name: 'Unknown', count: 2 },
       ],
       total: 7,
+    });
+  });
+
+  it('lists every project in scope, cut by project', () => {
+    expect(breakdown(point(0, [3, 1, 2], [4, 2]), ['HA', 'AER'], 'project', statuses)).toEqual({
+      rows: [
+        { key: 'HA', name: 'HA', count: 4 },
+        { key: 'AER', name: 'AER', count: 2 },
+      ],
+      total: 6,
     });
   });
 });
@@ -207,11 +243,19 @@ describe('momentLabel', () => {
 
 describe('bandStyle', () => {
   it("is the column's own status colour", () => {
-    expect(bandStyle(statuses, 1)).toEqual(statusVars('#3366cc'));
+    expect(bandStyle('column', 1, statuses, projects)).toEqual(statusVars('#3366cc'));
   });
 
   it('falls back to the default grey for a column not among the statuses', () => {
-    expect(bandStyle(statuses, 404)).toEqual(statusVars(undefined));
+    expect(bandStyle('column', 404, statuses, projects)).toEqual(statusVars(undefined));
+  });
+
+  it("is the project's own colour, cut by project", () => {
+    expect(bandStyle('project', 'HA', statuses, projects)).toEqual(markVars(projects[0].color));
+  });
+
+  it('falls back to the default grey for a project not in scope', () => {
+    expect(bandStyle('project', 'ZZ', statuses, projects)).toEqual(markVars(undefined));
   });
 });
 
@@ -273,5 +317,113 @@ describe('isEmpty', () => {
 
   it('is false when any count anywhere is non-zero', () => {
     expect(isEmpty(answer())).toBe(false);
+  });
+});
+
+const projects = [
+  { id: 1, key: 'HA', name: 'Hatch', color: '#112233' },
+  { id: 2, key: 'AER', name: 'Aerie' },
+  { id: 3, key: 'PYC', name: 'Pycnic' },
+] as Project[];
+const allKeys = projects.map((p) => p.key);
+
+describe('toggleProject', () => {
+  it('adds a key that is absent, ordered by allKeys', () => {
+    expect(toggleProject(['HA'], 'PYC', allKeys)).toEqual(['HA', 'PYC']);
+  });
+
+  it('removes a key that is present', () => {
+    expect(toggleProject(['HA', 'AER'], 'HA', allKeys)).toEqual(['AER']);
+  });
+
+  it('leaves the last one checked unchanged, never emptying the chosen set', () => {
+    expect(toggleProject(['HA'], 'HA', allKeys)).toEqual(['HA']);
+  });
+
+  it('adds one back after it was toggled off', () => {
+    const one = toggleProject(allKeys, 'AER', allKeys);
+    expect(one).toEqual(['HA', 'PYC']);
+
+    expect(toggleProject(one, 'AER', allKeys)).toEqual(allKeys);
+  });
+});
+
+describe('projectsSummary', () => {
+  it('is All when every project is chosen', () => {
+    expect(projectsSummary(allKeys, projects)).toBe('All');
+  });
+
+  it('names the one missing when all but one is chosen', () => {
+    expect(projectsSummary(['HA', 'PYC'], projects)).toBe('All but AER');
+  });
+
+  it('joins the chosen keys when several, but not all but one, are chosen', () => {
+    expect(projectsSummary(['PYC', 'HA'], [...projects, { id: 4, key: 'SL', name: 'Sail' } as Project])).toBe(
+      'HA, PYC',
+    );
+  });
+
+  it('names the one key when only one is chosen', () => {
+    expect(projectsSummary(['AER'], projects)).toBe('AER');
+  });
+});
+
+describe('resolveColourBy', () => {
+  it('reads column when by is absent', () => {
+    expect(resolveColourBy(new URLSearchParams())).toBe('column');
+  });
+
+  it('reads project when by=project', () => {
+    expect(resolveColourBy(new URLSearchParams('by=project'))).toBe('project');
+  });
+
+  it('reads column for any other value of by', () => {
+    expect(resolveColourBy(new URLSearchParams('by=status'))).toBe('column');
+  });
+});
+
+describe('withColourBy', () => {
+  it('sets by=project', () => {
+    expect(withColourBy(new URLSearchParams(), 'project').get('by')).toBe('project');
+  });
+
+  it('clears by for column, the default', () => {
+    expect(withColourBy(new URLSearchParams('by=project'), 'column').has('by')).toBe(false);
+  });
+
+  it('keeps every other param untouched', () => {
+    const next = withColourBy(new URLSearchParams('projects=HA'), 'project');
+    expect(next.get('projects')).toBe('HA');
+    expect(next.get('by')).toBe('project');
+  });
+
+  it('never mutates its input', () => {
+    const params = new URLSearchParams();
+    withColourBy(params, 'project');
+    expect(params.has('by')).toBe(false);
+  });
+});
+
+describe('labelFor', () => {
+  it("names a column's own status", () => {
+    expect(labelFor('column', 1, statuses)).toBe('To Do');
+  });
+
+  it('names a column no longer on the board Unknown', () => {
+    expect(labelFor('column', 404, statuses)).toBe('Unknown');
+  });
+
+  it("names a project's own key", () => {
+    expect(labelFor('project', 'HA', statuses)).toBe('HA');
+  });
+});
+
+describe('cutKeys', () => {
+  it("is the answer's columns, cut by column", () => {
+    expect(cutKeys(answer(), 'column')).toEqual([1, 2, 3]);
+  });
+
+  it("is the answer's projects, cut by project", () => {
+    expect(cutKeys(answer({ projects: ['HA', 'AER'] }), 'project')).toEqual(['HA', 'AER']);
   });
 });

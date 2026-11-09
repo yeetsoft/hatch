@@ -1,6 +1,7 @@
 /* Pure functions for an image pasted into a description or a comment - no DOM,
    no canvas. This app's vitest runs in plain Node, so the half that touches
-   createImageBitmap and a canvas lives in MarkdownEditor.tsx. */
+   createImageBitmap and a canvas lives in lib/shrinkImage.ts. */
+import { message } from './errors';
 import { LOGO_ACCEPTED_TYPES } from './projectLogo';
 
 /** The largest body the server stores. Mirrors PersonPhoto.MaxBytes
@@ -47,4 +48,53 @@ export function encodeType(sourceType: string): 'image/jpeg' | 'image/webp' | 'i
 /** The textarea splice: `text` replaces [start, end) and the caret lands after it. */
 export function insertText(value: string, start: number, end: number, text: string): { value: string; caret: number } {
   return { value: value.slice(0, start) + text + value.slice(end), caret: start + text.length };
+}
+
+export const attachmentUrl = (id: string) => `/api/hatch/attachments/${id}`;
+
+/** Whether a drag carries at least one file, as opposed to dragged text or a
+    link - both of which also populate `DataTransfer.types` but never with
+    `'Files'`. */
+export function dragHasFiles(types: readonly string[] | null | undefined): boolean {
+  return (types ?? []).includes('Files');
+}
+
+/** The markdown for an uploaded attachment - image syntax for a type the
+    editor would also preview, link syntax for everything else. */
+export function attachmentMarkdown(a: { id: string; fileName: string; contentType: string }): string {
+  const isImage = LOGO_ACCEPTED_TYPES.includes(a.contentType);
+  const escaped = a.fileName.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+  const name = escaped === '' ? (isImage ? 'image' : 'attachment') : escaped;
+  return isImage ? `![${name}](${imageUrl(a.id)})` : `[${name}](${attachmentUrl(a.id)})`;
+}
+
+/** `value` with `block` appended after exactly one blank line - none when
+    `value` already ends in one, and `block` alone when `value` is empty or
+    whitespace-only. */
+export function appendBlock(value: string, block: string): string {
+  if (value.trim() === '') return block;
+  if (/\n\n$/.test(value)) return value + block;
+  if (/\n$/.test(value)) return value + '\n' + block;
+  return value + '\n\n' + block;
+}
+
+/** Uploads `files` one after another, in order, turning each into its
+    markdown and joining the results with a newline. Stops at the first
+    rejection - later files are never passed to `upload` at all - and throws
+    an error naming the failing file when more than one was dropped. */
+export async function markdownForDrop<F extends { name: string }>(
+  files: readonly F[],
+  upload: (file: F) => Promise<{ id: string; contentType: string }>,
+): Promise<string> {
+  const blocks: string[] = [];
+  for (const file of files) {
+    let uploaded: { id: string; contentType: string };
+    try {
+      uploaded = await upload(file);
+    } catch (err) {
+      throw new Error(files.length === 1 ? message(err) : `${file.name}: ${message(err)}`);
+    }
+    blocks.push(attachmentMarkdown({ id: uploaded.id, fileName: file.name, contentType: uploaded.contentType }));
+  }
+  return blocks.join('\n');
 }

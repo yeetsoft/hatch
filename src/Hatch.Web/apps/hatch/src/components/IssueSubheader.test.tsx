@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { IssueSubheader } from './IssueSubheader';
-import type { Issue } from '../types';
+import { ScopeProvider } from '../lib/useScope';
+import type { Issue, Project } from '../types';
+
+vi.mock('../lib/useProjects', async (original) => ({
+  ...(await original<typeof import('../lib/useProjects')>()),
+  useProjects: () => ({ projects: [{ key: 'AER' }, { key: 'FIL' }, { key: 'HA' }] as Project[], byKey: new Map(), loaded: true }),
+}));
 
 // IssueSubheader now reads window.location unconditionally (for the copy-link
 // control's full address), the same as appHref and IssuePeek.tsx/
@@ -59,6 +65,8 @@ const issue = (over: Partial<Issue> = {}): Issue => ({
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,
@@ -74,6 +82,15 @@ const render = (over: Partial<Issue> = {}) =>
   renderToStaticMarkup(
     <MemoryRouter>
       <IssueSubheader issue={issue(over)} project={null} stopped={false} />
+    </MemoryRouter>,
+  );
+
+const renderAt = (entry: string, over: Partial<Issue> = {}) =>
+  renderToStaticMarkup(
+    <MemoryRouter initialEntries={[entry]}>
+      <ScopeProvider>
+        <IssueSubheader issue={issue(over)} project={null} stopped={false} />
+      </ScopeProvider>
     </MemoryRouter>,
   );
 
@@ -139,6 +156,40 @@ describe('IssueSubheader', () => {
     const html = render({ key: 'HA-446' });
 
     expect(html).toContain('https://example.test/apps/hatch/issues/HA-446');
+  });
+
+  it('carries the scope on the copy-link address when one is active', () => {
+    stubWindow('/issues/HA-446');
+
+    expect(renderAt('/?scope=AER,FIL', { key: 'HA-446' })).toContain('https://example.test/issues/HA-446?scope=AER,FIL');
+  });
+
+  it('carries the scope under the house-hostname path shape too', () => {
+    stubWindow('/apps/hatch/issues/HA-446');
+
+    expect(renderAt('/?scope=AER,FIL', { key: 'HA-446' })).toContain(
+      'https://example.test/apps/hatch/issues/HA-446?scope=AER,FIL',
+    );
+  });
+
+  it('leaves the copy-link address bare when the scope is empty', () => {
+    stubWindow('/issues/HA-446');
+    const html = renderAt('/', { key: 'HA-446' });
+
+    expect(html).toContain('https://example.test/issues/HA-446');
+    expect(html).not.toContain('scope');
+  });
+
+  it('leaves the copy-link address bare with no scope provider above it', () => {
+    stubWindow('/issues/HA-446');
+
+    expect(render({ key: 'HA-446' })).not.toContain('scope');
+  });
+
+  it('leaves the copy-link address bare when the scope names every project', () => {
+    stubWindow('/issues/HA-446');
+
+    expect(renderAt('/?scope=AER,FIL,HA', { key: 'HA-446' })).not.toContain('scope');
   });
 
   it('draws no copy button when there is no clipboard on navigator, but still shows the address', () => {

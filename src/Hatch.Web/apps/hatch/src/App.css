@@ -85,11 +85,27 @@
 @media (pointer: coarse) {
   .hatch-topbar .hatch-topbar__brand,
   .hatch-topbar .hatch-menu__trigger--accent,
+  .hatch-scope-strip .hatch-menu__trigger--accent,
   .hatch-attention-control,
   .hatch-overnight-control,
   .hatch-battery {
     min-height: 44px;
   }
+}
+
+/* Which projects this tab is looking at, on a phone: the bar has no room for
+   the control beside the nav, so it sits in a strip under the bar, wearing the
+   bar's own gradient. No media query - App.tsx mounts it only on a phone, and
+   only with two or more projects. Its height is the 44px min-height alone -
+   no vertical padding, since the coarse-pointer trigger is already 44 - which
+   is the figure the board's phone rule subtracts below. */
+.hatch-scope-strip {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  background: linear-gradient(135deg, var(--chrome) 0%, var(--chrome-end) 100%);
+  color: var(--on-chrome);
 }
 
 /* Who Hatch will name in the trail for anything done from this browser. Drawn
@@ -285,11 +301,19 @@
    height: a floor is what keeps .hatch-board (below) from collapsing, and
    letting this box grow past it when the filter row wraps to a second line is
    the document scroll this story asks for, not a bug to fight. Keep this in
-   step with --topbar-h if the bar's own height ever changes. */
+   step with --topbar-h if the bar's own height ever changes.
+
+   The second rule takes the scope strip's height off as well, 44px being its
+   min-height (.hatch-scope-strip); without it the board overscrolls by the
+   strip. The strip mounts only on a phone with two or more projects. */
 @media (max-width: 40rem) {
   .hatch-board-page {
     min-height: calc(100dvh - 48px);
     padding: var(--sp-4) var(--sp-4) 0;
+  }
+
+  .hatch-app:has(.hatch-scope-strip) .hatch-board-page {
+    min-height: calc(100dvh - 48px - 44px);
   }
 
   /* ---- The stacked board (HA-159) ----
@@ -970,6 +994,24 @@
   color: var(--mark-ink, var(--muted));
 }
 
+/* The chips ScopeControl's trigger wears, one per scoped project, each tinted
+   from the inline --mark-color/--mark-ink markVars sets on it - not inherited
+   from the ProjectMark inside, which paints its own separate instance. */
+.hatch-scope-control--scoped {
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+
+.hatch-scope-control__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1-5);
+  border-radius: var(--r-pill);
+  background: var(--mark-color, var(--muted));
+  color: var(--mark-ink, var(--on-accent));
+}
+
 /* A card's assignee, claim mark and the rest, in a one-line row of their
    own so they never push the head into a second line the way the old
    single flex row did. Drawn only when the card carries at least one. */
@@ -1512,6 +1554,95 @@ button.hatch-card-stories:focus-visible {
   flex: 1 1 100%;
 }
 
+/* The Dreams list: one card-like row per dream, stacked. */
+.hatch-dream-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: var(--sp-3);
+  overflow-wrap: anywhere;
+}
+
+.hatch-dream__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-label);
+}
+
+.hatch-dream__body {
+  margin-top: var(--sp-2);
+}
+
+.hatch-dream__delete {
+  margin-left: auto;
+}
+
+.hatch-dream__woven {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+
+/* The Dreams composer: the box, the lean, the source and Post, stacked. The
+   source takes the full width; Post sits at the right, full width on a phone. */
+.hatch-dream-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream-composer__box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hatch-dream-composer__source {
+  width: 100%;
+}
+
+.hatch-dream-composer__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 40rem) {
+  .hatch-dream-composer__actions > * {
+    flex: 1 1 100%;
+  }
+}
+
+/* The weave control: the same stacked spacing as the composer card above it,
+   open under a <summary> rather than always shown. */
+.hatch-dream-weave {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-dream-weave__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+@media (max-width: 40rem) {
+  .hatch-dream-weave__actions > * {
+    flex: 1 1 100%;
+  }
+}
+
 /* A date range is a .hatch-facet label wrapping two bare <input type="date">,
    so the facet's own border and background carry the look and the inputs
    draw nothing of their own - base.css's input rules are what this undoes. */
@@ -1555,6 +1686,57 @@ button.hatch-card-stories:focus-visible {
   accent-color: var(--primary);
 }
 
+.hatch-types-item {
+  display: flex;
+  align-items: center;
+  padding-right: var(--sp-3);
+}
+
+.hatch-types-item:hover {
+  background: var(--primary-bg);
+}
+
+.hatch-types-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
+.hatch-types-label input {
+  accent-color: var(--primary);
+}
+
+/* Shown on hover or keyboard focus; a finger has no hover, so it always shows. */
+.hatch-types-only {
+  flex: none;
+  opacity: 0;
+}
+
+.hatch-types-item:hover .hatch-types-only,
+.hatch-types-only:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .hatch-types-only {
+    opacity: 1;
+  }
+}
+
+/* A finger's height, the same 44px floor as .hatch-btn and the bar's controls
+   (Button.css, above): this button carries neither class, so it is reached
+   here. The row grows to take it; the desk's 18px button is untouched. */
+@media (pointer: coarse) {
+  .hatch-types-only {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .hatch-types-name {
   text-transform: capitalize;
 }
@@ -1569,6 +1751,7 @@ button.hatch-card-stories:focus-visible {
 .hatch-types-footer {
   display: flex;
   justify-content: flex-start;
+  gap: var(--sp-3);
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   border-top: 1px solid var(--line-strong);
 }
@@ -2316,9 +2499,6 @@ button.hatch-chip {
 }
 
 .hatch-bulk-outcome {
-  margin-top: var(--sp-4);
-  padding-top: var(--sp-3);
-  border-top: 1px solid var(--line);
   font-size: var(--t-body);
 }
 
@@ -2665,6 +2845,29 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* The surface a file is dropped onto (components/AttachmentDropZone.tsx) -
+   positioned so the overlay below can cover it edge to edge. */
+.hatch-dropzone {
+  position: relative;
+}
+
+/* Shown only while a file is dragged over the zone; `pointer-events: none` so
+   it never steals the drop it is announcing. */
+.hatch-dropzone__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px dashed var(--primary);
+  border-radius: var(--r-ctl);
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
 /* A box that grows with what is typed. The height is set by lib/useAutoGrow.ts,
    which measures the floor - the height the box opens at, whatever `rows` and
    the webfont make that - and leaves the ceiling here.
@@ -2712,6 +2915,35 @@ input.hatch-inline-title-input {
     background: var(--card);
     border-top: 1px solid var(--line);
   }
+}
+
+/* The attachments linked in a description or a comment. Wrapping rows, never
+   a horizontal scroll at phone width - the name is `overflow-wrap: anywhere`,
+   as .hatch-column-name wraps a long column name. */
+.hatch-attachments {
+  margin-top: var(--sp-3);
+}
+
+.hatch-attachments ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hatch-attachments li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.hatch-attachments a {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .hatch-child-list,
@@ -3085,6 +3317,51 @@ input.hatch-inline-title-input {
   font-size: var(--t-small);
 }
 
+/* The omitted-runners section: one row per runner, wrapping so a long reason
+   drops under the name rather than pushing the Lift button off a narrow
+   screen, then the add form, whose inputs share the line until they cannot. */
+.hatch-omissions {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.hatch-omission {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.hatch-omission-add-heading {
+  margin: 0;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.hatch-omission-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.hatch-omission-add input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.hatch-omission-refusal {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--danger);
+}
+
 .hatch-comment {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-3);
@@ -3357,6 +3634,16 @@ input.hatch-inline-title-input {
 .hatch-stall-line {
   margin: 0 0 var(--sp-2);
   overflow-wrap: anywhere;
+}
+
+/* Beside .hatch-stall, the same band down the left edge in the primary colour:
+   a fact about where the ticket sits relative to the tab, not a warning. */
+.hatch-scope-notice {
+  border-left: 3px solid var(--primary);
+}
+
+.hatch-scope-notice-line {
+  margin: 0 0 var(--sp-2);
 }
 
 /* What a key reading the page gets instead of the two buttons - ExpressControl's
@@ -4388,6 +4675,12 @@ input.hatch-inline-title-input {
   box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
 }
 
+/* The changelog report's entry row: a board card's emergency inset and none of
+   the rest of `hatch-card`, which is draggable. */
+.hatch-changelog-report-entry.emergency {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
 /* Low: a grey between normal's plain ink and economy's flat muted - later,
    not whenever, so it reads as more present than economy's stripe. */
 .hatch-card.low {
@@ -5410,7 +5703,7 @@ button.hatch-option.chosen {
 }
 
 .hatch-timeline-segment {
-  fill: var(--status-color);
+  fill: var(--mark-color, var(--status-color));
 }
 
 /* Other is not a column's work but a hull of whatever was loose, so it takes
@@ -5530,19 +5823,6 @@ button.hatch-option.chosen {
   gap: var(--sp-3);
 }
 
-.hatch-changelog-months {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  margin: 0 0 var(--sp-5);
-  padding: 0;
-  list-style: none;
-}
-
-.hatch-changelog-older {
-  margin-top: var(--sp-5);
-}
-
 .hatch-changelog-day + .hatch-changelog-day {
   margin-top: var(--sp-5);
 }
@@ -5564,6 +5844,34 @@ button.hatch-option.chosen {
   gap: var(--sp-2);
 }
 
+/* One closed issue in the changelog report - a `hatch-changelog-fixes` line
+   with a little room, so the emergency inset has something to sit against. */
+.hatch-changelog-report-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  list-style: none;
+}
+
+/* A stretch of the window no bucket covers, between two sections. */
+.hatch-changelog-report-gap {
+  margin: var(--sp-4) 0;
+}
+
+/* `Completed` beside an epic's heading: the chip look, quieter than the title. */
+.hatch-changelog-report-done {
+  margin-left: var(--sp-2);
+  padding: 2px var(--sp-1-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+  font-size: var(--t-label);
+  font-weight: normal;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .hatch-cumulative-flow-legend-item {
   display: flex;
   align-items: center;
@@ -5576,7 +5884,7 @@ button.hatch-option.chosen {
   width: var(--sp-2);
   height: var(--sp-2);
   border-radius: var(--r-ctl);
-  background: var(--status-color);
+  background: var(--mark-color, var(--status-color, var(--muted)));
 }
 
 /* The chart's own hover card, in place of a native <title>: position: fixed
@@ -5628,23 +5936,30 @@ button.hatch-option.chosen {
   outline-offset: -2px;
 }
 
-/* A phone keeps the key and the toggle and scrolls the chart. The header wraps
-   so the strips drop under the title instead of overflowing the document, and
-   wrap under each other when they do not fit side by side; PageHeader makes its
-   actions flex: none and does not wrap the header. */
+/* The header wraps at every width, not only on a phone: the Changelog's window
+   and filter strips are about 800px of actions between them, and PageHeader
+   makes its actions flex: none on a header that does not wrap, so from a phone
+   up to a wide desktop the description was squeezed to a sliver or the actions
+   ran off the page. The titles keep a floor of half the prose measure (20rem); when the actions do not
+   fit beside that they drop under the title and wrap among themselves. */
+.hatch-timeline-header {
+  flex-wrap: wrap;
+}
+
+.hatch-timeline-header .hatch-page-header__titles {
+  flex: 1 1 calc(var(--measure-prose) / 2);
+}
+
+.hatch-timeline-header .hatch-page-header__actions {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+}
+
+/* A phone keeps the key and the toggle and scrolls the chart. */
 @media (max-width: 40rem) {
   .hatch-timeline-title,
   .hatch-timeline-label .hatch-type-glyph {
     display: none;
-  }
-
-  .hatch-timeline-header {
-    flex-wrap: wrap;
-  }
-
-  .hatch-timeline-header .hatch-page-header__actions {
-    flex: 1 1 auto;
-    flex-wrap: wrap;
   }
 
   .hatch-cumulative-flow-body {

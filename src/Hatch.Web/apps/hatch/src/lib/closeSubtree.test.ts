@@ -42,6 +42,8 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   dangerousOwn: null,
   dangerous: null,
   dangerousFrom: null,
+  omittedRunnersOwn: [],
+  omittedRunners: [],
   express: false,
   stalledAt: null,
   stalledWhy: null,

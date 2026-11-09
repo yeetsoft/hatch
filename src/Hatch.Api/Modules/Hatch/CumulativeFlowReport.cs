@@ -18,12 +18,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public static class CumulativeFlowReport
 {
-    /// <summary>One instant on the grid, and how many issues sat in each column then.</summary>
-    public sealed record Point(DateTimeOffset At, IReadOnlyList<int> Counts);
+    /// <summary>One instant on the grid, and how many issues sat in each column, and in each project, then.</summary>
+    public sealed record Point(DateTimeOffset At, IReadOnlyList<int> Counts, IReadOnlyList<int> ProjectCounts);
 
     public sealed record Result(
         DateTimeOffset From, DateTimeOffset To, string Step,
-        IReadOnlyList<int> Columns, IReadOnlyList<Point> Points, int Unresolved);
+        IReadOnlyList<int> Columns, IReadOnlyList<string> Projects, IReadOnlyList<Point> Points, int Unresolved);
 
     private static readonly TimeSpan Hour = TimeSpan.FromHours(1);
     private static readonly TimeSpan Day = TimeSpan.FromDays(1);
@@ -43,32 +43,41 @@ public static class CumulativeFlowReport
     /// </remarks>
     public static Result Fold(
         IReadOnlyList<TimelineReport.Row> rows, IReadOnlyList<TimelineReport.Change> changes,
-        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset to, DateTimeOffset now)
+        IReadOnlyList<EfHatchStatus> statuses, DateTimeOffset start, DateTimeOffset to, DateTimeOffset now,
+        IReadOnlySet<string>? projectKeys = null)
     {
         var ordered = statuses.OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
         var columns = Columns.Board(ordered).Select(s => s.Id).ToList();
         var slot = new Dictionary<int, int>();
         for (var i = 0; i < columns.Count; i++) slot[columns[i]] = i;
 
+        var scoped = projectKeys is null ? rows : rows.Where(r => projectKeys.Contains(r.ProjectKey)).ToList();
+
+        var projects = scoped.Select(r => r.ProjectKey).Distinct().OrderBy(k => k, StringComparer.Ordinal).ToList();
+        var projectSlot = new Dictionary<string, int>();
+        for (var i = 0; i < projects.Count; i++) projectSlot[projects[i]] = i;
+
         var end = to < now ? to : now;
         var step = StepOf(start, end);
 
-        DateTimeOffset? first = rows.Count > 0 ? rows.Min(r => r.CreatedAt) : null;
+        DateTimeOffset? first = scoped.Count > 0 ? scoped.Min(r => r.CreatedAt) : null;
         if (first is not { } firstCreatedAt || firstCreatedAt > end)
-            return new Result(start, to, step, columns, [], 0);
+            return new Result(start, to, step, columns, projects, [], 0);
 
         var from = RangeBounds.ClampStart(start, end, firstCreatedAt);
         if (end < from)
-            return new Result(from, to, step, columns, [], 0);
+            return new Result(from, to, step, columns, projects, [], 0);
 
         var board = TimelineReport.IndexOf(statuses);
         var changesByIssue = changes.ToLookup(c => c.IssueId);
 
         var unresolved = 0;
         var deltas = new List<(DateTimeOffset At, int Slot, int Delta)>();
+        var projectDeltas = new List<(DateTimeOffset At, int Slot, int Delta)>();
 
-        foreach (var row in rows)
+        foreach (var row in scoped)
         {
+            var projectAt = projectSlot[row.ProjectKey];
             var issueChanges = changesByIssue[row.Id].OrderBy(c => c.At).ThenBy(c => c.EventId).ToList();
             var stretches = TimelineReport.StretchesOf(row, issueChanges, board)
                 .Where(s => s.To is null || s.To > s.From);
@@ -82,16 +91,24 @@ public static class CumulativeFlowReport
                 if (board.Terminal.Contains(id) && opens < from) continue;
 
                 deltas.Add((opens, at, +1));
-                if (s.To is { } closes) deltas.Add((closes, at, -1));
+                projectDeltas.Add((opens, projectAt, +1));
+                if (s.To is { } closes)
+                {
+                    deltas.Add((closes, at, -1));
+                    projectDeltas.Add((closes, projectAt, -1));
+                }
             }
         }
 
         deltas.Sort((a, b) => a.At.CompareTo(b.At));
+        projectDeltas.Sort((a, b) => a.At.CompareTo(b.At));
 
         var grid = GridOf(from, end, step);
         var counts = new int[columns.Count];
+        var projectCounts = new int[projects.Count];
         var points = new List<Point>(grid.Count);
         var cursor = 0;
+        var projectCursor = 0;
         foreach (var at in grid)
         {
             while (cursor < deltas.Count && deltas[cursor].At <= at)
@@ -100,10 +117,16 @@ public static class CumulativeFlowReport
                 cursor++;
             }
 
-            points.Add(new Point(at, (int[])counts.Clone()));
+            while (projectCursor < projectDeltas.Count && projectDeltas[projectCursor].At <= at)
+            {
+                projectCounts[projectDeltas[projectCursor].Slot] += projectDeltas[projectCursor].Delta;
+                projectCursor++;
+            }
+
+            points.Add(new Point(at, (int[])counts.Clone(), (int[])projectCounts.Clone()));
         }
 
-        return new Result(from, to, step, columns, points, unresolved);
+        return new Result(from, to, step, columns, projects, points, unresolved);
     }
 
     /// <summary>

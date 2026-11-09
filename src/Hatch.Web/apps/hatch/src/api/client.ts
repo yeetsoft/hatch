@@ -7,14 +7,20 @@ import type {
   ApiKeyMinted,
   AssigneeDirectory,
   AssigneeRequest,
+  Attachment,
   Attention,
   BackupStatus,
   Board,
-  ChangelogDto,
+  ChangelogReport,
   Comment,
   CommentCreateRequest,
   CumulativeFlow,
   DangerousRequest,
+  Dream,
+  DreamCreateRequest,
+  DreamPatchRequest,
+  DreamsPage,
+  DreamWeaveRequest,
   HatchSettings,
   HatchSettingsWriteRequest,
   ImportRequest,
@@ -47,9 +53,9 @@ import type {
   PlaybookFilesDto,
   PlaybookPatchRequest,
   PlaybookProposal,
+  OmitRunnerRequest,
   PlaybookProposalApproveResult,
   PlaybookProposalRejectResult,
-  HatchImage,
   Project,
   ProjectCreateRequest,
   ProjectLandingWriteRequest,
@@ -63,6 +69,7 @@ import type {
   ProjectRepository,
   ProjectRepositoryWriteRequest,
   ProjectRunnerTagsWriteRequest,
+  Question,
   QueueEntry,
   Revision,
   Runner,
@@ -172,9 +179,24 @@ export const putProjectLogo = (id: number, blob: Blob) =>
 export const deleteProjectLogo = (id: number) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'DELETE' });
 
-// ---- Images ----
+// ---- Attachments ----
 
-export const uploadImage = (blob: Blob) => fetchJson<HatchImage>('/api/hatch/images', { method: 'POST', body: blob });
+/** Stores one file. Multipart, so the browser sets the boundary and this does
+    not name its own content type, as with `previewImport`. */
+export const uploadAttachment = (blob: Blob, fileName: string) => {
+  const form = new FormData();
+  form.append('file', blob, fileName);
+  return fetchJson<Attachment>('/api/hatch/attachments', { method: 'POST', body: form });
+};
+
+/** The attachments among `ids` that still exist, in the order asked. Ids are
+    guids, so no encoding. The route caps at 100 ids and drops any unknown or
+    duplicate id from the answer. */
+export const getAttachments = (ids: string[]) =>
+  fetchJson<Attachment[]>(`/api/hatch/attachments?ids=${ids.join(',')}`);
+
+export const deleteAttachment = (id: string) =>
+  fetchJson<void>(`/api/hatch/attachments/${id}`, { method: 'DELETE' });
 
 // ---- Statuses ----
 
@@ -283,6 +305,8 @@ export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/pl
 // that could ever post one is the loop itself.
 
 export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+/** Every live runner's name, unscoped. */
+export const getRunnerNames = () => fetchJson<string[]>('/api/hatch/runners/names');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
 export const orderRunner = (name: string, request: RunnerOrderRequest) =>
@@ -292,6 +316,9 @@ export const withdrawOrder = (name: string) =>
 
 export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`);
 
+export const getIssueQuestions = (key: string) =>
+  fetchJson<Question[]>(`/api/hatch/issues/${seg(key)}/questions`);
+
 /** The issues a filter finds, as cards. An absent field is left off the query
     string entirely - an empty `parentKey` means "no parent" to the server, so
     sending one for a field nobody filled in would silently ask a different
@@ -299,7 +326,9 @@ export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${s
 export const searchIssues = (filter: IssueSearch) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(filter)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, String(v));
+    else params.set(name, String(value));
   }
   const query = params.toString();
   return fetchJson<IssueCard[]>(`/api/hatch/issues${query ? `?${query}` : ''}`);
@@ -383,6 +412,12 @@ export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteReq
 export const setIssueDangerous = (key: string, request: DangerousRequest) =>
   fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
 
+export const omitRunner = (key: string, runner: string, request: OmitRunnerRequest) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'PUT', ...asJson(request) });
+
+export const liftRunnerOmission = (key: string, runner: string) =>
+  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'DELETE' });
+
 /** Mark a ticket stalled, with why - and, through the same panel, read back
     off. On `setPriority`'s shape: the state is sent, not toggled, and the
     route is its own rather than a field on the patch. Today only the runner
@@ -442,8 +477,12 @@ export const getIssuePlan = (key: string) => fetchJson<IssueRollup>(`/api/hatch/
     epic at all. Its own read rather than a corner of the board: the board is
     refetched after every drag, and a rollup bolted onto it would be recomputed
     on every drop for a screen nobody is looking at. */
-export const getPlan = (projectId?: number) =>
-  fetchJson<Plan>(`/api/hatch/plan${projectId === undefined ? '' : `?projectId=${projectId}`}`);
+export const getPlan = (projectId?: number | number[]) => {
+  const params = new URLSearchParams();
+  for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
+  const qs = params.toString();
+  return fetchJson<Plan>(`/api/hatch/plan${qs ? `?${qs}` : ''}`);
+};
 
 // ---- Work ----
 
@@ -489,12 +528,40 @@ export const addComment = (key: string, request: CommentCreateRequest) =>
   fetchJson<Comment>(`/api/hatch/issues/${seg(key)}/comments`, { method: 'POST', ...asJson(request) });
 export const getEvents = (key: string) => fetchJson<IssueEvent[]>(`/api/hatch/issues/${seg(key)}/events`);
 
+// ---- Dreams ----
+
+/** A page of dreams: `params` is already built, so the page and the test
+    share one builder (lib/dreams.ts's `dreamsRequest`). */
+export const getDreams = (params: URLSearchParams) =>
+  fetchJson<DreamsPage>(`/api/hatch/dreams?${params.toString()}`);
+export const addDream = (request: DreamCreateRequest) =>
+  fetchJson<Dream>('/api/hatch/dreams', { method: 'POST', ...asJson(request) });
+export const patchDream = (id: number, request: DreamPatchRequest) =>
+  fetchJson<Dream>(`/api/hatch/dreams/${id}`, { method: 'PATCH', ...asJson(request) });
+export const deleteDream = (id: number) =>
+  fetchJson<void>(`/api/hatch/dreams/${id}`, { method: 'DELETE' });
+export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`);
+export const putIssueDreams = (key: string, dreamIds: number[]) =>
+  fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
+/** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */
+export const weaveDreams = (request: DreamWeaveRequest) =>
+  fetchJson<Issue>('/api/hatch/dreams/weave', { method: 'POST', ...asJson(request) });
+
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */
-export const getActivity = ({ limit, offset }: { limit?: number; offset?: number }) => {
+export const getActivity = ({
+  limit,
+  offset,
+  projectId,
+}: {
+  limit?: number;
+  offset?: number;
+  projectId?: number[] | null;
+}) => {
   const params = new URLSearchParams();
   if (limit !== undefined) params.set('limit', String(limit));
   if (offset !== undefined) params.set('offset', String(offset));
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   const query = params.toString();
   return fetchJson<ActivityPage>(`/api/hatch/activity${query ? `?${query}` : ''}`);
 };
@@ -645,10 +712,12 @@ export const getWorkLog = (key: string) => fetchJson<WorkLog>(`/api/hatch/issues
     `searchIssues` states, and it matters here for the same reason: an empty
     `ancestorKey` is not the same question as no `ancestorKey`. */
 export const getWorkLogSessions = (query: WorkLogSessionQuery) => {
+  const { projectId, ...rest } = query;
   const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
+  for (const [name, value] of Object.entries(rest)) {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   return fetchJson<WorkLogSessions>(`/api/hatch/work-log/sessions?${params.toString()}`);
 };
 
@@ -660,10 +729,12 @@ export const getWorkLogSessions = (query: WorkLogSessionQuery) => {
     presets were computed on, so the daily grid the page aligned to and the
     daily grid the server buckets on are one grid. */
 export const getWorkLogHistory = (query: WorkLogHistoryQuery) => {
+  const { projectId, ...rest } = query;
   const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
+  for (const [name, value] of Object.entries(rest)) {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
+  for (const id of projectId ?? []) params.append('projectId', String(id));
   return fetchJson<WorkLogHistory>(`/api/hatch/work-log/history?${params.toString()}`);
 };
 
@@ -671,6 +742,8 @@ export interface WorkLogHistoryQuery {
   from: string;
   to: string;
   ancestorKey?: string | null;
+  /** Any of these projects; omitted or empty means every project. */
+  projectId?: number[] | null;
   /** Minutes east of UTC. It puts a daily bucket on the reader's midnight; an
       overnight run split across UTC midnight is two half-nights nobody
       worked. */
@@ -689,32 +762,36 @@ export interface WorkLogHistoryQuery {
 export const getTimeline = (query: TimelineQuery) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, String(v));
+    else params.set(name, String(value));
   }
   const qs = params.toString();
   return fetchJson<Timeline>('/api/hatch/reports/timeline' + (qs ? '?' + qs : ''));
 };
 
 /** The timeline route's query string; it has no DTO. An unset field is left out
-    of the URL, not sent empty. */
+    of the URL, not sent empty. `projectId` repeats once per id when given a list. */
 export interface TimelineQuery {
   from?: string | null;
   to?: string | null;
-  projectId?: number | null;
+  projectId?: number | number[] | null;
   createdBy?: string | null;
 }
 
 /** How many issues sat in each board column over time, read off the same
-    status history as `getTimeline`. The route takes no `projectId` or
-    `createdBy`: a column's count is a fact about the board, not about any one
-    project or creator.
+    status history as `getTimeline`. The route takes no `createdBy`: a column's
+    count is a fact about the board, not about any one creator. `project` scopes
+    it to a set of projects, repeated once per key.
 
     Anything null or undefined is left out rather than sent empty, as
     `getTimeline` does. */
 export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) for (const v of value) params.append(name, v);
+    else params.set(name, String(value));
   }
   const qs = params.toString();
   return fetchJson<CumulativeFlow>('/api/hatch/reports/cumulative-flow' + (qs ? '?' + qs : ''));
@@ -725,6 +802,39 @@ export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
 export interface CumulativeFlowQuery {
   from?: string | null;
   to?: string | null;
+  /** Narrows the read to these projects' issues; every project when null,
+      undefined or empty. */
+  project?: string[] | null;
+}
+
+/** Closed epics bucketed over a window. Each parameter is set only when it
+    says something: a null, undefined or empty `from`/`to`/`bucket` is left off
+    so the server's own default stands, `projectId` is repeated once per id,
+    and `loose` is sent only when true. `level` and `offsetMinutes` are always
+    sent - the page's default level is not the API's bare default. */
+export const getChangelogReport = (query: ChangelogReportQuery) => {
+  const params = new URLSearchParams();
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  if (query.bucket) params.set('bucket', query.bucket);
+  params.set('level', query.level);
+  params.set('offsetMinutes', String(query.offsetMinutes));
+  if (query.loose === true) params.set('loose', 'true');
+  const qs = params.toString();
+  return fetchJson<ChangelogReport>('/api/hatch/reports/changelog' + (qs ? '?' + qs : ''));
+};
+
+/** The changelog report route's query string. `offsetMinutes` is minutes east
+    of UTC, the reader's. */
+export interface ChangelogReportQuery {
+  from?: string | null;
+  to?: string | null;
+  projectId?: number[] | null;
+  bucket?: string | null;
+  level: string;
+  loose?: boolean | null;
+  offsetMinutes: number;
 }
 
 export interface WorkLogSessionQuery {
@@ -732,30 +842,11 @@ export interface WorkLogSessionQuery {
   to: string;
   /** One issue and everything beneath it, that issue included. */
   ancestorKey?: string | null;
+  /** Any of these projects; omitted or empty means every project. */
+  projectId?: number[] | null;
   sort?: SessionSort;
   /** 1 to 500; the server refuses anything outside it. */
   limit?: number;
-}
-
-// ---- Changelog ----
-
-/** What shipped, by UTC day: the newest window of days that closed something.
-    Anything null or undefined is left out rather than sent empty, as
-    `getTimeline` does, and the `?` is left off when nothing is left. */
-export const getChangelog = (query: ChangelogQuery) => {
-  const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(query)) {
-    if (value !== null && value !== undefined) params.set(name, String(value));
-  }
-  const qs = params.toString();
-  return fetchJson<ChangelogDto>('/api/hatch/changelog' + (qs ? '?' + qs : ''));
-};
-
-/** The changelog route's query string; it has no DTO. */
-export interface ChangelogQuery {
-  before?: string | null;
-  projectId?: number | null;
-  days?: number;
 }
 
 // ---- Overnight ----

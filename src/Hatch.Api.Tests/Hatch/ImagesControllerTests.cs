@@ -1,17 +1,13 @@
-using System.Text;
-using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// Pasted images: what the write accepts, what the read serves. Who may reach
+/// Pasted images: what the read serves, and what it refuses. Who may reach
 /// each route at the filter is held by <c>AdminSurfaceTests</c>, so these test
 /// the actions and not the gate.
 /// </summary>
@@ -22,24 +18,10 @@ public class ImagesControllerTests
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task APostedPng_ReturnsAnIdAndStoresOneRow()
+    public async Task AGet_ServesTheExactBytesWithTheStoredTypeAndImmutableCaching()
     {
         var (controller, db) = New();
-
-        var dto = Value(await Post(controller, Png, "image/png"));
-
-        var row = await db.Images.SingleAsync();
-        Assert.Equal(dto.Id, row.Id);
-        Assert.Equal("image/png", row.ContentType);
-        Assert.Equal(Png, row.Bytes);
-        Assert.Equal(Now, row.CreatedAt);
-    }
-
-    [Fact]
-    public async Task AGet_ServesTheExactBytesWithTheSniffedTypeAndImmutableCaching()
-    {
-        var (controller, _) = New();
-        var id = Value(await Post(controller, Png, "application/octet-stream")).Id;
+        var id = await Seed(db, "image/png", Png);
 
         var file = Assert.IsType<FileContentResult>(await controller.GetImage(id, default));
 
@@ -52,51 +34,15 @@ public class ImagesControllerTests
     }
 
     [Fact]
-    public async Task AKeyCanReadAnImageAPersonPosted()
+    public async Task AKeyCanReadAnImage()
     {
         var db = NewDb();
-        var person = NewController(db, program: false);
-        var id = Value(await Post(person, Png, "image/png")).Id;
+        var id = await Seed(db, "image/png", Png);
 
-        var key = NewController(db, program: true);
+        var key = NewController(db);
         var file = Assert.IsType<FileContentResult>(await key.GetImage(id, default));
 
         Assert.Equal(Png, file.FileContents);
-    }
-
-    [Fact]
-    public async Task HtmlLabelledAsPng_IsRefusedAndNothingIsStored()
-    {
-        var (controller, db) = New();
-
-        var result = await Post(controller, Encoding.UTF8.GetBytes("<script>alert(1)</script>"), "image/png");
-
-        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Equal(PersonPhoto.UnsupportedError, bad.Value);
-        Assert.Empty(db.Images);
-    }
-
-    [Fact]
-    public async Task AnEmptyBody_IsRefused()
-    {
-        var (controller, db) = New();
-
-        var result = await Post(controller, [], "image/png");
-
-        var bad = Assert.IsType<BadRequestObjectResult>(result.Result);
-        Assert.Equal(PersonPhoto.EmptyError, bad.Value);
-        Assert.Empty(db.Images);
-    }
-
-    [Fact]
-    public async Task APostFromAKey_Is403AndNothingIsStored()
-    {
-        var (controller, db) = New(program: true);
-
-        var result = await Post(controller, Png, "image/png");
-
-        Assert.Equal(403, Assert.IsType<ObjectResult>(result.Result).StatusCode);
-        Assert.Empty(db.Images);
     }
 
     [Fact]
@@ -107,69 +53,42 @@ public class ImagesControllerTests
         Assert.IsType<NotFoundResult>(await controller.GetImage(Guid.NewGuid(), default));
     }
 
+    [Fact]
+    public async Task ARowStoredAsAPdf_Is404()
+    {
+        var (controller, db) = New();
+        var id = await Seed(db, "application/pdf", [1, 2, 3]);
+
+        Assert.IsType<NotFoundResult>(await controller.GetImage(id, default));
+    }
+
     // ---- Harness ----
 
     private static HatchContext NewDb() =>
         new(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 
-    private static (ImagesController Controller, HatchContext Db) New(bool program = false)
+    private static (ImagesController Controller, HatchContext Db) New()
     {
         var db = NewDb();
-        return (NewController(db, program), db);
+        return (NewController(db), db);
     }
 
-    private static ImagesController NewController(HatchContext db, bool program)
-    {
-        var caller = program
-            ? new StubCaller
-            {
-                Key = new EfApiKey
-                {
-                    Name = "hatch",
-                    Hash = [1],
-                    Prefix = "hatch_ak_x",
-                    Scopes = [ApiKeyScopes.Hatch],
-                    CreatedAt = Now,
-                },
-            }
-            : new StubCaller { Person = new EfPerson { Name = "Nathan", CreatedAt = Now, UpdatedAt = Now } };
+    private static ImagesController NewController(HatchContext db) =>
+        new(db) { ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() } };
 
-        return new ImagesController(db, new FakeTimeProvider(Now), caller)
+    private static async Task<Guid> Seed(HatchContext db, string contentType, byte[] bytes)
+    {
+        var id = Guid.NewGuid();
+        db.Attachments.Add(new EfHatchAttachment
         {
-            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
-        };
-    }
-
-    private static Task<ActionResult<ImageDto>> Post(ImagesController controller, byte[] bytes, string declaredContentType)
-    {
-        controller.ControllerContext.HttpContext.Request.Body = new MemoryStream(bytes);
-        controller.ControllerContext.HttpContext.Request.ContentType = declaredContentType;
-        return controller.PostImage(CancellationToken.None);
-    }
-
-    private static T Value<T>(ActionResult<T> result) =>
-        result.Value ?? throw new InvalidOperationException($"expected a value, got {result.Result?.GetType().Name}");
-
-    /// <summary>Whoever is holding the phone: a person, or the key an agent carries.</summary>
-    private sealed class StubCaller : ICallerIdentity
-    {
-        public EfPerson? Person { get; init; }
-
-        public EfApiKey? Key { get; init; }
-
-        public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
-
-        public Task<Guid?> PersonIdAsync(CancellationToken ct) => Task.FromResult(Person?.Id);
-
-        public Task<EfPerson?> PersonAsync(CancellationToken ct) => Task.FromResult(Person);
-
-        public Task<EfApiKey?> ApiKeyAsync(CancellationToken ct) => Task.FromResult(Key);
-
-        public Task<Actor?> LocalAsync(CancellationToken ct) => Task.FromResult<Actor?>(null);
-
-        public Task<bool> IsProgramAsync(CancellationToken ct) => Task.FromResult(Key is not null);
-
-        public Task<string> ActorNameAsync(CancellationToken ct) =>
-            Task.FromResult(Person?.Name ?? Key?.Name ?? CallerIdentity.Unattributed);
+            Id = id,
+            Bytes = bytes,
+            ContentType = contentType,
+            FileName = "stored",
+            Size = bytes.Length,
+            CreatedAt = Now,
+        });
+        await db.SaveChangesAsync();
+        return id;
     }
 }

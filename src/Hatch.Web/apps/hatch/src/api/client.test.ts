@@ -1,6 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Runner, Status } from '../types';
-import { orderRunner, setStatusRunnerTags, withdrawOrder } from './client';
+import type { Issue, Runner, Status } from '../types';
+import {
+  getActivity,
+  getAttachments,
+  getChangelogReport,
+  getPlan,
+  getTimeline,
+  getWorkLogHistory,
+  getWorkLogSessions,
+  liftRunnerOmission,
+  omitRunner,
+  orderRunner,
+  searchIssues,
+  setStatusRunnerTags,
+  uploadAttachment,
+  withdrawOrder,
+} from './client';
 
 const status: Status = {
   id: 7,
@@ -67,5 +82,322 @@ describe('runner orders', () => {
       '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('omitRunner', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('PUTs the reason, escaping a slash in the runner name', async () => {
+    const issue = { key: 'HA-12' } as Issue;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(issue), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await omitRunner('HA-12', 'host:/checkouts/one', { reason: 'too risky' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      expect.objectContaining({ method: 'PUT', body: '{"reason":"too risky"}' }),
+    );
+    expect(result).toEqual(issue);
+  });
+});
+
+describe('liftRunnerOmission', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('DELETEs the omission, escaping a slash in the runner name', async () => {
+    const issue = { key: 'HA-12' } as Issue;
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(issue), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await liftRunnerOmission('HA-12', 'host:/checkouts/one');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(result).toEqual(issue);
+  });
+});
+
+describe('getChangelogReport', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getChangelogReport>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getChangelogReport(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends the level and offset alone when nothing else is set', async () => {
+    expect(await urlOf({ level: 'story', offsetMinutes: 0 })).toBe(
+      '/api/hatch/reports/changelog?level=story&offsetMinutes=0',
+    );
+  });
+
+  it('sends every field, repeating projectId once per id', async () => {
+    const url = await urlOf({
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-11-01T00:00:00.000Z',
+      projectId: [3, 5],
+      bucket: 'week',
+      level: 'epic',
+      loose: true,
+      offsetMinutes: -300,
+    });
+
+    expect(url).toBe(
+      '/api/hatch/reports/changelog?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+        '&projectId=3&projectId=5&bucket=week&level=epic&offsetMinutes=-300&loose=true',
+    );
+  });
+
+  it('leaves off a false loose, an empty from and a null bucket', async () => {
+    expect(
+      await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
+    ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
+  });
+});
+
+describe('getActivity', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getActivity>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getActivity(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string when nothing is set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/activity');
+  });
+
+  it('keeps limit and offset as they were, and repeats projectId once per id after them', async () => {
+    expect(await urlOf({ limit: 20, offset: 40, projectId: [3, 5] })).toBe(
+      '/api/hatch/activity?limit=20&offset=40&projectId=3&projectId=5',
+    );
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/activity?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/activity');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/activity');
+    expect(await urlOf({ limit: 20, projectId: null })).toBe('/api/hatch/activity?limit=20');
+  });
+});
+
+describe('getWorkLogSessions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getWorkLogSessions>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkLogSessions(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' };
+  const base = '/api/hatch/work-log/sessions?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z';
+
+  it('builds today\'s URL without a projectId, leaving out null fields', async () => {
+    expect(await urlOf(range)).toBe(base);
+    expect(await urlOf({ ...range, ancestorKey: null, sort: 'tokens', limit: 5 })).toBe(base + '&sort=tokens&limit=5');
+  });
+
+  it('repeats projectId once per id', async () => {
+    expect(await urlOf({ ...range, projectId: [3, 5] })).toBe(base + '&projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ ...range, projectId: [] })).toBe(base);
+    expect(await urlOf({ ...range, projectId: null })).toBe(base);
+  });
+});
+
+describe('getWorkLogHistory', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getWorkLogHistory>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getWorkLogHistory(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', offsetMinutes: -300 };
+  const base =
+    '/api/hatch/work-log/history?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&offsetMinutes=-300';
+
+  it('builds today\'s URL without a projectId, leaving out null fields', async () => {
+    expect(await urlOf(range)).toBe(base);
+    expect(await urlOf({ ...range, ancestorKey: null })).toBe(base);
+  });
+
+  it('repeats projectId once per id, after the other fields', async () => {
+    expect(await urlOf({ ...range, projectId: [3, 5] })).toBe(base + '&projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ ...range, projectId: [] })).toBe(base);
+    expect(await urlOf({ ...range, projectId: null })).toBe(base);
+  });
+});
+
+describe('getPlan', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (projectId?: number | number[]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getPlan(projectId);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no projectId', async () => {
+    expect(await urlOf()).toBe('/api/hatch/plan');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf(3)).toBe('/api/hatch/plan?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf([3, 5])).toBe('/api/hatch/plan?projectId=3&projectId=5');
+  });
+
+  it('treats an empty list as none', async () => {
+    expect(await urlOf([])).toBe('/api/hatch/plan');
+  });
+});
+
+describe('getTimeline', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getTimeline>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getTimeline(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string when nothing is set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/reports/timeline');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/reports/timeline?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/reports/timeline?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/reports/timeline');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/reports/timeline');
+  });
+});
+
+describe('searchIssues', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (filter: Parameters<typeof searchIssues>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await searchIssues(filter);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends no query string with no filter set', async () => {
+    expect(await urlOf({})).toBe('/api/hatch/issues');
+  });
+
+  it('sends one projectId, as a single value', async () => {
+    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/issues?projectId=3');
+  });
+
+  it('repeats projectId once per id, given a list', async () => {
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/issues?projectId=3&projectId=5');
+  });
+
+  it('treats an empty or null projectId as none', async () => {
+    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/issues');
+    expect(await urlOf({ projectId: null })).toBe('/api/hatch/issues');
+  });
+});
+
+describe('uploadAttachment', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('POSTs the file as multipart under its name, with no content type of its own', async () => {
+    const stored = { id: 'abc', fileName: 'shot.png', contentType: 'image/png', size: 1, createdAt: '2026-11-01T00:00:00Z' };
+    const fetchMock = vi.fn(async (_path: string, _init?: RequestInit) => new Response(JSON.stringify(stored), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await uploadAttachment(new Blob(['x'], { type: 'image/png' }), 'shot.png');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments');
+    const init = fetchMock.mock.calls[0][1]!;
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    const file = (init.body as FormData).get('file');
+    expect(file).toBeInstanceOf(File);
+    expect((file as File).name).toBe('shot.png');
+    expect(init.headers).toEqual({ Accept: 'application/json' });
+    expect(result).toEqual(stored);
+  });
+});
+
+describe('getAttachments', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('GETs the comma-joined ids and returns the parsed body', async () => {
+    const found = [{ id: 'a', fileName: 'a.png', contentType: 'image/png', size: 1, createdAt: '2026-11-01T00:00:00Z' }];
+    const fetchMock = vi.fn(async (_path: string, _init?: RequestInit) => new Response(JSON.stringify(found), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getAttachments(['a', 'b']);
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments?ids=a,b');
+    expect(result).toEqual(found);
   });
 });

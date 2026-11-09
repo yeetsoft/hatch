@@ -48,7 +48,7 @@ public class FlowReportTests
 
     private static FlowReport.Result Fold(
         TimelineReport.Row[] rows, FlowReport.Event[]? events = null, DateTimeOffset? from = null, DateTimeOffset? to = null,
-        List<EfHatchStatus>? board = null, int? projectId = null, string? type = null,
+        List<EfHatchStatus>? board = null, IReadOnlyList<int>? projectId = null, string? type = null,
         FlowReport.Question[]? questions = null, FlowReport.Session[]? sessions = null) =>
         FlowReport.Fold(
             rows, events ?? [], questions ?? [], sessions ?? [], board ?? Board(), from ?? Day(-5), to ?? Day(5), projectId, type);
@@ -218,7 +218,7 @@ public class FlowReportTests
             Issue(2, "bug", 2, Day(-1), project: 2),
         };
 
-        var byProject = Fold(rows, projectId: 1);
+        var byProject = Fold(rows, projectId: [1]);
         Assert.Equal(1, byProject.Columns.Single(c => c.StatusId == 2).Entered);
 
         var byType = Fold(rows, type: "bug");
@@ -495,7 +495,7 @@ public class FlowReportTests
             new FlowReport.Session(2, Day(0), IsError: true),
         };
 
-        var byProject = Fold(rows, events, questions: questions, sessions: sessions, projectId: 1);
+        var byProject = Fold(rows, events, questions: questions, sessions: sessions, projectId: [1]);
         Assert.Equal(1, byProject.Window.Dropped);
         Assert.Equal(1, byProject.Window.QuestionsLapsed);
         Assert.Equal(1, byProject.Window.Sessions);

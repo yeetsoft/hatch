@@ -186,20 +186,23 @@ public sealed partial class Workspace
                     return Failed($"{branch} has diverged from origin and its local tip would not be kept - left alone");
 
                 complain($"hatch:   {branch} had diverged from origin - the {ahead} local commit(s) are kept as {keptAs}");
-                if (!Checkout(branch, remote)) return Failed($"could not put the tree on {branch}");
+                var put = Checkout(branch, remote);
+                if (!put.Ok) return Failed($"could not put the tree on {branch}{put.Because}");
             }
             else
             {
                 localAhead = ahead > 0;
                 if (localAhead) say($"hatch:   {branch} is {ahead} commit(s) ahead of origin - the local copy is used");
 
-                if (!Checkout(branch, behind > 0 ? remote : null))
-                    return Failed($"could not put the tree on {branch}");
+                var put = Checkout(branch, behind > 0 ? remote : null);
+                if (!put.Ok)
+                    return Failed($"could not put the tree on {branch}{put.Because}");
             }
         }
-        else if (!Git("checkout", "--quiet", "--track", "-B", branch, remote).Ok)
+        else
         {
-            return Failed($"could not put the tree on {branch}");
+            var put = Git("checkout", "--quiet", "--track", "-B", branch, remote);
+            if (!put.Ok) return Failed($"could not put the tree on {branch}{put.Because}");
         }
 
         var sha = Short("HEAD");
@@ -234,10 +237,10 @@ public sealed partial class Workspace
     /// A checkout onto a branch that is already here, which is two shapes of the
     /// same call: plain, and reset to origin's tip.
     /// </summary>
-    private bool Checkout(string branch, string? resetTo) =>
+    private Ran Checkout(string branch, string? resetTo) =>
         resetTo is null
-            ? Git("checkout", "--quiet", branch).Ok
-            : Git("checkout", "--quiet", "-B", branch, resetTo).Ok;
+            ? Git("checkout", "--quiet", branch)
+            : Git("checkout", "--quiet", "-B", branch, resetTo);
 
     private BranchEntry Failed(string problem)
     {

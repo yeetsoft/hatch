@@ -146,9 +146,13 @@ public class AdminSurfaceTests
         "ProjectsController.GetRepositories",
         "ProjectsController.GetLogo",
         "ProjectsController.GetMembers",
-        // A pasted image: read by a key named in a brief, posted by a person.
+        // A pasted image: read by a key named in a brief.
         "ImagesController.GetImage",
-        "ImagesController.PostImage",
+        // A stored file: read by a key named in a brief, posted and deleted by a person.
+        "AttachmentsController.GetAttachment",
+        "AttachmentsController.GetAttachments",
+        "AttachmentsController.PostAttachment",
+        "AttachmentsController.DeleteAttachment",
         "StatusesController.GetStatuses",
         "StatusesController.CreateStatus",
         "StatusesController.PatchStatus",
@@ -262,6 +266,10 @@ public class AdminSurfaceTests
         "PlanController.GetIssuePlan",
         "PlanController.GetPlan",
 
+        // Closed top-level epics, bucketed over a range rather than split by
+        // day; Hatch-scoped and open to a person, like GetTimeline.
+        "ReportsController.GetChangelogReport",
+
         // When the work happened, read off the status history: the epics active
         // in a range and the stretches beneath them. Hatch-scoped and open to a
         // person like WorkLogController's reads - it says what the trail
@@ -335,6 +343,15 @@ public class AdminSurfaceTests
         // IssuesController.SearchIssues, whose cards it returns.
         "SearchController.GetSearch",
 
+        // Dreams: a line somebody wanted said, with no issue underneath it at
+        // all - Hatch-scoped like the rest of the module, reads included,
+        // for the same reason BoardController's is: it is the operator's own
+        // list, not a fact about the house.
+        "DreamsController.GetDreams",
+        "DreamsController.AddDream",
+        "DreamsController.EditDream",
+        "DreamsController.DeleteDream",
+
         // What landed in the newest night, across every issue rather than
         // about one - Hatch-scoped and open to a person the same way
         // WorkLogController's and ActivityController's reads are. See
@@ -386,6 +403,11 @@ public class AdminSurfaceTests
         // like the rest of the module. See IssueDependenciesController.
         "IssueDependenciesController.AddDependency",
         "IssueDependenciesController.RemoveDependency",
+
+        // What an issue drew on, read and replaced whole. Hatch-scoped like
+        // the rest of the module - see IssueDreamsController.
+        "IssueDreamsController.PutIssueDreams",
+        "IssueDreamsController.GetIssueDreams",
 
         // The lease on an issue, and the one place in the module where the
         // scope is accepted *because* the caller is a machine: a mutex only an
@@ -526,6 +548,12 @@ public class AdminSurfaceTests
         // note of the ticket it is working and no other. IssueReleaseNoteController.
         "IssueReleaseNoteController.PutIssueReleaseNote",
 
+        // Which runners are left out of an issue's subtree, and why - a statement
+        // about the ticket that narrows who runs it, open to a key for the same
+        // reason runner-tags is. IssueRunnerOmissionsController.
+        "IssueRunnerOmissionsController.DeleteOmittedRunner",
+        "IssueRunnerOmissionsController.PutOmittedRunner",
+
         // Holding and resuming a ticket - an agent that could hold its own
         // ticket could park it off the board for the night. Stalling is the
         // other write IssueStallController makes, and it is open to a key on
@@ -597,6 +625,10 @@ public class AdminSurfaceTests
         "ProjectsController.PutBindsTracker",
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
+
+        // A weave press spends a breakdown session at the largest model -
+        // a person's to press, not an agent's. See DreamWeaveController.
+        "DreamWeaveController.PostWeave",
 
         // The whole controller, reads included. See
         // Hatch.Api.Controllers.SettingsController.
@@ -756,7 +788,12 @@ public class AdminSurfaceTests
         "ProjectsController.PutBindsTracker",
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
-        "ImagesController.PostImage",
+
+        // A weave press spends a breakdown session at the largest model -
+        // a person's to press, not an agent's. See DreamWeaveController.
+        "DreamWeaveController.PostWeave",
+        "AttachmentsController.PostAttachment",
+        "AttachmentsController.DeleteAttachment",
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
         "RunnerController.Get",

@@ -24,6 +24,9 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
         return true;
     }
 
+    /// <summary>The aliases; <see cref="OllamaAdapter"/> overrides this with the ids it can name.</summary>
+    public virtual IReadOnlyList<string> Models => ModelFamilies.Aliases;
+
     public virtual bool CanSpawn(out string refusal)
     {
         if (_bin is not null)

@@ -13,6 +13,7 @@ export function TimelineFilters({
   creator,
   onProject,
   onCreator,
+  scoped = false,
 }: {
   projects: Project[];
   /** The chosen project's key, `''` for all. */
@@ -22,6 +23,8 @@ export function TimelineFilters({
   creator: string;
   onProject: (value: string) => void;
   onCreator: (value: string) => void;
+  /** The tab narrows the projects handed in, so the empty option says so. */
+  scoped?: boolean;
 }) {
   return (
     <div className="hatch-timeline-controls" role="group" aria-label="Filters">
@@ -32,7 +35,7 @@ export function TimelineFilters({
           lit={project !== ''}
           value={project}
           options={[
-            { value: '', text: 'All projects' },
+            { value: '', text: scoped ? 'All in scope' : 'All projects' },
             ...projects.map((p) => ({ value: p.key, text: `${p.key} — ${p.name}` })),
           ]}
           onChange={onProject}

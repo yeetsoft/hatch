@@ -19,10 +19,10 @@ public static class LetGo
     /// How many increments in a row let this ticket go without moving it: its
     /// releases, newest first, whose outcome was <see cref="ClaimOutcomes.Dropped"/>,
     /// counted back to the first release whose outcome was
-    /// <see cref="ClaimOutcomes.Worked"/>, a status change, a person's resume,
-    /// or an answer a person wrote - whichever comes first. A release with no
-    /// outcome, a hold, and an answer written by a lapse, are skipped rather
-    /// than counted or stopped at.
+    /// <see cref="ClaimOutcomes.Worked"/> or <see cref="ClaimOutcomes.Recused"/>,
+    /// a status change, a person's resume, or an answer a person wrote -
+    /// whichever comes first. A release with no outcome, a hold, and an
+    /// answer written by a lapse, are skipped rather than counted or stopped at.
     /// </summary>
     public static int Count(IEnumerable<(string Kind, string? Payload)> eventsNewestFirst)
     {
@@ -35,7 +35,7 @@ public static class LetGo
             {
                 var outcome = ReleaseOutcome(e.Payload);
                 if (outcome == ClaimOutcomes.Dropped) { letGo++; continue; }
-                if (outcome == ClaimOutcomes.Worked) break;
+                if (outcome == ClaimOutcomes.Worked || outcome == ClaimOutcomes.Recused) break;
                 continue; // no outcome: skipped over, neither counted nor stopped at
             }
 
@@ -86,10 +86,10 @@ public static class LetGo
     /// since that would make the drop stale. Walks the trail newest first: a
     /// release with outcome <see cref="ClaimOutcomes.Dropped"/> that names its
     /// runner is the record; the first release that is anything else (worked,
-    /// preempted, no outcome), the first status change, or the first answer a
-    /// person wrote, or the first resume, means there is none. Takes, lapses,
-    /// holds, clears and comments are stepped over. A drop with no runner - one
-    /// written before the payload carried it - records nothing.
+    /// preempted, recused, no outcome), the first status change, or the first
+    /// answer a person wrote, or the first resume, means there is none. Takes,
+    /// lapses, holds, clears and comments are stepped over. A drop with no
+    /// runner - one written before the payload carried it - records nothing.
     /// </summary>
     public static LetGoBy? By(IEnumerable<(string Kind, string? Payload, DateTimeOffset At)> eventsNewestFirst)
     {
