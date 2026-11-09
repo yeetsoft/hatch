@@ -355,10 +355,10 @@ public sealed class DetectTests
         var result = await Detect.Node(
             path.Directory, ByShellOrPath(shell.File, Said(ShellNode), Said(PathNode), calls), CancellationToken.None, shell.File);
 
-        Assert.Equal(new DetectorResult("node", true, "22.4.0", null, "fakesh -lic"), result);
+        Assert.Equal(new DetectorResult("node", true, "22.4.0", null, "fakesh -l -i +m"), result);
         var call = Assert.Single(calls);
         Assert.Equal(shell.File, call.File);
-        Assert.Equal(["-lic", "printf 'hatch-probe\\n'; node --version"], call.Args);
+        Assert.Equal(["-l", "-i", "+m", "-c", "printf 'hatch-probe\\n'; node --version"], call.Args);
     }
 
     [Fact]
@@ -415,7 +415,7 @@ public sealed class DetectTests
         var result = await Detect.Node(path.Directory, ByShellOrPath(shell.File, Said(output), Said(PathNode)), CancellationToken.None, shell.File);
 
         Assert.Equal("22.4.0", result.Version);
-        Assert.Equal("fakesh -lic", result.Via);
+        Assert.Equal("fakesh -l -i +m", result.Via);
     }
 
     [Fact]
@@ -451,7 +451,7 @@ public sealed class DetectTests
             path.Directory, Answering("hatch-probe\n" + DotnetSdks), CancellationToken.None, shell.File);
 
         Assert.Equal("10.0.100", result.Version);
-        Assert.Equal("fakesh -lic", result.Via);
+        Assert.Equal("fakesh -l -i +m", result.Via);
     }
 
     [Fact]
@@ -1104,7 +1104,7 @@ public sealed class DetectTests
     [Fact]
     public void Merge_ignores_via_and_why_drops_a_satisfied_version_and_keeps_one_it_does_not()
     {
-        var detection = new Detection([new DetectorResult("node", true, "22.4.0", null, "fakesh -lic")]);
+        var detection = new Detection([new DetectorResult("node", true, "22.4.0", null, "fakesh -l -i +m")]);
 
         var merged = detection.Merge(["node@22", "node@20"]);
 
