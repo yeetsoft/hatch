@@ -143,6 +143,35 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
     public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);
 
+    /// <summary>A cast-list name nothing has claimed yet, for <c>hatch config</c>'s mint prompt to offer as a default.</summary>
+    public async Task<string> SuggestRunnerNameAsync(CancellationToken ct)
+    {
+        var path = "/api/hatch/runners/suggest-name";
+        var answer = await Client.Send(HttpMethod.Get, path, null, ct);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+
+        var suggested = answer.Body.Trim().Trim('"');
+        if (suggested.Length == 0) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+
+        return suggested;
+    }
+
+    /// <summary>
+    /// Mints a runner: a key and its config row, answered once with the
+    /// secret. A taken name (409) is handed back rather than thrown, since it
+    /// is a name to pick again rather than a fault.
+    /// </summary>
+    public async Task<(RunnerMintedDto? Minted, string? Taken)> CreateRunnerAsync(string name, CancellationToken ct)
+    {
+        var path = "/api/hatch/runners";
+        var answer = await Client.Send(HttpMethod.Post, path, new CreateRunnerRequest(name), ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.RunnerMintedDto), null);
+    }
+
     /// <summary>What the Attention panel draws, so a terminal reading the same list cannot disagree with it.</summary>
     public Task<AttentionDto?> AttentionAsync(CancellationToken ct) => Client.GetAsync<AttentionDto>("/api/hatch/attention", ct);
 
