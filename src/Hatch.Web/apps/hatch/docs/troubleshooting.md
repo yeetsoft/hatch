@@ -190,10 +190,10 @@ run](the-runner#when-it-will-not-run).
 
 - **The column runs on a model no live runner offers.** `fable` is the
   example here and the Breakdown column's default; any alias or pinned id
-  behaves the same. `hatch queue` says which: *HA-12 in Breakdown runs on
-  fable - this runner's claude does not offer it*, and closes with *3 issues
-  wait for a runner that offers fable*. The attention panel's **Waiting on a
-  runner** says the same, board-wide: [watching the
+  behaves the same. `hatch queue` names the ticket and the model, in the
+  board's own wording ([Models](the-runner#models)), and closes with *3
+  issues wait for a runner that offers fable*. The attention panel's
+  **Waiting on a runner** says the same, board-wide: [watching the
   loop](watching-the-loop#what-is-waiting-on-you).
 - **Fix it from either end.** Start a runner whose account has the model, or
   put the playbook on a tier somebody offers - by a proposal, never an edit:
