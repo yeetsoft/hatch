@@ -365,6 +365,25 @@ public sealed class GoToWorkTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_heartbeat_carries_has(bool has)
+    {
+        string[] dependencies = has ? ["dotnet@10.0.100", "pwsh"] : [];
+        using var h = new Harness();
+        var runtime = h.Runtime with { Has = dependencies };
+        OneTicket(h);
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = h.Wire.Calls
+            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Read<RunnerHeartbeatRequest>();
+        Assert.NotNull(beat.Has);
+        Assert.Equal(dependencies, beat.Has);
+    }
+
     /// <summary>
     /// One pass of a loop that is not <c>--once</c>, answered with <paramref name="told"/>
     /// - the only shape in which a heartbeat answer is applied back. MaxRuns
