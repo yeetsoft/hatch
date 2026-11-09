@@ -1743,9 +1743,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// midnight survives the loop's own half-hourly restart: a restart carries
     /// night state in and is never fresh. <see cref="Tally.Fresh"/> stays true
     /// until a beat is answered, so a beat that throws is tried again.
-    /// The tags are still sent every beat, but the server takes them only on a
-    /// row's first-ever beat; after that the row is the board's, the answer
-    /// carries it back, and <see cref="Fold"/> adopts it.
+    /// The tags are never sent; <see cref="Fold"/> adopts the row's list.
     /// <c>Has</c> is sent on every beat, unconditionally, empty list included,
     /// so a machine with nothing clears whatever an older start advertised.
     /// </remarks>
