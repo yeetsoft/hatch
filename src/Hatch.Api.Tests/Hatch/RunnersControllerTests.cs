@@ -20,6 +20,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// property the control surface rests on - that an agent cannot raise its own
 /// bounds.
 /// </summary>
+[Collection(HatchDatabaseCollection.Name)]
 public class RunnersControllerTests
 {
     private const string Runner = "here:/checkouts/one";
@@ -3458,6 +3459,99 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(await h.SetOwnerAsync(Runner, ada.Id));
     }
 
+    // ---- The session heartbeat ----
+
+    [Fact]
+    public async Task SessionHeartbeat_WithNoKey_Is403BeforeAnyDatabaseCall()
+    {
+        var h = await NewAsync(nobody: true);
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var refusal = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(403, refusal.StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatAtAFreeWhere_InsertsOneRowAndNarrowsItsBounds()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, MaxRuns = 5, UpdatedAt = Now });
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, MaxRuns: 10));
+
+        var instruction = Value(result);
+        Assert.NotNull(instruction.SessionId);
+        Assert.Equal(5, instruction.MaxRuns);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatAtAnOccupiedWhere_Is409AndWritesNothing()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+        var before = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("hatch is already the runner on", refusal.Value!.ToString(), StringComparison.Ordinal);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        var after = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(before.LastSeenAt, after.LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ANonFreshBeat_JoinsTheLiveSessionRatherThanInsertingAnother()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(Now.AddMinutes(1), row.LastSeenAt);
+        Assert.Equal(Now, row.StartedAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AOnceBeat_JoinsALoopSessionWithoutChangingItsKindAndElseInsertsItsOwn()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: Runner));
+
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        Assert.Equal(EfHatchRunner.LoopKind, (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Kind);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: "here:/checkouts/two"));
+
+        Assert.Equal(2, await h.Db.RunnerSessions.CountAsync());
+        Assert.Equal(EfHatchRunner.OnceKind, (await h.Db.RunnerSessions.AsNoTracking()
+            .SingleAsync(s => s.Where == "here:/checkouts/two")).Kind);
+    }
+
+    private static async Task<string> ConnectAsync()
+    {
+        Skip.IfNot(
+            HatchDatabase.Available,
+            "HATCH_TEST_DATABASE_URL is unset - the session heartbeat calls MarkGoneAsync and " +
+            "TrimHistoryAsync, which EF's in-memory provider cannot execute. Run `make test-api-db`, or " +
+            "point the variable at a scratch database.");
+
+        return await HatchDatabase.PrepareAsync();
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
@@ -3474,6 +3568,7 @@ public class RunnersControllerTests
         public required int ProjectId { get; init; }
         public required StubActorDirectory Actors { get; init; }
         public required Guid PersonId { get; init; }
+        public required StubCaller Caller { get; init; }
 
         private int nextRepoOrder;
 
@@ -3522,6 +3617,9 @@ public class RunnersControllerTests
 
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));
+
+        public async Task<ActionResult<RunnerInstructionDto>> SessionBeatAsync(RunnerHeartbeatRequest request) =>
+            await Runners.SessionHeartbeat(request, default);
 
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
@@ -3631,10 +3729,12 @@ public class RunnersControllerTests
     private static async Task<Harness> NewAsync(
         bool program = false, bool wall = false, PersonRole role = PersonRole.User, Guid? personId = null,
         PersonRole? keyOwner = null, bool nobody = false, IHatchRevision? revision = null,
-        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null)
+        long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null, ISiteSettingsService? siteSettings = null,
+        string? connectionString = null)
     {
-        var db = new HatchContext(
-            new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var db = connectionString is null
+            ? new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options)
+            : new HatchContext(new DbContextOptionsBuilder<HatchContext>().UseNpgsql(connectionString).Options);
 
         var hatch = new EfHatchProject { Key = "AER", Name = "Hatch", CreatedAt = Now };
         db.Add(hatch);
@@ -3659,6 +3759,7 @@ public class RunnersControllerTests
             {
                 Key = new EfApiKey
                 {
+                    Id = Guid.NewGuid(),
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
@@ -3670,11 +3771,13 @@ public class RunnersControllerTests
             : new StubCaller { Person = new EfPerson { Id = id, Name = "Nathan", Role = role, CreatedAt = Now, UpdatedAt = Now } };
 
         var actors = new StubActorDirectory();
+        var sessions = new RunnerSessions(runners);
 
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
-                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
+                sessions),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
@@ -3682,6 +3785,7 @@ public class RunnersControllerTests
             Actors = actors,
             PersonId = id,
             Keys = keys,
+            Caller = caller,
         };
     }
 

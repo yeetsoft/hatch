@@ -781,6 +781,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; additive today, since nothing in this checkout calls it yet |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |

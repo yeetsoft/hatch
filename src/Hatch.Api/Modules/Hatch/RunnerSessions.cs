@@ -170,6 +170,38 @@ public sealed class RunnerSessions(Runners runners)
     }
 
     /// <summary>
+    /// What a session heartbeat reads back off its own beat:
+    /// <see cref="Effective"/>'s six bounds, the ceiling's own tags where
+    /// there is a ceiling, and the session's own projects and danger flag -
+    /// <see cref="Runners.Instruct"/>'s own shape, for a session rather than
+    /// a bare beat.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RunnerInstructionDto.Drives"/> and
+    /// <see cref="RunnerInstructionDto.Order"/> are answered empty and null
+    /// here: neither has a session-level meaning yet.
+    /// </remarks>
+    public static RunnerInstructionDto Instruct(
+        EfHatchRunnerSession session, EfHatchRunnerConfig? ceiling, string runnerName, string? forName,
+        long? siteMaxTokens = null, long? siteMaxTokensPerHour = null)
+    {
+        var bounds = Effective(ceiling, session, siteMaxTokens, siteMaxTokensPerHour);
+        var tags = ceiling is not null ? RunnerTagColumn.Read(ceiling.Tags).Order(StringComparer.Ordinal).ToArray() : [];
+
+        return new RunnerInstructionDto(
+            session.State, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
+            Drives: [],
+            Tags: tags,
+            Order: null,
+            Projects: session.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
+            RefusesDangerous: session.RefusesDangerous ?? false,
+            MaxTokens: bounds.MaxTokens.Value,
+            MaxTokensPerHour: bounds.MaxTokensPerHour.Value,
+            RunnerName: runnerName,
+            SessionId: session.Id);
+    }
+
+    /// <summary>
     /// The smaller of a session's own value and a ceiling, with which of the
     /// two it came from - a tie reads as the session's, so a session that
     /// matches the ceiling exactly is never reported as the ceiling binding

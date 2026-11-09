@@ -42,7 +42,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
+    RunnerSessions sessions) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -238,6 +239,78 @@ public class RunnersController(
             .OrderByDescending(r => r.LastSeenAt)
             .Select(r => r.Name)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// The session-level heartbeat <see cref="RunnerSessions"/> answers to -
+    /// the bearer key alone, never a name or a header, so a loop restarting
+    /// under a different checkout name is still the same session as long as
+    /// its key and its <c>--where</c> have not changed.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>Additive.</b> Nothing in this checkout's own loop calls this
+    /// yet - <c>GoToWork.cs</c> stays on <see cref="Heartbeat"/> until HA-1939
+    /// can mint a keyless install a key - so only the tests below exercise
+    /// it, the same note HA-2005 left on <see cref="EfHatchRunnerConfig"/>.</para>
+    ///
+    /// <para>The literal <c>sessions</c> segment beats <c>{name}</c> on
+    /// <c>POST</c> the same way <c>names</c> and <c>suggest-name</c> already
+    /// do - so a runner that happens to be named <c>sessions</c> can no
+    /// longer heartbeat through this verb; it is still visible and still
+    /// controllable by every other route.</para>
+    ///
+    /// <para><c>tags</c>, <c>models</c> and <c>has</c> on the body are
+    /// neither validated nor stored here: a session has no column for any of
+    /// them, and they are silently dropped, the same as an older Hatch
+    /// ignoring a field it has never heard of.</para>
+    /// </remarks>
+    [HttpPost("sessions")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerInstructionDto>> SessionHeartbeat(RunnerHeartbeatRequest request, CancellationToken ct)
+    {
+        if (await caller.ApiKeyAsync(ct) is not { } key)
+            return StatusCode(403, "a session heartbeat is the bearer key's, not a name or a header");
+
+        var kind = request.Kind?.Trim().ToLowerInvariant() switch
+        {
+            EfHatchRunner.OnceKind => EfHatchRunner.OnceKind,
+            _ => EfHatchRunner.LoopKind,
+        };
+
+        var now = time.GetUtcNow();
+        var line = Runners.Normalise(request.Line);
+        var where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+
+        await sessions.MarkGoneAsync(db, key.Id, now, ct);
+
+        var live = await db.RunnerSessions
+            .Where(s => s.ApiKeyId == key.Id && s.EndedAt == null && s.Where == where)
+            .OrderBy(s => s.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (request.Fresh == true && kind == EfHatchRunner.LoopKind && live is not null)
+            return Conflict($"{key.Name} is already the runner on {where ?? "an unnamed checkout"}");
+
+        EfHatchRunnerSession session;
+        if (live is null)
+        {
+            session = SeedSession(key.Id, kind, where, line, request, now);
+            db.RunnerSessions.Add(session);
+            await db.SaveChangesAsync(ct);
+            await sessions.TrimHistoryAsync(db, key.Id, ct);
+        }
+        else
+        {
+            session = live;
+            TouchSession(session, kind, line, now, request);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        var site = await siteSettings.GetAsync(ct);
+        var forName = (await ForAsync(ct))?.Name ?? key.Name;
+
+        return RunnerSessions.Instruct(session, config, key.Name, forName, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
@@ -978,6 +1051,122 @@ public class RunnersController(
         {
             row.Usage = usage;
             row.UsageReadAt = request.UsageReadAt;
+        }
+    }
+
+    /// <summary>
+    /// A session that has never run before, seeded with what the process
+    /// started with - <see cref="Seed"/>'s own field list, minus
+    /// <c>Models</c>, <c>Has</c>, <c>Tags</c> and <c>ForPersonId</c>, none of
+    /// which a session has a column for.
+    /// </summary>
+    private static EfHatchRunnerSession SeedSession(
+        Guid apiKeyId, string kind, string? where, string? line, RunnerHeartbeatRequest request, DateTimeOffset now)
+    {
+        var keys = ProjectKeys(request.Projects);
+
+        return new EfHatchRunnerSession
+        {
+            ApiKeyId = apiKeyId,
+            Kind = kind,
+            Where = where,
+            Host = Fits(request.Host, EfHatchRunner.MaxHostLength),
+            StartedAt = now,
+            LastSeenAt = now,
+            Line = line is { Length: > 0 } ? line : null,
+            LineAt = line is { Length: > 0 } ? now : null,
+            State = kind == EfHatchRunner.LoopKind && request.Standby == true
+                ? EfHatchRunner.Paused
+                : EfHatchRunner.Running,
+
+            Under = Fits(request.Under, EfHatchRunner.MaxUnderLength),
+            MaxRuns = request.MaxRuns is > 0 ? request.MaxRuns : null,
+            MaxSpend = request.MaxSpend is > 0 ? request.MaxSpend : null,
+            MaxTokens = request.MaxTokens is > 0 ? request.MaxTokens : null,
+            MaxTokensPerHour = request.MaxTokensPerHour is > 0 ? request.MaxTokensPerHour : null,
+            UntilAt = request.UntilAt,
+            Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
+
+            Remotes = Canonicalised(request.Remotes),
+            Clones = request.Clones,
+            Mine = request.Mine,
+            Standing = request.Standing,
+            Runs = request.Runs,
+            Spent = request.Spent,
+            TokensUsed = request.TokensUsed,
+            TokensLastHour = request.TokensLastHour,
+            Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength),
+            Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength),
+            Sequence = request.Sequence,
+            SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength),
+            SourceSequence = request.SourceSequence,
+            BuiltAt = request.BuiltAt,
+            RefusesDangerous = request.RefusesDangerous,
+            ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
+            ThrottledUntil = request.ThrottledUntil,
+            Usage = Utilization.Serialise(request.Usage),
+            UsageReadAt = request.UsageReadAt,
+        };
+    }
+
+    /// <summary>
+    /// A session that already exists: last seen, line, and the facts about
+    /// what it served - <see cref="Touch"/>'s own field list, minus
+    /// <c>Kind</c> (a <c>once</c> beat must not turn a loop session into a
+    /// <c>once</c> one), <c>Tags</c>, <c>Models</c>, <c>Has</c>,
+    /// <c>ForPersonId</c>, the <c>Fresh</c> bounds block and the order
+    /// read-and-clear - none of which a session answers to, or which this
+    /// route never reads or writes (<c>OrderKind</c>/<c>OrderedAt</c>).
+    /// </summary>
+    private static void TouchSession(
+        EfHatchRunnerSession session, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request)
+    {
+        session.LastSeenAt = now;
+
+        switch (line)
+        {
+            case null: break;
+            case "":
+                session.Line = null;
+                session.LineAt = null;
+                break;
+            default:
+                session.Line = line;
+                session.LineAt = now;
+                break;
+        }
+
+        if (request.Remotes is not null) session.Remotes = Canonicalised(request.Remotes);
+        if (request.Clones is not null) session.Clones = request.Clones;
+        if (request.Mine is not null) session.Mine = request.Mine;
+        if (request.Standing is not null) session.Standing = request.Standing;
+        if (request.Where is not null) session.Where = Fits(request.Where, EfHatchRunner.MaxNameLength);
+        if (request.Runs is not null) session.Runs = request.Runs;
+        if (request.Spent is not null) session.Spent = request.Spent;
+        if (request.TokensUsed is not null) session.TokensUsed = request.TokensUsed;
+        if (request.TokensLastHour is not null) session.TokensLastHour = request.TokensLastHour;
+        if (request.Host is not null) session.Host = Fits(request.Host, EfHatchRunner.MaxHostLength);
+        if (request.Agent is not null) session.Agent = Fits(request.Agent, EfHatchRunner.MaxAgentLength);
+        if (request.Revision is not null) session.Revision = Fits(request.Revision, EfHatchRunner.MaxRevisionLength);
+        if (request.Sequence is not null) session.Sequence = request.Sequence;
+        if (request.SourceRevision is not null) session.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
+        if (request.SourceSequence is not null) session.SourceSequence = request.SourceSequence;
+        if (request.BuiltAt is not null) session.BuiltAt = request.BuiltAt;
+
+        // Seeded once, never restated - the same rule Touch draws for a beat.
+        if (request.RefusesDangerous is not null && session.RefusesDangerous is null) session.RefusesDangerous = request.RefusesDangerous;
+
+        if (request.Exhausted == true) session.ExhaustedUntil = request.ExhaustedUntil;
+        else if (request.Exhausted == false) session.ExhaustedUntil = null;
+
+        // Loop-only, the same as Touch: a `once` beat shares the loop
+        // session's (key, where) and must not clear its own wait.
+        if (kind == EfHatchRunner.LoopKind) session.ThrottledUntil = request.ThrottledUntil;
+
+        if (Utilization.Serialise(request.Usage) is { } usage)
+        {
+            session.Usage = usage;
+            session.UsageReadAt = request.UsageReadAt;
         }
     }
 
