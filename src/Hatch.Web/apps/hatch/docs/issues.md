@@ -124,6 +124,15 @@ current, or once every child is done, the board carries it on by itself,
 with nobody reading the diff first — a move [the lifecycle of a
 ticket](the-lifecycle-of-a-ticket) calls the hop.
 
+## Finished with no code
+
+A ticket whose session declared it finished with no code (`hatch pr --none`)
+wears the 😎 glyph on its board card and in the peek, in whatever column it
+stands in, with the reason in the glyph's title. It goes when the declaration
+is cleared or set aside. [The lifecycle of a
+ticket](the-lifecycle-of-a-ticket) has how the declaration is made and set
+aside.
+
 ## Runner tags
 
 A ticket's own say over which runner may work it — a project may

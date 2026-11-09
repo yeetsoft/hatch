@@ -417,6 +417,12 @@ export function IssuePeek({
           </div>
         )}
 
+        {card.noCode && (
+          <p className="hatch-peek-nocode">
+            <strong>No code</strong> Finished with no code: {card.noCode}
+          </p>
+        )}
+
         {card.openQuestions > 0 &&
           (asked.questionsError ? (
             <p className="text-danger">{asked.questionsError}</p>

@@ -83,7 +83,8 @@ const hasMarks = (card: IssueCard) =>
   card.openQuestions > 0 ||
   card.held ||
   !!card.stalledAt ||
-  !!card.assignee;
+  !!card.assignee ||
+  !!card.noCode;
 
 /**
  * One card. A <Link> as well as a draggable, so middle-click, copy-link and
@@ -325,6 +326,11 @@ function CardFace({
               title="Pre-approved - the approve press given in advance: carried into the merge column, or closed, with no session"
             >
               ✓
+            </span>
+          )}
+          {card.noCode && (
+            <span className="hatch-card-nocode" title={`Finished with no code - ${card.noCode}`}>
+              😎
             </span>
           )}
           {/* Something is holding this one right now. On the face rather than on
