@@ -159,8 +159,8 @@ On the board, cards of projects outside the scope are not drawn, and are not
 counted in *N hidden by the filter* (nor in *N of M*), because the scope sits
 upstream of the filter row. **New issue** offers only the scope's projects
 and opens on the first of them when the filter and the remembered project are
-outside it. **Go to Work** starts your runners on the picker's project, else
-on the scope's projects, else on every project.
+outside it. **Go to Work** starts your runners; the project a runner works in
+is its own `--project`, set where it is started, not here.
 
 An issue outside the tab's scope still opens from a link, says so under its
 header, and offers to add its project to the tab in one press.
@@ -207,10 +207,7 @@ The green **Go to Work** / **Pause** button sits leftmost in the header. It
 drives only your own loop runners — a loop started by hand or on standby
 (see [Starting it at login](the-runner#starting-it-at-login)) — never
 another person's, whatever your role. **Go to Work** sets each of yours to
-running and bounds it to the project the picker holds, or the tab's scope,
-or every project when **All projects** is picked; **Pause** pauses the
-running ones. The press alone sets the project — changing the picker
-afterwards moves nothing until the next press. A press lands at the runner's next heartbeat: at once
+running; **Pause** pauses the running ones. A press lands at the runner's next heartbeat: at once
 if it is napping between passes, after the increment in flight otherwise.
 With none of yours on, the button is disabled and the status says "No
 runner"; press it to find the link to start one.
