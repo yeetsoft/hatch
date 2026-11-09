@@ -1304,6 +1304,119 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.CheckApprovesMergeAt);
     }
 
+    // ---- No-code closes ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutNoCodeCloses()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutNoCodeCloses(h.ProjectId, new ProjectNoCodeClosesWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.NoCodeCloses);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutNoCodeClosesNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change whether a no-code declaration closes the ticket", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.False(row.NoCodeCloses);
+        Assert.Null(row.NoCodeClosesBy);
+        Assert.Null(row.NoCodeClosesAt);
+    }
+
+    [Fact]
+    public async Task PutNoCodeCloses_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutNoCodeCloses(h.ProjectId + 1000, new ProjectNoCodeClosesWriteRequest(true), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningNoCodeClosesOn_StampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default));
+
+        Assert.True(written.NoCodeCloses);
+        Assert.Equal(h.Nathan.Name, written.NoCodeClosesBy);
+        Assert.Equal(Now, written.NoCodeClosesAt);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningNoCodeClosesOff_RestampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.NoCodeClosesBy = "someone earlier";
+        row.NoCodeClosesAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var written = Value(await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(false), default));
+
+        Assert.False(written.NoCodeCloses);
+        Assert.Equal(h.Nathan.Name, written.NoCodeClosesBy);
+        Assert.Equal(Now, written.NoCodeClosesAt);
+    }
+
+    [Fact]
+    public async Task ResendingTheNoCodeClosesAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.NoCodeClosesBy = "someone earlier";
+        row.NoCodeClosesAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default));
+
+        Assert.True(result.NoCodeCloses);
+        Assert.Equal("someone earlier", result.NoCodeClosesBy);
+        Assert.Equal(Now.AddDays(-1), result.NoCodeClosesAt);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsNoCodeClosesFieldsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.NoCodeCloses);
+        Assert.Null(created.NoCodeClosesBy);
+        Assert.Null(created.NoCodeClosesAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(fresh.NoCodeCloses);
+        Assert.Null(fresh.NoCodeClosesBy);
+        Assert.Null(fresh.NoCodeClosesAt);
+
+        await h.Projects.PutNoCodeCloses(created.Id, new ProjectNoCodeClosesWriteRequest(true), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.True(read.NoCodeCloses);
+        Assert.Equal(h.Nathan.Name, read.NoCodeClosesBy);
+        Assert.Equal(Now, read.NoCodeClosesAt);
+    }
+
     // ---- Reflection ----
 
     [Fact]

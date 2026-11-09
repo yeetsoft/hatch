@@ -222,6 +222,28 @@ public class EfHatchProject
     public DateTimeOffset? CheckApprovesMergeAt { get; set; }
 
     /// <summary>
+    /// Whether a no-code declaration on an issue closes it outright, rather
+    /// than leaving it for a person. Off by default. The close arm of
+    /// <see cref="Dispatch.HopKind"/> reads it.
+    /// Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    public bool NoCodeCloses { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="NoCodeCloses"/>, as a name rather than
+    /// a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null until
+    /// the first change. Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? NoCodeClosesBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="NoCodeCloses"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    public DateTimeOffset? NoCodeClosesAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered
