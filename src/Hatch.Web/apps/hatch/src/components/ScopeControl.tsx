@@ -1,4 +1,4 @@
-import { Menu, ProjectMark, markVars } from '@hatch/ui';
+import { Menu, MenuCaret, ProjectMark, markVars } from '@hatch/ui';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { toggleChoice } from '../lib/checklist';
 import type { Project } from '../types';
@@ -44,13 +44,17 @@ export function ScopeControl({
                   {project.key}
                 </span>
               ))}
+            <MenuCaret />
           </button>
         ) : (
-          <button {...props}>All projects</button>
+          <button {...props}>
+            All projects
+            <MenuCaret />
+          </button>
         )
       }
     >
-      <div className="hatch-types-panel" role="group" aria-label="Projects">
+      <div className="hatch-types-panel hatch-scope-control__panel" role="group" aria-label="Projects">
         {projects.map((project) => {
           const on = keys.length === 0 || keys.includes(project.key);
           return (
@@ -61,7 +65,7 @@ export function ScopeControl({
                 onChange={() => onChange(toggleChoice(keys.length === 0 ? allKeys : keys, project.key, allKeys))}
               />
               <ProjectMark size="sm" letters={project.key} color={project.color} icon={project.icon} title={project.name} />
-              <span className="hatch-types-name">
+              <span className="hatch-types-name hatch-scope-control__name">
                 {project.key} — {project.name}
               </span>
             </label>
