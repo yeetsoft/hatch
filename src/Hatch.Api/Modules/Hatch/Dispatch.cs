@@ -1533,10 +1533,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// implementation column, so the move off the backlog stays a person's
     /// (HA-1069); a sub-epic whose parent is not a running epic is never carried
     /// by it (HA-202). Beside the merge arm stands the close arm (HA-472): a
-    /// pre-approved issue in review with no pull request and a column to close
-    /// to, whose children are all done, or that declared it finished with no
-    /// code (<see cref="NoCode"/>) - a declared issue with open children still
-    /// waits for them. The order
+    /// pre-approved issue, or one in a project whose CheckApprovesMerge is on,
+    /// in review with no pull request and a column to close to, whose children
+    /// are all done, or that is pre-approved and declared it finished with no
+    /// code (<see cref="NoCode"/>) - the setting alone never carries a childless
+    /// issue, and a declared issue with open children still waits for them. The order
     /// matters only where a board ticks both ExpressSkips and ParentPulls on
     /// the same column and an epic stands exactly in the implementation
     /// column - see HA-113's own decision on the overlap. Never on a move that
@@ -1590,9 +1591,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
 
         if (Columns.AwaitingReview(statuses)?.Id == from.Id
             && Columns.Closes(statuses, from) is not null
-            && effectivePreApproval == PreApprovalLevels.PreApproved
+            && (effectivePreApproval == PreApprovalLevels.PreApproved || issue.Project!.CheckApprovesMerge)
             && issue.PullRequestUrl is not { Length: > 0 }
-            && (family.Children(issue.Id).Count > 0 || NoCode.Declared(issue))
+            && (family.Children(issue.Id).Count > 0 || (NoCode.Declared(issue) && effectivePreApproval == PreApprovalLevels.PreApproved))
             && (IssueTypeKinds.RunsChildren(issue.Type)
                 ? family.EpicFold(issue.Id, statuses) is null
                 : family.OpenChildren(issue.Id).Count == 0))

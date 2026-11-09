@@ -201,7 +201,8 @@ public class EfHatchProject
 
     /// <summary>
     /// Whether a passing check on this project's pull request counts as the
-    /// approval that lets it merge. Off by default. Nothing reads it yet.
+    /// approval that lets it merge. Off by default. The close arm of
+    /// <see cref="Dispatch.HopKind"/> reads it.
     /// Written only by <see cref="ProjectsController.PutCheckApprovesMerge"/>.
     /// </summary>
     public bool CheckApprovesMerge { get; set; }
