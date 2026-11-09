@@ -28,6 +28,7 @@ import {
   runnerBuildLabel,
   tagsLabel,
   projectsLabel,
+  modelsLabel,
   tokenBudget,
   tokenFieldHint,
   topRefusal,
@@ -270,16 +271,17 @@ export function Row({
   );
 }
 
-/** The five facts the row itself no longer carries, unfolded under it: where
-    it runs, the agent it runs, its own build, what it drives (always - this
-    is the line that says "driving nothing"), and the repositories it
-    serves. */
+/** The six facts the row itself no longer carries, unfolded under it: where
+    it runs, the agent it runs, the models it offers, its own build, what it
+    drives (always - this is the line that says "driving nothing"), and the
+    repositories it serves. */
 export function RunnerDetails({ runner, now }: { runner: Runner; now: Date }) {
   const build = runnerBuildLabel(runner, now);
   return (
     <>
       {runner.where && <Text tone="muted">{runner.where}</Text>}
       {runner.agent && <Text tone="muted">{runner.agent}</Text>}
+      {modelsLabel(runner) && <Text tone="muted">{modelsLabel(runner)}</Text>}
       {build && <Text tone="muted">{build}</Text>}
       <Text tone="muted">{drivesLabel(runner)}</Text>
       {repositoriesLabel(runner) && <Text tone="muted">{repositoriesLabel(runner)}</Text>}
