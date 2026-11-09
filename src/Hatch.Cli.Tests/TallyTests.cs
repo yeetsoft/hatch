@@ -10,7 +10,7 @@ public sealed class TallyTests
         DateTimeOffset? usageLimitResetAt = null, bool letGo = false, bool preempted = false, int filed = 0,
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
-        bool quietStopped = false, bool recused = false, string? recusedReason = null) =>
+        bool quietStopped = false, bool recused = false, string? recusedReason = null, bool unservable = false) =>
         new()
         {
             Key = key,
@@ -37,6 +37,9 @@ public sealed class TallyTests
             HardLimitedAtTokens = hardLimited ? hardLimitedAtTokens ?? 7_500_000L : null,
             HardLimitedAtRequests = hardLimited ? hardLimitedAtRequests : null,
             QuietStopped = quietStopped,
+            Unservable = unservable,
+            UnservableModel = unservable ? "fable" : null,
+            ReleaseOutcome = unservable ? ClaimOutcomes.Unservable : null,
         };
 
     [Fact]
@@ -180,6 +183,22 @@ public sealed class TallyTests
         Assert.False(tally.ShouldStop());
         Assert.Equal(0, tally.Fails);
         Assert.Equal(resetAt, tally.ExhaustedUntil);
+    }
+
+    [Fact]
+    public void An_unservable_model_is_not_one_of_the_three_either()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1, moved: false, unservable: true));
+        tally.Record(Report("AER-2", exit: 1, moved: false, unservable: true));
+        tally.Record(Report("AER-3", exit: 1, moved: false, unservable: true));
+        tally.Record(Report("AER-4", exit: 1, moved: false, unservable: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+        Assert.Null(tally.ExhaustedUntil);
+        Assert.Contains(tally.ToState().Interrupted, l => l.Contains("unservable  AER-1", StringComparison.Ordinal));
     }
 
     /// <summary>

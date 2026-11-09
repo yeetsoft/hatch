@@ -194,7 +194,7 @@ public sealed class FakeAdapter : IAgentAdapter
     public IAgentStreamReader CreateReader(string root, RunFacts facts, string model)
     {
         OnReader?.Invoke(facts);
-        return new FakeStreamReader(facts, ResumeCommand);
+        return new FakeStreamReader(facts, ResumeCommand, StreamUsage);
     }
 
     public string? ReadClosing(string json) => null;
@@ -219,6 +219,9 @@ public sealed class FakeAdapter : IAgentAdapter
 
     public ModelRefusal.Recognised? ModelRefused { get; set; }
 
+    /// <summary>The usage windows the reader reports once the stream ends - empty unless a test sets them.</summary>
+    public IReadOnlyList<UsageWindow> StreamUsage { get; set; } = [];
+
     public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefused;
 
@@ -233,7 +236,7 @@ public sealed class FakeAdapter : IAgentAdapter
 /// wrote: <c>FAKE-RESULT sessionId|title|summary|turns|costUsd|durationMs</c>,
 /// pipe-delimited, with none of <see cref="StreamRender"/>'s stream-json.
 /// </summary>
-internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand) : IAgentStreamReader
+internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand, IReadOnlyList<UsageWindow> usage) : IAgentStreamReader
 {
     private const string Prefix = "FAKE-RESULT ";
 
@@ -245,7 +248,7 @@ internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resu
 
     public IReadOnlyList<WorkLogReadDto> Reads => [];
 
-    public IReadOnlyList<UsageWindow> Usage => [];
+    public IReadOnlyList<UsageWindow> Usage => usage;
 
     public DateTimeOffset? UsageReadAt => null;
 
