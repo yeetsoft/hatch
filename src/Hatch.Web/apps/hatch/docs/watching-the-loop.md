@@ -123,13 +123,11 @@ than locking that figure in as the runner's own. Its hint names the figure it
 is inheriting instead of the usual token-count wording, so the empty box is
 never mistaken for an unset cap.
 
-**Tags** seed from the loop's first heartbeat only; after that the row is
-the board's, and editing them here - or a `PATCH` on the row - is what
-moves them from here on. The loop adopts a changed list on its very next
-heartbeat, saying so once - `hatch: the board set --tag ...`, or `--tag
-off` for none.
+**Tags** are set only here - or by a `PATCH` on the row - the CLI never sends
+them. The loop adopts a changed list on its very next heartbeat, saying so
+once - `hatch: the board set --tag ...`, or `--tag off` for none.
 
-The bounds are not seeded once the way tags are. Each fresh start of a loop -
+Each fresh start of a loop -
 one started by hand, or the supervisor's first start - writes the bounds it
 was started with onto its row on its first heartbeat, overwriting an edit made
 here and clearing any bound the row held for a flag the loop was not given.

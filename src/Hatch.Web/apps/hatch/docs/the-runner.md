@@ -150,7 +150,7 @@ that names an origin and no key is keyless on purpose, and `hatch config --here
 same call, or none. *Several runners on one machine* has this in a recipe.
 
 **Board-bound names.** While a profile is active, the per-user file is not
-consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_RUNNER`, `HATCH_TAGS`,
+consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_RUNNER`,
 `HATCH_WORKSPACE` and `HATCH_REPOS`: they belong to one board, so the profile
 answers for them or nothing does, and `--show` marks each of them
 `(profile active: the per-user file was not consulted)`. The machine-bound
@@ -200,8 +200,6 @@ HATCH_RUNNER         what the board calls this runner (default: a cast-list
 HATCH_ROOT           the checkout to work in (default: upwards from here)
 HATCH_REPOS          checkouts a loop with no checkout of its own serves,
                      joined on : (Unix) or ; (Windows)
-HATCH_TAGS           the tags this runner advertises, comma-separated (default:
-                     none)
 HATCH_WORKSPACE      where it clones what the board binds (unset: a per-user
                      default; off: never clone)
 HATCH_LOG            where its log goes (on: the logs folder beside the
@@ -244,7 +242,6 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   or the per-user file;
 - the key masked, never in full;
 - `HATCH_REPOS` as a path a line;
-- `HATCH_TAGS` as a comma-separated list, or `<unset>`;
 - for an unset `HATCH_WORKSPACE`, the directory clones would go to;
 - `HATCH_LOG:` as `<unset - no log>`, `off - no log`, or the folder the log
   goes to (the `logs` folder beside the per-user file, for `on`);
@@ -263,17 +260,15 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   ```
   HATCH_KEY: …  (ignored: <layer> holds a key, but HATCH_BASE comes from <layer> - set both there, or neither)
   HATCH_RUNNER: …  (ignored: <layer> holds a name, but a runner's name belongs to a checkout - export it, or put it in scripts/.env)
-  HATCH_TAGS: …  (profile active: the per-user file was not consulted)
   ```
 
-  The first is the pairing rule, the second the **Warn** on `HATCH_RUNNER`, the
-  third every board-bound line while a profile is active, set or not.
+  The first is the pairing rule, the second the **Warn** on `HATCH_RUNNER`.
 
 ## What a runner advertises
 
 A runner tells the board three facts, each owned differently. *Tags* are a
-person's decision: the first beat that names any seeds the row, and after
-that the row is where they live, moved only by a `PATCH` on it. *Models* -
+person's decision: set only on the Runners page, by a `PATCH` on the row,
+never by the CLI - the row is where they live. *Models* -
 what its agent can spawn - and *has* - what its machine has - are
 detections instead: every beat overwrites the row, and no page or `PATCH`
 edits them, so a value can never say a machine has a tool it does not. Each
@@ -290,28 +285,14 @@ project's, never away from it - a runner must carry the whole union. A column
 may require tags of its own too, union'd in the same way, and gating every
 move out of it. The union gates every move a runner is handed, in every
 column and on every hop - a tag says which runner may work a ticket, not only
-which may write its code. **The tags seed the row once.** The first heartbeat to name any
-writes them onto the row, which is what makes them show on the page
-immediately; every heartbeat after that leaves them alone, whether or not it
-names any of its own. The consequence is worth knowing: once a runner's row
-carries tags, **the row is where they live**, and `hatch config --tag` typed
-at a checkout that already has one changes the board no more than
-`--max-runs` does from the command line - only a `PATCH` on the row itself
-moves them from here on. The board reads them
-again on every dispatch, and a running loop adopts the row's tags on its next
-heartbeat and says so once (`hatch: the board set --tag ...`).
+which may write its code. **Tags are set only on the Runners page** - a
+`PATCH` on the row, never the CLI - and that is where they live. The loop
+reads them back on every heartbeat and adopts them, saying so once
+(`hatch: the board set --tag ...`).
 
 A runner carries at most 8 tags. Each is at most 32 characters, with no space
 or comma inside, and is trimmed and lowercased. A tag that breaks the rule
-refuses every command, with the rule's sentence.
-
-```
-HATCH_TAGS=gpu,linux
-hatch config --tag gpu --tag linux
-```
-
-`--tag` is repeatable, and bare `--tag` clears them. An empty `HATCH_TAGS`
-reads as unset, so a runner that sets nothing advertises nothing.
+is refused by the Runners page with the rule's sentence.
 
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
@@ -498,10 +479,13 @@ dangerous work. Any other value refuses every command with a sentence.
 `--here` and `--profile` write the setting where they write anything else, and
 it is machine-bound: a profile still reads it from the per-user file.
 
-**The setting is a fact about the process.** Every heartbeat writes it onto
-the runner's row afresh, re-sent each beat rather than seeded once, and
-`hatch config --dangerous` takes effect on the next start of the runner it
-was written for - there is no row for a running loop to adopt it from.
+**The setting is the CLI's own.** It rides every heartbeat the way `remotes`
+and `models` do, re-sent afresh each beat rather than seeded once, and the
+Runners page draws it from there - it is never a `PATCH` field, and it is
+never answered back. The loop's own flag is the only thing that sets it, for
+the whole run: `hatch config --dangerous` takes effect on the next start of
+the runner it was written for, and there is no row for a running loop to
+adopt it from.
 
 A runner can also refuse one ticket rather than every dangerous one: a session
 that decides the work is not one this runner can do runs `hatch recuse AER-12
@@ -661,7 +645,7 @@ checkouts, which is shape c.
 ### Profiles
 
 A profile is a named file holding the settings that belong to one board - its
-origin, its key, its tags, its workspace. [Four layers](#four-layers) says
+origin, its key, its workspace. [Four layers](#four-layers) says
 where it sits among the other layers, and what falls through to the per-user
 file while one is active; [What --show prints](#what---show-prints) says how
 `--show` marks each of those lines. This section is only the commands.
@@ -723,20 +707,23 @@ What is **not** per checkout is everything else. The per-user file - its
 directory is the OS application-data folder, `%APPDATA%\hatch` on Windows,
 `~/Library/Application Support/hatch` on macOS and `$XDG_CONFIG_HOME/hatch`
 (default `~/.config/hatch`) on Linux; `hatch config --show` prints the exact
-path, and is the one answer that is always right - holds the origin, the key, the agent, the tags and the workspace for
+path, and is the one answer that is always right - holds the origin, the key, the agent and the workspace for
 every checkout on the machine, until a profile or a checkout's own
 `scripts/.env` overrides a line of it. Two checkouts left on the one `hatch
 config` are the same runner wearing two names: same board, same key, same
-tags, same workspace - rarely the point of running two.
+workspace - rarely the point of running two.
 
 #### Setting up the second checkout
 
 In `<checkout-b>`:
 
 ```
-hatch config --here --tag breakdown
 hatch config --here --workspace <dir>
 ```
+
+The light runner's tags are set on the Runners page, not here - `breakdown`
+for the light runner, `build` for the primary - and the loop adopts them on
+its next beat.
 
 `<dir>` is a directory of its own, outside both checkouts - a workspace may
 not sit inside a named checkout, nor a named checkout inside it. `--here`
@@ -795,12 +782,11 @@ HATCH_BASE_BRANCH: <unset>
 HATCH_RUNNER:      <unset>
 HATCH_REPOS:       <unset>
 HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>  (profile: <none>)
-HATCH_TAGS:        <unset>
 ```
 
 Run from `<checkout-b>`, pinned to `<profile-b>` - shape c - which was
 created with `hatch config --profile <profile-b> --origin <origin>`, then
-`--key <key>` and `--tag breakdown`. Every board-bound line now answers from
+`--key <key>`. Every board-bound line now answers from
 the profile or from nothing, and says so; `HATCH_AGENT` describes the machine,
 so it still folds through from the per-user file:
 
@@ -824,7 +810,6 @@ HATCH_BASE_BRANCH: <unset>
 HATCH_RUNNER:      <unset>  (profile active: the per-user file was not consulted)
 HATCH_REPOS:       <unset>  (profile active: the per-user file was not consulted)
 HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspaces/<profile-b>>  (profile: <profile-b>)  (profile active: the per-user file was not consulted)
-HATCH_TAGS:        breakdown  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
 ```
 
 A profile with no workspace of its own gets one beside the no-profile default,
@@ -894,10 +879,8 @@ Do, In Review on a stock board) is open to both runners, as long as the
 project, the ticket and its ancestors require nothing the runner lacks - a
 hop is gated exactly as any other move is - and a runner advertising a
 superset of what a column requires qualifies same as one advertising exactly
-that. **Tags seed a runner's row
-once** - the first heartbeat naming any writes them onto the board, and
-`--here --tag` typed again after that changes nothing until a `PATCH` on the
-row itself moves them (see [what a runner
+that. **Tags are set on the Runners page**, and the loop adopts them on its
+next beat (see [what a runner
 advertises](#what-a-runner-advertises)). `hatch queue`, run in either
 checkout, names the missing tag by name when it passes a card over for want
 of one. See also [Runner tags](the-board-and-its-columns) for the column-side
