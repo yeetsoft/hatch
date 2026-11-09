@@ -308,6 +308,96 @@ public class RunnersControllerTests
         Assert.Empty(await h.Db.Runners.ToListAsync());
     }
 
+    // ---- Has ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingDependencies_StoresThemInTheOrderGiven()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        Assert.Equal(["dotnet@10.0.100", "node@22.11.0"], (await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ALaterHeartbeat_OverwritesTheDependenciesAPriorOneReported()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["make"]));
+
+        Assert.Equal(["make"], (await h.OneAsync()).Has);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: []));
+        Assert.Empty((await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoHas_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["dotnet@10.0.100", "node@22.11.0"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal(["dotnet@10.0.100", "node@22.11.0"], (await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ARowThatNeverReportedHas_ReadsThemEmpty()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Empty((await h.OneAsync()).Has);
+    }
+
+    [Fact]
+    public async Task ADependencyInAnyCase_IsStoredLowercased()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["Dotnet@10.0.100"]));
+
+        Assert.Equal(["dotnet@10.0.100"], (await h.OneAsync()).Has);
+        Assert.Equal("dotnet@10.0.100", (await h.RowAsync()).Has);
+    }
+
+    [Theory]
+    [InlineData("cobol")]
+    [InlineData("dotnet@x")]
+    public async Task ABadDependency_IsRefusedWithTheRulesSentenceAndLeavesTheRowAlone(string entry)
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Has: ["make"]));
+        var seenAt = (await h.RowAsync()).LastSeenAt;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+
+        // Not BeatAsync: it throws on anything but a value, and this refusal
+        // is the assertion.
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Has: [entry]), default);
+
+        var sentence = DependencySet.Normalise([entry], out _);
+        Assert.NotNull(sentence);
+        Assert.Equal(sentence, Reason(refusal.Result));
+        var row = await h.RowAsync();
+        Assert.Equal("make", row.Has);
+        Assert.Equal(seenAt, row.LastSeenAt);
+    }
+
+    [Fact]
+    public async Task ARefusedFirstBeatNamingDependencies_CreatesNoRow()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Has: ["cobol"]), default);
+
+        Assert.Equal(DependencySet.Normalise(["cobol"], out _), Reason(refusal.Result));
+        Assert.Empty(await h.Db.Runners.ToListAsync());
+    }
+
     // ---- Tags ----
 
     [Fact]
