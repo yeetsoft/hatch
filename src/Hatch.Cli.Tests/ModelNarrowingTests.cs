@@ -162,6 +162,71 @@ public sealed class ModelNarrowingTests
         Assert.Equal(Aliases, narrowing.Offered(Aliases, Now));
     }
 
+    private static UsageWindow ModelWeek(string label, double utilization, DateTimeOffset? resetsAt) =>
+        new("weeklyModel", label, utilization, resetsAt);
+
+    [Theory]
+    [InlineData("Weekly (Opus)")]
+    [InlineData("Weekly (Opus 5)")]
+    public void A_spent_model_week_names_the_tier_until_its_reset(string label)
+    {
+        var reset = Now.AddDays(2);
+
+        var spent = ModelNarrowing.Spent([ModelWeek(label, 1.0, reset)], Now);
+
+        Assert.Equal([("opus", reset)], spent.ToArray());
+    }
+
+    [Fact]
+    public void A_model_week_under_the_limit_is_not_spent()
+    {
+        Assert.Empty(ModelNarrowing.Spent([ModelWeek("Weekly (Opus)", 0.99, Now.AddDays(2))], Now));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_model_week_with_no_reset_ahead_of_now_is_not_spent(int? hoursAhead)
+    {
+        DateTimeOffset? reset = hoursAhead is { } h ? Now.AddHours(h) : null;
+
+        Assert.Empty(ModelNarrowing.Spent([ModelWeek("Weekly (Opus)", 1.0, reset)], Now));
+    }
+
+    [Fact]
+    public void A_model_week_naming_no_tier_is_not_spent()
+    {
+        Assert.Empty(ModelNarrowing.Spent([ModelWeek("Weekly (model)", 1.0, Now.AddDays(2))], Now));
+    }
+
+    [Fact]
+    public void Only_a_per_model_window_can_be_spent()
+    {
+        UsageWindow[] windows =
+        [
+            new("session", "Session", 1.0, Now.AddHours(2)),
+            new("weekly", "Weekly (Opus)", 1.0, Now.AddDays(2)),
+        ];
+
+        Assert.Empty(ModelNarrowing.Spent(windows, Now));
+    }
+
+    [Fact]
+    public void A_mixed_reading_yields_only_the_spent_tiers_one_each()
+    {
+        var reset = Now.AddDays(2);
+        UsageWindow[] windows =
+        [
+            new("session", "Session", 1.0, Now.AddHours(2)),
+            ModelWeek("Weekly (Sonnet)", 0.5, reset),
+            ModelWeek("Weekly (Opus)", 1.0, reset),
+            ModelWeek("Weekly (Haiku)", 1.0, reset.AddDays(1)),
+        ];
+
+        Assert.Equal([("opus", reset), ("haiku", reset.AddDays(1))], ModelNarrowing.Spent(windows, Now).ToArray());
+    }
+
     private sealed class ZoneClock(DateTimeOffset now, TimeSpan offset) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

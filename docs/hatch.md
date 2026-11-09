@@ -223,8 +223,8 @@ absence starts to hurt:
   beyond the global role — moving an issue into a protected column, read
   through `IProjectAccess.CanApproveAsync`/`HasRoleAsync`. Beside that one
   permission, reaching Hatch at all means trusted to do everything else in it.
-  The API key's scope is still a statement about *which surface*, never about
-  which verb.
+  Which routes a key may take is still a statement about *which surface*,
+  never about which verb.
 - **No swimlanes or sprints.**
 - **No GitHub integration beyond one read and two writes.** A commit sha in a
   comment is the link, and it is written by whoever did the work. What is read
@@ -590,7 +590,7 @@ carry script, and an image format that executes is the one thing serving
 uploads from the install's own origin must not do.
 
 **Reading is open to a key; writing is a person's alone** — the same cut as a
-[repository](#repository): `[RequireRole(User)]` with no scope on the `PUT`
+[repository](#repository): `[RequireRole(User)]` without `AcceptKey` on the `PUT`
 and the `DELETE`, checked again in the action.
 
 `ProjectDto.LogoUpdatedAt` is what lets the browser point an `<img>` at a
@@ -624,7 +624,7 @@ Every client sends what it has and lets the server decide what matches, so two
 callers can never come to disagree about it.
 
 **Reading is open to a key; writing is a person's alone**, `[RequireRole(User)]`
-with no scope, the same cut as a playbook, an assignee and a runner's bounds
+without `AcceptKey`, the same cut as a playbook, an assignee and a runner's bounds
 (see ["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut)).
 A runner that could bind a remote could point every runner the board ever
 dispatches at a repository nobody chose — the exact failure the closed edge
@@ -1198,7 +1198,7 @@ breaks.
 the wall is off — the same cut as [expedite](#expedite) and [stories at
 once](#stories-at-once), and for the same reason: a key that could set
 either could carry its own ticket through the night unattended, or approve
-it in advance.** `IssuePreApprovalController` carries no class-level scope,
+it in advance.** `IssuePreApprovalController` does not set `AcceptKey`,
 so both routes refuse a program outright before the issue is even looked
 up. It follows that there is no `hatch` verb that sets it — the CLI
 authenticates with a key, so the terminal shows the level (`show`, `board`,
@@ -3092,7 +3092,7 @@ gate on top of it — and the wall has a second lane, the API key.
   It asks "at least this role", and it is on whenever the wall is: there is no
   switch. Every Hatch controller carries
   `[RequireRole(PersonRole.User, AcceptKey = true)]` (a handful of
-  person-only routes carry `[RequireRole(PersonRole.User)]` with no scope), and
+  person-only routes carry `[RequireRole(PersonRole.User)]` with no `AcceptKey`), and
   the bundle is in `AdminAppMiddleware`'s `GatedApps` beside `/apps/admin`,
   also at User. The operator's own verbs — people writes and sessions, grants,
   invites, API keys, the core settings — are `[RequireRole(PersonRole.Admin)]`,
@@ -3135,7 +3135,7 @@ why it stops at exactly one.
 
 ### The key
 
-`EfApiKey` — `Name` (unique), `Prefix`, `Hash`, `Scopes` (`text[]`),
+`EfApiKey` — `Name` (unique), `Prefix`, `Hash`,
 `CreatedAt`, `LastUsedAt`, `RevokedAt`.
 
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
@@ -3164,12 +3164,12 @@ last-seen takes and for the same reason.
 **The row lives in the core `public` schema**, not in `hatch` beside the app
 that prompted it. The wall reads this table on the way in, so a module owning it
 would make the wall depend on a module — the one thing `Modules/README.md` says
-never happens. The scope strings name modules; the rows do not belong to them.
+never happens.
 
 A key is a **peer** of a grant rather than a variant of one. A grant is a device
 the household enrolled and the wall lets in whole; a key is a named program
-allowed a stated slice. They differ in every field that matters — a key carries
-scopes and a grant does not, a key is revoked by a column and a grant by a
+allowed the routes that accept a key. They differ in every field that matters — a key names
+a program and a grant names a device, a key is revoked by a column and a grant by a
 `DELETE`, and a key is never re-issued into a cookie. Folding them into one
 table would mean a nullable half of the row for each.
 
@@ -3207,32 +3207,32 @@ Three things fall out of that, none of them added on purpose:
   — and, more importantly, a key must not inherit the answer a browser signed in
   on the same machine would have got.
 
-### What a scope is, and what it is not
+### What a key may take
 
-`AcceptKey` on `[RequireRole]` is a bool that lets a key into that route; the
-interim check still requires the key to carry the `hatch` scope until the
-removal task lands. It is **opt-in**: setting it is a claim that this surface has been
+`AcceptKey` on `[RequireRole]` is a bool that lets a key into that route. It is
+**opt-in**, default false: setting it is a claim that this surface has been
 thought through for a caller that is a program rather than a person, and the
-honest number of surfaces that have been is one. Every route that does not set it —
+number of surfaces that have been is small. Every route that does not set it —
 minting credentials, revoking sessions, editing the house, roughly forty verbs
 — keeps refusing keys, with `key_not_accepted`. That is what makes adding a key
 a bounded act rather than a broad one.
 
-A scope widens nothing for a person: a route that accepts `hatch` is still
+Accepting a key widens nothing for a person: a route that accepts one is still
 closed to a person below the role it asks for. And a key is never an
 *administrator* — `RoleOutcome.Key` is its own outcome, and it means "this
-program reaches what its scopes name", not "this program is the operator".
+program reaches what the routes that accept a key name", not "this program is
+the operator".
 
-If a request comes back `403` for `key_not_accepted` or `scope_mismatch`, the
-key is working and the route is not one a key may take. Any other `403` names
-its own cause instead - a different role-gate code, or a plain sentence about
-who may make the change.
+If a request comes back `403` for `key_not_accepted`, the key is working and
+the route is not one a key may take. Any other `403` names its own cause
+instead - a different role-gate code, or a plain sentence about who may make
+the change.
 
 ### The one edge that is deliberately cut
 
 **Writing a playbook is closed to a key.** The three write verbs on
-`PlaybooksController` carry a plain `[RequireRole(PersonRole.User)]` naming no scope, while the
-read carries the scope like everything else. `DeniedTools` rides the same
+`PlaybooksController` carry a plain `[RequireRole(PersonRole.User)]` which accepts no key, while the
+read accepts one like everything else. `DeniedTools` rides the same
 three verbs and the same person-only cut — it is not a new edge.
 
 **That cut only held where the wall was on.** `RoleGate` is dormant with
@@ -3252,7 +3252,7 @@ second one: `PATCH /api/hatch/issues/{key}/playbook` sets the model and the
 effort every increment on that ticket runs on, which is a playbook's power
 routed through another table. It lives on its own controller
 (`IssuePlaybookController`) for exactly that reason — `IssuesController` accepts
-the `hatch` scope on everything it holds, so two more fields on the ordinary
+a key on everything it holds, so two more fields on the ordinary
 issue patch would have been an agent that can raise its own budget. Reading an
 override is open, like everything else a dispatch needs: an agent is entitled to
 know what it is being spent on, and both fields ride `IssueDto`.
@@ -3271,10 +3271,10 @@ may be **sent at** — because under the loop's `people only` rule, a name on a
 ticket is what holds it off the night shift. A key that could write one could
 clear a person's name off a ticket and hand itself work somebody had reserved.
 So `PUT /api/hatch/issues/{key}/assignee` lives on its own controller
-(`AssigneeController`) carrying no class-level scope, for the same reason and by
+(`AssigneeController`) not setting `AcceptKey`, for the same reason and by
 the same means. Reading is open, and deliberately: an agent has to be able to
 say whose ticket it is leaving alone, so both `GET /api/hatch/assignees` and the
-`assignee` on `IssueDto` are Hatch-scoped like everything else.
+`assignee` on `IssueDto` are open to a key like everything else.
 
 **And so is setting the priority level**, which is the same edge as the
 assignee read from the other side. An assignee holds a ticket *off* the night
@@ -3282,8 +3282,8 @@ shift; priority puts one at the *front* of it — so a key that could set one
 could put its own ticket ahead of everything a person filed, every night,
 without anything looking wrong on the board. `PUT
 /api/hatch/issues/{key}/priority` and its legacy two-level alias `PUT
-.../expedite` therefore both live on `IssueExpediteController`, which carries
-no class-level scope and guards each action the same way, cut in the route by
+.../expedite` therefore both live on `IssueExpediteController`, which does
+not set `AcceptKey` and guards each action the same way, cut in the route by
 the same means. Reading is open like the rest: `priority` and the derived
 `expedited` both ride `IssueDto` and `IssueCardDto`, because an agent is
 entitled to know why it was sent where it was sent. It follows that there is
@@ -3292,10 +3292,10 @@ key, so the terminal *shows* the level on `board`, `queue` and `show` and sets
 it nowhere.
 
 **Filing the bug a failing trunk's button offers (HA-95) bends this edge, and
-only this one.** `TrunkBuildBugController` still carries no class-level
-scope — a stranger key pressing the button for a ticket of its own choosing is
-cut by the same means as priority. But the method itself accepts the `hatch`
-scope (HA-792), gated at runtime rather than by the attribute, because the
+only this one.** `TrunkBuildBugController` still does not set
+`AcceptKey` — a stranger key pressing the button for a ticket of its own choosing is
+cut by the same means as priority. But the method itself accepts a key
+(HA-792), and is gated again at runtime, because the
 attribute cannot vary project to project: a key may take it only where the
 project that binds the row's repository has turned auto-filing on, and where
 it has, the bug's priority, pre-approval level and column come off that
@@ -3316,7 +3316,7 @@ person's own call is unchanged in every respect — same body, same defaults
 itself still goes through `IssuesController.CreateIssueAsync`'s internal,
 level-aware overload, so the bug's number, rank, column and `created` event
 are the ordinary ones and the level is set in the same save rather than a
-second write after. Reading the trunk builds themselves stays Hatch-scoped,
+second write after. Reading the trunk builds themselves stays open to a key,
 the way reading a build check is: a verdict about a sha is a fact any runner
 reads the same way, whichever repository it binds.
 
@@ -3333,7 +3333,7 @@ progress, and how much of each slice of the board may sit across them at once,
 is the operator's to set — a key that could raise a limit or empty the
 section could pull more of its own work in overnight, the loop stalling behind
 a ceiling it had just raised for itself. `PUT /api/hatch/wip` therefore lives
-on its own controller (`WipController`) carrying no class-level scope, cut in
+on its own controller (`WipController`) not setting `AcceptKey`, cut in
 the route by the same means, and checked a second time in the action for
 `IssueClaimController.NotAPerson`'s reason: `RoleGate` is dormant wherever the
 wall is off, and a keyless runner there is a program too. Reading is open, like
@@ -3346,7 +3346,7 @@ may pass *unattended* — a key that could raise it to `express` or
 reading it first, or approve it in advance, the same kind of widening a
 playbook or an assignee would be. `PUT /api/hatch/issues/{key}/pre-approval`,
 and its legacy two-level alias `PUT .../express`, both live on
-`IssuePreApprovalController`, carrying no class-level scope, cut by the
+`IssuePreApprovalController`, not setting `AcceptKey`, cut by the
 same means as priority and expedite — and gated by what the change touches
 rather than by one blanket check: moving onto or off `express` asks the
 same question an ordinary move into `Columns.SendBack` would, through
@@ -3354,7 +3354,7 @@ same question an ordinary move into `Columns.SendBack` would, through
 either side of the change, asks `IProjectAccess.CanApproveAsync` instead,
 since setting it is the approve press given in advance and lowering from
 it undoes that act. The column half cannot ride `PATCH
-/api/hatch/statuses/{id}` — that route accepts the `hatch` scope on every
+/api/hatch/statuses/{id}` — that route accepts a key on every
 action, so one more field on the ordinary status patch would have been a
 key ticking its own gate — so it gets its own action, `PUT
 /api/hatch/statuses/{id}/express-skips`, carrying a plain
@@ -3371,7 +3371,7 @@ of it, the same as expedite.
 could raise its own epic's ceiling could pull more of its own stories into
 progress at once, the same widening the WIP section's own limit is cut
 against. `PATCH /api/hatch/issues/{key}/wip` therefore lives on its own
-controller (`IssueWipLimitController`) carrying no class-level scope, cut by
+controller (`IssueWipLimitController`) not setting `AcceptKey`, cut by
 the same means as the playbook override, and checked a second time in the
 action for `WipController.NotAPerson`'s reason: `RoleGate` is dormant wherever
 the wall is off, and a keyless runner there is a program too. Reading is
@@ -3385,7 +3385,7 @@ One related edge is **not** cut, and is stated rather than papered over:
 server cannot tell them apart, and a check that looked like it could would be
 worse than none. What holds the loop shut is one step further out — the dispatch
 is refused while a question is open, and the dispatch is a command the operator
-types. A second scope minted for agents would close it properly, and is not
+types. A separate kind of key for agents would close it properly, and is not
 worth a column until somebody wants one.
 
 One route sits outside the wall entirely rather than riding the exempt-paths
@@ -3474,7 +3474,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/build-check` | PUT | Keeps a runner's [build verdict](#build-check) for one repository. `{ remote, branch, sha, verdict, failing?, runner, pushedByIncrement? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, no branch or sha, and `failed` with no failing checks; a link that is not `http(s)` is stored as null; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and one that moves the row into failed-and-flagged marks the issue stalled with it |
 | `/trunk-builds` | PUT | Keeps a runner's [trunk build verdict](#trunk-build) for one repository's trunk. `{ remote, trunk, sha, verdict, failing?, runner }`; answers with what it now holds. The same refusals the build check's write takes, naming the trunk rather than the branch. No event and no question — there is no issue to write either on. `passed` lets an attached bug go |
 | `/trunk-builds` | GET | Every stored [trunk verdict](#trunk-build), ordered by canonical then trunk — what a runner's poll reads once a poll, since a trunk carries no issue for the verdict to ride in on |
-| `/trunk-builds/{id}/bug` | POST | No class-level scope, the way expedite is cut, but the method itself takes the `hatch` scope, gated at runtime rather than by the attribute, since the attribute cannot vary by project — see [the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut). Files the bug a failing trunk's *File a bug* button asks for (HA-95), in the project that binds the repository (lowest project id first, else the lowest-id project that binds it at all) — see [what is waiting on you](#what-is-waiting-on-you). A person's own call is unchanged: expedited, no pre-approval, the board's first column, each overridable in the body. **A key's priority, pre-approval level and column come from the project instead, never from the body** — its own `AutoHealBugPriority`, `AutoHealBugPreApproval` and `AutoHealBugStatusId`, written only through the owner-only `PUT .../landing`. `409` once the row is no longer failing; `400` naming the Projects page when no project binds it, or when a key's project has auto-filing off; a second call answers the bug already filed rather than filing another |
+| `/trunk-builds/{id}/bug` | POST | No class-level `RequireRole`, the way expedite is cut, but the method itself accepts a key, and is gated again at runtime, since the attribute cannot vary by project — see [the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut). Files the bug a failing trunk's *File a bug* button asks for (HA-95), in the project that binds the repository (lowest project id first, else the lowest-id project that binds it at all) — see [what is waiting on you](#what-is-waiting-on-you). A person's own call is unchanged: expedited, no pre-approval, the board's first column, each overridable in the body. **A key's priority, pre-approval level and column come from the project instead, never from the body** — its own `AutoHealBugPriority`, `AutoHealBugPreApproval` and `AutoHealBugStatusId`, written only through the owner-only `PUT .../landing`. `409` once the row is no longer failing; `400` naming the Projects page when no project binds it, or when a key's project has auto-filing off; a second call answers the bug already filed rather than filing another |
 | `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/dependency-files` | GET | Every stored [dependency file](#dependency-file), ordered by canonical then trunk, with the path itself alongside them, each entry's id resolved to its current label |
@@ -3497,10 +3497,10 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
 | `/work-log/by-playbook` | GET | One row per playbook/transition/type/model/effort combination in a range, heaviest first — see [the leaderboard](#the-leaderboard) |
-| `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
-| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
-| `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Hatch-scoped, open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
-| `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Hatch-scoped, open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
+| `/reports/timeline` | GET | When the work happened: top-level epics active in a range, and the work beneath each, as stretches in the board's active columns. `from`, `to` (default: the 90 days ending now), `projectId`, `createdBy`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `projectId` — see [the timeline](#the-timeline) |
+| `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
+| `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
+| `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The heartbeat: says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4282,7 +4282,7 @@ to the first issue's creation when the range reaches back before anything
 existed, so a range wider than the board's history does not draw an empty
 stretch. The `400`s are an unparseable bound, an inverted one (`from` after
 `to`), and a `projectId` that names no project. The route is open to a person
-or to a key with the `hatch` scope.
+or to a key.
 
 It answers `{ from, to, epics, other, creators, unresolved }`. `from` and `to`
 are the range as the server resolved it. Each entry in `epics` is `{ issue,
@@ -4424,7 +4424,7 @@ clamped forward to the first issue's creation the way the timeline's is.
 `projectId` narrows to one project and `type` to one issue type; a `projectId`
 that names no project and a `type` that is not one of the issue types are each
 a `400`, the latter naming the types that are. The route is open to a person or
-to a key with the `hatch` scope.
+to a key.
 
 It answers `{ from, to, columns, window, unresolved }`. `from` and `to` are the
 range as the server resolved it. Each entry in `columns` is the board's own
@@ -4526,7 +4526,7 @@ every bucket to the reader's own clock rather than UTC's; outside -1440..1440
 is a `400`. `level` is absent, blank, `epic` or `story`; anything else is a
 `400` naming the two. `loose` is `true` or `false`, trimmed/case-insensitive,
 default `false`; else a `400` naming the two. The route is open to a person
-or to a key with the `hatch` scope, and the `400`s above come in that
+or to a key, and the `400`s above come in that
 order — bound, offset, bucket, level, loose, project.
 
 It answers `{ from, to, bucket, level, loose, buckets }`. `from`, `to`,
@@ -9113,7 +9113,7 @@ code already settles is a round trip through a person for nothing.
   still deferred is narrower: the loop as a *service* rather than a process
   somebody starts — a scheduler, a place the output goes, credentials it did
   not bring with it itself. Not the mutex, and not the clone.
-- **A second scope for agents**, which would stop a key answering its own
+- **A separate kind of key for agents**, which would stop a key answering its own
   question. Worth a column when somebody wants it; see
   [the one edge](#the-one-edge-that-is-deliberately-cut).
 - **Reports beyond the Timeline.** The [Timeline](#the-timeline) reads the
