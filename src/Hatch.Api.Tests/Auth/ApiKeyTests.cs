@@ -125,6 +125,66 @@ public class ApiKeyTests
         Assert.Null(await service.VerifyApiKeyAsync(created.Secret, default));
     }
 
+    [Fact]
+    public async Task Rotating_StopsTheOldSecret_AndTheNewOneVerifiesAsTheSameKey()
+    {
+        var (service, _, _) = NewService();
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
+
+        var rotated = await service.RotateApiKeyAsync(created!.Key.Id, default);
+
+        Assert.NotNull(rotated);
+        Assert.NotEqual(created.Secret, rotated.Secret);
+        Assert.Null(await service.VerifyApiKeyAsync(created.Secret, default));
+        var verified = await service.VerifyApiKeyAsync(rotated.Secret, default);
+        Assert.NotNull(verified);
+        Assert.Equal(created.Key.Id, verified.Id);
+    }
+
+    [Fact]
+    public async Task Rotating_UpdatesPrefixAndRotatedAt_AndKeepsNameOwnerAndCreatedAt()
+    {
+        var (service, db, time) = NewService();
+        var owner = Guid.NewGuid();
+        var created = await service.CreateApiKeyAsync("Claude", owner, default);
+        var before = await db.ApiKeys.AsNoTracking().SingleAsync();
+        Assert.Null(before.RotatedAt);
+
+        time.Advance(TimeSpan.FromHours(3));
+        var rotated = await service.RotateApiKeyAsync(created!.Key.Id, default);
+
+        var after = await db.ApiKeys.AsNoTracking().SingleAsync();
+        Assert.Equal(Now.AddHours(3), after.RotatedAt);
+        Assert.NotEqual(before.Prefix, after.Prefix);
+        Assert.Equal(AuthTokens.ApiKeyPrefixOf(rotated!.Secret), after.Prefix);
+        Assert.Equal(before.Id, after.Id);
+        Assert.Equal("Claude", after.Name);
+        Assert.Equal(owner, after.OwnerPersonId);
+        Assert.Equal(before.CreatedAt, after.CreatedAt);
+    }
+
+    [Fact]
+    public async Task Rotating_AnUnknownId_ReturnsNull()
+    {
+        var (service, _, _) = NewService();
+
+        Assert.Null(await service.RotateApiKeyAsync(Guid.NewGuid(), default));
+    }
+
+    [Fact]
+    public async Task ARevokedKey_StaysRevokedAfterRotation()
+    {
+        var (service, db, time) = NewService();
+        var created = await service.CreateApiKeyAsync("Claude", null, default);
+        await service.RevokeApiKeyAsync(created!.Key.Id, default);
+
+        time.Advance(TimeSpan.FromHours(3));
+        var rotated = await service.RotateApiKeyAsync(created.Key.Id, default);
+
+        Assert.Equal(Now, (await db.ApiKeys.AsNoTracking().SingleAsync()).RevokedAt);
+        Assert.Null(await service.VerifyApiKeyAsync(rotated!.Secret, default));
+    }
+
     /// <summary>
     /// The column is a timestamp rather than a bool because "when did this stop
     /// working" is the question, and a second revocation must not quietly
