@@ -18,6 +18,58 @@ public delegate Task<ProbeResult> Probe(string file, string[] args, TimeSpan tim
 public sealed record DetectorResult(string Id, bool Present, string? Version, string? Why);
 
 /// <summary>
+/// What one run of every detector saw, held so a caller can merge it against
+/// what a machine declares (<see cref="Settings.Has"/>) without detecting twice.
+/// </summary>
+public sealed record Detection(IReadOnlyList<DetectorResult> Results)
+{
+    /// <summary>
+    /// What this runner advertises: every present result as <c>id</c> or
+    /// <c>id@version</c>, plus every <paramref name="declared"/> entry
+    /// detection did not already cover - dropped only where a present result
+    /// shares its id and <see cref="DependencyVersion.Satisfies"/> the
+    /// declared version against the detected one, a bare declared id included.
+    /// Never removes a detected entry. Ordered ordinal by id, detected before
+    /// declared within one id - stable, since <see cref="Enumerable.OrderBy"/>
+    /// preserves that - then run through <see cref="DependencySet.Normalise"/>.
+    /// </summary>
+    public IReadOnlyList<string> Merge(IReadOnlyList<string> declared)
+    {
+        var detected = Results.Where(result => result.Present).Select(AsEntry);
+        var kept = declared.Where(entry => !CoveredByDetection(entry));
+        var ordered = detected.Concat(kept).OrderBy(Id, StringComparer.Ordinal);
+
+        DependencySet.Normalise(ordered.ToArray(), out var merged);
+        return merged;
+    }
+
+    /// <summary>The ids of every absent result <paramref name="declared"/> does not already cover.</summary>
+    public IReadOnlyList<string> Missing(IReadOnlyList<string> declared)
+    {
+        var declaredIds = declared.Select(Id).ToHashSet(StringComparer.Ordinal);
+        return Results.Where(result => !result.Present && !declaredIds.Contains(result.Id))
+            .Select(result => result.Id).ToArray();
+    }
+
+    private bool CoveredByDetection(string declaredEntry)
+    {
+        var (id, version) = Split(declaredEntry);
+        var detected = Results.FirstOrDefault(result => result.Present && result.Id == id);
+        return detected is not null && DependencyVersion.Satisfies(version, detected.Version);
+    }
+
+    private static string AsEntry(DetectorResult result) => result.Version is null ? result.Id : $"{result.Id}@{result.Version}";
+
+    private static string Id(string entry) => Split(entry).Id;
+
+    private static (string Id, string? Version) Split(string entry)
+    {
+        var at = entry.IndexOf('@');
+        return at < 0 ? (entry, null) : (entry[..at], entry[(at + 1)..]);
+    }
+}
+
+/// <summary>
 /// Whether <c>make</c>, <c>dotnet</c>, <c>node</c> and <c>pwsh</c> are on
 /// <c>PATH</c>, and which version, within a probe that cannot outlast
 /// <see cref="ProbeTimeout"/>; whether a Playwright browsers cache exists; and
@@ -36,6 +88,81 @@ public static class Detect
     private const int MaxDigits = 9;
 
     private static readonly Regex LeadingVersion = new(@"[0-9]+(\.[0-9]+){0,2}", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Every detector, once, concurrently: <see cref="Make"/>, <see cref="Dotnet"/>,
+    /// <see cref="Node"/>, <see cref="Pwsh"/> and <see cref="Postgres"/> alongside
+    /// <see cref="PlaywrightBrowsers"/>, which needs no probe. <paramref name="os"/>
+    /// is <see cref="CurrentOs"/>'s own answer. Five of the six cannot outlast one
+    /// <see cref="ProbeTimeout"/>; <see cref="Postgres"/> can take up to four, since
+    /// it tries three binaries and a Docker daemon in turn before giving up. A
+    /// probe that throws is not caught here - the five detectors above already
+    /// convert a failure into <c>Present=false</c> rather than throwing, so only
+    /// <see cref="OperationCanceledException"/> from <paramref name="ct"/> is ever
+    /// seen to propagate.
+    /// </summary>
+    public static async Task<Detection> RunAsync(string? path, string os, Func<string, string?> env, Probe probe, CancellationToken ct)
+    {
+        var make = Make(path, probe, ct);
+        var dotnet = Dotnet(path, probe, ct);
+        var node = Node(path, probe, ct);
+        var pwsh = Pwsh(path, probe, ct);
+        var postgres = Postgres(path, probe, ct);
+        var playwright = Task.FromResult(PlaywrightBrowsers(os, env));
+
+        var results = await Task.WhenAll(make, dotnet, node, pwsh, postgres, playwright);
+
+        return new Detection(results.OrderBy(result => result.Id, StringComparer.Ordinal).ToArray());
+    }
+
+    /// <summary><c>windows</c>, <c>macos</c> or <c>linux</c> - what <see cref="PlaywrightBrowsers"/> and <see cref="RunAsync"/> take as <c>os</c>.</summary>
+    public static string CurrentOs() =>
+        OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "macos" : "linux";
+
+    /// <summary>
+    /// <paramref name="env"/>'s keys compared case-insensitively on Windows, where
+    /// the real PATH key is <c>Path</c>, and ordinally everywhere else - both
+    /// <c>Program.cs</c>'s and <see cref="ConfigCommand.Environment"/>'s
+    /// dictionaries are case-sensitive, so a straight lookup would miss it.
+    /// </summary>
+    public static Func<string, string?> Lookup(IDictionary<string, string?> env)
+    {
+        var map = new Dictionary<string, string?>(
+            env, OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        return name => map.GetValueOrDefault(name);
+    }
+
+    /// <summary>
+    /// What <c>.hatch/dependencies.json</c> at <paramref name="path"/> declares, as
+    /// <c>id</c> / <c>id@version</c> entries - empty with no file. A parse problem
+    /// or an unreadable file answers empty with <paramref name="problem"/> naming
+    /// <paramref name="path"/>; nothing calls this yet (HA-1882).
+    /// </summary>
+    public static IReadOnlyList<string> ReadDeclared(string path, out string? problem)
+    {
+        problem = null;
+        if (!File.Exists(path)) return [];
+
+        byte[] content;
+        try
+        {
+            content = File.ReadAllBytes(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            problem = $"{path}: could not be read";
+            return [];
+        }
+
+        var (entries, parseProblem) = DependencyDeclaration.Parse(content);
+        if (parseProblem is not null)
+        {
+            problem = $"{path}: {parseProblem}";
+            return [];
+        }
+
+        return entries!.Select(entry => entry.Version is null ? entry.Id : $"{entry.Id}@{entry.Version}").ToArray();
+    }
 
     public static Task<DetectorResult> Make(string? path, Probe probe, CancellationToken ct) =>
         Walk("make", ["--version"], path, probe, ParseMake, ct);
