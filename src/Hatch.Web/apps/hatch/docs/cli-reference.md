@@ -301,6 +301,10 @@ tokens, before any projects, each only where it has said so. The tokens read
 where the runner reported one. A runner that reported only an hour prints no
 tokens at all.
 
+A runner that reports dependencies closes that part of its line with
+`  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any
+projects; one with none prints nothing extra.
+
 A runner bound to some projects (`go-to-work --project FIL --project AER`, or
 the Projects field on the Runners page) closes its line with `  projects FIL AER`,
 the keys space-separated. A runner bound to none ends its line as it always did.

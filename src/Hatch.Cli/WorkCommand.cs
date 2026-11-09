@@ -333,6 +333,7 @@ public sealed class WorkCommand(Runtime runtime)
                 Kind: RunnerKinds.Once,
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
                 Tags: runtime.Settings.Tags,
+                Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Where: runtime.Where,
