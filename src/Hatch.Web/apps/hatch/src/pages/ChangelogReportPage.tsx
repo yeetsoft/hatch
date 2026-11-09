@@ -27,7 +27,7 @@ import { changelogMarkdown } from '../lib/changelogMarkdown';
 import { beneathLabel } from '../lib/overnight';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { scopedPath } from '../lib/scope';
-import { reportProjects, withProjects } from '../lib/timeline';
+import { noProjectWords, reportProjects, withProjects } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
 import { useScope } from '../lib/useScope';
 import { hasMultipleProjects } from '../lib/useProjects';
@@ -35,7 +35,8 @@ import { useReportWindow } from '../lib/useReportWindow';
 import type { ChangelogReport, ChangelogReportEntry, ChangelogReportGroup, Project } from '../types';
 
 interface ChangelogReportBodyProps {
-  report: ChangelogReport;
+  /** `null` when no project is chosen: the read is not made. */
+  report: ChangelogReport | null;
   projects: Project[];
   level: 'epic' | 'story';
   /** Whether to draw the work under no epic beside each bucket. */
@@ -111,6 +112,8 @@ export function ChangelogReportBody({
 }: ChangelogReportBodyProps) {
   const byKey = new Map(projects.map((project) => [project.key, project]));
 
+  if (report === null) return <EmptyState message={noProjectWords()} />;
+
   if (report.buckets.length === 0) {
     return <EmptyState message={changelogReportEmptyWords()} />;
   }
@@ -174,7 +177,7 @@ export function ChangelogReportBody({
 /** The reads this page is made of, arriving together so the body is never
     drawn with its project marks still to come. */
 interface ChangelogReportView {
-  report: ChangelogReport;
+  report: ChangelogReport | null;
   projects: Project[];
 }
 
@@ -201,7 +204,12 @@ function ChangelogReportReader({ keys }: { keys: string[] }) {
        those keys this Hatch still has within the scope. */
     const projects = await getProjects();
     const query = new URLSearchParams(search);
-    const { narrowed } = reportProjects(query, projects, keys);
+    const { chosen, narrowed } = reportProjects(query, projects, keys);
+
+    /* No project chosen makes no read: `narrowed` is `[]` then, which the
+       server would take as no filter at all. */
+    if (chosen.length === 0) return { report: null, projects };
+
     const report = await getChangelogReport({
       from,
       to,
@@ -235,10 +243,14 @@ function ChangelogReportReader({ keys }: { keys: string[] }) {
 
   // The paste reaches the board the reader was on, on either hostname: the
   // links are built from the page's own location, as Copy link is.
-  const markdown = changelogMarkdown(data.report, {
-    bucketLabel: (start) => bucketLabel(start, data.report.bucket as ReportBucketSize, offsetMinutes),
-    issueUrl: (key) => fullHref(window.location.origin, window.location.pathname, scopedPath('/issues/' + key, keys)),
-  });
+  const report = data.report;
+  const markdown = report
+    ? changelogMarkdown(report, {
+        bucketLabel: (start) => bucketLabel(start, report.bucket as ReportBucketSize, offsetMinutes),
+        issueUrl: (key) =>
+          fullHref(window.location.origin, window.location.pathname, scopedPath('/issues/' + key, keys)),
+      })
+    : null;
 
   return (
     <div className="hatch-page">
@@ -302,7 +314,7 @@ function ChangelogReportReader({ keys }: { keys: string[] }) {
                 onChange={(value) => setParams(withLoose(params, value === 'on'), { replace: true })}
               />
             </div>
-            <CopyMarkdownButton markdown={markdown} />
+            {markdown !== null && <CopyMarkdownButton markdown={markdown} />}
           </>
         }
       />

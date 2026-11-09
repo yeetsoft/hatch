@@ -7,7 +7,7 @@ import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { isEmpty, resolveColourBy, withColourBy } from '../lib/cumulativeFlow';
 import type { ColourBy } from '../lib/cumulativeFlow';
-import { makeScale, reportProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
+import { makeScale, noProjectWords, reportProjects, unresolvedPhrase, withProjects } from '../lib/timeline';
 import { hasMultipleProjects } from '../lib/useProjects';
 import { useLoaded } from '../lib/useLoaded';
 import { useReportWindow } from '../lib/useReportWindow';
@@ -18,13 +18,14 @@ import type { CumulativeFlow, Project, Status } from '../types';
 /** The reads this page is made of, arriving together so the chart is never
     drawn with its colours still to come. */
 interface CumulativeFlowView {
-  answer: CumulativeFlow;
+  /** `null` when no project is chosen: the read is not made. */
+  answer: CumulativeFlow | null;
   statuses: Status[];
   projects: Project[];
 }
 
 interface BodyProps {
-  answer: CumulativeFlow;
+  answer: CumulativeFlow | null;
   statuses: Status[];
   by: ColourBy;
   projects: Project[];
@@ -36,12 +37,15 @@ interface BodyProps {
 /**
  * What the page shows once the answer is in: the chart, or the sentence that
  * says there is nothing to chart, and under either the footnote for column
- * changes the server could not place.
+ * changes the server could not place. No answer at all - no project chosen -
+ * is its own sentence and no footnote.
  *
  * Pure of the load and of the URL, so a test can render it from props - there
  * is no DOM runner to drive `useLoaded`.
  */
 export function CumulativeFlowBody({ answer, statuses, by, projects, offsetMinutes, now, locale }: BodyProps) {
+  if (answer === null) return <EmptyState message={noProjectWords()} />;
+
   const unresolved = unresolvedPhrase(answer.unresolved);
 
   return (
@@ -105,7 +109,12 @@ function CumulativeFlowReader({ keys }: { keys: string[] }) {
     /* The read waits on the project list rather than going out beside it, for
        the reason `TimelinePage`'s own load does: the URL holds keys, and
        `reportProjects` needs to know which of them this Hatch still has. */
-    const { narrowed } = reportProjects(new URLSearchParams(search), projects, keys);
+    const { chosen, narrowed } = reportProjects(new URLSearchParams(search), projects, keys);
+
+    /* No project chosen makes no read: `narrowed` is `[]` then, and an empty
+       `project` list appends nothing, so the server would read every project. */
+    if (chosen.length === 0) return { answer: null, statuses, projects };
+
     const answer = await getCumulativeFlow({
       from,
       to,
