@@ -13,7 +13,7 @@ namespace Hatch.Api.Controllers;
 /// Plain <c>[RequireAdmin]</c> on the whole controller, with no
 /// <c>AcceptKey</c>, and that is the load-bearing line in this file: a key
 /// cannot mint a key. Allowing it would make the key system decorative, since
-/// any key could quietly issue itself a second one carrying whatever it liked.
+/// a key could issue itself a second one.
 /// Credentials are handed out by a person, at a screen, on purpose.
 /// </summary>
 /// <remarks>
@@ -42,14 +42,6 @@ public class ApiKeysController(
     }
 
     /// <summary>
-    /// The scopes a key may carry. A read of its own so the mint form offers the
-    /// server's list rather than spelling one in the bundle, and so the list
-    /// response stays the plain array its callers already expect.
-    /// </summary>
-    [HttpGet("scopes")]
-    public ActionResult<IReadOnlyList<string>> ListScopes() => ApiKeyScopes.All;
-
-    /// <summary>
     /// Mints a key. The response carries the secret in plaintext - the only
     /// moment it exists outside a hash - so it can be copied into a file once
     /// and never again after the tab is closed. A lost key is replaced by
@@ -62,12 +54,6 @@ public class ApiKeysController(
         if (string.IsNullOrEmpty(name)) return BadRequest("a key needs a name - it is what the audit trail will call it");
         if (name.Length > EfApiKey.MaxNameLength)
             return BadRequest($"a key name is at most {EfApiKey.MaxNameLength} characters");
-
-        // Validated rather than stored as sent: an unknown scope is a typo, and
-        // a typo silently stored is a key that mysteriously reaches nothing.
-        var scopes = request?.Scopes ?? [];
-        if (scopes.FirstOrDefault(s => !ApiKeyScopes.IsKnown(s)) is { } unknown)
-            return BadRequest($"\"{unknown}\" is not a scope - the scopes are {string.Join(", ", ApiKeyScopes.All)}");
 
         // No owner named defaults to whoever is minting it - the admin at the
         // screen - or to nobody where the wall is off and there is no admin to
@@ -86,7 +72,7 @@ public class ApiKeysController(
             ownerPersonId = (await caller.PersonAsync(ct))?.Id;
         }
 
-        var created = await auth.CreateApiKeyAsync(name, scopes.Distinct(StringComparer.Ordinal).ToList(), ownerPersonId, ct);
+        var created = await auth.CreateApiKeyAsync(name, ownerPersonId, ct);
         if (created is null) return Conflict($"there is already a key called \"{name}\"");
 
         // A live credential has no business in a cache, anyone's.

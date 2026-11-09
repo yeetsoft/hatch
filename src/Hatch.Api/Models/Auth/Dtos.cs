@@ -130,14 +130,13 @@ public record ApiKeyDto(
     Guid Id,
     string Name,
     string Prefix,
-    IReadOnlyList<string> Scopes,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt,
     DateTimeOffset? RevokedAt,
     ApiKeyOwnerDto? Owner)
 {
     public static ApiKeyDto From(EfApiKey key) =>
-        new(key.Id, key.Name, key.Prefix, key.Scopes, key.CreatedAt, key.LastUsedAt, key.RevokedAt,
+        new(key.Id, key.Name, key.Prefix, key.CreatedAt, key.LastUsedAt, key.RevokedAt,
             key.Owner is { } owner ? new ApiKeyOwnerDto(owner.Id, owner.Name) : null);
 }
 
@@ -153,17 +152,12 @@ public record ApiKeyOwnerDto(Guid Id, string Name);
 public record ApiKeyMintedDto(ApiKeyDto Key, string Secret);
 
 /// <summary>What an operator asks for when they want to hand a program a credential.</summary>
-/// <param name="Scopes">
-/// What it may reach. Null is not "everything" - it is the empty list, and a
-/// key with no scopes reaches nothing, which is the right way for a mistyped
-/// request to fail.
-/// </param>
 /// <param name="OwnerPersonId">
 /// Whose tickets this key's <c>--mine</c> will reach. Absent defaults to the
 /// admin minting it - or to nobody, where the wall is off and there is no
 /// admin to default to (<c>ApiKeysController.CreateKey</c>).
 /// </param>
-public record CreateApiKeyRequest(string? Name, string[]? Scopes, Guid? OwnerPersonId = null);
+public record CreateApiKeyRequest(string? Name, Guid? OwnerPersonId = null);
 
 /// <summary>
 /// Changes or clears an existing key's owner. A record with one nullable field

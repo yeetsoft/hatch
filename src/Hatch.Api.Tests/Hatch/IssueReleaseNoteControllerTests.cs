@@ -313,7 +313,6 @@ public class IssueReleaseNoteControllerTests
                 Name = "a key",
                 Hash = [1],
                 Prefix = "hatch_ak_x",
-                Scopes = [ApiKeyScopes.Hatch],
                 CreatedAt = Now,
             };
         }

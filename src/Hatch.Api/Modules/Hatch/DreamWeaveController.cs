@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// No class-level <see cref="RequireRoleAttribute"/>, for
 /// <see cref="ProjectsController"/>'s reason: the attribute is
 /// <c>AllowMultiple = false</c>, so <see cref="DreamsController"/>'s own
-/// class-level one - which accepts the Hatch scope - would silently
+/// class-level one - which accepts a key - would silently
 /// *replace* this action's tighter, person-only one rather than sit under
 /// it. Decorating the one action explicitly is what keeps a key out.
 /// </remarks>

@@ -199,7 +199,7 @@ public class LandingControllerTests
     }
 
     [Fact]
-    public void WritingOne_IsOpenToAHatchScopedKey()
+    public void WritingOne_IsOpenToAKey()
     {
         var guard = typeof(LandingController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
