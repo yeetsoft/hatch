@@ -107,6 +107,96 @@ public class RunnersController(
         return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
     }
 
+    /// <summary>
+    /// Mints a runner: a key and the config row beside it, answered once with
+    /// the secret. Admin only, and never a key - an agent that could mint
+    /// runners could mint itself more of whatever a runner may do.
+    /// </summary>
+    /// <remarks>
+    /// Every refusal comes before anything is written: the gate, the name, the
+    /// owner and the tags are all judged first, so a refused request leaves no
+    /// key and no row. <c>names</c> and <c>suggest-name</c> are refused as
+    /// names because they are the literal routes beside <c>{name}</c>, and a
+    /// runner called either could not be reached by its own URL.
+    ///
+    /// <para>The key's uniqueness is <see cref="IAuthService"/>'s to judge, and
+    /// it logs the mint too - so there is no logger here. The config row is
+    /// written even with no tags, so a minted runner always has one.</para>
+    /// </remarks>
+    [HttpPost]
+    [RequireRole(PersonRole.Admin)]
+    public async Task<ActionResult<RunnerMintedDto>> CreateRunner([FromBody] CreateRunnerRequest? request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var name = request?.Name?.Trim();
+        if (string.IsNullOrEmpty(name)) return BadRequest("a runner needs a name");
+        if (name.Length > EfApiKey.MaxNameLength)
+            return BadRequest($"a runner name is at most {EfApiKey.MaxNameLength} characters");
+        if (name.Equals("names", StringComparison.OrdinalIgnoreCase) || name.Equals("suggest-name", StringComparison.OrdinalIgnoreCase))
+            return BadRequest($"\"{name}\" is a route word");
+
+        // No owner named defaults to whoever is minting it, or to nobody where
+        // the wall is off, as the key route this was ported from does.
+        Guid? ownerPersonId;
+        if (request?.OwnerPersonId is { } named)
+        {
+            if (await actors.ResolveAsync(ActorKind.Person, named, ct) is null)
+                return BadRequest("that person does not exist");
+            ownerPersonId = named;
+        }
+        else
+        {
+            ownerPersonId = (await caller.PersonAsync(ct))?.Id;
+        }
+
+        if (RunnerTags.Normalise(request?.Tags, out var tags) is { } tagsRefusal) return BadRequest(tagsRefusal);
+
+        var created = await keys.CreateApiKeyAsync(name, ownerPersonId, ct);
+        if (created is null) return Conflict($"there is already a runner called \"{name}\"");
+
+        var config = new EfHatchRunnerConfig
+        {
+            ApiKeyId = created.Key.Id,
+            Tags = RunnerTagColumn.Write(tags),
+            UpdatedAt = time.GetUtcNow(),
+        };
+        db.RunnerConfigs.Add(config);
+        await db.SaveChangesAsync(ct);
+
+        // A live credential has no business in a cache, anyone's.
+        Response.Headers.CacheControl = "no-store";
+
+        // A new key holds nothing and drives nothing, so nothing is read for it.
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var dto = await ProjectAsync(
+            new Runner(created.Key, config, null), [], new Dictionary<string, IReadOnlyList<string>>(),
+            wallEnabled, callerPerson, await siteSettings.GetAsync(ct), ct);
+
+        return new RunnerMintedDto(dto, created.Secret);
+    }
+
+    /// <summary>
+    /// A cast-list name no key and no heartbeat row holds, for the form that
+    /// mints a runner to offer. Revoked keys count: a name stays unique.
+    /// </summary>
+    /// <remarks>
+    /// The set is case-insensitive itself, since <see cref="RunnerCast.Suggest"/>
+    /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>
+    /// the way <see cref="GetRunnerNames"/> does.
+    /// </remarks>
+    [HttpGet("suggest-name")]
+    [RequireRole(PersonRole.Admin)]
+    public async Task<ActionResult<string>> SuggestRunnerName(CancellationToken ct)
+    {
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in await keys.ListApiKeysAsync(ct)) taken.Add(key.Name);
+        foreach (var beat in await db.Runners.AsNoTracking().Select(r => r.Name).ToListAsync(ct)) taken.Add(beat);
+
+        return RunnerCast.Suggest(taken);
+    }
+
     /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
     private async Task<RunnerDto> ProjectAsync(
         Runner runner, Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held,
