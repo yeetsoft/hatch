@@ -31,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class WipController(HatchContext db, ICallerIdentity caller) : ControllerBase
 {
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<WipSectionDto>> GetWip(CancellationToken ct) => await Wip.SectionAsync(db, ct);
 
     /// <summary>

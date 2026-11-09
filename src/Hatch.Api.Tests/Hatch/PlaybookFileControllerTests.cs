@@ -56,7 +56,7 @@ public class PlaybookFileControllerTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Every refusal ----

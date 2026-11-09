@@ -34,7 +34,7 @@ public class PlaybookProposalsController(
     /// behind. Nothing live moves - not even a playbook's own <c>UpdatedAt</c>.
     /// </summary>
     [HttpPost]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<PlaybookProposalDto>> SubmitProposal(PlaybookProposalRequest request, CancellationToken ct)
     {
         var reason = request.Reason?.Trim() ?? "";
@@ -140,7 +140,7 @@ public class PlaybookProposalsController(
     /// <c>"rejected"</c> for that one; <c>"all"</c> for every state.
     /// </param>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<PlaybookProposalDto>>> GetProposals([FromQuery] string? state, CancellationToken ct)
     {
         var effective = state ?? EfHatchPlaybookProposal.Pending;
@@ -157,7 +157,7 @@ public class PlaybookProposalsController(
 
     /// <summary>One proposal, with every change it carries.</summary>
     [HttpGet("{id:int}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<PlaybookProposalDto>> GetProposal(int id, CancellationToken ct)
     {
         var row = await db.PlaybookProposals.AsNoTracking().Include(p => p.Changes)

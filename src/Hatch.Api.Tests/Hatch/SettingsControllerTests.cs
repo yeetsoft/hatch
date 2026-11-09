@@ -726,10 +726,10 @@ public class SettingsControllerTests
     [Fact]
     public void TheCredentialRoutesTakeAKeyAndTheOtherTwoDoNot()
     {
-        Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetClaudeToken)).AcceptScope);
-        Assert.Equal(ApiKeyScopes.Hatch, Guard(nameof(SettingsController.GetCredential)).AcceptScope);
-        Assert.Null(Guard(nameof(SettingsController.GetHatchSettings)).AcceptScope);
-        Assert.Null(Guard(nameof(SettingsController.PutHatchSettings)).AcceptScope);
+        Assert.True(Guard(nameof(SettingsController.GetClaudeToken)).AcceptKey);
+        Assert.True(Guard(nameof(SettingsController.GetCredential)).AcceptKey);
+        Assert.False(Guard(nameof(SettingsController.GetHatchSettings)).AcceptKey);
+        Assert.False(Guard(nameof(SettingsController.PutHatchSettings)).AcceptKey);
 
         static RequireRoleAttribute Guard(string action) =>
             typeof(SettingsController).GetMethod(action)!.GetCustomAttribute<RequireRoleAttribute>()

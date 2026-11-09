@@ -50,7 +50,7 @@ public class IssueOnePrController(
     /// control pressed twice leaves one trail entry and not two.
     /// </remarks>
     [HttpPut("{key}/one-pr")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PutIssueOnePr(string key, OnePrRequest request, CancellationToken ct)
     {
         if (!TryParse(request.Value, out var value))

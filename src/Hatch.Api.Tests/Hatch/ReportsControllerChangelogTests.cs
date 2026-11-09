@@ -393,7 +393,7 @@ public class ReportsControllerChangelogTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     private static T Value<T>(Microsoft.AspNetCore.Mvc.ActionResult<T> result) =>

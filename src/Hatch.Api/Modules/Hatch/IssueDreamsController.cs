@@ -12,7 +12,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/issues/{key}/dreams")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueDreamsController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     /// <summary>

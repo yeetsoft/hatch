@@ -33,7 +33,7 @@ public class ProjectsController(
     public const int MaxRepositories = 20;
 
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<ProjectDto>>> GetProjects(CancellationToken ct)
     {
         var projects = await db.Projects.AsNoTracking().OrderBy(p => p.Key).ToListAsync(ct);
@@ -72,7 +72,7 @@ public class ProjectsController(
     }
 
     [HttpPost]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<ProjectDto>> CreateProject(ProjectCreateRequest request, CancellationToken ct)
     {
         // Upper-cased on the way in rather than refused: keys are shouted in
@@ -142,7 +142,7 @@ public class ProjectsController(
     /// rekey a project has decided.
     /// </summary>
     [HttpPatch("{id:int}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<ProjectDto>> PatchProject(int id, ProjectPatchRequest request, CancellationToken ct)
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -222,7 +222,7 @@ public class ProjectsController(
     /// unlike an issue, which is why this delete never has to check for one.
     /// </remarks>
     [HttpDelete("{id:int}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<IActionResult> DeleteProject(int id, CancellationToken ct)
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
@@ -244,7 +244,7 @@ public class ProjectsController(
 
     /// <summary>The remotes this project is bound to, in order. Read by everything a dispatch needs - it is what tells a runner where to check out.</summary>
     [HttpGet("{id:int}/repositories")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<ProjectRepositoryDto>>> GetRepositories(int id, CancellationToken ct)
     {
         if (!await db.Projects.AnyAsync(p => p.Id == id, ct)) return NotFound();
@@ -340,7 +340,7 @@ public class ProjectsController(
     // ---- Logo ----
 
     [HttpGet("{id:int}/logo")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<IActionResult> GetLogo(int id, CancellationToken ct)
     {
         var logo = await db.ProjectLogos.AsNoTracking().FirstOrDefaultAsync(l => l.ProjectId == id, ct);
@@ -409,7 +409,7 @@ public class ProjectsController(
 
     /// <summary>Who owns or approves on this project, read by everybody - reading who is on a project is not a power.</summary>
     [HttpGet("{id:int}/members")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<ProjectMemberDto>>> GetMembers(int id, CancellationToken ct)
     {
         if (!await db.Projects.AnyAsync(p => p.Id == id, ct)) return NotFound();

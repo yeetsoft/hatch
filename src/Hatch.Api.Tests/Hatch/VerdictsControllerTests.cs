@@ -139,7 +139,7 @@ public class VerdictsControllerTests
         // The caller is whatever ran the check, and a verdict only a person
         // could enter would be one an agent session could never record for
         // itself.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- Harness ----

@@ -36,7 +36,7 @@ public class IssueReleaseNoteController(
     /// pressed twice leaves one trail entry and not two.
     /// </summary>
     [HttpPut("{key}/release-note")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PutIssueReleaseNote(
         string key, ReleaseNoteRequest request, [FromQuery] Guid? heldToken, CancellationToken ct)
     {

@@ -60,7 +60,7 @@ public class RunnersController(
     /// disagree.</para>
     /// </remarks>
     [HttpGet]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -116,7 +116,7 @@ public class RunnersController(
     /// the caller is read.
     /// </remarks>
     [HttpGet("names")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<string>>> GetRunnerNames(CancellationToken ct)
     {
         var dropBefore = runners.DropBefore(time.GetUtcNow());
@@ -155,7 +155,7 @@ public class RunnersController(
     /// runner is turned away.</para>
     /// </remarks>
     [HttpPost("{name}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<RunnerInstructionDto>> Heartbeat(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {

@@ -30,7 +30,7 @@ public class ImagesController(HatchContext db) : ControllerBase
     private static readonly string[] ImageContentTypes = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
     [HttpGet("{id:guid}")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<IActionResult> GetImage(Guid id, CancellationToken ct)
     {
         var image = await db.Attachments.AsNoTracking()
