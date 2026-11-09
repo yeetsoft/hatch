@@ -30,7 +30,7 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS",
+        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
@@ -151,6 +151,13 @@ public sealed partial record Settings
     /// which means the agent's default.
     /// </summary>
     public IReadOnlyList<string>? Models { get; init; }
+
+    /// <summary>
+    /// The dependencies this machine declares from <c>HATCH_HAS</c> - the ones
+    /// detection cannot see - normalised by <see cref="DependencySet.Normalise"/>.
+    /// Empty where nothing is set.
+    /// </summary>
+    public IReadOnlyList<string> Has { get; init; } = [];
 
     /// <summary>
     /// What <c>HATCH_WORKSPACE</c> (or <c>--workspace</c>) says to turn the
@@ -422,6 +429,7 @@ public sealed partial record Settings
         var logRaw = Read("HATCH_LOG");
         var dangerousRaw = Read("HATCH_DANGEROUS");
         var modelsRaw = Read("HATCH_MODELS");
+        var hasRaw = Read("HATCH_HAS");
 
         // The origin alone. A key is not required, because a Hatch with its wall
         // off has no credential to present - and a load that refused without one
@@ -482,6 +490,16 @@ public sealed partial record Settings
             return false;
         }
 
+        if (ParseHas(hasRaw, out var has) is { } hasSentence)
+        {
+            refusal = $"""
+                hatch: HATCH_HAS - {hasSentence}
+
+                  Fix it with `hatch config --has <entry>...` (bare `--has` clears it), or change the exported variable.
+                """;
+            return false;
+        }
+
         if (OllamaAdapter.ParseTiers(ollamaTiersRaw, out var ollamaTiers) is { } tiersSentence)
         {
             refusal = $"""
@@ -515,6 +533,7 @@ public sealed partial record Settings
             Tags = tags,
             RefusesDangerous = refusesDangerous,
             Models = models,
+            Has = has,
             Sources = sources,
             KeyNote = ignoredKeyLayer() is { } ignoredKey
                 ? IgnoredKeySentence(
@@ -598,6 +617,24 @@ public sealed partial record Settings
 
         models = kept;
         return null;
+    }
+
+    /// <summary>
+    /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
+    /// then run through <see cref="DependencySet.Normalise"/> - null, blank, or
+    /// nothing left after the split answers an empty <paramref name="has"/>
+    /// with no refusal. Answers the refusal sentence, or null once
+    /// <paramref name="has"/> is the normalised list.
+    /// </summary>
+    public static string? ParseHas(string? raw, out IReadOnlyList<string> has)
+    {
+        has = [];
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (list.Length == 0) return null;
+
+        return DependencySet.Normalise(list, out has);
     }
 
     /// <summary>

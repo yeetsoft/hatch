@@ -211,6 +211,8 @@ HATCH_LOG            where its log goes (on: the logs folder beside the
 HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
 HATCH_MODELS         the models this runner advertises, comma-separated
                      (default: the agent's)
+HATCH_HAS            what this machine has that detection cannot see,
+                     comma-separated (default: nothing)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -335,6 +337,27 @@ the row carries whatever the last beat said, so changing `HATCH_MODELS` or
 pulling a model on an ollama server shows on the next heartbeat. A runner that
 has nothing to advertise sends none and leaves the row's list as it was.
 `hatch runners` closes a row with `  models haiku sonnet`.
+
+### Has
+
+A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
+comma-separated list of dependencies - each an `id` or `id@version` from the
+master list - trimmed, lowercased and deduplicated. It adds to what detection
+finds and never removes. It is read from the same four layers as any other
+setting, and unset means nothing declared.
+
+```
+HATCH_HAS=dotnet@10.0.100,pwsh
+hatch config --has dotnet@10.0.100 --has pwsh
+```
+
+`--has` is repeatable, and bare `--has` clears them. A comma inside one value
+is refused (`--has dotnet,pwsh` is one unknown id, not two), with nothing
+written. So is an id the master list does not know: `` `cobol` is not a
+dependency Hatch knows - the list is dotnet, make, node, playwright-browsers,
+postgres, pwsh ``. A bad `HATCH_HAS` in a file or the environment refuses
+every command with the same sentence, after `hatch: HATCH_HAS -`. It is
+machine-bound, so a profile still reads it from the per-user file.
 
 ## What a runner refuses
 
