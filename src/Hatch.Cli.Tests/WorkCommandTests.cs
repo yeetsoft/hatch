@@ -73,7 +73,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0]
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(machine.Os, beat.Os);
         Assert.Equal(machine.Arch, beat.Arch);
@@ -97,7 +97,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0]
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Tags);
 
@@ -129,7 +129,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0]
             .Read<RunnerHeartbeatRequest>();
         Assert.NotNull(beat.Has);
         Assert.Equal(dependencies, beat.Has);
@@ -171,7 +171,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0]
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0]
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(refuses, beat.RefusesDangerous);
 
@@ -208,7 +208,7 @@ public sealed class WorkCommandTests
         Assert.Contains("project=FIL", query);
         Assert.Contains("project=AER", query);
         Assert.DoesNotContain(
-            h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)),
+            h.Wire.Calls.Where(c => c.Path == "/api/hatch/runners/sessions"),
             c => c.Read<RunnerHeartbeatRequest>().Projects is not null);
     }
 
@@ -225,7 +225,7 @@ public sealed class WorkCommandTests
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["--project", "FIL"], default));
 
         Assert.Contains("project=FIL", h.Wire.To("GET", Queue)[0].Query);
-        var beats = h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)).ToList();
+        var beats = h.Wire.Calls.Where(c => c.Path == "/api/hatch/runners/sessions").ToList();
         Assert.NotEmpty(beats);
         Assert.All(beats, c => Assert.Null(c.Read<RunnerHeartbeatRequest>().Projects));
     }
@@ -242,7 +242,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync([], default));
 
-        var beats = h.Wire.Calls.Where(c => c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal)).ToList();
+        var beats = h.Wire.Calls.Where(c => c.Path == "/api/hatch/runners/sessions").ToList();
         Assert.NotEmpty(beats);
         Assert.All(beats, c =>
         {
@@ -1127,9 +1127,6 @@ public sealed class WorkCommandTests
         using var h = new Harness();
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
-        var runnerName = await Checkout.RunnerAsync(
-            null, Checkout.Host(), elsewhere, null, null, default, h.Runtime.RunnersPath);
-
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
@@ -1137,7 +1134,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1", "--repo", elsewhere], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}")[0].Read<RunnerHeartbeatRequest>();
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0].Read<RunnerHeartbeatRequest>();
         Assert.Equal(runtime.Adapter.Id, beat.Agent);
         Assert.Single(h.Sessions.Spawned);
 
@@ -1162,7 +1159,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0].Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.Revision);
         Assert.Equal(4127, beat.Sequence);
         Assert.Equal(builtAt, beat.BuiltAt);
@@ -1181,7 +1178,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0].Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.SourceRevision);
         Assert.Equal(4127, beat.SourceSequence);
     }
@@ -1198,7 +1195,7 @@ public sealed class WorkCommandTests
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0].Read<RunnerHeartbeatRequest>();
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0].Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.SourceRevision);
         Assert.Null(beat.SourceSequence);
     }

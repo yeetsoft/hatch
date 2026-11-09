@@ -16,8 +16,8 @@ public sealed class RunnersTests
     private const string Queue = "/api/hatch/work/queue";
     private const string Review = "/api/hatch/work/review";
 
-    /// <summary>Where the harness's own runner name lands, escaped as a runner name has to be.</summary>
-    private const string Beat = "/api/hatch/runners/test%3A%2Fcheckout";
+    /// <summary>Where every heartbeat lands: the key names the runner, so no name rides the path.</summary>
+    private const string Beat = "/api/hatch/runners/sessions";
 
     private static Guid OneTicket(Harness h, string key = "AER-1")
     {
@@ -63,6 +63,36 @@ public sealed class RunnersTests
         Assert.True(
             calls.TakeWhile(c => c.Path != "/api/hatch/issues/AER-1/claim").Any(c => c.Path == Beat),
             "the runner said it was here before it claimed anything");
+    }
+
+    [Fact]
+    public async Task The_heartbeat_path_names_no_runner()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(h.Wire.Calls, c => c.Method == "POST" && c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal));
+        Assert.Equal("/api/hatch/runners/sessions", beat.Path);
+        Assert.DoesNotContain(Uri.EscapeDataString(h.Runtime.RunnerName), beat.Path);
+    }
+
+    [Fact]
+    public async Task Two_checkouts_of_one_runner_beat_to_one_path_each_with_its_own_where()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime with { Where = "test:/one" }).RunAsync(["--once"], default);
+        await new GoToWorkCommand(h.Runtime with { Where = "test:/two" }).RunAsync(["--once"], default);
+
+        var beats = Beats(h);
+        Assert.Equal(2, beats.Count);
+        Assert.All(beats, c => Assert.Equal("/api/hatch/runners/sessions", c.Path));
+        Assert.Equal(["test:/one", "test:/two"], beats.Select(c => c.Read<RunnerHeartbeatRequest>().Where).ToArray());
     }
 
     [Fact]
@@ -264,7 +294,7 @@ public sealed class RunnersTests
         using var h = new Harness();
         h.Wire.Reply(
             "POST", Beat, HttpStatusCode.Conflict,
-            "\"test:/checkout is already the runner on elsewhere:/tree - hatch config gives this checkout another name\"");
+            "\"test:/checkout is already the runner on elsewhere:/tree\"");
 
         Assert.Equal(1, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
 
@@ -279,7 +309,7 @@ public sealed class RunnersTests
         using var h = new Harness();
         h.Wire.Reply(
             "POST", Beat, HttpStatusCode.Conflict,
-            "\"test:/checkout is already the runner on elsewhere:/tree - hatch config gives this checkout another name\"");
+            "\"test:/checkout is already the runner on elsewhere:/tree\"");
 
         Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 

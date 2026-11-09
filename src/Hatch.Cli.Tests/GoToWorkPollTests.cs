@@ -12,7 +12,7 @@ public sealed class GoToWorkPollTests
 {
     private const string Queue = "/api/hatch/work/queue";
     private const string Review = "/api/hatch/work/review";
-    private const string Beat = "/api/hatch/runners/test%3A%2Fcheckout";
+    private const string Beat = "/api/hatch/runners/sessions";
     private const string PrUrl = "https://github.com/o/r/pull/1";
 
     private static readonly string Trunk = new('a', 40);
