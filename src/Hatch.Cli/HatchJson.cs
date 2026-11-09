@@ -18,11 +18,15 @@ namespace Hatch.Cli;
 /// coming back with its fields empty, which is the right way round: a wire
 /// record nobody registered is a bug in this file, and it says so at the call
 /// that needed it.</para>
+///
+/// <para>The server writes enums as strings; <c>UseStringEnumConverter</c> is
+/// what lets the trimmed binary read them.</para>
 /// </remarks>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     PropertyNameCaseInsensitive = true,
     NumberHandling = JsonNumberHandling.AllowReadingFromString,
+    UseStringEnumConverter = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 
 // What is read.

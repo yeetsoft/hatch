@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 
 namespace Hatch.Cli.Tests;
@@ -173,6 +174,47 @@ public sealed class RunnersCommandTests
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
         Assert.Contains("paused", h.Said);
+    }
+
+    /// <summary>
+    /// The server writes <c>boardDrift</c>/<c>sourceDrift</c> as strings
+    /// (<c>JsonStringEnumConverter</c> in <c>Hatch.Api</c>); <see cref="Fixtures"/>'s
+    /// own serialiser writes the numeric form instead, so the body here is
+    /// built by hand to stand in for what the server actually sends.
+    /// </summary>
+    private static string RunnerBodyWithStringDrift(string name)
+    {
+        var body = JsonSerializer.Serialize(new List<RunnerDto> { ARunner(name: name) }, Fixtures.Json);
+        Assert.Contains("\"boardDrift\":0", body);
+        Assert.Contains("\"sourceDrift\":0", body);
+        body = body.Replace("\"boardDrift\":0", "\"boardDrift\":\"Behind\"");
+        body = body.Replace("\"sourceDrift\":0", "\"sourceDrift\":\"Current\"");
+        Assert.Contains("\"boardDrift\":\"Behind\"", body);
+        Assert.Contains("\"sourceDrift\":\"Current\"", body);
+        return body;
+    }
+
+    [Fact]
+    public async Task Runners_written_with_string_drift_are_listed()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+
+        Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
+        Assert.Contains("behind-runner", h.Said);
+        Assert.Empty(h.Complained);
+    }
+
+    [Fact]
+    public async Task Board_reads_string_drift_as_the_enum()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+
+        var runners = await h.Board.RunnersAsync(default);
+
+        Assert.Equal(RunnerBoardDrift.Behind, runners.Single().BoardDrift);
+        Assert.Equal(RunnerBoardDrift.Current, runners.Single().SourceDrift);
     }
 
     [Fact]
