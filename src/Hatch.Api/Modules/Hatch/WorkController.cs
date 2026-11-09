@@ -652,20 +652,21 @@ public class WorkController(
 
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         var from = statuses.First(s => s.Id == issue.StatusId);
-        var to = Columns.Target(statuses, from);
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var now = time.GetUtcNow();
 
         var family = await FamilyGate.ForAsync(db, statuses, ct);
-        var playbook = to is null
-            ? null
-            : (await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId, ct))?.Playbook;
-        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
 
         var inReview = from.Id == Columns.AwaitingReview(statuses)?.Id;
         var merged = inReview ? (await _dispatch.MergeChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
         var built = inReview ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, []) : [];
+
+        var route = await RouteAsync(issue, from, statuses, merged, built, family.Children(issue.Id).Count > 0, ct);
+        var to = route.To;
+        var playbook = route.Match?.Playbook;
+        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
+        var waiting = questions.Count(q => q.Answers.Count == 0);
+
         var landing = inReview && (await _dispatch.LandedAsync([issue], now, ct)).TryGetValue(issue.Id, out var landed) ? landed : (MergeWork.Judgement?)null;
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
@@ -1338,7 +1339,6 @@ public class WorkController(
         IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
-        var to = Columns.Target(statuses, from);
 
         var children = await db.Issues.Where(i => i.ParentId == issue.Id)
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
@@ -1391,19 +1391,6 @@ public class WorkController(
                 ClosedAt: c.ClosedAt));
         }
 
-        var match = to is null
-            ? null
-            : await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, children.Count > 0, issue.ProjectId, ct);
-        var playbook = match?.Playbook;
-
-        // Both halves in one read: the open ones decide whether an agent is
-        // dispatched at all, and the answered ones are what it is dispatched
-        // knowing.
-        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
-        var waiting = questions.Count(q => q.Answers.Count == 0);
-
-        var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
-
         // What runners reported about the branch, for an issue in review: the
         // fold and the kind are decided from the same two lists, in one place.
         var review = Columns.AwaitingReview(statuses);
@@ -1414,6 +1401,20 @@ public class WorkController(
         IReadOnlyList<EfHatchBuildCheck> built = inReview
             ? (await _dispatch.BuildChecksAsync([issue.Id], ct)).GetValueOrDefault(issue.Id, [])
             : [];
+
+        var route = await RouteAsync(issue, from, statuses, merged, built, children.Count > 0, ct);
+        var to = route.To;
+        var match = route.Match;
+        var playbook = match?.Playbook;
+
+        // Both halves in one read: the open ones decide whether an agent is
+        // dispatched at all, and the answered ones are what it is dispatched
+        // knowing.
+        var questions = await Questions.ForIssueAsync(db, issue.Id, ct);
+        var waiting = questions.Count(q => q.Answers.Count == 0);
+
+        var issueDto = await IssueProjection.ToDtoAsync(db, actors, issue, claims, claimed.Now, ct);
+
         var landing = inReview && (await _dispatch.LandedAsync([issue], claimed.Now, ct)).TryGetValue(issue.Id, out var landed)
             ? landed
             : (MergeWork.Judgement?)null;
@@ -1534,6 +1535,36 @@ public class WorkController(
         }
 
         return (IssueKey.Format(issue.Project!.Key, issue.Number), issue.Title);
+    }
+
+    /// <summary>
+    /// The column a move off <paramref name="from"/> is matched against, and
+    /// the row that speaks for it - the same question <see cref="Dispatch.ScanAsync"/>
+    /// asks per row, asked here for one issue: <see cref="Dispatch.CheckColumn"/>
+    /// names the merge column when a check covers this row, <see cref="Dispatch.ReviewTarget"/>
+    /// says which column the match is actually read against, and a check row
+    /// that matched there (<see cref="EfHatchPlaybook.IsCheck"/>) speaks for the
+    /// move itself rather than losing to a second match against its own column.
+    /// Null when <paramref name="from"/> has no column after it, the same null
+    /// <see cref="Columns.Target"/> gives every other caller.
+    /// </summary>
+    private async Task<(EfHatchStatus? To, PlaybookMatch? Match)> RouteAsync(
+        EfHatchIssue issue, EfHatchStatus from, List<EfHatchStatus> statuses,
+        IReadOnlyList<EfHatchMergeCheck> merged, IReadOnlyList<EfHatchBuildCheck> built,
+        bool isParent, CancellationToken ct)
+    {
+        var checkColumn = Dispatch.CheckColumn(issue, from, statuses, merged, built);
+        var checkMatch = checkColumn is null
+            ? null
+            : await _dispatch.MatchAsync(from.Id, checkColumn.Id, issue.Type, isParent, issue.ProjectId, ct);
+
+        var to = Dispatch.ReviewTarget(statuses, from, checkColumn, checkMatch?.Playbook);
+        if (to is null) return (null, null);
+
+        if (checkMatch?.Playbook is { IsCheck: true }) return (to, checkMatch);
+
+        var match = await _dispatch.MatchAsync(from.Id, to.Id, issue.Type, isParent, issue.ProjectId, ct);
+        return (to, match);
     }
 
     /// <summary>

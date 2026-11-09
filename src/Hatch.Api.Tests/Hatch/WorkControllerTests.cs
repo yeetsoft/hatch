@@ -8347,13 +8347,233 @@ public class WorkControllerTests
 
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
-        // The scan still builds only the (review, review) row, matched against
-        // no playbook - a (review, approved) row, check or not, does not bite
-        // until the next task teaches the scan to ask for it.
+        // A row on (review, approved) that is not itself ticked IsCheck is
+        // never taken for this move, check-approves-merge or not - only a row
+        // ticked IsCheck ever speaks for the move a passing check would make.
         Assert.Equal(
             "a passing check would carry it into \"approved\", but no check playbook covers \"review\" to \"approved\" for a story - add one on the Playbooks page",
             entry.Blocked);
         Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOn_AndACheckRow_DispatchesIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, and a check covers the merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.Equal(WorkKinds.Advance, entry.Kind);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
+        Assert.False(entry.Hop);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Null(work.Blocked);
+        Assert.Equal(WorkKinds.Advance, work.Kind);
+        Assert.Equal(approved.Id, work.ToStatus!.Id);
+        Assert.True(work.Playbook!.IsCheck);
+        Assert.False(work.Hop);
+        Assert.Equal("in progress", work.FailStatusName);
+        Assert.Null(work.NextBriefLimit);
+        Assert.False(work.AsksReleaseNote);
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default));
+        Assert.Null(next.Blocked);
+        Assert.Equal(WorkKinds.Advance, next.Kind);
+        Assert.Equal(approved.Id, next.ToStatus!.Id);
+        Assert.True(next.Playbook!.IsCheck);
+        Assert.False(next.Hop);
+    }
+
+    [Fact]
+    public async Task Review_AConflictedBranchWithACheckRowWaiting_StillTakesTheReviewSelfMove()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        await h.ConflictPlaybookAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "stopped merging, with a check row waiting", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Conflicted, files: ["a.txt"]);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.Equal(WorkKinds.Conflicts, entry.Kind);
+        Assert.Equal(entry.FromStatus.Id, entry.ToStatus!.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.False(work.Playbook!.IsCheck);
+    }
+
+    [Fact]
+    public async Task Review_AFailedBuildWithACheckRowWaiting_StillTakesTheReviewSelfMove()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        await h.ConflictPlaybookAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "red, with a check row waiting", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Failed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.Equal(WorkKinds.Build, entry.Kind);
+        Assert.Equal(entry.FromStatus.Id, entry.ToStatus!.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.False(work.Playbook!.IsCheck);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOff_AndACheckRowWritten_KeepsTheReviewJudgesSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean and green, but the setting is off", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.False(work.Playbook?.IsCheck ?? false);
+    }
+
+    [Fact]
+    public async Task Review_ACleanBranchWithTheSettingOn_AndACheckRowButNoPullRequest_KeepsTheReviewJudgesSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean and green, but no pull request yet", h.Review);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        Assert.Equal(
+            "its branch merges cleanly with main and its build passes - nothing for an agent to do",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Landing_OnTheTrunkWithACheckRowAndNoPullRequest_IsStillFoldedAsLand()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        await h.SetLandingAsync(Landings.Trunk);
+        var issue = await h.FileAsync("story", "direct", h.Review);
+        await h.LandingAsync(issue, Landed, containedBy: Landed);
+        await h.TrunkBuildAsync("main", Landed, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Equal(WorkKinds.Land, entry.Kind);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.Equal(WorkKinds.Land, work.Kind);
+    }
+
+    [Fact]
+    public async Task Express_WithASettingOnCheckRow_IsNotAHopAndDispatchesIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "express, but a check covers the merge", h.Review);
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.False(entry.Hop);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.False(work.Hop);
+        Assert.True(work.Playbook!.IsCheck);
+    }
+
+    [Fact]
+    public async Task HopWork_OnACheckRowDispatch_RefusesWithNotAHop()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, and a check covers the merge", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("not a hop", (string)refusal.Value!);
+    }
+
+    [Fact]
+    public async Task PreApproved_WithTheSettingOn_IsStillAnApproveHopIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "ready to merge, and a check also covers it", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Approve, entry.HopKind);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
     }
 
     [Fact]

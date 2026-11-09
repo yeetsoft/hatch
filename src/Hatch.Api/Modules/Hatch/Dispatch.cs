@@ -345,19 +345,26 @@ public sealed class Dispatch(
                         ? playbooks
                         : repoSourcedRows[issue.ProjectId].Concat(boardWidePlaybooks).ToList();
 
-                    var playbook = Match(candidatePlaybooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
-                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
+                    var checkColumn = CheckColumn(issue, status, statuses, merged, built);   // null off the review column
+                    var checkRow = checkColumn is null
+                        ? null
+                        : Match(candidatePlaybooks, status.Id, checkColumn.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+                    var rowTarget = ReviewTarget(statuses, status, checkColumn, checkRow) ?? to;
+                    var playbook = checkRow is { IsCheck: true }
+                        ? checkRow
+                        : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+                    var hopKind = HopKind(issue, status, rowTarget, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
                         status.ParentPulls ? ImplementationPlaybook(candidatePlaybooks, statuses, issue, family) : null);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
                         : hopKind == HopKinds.Close ? Columns.Closes(statuses, status)
-                        : to;
+                        : rowTarget;
                     MergeWork.Judgement? landing = landed.TryGetValue(issue.Id, out var landedJudgement) ? landedJudgement : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     DependencyRequirement? requirement = null;
