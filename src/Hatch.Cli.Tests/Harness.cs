@@ -217,6 +217,11 @@ public sealed class FakeAdapter : IAgentAdapter
         return Limit;
     }
 
+    public ModelRefusal.Recognised? ModelRefused { get; set; }
+
+    public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        ModelRefused;
+
     /// <summary>Where <see cref="OutputLastMessagePath"/> answers from - null unless a test sets it.</summary>
     public string? OutputLastMessageFile { get; set; }
 

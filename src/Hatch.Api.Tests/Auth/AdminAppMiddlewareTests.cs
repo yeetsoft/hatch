@@ -176,8 +176,8 @@ public class AdminAppMiddlewareTests
 
         await Run("/apps/admin/settings", gate: gate);
 
-        // No scope: a bundle is for a browser, and an API key has no browser.
-        Assert.Equal(("GET", "/apps/admin/settings", "10.0.0.7", PersonRole.User, null), gate.LastAsked);
+        // No key: a bundle is for a browser, and an API key has no browser.
+        Assert.Equal(("GET", "/apps/admin/settings", "10.0.0.7", PersonRole.User, false), gate.LastAsked);
     }
 
     private static async Task<(HttpContext Context, bool Served)> Run(
@@ -231,12 +231,12 @@ internal sealed class StubRoleGate : IRoleGate
 
     public int Evaluations { get; private set; }
 
-    public (string? Method, string? Path, string? ClientIp, PersonRole Minimum, string? AcceptScope) LastAsked { get; private set; }
+    public (string? Method, string? Path, string? ClientIp, PersonRole Minimum, bool AcceptKey) LastAsked { get; private set; }
 
-    public Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, string? acceptScope, CancellationToken ct)
+    public Task<RoleDecision> EvaluateAsync(string? method, PathString path, string? clientIp, PersonRole minimum, bool acceptKey, CancellationToken ct)
     {
         Evaluations++;
-        LastAsked = (method, path.Value, clientIp, minimum, acceptScope);
+        LastAsked = (method, path.Value, clientIp, minimum, acceptKey);
         return Task.FromResult(Decision);
     }
 }

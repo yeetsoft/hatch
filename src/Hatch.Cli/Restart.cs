@@ -146,6 +146,9 @@ public sealed class LoopSource(string root) : ISelf
 /// <summary>One increment's reported tokens and the instant it ended, an entry of the rolling sixty-minute window.</summary>
 public sealed record TokenEntry(DateTimeOffset At, long Tokens);
 
+/// <summary>A model the runner has stopped offering, until an instant or - where that is null - for the rest of the run.</summary>
+public sealed record NarrowedModel(string Model, DateTimeOffset? Until);
+
 /// <summary>
 /// What one incarnation of the loop hands to the next: everything a bound is
 /// measured against, so a restart cannot be a way of starting the night over.
@@ -218,6 +221,13 @@ public sealed record NightState
 
     /// <summary>The tickets put down for an emergency issue - its own list, the same reason <see cref="Interrupted"/> is.</summary>
     public IReadOnlyList<string> Preempted { get; init; } = [];
+
+    /// <summary>
+    /// The models the runner has stopped offering, still in force - so a restart does not offer them again.
+    /// Null when read from a file written before this existed: the generated reader fills a missing
+    /// init-only property with its type's default, not the initializer, so a reader coalesces.
+    /// </summary>
+    public IReadOnlyList<NarrowedModel> Narrowed { get; init; } = [];
 
     /// <summary>The tickets a clamp fired on and left where it found them - its own list, the same reason <see cref="Interrupted"/> is.</summary>
     public IReadOnlyList<string> Clamped { get; init; } = [];

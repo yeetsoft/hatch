@@ -37,19 +37,20 @@ public class RequireRoleAttribute(PersonRole minimum) : Attribute, IAsyncAuthori
     public PersonRole Minimum { get; } = minimum;
 
     /// <summary>
-    /// The one scope this route will accept from an API key, or null - the
-    /// default, and the right default - for operators only.
+    /// Whether this route accepts an API key. False - the default, and the
+    /// right default - means operators only.
     ///
-    /// Opt-in for the same reason the attribute itself is: naming a scope here
-    /// is a claim that this surface has been thought through for a caller that
-    /// is a program rather than a person, and the honest number of surfaces
-    /// that have been is small. Everything unnamed keeps refusing keys, which
-    /// is what makes adding a key a bounded act rather than a broad one.
+    /// Opt-in for the same reason the attribute itself is: setting it is a
+    /// claim that this surface has been thought through for a caller that is
+    /// a program rather than a person, and the honest number of surfaces that
+    /// have been is small. Every route that does not set it keeps refusing
+    /// keys, which is what makes adding a key a bounded act rather than a
+    /// broad one.
     ///
-    /// It widens nothing for a person: a route that accepts a scope is still
+    /// It widens nothing for a person: a route that accepts a key is still
     /// closed to a person below <see cref="Minimum"/>.
     /// </summary>
-    public string? AcceptScope { get; init; }
+    public bool AcceptKey { get; init; }
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
@@ -65,7 +66,7 @@ public class RequireRoleAttribute(PersonRole minimum) : Attribute, IAsyncAuthori
             http.Request.Path,
             http.Connection.RemoteIpAddress?.ToString(),
             Minimum,
-            AcceptScope,
+            AcceptKey,
             http.RequestAborted);
 
         if (decision.IsAllowed) return;

@@ -2157,9 +2157,9 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked`, `preempted` or `recused` — absent
+an optional `outcome`, `dropped`, `worked`, `preempted`, `recused` or `unservable` — absent
 is accepted exactly as it always has been, which covers the pick's own
-release, a restart, and an older CLI, and a value that is none of the four is
+release, a restart, and an older CLI, and a value that is none of the five is
 `400`. It is read only where a token is given: the operator's tokenless
 clobber names no increment to have an outcome. The `claim_released` event
 carries it, and it is what `letGo` counts (see [Comment, question and
@@ -2170,7 +2170,7 @@ what it pushed lands as its own comment, not as a dropped increment.
 `recused` is skipped the other way: it *stops* the count exactly as `worked`
 does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
-raises the let-go fold on its own.
+raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -3091,7 +3091,7 @@ gate on top of it — and the wall has a second lane, the API key.
   belongs to — `pending`, `user` or `admin`, an ordered enum on `EfPerson.Role`.
   It asks "at least this role", and it is on whenever the wall is: there is no
   switch. Every Hatch controller carries
-  `[RequireRole(PersonRole.User, AcceptScope = "hatch")]` (a handful of
+  `[RequireRole(PersonRole.User, AcceptKey = true)]` (a handful of
   person-only routes carry `[RequireRole(PersonRole.User)]` with no scope), and
   the bundle is in `AdminAppMiddleware`'s `GatedApps` beside `/apps/admin`,
   also at User. The operator's own verbs — people writes and sessions, grants,
@@ -3209,10 +3209,11 @@ Three things fall out of that, none of them added on purpose:
 
 ### What a scope is, and what it is not
 
-`AcceptScope` on `[RequireRole]` names the one scope that route will take from
-a key. It is **opt-in**: naming a scope is a claim that this surface has been
+`AcceptKey` on `[RequireRole]` is a bool that lets a key into that route; the
+interim check still requires the key to carry the `hatch` scope until the
+removal task lands. It is **opt-in**: setting it is a claim that this surface has been
 thought through for a caller that is a program rather than a person, and the
-honest number of surfaces that have been is one. Every route that names none —
+honest number of surfaces that have been is one. Every route that does not set it —
 minting credentials, revoking sessions, editing the house, roughly forty verbs
 — keeps refusing keys, with `key_not_accepted`. That is what makes adding a key
 a bounded act rather than a broad one.
@@ -3323,7 +3324,7 @@ reads the same way, whichever repository it binds.
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
 set its own owner could simply say it is whoever holds the tickets it wants.
-`ApiKeysController` is `[RequireAdmin]` with no `AcceptScope` on the whole
+`ApiKeysController` is `[RequireAdmin]` with no `AcceptKey` on the whole
 class — not one route carved out of it — so no key can mint a key, revoke one,
 or change whose it is; a person does that, at the API Keys page, on purpose.
 
@@ -3398,7 +3399,7 @@ it grants nothing to anyone who merely reads it.
 ## API surface
 
 Everything under `/api/hatch`, every route `[RequireRole(PersonRole.User,
-AcceptScope = "hatch")]` except where noted. Issue routes take the display key (`AER-12`).
+AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-12`).
 
 | Route | Verbs | Notes |
 |---|---|---|
@@ -3442,12 +3443,12 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/issues/{key}/priority` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ priority }` — `"paused"`, `"economy"`, `"low"`, `"normal"`, `"expedited"` or `"emergency"`. Every level but paused floats on the board and is taken first by the dispatcher, most severe first; paused sinks to the bottom and is folded by every dispatch with its own sentence. Setting what it already holds writes nothing; an unknown name is `400` |
 | `/issues/{key}/expedite` | PUT | **Person only** — plain `[RequireRole(User)]`. Legacy two-level alias for `/priority` above. `{ expedited }` — `true` sets expedited, `false` sets normal. Setting what it already holds writes nothing |
 | `/issues/{key}/pre-approval` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action so it holds with the wall off. `{ level }` — `"none"`, `"express"` or `"preapproved"` — see [Express](#pre-approval). Express needs the same permission a move into the column that feeds implementation needs; preapproved needs an approver. Setting what it already holds writes nothing; an unknown name is `400` |
-| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
-| `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
-| `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
-| `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. `{ reason }` — see [Omitted runners](#omitted-runners). The runner name may carry a slash the same way `/runners/{name}` does — escaped to `%2F` in the route, decoded once here before it is trimmed. Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
-| `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptScope = hatch)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
-| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptScope = hatch)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
+| `/issues/{key}/one-pr` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ value }` — `"on"`, `"off"` or `"inherit"` (the project's default) — see [One pull request](#one-pull-request). A story only: anything else is `400` naming its type; an unknown value is `400`. `409` once work under the story has started. Setting what it already holds writes nothing |
+| `/issues/{key}/runner-tags` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ tags }` — see [Runner tags](#runner-tags). Replaces the issue's own list whole; `400` naming the tag that breaks `RunnerTags.Normalise`'s rule (or the limit, on a list over 8), `400` if `tags` is absent, `404` on an unknown issue. Re-sending the list it already holds writes nothing, and an empty list clears it |
+| `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
+| `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Omitted runners](#omitted-runners). The runner name may carry a slash the same way `/runners/{name}` does — escaped to `%2F` in the route, decoded once here before it is trimmed. Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
+| `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
+| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -3599,7 +3600,7 @@ had.
 
 ### What the endpoint answers
 
-`GET /api/hatch/utilization` is `[RequireRole(PersonRole.User, AcceptScope = "hatch")]` like the
+`GET /api/hatch/utilization` is `[RequireRole(PersonRole.User, AcceptKey = true)]` like the
 rest of the module. It answers who is asking with
 `IActorDirectory.PrincipalAsync` — no principal (the wall is up and the caller
 is a key belonging to nobody) is `204`, the same as it is for nobody having a
@@ -3747,7 +3748,7 @@ Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
 `GET /api/hatch/attention` answers every list in one read, carrying
-`[RequireRole(PersonRole.User, AcceptScope = "hatch")]` like the rest of the module:
+`[RequireRole(PersonRole.User, AcceptKey = true)]` like the rest of the module:
 
 ```json
 {

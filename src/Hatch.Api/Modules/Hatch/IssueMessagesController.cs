@@ -30,7 +30,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues/{key}/messages")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueMessagesController(
     HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

@@ -712,7 +712,7 @@ public class IssueWorkLogControllerTests
             .Cast<RequireRoleAttribute>()
             .Single();
 
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- The trail it deliberately does not write ----

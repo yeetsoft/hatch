@@ -17,7 +17,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 [ApiController]
 [Route("api/hatch/issues/{key}")]
-[RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+[RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueThreadController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
     [HttpGet("comments")]

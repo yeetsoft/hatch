@@ -67,7 +67,7 @@ is a program rather than a browser.
 6. Controller at `/api/<name>/*` — `AddControllers` already finds it anywhere in
    the assembly. A module the household uses needs nothing more; one that is the
    operator's carries [`RequireRole`](../Common/RequireRoleAttribute.cs), and
-   naming a scope on it (`[RequireRole(PersonRole.User, AcceptScope = …)]`) is what opens a
+   setting `AcceptKey` on it (`[RequireRole(PersonRole.User, AcceptKey = true)]`) is what opens a
    route to an API key. Hatch is the worked example of both —
    [`docs/hatch.md`](../../../docs/hatch.md), "The wall, the admin gate, and API
    keys".

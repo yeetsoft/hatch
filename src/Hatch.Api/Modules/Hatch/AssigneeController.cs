@@ -51,7 +51,7 @@ public class AssigneeController(
     /// belongs to when it declines to take it.
     /// </remarks>
     [HttpGet("assignees")]
-    [RequireRole(PersonRole.User, AcceptScope = ApiKeyScopes.Hatch)]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<AssigneeDirectoryDto>> GetAssignees(CancellationToken ct)
     {
         var live = await actors.LiveAsync(ct);

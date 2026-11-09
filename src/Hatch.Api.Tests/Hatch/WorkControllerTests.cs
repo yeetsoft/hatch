@@ -11154,7 +11154,7 @@ public class WorkControllerTests
             // at. The refusal is a property of the route, not of a prompt
             // asking nicely.
             Assert.NotNull(guard);
-            Assert.Null(guard.AcceptScope);
+            Assert.False(guard.AcceptKey);
         }
     }
 
@@ -11167,7 +11167,7 @@ public class WorkControllerTests
             .Single();
 
         // An agent has to be able to read what it was dispatched with.
-        Assert.Equal(ApiKeyScopes.Hatch, guard.AcceptScope);
+        Assert.True(guard.AcceptKey);
     }
 
     // ---- The WIP section ----

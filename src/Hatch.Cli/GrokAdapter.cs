@@ -224,6 +224,11 @@ public sealed class GrokAdapter : IAgentAdapter
     public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         UsageLimit.RecogniseGrok(said, endedAt);
 
+    // No model-refusal recogniser yet - no real Grok sentence naming a model
+    // it could not spawn has been seen, the same posture UsageLimit.RecogniseGrok
+    // records for its own unseen sentences. The default interface member answers
+    // null until one is.
+
     /// <summary>
     /// The binary to spawn, which is only known once <see cref="CanSpawn"/> has
     /// said there is one. A caller that skipped the question is a bug, and
