@@ -423,7 +423,6 @@ public class StatusesControllerTests
                     Name = "hatch",
                     Hash = [1],
                     Prefix = "hatch_ak_x",
-                    Scopes = [ApiKeyScopes.Hatch],
                     CreatedAt = Now,
                 },
             }

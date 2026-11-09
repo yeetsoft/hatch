@@ -13,7 +13,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// No class-level attribute - the same split <see cref="OvernightController"/>
 /// draws, for the same reason: <see cref="GetBackup"/> is a read, open to a
-/// person and to a <c>hatch</c>-scoped key alike, but <see cref="PostBackupRun"/>
+/// person and to a key alike, but <see cref="PostBackupRun"/>
 /// is a person's own act and nothing else's.
 /// </remarks>
 [ApiController]

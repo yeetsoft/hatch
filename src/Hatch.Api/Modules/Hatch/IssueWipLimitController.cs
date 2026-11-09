@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 /// <remarks>
 /// Its own controller for <see cref="IssuePlaybookController"/>'s reason:
-/// <see cref="IssuesController"/> accepts the <c>hatch</c> scope on every
+/// <see cref="IssuesController"/> accepts a key on every
 /// route it holds, so a field here on <c>IssuePatchRequest</c> would be an
 /// agent that can raise its own ceiling - the exact edge
 /// <see cref="WipController"/> cuts for the board's own limits. It is cut in

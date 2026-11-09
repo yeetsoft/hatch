@@ -10,17 +10,16 @@ namespace Hatch.Api.Ef;
 ///
 /// It is a peer of <see cref="EfAuthGrant"/> rather than a variant of one. A
 /// grant is a device the household enrolled and the wall lets in whole; a key
-/// is a named program allowed a stated slice, and the two differ in every field
-/// that matters - a key carries scopes and a grant does not, a key is revoked
-/// by a column and a grant by a DELETE, a key is never re-issued into a cookie.
+/// is a named program, and the two differ in every field that matters - a key
+/// is revoked by a column and a grant by a DELETE, a key is never re-issued
+/// into a cookie.
 /// Folding them into one table would mean a nullable half of the row for each.
 /// </summary>
 /// <remarks>
 /// In the core <c>public</c> schema, deliberately, and not in <c>hatch</c>
 /// beside the app that prompted it. The wall reads this table on the way in, so
 /// a module owning it would make the wall depend on a module - the one thing
-/// Modules/README.md says never happens. The scope strings name modules; the
-/// rows do not belong to them.
+/// Modules/README.md says never happens.
 ///
 /// Only the SHA-256 of the secret is stored, exactly as for a grant token: a
 /// stolen database yields nothing usable, and a lost key is replaced by minting
@@ -62,14 +61,6 @@ public class EfApiKey
     [MaxLength(AuthHash.Length)]
     public required byte[] Hash { get; set; }
 
-    /// <summary>
-    /// What this key may reach, as the names in <see cref="ApiKeyScopes"/>.
-    /// Checked against the scope a <c>[RequireAdmin]</c> is willing to accept,
-    /// so a key that carries none reaches nothing - which is the right default
-    /// for a credential that lives in a file on somebody's laptop.
-    /// </summary>
-    public string[] Scopes { get; set; } = [];
-
     public required DateTimeOffset CreatedAt { get; set; }
 
     /// <summary>
@@ -109,26 +100,4 @@ public class EfApiKey
     public DateTimeOffset? RevokedAt { get; set; }
 
     public bool IsLive(DateTimeOffset now) => RevokedAt is null || RevokedAt > now;
-
-    public bool HasScope(string? scope) =>
-        scope is { Length: > 0 } && Scopes.Contains(scope, StringComparer.Ordinal);
-}
-
-/// <summary>
-/// The scopes a key can carry, named once so a controller's attribute and a
-/// mint dialog cannot disagree about the spelling.
-///
-/// One entry today. A scope is a promise about a surface, and the honest number
-/// of surfaces that have been thought through for a non-human caller is one -
-/// Hatch, which was built for it.
-/// </summary>
-public static class ApiKeyScopes
-{
-    /// <summary>Everything under <c>/api/hatch</c>: the board, issues, comments, the importer.</summary>
-    public const string Hatch = "hatch";
-
-    /// <summary>Every scope that exists, for the mint dialog and for validating what it sends.</summary>
-    public static readonly string[] All = [Hatch];
-
-    public static bool IsKnown(string? scope) => scope is not null && All.Contains(scope, StringComparer.Ordinal);
 }

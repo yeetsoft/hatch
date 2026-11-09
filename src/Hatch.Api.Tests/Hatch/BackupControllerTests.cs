@@ -163,7 +163,6 @@ public sealed class BackupControllerTests : IDisposable
             Name = "hatch",
             Hash = [1],
             Prefix = "hatch_ak_x",
-            Scopes = [ApiKeyScopes.Hatch],
             CreatedAt = Now,
         };
 
@@ -202,7 +201,7 @@ public sealed class BackupControllerTests : IDisposable
     }
 
     [Fact]
-    public void GetBackup_AcceptsTheHatchScope()
+    public void GetBackup_AcceptsAKey()
     {
         var method = typeof(BackupController).GetMethod(nameof(BackupController.GetBackup))!;
         var attribute = method.GetCustomAttribute<RequireRoleAttribute>();
