@@ -17,9 +17,6 @@ namespace Hatch.Cli;
 /// </remarks>
 public sealed class OllamaAdapter : CodexAdapter
 {
-    /// <summary>The playbook's aliases in the order the warning names them.</summary>
-    private static readonly string[] Aliases = ["haiku", "sonnet", "opus", "fable"];
-
     /// <summary>Every alias null: no model id is shipped here, the operator names theirs.</summary>
     private static readonly IReadOnlyDictionary<string, string?> DefaultTiers = new Dictionary<string, string?>
     {
@@ -62,7 +59,7 @@ public sealed class OllamaAdapter : CodexAdapter
                 merged[alias] = id;
         _tiers = merged;
 
-        var unmapped = Aliases.Where(alias => merged[alias] is null).ToArray();
+        var unmapped = ModelFamilies.Aliases.Where(alias => merged[alias] is null).ToArray();
         if (unmapped.Length > 0)
             warn?.Invoke($"hatch: ollama - {Join(unmapped)} run on the CLI's default model");
 
@@ -246,9 +243,9 @@ public sealed class OllamaAdapter : CodexAdapter
         if (alias.Length == 0 || id.Length == 0)
             return $"entry \"{entry}\" is not alias=id";
 
-        var known = Aliases.FirstOrDefault(a => a.Equals(alias, StringComparison.OrdinalIgnoreCase));
+        var known = ModelFamilies.Aliases.FirstOrDefault(a => a.Equals(alias, StringComparison.OrdinalIgnoreCase));
         if (known is null)
-            return $"\"{alias}\" is not an alias ({string.Join(", ", Aliases)})";
+            return $"\"{alias}\" is not an alias ({string.Join(", ", ModelFamilies.Aliases)})";
 
         if (parsed.ContainsKey(known))
             return $"\"{alias}\" is given twice";

@@ -2326,14 +2326,6 @@ public class EfHatchPlaybook
     /// </summary>
     public static readonly string[] Efforts = ["low", "medium", "high", "xhigh", "max"];
 
-    /// <summary>
-    /// The model aliases the CLI resolves to whatever is current. Aliases
-    /// rather than pinned ids because a playbook says "the big one" and means
-    /// it a year from now; a pinned id is accepted too, for an operator who
-    /// has a reason to pin.
-    /// </summary>
-    public static readonly string[] ModelAliases = ["haiku", "sonnet", "opus", "fable"];
-
     public const string AnyShape = "any";
     public const string LeafShape = "leaf";
     public const string ParentShape = "parent";
@@ -2512,7 +2504,7 @@ public class EfHatchPlaybook
 
     public static bool IsValidModel(string? model, ModelFamilies? families = null) =>
         model is not null &&
-        (ModelAliases.Contains(model) || (families ?? ModelFamilies.Default).AgentOf(model) is not null);
+        (ModelFamilies.Aliases.Contains(model) || (families ?? ModelFamilies.Default).AgentOf(model) is not null);
 
     public static bool IsValidShape(string? shape) =>
         shape is not null && Shapes.Contains(shape);
