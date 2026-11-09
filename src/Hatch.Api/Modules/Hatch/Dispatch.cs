@@ -59,6 +59,12 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     /// Null is <see cref="ModelDeclaration.Unjudged"/>: a scan answering for
     /// the board and not for a runner folds nothing on models.
     /// </param>
+    /// <param name="has">
+    /// The development dependencies the caller's runner has, see
+    /// <see cref="HasDeclaration"/>. Null is <see cref="HasDeclaration.Unjudged"/>:
+    /// a scan answering for the board, or for a runner that sent none, folds
+    /// nothing on dependencies and reads no dependency file.
+    /// </param>
     /// <param name="projects">
     /// The project keys this runner is bound to, repeatable - see
     /// <see cref="ProjectFold"/>. Null or empty folds nothing: a scan
@@ -82,10 +88,11 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
-        bool foldLetGo = true, ModelDeclaration? models = null)
+        bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
+        has ??= HasDeclaration.Unjudged;
 
         // Judged here, on the one entry every caller shares - the same place
         // ancestorKey's own unknown key is refused - so a refused scan never
@@ -304,6 +311,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // would hide a ring, as a tag or danger fold does.
         var modelFolded = false;
 
+        // Whether any code-gated row was folded on a dependency its runner
+        // lacks: it sits ahead of the dependency-edge fold, so it hides a ring
+        // the same way. Each project's requirement is read on first sight, and
+        // only for a scan that judges it.
+        var hasFolded = false;
+        var requirements = new Dictionary<int, DependencyRequirement>();
+
         foreach (var level in new[] { PriorityLevels.Emergency, PriorityLevels.Expedited, PriorityLevels.Normal, PriorityLevels.Low, PriorityLevels.Economy, PriorityLevels.Paused })
         {
             string? firstClearThisTier = null;
@@ -344,12 +358,24 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                         : to;
                     MergeWork.Judgement? landing = landed.TryGetValue(issue.Id, out var landedJudgement) ? landedJudgement : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
+                    DependencyRequirement? requirement = null;
+                    if (has.Judged && !requirements.TryGetValue(issue.ProjectId, out requirement))
+                    {
+                        requirement = await DependencyRequirementAsync(issue.Project!, ct);
+                        requirements[issue.ProjectId] = requirement;
+                    }
+
                     var blocking = BlockedWithKind(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
-                        landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models);
+                        landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
+                        has: has, requirement: requirement);
                     if (!hop && ModelFold(issue, status, playbook, models) is not null) modelFolded = true;
+                    if (requirement is not null && rowTo is not null
+                        && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
+                        && DependencyFold(issue, has, requirement) is not null)
+                        hasFolded = true;
 
                     var blocked = blocking.Sentence;
                     var kind = blocking.Kind;
@@ -428,6 +454,7 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
                 || (tags.Judged && statuses.Any(s => byColumn.ContainsKey(s.Id) && RunnerTagColumn.Read(s.RunnerTags).Count > 0))
                 || (tags.RefusesDangerous && candidates.Any(i => tree.EffectiveDangerous(i.Id).Reason is not null))
                 || modelFolded
+                || hasFolded
                 || projects is { Count: > 0 }
                 || (asking is not null && candidates.Any(i => tree.EffectiveOmittedRunners(i.Id).Any(o => o.Runner == asking.Name)))
                 ? (await ScanAsync(offsetMinutes, null, heldToken, RepositoryDeclaration.Undeclared, false, ct)).Rows
@@ -540,7 +567,8 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         var scan = await ScanAsync(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
-            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models);
+            asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
+            has: declared.Has);
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -800,6 +828,42 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         tags.RefusesDangerous && gate.EffectiveDangerous(issue.Id).Reason is { } reason
             ? $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is flagged dangerous ({reason}) - this runner refuses dangerous work"
             : null;
+
+    /// <summary>
+    /// Why this caller's runner cannot run the issue's code: a bound
+    /// repository declares a development dependency the runner's
+    /// <c>?has=</c> does not satisfy, or one of the declaring files is invalid.
+    /// Null for a scan that is <see cref="HasDeclaration.Unjudged"/>, and when
+    /// every need is met. A need is met when any version the runner lists for
+    /// its id satisfies it; a bare need is met by the id at any version.
+    /// </summary>
+    private static string? DependencyFold(EfHatchIssue issue, HasDeclaration has, DependencyRequirement requirement)
+    {
+        if (!has.Judged) return null;
+        if (requirement.Invalid is { } invalid) return invalid;
+
+        var needed = new List<string>();
+        var offered = new List<string>();
+        var declaredBy = new List<string>();
+        foreach (var need in requirement.Needs
+                     .OrderBy(n => n.Id, StringComparer.Ordinal)
+                     .ThenBy(n => n.Version, StringComparer.Ordinal))
+        {
+            var versions = has.VersionsOf(need.Id);
+            if (versions.Any(v => DependencyVersion.Satisfies(need.Version, v))) continue;
+
+            needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+            offered.Add(versions.Count == 0
+                ? $"no {need.Id}"
+                : Listed(versions.Select(v => v is null ? need.Id : $"{need.Id} {v}").ToList()));
+            if (!declaredBy.Contains(need.Canonical)) declaredBy.Add(need.Canonical);
+        }
+
+        return needed.Count == 0
+            ? null
+            : $"{IssueKey.Format(issue.Project!.Key, issue.Number)} needs {Listed(needed)} " +
+              $"({Listed(declaredBy)}'s {DependencyDeclaration.Path}) - this runner has {Listed(offered)}";
+    }
 
     /// <summary>
     /// Why this caller's runner cannot spawn the move: the model it runs on -
@@ -1216,11 +1280,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         TagDeclaration? tags = null,
         IReadOnlyList<string>? projects = null,
         RunnerAsking? asking = null,
-        ModelDeclaration? models = null) =>
+        ModelDeclaration? models = null,
+        HasDeclaration? has = null,
+        DependencyRequirement? requirement = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
-            repoSourced, tags, projects, asking, models).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -1257,7 +1323,9 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         TagDeclaration? tags = null,
         IReadOnlyList<string>? projects = null,
         RunnerAsking? asking = null,
-        ModelDeclaration? models = null)
+        ModelDeclaration? models = null,
+        HasDeclaration? has = null,
+        DependencyRequirement? requirement = null)
     {
         var hop = hopKind is not null;
 
@@ -1436,6 +1504,13 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
         // not an idle review self-move, which the review judge speaks for.
         if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged) is { } modelBlock)
             return new Blocking(modelBlock, BlockedKinds.Other);
+
+        // After the model fold, before the dependencies: a runner that cannot
+        // build the ticket's code is not asked to wait on what blocks it. The
+        // move into implementation runs no code, so CodeGated leaves it out.
+        if (CodeGated(issue, from, to, hop, implementation, verdicts, builds)
+            && DependencyFold(issue, has ?? HasDeclaration.Unjudged, requirement ?? new DependencyRequirement(null, [])) is { } hasBlock)
+            return new Blocking(hasBlock, BlockedKinds.Other);
 
         if (to.Id == implementation?.Id
             || (from.ParentPulls && issue.ParentId is { } pullParentId && family.ParentStarted(pullParentId, statuses)))
@@ -1795,6 +1870,48 @@ public sealed class Dispatch(HatchContext db, IActorDirectory actors, IssueClaim
     }
 
     /// <summary>
+    /// What the project's bound repositories declare in
+    /// <c>.hatch/dependencies.json</c>, read off the copies runners have
+    /// reported. A repository's trunk is its base branch, else the one trunk
+    /// the reported rows hold for it; none or several reads as unread and the
+    /// repository is skipped, as is one whose file is absent. An invalid file
+    /// answers at once with its own sentence: what it would have asked of a
+    /// runner is not known.
+    /// </summary>
+    public async Task<DependencyRequirement> DependencyRequirementAsync(EfHatchProject project, CancellationToken ct)
+    {
+        var repositories = project.Repositories.OrderBy(r => r.SortOrder).ToList();
+        if (repositories.Count == 0) return new DependencyRequirement(null, []);
+
+        var canonicals = repositories.Select(r => r.Canonical).Distinct().ToList();
+        var files = await db.DependencyFiles.AsNoTracking()
+            .Where(f => canonicals.Contains(f.Canonical))
+            .ToListAsync(ct);
+
+        var needs = new List<DependencyNeed>();
+        foreach (var repo in repositories)
+        {
+            var held = files.Where(f => f.Canonical == repo.Canonical).ToList();
+            var trunks = held.Select(f => f.Trunk).Distinct().ToList();
+            var trunk = repo.BaseBranch is { Length: > 0 } baseBranch ? baseBranch : trunks.Count == 1 ? trunks[0] : null;
+            if (trunk is null) continue;
+
+            var file = held.FirstOrDefault(f => f.Trunk == trunk);
+            if (file is null || file.State == EfHatchDependencyFile.AbsentState) continue;
+
+            if (file.State == EfHatchDependencyFile.InvalidState)
+                return new DependencyRequirement(
+                    $"{repo.Canonical}'s {DependencyDeclaration.Path} is invalid at {file.Sha} ({file.Problem}) - fix it on the trunk", []);
+
+            foreach (var entry in EfHatchDependencyFile.ReadEntries(file.Entries))
+                if (!needs.Any(n => n.Id == entry.Id && n.Version == entry.Version))
+                    needs.Add(new DependencyNeed(entry.Id, entry.Version, repo.Canonical));
+        }
+
+        return new DependencyRequirement(null, needs);
+    }
+
+    /// <summary>
     /// The playbook that speaks for this move. A row naming the issue's own
     /// project beats a row naming every project, whatever either names for
     /// type or shape; only once that is settled does a row naming the issue's
@@ -1978,6 +2095,22 @@ public sealed record PlaybookFileReference(string Path, string Canonical, string
 /// against. <see cref="Source"/> is null only where <see cref="Playbook"/> is.
 /// </summary>
 public sealed record PlaybookMatch(EfHatchPlaybook? Playbook, string? Source, PlaybookFileReference? File);
+
+/// <summary>
+/// One dependency a project's repository declares in
+/// <c>.hatch/dependencies.json</c>: its id, the version it asks for when it
+/// asks for one, and the repository that declared it.
+/// </summary>
+public sealed record DependencyNeed(string Id, string? Version, string Canonical);
+
+/// <summary>
+/// What a project's bound repositories ask of a runner - see
+/// <see cref="Dispatch.DependencyRequirementAsync"/>. <see cref="Invalid"/> is
+/// the sentence for a repository whose file is invalid on its trunk, which
+/// folds the move for any runner that sent <c>?has=</c>; otherwise
+/// <see cref="Needs"/> is every entry the parsed files declare.
+/// </summary>
+public sealed record DependencyRequirement(string? Invalid, IReadOnlyList<DependencyNeed> Needs);
 
 /// <summary>One issue the pass looked at, and what it decided.</summary>
 public sealed record ScanRow(
@@ -2181,6 +2314,57 @@ public sealed record ModelDeclaration(IReadOnlyList<string> Has, string? Agent, 
         var refusal = RunnerModels.Normalise(raw, agent, out var normalised);
         declaration = refusal is null ? Of(normalised, agent) : Unjudged;
         return refusal;
+    }
+}
+
+/// <summary>
+/// The development dependencies a caller's runner has - the <c>id</c> or
+/// <c>id@version</c> strings of <c>?has=</c> - or that the scan answers for no
+/// runner at all. Opt-in, unlike <see cref="TagDeclaration"/>: only a caller
+/// that sent some is <see cref="Judged"/>, and one that sent none folds
+/// nothing rather than reading as "has none".
+/// </summary>
+public sealed record HasDeclaration(IReadOnlyList<string> Has, bool Judged)
+{
+    public static readonly HasDeclaration Unjudged = new([], false);
+
+    /// <summary>A caller's declaration, already normalised.</summary>
+    public static HasDeclaration Of(IReadOnlyList<string> has) => new(has, true);
+
+    /// <summary>
+    /// <paramref name="raw"/> run through <see cref="DependencySet.Normalise"/>:
+    /// null is a caller that sent nothing, which is <see cref="Unjudged"/>.
+    /// Returns the refusal sentence, or null; on a refusal the declaration is
+    /// <see cref="Unjudged"/>.
+    /// </summary>
+    public static string? From(IReadOnlyList<string>? raw, out HasDeclaration declaration)
+    {
+        if (raw is null)
+        {
+            declaration = Unjudged;
+            return null;
+        }
+
+        var refusal = DependencySet.Normalise(raw, out var normalised);
+        declaration = refusal is null ? Of(normalised) : Unjudged;
+        return refusal;
+    }
+
+    /// <summary>
+    /// The versions this declaration lists for <paramref name="id"/>, null
+    /// where it lists the id bare. Empty when it does not list the id at all.
+    /// </summary>
+    internal IReadOnlyList<string?> VersionsOf(string id)
+    {
+        var versions = new List<string?>();
+        foreach (var entry in Has)
+        {
+            var at = entry.IndexOf('@');
+            if ((at < 0 ? entry : entry[..at]) == id)
+                versions.Add(at < 0 ? null : entry[(at + 1)..]);
+        }
+
+        return versions;
     }
 }
 
