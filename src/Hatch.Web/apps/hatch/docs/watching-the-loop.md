@@ -146,12 +146,17 @@ An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
 at a time, so the Order control is replaced by that line while it stands.
 
 A runner holding a ticket shows on that ticket too. On the board, its card
-carries a small robot head - blue while the runner is being heard from, amber
-once it has gone quiet on a lease it still holds. The issue page says which
-checkout holds the claim, since when, and the last line the runner printed.
-Clearing a claim by hand makes the ticket claimable again at once; the runner
-notices and stops at its next heartbeat, within a minute by default, so until
-then its session may still push or move the ticket.
+carries a small robot head - blue while the runner is live, amber once it
+has gone quiet on a lease it still holds. Live is judged per session now, not
+just the one beat row: the key's own heartbeat counts, and so does any one of
+its sessions still inside the gone horizon, so a key running several
+checkouts at once draws the head lit while any one of them is still being
+heard from, even if the others have gone quiet. The issue page names the
+claim as `<runner> at <where>` - who holds it, and from which checkout - since
+when, and the last line that checkout printed. Clearing a claim by hand makes
+the ticket claimable again at once; the runner notices and stops at its next
+heartbeat, within a minute by default, so until then its session may still
+push or move the ticket.
 
 ## Overnight
 

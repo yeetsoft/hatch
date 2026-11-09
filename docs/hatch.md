@@ -8560,8 +8560,10 @@ joins three things: the key (`EfApiKey`), its config (the `RunnerConfigs` row,
 by the key's id) and the heartbeat row (the `Runners` table, by name). A key
 that has never run is listed, and is not live. A heartbeat no key claims is
 listed too, with its key fields null. `?live=true` keeps only the entries whose
-heartbeat is not past `Runners.DropBefore`. HA-1937 retires the `Runners` table
-for sessions, and with it this join by name.
+heartbeat is not past `Runners.DropBefore`. HA-1937 adds the sessions below
+beside this join, not instead of it (`Runner.IsLive`) — a key with no sessions
+is judged exactly as it always was, and a key with some is judged by the beat
+and its sessions together.
 
 **It also says which repositories it serves.** Every heartbeat from
 `go-to-work` carries the `origin` of each checkout the runner holds,
@@ -8642,6 +8644,26 @@ moment somebody asks, the same lazy expiry the claim uses, so there is no
 timeout to tune and no background job to notice has stopped. The row itself is
 never deleted — a checkout that runs again next week is the same row, with
 whatever bounds are on it.
+
+**One key can hold several sessions, one per checkout.** Beside the beat row
+above, `POST /api/hatch/runners/sessions` answers through `RunnerSessions`
+instead — rows grouped by `(ApiKeyId, Where)`, so a key running `go-to-work`
+in two checkouts at once holds two live sessions, each with its own line, its
+own claim and its own bounds. `pause-all` and `stop-all` are the one write
+that reaches every live `loop` session under a key at once; a `once` session,
+an already-ended one, and one past its own gone horizon are left alone by
+both. Each session judges its own liveness and its own gone horizon by the
+identical `Runners.Cutoff`/`DropBefore` arithmetic a beat uses, against that
+session's own `LastSeenAt` — one quiet checkout under a key never drags a live
+one down, and `Runner.IsLive` reads true while any one session does, even
+while the others, or the beat itself, have gone quiet. An ended session is
+kept in history, newest twenty per key (`RunnerSessions.HistoryDepth`); a
+twenty-first ended session deletes the oldest
+(`RunnerSessions.TrimHistoryAsync`). A session's own bounds narrow against the
+key's `RunnerConfig` as a ceiling, never past it — the smaller of the two
+wins, and a tie reads as the session's own, not the ceiling's
+(`RunnerSessions.Effective`/`Narrow`) — the same rule a beat already follows
+against the site default above.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:
