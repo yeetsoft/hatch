@@ -649,6 +649,79 @@ public sealed class SettingsTests : IDisposable
         Assert.False(Settings.IsBoardBound("HATCH_MODELS"));
     }
 
+    // ---- HATCH_HAS ----
+
+    private bool TryLoadWithHas(string? value, out Settings settings, out string refusal, string? exported = null)
+    {
+        var pairs = new List<(string, string)> { ("HATCH_BASE", "https://somewhere") };
+        if (exported is not null) pairs.Add(("HATCH_HAS", exported));
+        var file = Path.Combine(_temp, "does-not-exist");
+        if (value is not null) file = Write("has.config", "HATCH_BASE=https://somewhere", $"HATCH_HAS={value}");
+        return Settings.TryLoad(null, Env([.. pairs]), out settings, out refusal, file);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(" , ,")]
+    public void HATCH_HAS_unset_blank_or_nothing_after_the_split_is_empty(string? value)
+    {
+        Assert.True(TryLoadWithHas(value, out var settings, out _));
+        Assert.Empty(settings.Has);
+    }
+
+    [Fact]
+    public void HATCH_HAS_reads_the_list()
+    {
+        Assert.True(TryLoadWithHas("dotnet@10", out var settings, out _));
+        Assert.Equal(["dotnet@10"], settings.Has);
+    }
+
+    [Fact]
+    public void HATCH_HAS_is_trimmed_lowercased_and_deduplicated()
+    {
+        Assert.True(TryLoadWithHas("Dotnet@10, dotnet@10,NODE", out var settings, out _));
+        Assert.Equal(["dotnet@10", "node"], settings.Has);
+    }
+
+    [Fact]
+    public void HATCH_HAS_an_unknown_id_is_refused_with_a_sentence_and_the_fix()
+    {
+        Assert.False(TryLoadWithHas("node,cobol", out _, out var refusal));
+
+        Assert.Contains("hatch: HATCH_HAS - ", refusal, StringComparison.Ordinal);
+        Assert.Contains(
+            "the list is dotnet, make, node, playwright-browsers, postgres, pwsh", refusal, StringComparison.Ordinal);
+        Assert.Contains("hatch config --has <entry>...", refusal, StringComparison.Ordinal);
+        Assert.Contains("bare `--has` clears it", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_exported_HATCH_HAS_beats_the_file()
+    {
+        Assert.True(TryLoadWithHas("node", out var settings, out _, exported: "pwsh"));
+
+        Assert.Equal(["pwsh"], settings.Has);
+        Assert.Equal(Settings.Layer.Environment, settings.SourceOf("HATCH_HAS"));
+    }
+
+    [Fact]
+    public void HATCH_HAS_is_a_settings_file_name_and_a_profile_still_reads_it_from_the_per_user_file()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_HAS=dotnet@10");
+        var profile = Write("profile.config", "HATCH_BASE=https://theirs");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var plain, out _, user));
+        Assert.Equal(["dotnet@10"], plain.Has);
+        Assert.Equal(Settings.Layer.User, plain.SourceOf("HATCH_HAS"));
+
+        Assert.True(Settings.TryLoad(null, Env(), out var profiled, out _, user, profileFile: profile));
+        Assert.Equal(["dotnet@10"], profiled.Has);
+        Assert.Contains("HATCH_HAS", Settings.FileNames);
+        Assert.False(Settings.IsBoardBound("HATCH_HAS"));
+    }
+
     // ---- HATCH_WORKSPACE ----
 
     [Fact]
