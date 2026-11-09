@@ -172,6 +172,72 @@ public class RunnerSessionsTests
         Assert.Null(dto.ClaimKey);
     }
 
+    // ---- Instruct ----
+
+    [Fact]
+    public void Instruct_TheNarrowerConfigValue_Wins()
+    {
+        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), Config(maxRuns: 5), "here:/checkouts/one", "Nathan");
+
+        Assert.Equal(5, dto.MaxRuns);
+    }
+
+    [Fact]
+    public void Instruct_WithNoConfig_TakesTheSessionsOwn()
+    {
+        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), null, "here:/checkouts/one", "Nathan");
+
+        Assert.Equal(10, dto.MaxRuns);
+    }
+
+    [Fact]
+    public void Instruct_AnUnsetTokenCap_FallsBackToTheSiteDefault()
+    {
+        var dto = RunnerSessions.Instruct(
+            Session(maxTokens: null), Config(maxTokens: null), "here:/checkouts/one", "Nathan", siteMaxTokens: 1_000);
+
+        Assert.Equal(1_000, dto.MaxTokens);
+    }
+
+    [Fact]
+    public void Instruct_TheConfigsTags_AreSortedOrdinally()
+    {
+        var config = Config();
+        config.Tags = RunnerTagColumn.Write(["gpu", "fast"]);
+
+        var dto = RunnerSessions.Instruct(Session(), config, "here:/checkouts/one", "Nathan");
+
+        Assert.Equal(["fast", "gpu"], dto.Tags);
+    }
+
+    [Fact]
+    public void Instruct_WithNoConfig_TagsAreEmpty()
+    {
+        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan");
+
+        Assert.Empty(dto.Tags!);
+    }
+
+    [Fact]
+    public void Instruct_SetsTheRunnerNameAndTheSessionId()
+    {
+        var session = Session();
+        session.Id = 42;
+
+        var dto = RunnerSessions.Instruct(session, null, "here:/checkouts/one", "Nathan");
+
+        Assert.Equal("here:/checkouts/one", dto.RunnerName);
+        Assert.Equal(42, dto.SessionId);
+    }
+
+    [Fact]
+    public void Instruct_ANullRefusesDangerous_AnswersFalse()
+    {
+        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan");
+
+        Assert.False(dto.RefusesDangerous);
+    }
+
     // ---- MarkGoneAsync ----
 
     [SkippableFact]
