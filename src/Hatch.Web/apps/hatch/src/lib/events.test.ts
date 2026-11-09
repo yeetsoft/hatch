@@ -63,6 +63,14 @@ describe('describe', () => {
     ).toBe('In Review → Done, pre-approved');
   });
 
+  it("marks a close the project's setting made, after the ordinary from/to", () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'In Review', to: 'Done', approved: 'setting' } }),
+      ),
+    ).toBe("In Review → Done, closed by the project's setting");
+  });
+
   it('reads an old express_changed row as the words it toggled', () => {
     expect(
       describeEvent(event({ kind: 'express_changed', payload: { from: false, to: true } })),
