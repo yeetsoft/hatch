@@ -76,7 +76,7 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key> | --runner <name>
               | --repo <path>... | --tag <tag>... | --workspace <dir>
-              | --log on|<dir>|off | --dangerous on|off]
+              | --models <model>... | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -121,6 +121,13 @@ header instead. Never put it in a repository, either way.
   row once and the row is the board's after that, so it changes nothing for a
   runner that already has one ([the runner](the-runner#what-a-runner-refuses)).
   Any other value is refused, with nothing written.
+- `--models <model>...` writes `HATCH_MODELS`, the models this runner
+  advertises. Give each its own `--models` (`--models haiku --models sonnet`);
+  a bare `--models` clears them and the agent's default stands. Each is an alias
+  (`haiku`, `sonnet`, `opus`) or a pinned id of `HATCH_AGENT`'s agent, at most
+  100, trimmed and deduplicated. One that is neither, one of another agent, or a
+  comma inside one (`--models haiku,sonnet`) is refused, naming it, with nothing
+  written ([the runner](the-runner#models)).
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout, combined with `--runner` (a runner's name is
@@ -784,7 +791,7 @@ has the rest, including what happens to a key that belongs to nobody.
 | Code | Meaning |
 |---|---|
 | `0` | It worked, or usage was asked for with `-h`, `--help` or `help`. For `work`, an increment ran, whatever its session exited with. For `go-to-work` and `do-my-work`, the night ended: a bound was reached, a pass found nothing to do, it was interrupted, or the `--mine` key belongs to nobody. |
-| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
+| `1` | A refusal: bad arguments, an unknown command, `hatch` run bare, settings that are not configured, a directory that is not a repository, a bad `HATCH_REPOS`, a bad `HATCH_TAGS`, a bad `HATCH_MODELS`, or an HTTP fault from the board. `work --mine` exits `1` for a key that belongs to nobody. `go-to-work` and `do-my-work` exit `1` when their runner name is already the live runner somewhere else. |
 | `2` | Nothing to do, as an answer and not a fault. `next` found nothing workable, `pr` was read with no URL set, and `work` found the board idle, the ticket blocked, or another runner holding it. `runner-credential` also exits `2` while no credential has been saved yet, which is the ordinary state between starting the container runner and pasting one in. |
 | `75` | `go-to-work` or `do-my-work` is asking its supervisor to rebuild it and run it again. It never happens in a loop started by hand, nor under `--no-restart` or `--once`. |
 | `130` | Interrupted, for `work` and every command except `go-to-work` and `do-my-work`. The first signal prints that it is letting go of the ticket and releases the claim; a second is immediate. |

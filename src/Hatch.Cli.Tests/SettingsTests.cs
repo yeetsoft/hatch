@@ -573,6 +573,82 @@ public sealed class SettingsTests : IDisposable
         Assert.False(Settings.IsBoardBound("HATCH_DANGEROUS"));
     }
 
+    // ---- HATCH_MODELS ----
+
+    private bool TryLoadWithModels(string? value, out Settings settings, out string refusal, string? agent = null)
+    {
+        var pairs = new List<(string, string)> { ("HATCH_BASE", "https://somewhere") };
+        if (value is not null) pairs.Add(("HATCH_MODELS", value));
+        if (agent is not null) pairs.Add(("HATCH_AGENT", agent));
+        return Settings.TryLoad(
+            null, Env([.. pairs]), out settings, out refusal, Path.Combine(_temp, "does-not-exist"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(" , ,")]
+    public void HATCH_MODELS_unset_blank_or_nothing_after_the_split_is_null(string? value)
+    {
+        Assert.True(TryLoadWithModels(value, out var settings, out _));
+        Assert.Null(settings.Models);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_reads_the_list()
+    {
+        Assert.True(TryLoadWithModels("haiku,sonnet", out var settings, out _));
+        Assert.Equal(["haiku", "sonnet"], settings.Models);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_is_trimmed_lowercased_and_deduplicated()
+    {
+        Assert.True(TryLoadWithModels("Haiku, haiku,SONNET", out var settings, out _));
+        Assert.Equal(["haiku", "sonnet"], settings.Models);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_of_another_agent_is_refused_with_a_sentence_and_the_fix()
+    {
+        Assert.False(TryLoadWithModels("opus,gpt-6-luna", out _, out var refusal, agent: "claude"));
+
+        Assert.Contains("hatch: HATCH_MODELS - ", refusal, StringComparison.Ordinal);
+        Assert.Contains("\"gpt-6-luna\" is a codex model - this runner's agent is claude", refusal, StringComparison.Ordinal);
+        Assert.Contains("hatch config --models <model>...", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_blank_agent_is_claude()
+    {
+        Assert.False(TryLoadWithModels("gpt-6-luna", out _, out var refusal));
+        Assert.Contains("this runner's agent is claude", refusal, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_accepts_a_codex_model_under_the_codex_agent()
+    {
+        Assert.True(TryLoadWithModels("gpt-6-luna", out var settings, out _, agent: "codex"));
+        Assert.Equal(["gpt-6-luna"], settings.Models);
+    }
+
+    [Fact]
+    public void HATCH_MODELS_is_a_settings_file_name_and_a_profile_still_reads_it_from_the_per_user_file()
+    {
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_MODELS=haiku");
+        var profile = Write("profile.config", "HATCH_BASE=https://theirs");
+
+        Assert.True(Settings.TryLoad(null, Env(), out var plain, out _, user));
+        Assert.Equal(["haiku"], plain.Models);
+        Assert.Equal(Settings.Layer.User, plain.SourceOf("HATCH_MODELS"));
+
+        Assert.True(Settings.TryLoad(null, Env(), out var profiled, out _, user, profileFile: profile));
+        Assert.Equal(["haiku"], profiled.Models);
+        Assert.Contains("HATCH_MODELS", Settings.FileNames);
+        Assert.False(Settings.IsBoardBound("HATCH_MODELS"));
+    }
+
     // ---- HATCH_WORKSPACE ----
 
     [Fact]
