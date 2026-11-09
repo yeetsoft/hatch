@@ -161,6 +161,7 @@ public class RunnersController(
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (RunnerTags.Normalise(request.Tags, out var normalisedTags) is { } tagsRefusal) return BadRequest(tagsRefusal);
+        if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
 
         var kind = request.Kind?.Trim().ToLowerInvariant() switch
         {
@@ -194,7 +195,7 @@ public class RunnersController(
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags)));
+            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels)));
 
             try
             {
@@ -232,7 +233,7 @@ public class RunnersController(
             row.OrderedAt = null;
         }
 
-        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags));
+        Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedTags), Joined(normalisedModels));
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await runners.DriversAsync(db, now, ct)).GetValueOrDefault(row.Name, []), order,
@@ -606,7 +607,7 @@ public class RunnersController(
     /// <summary>A row that has never been seen before, seeded with what the process started with.</summary>
     private static EfHatchRunner Seed(
         string name, string kind, string? line, RunnerHeartbeatRequest request, DateTimeOffset now,
-        Guid? forPersonId, string? tags)
+        Guid? forPersonId, string? tags, string? models)
     {
         var row = new EfHatchRunner
         {
@@ -639,6 +640,7 @@ public class RunnersController(
             SourceSequence = request.SourceSequence,
             BuiltAt = request.BuiltAt,
             Tags = tags,
+            Models = models,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
             ThrottledUntil = request.ThrottledUntil,
@@ -661,7 +663,7 @@ public class RunnersController(
     /// </summary>
     private static void Touch(
         EfHatchRunner row, string kind, string? line, DateTimeOffset now, RunnerHeartbeatRequest request,
-        Guid? forPersonId, string? tags)
+        Guid? forPersonId, string? tags, string? models)
     {
         row.Kind = kind;
         row.LastSeenAt = now;
@@ -698,6 +700,9 @@ public class RunnersController(
         if (request.SourceRevision is not null) row.SourceRevision = Fits(request.SourceRevision, EfHatchRunner.MaxRevisionLength);
         if (request.SourceSequence is not null) row.SourceSequence = request.SourceSequence;
         if (request.BuiltAt is not null) row.BuiltAt = request.BuiltAt;
+
+        // An empty list clears it: Joined answers null for one.
+        if (request.Models is not null) row.Models = models;
 
         // Tags are seeded once, not a fact-vs-absent field like the rest of
         // this block: a row with any Tags already written - including the
