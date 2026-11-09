@@ -212,6 +212,9 @@ public sealed class ClaudeAdapter(
     public UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         UsageLimit.Recognise(said, endedAt, runnerZone);
 
+    public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        ModelRefusal.Claude(said, endedAt, runnerZone);
+
     public async Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
     {
         if (_probeCostly)
