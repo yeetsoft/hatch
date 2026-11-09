@@ -193,6 +193,22 @@ public sealed class OllamaAdapter : CodexAdapter
     }
 
     /// <summary>
+    /// The ids this server can run: the mapped tiers in alias order, then the
+    /// pulled names sorted, each an Ollama id the API would accept, at most
+    /// <see cref="RunnerModels.MaxCount"/>. Empty where nothing is mapped and
+    /// nothing has been read.
+    /// </summary>
+    public override IReadOnlyList<string> Models =>
+        ModelFamilies.Aliases
+            .Select(alias => _tiers.TryGetValue(alias, out var id) ? id : null)
+            .OfType<string>()
+            .Concat((_models ?? []).Order(StringComparer.Ordinal))
+            .Distinct()
+            .Where(id => ModelFamilies.Default.AgentOf(id) == "ollama")
+            .Take(RunnerModels.MaxCount)
+            .ToList();
+
+    /// <summary>
     /// <c>exec resume</c> takes both provider flags; interactive <c>resume</c>
     /// takes neither (codex-cli 0.163.0, 2026-10-21, per <c>--help</c>). The host
     /// is not on the line: it is the operator's environment.

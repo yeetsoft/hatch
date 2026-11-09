@@ -94,6 +94,86 @@ public sealed class RunnersTests
     }
 
     [Fact]
+    public async Task A_beat_carries_the_adapters_models_when_none_are_set()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(["haiku", "sonnet", "opus", "fable"], beat.Models);
+    }
+
+    [Fact]
+    public async Task A_beat_carries_HATCH_MODELS_when_it_was_set_for_the_running_agent()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Models = ["haiku", "sonnet"] } };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(["haiku", "sonnet"], beat.Models);
+    }
+
+    [Fact]
+    public async Task A_work_beat_carries_the_models_too()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var runtime = h.Runtime with { Settings = h.Runtime.Settings with { Models = ["haiku", "sonnet"] } };
+
+        await new WorkCommand(runtime).RunAsync(["AER-1"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal("once", beat.Kind);
+        Assert.Equal(["haiku", "sonnet"], beat.Models);
+    }
+
+    [Fact]
+    public async Task A_beat_from_an_adapter_naming_no_models_carries_null()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { Models = [] } };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Null(beat.Models);
+    }
+
+    [Fact]
+    public async Task A_beat_ignores_HATCH_MODELS_validated_for_another_agent_than_the_adapter()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Instructs(h, "running");
+
+        // Settings.Agent stays "claude", the agent the list was validated
+        // against; the adapter is another one, as a --agent flag leaves it.
+        var runtime = h.Runtime with
+        {
+            Adapter = new FakeAdapter { Models = ["opus"] },
+            Settings = h.Runtime.Settings with { Agent = "claude", Models = ["haiku", "sonnet"] },
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var beat = Assert.Single(Beats(h)).Read<RunnerHeartbeatRequest>();
+        Assert.Equal(["opus"], beat.Models);
+    }
+
+    [Fact]
     public async Task A_beat_says_Clones_true_when_a_workspace_is_configured()
     {
         using var h = new Harness();

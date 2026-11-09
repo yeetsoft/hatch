@@ -21,8 +21,9 @@ public sealed class RunnersCommand(Cli cli)
         "",
         "  One line per runner that has spoken to this Hatch lately, most recently",
         "  heard from first: its name, what it is doing, the ticket it holds (or",
-        "  none), and how long ago it last heartbeat. A caller with nothing to see",
-        "  prints one sentence saying so.",
+        "  none), and how long ago it last heartbeat. A row closes with the projects",
+        "  it is bound to and the models it advertises, where it has any. A caller",
+        "  with nothing to see prints one sentence saying so.",
         "",
         "  --json           the endpoint's own answer, and nothing else",
     ];
@@ -70,7 +71,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Bound(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Bound(r) + Models(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -103,6 +104,13 @@ public sealed class RunnersCommand(Cli cli)
     /// </summary>
     private static string Bound(RunnerDto row) =>
         row.Projects.Count > 0 ? $"  projects {string.Join(" ", row.Projects)}" : "";
+
+    /// <summary>
+    /// The models a runner advertises, closing its row after its projects;
+    /// nothing where it advertises none.
+    /// </summary>
+    private static string Models(RunnerDto row) =>
+        row.Models.Count > 0 ? $"  models {string.Join(" ", row.Models)}" : "";
 
     /// <summary>
     /// The state word, in the order <c>runnerActivity</c> reads it - silence
