@@ -562,6 +562,40 @@ public class RunnersController(
     }
 
     /// <summary>
+    /// Replaces a runner's secret, answered once. Admin only, and never a key -
+    /// a key that could rotate could take over another runner's name.
+    /// </summary>
+    /// <remarks>
+    /// Config, heartbeat rows and sessions are untouched: they join to the key
+    /// by id or by name, and rotating only changes the key's hash, prefix and
+    /// <see cref="EfApiKey.RotatedAt"/>.
+    /// </remarks>
+    [HttpPost("{name}/rotate")]
+    [RequireAdmin]
+    public async Task<ActionResult<RunnerMintedDto>> RotateRunner(string name, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+        if (await KeyNamedAsync(runner, ct) is not { } key) return NotFound();
+        if (!key.IsLive(time.GetUtcNow())) return Conflict($"{runner}'s key is revoked");
+
+        if (await keys.RotateApiKeyAsync(key.Id, ct) is not { } rotated) return NotFound();
+
+        Response.Headers.CacheControl = "no-store";
+
+        var now = time.GetUtcNow();
+        var found = (await Runner.JoinAsync(db, keys, ct)).First(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, now, ct);
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
+
+        var dto = await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+        return new RunnerMintedDto(dto, rotated.Secret);
+    }
+
+    /// <summary>
     /// Changes or clears whose tickets this runner's <c>--mine</c> reaches. Only
     /// an admin, and deliberately never the key itself: a key that could set its
     /// own owner could adopt anybody's tickets.

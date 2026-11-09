@@ -487,6 +487,7 @@ public class AdminSurfaceTests
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
         // A related edge, cut the same way and for a different reason: under
@@ -741,6 +742,7 @@ public class AdminSurfaceTests
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
 
         // Marking the night as seen is a person's own mark, never a key's or
@@ -924,6 +926,7 @@ public class AdminSurfaceTests
         "RunnersController.CreateRunner",
         "RunnersController.SuggestRunnerName",
         "RunnersController.RevokeRunner",
+        "RunnersController.RotateRunner",
         "RunnersController.SetRunnerOwner",
     ];
 
