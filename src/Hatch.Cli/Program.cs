@@ -665,6 +665,8 @@ internal partial class Program
         "                     per-user file, a directory, or `off`; unset means no log",
         "  HATCH_DANGEROUS    `off` makes this runner refuse work flagged dangerous; `on`, or",
         "                     unset, takes it. Seeds the runner's row once, then the board owns it",
+        "  HATCH_MODELS       comma-separated models this runner advertises; unset means the",
+        "                     agent's default",
         "  HATCH_HEARTBEAT    seconds of silence before the renderer says what it is waiting on",
         "  HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch, 90 by default, 0 for one try",
         "  HATCH_NIGHT_STATE  where a night's totals are handed to the loop that restarts into",

@@ -209,6 +209,8 @@ HATCH_LOG            where its log goes (on: the logs folder beside the
                      work or go-to-work run keeps one file there, named on
                      its first line
 HATCH_DANGEROUS      off: refuse work flagged dangerous (on or unset: take it)
+HATCH_MODELS         the models this runner advertises, comma-separated
+                     (default: the agent's)
 HATCH_HEARTBEAT      seconds of silence before the renderer says what it is
                      waiting on (default: 20)
 HATCH_RETRY_SECONDS  seconds a call keeps retrying Hatch (default: 90; 0 for
@@ -246,6 +248,8 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   goes to (the `logs` folder beside the per-user file, for `on`);
 - `HATCH_DANGEROUS:` as `<unset - takes dangerous work>`, `on - takes dangerous work`,
   `off - this runner refuses dangerous work`, or a bad value with the sentence that refuses it;
+- `HATCH_MODELS:` as a comma-separated list, `<unset - the agent's default>`, or a bad
+  value with the sentence that refuses it;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -294,6 +298,27 @@ A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
 worked only by a runner advertising macos and xcode - this runner
 advertises linux"* (*"... advertises none"* for a runner with no tags at all).
+
+### Models
+
+A runner can say which models it offers. `HATCH_MODELS` is a comma-separated
+list - aliases (`haiku`, `sonnet`, `opus`, lowercased) or pinned ids - trimmed
+and deduplicated, at most 100. It is read from the same four layers as any
+other setting, and unset means the agent's default.
+
+```
+HATCH_MODELS=haiku,sonnet
+hatch config --models haiku --models sonnet
+```
+
+`--models` is repeatable, and bare `--models` clears them. A comma inside one
+value is refused (`--models haiku,sonnet` is one unknown id, not two), with
+nothing written. So is a pinned id of a different agent than `HATCH_AGENT`
+(blank is `claude`): `"gpt-6-luna" is a codex model - this runner's agent is
+claude`. A bad `HATCH_MODELS` in a file or the environment refuses every
+command with the same sentence, after `hatch: HATCH_MODELS -`. It is
+machine-bound, so a profile still reads it from the per-user file. The
+setting is only recorded here; nothing is sent to the board yet.
 
 ## What a runner refuses
 
