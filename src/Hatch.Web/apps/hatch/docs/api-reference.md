@@ -783,6 +783,8 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
+| POST | `/runners/{name}/revoke` | **admin** | Stops the runner's key working, by the runner's name; the runner stays listed, `404` for a name no key answers to |
+| PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |
 | DELETE | `/runners/{name}/order` | **person** | Withdraws whatever standing order it holds |
 | GET | `/runner` | **person** | What platforms this image can hand out, and the commit they and it were built from |
