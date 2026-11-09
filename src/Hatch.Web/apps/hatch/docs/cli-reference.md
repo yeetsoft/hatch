@@ -119,9 +119,8 @@ header instead. Never put it in a repository, either way.
   there (and refused, with nothing written, if it cannot be), and `off` keeps
   none. The setting is only recorded here.
 - `--dangerous on|off` writes `HATCH_DANGEROUS`: `off` makes this runner refuse
-  work flagged dangerous, and `on` (the default) takes it. It seeds the runner's
-  row once and the row is the board's after that, so it changes nothing for a
-  runner that already has one ([the runner](the-runner#what-a-runner-refuses)).
+  work flagged dangerous, and `on` (the default) takes it. Written on the
+  runner's row on every beat ([the runner](the-runner#what-a-runner-refuses)).
   Any other value is refused, with nothing written.
 - `--models <model>...` writes `HATCH_MODELS`, the models this runner
   advertises. Give each its own `--models` (`--models haiku --models sonnet`);
@@ -269,8 +268,8 @@ the attention panel draws, so the terminal and the panel cannot disagree.
 Narrowed to `--mine` or an ancestor key, the footer counts only the issues the
 rows above show; unnarrowed, it matches the panel. For example: `3 issues
 wait for a runner that offers fable` or `1 issue waits for a runner that has
-pwsh 7 and playwright-browsers`. A server too old to send the list prints
-nothing extra.
+pwsh 7 or newer and playwright-browsers`. A server too old to send the list
+prints nothing extra.
 
 ### changelog
 
@@ -302,6 +301,12 @@ heard from first: its name, what it is doing, the ticket it holds (or
 prints one sentence saying so. It writes nothing.
 
 - `--json` prints the endpoint's own answer and nothing else.
+
+A runner's row is followed by one indented line per session of its own that is
+still live: `  where  agent  state`, two spaces between columns, aligned over
+that runner's own live sessions alone. A session missing its `where` or its
+agent prints `-` in its place. A runner with no live session - a gone runner
+included - prints no line beneath it.
 
 A runner that has reported its own process adds `  on HOST`, `N runs` and
 `$X.XX` (the machine, the increments run and the dollars spent), then the
@@ -725,11 +730,8 @@ restart appends to the same file and the next night starts a new one.
   person's tickets, including yours.
 - `--under <epic key>` stays inside one epic's subtree.
 - `--project <key>` takes only that project's tickets. It is repeatable, and
-  the whole list is for this run, until the board sets another. Like `--tag`,
-  a list on the command line is a starting value, not a standing one: the board
-  can change it from the Runners page, and the loop prints it when it does
-  (`hatch: the board set --project FIL AER`, or `--project off` for none).
-  With none given the loop works every project, as it always has.
+  the whole list is for this run: sent on every beat, and the loop never
+  takes it back. With none given the loop works every project, as it always has.
 - `--once` makes one pass, and out.
 - `--standby` starts the runner paused: it says so once, reports in, and takes
   nothing until the board's Go to Work sets it running. A restarted incarnation

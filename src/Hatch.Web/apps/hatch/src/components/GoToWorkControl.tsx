@@ -25,22 +25,16 @@ export function GoToWorkNote({ plan }: { plan: GoToWorkPlan }) {
  *
  * A press shows its result at once (go reads Pause, pause reads Go to Work)
  * and the optimistic mode is dropped when the re-read lands, so the label never
- * waits on the network and never stays wrong after it. The project, else the
- * scope, is the bound on a start only, and a picker change after a press writes
- * nothing.
+ * waits on the network and never stays wrong after it.
  */
 export function GoToWorkControl({
   plan,
   status,
-  project,
-  scope,
   reload,
   isPhone,
 }: {
   plan: GoToWorkPlan;
   status: StatusLine;
-  project: string;
-  scope: string[];
   reload: () => Promise<void>;
   isPhone: boolean;
 }) {
@@ -58,7 +52,7 @@ export function GoToWorkControl({
     if (plan.mode === 'go') setOptimistic('pause');
     else if (plan.mode === 'pause') setOptimistic('go');
     try {
-      await applyGoToWork(plan, project, scope);
+      await applyGoToWork(plan);
       await reload();
     } catch (err) {
       setFailure({ plan, text: message(err) });
@@ -76,11 +70,7 @@ export function GoToWorkControl({
         variant="success"
         disabled={disabled}
         aria-label={words}
-        title={
-          pausing
-            ? 'Pause your runners - each finishes the ticket in hand first'
-            : `Start your runners on ${project || scope.join(', ') || 'every project'}`
-        }
+        title={pausing ? 'Pause your runners - each finishes the ticket in hand first' : 'Start your runners'}
         onClick={() => void press()}
       >
         {isPhone && !pausing ? 'Go' : words}

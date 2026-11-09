@@ -384,7 +384,11 @@ tracker's own repository), with `BindsTrackerBy` and `BindsTrackerAt` beside it
 and `CheckApprovesMerge` (`bool`, default `false` - whether a passing check
 counts as the approval that lets a pull request merge), with
 `CheckApprovesMergeBy` and `CheckApprovesMergeAt` beside it - who changed it
-last and when, a name and an instant, null until the first change.
+last and when, a name and an instant, null until the first change, and
+`NoCodeCloses` (`bool`, default `false` - whether a no-code declaration on an
+issue closes it outright), with `NoCodeClosesBy` and `NoCodeClosesAt` beside
+it - who changed it last and when, a name and an instant, null until the
+first change.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -443,6 +447,16 @@ project with no merge column is accepted. A change stamps `CheckApprovesMergeBy`
 and `CheckApprovesMergeAt`; re-sending the value the project already holds
 writes nothing, the stamp included. The close hop reads the flag, see [the
 hop](#the-hop).
+
+`NoCodeCloses` is written through its own route too, `PUT
+/projects/{id}/no-code-closes` (`ProjectsController.PutNoCodeCloses`),
+guarded the same way - `[RequireRole(User)]`, `NotAPerson` checked again in
+the action, then an owner check answering `403` naming the project's key
+(*"only an owner of `<KEY>` may change whether a no-code declaration closes
+the ticket"*) to anyone else, and `404` on an unknown project. It has no
+repository or playbook precondition. A change stamps `NoCodeClosesBy` and
+`NoCodeClosesAt`; re-sending the value the project already holds writes
+nothing, the stamp included. Nothing reads the flag yet - no hop folds it in.
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -2623,7 +2637,8 @@ entries the file parsed to, or the one sentence saying why it did not. Like a
 [playbook file](#playbook-file), a dependencies file is a fact about a
 repository's trunk and nobody's issue, so it is not keyed on one. An entry is
 an id — one of the dependencies Hatch knows, from `Dependencies.Default` — and
-an optional `version`, a string of one to three dotted whole numbers. The
+an optional `version`, a string of one to three dotted whole numbers. A
+version is a minimum, met by that version and anything newer. The
 operator-facing form is [What a repository
 needs](../src/Hatch.Web/apps/hatch/docs/the-runner.md#what-a-repository-needs).
 
@@ -3424,6 +3439,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
+| `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. Nothing reads the flag yet |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -4083,8 +4099,9 @@ when a move needs both:
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
   pinned id.
-- `no live runner has pwsh 7 and playwright-browsers` - the project's bound
-  repositories declare dependencies no live runner's `has` satisfies; an
+- `no live runner has pwsh 7 or newer and playwright-browsers` - the
+  project's bound repositories declare dependencies no live runner's `has`
+  satisfies; an
   invalid dependencies file is named as it is.
 
 A split fleet lists nothing, deliberately: where one runner lacks the model
@@ -4863,15 +4880,16 @@ missing configuration:
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
-    `DependencyVersion.Satisfies` accepts, or any bound repository's file is
-    `invalid`. On the same moves as the dangerous item — out of the
-    implementation column, and on the review self-move while it is conflict or
-    build work. Never a hop, and never the move into the implementation
-    column, nothing being spawned for either. A caller that sends no `?has=`
-    is not folded by this at all, which keeps every older caller working
-    unchanged. *"HA-12 needs dotnet 10, pwsh 7 and playwright-browsers
-    (`acme/repo`'s .hatch/dependencies.json) - this runner has dotnet 8, no
-    pwsh and no playwright-browsers"*, or *"`acme/repo`'s
+    `DependencyVersion.Satisfies` treats as a minimum - the caller's version
+    must be at least it - or any bound repository's file is `invalid`. On the
+    same moves as the dangerous item — out of the implementation column, and
+    on the review self-move while it is conflict or build work. Never a hop,
+    and never the move into the implementation column, nothing being spawned
+    for either. A caller that sends no `?has=` is not folded by this at all,
+    which keeps every older caller working unchanged. *"HA-12 needs dotnet 10
+    or newer, pwsh 7 or newer and playwright-browsers (`acme/repo`'s
+    .hatch/dependencies.json) - this runner has dotnet 8, no pwsh and no
+    playwright-browsers"*, or *"`acme/repo`'s
     .hatch/dependencies.json is invalid at `<sha>` (`<problem>`) - fix it on
     the trunk"*, kind `other`. Waits on nobody. `?asRunner=` and the let-go
     peer check read the row's `Has` instead, and a row that never reported it
@@ -4988,7 +5006,18 @@ a deadlocked dependency row still groups with the dependency rows.
 ### The hop
 
 **The loop's own write, on the loop's own say-so.** Seven kinds, asked in this
-order:
+order. A check's own dispatch into the merge column is never one of them: on a
+project with *A passing check approves the merge* on, `ScanAsync` and
+`WorkController.ResolveAsync` route a passing review row into the merge column
+as a plain `advance` move, not as a hop `HopWork` writes
+([the review check](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+says where that routing happens). `HopKind`'s own `intoCheck` guard
+(`Dispatch.cs:1947-1952`) keeps that move from being misread as one of the
+first three kinds anyway: a protected `to` that differs from `from` on the
+review column can only be the check's own merge column — `Columns.Target`
+self-dispatches review ahead of any other protected column — so `crosses`
+reads false there, and the express, epic and under arms stay withheld from it
+exactly as they are from a review self-move.
 
 1. **express** — an issue that is [express](#pre-approval) and stands in a column
    marked [`ExpressSkips`](#status), with no unanswered question.
@@ -5543,6 +5572,22 @@ and `Dispatch.Blocked` makes its sentence the row's, as the merge column's is
 branch, and `ReviewWork.Judge` says, returning the kind and the fold together so
 the two cannot disagree.
 
+**A project with *A passing check approves the merge* on has a second answer.**
+Fix work still comes first: a branch that conflicts, or whose build failed,
+is still the self-move above, matched review-to-review, whatever the setting.
+Where neither holds - a branch `ReviewWork.Judge` would not fold - the setting
+means this row is matched against the merge column instead, and ends there
+rather than back in review: `Dispatch.ScanAsync`'s own walk (`Dispatch.cs:350-357`)
+and `WorkController.RouteAsync` (`WorkController.cs:1551-1568`, called from
+`HopWork` at `:664` and `ResolveAsync` at `:1405`) both ask `Dispatch.CheckColumn`
+(`Dispatch.cs:1268-1275` - null off the setting, off an issue with no pull
+request recorded, or off a branch `ReviewWork.Judge` would still fold) and, where
+it names a column, `Dispatch.ReviewTarget` (`:1284-1286`) reads the match
+against that merge column rather than against review - so a row a playbook
+matches there with a row itself ticked `IsCheck` ends with `to` the merge
+column and kind `advance`, the same kind every other move carries, in place of
+the review self-move above.
+
 **Code decides, not a prompt.** A runner asks git (`git merge-tree`) and
 reports a [merge check](#merge-check), and asks its own `gh` and reports a
 [build check](#build-check); the dispatcher reads what the board holds and
@@ -5635,10 +5680,16 @@ for the review column: review is still whatever stands immediately left of
 it. `Columns.Target` (`:77-80`) is why the review column's own advance never
 lands a session in the merge column either: it dispatches a column to
 itself, rather than past it, exactly when the next column is terminal **or**
-protected, and a merge column is always protected (below). `In Review`
-advancing therefore stays `In Review`, the same self-dispatch
-[the conflict-and-build section](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
-already describes, not a step into the column beside it.
+protected, and a merge column is always protected (below). `Columns.Target`
+itself is unchanged by any of this and still self-dispatches review
+unconditionally - it has no idea a check exists. What changes is what
+`RouteAsync` and `ScanAsync` ask first: both read `Dispatch.CheckColumn` and
+`Dispatch.ReviewTarget`
+([the review check](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review))
+before ever falling back to `Columns.Target`, so "`In Review` advancing...
+stays `In Review`" is now true only when no check playbook covers the move;
+where one does, `to` is the merge column directly, with no session run for
+that row, because the row that matched there is itself ticked `IsCheck`.
 
 **The gate.** A merge column is always `IsProtected` as well — ticking
 `MergesPullRequest` requires it (see [Status](#status)) — so every
@@ -6127,7 +6178,9 @@ the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
-runner tag it does not advertise, a ticket omitted for it, or a flagged-dangerous issue it refuses, among them: no new kind.
+runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, or a
+clean, checked review row a passing check would carry into the merge column
+but no check playbook covers the move for, among them: no new kind.
 
 **A ticket this runner let go of is folded for it while another could take
 it.** Send `?runner=<name>` (or `?asRunner=`) and a row whose newest claim
@@ -6879,9 +6932,10 @@ which one it failed is what `work/queue` reports:
     declare.** The issue's project binds one or more [repositories](#repository),
     and the union of their parsed `.hatch/dependencies.json` entries names a
     dependency the caller's `?has=` does not satisfy at a version
-    (`DependencyVersion.Satisfies`) it accepts, or any bound repository's file
-    is `invalid`. Checked on the same moves as the dangerous condition above —
-    out of the implementation column, and on the review self-move while it is
+    (`DependencyVersion.Satisfies`) treats as a minimum - the caller's version
+    must be at least it - or any bound repository's file is `invalid`.
+    Checked on the same moves as the dangerous condition above — out of the
+    implementation column, and on the review self-move while it is
     conflict or build work. Never a hop, and never the move into the
     implementation column. A caller that sends no `?has=` folds nothing.
     `?asRunner=` and the let-go peer check read the row's `Has` instead, and a

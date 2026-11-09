@@ -1874,23 +1874,6 @@ public class IssuesControllerTests
     }
 
     [Fact]
-    public async Task ARunnerHeader_Is403WithTheProgramSentenceRegardlessOfMembership()
-    {
-        var h = await NewAsync();
-        await h.CreateAsync("story", "the thing");
-        var owner = h.Actors.AddPerson("Ada");
-        await h.MemberAsync(owner.Id, ProjectMemberRole.Owner);
-        h.Actors.Me = owner;
-        h.Caller.Local = new Actor(ActorKind.Key, Guid.NewGuid(), "a-runner");
-
-        var result = await h.Issues.MoveIssue("AER-1", new IssueMoveRequest(h.Approved, null, null), default);
-
-        var obj = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status403Forbidden, obj.StatusCode);
-        Assert.Equal("moving work into a protected column is an owner's or approver's call, not an agent's", obj.Value);
-    }
-
-    [Fact]
     public async Task ALocalOperatorWhereTheWallIsOff_MayMoveIntoAProtectedColumn()
     {
         var h = await NewAsync();

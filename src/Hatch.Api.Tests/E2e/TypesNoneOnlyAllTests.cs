@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -167,13 +166,12 @@ public class TypesNoneOnlyAllTests(ITestOutputHelper output)
 
     /// <summary>
     /// A project and four top-level issues - two stories, a task and a bug - filed the way any
-    /// caller files them with the wall off: naming itself with the runner header. None has a
-    /// parent, so the board counts all four.
+    /// caller files them with the wall off: the local person may file everything this test files.
+    /// None has a parent, so the board counts all four.
     /// </summary>
     private static async Task SeedAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
         foreach (var (type, title) in new[] { ("story", "Story one"), ("story", "Story two"), ("task", "Task one"), ("bug", "Bug one") })

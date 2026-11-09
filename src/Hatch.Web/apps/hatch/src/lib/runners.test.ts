@@ -496,8 +496,6 @@ describe('the bounds form', () => {
     maxTokensPerHour: '',
     untilAt: '',
     tags: '',
-    projects: '',
-    refusesDangerous: false,
     ...over,
   });
 
@@ -516,8 +514,6 @@ describe('the bounds form', () => {
       maxTokensPerHourSource: 'runner',
       untilAt: '2026-09-09T06:00:00Z',
       tags: ['gpu', 'fast'],
-      projects: ['HA', 'AER'],
-      refusesDangerous: true,
     });
 
     expect(boundsOf(bounded)).toEqual({
@@ -528,8 +524,6 @@ describe('the bounds form', () => {
       maxTokensPerHour: '500,000',
       untilAt: '2026-09-09T06:00:00Z',
       tags: 'gpu\nfast',
-      projects: 'HA\nAER',
-      refusesDangerous: true,
     });
     expect(boundsChanged(boundsOf(bounded), bounded)).toBe(false);
   });
@@ -581,34 +575,12 @@ describe('the bounds form', () => {
     expect(boundsChanged({ ...boundsOf(bounded), tags: 'fast\ngpu' }, bounded)).toBe(true);
   });
 
-  it('notices projects changing, order-sensitively rather than as trimmed text', () => {
-    const bounded = runner({ projects: ['HA', 'AER'] });
-
-    expect(boundsChanged({ ...boundsOf(bounded), projects: 'HA\nAER\n' }, bounded)).toBe(false);
-    expect(boundsChanged({ ...boundsOf(bounded), projects: 'AER\nHA' }, bounded)).toBe(true);
-  });
-
-  it('notices the refuse-dangerous box flipping, and only that', () => {
-    const open = runner();
-    const refusing = runner({ refusesDangerous: true });
-
-    expect(boundsChanged(boundsOf(open), open)).toBe(false);
-    expect(boundsChanged({ ...boundsOf(open), refusesDangerous: true }, open)).toBe(true);
-    expect(boundsChanged({ ...boundsOf(refusing), refusesDangerous: false }, refusing)).toBe(true);
-  });
-
-  it('sends refusesDangerous either way, so an unticked box can turn it off', () => {
-    const base = boundsOf(runner());
-
-    expect(boundsRequest({ ...base, refusesDangerous: true }).refusesDangerous).toBe(true);
-    expect(boundsRequest({ ...base, refusesDangerous: false }).refusesDangerous).toBe(false);
-  });
-
   it('sends every field, so a cleared box clears the cap', () => {
     // The tri-state, from the other end: a field left out of the request means
     // "leave it alone", so an emptied box that was not sent would silently keep
     // the cap it was clearing.
-    expect(boundsRequest(bounds({ under: ' AER-930 ', maxSpend: '40', tags: 'gpu\n\nfast ', projects: 'HA\n\nAER ', refusesDangerous: true }))).toEqual({
+    const req = boundsRequest(bounds({ under: ' AER-930 ', maxSpend: '40', tags: 'gpu\n\nfast ' }));
+    expect(req).toEqual({
       under: 'AER-930',
       maxRuns: '',
       maxSpend: '40',
@@ -616,9 +588,9 @@ describe('the bounds form', () => {
       maxTokensPerHour: '',
       untilAt: '',
       tags: ['gpu', 'fast'],
-      projects: ['HA', 'AER'],
-      refusesDangerous: true,
     });
+    expect(req).not.toHaveProperty('projects');
+    expect(req).not.toHaveProperty('refusesDangerous');
   });
 
   it('sends a token box as the wire reads it, with the on-blur commas taken out', () => {

@@ -58,6 +58,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/binds-tracker` | **person** | Sets `bindsTracker`, clearing it elsewhere |
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
 | PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
+| PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -83,6 +84,8 @@ own repository, so turning it on takes it from whichever project had it, and the
 stories-on-epics PUT body is `ProjectStoriesOnEpicsWriteRequest(StoriesOnEpics)`, and resending the
 value a project already holds writes nothing. The check-approves-merge PUT body is
 `ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
+already holds writes nothing, the audit fields included. The no-code-closes PUT body is
+`ProjectNoCodeClosesWriteRequest(NoCodeCloses)`, and resending the value a project
 already holds writes nothing, the audit fields included. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
@@ -104,7 +107,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner.
 
 ## Columns
 
@@ -785,7 +788,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; additive today, since nothing in this checkout calls it yet |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
-| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
+| PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, and tags |
 | POST | `/runners/{name}/revoke` | **admin** | Stops the runner's key working, by the runner's name; the runner stays listed, `404` for a name no key answers to |
 | POST | `/runners/{name}/rotate` | **admin** | Replaces the runner's secret: the old one is refused from the next call; answers the runner and the new `secret` once, sent `no-store`, with `prefix` and `rotatedAt` updated; name, owner, config, sessions and attribution carry over; `404` for a name no key answers to, `409` for a revoked key |
 | PUT | `/runners/{name}/owner` | **admin** | Sets or clears (`personId: null`) whose tickets the runner's `--mine` reaches; `400` for an unknown person, `404` for a name no key answers to |
@@ -827,7 +830,7 @@ row alone, and a `once` beat sends only `host`) - and
 reads back a `RunnerInstructionDto` saying whether to keep going, pause or
 stop, and the six bounds (`Under`, `MaxRuns`, `MaxSpend`, `MaxTokens`,
 `MaxTokensPerHour`, `UntilAt`) it is
-running within, and `Projects`, the project keys it is bound to. Those six
+running within. Those six
 bounds are written by a fresh loop's first beat
 (`Fresh: true`, a `loop` beat only), which also clears any the row held for a
 flag the loop was not given, and otherwise only by a person's `PATCH` -
@@ -841,14 +844,12 @@ notation the flags take - a whole number, or `500k`, `2M`, `1.5M` (one decimal
 digit, on `M` only), at least one token: blank clears the bound, absent leaves
 it, and zero or anything unreadable is a 400 reading `--max-tokens takes a
 token count, like 500k or 2M - not "x"` (`--max-tokens-per-hour` for the other).
-`Projects` follows the same
-fresh-beat rule as the six - the CLI sends it on every heartbeat, but only a
-fresh `loop` beat writes it, so a supervisor restart never undoes a person's
-edit of it - while its `PATCH` payload is list-shaped like `tags`, not scalar
-like the six: absent leaves the row's projects as they are, `[]` clears them,
-and a list sets them. (Tags differ on the first axis: they are seeded once
-ever, and a fresh beat never re-seeds a row that already has them.) The
-`state` is a person's too, with one exception: a fresh `loop` beat that also sends `standby: true` writes the
+`Projects` is a fact about the process, written on every beat of any kind
+like `models` and `has`: absent leaves the row's projects as they are, `[]`
+clears them, and a list sets them - never gated by `Fresh` or `Kind`, and
+never a `PATCH` field. The instruction does not answer it back; a loop reads
+its own bound `--project` flags straight off its own process, not off the row.
+The `state` is a person's too, with one exception: a fresh `loop` beat that also sends `standby: true` writes the
 row `paused` - on a new row, or over `running` or `stopping` - and is answered
 `paused` on that same beat, since a start that asked to stand by should not run
 a single increment first. `standby` is read on that beat alone: without
@@ -881,14 +882,17 @@ list, or a malformed version - refuses the whole beat with a `400` carrying the
 rule's sentence, and the row is left exactly as it was (a refused first beat
 creates no row). It has no `PATCH` field.
 
-`refusesDangerous` follows the tags rule: the first heartbeat a name is seen
-under that carries it (true or false) seeds the row, a later beat with another
-value leaves the row alone, the instruction answers the row's value (always
-true or false from a current Hatch), and `PATCH` is the one write after the
-first beat - a bool, where absent leaves it and true or false sets it. A row
-never told reads as false, and `GET /work/queue?asRunner=` reads it from the
-row, so it folds flagged work for a runner whose row says true whatever
-`?dangerous=` said.
+`refusesDangerous` is a fact about the process, written on every beat of any
+kind like `Projects`: absent leaves the row alone, true or false sets it. A
+row never told reads as false, and `GET /work/queue?asRunner=` reads it from
+the row, so it folds flagged work for a runner whose row says true whatever
+`?dangerous=` said. It has no `PATCH` field, and the instruction does not
+answer it back.
+
+A heartbeat's own `tags` is ignored outright, on this route and on the session
+one alike: a runner's tags are never taken off a beat, in any form - only
+`PATCH`'s `tags` field moves them (see above), and a beat naming one is never
+refused for it. The instruction answers the row's tags as they stand.
 
 `/runners/{name}/order` is a standing order a person places from the Runners
 page - work a named ticket next, or pass on the loop's own pick - read and
@@ -1034,7 +1038,8 @@ ever used - it edits, it never creates. With the wall up, it also 403s a
 caller who is neither the runner's own owner nor an admin, naming the owner
 and the runner in the sentence. A tag that breaks the rule - more than 8, one
 over 32 characters, or one with a space or comma inside - 400s with the
-rule's own sentence, the same refusal a heartbeat's own tags answer to.
+rule's own sentence; a heartbeat's own `tags` is never checked against it at
+all, since it is ignored outright.
 `POST /runners/{name}` 409s when two live runners would otherwise share one
 name. `POST /runners/{name}/order` 400s a kind that is not `work` or `pass`,
 and `work` with no key or one that is not an issue key; 404s a `work` key
@@ -1188,7 +1193,7 @@ version it already points to, and should not repeat or contradict it.
 
 Recounted directly from the `[RequireRole]` attributes - the method's where
 it carries one, the class's otherwise (`AssigneeController` is the one file
-on this page with both) - there are **42** person-only paths on this page,
+on this page with both) - there are **43** person-only paths on this page,
 across both halves together:
 
 ```
@@ -1203,6 +1208,7 @@ PUT    /projects/{id}/playbooks-source
 PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
 PUT    /projects/{id}/check-approves-merge
+PUT    /projects/{id}/no-code-closes
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

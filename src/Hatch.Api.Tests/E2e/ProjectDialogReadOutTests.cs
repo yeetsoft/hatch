@@ -1,6 +1,5 @@
 using System.Net.Http.Json;
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using Hatch.Contracts;
 using Microsoft.Extensions.DependencyInjection;
@@ -294,11 +293,10 @@ public class ProjectDialogReadOutTests(ITestOutputHelper output)
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A project filed the way any caller files one with the wall off: naming itself with the runner header, which makes the local person its owner.</summary>
+    /// <summary>A project filed the way any caller files one with the wall off: the local person is who files it, which makes the local person its owner.</summary>
     private static async Task FileOwnedProjectAsync(string baseUrl, string key)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         using var response = await http.PostAsJsonAsync("/api/hatch/projects", new ProjectCreateRequest(key, $"Project {key}"));
         var text = await response.Content.ReadAsStringAsync();

@@ -267,8 +267,7 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
 2. **Heartbeat and stop conditions.** The heartbeat says this runner is here
    and reads back what **Agents → Runners** would like it to do: paused, stopping, a
    different scope, different bounds. Anything the board changed is printed
-   (`the board set --max-runs 3`, or `the board set --project FIL AER` - `--project off`
-   for none). Then the bounds, [below](#bounds-timeouts-and-stopping).
+   (`the board set --max-runs 3`). Then the bounds, [below](#bounds-timeouts-and-stopping).
    This is the one moment no claim is held. A one-off order from the page
    (work a named ticket, or take one ordinary pass) is read here too, and runs
    as the next increment even while paused, counting like any other.
@@ -400,15 +399,20 @@ increment in flight.
 `--project` is the odd one out: it stops nothing, it narrows. A runner bound to
 projects folds past every ticket in any other, a hop included, naming the
 project it is bound to, and the merge train is unaffected. It is repeatable,
-and a key is a project's key, upper-cased and de-duplicated for you. `hatch work`
-takes the same flag for a one-off scan, and never writes it to the row.
+and a key is a project's key, upper-cased and de-duplicated for you. Unlike
+the six bounds below, it is a fact about the running process, like a
+checkout's remote - written on every heartbeat of any kind, loop or `once`,
+not gated to a fresh loop's first beat, and no longer a person's to set from
+the Runners page: a running loop's own binding is what the row shows.
+`hatch work` takes the same flag for a one-off scan but never sends it on its
+own heartbeat, so it never reaches the row.
 
-The same bounds are controls on **Agents → Runners**, and a value set there is folded
+The six bounds below are also controls on **Agents → Runners**, and a value set there is folded
 in on the next heartbeat, including being cleared (*Watching the loop*).
 
 From the loop's side, a bound reaches that row when the loop starts fresh: a
 loop started by hand, or the supervisor's first start. Its first heartbeat
-writes the seven bounds it was started with - `--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour`, `--until`, `--under` and `--project` -
+writes the six bounds it was started with - `--max-runs`, `--max-spend`, `--max-tokens`, `--max-tokens-per-hour`, `--until` and `--under` -
 and clears any the row held for a flag it was not given, so restarting by hand with `--max-runs` dropped leaves
 no limit on the row rather than the old one. The supervisor's own restart
 (exit 75, which carries the night in) writes none and keeps what the row

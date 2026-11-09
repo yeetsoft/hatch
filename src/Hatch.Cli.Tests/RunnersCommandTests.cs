@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 
 namespace Hatch.Cli.Tests;
@@ -15,7 +16,7 @@ public sealed class RunnersCommandTests
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
         IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null,
         long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null,
-        IReadOnlyList<string>? has = null) =>
+        IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -23,7 +24,15 @@ public sealed class RunnersCommandTests
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
             ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
-            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has);
+            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions);
+
+    private static RunnerSessionDto ASession(
+        string where = "Fry:/code/hatch", string? agent = "claude", string state = "running",
+        string? claimKey = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null) =>
+        new(
+            Id: 1, Where: where, Kind: "loop", Host: null, State: state,
+            StartedAt: Now - TimeSpan.FromHours(1), LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
+            EndedAt: endedAt, ClaimKey: claimKey, Agent: agent);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -175,11 +184,125 @@ public sealed class RunnersCommandTests
         Assert.Contains("paused", h.Said);
     }
 
+    /// <summary>
+    /// The server writes <c>boardDrift</c>/<c>sourceDrift</c> as strings
+    /// (<c>JsonStringEnumConverter</c> in <c>Hatch.Api</c>); <see cref="Fixtures"/>'s
+    /// own serialiser writes the numeric form instead, so the body here is
+    /// built by hand to stand in for what the server actually sends.
+    /// </summary>
+    private static string RunnerBodyWithStringDrift(string name)
+    {
+        var body = JsonSerializer.Serialize(new List<RunnerDto> { ARunner(name: name) }, Fixtures.Json);
+        Assert.Contains("\"boardDrift\":0", body);
+        Assert.Contains("\"sourceDrift\":0", body);
+        body = body.Replace("\"boardDrift\":0", "\"boardDrift\":\"Behind\"");
+        body = body.Replace("\"sourceDrift\":0", "\"sourceDrift\":\"Current\"");
+        Assert.Contains("\"boardDrift\":\"Behind\"", body);
+        Assert.Contains("\"sourceDrift\":\"Current\"", body);
+        return body;
+    }
+
+    [Fact]
+    public async Task Runners_written_with_string_drift_are_listed()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+
+        Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
+        Assert.Contains("behind-runner", h.Said);
+        Assert.Empty(h.Complained);
+    }
+
+    [Fact]
+    public async Task Board_reads_string_drift_as_the_enum()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+
+        var runners = await h.Board.RunnersAsync(default);
+
+        Assert.Equal(RunnerBoardDrift.Behind, runners.Single().BoardDrift);
+        Assert.Equal(RunnerBoardDrift.Current, runners.Single().SourceDrift);
+    }
+
+    [Fact]
+    public async Task A_row_with_two_live_sessions_prints_them_indented_in_server_order()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "busy", sessions: [
+                ASession(where: "Fry:/code/hatch", agent: "claude", claimKey: "AER-12"),
+                ASession(where: "Leela:/code/aerie", agent: "codex", state: "paused"),
+            ]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        var at = Array.FindIndex(lines, l => l.StartsWith("busy", StringComparison.Ordinal));
+        Assert.Equal("  Fry:/code/hatch    claude  working", lines[at + 1]);
+        Assert.Equal("  Leela:/code/aerie  codex   paused", lines[at + 2]);
+    }
+
+    [Fact]
+    public async Task A_gone_runner_with_only_ended_sessions_prints_no_session_line()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(
+                name: "silent", goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120),
+                sessions: [ASession(endedAt: Now - TimeSpan.FromSeconds(90))]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        var at = Array.FindIndex(lines, l => l.StartsWith("silent", StringComparison.Ordinal));
+        Assert.Contains("gone", lines[at]);
+        Assert.Equal(at + 1, lines.Length);
+    }
+
+    [Fact]
+    public async Task An_ended_session_on_an_otherwise_live_runner_is_not_printed()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "mixed", sessions: [
+                ASession(where: "Fry:/code/hatch"),
+                ASession(where: "Leela:/code/aerie", endedAt: Now - TimeSpan.FromSeconds(5)),
+            ]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("Fry:/code/hatch", h.Said);
+        Assert.DoesNotContain("Leela:/code/aerie", h.Said);
+    }
+
+    [Fact]
+    public async Task A_session_with_no_agent_prints_a_dash_in_its_place()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "quiet", sessions: [ASession(agent: null)]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        var at = Array.FindIndex(lines, l => l.StartsWith("quiet", StringComparison.Ordinal));
+        Assert.Equal("  Fry:/code/hatch  -  idle", lines[at + 1]);
+    }
+
     [Fact]
     public async Task Json_prints_the_endpoints_own_answer_and_nothing_else()
     {
         using var h = new CliHarness();
-        var rows = new List<RunnerDto> { ARunner(claimKey: "AER-12") };
+        var rows = new List<RunnerDto> { ARunner(claimKey: "AER-12", sessions: [ASession(), ASession(where: "Leela:/code/aerie")]) };
         h.Wire.Json("GET", "/api/hatch/runners", rows);
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["--json"], default));

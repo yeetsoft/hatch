@@ -71,7 +71,7 @@ public class ActorDirectoryTests
     [Fact]
     public async Task ARunner_IsNotInTheDirectoryAndNothingResolvesToIt()
     {
-        var runner = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+        var runner = new Actor(ActorKind.Key, Guid.NewGuid(), "host:/src");
         var directory = NewDirectory(local: runner);
 
         Assert.Empty(await directory.LiveAsync(default));
@@ -151,23 +151,6 @@ public class ActorDirectoryTests
         var directory = NewDirectoryWithCaller(new StubCallerIdentity { ApiKey = key });
 
         Assert.Null(await directory.PrincipalAsync(default));
-    }
-
-    /// <summary>
-    /// The one place PrincipalAsync deliberately disagrees with LocalAsync: a
-    /// runner that named itself is still the local person's own work, not the
-    /// runner's - a runner is never assignable, so it could never be "its own"
-    /// tickets otherwise.
-    /// </summary>
-    [Fact]
-    public async Task WithTheWallOffAndARunnerHeader_ThePrincipalIsStillTheLocalPerson()
-    {
-        var runner = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-        var directory = NewDirectoryWithCaller(new StubCallerIdentity { Local = runner }, localPersonName: "Ada");
-
-        var principal = await directory.PrincipalAsync(default);
-
-        Assert.Equal(new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada"), principal);
     }
 
     /// <summary>With the wall up, a caller that is neither a person nor a key has no principal - the same as MeAsync.</summary>

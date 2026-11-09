@@ -60,10 +60,10 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
 const EMPTY_LINE: StatusLine = { before: '', key: null, after: '', tone: 'muted', more: 0, verb: '' };
 const WORKING: StatusLine = { before: 'Working ', key: 'FIL-97', after: ' · In Progress', tone: 'success', more: 0, verb: 'Working' };
 
-const render = (plan: GoToWorkPlan, project = '', isPhone = false, status: StatusLine = EMPTY_LINE, scope: string[] = []) =>
+const render = (plan: GoToWorkPlan, isPhone = false, status: StatusLine = EMPTY_LINE) =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <GoToWorkControl plan={plan} status={status} project={project} scope={scope} reload={async () => {}} isPhone={isPhone} />
+      <GoToWorkControl plan={plan} status={status} reload={async () => {}} isPhone={isPhone} />
     </MemoryRouter>,
   );
 
@@ -73,16 +73,12 @@ const go = planGoToWork([runner({ state: 'paused' })], NOW);
 const pause = planGoToWork([runner({ state: 'running' })], NOW);
 
 describe('GoToWorkControl', () => {
-  it('names the scope’s projects when the picker is empty', () => {
-    const html = render(go, '', false, EMPTY_LINE, ['AER', 'FIL']);
+  it('names no project in its tooltip for a start', () => {
+    const html = render(go);
 
-    expect(html).toContain('title="Start your runners on AER, FIL"');
-  });
-
-  it('names the picker’s project over the scope', () => {
-    const html = render(go, 'FIL', false, EMPTY_LINE, ['AER', 'FIL']);
-
-    expect(html).toContain('title="Start your runners on FIL"');
+    expect(html).toContain('title="Start your runners"');
+    expect(html).not.toContain('projects');
+    expect(html).not.toContain('on FIL');
   });
 
   it('is disabled and silent while the runners are loading', () => {
@@ -93,7 +89,7 @@ describe('GoToWorkControl', () => {
   });
 
   it('is disabled with a way to start one when no runner of the viewer is on', () => {
-    const html = render({ mode: 'none' }, '', false, NO_RUNNER);
+    const html = render({ mode: 'none' }, false, NO_RUNNER);
 
     expect(html).toContain('disabled=""');
     expect(html).toContain('Start one at login');
@@ -109,7 +105,7 @@ describe('GoToWorkControl', () => {
   });
 
   it('draws only the status verb in the bar on desktop, the whole line in its tooltip and name', () => {
-    const html = render(pause, '', false, WORKING);
+    const html = render(pause, false, WORKING);
 
     expect(html).toContain('>Working<');
     expect(html).toContain('title="Working FIL-97 · In Progress"');
@@ -118,11 +114,11 @@ describe('GoToWorkControl', () => {
   });
 
   it('keeps the ticket link and the column behind the verb, in the panel', () => {
-    expect(render(pause, '', false, WORKING)).toContain('href="/issues/FIL-97"');
+    expect(render(pause, false, WORKING)).toContain('href="/issues/FIL-97"');
   });
 
   it('keeps the way to start one at login in the panel, not beside the button', () => {
-    const html = render({ mode: 'none' }, '', false, NO_RUNNER);
+    const html = render({ mode: 'none' }, false, NO_RUNNER);
 
     expect(html).toContain('Start one at login');
     expect(html).toContain('hatch-go-to-work-detail');
@@ -130,28 +126,23 @@ describe('GoToWorkControl', () => {
   });
 
   it('draws no status in the bar on a phone', () => {
-    expect(render(pause, '', true, WORKING)).not.toContain('hatch-go-to-work-status');
-    expect(render(pause, '', true, WORKING)).not.toContain('hatch-go-to-work-verb');
+    expect(render(pause, true, WORKING)).not.toContain('hatch-go-to-work-status');
+    expect(render(pause, true, WORKING)).not.toContain('hatch-go-to-work-verb');
   });
 
   it('draws nothing for the empty status line', () => {
     expect(render(pause)).not.toContain('hatch-go-to-work-status');
   });
 
-  it('offers Go to Work, naming the project it will bound the start to', () => {
-    const html = render(go, 'FIL');
+  it('offers Go to Work, enabled', () => {
+    const html = render(go);
 
     expect(html).toContain('>Go to Work<');
-    expect(html).toContain('Start your runners on FIL');
     expect(html).not.toContain('disabled=""');
   });
 
-  it('names every project when the picker is empty', () => {
-    expect(render(go, '')).toContain('Start your runners on every project');
-  });
-
   it('offers Pause, enabled', () => {
-    const html = render(pause, 'FIL');
+    const html = render(pause);
 
     expect(html).toContain('>Pause<');
     expect(html).toContain('each finishes the ticket in hand first');
@@ -159,14 +150,14 @@ describe('GoToWorkControl', () => {
   });
 
   it('shortens go to Go on a phone, keeping the full words for a reader', () => {
-    const html = render(go, '', true);
+    const html = render(go, true);
 
     expect(html).toContain('>Go<');
     expect(html).toContain('aria-label="Go to Work"');
   });
 
   it('keeps the note out of the bar on a phone', () => {
-    expect(render({ mode: 'none' }, '', true)).not.toContain('Start one at login');
+    expect(render({ mode: 'none' }, true)).not.toContain('Start one at login');
   });
 });
 

@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -175,11 +174,10 @@ public class BrowserScopeTests(ITestOutputHelper output)
     private async Task Shot(E2eHarness harness, Deadline deadline, string label) =>
         output.WriteLine($"saved {await harness.ScreenshotAsync(deadline, label)}");
 
-    /// <summary>Two projects, filed the way any caller files them with the wall off - naming itself with the runner header - and a task in each.</summary>
+    /// <summary>Two projects, filed the way any caller files them with the wall off - the local person may file everything this test files - and a task in each.</summary>
     private static async Task FileCardsAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         foreach (var key in Keys)
         {

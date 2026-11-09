@@ -28,15 +28,14 @@ public sealed record ConfigCommand(
     Input In,
     IDictionary<string, string?> Environment,
     string? CheckoutEnvFile,
-    string RunnerName,
     string? Root = null,
     string? ProfileName = null,
     string? ProfilePath = null)
 {
     public static readonly string[] ConfigUsage =
     [
-        "usage: hatch config [--show | --origin <origin> | --key <key> | --runner <name>",
-        "                     | --repo <path>... | --workspace <dir> | --tag <tag>...",
+        "usage: hatch config [--show | --origin <origin> | --key <key>",
+        "                     | --repo <path>... | --workspace <dir>",
         "                     | --models <model>... | --has <entry>...",
         "                     | --log on|<dir>|off | --dangerous on|off]",
         "                     [--here | --profile <name>]",
@@ -46,7 +45,6 @@ public sealed record ConfigCommand(
         "  hatch config --show             says what is set, and which layer it came from",
         "  hatch config --origin <origin>  writes the origin alone, asking nothing",
         "  hatch config --key <key>        writes the key alone, asking nothing",
-        "  hatch config --runner <name>    what the board calls this checkout, asking nothing",
         "  hatch config --repo <path>      also serve this checkout, repeatable",
         "  hatch config --repo             ...alone, clears the checkouts a loop with no",
         "                                     checkout of its own would otherwise serve",
@@ -58,8 +56,6 @@ public sealed record ConfigCommand(
         "  hatch config --log off          ...keep none",
         "  hatch config --dangerous off    refuse work flagged dangerous",
         "  hatch config --dangerous on     ...take it, which is the default",
-        "  hatch config --tag <tag>        advertise this tag, repeatable",
-        "  hatch config --tag              ...alone, clears them",
         "  hatch config --models haiku --models sonnet",
         "                                  advertise these models, repeatable",
         "  hatch config --models           ...alone, clears them: the agent's default",
@@ -76,14 +72,6 @@ public sealed record ConfigCommand(
         "  just minted. It leaves the origin as it was, and needs one already set.",
         "  A key on a command line stays in shell history - the prompt above does",
         "  not, so prefer it on a machine other people can read.",
-        "",
-        "  --runner sets the name this checkout calls itself on the board - a",
-        "  character from the cast list by default, chosen once and kept from then",
-        "  on. Refused, with nothing written, if it is empty, too long, not plain",
-        "  ASCII, or already the name of a live runner. Needs a checkout, and is",
-        "  recorded for the active profile (or the one --profile names): a runner's",
-        "  name is still a fact about one checkout, not a setting that follows the",
-        "  person.",
         "",
         "  --repo writes HATCH_REPOS: the checkouts a loop with no checkout of its own",
         "  serves, beside whatever it is standing in. Each path is checked before the",
@@ -111,13 +99,6 @@ public sealed record ConfigCommand(
         "  on the board once; after that the row is the board's to change, so writing it",
         "  at a checkout whose runner already has a row changes nothing there.",
         "",
-        "  --tag writes HATCH_TAGS: the tags this runner advertises, so a project's",
-        "  own runner tags can ask for one and only a runner carrying it is matched.",
-        "  A tag is a word a project's runner tags ask for - macos, gpu - at most 8",
-        "  on a runner, each at most 32 characters, lowercased, with no space or",
-        "  comma. A tag that breaks that rule is refused, naming it, with nothing",
-        "  written. Bare --tag clears the tags this runner advertises.",
-        "",
         "  --models writes HATCH_MODELS: the models this runner advertises. Each is an",
         "  alias - haiku, sonnet, opus - or a pinned id of HATCH_AGENT's agent, at most",
         "  100 on a runner, trimmed and deduplicated. One that is not either, or that",
@@ -133,8 +114,7 @@ public sealed record ConfigCommand(
         "  Bare --has clears them.",
         "",
         "  --here writes this checkout's scripts/.env instead of the per-user file -",
-        "  combine it with any write above. Refused outside a checkout, with --runner",
-        "  (a runner's name is already this checkout's), and with --show.",
+        "  combine it with any write above. Refused outside a checkout, and with --show.",
         "",
         "  --profile <name> writes that profile's own file instead of the per-user",
         "  file - combine it with any write above. The file need not exist yet.",
@@ -148,19 +128,12 @@ public sealed record ConfigCommand(
         "  Read back highest-first: an exported variable, then scripts/.env in the",
         "  checkout you are standing in, then the active profile, then that file.",
         "",
-        "  The key may be left empty for a Hatch running with its wall off, where",
-        "  calls name themselves with a runner header instead. Never in a",
-        "  repository, either way.",
+        "  The key may be left empty to read Hatch without one - only a loop needs",
+        "  one to work. Never in a repository, either way.",
     ];
 
     /// <summary>The per-user file. Named so a test can put one somewhere that is not the machine's own.</summary>
     public string ConfigPath { get; init; } = Settings.UserConfigPath();
-
-    /// <summary>
-    /// <see cref="RunnerNames.Record"/>'s file. Named so a test can put one
-    /// somewhere that is not the machine's own.
-    /// </summary>
-    public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
 
     /// <summary>
     /// How <c>--show</c> detects, quietly - no stderr line for an absent id, the
@@ -173,33 +146,36 @@ public sealed record ConfigCommand(
     /// How the written settings are proved. Replaced by a test, which has no
     /// origin to reach.
     /// </summary>
-    public Func<Settings, string, CancellationToken, Task<string?>> Probe { get; init; } =
-        async (settings, runnerName, ct) =>
+    public Func<Settings, CancellationToken, Task<string?>> Probe { get; init; } =
+        async (settings, ct) =>
         {
-            using var client = new HatchClient(settings, runnerName);
+            using var client = new HatchClient(settings);
             var board = await new Board(client).BoardAsync(ct);
             return board is null ? null : Columns.Named(board.Statuses);
         };
 
     /// <summary>
-    /// The name of every runner live on the board, so a typed name already
-    /// spoken for is refused rather than silently colliding. Names alone: the
-    /// names route answers any key, where the full listing answers only the
-    /// scope it was given. Replaced by a test, which has no origin to reach.
+    /// Who <c>--show</c>'s own identity line names - a key, per
+    /// <c>/api/hatch/me</c> - and what the mint prompt reads to tell a
+    /// wall-off Hatch from a wall-on one. Replaced by a test, which has no
+    /// origin to reach.
     /// </summary>
-    public Func<Settings, CancellationToken, Task<IReadOnlyList<string>>> LiveRunners { get; init; } =
-        async (settings, ct) =>
-        {
-            using var client = new HatchClient(settings, "hatch-config");
-            return await new Board(client).RunnerNamesAsync(ct);
-        };
+    public Func<Settings, CancellationToken, Task<MeDto?>> MeProbe { get; init; } =
+        (settings, ct) => new Board(new HatchClient(settings)).MeAsync(ct);
 
     /// <summary>
-    /// Who <c>--show</c>'s own identity line names - a key or a runner, per
-    /// <c>/api/hatch/me</c>. Replaced by a test, which has no origin to reach.
+    /// A cast-list name nothing has claimed yet, offered as the mint prompt's
+    /// default. Replaced by a test, which has no origin to reach.
     /// </summary>
-    public Func<Settings, string, CancellationToken, Task<MeDto?>> MeProbe { get; init; } =
-        (settings, runnerName, ct) => new Board(new HatchClient(settings, runnerName)).MeAsync(ct);
+    public Func<Settings, CancellationToken, Task<string>> Suggest { get; init; } =
+        (settings, ct) => new Board(new HatchClient(settings)).SuggestRunnerNameAsync(ct);
+
+    /// <summary>
+    /// Mints the runner the prompt asked for. Replaced by a test, which has
+    /// no origin to reach.
+    /// </summary>
+    public Func<Settings, string, CancellationToken, Task<(RunnerMintedDto? Minted, string? Taken)>> Create { get; init; } =
+        (settings, name, ct) => new Board(new HatchClient(settings)).CreateRunnerAsync(name, ct);
 
     /// <summary>
     /// Whether <c>scripts/.env</c> is ignored by this checkout's own git - the
@@ -251,7 +227,7 @@ public sealed record ConfigCommand(
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
     {
         // Anywhere in the argument list, and stripped before anything below
-        // ever sees it - so `--here --tag x` and `--tag x --here` both leave
+        // ever sees it - so `--here --repo x` and `--repo x --here` both leave
         // the same `args` for the dispatch that follows.
         var here = args.Contains("--here");
         if (here) args = [.. args.Where(a => a != "--here")];
@@ -272,12 +248,6 @@ public sealed record ConfigCommand(
 
         if (here && args is ["--show"])
             return Usage.Refuse(Say, "config --show takes no --here", ConfigUsage);
-
-        if (here && args.Length > 0 && args[0] == "--runner")
-        {
-            Say.Complain("hatch: a runner's name is already this checkout's - --runner needs no --here");
-            return 1;
-        }
 
         if (here && Root is null)
         {
@@ -303,8 +273,6 @@ public sealed record ConfigCommand(
 
         if (args is ["--key", var givenKey]) return await KeyAsync(givenKey, here, ct);
 
-        if (args.Length > 0 && args[0] == "--runner") return await RunnerAsync(args, ct);
-
         if (args.Length > 0 && args[0] == "--repo") return Repo(args, here);
 
         if (args.Length > 0 && args[0] == "--workspace") return Workspace(args, here);
@@ -312,8 +280,6 @@ public sealed record ConfigCommand(
         if (args.Length > 0 && args[0] == "--log") return Log(args, here);
 
         if (args.Length > 0 && args[0] == "--dangerous") return Dangerous(args, here);
-
-        if (args.Length > 0 && args[0] == "--tag") return Tag(args, here);
 
         if (args.Length > 0 && args[0] == "--models") return Models(args, here);
 
@@ -357,7 +323,6 @@ public sealed record ConfigCommand(
         var agent = overlay ? Carry("HATCH_AGENT") : agentShown;
         var repos = overlay ? Carry("HATCH_REPOS") : fold("HATCH_REPOS").Value ?? "";
         var workspace = overlay ? Carry("HATCH_WORKSPACE") : fold("HATCH_WORKSPACE").Value ?? "";
-        var tags = overlay ? Carry("HATCH_TAGS") : fold("HATCH_TAGS").Value ?? "";
         var log = overlay ? Carry("HATCH_LOG") : fold("HATCH_LOG").Value ?? "";
         var dangerous = overlay ? Carry("HATCH_DANGEROUS") : fold("HATCH_DANGEROUS").Value ?? "";
         var models = overlay ? Carry("HATCH_MODELS") : fold("HATCH_MODELS").Value ?? "";
@@ -384,9 +349,11 @@ public sealed record ConfigCommand(
         if (In.Secret() is { Length: > 0 } typedKey) key = typedKey;
 
         if (key.Length == 0)
-            Say.Complain(
-                $"hatch: no key - calls will name themselves \"{RunnerName}\", " +
-                "which only a Hatch with its wall off reads.");
+        {
+            var (secret, refused) = await MintAsync(origin, ct);
+            if (refused) return 1;
+            if (secret is { Length: > 0 }) key = secret;
+        }
         else if (!key.StartsWith("hatch_ak_", StringComparison.Ordinal))
             Say.Complain("hatch: warning - that does not start with hatch_ak_. Carrying on; the call below will say.");
 
@@ -419,41 +386,10 @@ public sealed record ConfigCommand(
                 break;
         }
 
-        // Only in a checkout - a runner's name is a fact about one of them, and
-        // there is nothing here to name outside of one. RunnerName is already
-        // this checkout's chosen or recorded name (or HATCH_RUNNER's override),
-        // so Enter alone changes nothing and writes nothing new.
-        string? chosenRunner = null;
-        if (Root is { Length: > 0 })
-        {
-            In.Prompt($"What should the board call this runner? [{RunnerName}]: ");
-            var typedRunner = In.Line();
-
-            if (typedRunner is { Length: > 0 })
-            {
-                var candidate = typedRunner.Trim();
-                if (RunnerProblem(candidate) is { } problem)
-                {
-                    Say.Complain($"hatch: {problem}");
-                    return 1;
-                }
-
-                if (await IsLiveAsync(candidate, origin, key, ct))
-                {
-                    Say.Complain($"hatch: {candidate} is already a live runner on this board - pick another name");
-                    return 1;
-                }
-
-                chosenRunner = candidate;
-            }
-        }
-
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "");
-
-        if (chosenRunner is not null) RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(Root!), chosenRunner);
 
         // Exported, not just set: this process is about to make the call below,
         // and a `work` spawned from here should not have to find the file again.
@@ -470,6 +406,100 @@ public sealed record ConfigCommand(
         Say.Line($"wrote {target}");
 
         return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+    }
+
+    /// <summary>
+    /// What an empty key prompt turns into: nothing, on a wall-on Hatch or a
+    /// declined offer; or a freshly minted secret, on a wall-off one that
+    /// said yes.
+    /// </summary>
+    /// <remarks>
+    /// <para>Minted here, at the key prompt, rather than after the file is
+    /// written: a refusal has to end the command before the questions after
+    /// it are asked on a guess, and a Ctrl-C before <c>Write</c> only ever
+    /// loses a secret this process is still the only holder of.</para>
+    ///
+    /// <para><paramref name="origin"/> is probed with no key - the one way to
+    /// tell a wall-off Hatch, which answers, from a wall-on one, which
+    /// refuses with <c>401</c>.</para>
+    /// </remarks>
+    /// <returns>
+    /// The secret to use as the key, or null to carry on keyless either way -
+    /// and <c>Refused</c>, which says the caller must stop and write nothing:
+    /// a name already taken, or a mint the board refused outright.
+    /// </returns>
+    private async Task<(string? Secret, bool Refused)> MintAsync(string origin, CancellationToken ct)
+    {
+        const string NoKey = "hatch: no key - read commands work as the local person, but a loop needs one.";
+
+        var probed = new Settings { Base = origin.TrimEnd('/'), Key = "" };
+
+        MeDto? me;
+        try
+        {
+            me = await MeProbe(probed, ct);
+        }
+        catch (HatchException e)
+        {
+            if (e.Status == System.Net.HttpStatusCode.Unauthorized)
+            {
+                Say.Complain(NoKey);
+                Say.Complain("hatch: an admin creates a runner on the Runners page, then run hatch config --key <key>.");
+            }
+            else
+            {
+                Say.Complain(e.Message);
+                Say.Complain(NoKey);
+            }
+
+            return (null, false);
+        }
+
+        if (me is null)
+        {
+            Say.Complain(NoKey);
+            return (null, false);
+        }
+
+        In.Prompt("Create a runner on this board? [Y/n]: ");
+        var reply = In.Line();
+        if (reply is { Length: > 0 } typed && typed.Trim().Equals("n", StringComparison.OrdinalIgnoreCase))
+        {
+            Say.Complain(NoKey);
+            return (null, false);
+        }
+
+        string suggestion;
+        try
+        {
+            suggestion = await Suggest(probed, ct);
+        }
+        catch (HatchException)
+        {
+            suggestion = "";
+        }
+
+        In.Prompt($"Runner name [{suggestion}]: ");
+        var typedName = In.Line();
+        var name = typedName is { Length: > 0 } ? typedName.Trim() : suggestion;
+
+        try
+        {
+            var (minted, taken) = await Create(probed, name, ct);
+            if (taken is { } sentence)
+            {
+                Say.Complain(sentence);
+                return (null, true);
+            }
+
+            Say.Line($"created runner {minted!.Runner.Name}");
+            return (minted.Secret, false);
+        }
+        catch (HatchException e)
+        {
+            Say.Complain(e.Message);
+            return (null, true);
+        }
     }
 
     /// <summary>
@@ -522,7 +552,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -530,7 +559,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--origin");
 
@@ -551,9 +580,10 @@ public sealed record ConfigCommand(
         Say.Line($"wrote {target}");
 
         if (keyForProbe.Length == 0)
-            Say.Complain(
-                $"hatch: no key - calls will name themselves \"{RunnerName}\", " +
-                "which only a Hatch with its wall off reads.");
+        {
+            Say.Complain("hatch: no key - read commands work as the local person, but a loop needs one.");
+            Say.Complain("hatch: run hatch config to create a runner, or hatch config --key <key>.");
+        }
 
         return await ProveAsync(new Settings { Base = origin.TrimEnd('/'), Key = keyForProbe }, ct);
     }
@@ -617,7 +647,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -628,7 +657,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--key");
 
@@ -637,103 +666,6 @@ public sealed record ConfigCommand(
         Say.Line($"wrote {target}");
 
         return await ProveAsync(new Settings { Base = originForProbe.TrimEnd('/'), Key = key }, ct);
-    }
-
-    /// <summary>
-    /// This checkout's name, taken from the command line and written without a
-    /// question being asked - the mirror of <see cref="OriginAsync"/> and
-    /// <see cref="KeyAsync"/>, except that there is nothing else to carry
-    /// forward: a runner's name is the one thing this writes.
-    /// </summary>
-    /// <remarks>
-    /// A purely local filesystem fact once it is chosen, like <see cref="Repo"/> -
-    /// but choosing it needs the board, to skip a name already live,
-    /// so this is async where <see cref="Repo"/> is not.
-    /// </remarks>
-    private async Task<int> RunnerAsync(string[] args, CancellationToken ct)
-    {
-        if (args is not ["--runner", var name])
-            return Usage.Refuse(Say, "config --runner takes one name", ConfigUsage);
-
-        if (Root is not { Length: > 0 } root)
-        {
-            Say.Complain("hatch: --runner names this checkout - run it inside one");
-            return 1;
-        }
-
-        var candidate = name.Trim();
-        if (RunnerProblem(candidate) is { } problem)
-        {
-            Say.Complain($"hatch: {problem}");
-            return 1;
-        }
-
-        // An explicit --profile names the profile outright; otherwise it is the
-        // active one. A dangling pointer is refused rather than falling through
-        // to the bare key, which Checkout.RunnerAsync would not read under it.
-        string? profile;
-        string? profileFile;
-        if (ProfileName is not null)
-        {
-            profile = ProfileName;
-            profileFile = ProfilePath;
-        }
-        else if (!ResolveProfile(null, Environment, out profile, out profileFile, out var refusal))
-        {
-            Say.Complain(refusal);
-            return 1;
-        }
-
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, profileFile);
-        var origin = fold("HATCH_BASE").Value ?? "";
-        var key = fold("HATCH_KEY").Value ?? "";
-
-        if (await IsLiveAsync(candidate, origin, key, ct))
-        {
-            Say.Complain($"hatch: {candidate} is already a live runner on this board - pick another name");
-            return 1;
-        }
-
-        RunnerNames.Record.Set(RunnersPath, profile, Checkout.Canonical(root), candidate);
-
-        Say.Line($"wrote {RunnersPath}");
-        return 0;
-    }
-
-    /// <summary>
-    /// What is wrong with a typed name, or null. The same four bounds the
-    /// server would eventually judge a heartbeat by - checked here so a bad
-    /// name is a sentence at the prompt rather than a 409 at the next beat.
-    /// </summary>
-    private static string? RunnerProblem(string name) => name switch
-    {
-        { Length: 0 } => "a name is required",
-        _ when name.Length > ClaimRequest.MaxRunnerLength =>
-            $"a name is at most {ClaimRequest.MaxRunnerLength} characters",
-        _ when !name.All(c => c < 128) => "a name is plain ASCII",
-        _ => null,
-    };
-
-    /// <summary>
-    /// Whether the board already has a live runner by this name. This checkout's
-    /// own current name never counts - it is already that runner, and the
-    /// server's 409 stays the backstop - and neither does a board that cannot
-    /// be reached, the same read <see cref="Checkout.RunnerAsync"/> makes of one.
-    /// </summary>
-    private async Task<bool> IsLiveAsync(string name, string origin, string key, CancellationToken ct)
-    {
-        if (origin.Length == 0) return false;
-        if (string.Equals(name, RunnerName, StringComparison.OrdinalIgnoreCase)) return false;
-
-        try
-        {
-            var live = await LiveRunners(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
-            return live.Contains(name, StringComparer.OrdinalIgnoreCase);
-        }
-        catch (HatchException)
-        {
-            return false;
-        }
     }
 
     /// <summary>
@@ -793,7 +725,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var agent = Field("HATCH_AGENT");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -811,7 +742,7 @@ public sealed record ConfigCommand(
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, string.Join(Path.PathSeparator, paths), workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--repo");
 
@@ -854,7 +785,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var agent = Field("HATCH_AGENT");
         var reposRaw = Field("HATCH_REPOS");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -869,7 +799,7 @@ public sealed record ConfigCommand(
         {
             // A word and not a directory: nothing to overlap and nothing to make.
             Write(
-                origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin, tags,
+                origin, key, claudeBin, codexBin, reposRaw, Settings.WorkspaceOff, agent, grokBin,
                 ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
                 path: overlayPath, overlay: overlay, mode: "--workspace");
             Environment["HATCH_WORKSPACE"] = Settings.WorkspaceOff;
@@ -891,7 +821,7 @@ public sealed record ConfigCommand(
         }
 
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, dir, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--workspace");
 
@@ -929,7 +859,6 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
         var has = Field("HATCH_HAS");
@@ -961,7 +890,7 @@ public sealed record ConfigCommand(
         }
 
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: written, dangerous: dangerous, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--log");
 
@@ -1005,14 +934,13 @@ public sealed record ConfigCommand(
         var agent = Field("HATCH_AGENT");
         var repos = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var models = Field("HATCH_MODELS");
         var has = Field("HATCH_HAS");
 
         var target = overlayPath ?? ConfigPath;
         Write(
-            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: written, models: models, has: has,
             path: overlayPath, overlay: overlay, mode: "--dangerous");
 
@@ -1023,80 +951,8 @@ public sealed record ConfigCommand(
     }
 
     /// <summary>
-    /// The tags this runner advertises, taken from the command line and
-    /// written without a question being asked - the mirror of <see cref="Repo"/>:
-    /// everything else is carried forward unchanged.
-    /// </summary>
-    /// <remarks>
-    /// Needs no <see cref="Root"/> of its own - only --here asks for one - and
-    /// unlike <see cref="OriginAsync"/> it needs no origin and makes no call -
-    /// there is nothing here a board could refuse.
-    /// </remarks>
-    private int Tag(string[] args, bool here)
-    {
-        var values = new List<string>();
-
-        // A bare --tag is the one shape with an odd count: it clears rather
-        // than pairing with a value. Anything else - a trailing bare --tag, two
-        // values with no --tag between them - is shaped wrong and refused.
-        if (args is not ["--tag"])
-        {
-            for (var i = 0; i < args.Length; i += 2)
-            {
-                if (args[i] != "--tag" || i + 1 >= args.Length)
-                    return Usage.Refuse(
-                        Say, "config --tag takes one or more tags, each after its own --tag", ConfigUsage);
-
-                values.Add(args[i + 1]);
-            }
-        }
-
-        // Checked before anything is written, and against the typed values
-        // rather than a comma-split of them - a `--tag a,b` is refused by the
-        // same rule that refuses a comma inside one tag, not split into two.
-        if (RunnerTags.Normalise(values, out var tags) is { } sentence)
-        {
-            Say.Complain($"hatch: {sentence}");
-            return 1;
-        }
-
-        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
-            : ProfileName is not null ? (ProfilePath, true)
-            : ((string?)null, false);
-        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
-        var overlayOnly = Settings.ReadFile(overlayPath);
-        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
-
-        var origin = Field("HATCH_BASE");
-        var key = Field("HATCH_KEY");
-        var claudeBin = Field("HATCH_CLAUDE_BIN");
-        var codexBin = Field("HATCH_CODEX_BIN");
-        var grokBin = Field("HATCH_GROK_BIN");
-        var ollamaHost = Field("HATCH_OLLAMA_HOST");
-        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
-        var agent = Field("HATCH_AGENT");
-        var reposRaw = Field("HATCH_REPOS");
-        var workspace = Field("HATCH_WORKSPACE");
-        var log = Field("HATCH_LOG");
-        var dangerous = Field("HATCH_DANGEROUS");
-        var models = Field("HATCH_MODELS");
-        var has = Field("HATCH_HAS");
-
-        var target = overlayPath ?? ConfigPath;
-        Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, string.Join(',', tags),
-            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
-            path: overlayPath, overlay: overlay, mode: "--tag");
-
-        Environment["HATCH_TAGS"] = tags.Count > 0 ? string.Join(',', tags) : null;
-
-        Say.Line($"wrote {target}");
-        return 0;
-    }
-
-    /// <summary>
     /// The models this runner advertises, taken from the command line and
-    /// written without a question being asked - the mirror of <see cref="Tag"/>:
+    /// written without a question being asked - the mirror of <see cref="Repo"/>:
     /// everything else is carried forward unchanged.
     /// </summary>
     /// <remarks>
@@ -1148,7 +1004,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var has = Field("HATCH_HAS");
@@ -1156,7 +1011,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         var written = string.Join(',', models);
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: written, has: has,
             path: overlayPath, overlay: overlay, mode: "--models");
 
@@ -1219,7 +1074,6 @@ public sealed record ConfigCommand(
         var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
         var reposRaw = Field("HATCH_REPOS");
         var workspace = Field("HATCH_WORKSPACE");
-        var tags = Field("HATCH_TAGS");
         var log = Field("HATCH_LOG");
         var dangerous = Field("HATCH_DANGEROUS");
         var models = Field("HATCH_MODELS");
@@ -1227,7 +1081,7 @@ public sealed record ConfigCommand(
         var target = overlayPath ?? ConfigPath;
         var written = string.Join(',', has);
         Write(
-            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin, tags,
+            origin, key, claudeBin, codexBin, reposRaw, workspace, agent, grokBin,
             ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: written,
             path: overlayPath, overlay: overlay, mode: "--has");
 
@@ -1259,7 +1113,7 @@ public sealed record ConfigCommand(
     {
         try
         {
-            var columns = await Probe(settings, RunnerName, ct);
+            var columns = await Probe(settings, ct);
             Say.Line($"reached {settings.Base} - columns: {columns}");
             return 0;
         }
@@ -1274,7 +1128,6 @@ public sealed record ConfigCommand(
     /// <summary>Formats <see cref="MeProbe"/>'s answer for the <c>identity:</c> line - the key itself is never printed, only its name.</summary>
     private static string Identity(MeDto? me) => me switch
     {
-        { Kind: "runner" } => $"calls go out as \"{me.Name}\"",
         { Kind: "key", Owner: null } => $"key \"{me.Name}\"",
         { Kind: "key" } => $"key \"{me.Name}\", owned by {me.Owner}",
         _ => "<unreachable>",
@@ -1314,36 +1167,33 @@ public sealed record ConfigCommand(
 
         var profileSuffix = $"  (profile: {profileName ?? "<none>"})";
 
-        var runnerFold = fold("HATCH_RUNNER");
-        if (runnerFold.Value is { Length: > 0 } explicitRunner)
-            Say.Line($"runner:           {explicitRunner}  (HATCH_RUNNER, {Where(runnerFold.From)})");
-        else if (Root is { Length: > 0 } root)
-        {
-            var recorded = RunnerNames.Record.Read(RunnersPath)
-                .GetValueOrDefault(RunnerNames.Record.Key(profileName, Checkout.Canonical(root)));
-            Say.Line(recorded is { Length: > 0 }
-                ? $"runner:           {recorded}  ({RunnersPath}){profileSuffix}"
-                : $"runner:           <none yet - chosen the next time this checkout speaks to a board>{profileSuffix}");
-        }
-        else
-            Say.Line("runner:           <not in a checkout>");
-
         var origin = fold("HATCH_BASE").Value;
         var key = fold("HATCH_KEY").Value ?? "";
 
-        if (string.IsNullOrEmpty(origin))
-            Say.Line("identity:         <unreachable>");
+        if (key.Length == 0)
+        {
+            Say.Line("runner:           <none - no key>");
+            Say.Line("identity:         <no key>");
+        }
         else
         {
-            try
+            MeDto? me = null;
+            if (!string.IsNullOrEmpty(origin))
             {
-                var me = await MeProbe(new Settings { Base = origin.TrimEnd('/'), Key = key }, RunnerName, ct);
-                Say.Line($"identity:         {Identity(me)}");
+                try
+                {
+                    me = await MeProbe(new Settings { Base = origin.TrimEnd('/'), Key = key }, ct);
+                }
+                catch (HatchException)
+                {
+                    me = null;
+                }
             }
-            catch (HatchException)
-            {
-                Say.Line("identity:         <unreachable>");
-            }
+
+            Say.Line(me is { Kind: "key" }
+                ? $"runner:           {me.Name}  (from the key)"
+                : "runner:           <unreachable>");
+            Say.Line($"identity:         {Identity(me)}");
         }
 
         // Environment-only, like HATCH_HEARTBEAT beside it - never a line in
@@ -1396,22 +1246,6 @@ public sealed record ConfigCommand(
                 continue;
             }
 
-            if (name == "HATCH_TAGS")
-            {
-                if (value is not { Length: > 0 })
-                {
-                    Say.Line($"{(name + ":").PadRight(19)}<unset>{note}");
-                    continue;
-                }
-
-                var sentence = Settings.ParseTags(value, out var parsed);
-                Say.Line(sentence is null
-                    ? $"{(name + ":").PadRight(19)}{string.Join(", ", parsed)}{where}{note}"
-                    : $"{(name + ":").PadRight(19)}{value}  (refused: {sentence}){where}{note}");
-
-                continue;
-            }
-
             if (name == "HATCH_MODELS")
             {
                 var sentence = Settings.ParseModels(value, fold("HATCH_AGENT").Value, out var parsed);
@@ -1442,7 +1276,7 @@ public sealed record ConfigCommand(
 
             var shown = value is not { Length: > 0 }
                 ? name == "HATCH_KEY"
-                    ? $"<unset - calls go out as \"{RunnerName}\", which only a wall-off Hatch reads>"
+                    ? "<unset - read commands only; a loop needs a key>"
                     : name == "HATCH_WORKSPACE"
                         ? $"<unset - clones go to {Settings.DefaultWorkspacePath(profileName)}>{profileSuffix}"
                         : name == "HATCH_LOG"
@@ -1506,7 +1340,7 @@ public sealed record ConfigCommand(
     /// <remarks>See <see cref="AtomicFile.Write"/> for how it is written whole.</remarks>
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
-        string agent = "", string grokBin = "", string tags = "", string ollamaHost = "", string ollamaTiers = "",
+        string agent = "", string grokBin = "", string ollamaHost = "", string ollamaTiers = "",
         string log = "", string dangerous = "", string models = "", string has = "", string? path = null, bool overlay = false, string mode = "")
     {
         var target = path ?? ConfigPath;
@@ -1563,7 +1397,6 @@ public sealed record ConfigCommand(
         if (workspace.Length > 0) lines.Add($"HATCH_WORKSPACE={workspace}");
         if (log.Length > 0) lines.Add($"HATCH_LOG={log}");
         if (dangerous.Length > 0) lines.Add($"HATCH_DANGEROUS={dangerous}");
-        if (tags.Length > 0) lines.Add($"HATCH_TAGS={tags}");
         if (models.Length > 0) lines.Add($"HATCH_MODELS={models}");
         if (has.Length > 0) lines.Add($"HATCH_HAS={has}");
 

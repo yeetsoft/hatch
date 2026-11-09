@@ -150,7 +150,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.TokensLastHour,
             runner.ThrottledUntil,
             runner.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            runner.Has?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            runner.Has?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
+            RetiredAt: runner.RetiredAt,
+            SupersededBy: runner.RetiredBy);
     }
 
     /// <summary>
@@ -251,6 +253,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         OrderKey = beat.OrderKey,
         OrderedBy = beat.OrderedBy,
         OrderedAt = beat.OrderedAt,
+        RetiredAt = beat.RetiredAt,
+        RetiredBy = beat.RetiredBy,
     };
 
     private static RunnerBoardDrift ToBoardDrift(RevisionDrift drift) => drift switch
@@ -275,8 +279,6 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         long? defaultMaxTokens = null, long? defaultMaxTokensPerHour = null) =>
         new(runner.State, runner.Under, runner.MaxRuns, runner.MaxSpend, runner.UntilAt, forName, drives,
             runner.Tags?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [], order,
-            runner.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
-            runner.RefusesDangerous ?? false,
             Effective(runner.MaxTokens, defaultMaxTokens).Cap,
             Effective(runner.MaxTokensPerHour, defaultMaxTokensPerHour).Cap);
 
@@ -384,7 +386,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         // throws its instruction away (GoToWork.cs), so electing one would
         // strand a project with a driver that can never answer.
         var live = await db.Runners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind)
+            .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind && r.RetiredAt == null)
             .Select(r => new { r.Name, r.FirstSeenAt, r.Remotes, r.Standing, r.ForPersonId })
             .ToListAsync(ct);
 

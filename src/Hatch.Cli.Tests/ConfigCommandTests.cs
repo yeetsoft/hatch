@@ -11,31 +11,32 @@ public sealed class ConfigCommandTests : IDisposable
 
     private string ConfigPath => Path.Combine(_temp, "hatch", "config");
 
-    private string RunnersPath => Path.Combine(_temp, "hatch", "runners");
-
     private ConfigCommand Command(
         Replies input,
         IDictionary<string, string?>? environment = null,
         string? checkoutEnv = null,
-        Func<Settings, string, CancellationToken, Task<string?>>? probe = null,
+        Func<Settings, CancellationToken, Task<string?>>? probe = null,
         string? root = null,
-        string runnerName = "test:/checkout",
-        Func<Settings, CancellationToken, Task<IReadOnlyList<string>>>? liveRunners = null,
         Func<string, bool>? checkoutIgnoresEnv = null,
-        Func<Settings, string, CancellationToken, Task<MeDto?>>? meProbe = null,
+        Func<Settings, CancellationToken, Task<MeDto?>>? meProbe = null,
+        Func<Settings, CancellationToken, Task<string>>? suggest = null,
+        Func<Settings, string, CancellationToken, Task<(RunnerMintedDto? Minted, string? Taken)>>? create = null,
         string? profileName = null,
         string? profilePath = null,
         ConfigCommand.ProfileResolver? resolveProfile = null,
         Probe? detectProbe = null) =>
         new(_say, input, environment ?? new Dictionary<string, string?>(StringComparer.Ordinal),
-            checkoutEnv, runnerName, root)
+            checkoutEnv, root)
         {
             ConfigPath = ConfigPath,
-            RunnersPath = RunnersPath,
-            Probe = probe ?? ((_, _, _) => Task.FromResult<string?>("To Do, In Progress, Done")),
-            LiveRunners = liveRunners ?? ((_, _) => Task.FromResult<IReadOnlyList<string>>([])),
+            Probe = probe ?? ((_, _) => Task.FromResult<string?>("To Do, In Progress, Done")),
             CheckoutIgnoresEnv = checkoutIgnoresEnv ?? (_ => true),
-            MeProbe = meProbe ?? ((_, _, _) => Task.FromResult<MeDto?>(new MeDto("key", "stub", null, true, false, false))),
+            // Wall on by default: an empty key in a test is read as "never
+            // typed one", not as "say yes to minting" - a test that wants the
+            // mint prompt exercised sets this itself.
+            MeProbe = meProbe ?? ((_, _) => throw new HatchException("hatch: 401", System.Net.HttpStatusCode.Unauthorized)),
+            Suggest = suggest ?? ((_, _) => Task.FromResult("stub-suggestion")),
+            Create = create ?? ((_, _, _) => throw new InvalidOperationException("Create was not expected to be called")),
             ProfileName = profileName,
             ProfilePath = profilePath,
             // No active profile unless a test says otherwise: the real one reads
@@ -248,8 +249,8 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(0, await Command(new Replies("https://hatch.example", "", "")).RunAsync([], default));
 
         Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
-        Assert.Contains("no key - calls will name themselves \"test:/checkout\"", Complained);
-        Assert.Contains("only a Hatch with its wall off reads", Complained);
+        Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
+        Assert.Contains("an admin creates a runner on the Runners page, then run hatch config --key <key>", Complained);
     }
 
     [Fact]
@@ -317,7 +318,7 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var code = await Command(
                 new Replies("https://hatch.example", "hatch_ak_wrong", ""),
-                probe: (_, _, _) => throw new HatchException("hatch: 401 - the key was not accepted."))
+                probe: (_, _) => throw new HatchException("hatch: 401 - the key was not accepted."))
             .RunAsync([], default);
 
         Assert.Equal(1, code);
@@ -344,236 +345,225 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.False(File.Exists(ConfigPath));
     }
 
-    // ---- the runner name prompt ----
+    // ---- the mint prompt ----
+
+    private static Func<Settings, CancellationToken, Task<MeDto?>> WallOff() =>
+        (_, _) => Task.FromResult<MeDto?>(new MeDto("key", "whoever", null, true, false, false));
 
     [Fact]
-    public async Task Outside_a_checkout_the_runner_is_never_asked_about()
+    public async Task An_empty_key_on_a_wall_off_board_offers_to_mint_a_runner()
     {
-        var input = new Replies("https://hatch.example", "", "");
-        Assert.Equal(0, await Command(input).RunAsync([], default));
-
-        Assert.DoesNotContain(input.Asked, l => l.Contains("board call this runner", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task In_a_checkout_it_offers_the_runner_already_named_and_Enter_keeps_it()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "");
-
-        Assert.Equal(
-            0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
-
-        Assert.Contains("What should the board call this runner? [Jeff Winger]:", input.Asked[4]);
-        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
-    }
-
-    [Fact]
-    public async Task A_typed_name_is_recorded()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "Liz Lemon");
-
-        Assert.Equal(
-            0, await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default));
-
-        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
-    }
-
-    [Fact]
-    public async Task An_empty_typed_name_is_refused_with_nothing_written()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", new string(' ', 3));
-
-        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("a name is required", Complained);
-        Assert.False(File.Exists(ConfigPath));
-        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
-    }
-
-    [Fact]
-    public async Task A_name_that_is_not_plain_ASCII_is_refused_with_nothing_written()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "", "", "", "Jeff Wïnger");
-
-        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("a name is plain ASCII", Complained);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task A_name_over_the_limit_is_refused_with_nothing_written()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies(
-            "https://hatch.example", "", "", "", new string('x', ClaimRequest.MaxRunnerLength + 1));
-
-        var code = await Command(input, root: root, runnerName: "Jeff Winger").RunAsync([], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains($"a name is at most {ClaimRequest.MaxRunnerLength} characters", Complained);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task A_name_held_by_a_live_runner_is_refused_with_nothing_written()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var input = new Replies("https://hatch.example", "hatch_ak_ok", "", "", "Liz Lemon");
+        var input = new Replies("https://hatch.example", "", "", "Riker", "");
+        var created = false;
 
         var code = await Command(
-                input, root: root, runnerName: "Jeff Winger",
-                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
+                input,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, name, _) =>
+                {
+                    created = true;
+                    Assert.Equal("Riker", name);
+                    return Task.FromResult<(RunnerMintedDto? Minted, string? Taken)>(
+                        (new RunnerMintedDto(new RunnerDto("Riker", "key", default, default, null, null, null, "new", null, null, null, null, 0, [], null, null, null, null, null), "hatch_ak_minted"), null));
+                })
+            .RunAsync([], default);
+
+        Assert.Equal(0, code);
+        Assert.True(created);
+        Assert.Contains("Create a runner on this board? [Y/n]: ", input.Asked);
+        Assert.Contains("Runner name [Data]: ", input.Asked);
+        Assert.Contains("created runner Riker", Said);
+        Assert.Contains("HATCH_KEY=hatch_ak_minted", File.ReadAllLines(ConfigPath));
+        Assert.DoesNotContain("hatch_ak_minted", Said);
+        Assert.DoesNotContain("hatch_ak_minted", Complained);
+    }
+
+    [Fact]
+    public async Task An_empty_typed_name_falls_back_to_the_suggestion()
+    {
+        var input = new Replies("https://hatch.example", "", "", "", "");
+        string? sent = null;
+
+        var code = await Command(
+                input,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, name, _) =>
+                {
+                    sent = name;
+                    return Task.FromResult<(RunnerMintedDto? Minted, string? Taken)>(
+                        (new RunnerMintedDto(new RunnerDto("Data", "key", default, default, null, null, null, "new", null, null, null, null, 0, [], null, null, null, null, null), "hatch_ak_minted"), null));
+                })
+            .RunAsync([], default);
+
+        Assert.Equal(0, code);
+        Assert.Equal("Data", sent);
+    }
+
+    [Fact]
+    public async Task Declining_the_mint_offer_writes_an_empty_key_and_calls_neither_suggest_nor_create()
+    {
+        var input = new Replies("https://hatch.example", "", "n", "");
+        var suggested = false;
+
+        var code = await Command(
+                input,
+                meProbe: WallOff(),
+                suggest: (_, _) =>
+                {
+                    suggested = true;
+                    return Task.FromResult("Data");
+                })
+            .RunAsync([], default);
+
+        Assert.Equal(0, code);
+        Assert.False(suggested);
+        Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
+        Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
+    }
+
+    [Fact]
+    public async Task A_taken_name_refuses_and_writes_nothing()
+    {
+        var input = new Replies("https://hatch.example", "", "", "Riker");
+
+        var code = await Command(
+                input,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, _, _) => Task.FromResult<(RunnerMintedDto? Minted, string? Taken)>(
+                    (null, "hatch: there is already a runner called \"Riker\"")))
             .RunAsync([], default);
 
         Assert.Equal(1, code);
-        Assert.Contains("Liz Lemon is already a live runner on this board", Complained);
+        Assert.Contains("there is already a runner called \"Riker\"", Complained);
         Assert.False(File.Exists(ConfigPath));
-        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
-    }
-
-    // ---- --runner ----
-
-    [Fact]
-    public async Task Runner_flag_writes_the_name_without_asking_anything()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-
-        Assert.Equal(0, await Command(new Replies(), root: root).RunAsync(["--runner", "Liz Lemon"], default));
-
-        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
     }
 
     [Fact]
-    public async Task Runner_with_profile_writes_that_profiles_record_entry()
+    public async Task A_create_that_throws_refuses_and_writes_nothing()
     {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var canonical = Checkout.Canonical(root);
-        ConfigCommand.ProfileResolver neverResolves = (string? _, IDictionary<string, string?> _, out string? _, out string? _, out string _) =>
-            throw new InvalidOperationException("an explicit --profile never resolves");
-
-        Assert.Equal(0, await Command(new Replies(), root: root, profileName: "a", profilePath: Profile(), resolveProfile: neverResolves)
-            .RunAsync(["--runner", "Toby"], default));
-        Assert.Equal(0, await Command(new Replies(), root: root, profileName: "b", profilePath: Profile(), resolveProfile: neverResolves)
-            .RunAsync(["--runner", "Troy"], default));
-
-        var record = RunnerNames.Record.Read(RunnersPath);
-        Assert.Equal("Toby", record[RunnerNames.Record.Key("a", canonical)]);
-        Assert.Equal("Troy", record[RunnerNames.Record.Key("b", canonical)]);
-        Assert.False(record.ContainsKey(canonical));
-    }
-
-    [Fact]
-    public async Task Runner_with_no_profile_flag_uses_the_active_one()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var canonical = Checkout.Canonical(root);
-        var profilePath = Profile();
-        ConfigCommand.ProfileResolver active = (string? _, IDictionary<string, string?> _, out string? name, out string? file, out string refusal) =>
-        {
-            name = "a";
-            file = profilePath;
-            refusal = "";
-            return true;
-        };
-
-        Assert.Equal(0, await Command(new Replies(), root: root, resolveProfile: active)
-            .RunAsync(["--runner", "Troy"], default));
-
-        var record = RunnerNames.Record.Read(RunnersPath);
-        Assert.Equal("Troy", record[RunnerNames.Record.Key("a", canonical)]);
-        Assert.False(record.ContainsKey(canonical));
-    }
-
-    [Fact]
-    public async Task Runner_refuses_a_dangling_active_profile()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        ConfigCommand.ProfileResolver dangling = (string? _, IDictionary<string, string?> _, out string? name, out string? file, out string refusal) =>
-        {
-            name = "ghost";
-            file = null;
-            refusal = "hatch: no such profile \"ghost\"";
-            return false;
-        };
-
-        var code = await Command(new Replies(), root: root, resolveProfile: dangling)
-            .RunAsync(["--runner", "Troy"], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("no such profile \"ghost\"", Complained);
-        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
-    }
-
-    [Fact]
-    public async Task Runner_with_profile_asks_that_profiles_board()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        string? asked = null;
+        var input = new Replies("https://hatch.example", "", "", "Riker");
 
         var code = await Command(
-                new Replies(),
-                root: root,
-                profileName: "a",
-                profilePath: Profile("HATCH_BASE=https://profile-board"),
-                liveRunners: (settings, _) =>
+                input,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, _, _) => throw new HatchException("hatch: 403 - what a runner may spend is the operator's to set"))
+            .RunAsync([], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("what a runner may spend is the operator's to set", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task A_wall_on_board_makes_no_suggest_or_create_call_and_still_writes_the_origin()
+    {
+        var input = new Replies("https://hatch.example", "", "");
+        var called = false;
+
+        var code = await Command(
+                input,
+                meProbe: (_, _) => throw new HatchException("hatch: 401", System.Net.HttpStatusCode.Unauthorized),
+                suggest: (_, _) =>
                 {
-                    asked = settings.Base;
-                    return Task.FromResult<IReadOnlyList<string>>([]);
+                    called = true;
+                    return Task.FromResult("Data");
                 })
-            .RunAsync(["--runner", "Troy"], default);
+            .RunAsync([], default);
 
         Assert.Equal(0, code);
-        Assert.Equal("https://profile-board", asked);
+        Assert.False(called);
+        Assert.Contains("HATCH_BASE=https://hatch.example", File.ReadAllLines(ConfigPath));
+        Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
+        Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
+        Assert.Contains("hatch: an admin creates a runner on the Runners page, then run hatch config --key <key>.", Complained);
     }
 
     [Fact]
-    public async Task Runner_flag_outside_a_checkout_is_refused()
+    public async Task Mint_under_here_writes_the_secret_to_the_checkout_file()
     {
-        var code = await Command(new Replies()).RunAsync(["--runner", "Liz Lemon"], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("--runner names this checkout - run it inside one", Complained);
-    }
-
-    [Fact]
-    public async Task Runner_flag_held_by_a_live_runner_is_refused_with_nothing_written()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
+        var (root, checkoutEnv) = HereCheckout();
+        var input = new Replies("https://hatch.example", "", "", "Riker");
 
         var code = await Command(
-                new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
-                root: root,
-                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
-            .RunAsync(["--runner", "Liz Lemon"], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("Liz Lemon is already a live runner on this board", Complained);
-        Assert.Empty(RunnerNames.Record.Read(RunnersPath));
-    }
-
-    [Fact]
-    public async Task Runner_flag_with_this_checkouts_own_name_is_not_refused()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-
-        var code = await Command(
-                new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
-                root: root,
-                runnerName: "Liz Lemon",
-                liveRunners: (_, _) => Task.FromResult<IReadOnlyList<string>>(["Liz Lemon"]))
-            .RunAsync(["--runner", "Liz Lemon"], default);
+                input, root: root, checkoutEnv: checkoutEnv,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, _, _) => Task.FromResult<(RunnerMintedDto? Minted, string? Taken)>(
+                    (new RunnerMintedDto(new RunnerDto("Riker", "key", default, default, null, null, null, "new", null, null, null, null, 0, [], null, null, null, null, null), "hatch_ak_minted"), null)))
+            .RunAsync(["--here"], default);
 
         Assert.Equal(0, code);
-        Assert.Equal("Liz Lemon", RunnerNames.Record.Read(RunnersPath)[Checkout.Canonical(root)]);
+        Assert.Contains("HATCH_KEY=hatch_ak_minted", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Mint_under_profile_writes_the_secret_to_the_profile_file()
+    {
+        var profilePath = Profile();
+        var input = new Replies("https://hatch.example", "", "", "Riker");
+
+        var code = await Command(
+                input, profileName: "work", profilePath: profilePath,
+                meProbe: WallOff(),
+                suggest: (_, _) => Task.FromResult("Data"),
+                create: (_, _, _) => Task.FromResult<(RunnerMintedDto? Minted, string? Taken)>(
+                    (new RunnerMintedDto(new RunnerDto("Riker", "key", default, default, null, null, null, "new", null, null, null, null, 0, [], null, null, null, null, null), "hatch_ak_minted"), null)))
+            .RunAsync([], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("HATCH_KEY=hatch_ak_minted", File.ReadAllLines(profilePath));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_says_runner_and_identity_for_a_live_key()
+    {
+        var code = await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_BASE"] = "https://hatch.example",
+                    ["HATCH_KEY"] = "hatch_ak_whoever",
+                },
+                meProbe: (_, _) => Task.FromResult<MeDto?>(new MeDto("key", "whoever", null, true, false, false)))
+            .RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("runner:           whoever  (from the key)", Said);
+        Assert.Contains("identity:         key \"whoever\"", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_no_key_for_the_runner_line_when_keyless()
+    {
+        var code = await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("runner:           <none - no key>", Said);
+        Assert.Contains("identity:         <no key>", Said);
+    }
+
+    [Fact]
+    public async Task Show_says_unreachable_for_the_runner_line_when_the_probe_throws()
+    {
+        var code = await Command(
+                new Replies(),
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_BASE"] = "https://hatch.example",
+                    ["HATCH_KEY"] = "hatch_ak_whoever",
+                },
+                meProbe: (_, _) => throw new HatchException("boom"))
+            .RunAsync(["--show"], default);
+
+        Assert.Equal(0, code);
+        Assert.Contains("runner:           <unreachable>", Said);
+        Assert.Contains("identity:         <unreachable>", Said);
     }
 
     // ---- --origin ----
@@ -628,18 +618,14 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.DoesNotContain("hatch_ak_abcdefghijklmnop", $"{Said}\n{Complained}");
     }
 
-    /// <summary>
-    /// The same sentence the interactive path says, because it is the same
-    /// helper - a friend who paired the page's command with a wall-off Hatch
-    /// should be told what their calls will name themselves.
-    /// </summary>
     [Fact]
-    public async Task Origin_with_no_key_anywhere_says_what_calls_will_name_themselves()
+    public async Task Origin_with_no_key_anywhere_says_a_loop_needs_one()
     {
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--origin", "https://hatch.example"], default));
 
         Assert.Contains("HATCH_KEY=", File.ReadAllLines(ConfigPath));
-        Assert.Contains("no key - calls will name themselves \"test:/checkout\"", Complained);
+        Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
+        Assert.Contains("hatch: run hatch config to create a runner, or hatch config --key <key>.", Complained);
     }
 
     [Fact]
@@ -666,7 +652,7 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var code = await Command(
                 new Replies(),
-                probe: (_, _, _) => throw new HatchException("hatch: 401 - the key was not accepted."))
+                probe: (_, _) => throw new HatchException("hatch: 401 - the key was not accepted."))
             .RunAsync(["--origin", "https://hatch.example"], default);
 
         Assert.Equal(1, code);
@@ -808,23 +794,25 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Contains(
-            $"{"HATCH_KEY:".PadRight(19)}<unset - calls go out as \"test:/checkout\", which only a wall-off Hatch reads>" +
+            $"{"HATCH_KEY:".PadRight(19)}<unset - read commands only; a loop needs a key>" +
             $"  (ignored: exported holds a key, but HATCH_BASE comes from {checkoutEnv} - set both there, or neither)",
             Said);
         Assert.DoesNotContain("hatch_ak_exported_but_ignored", Said);
     }
 
     /// <summary>
-    /// With no key, what a call will name itself is the thing worth printing -
-    /// only a wall-off Hatch reads it, and knowing that is half of diagnosing a
-    /// 401.
+    /// With no key, there is nothing to probe with - read commands still work
+    /// as the local person, but a loop needs one, and the line says so rather
+    /// than reading like nothing was ever asked.
     /// </summary>
     [Fact]
-    public async Task Show_with_no_key_says_what_calls_will_name_themselves_instead()
+    public async Task Show_with_no_key_says_read_commands_only()
     {
         await Command(new Replies()).RunAsync(["--show"], default);
 
-        Assert.Contains("<unset - calls go out as \"test:/checkout\"", Said);
+        Assert.Contains("runner:           <none - no key>", Said);
+        Assert.Contains("identity:         <no key>", Said);
+        Assert.Contains("<unset - read commands only; a loop needs a key>", Said);
         Assert.Contains("(does not exist yet)", Said);
     }
 
@@ -883,71 +871,21 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Show_outside_a_checkout_says_so_for_the_runner_too()
-    {
-        await Command(new Replies()).RunAsync(["--show"], default);
-        Assert.Contains("runner:           <not in a checkout>", Said);
-    }
-
-    [Fact]
-    public async Task Show_in_a_checkout_with_no_recorded_name_says_so()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        await Command(new Replies(), root: root).RunAsync(["--show"], default);
-
-        Assert.Contains(
-            _say.Said, l => l.StartsWith("runner:", StringComparison.Ordinal) && l.Contains("none yet", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Show_in_a_checkout_prints_the_recorded_name_and_the_runners_file()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), "Jeff Winger");
-
-        await Command(new Replies(), root: root).RunAsync(["--show"], default);
-
-        Assert.Contains($"runner:           Jeff Winger  ({RunnersPath})", Said);
-    }
-
-    [Fact]
-    public async Task Show_says_HATCH_RUNNER_wins_when_it_is_set()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        RunnerNames.Record.Set(RunnersPath, null, Checkout.Canonical(root), "Jeff Winger");
-
-        await Command(
-                new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_RUNNER"] = "the-box" },
-                root: root)
-            .RunAsync(["--show"], default);
-
-        Assert.Contains("runner:           the-box  (HATCH_RUNNER, exported)", Said);
-    }
-
-    [Fact]
     public async Task Show_prints_a_keys_identity_with_its_owner()
     {
         await Command(
                 new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
-                meProbe: (_, _, _) => Task.FromResult<MeDto?>(
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_BASE"] = "https://hatch.example",
+                    ["HATCH_KEY"] = "hatch_ak_ada",
+                },
+                meProbe: (_, _) => Task.FromResult<MeDto?>(
                     new MeDto("key", "ada-key", "admin", true, false, false, "Ada")))
             .RunAsync(["--show"], default);
 
+        Assert.Contains("runner:           ada-key  (from the key)", Said);
         Assert.Contains("identity:         key \"ada-key\", owned by Ada", Said);
-    }
-
-    [Fact]
-    public async Task Show_prints_a_runners_identity_by_its_name()
-    {
-        await Command(
-                new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
-                meProbe: (_, _, _) => Task.FromResult<MeDto?>(new MeDto("runner", "Morty", null, true, false, false)))
-            .RunAsync(["--show"], default);
-
-        Assert.Contains("identity:         calls go out as \"Morty\"", Said);
     }
 
     [Fact]
@@ -955,11 +893,16 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var code = await Command(
                 new Replies(),
-                environment: new Dictionary<string, string?>(StringComparer.Ordinal) { ["HATCH_BASE"] = "https://hatch.example" },
-                meProbe: (_, _, _) => throw new HatchException("boom"))
+                environment: new Dictionary<string, string?>(StringComparer.Ordinal)
+                {
+                    ["HATCH_BASE"] = "https://hatch.example",
+                    ["HATCH_KEY"] = "hatch_ak_ada",
+                },
+                meProbe: (_, _) => throw new HatchException("boom"))
             .RunAsync(["--show"], default);
 
         Assert.Equal(0, code);
+        Assert.Contains("runner:           <unreachable>", Said);
         Assert.Contains("identity:         <unreachable>", Said);
     }
 
@@ -1044,14 +987,14 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Tag_keeps_the_Ollama_host_and_tiers()
+    public async Task Dangerous_keeps_the_Ollama_host_and_tiers()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         File.WriteAllLines(
             ConfigPath,
             ["HATCH_BASE=https://kept", "HATCH_OLLAMA_HOST=http://kept:11434", "HATCH_OLLAMA_TIERS=sonnet=qwen3-coder:30b"]);
 
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu"], default));
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(ConfigPath);
         Assert.Contains("HATCH_OLLAMA_HOST=http://kept:11434", written);
@@ -1116,7 +1059,7 @@ public sealed class ConfigCommandTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
 
-        var code = await Command(new Replies(), probe: (_, _, _) => throw new HatchException("hatch: 401"))
+        var code = await Command(new Replies(), probe: (_, _) => throw new HatchException("hatch: 401"))
             .RunAsync(["--key", "hatch_ak_refused"], default);
 
         Assert.Equal(1, code);
@@ -1142,6 +1085,17 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(1, await Command(new Replies()).RunAsync(["--everything"], default));
         Assert.Contains("config takes nothing, --show, --origin <origin>, or --key <key>", Complained);
         Assert.Contains("usage: hatch config", Complained);
+    }
+
+    /// <summary>The old name-this-checkout mode is gone - a runner is minted now, not named.</summary>
+    [Fact]
+    public async Task A_runner_flag_is_refused_as_an_unknown_mode()
+    {
+        var code = await Command(new Replies()).RunAsync(["--runner", "x"], default);
+
+        Assert.Equal(1, code);
+        Assert.Contains("config takes nothing, --show, --origin <origin>, or --key <key>", Complained);
+        Assert.False(File.Exists(ConfigPath));
     }
 
     /// <summary>An origin is one argument, and a bare `--origin` is a mistake rather than a prompt.</summary>
@@ -1400,165 +1354,6 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_WORKSPACE:   <unset - clones go to {Settings.DefaultWorkspacePath()}>", Said);
     }
 
-    // ---- --tag ----
-
-    [Fact]
-    public async Task Tag_writes_the_joined_list_and_touches_nothing_else()
-    {
-        await Command(new Replies()).RunAsync(["--origin", "https://kept"], default);
-
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default));
-
-        var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu,linux", written);
-        Assert.Contains("HATCH_BASE=https://kept", written);
-    }
-
-    [Fact]
-    public async Task Tag_is_normalised_lowercased_and_deduplicated()
-    {
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag", "GPU", "--tag", "gpu"], default));
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_alone_clears_what_was_there()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-
-        Assert.Equal(0, await Command(new Replies()).RunAsync(["--tag"], default));
-
-        Assert.DoesNotContain(File.ReadAllLines(ConfigPath), l => l.StartsWith("HATCH_TAGS=", StringComparison.Ordinal));
-    }
-
-    [Theory]
-    [InlineData("gpu big")]
-    [InlineData("a,b")]
-    [InlineData("123456789012345678901234567890123")]
-    public async Task A_tag_that_breaks_RunnerTags_is_refused_with_nothing_written(string badTag)
-    {
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", badTag], default));
-
-        Assert.Contains("a tag", Complained, StringComparison.Ordinal);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Nine_tags_are_refused_with_nothing_written()
-    {
-        var args = new List<string>();
-        for (var i = 0; i < 9; i++)
-        {
-            args.Add("--tag");
-            args.Add($"tag{i}");
-        }
-
-        Assert.Equal(1, await Command(new Replies()).RunAsync([.. args], default));
-
-        Assert.Contains("at most 8 tags", Complained, StringComparison.Ordinal);
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task A_refused_tag_leaves_an_existing_file_untouched()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        var before = File.ReadAllBytes(ConfigPath);
-
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu big"], default));
-
-        Assert.Equal(before, File.ReadAllBytes(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_shaped_wrong_is_refused_and_nothing_is_written()
-    {
-        // A trailing bare --tag.
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag"], default));
-        Assert.False(File.Exists(ConfigPath));
-
-        // Two values with no --tag between them.
-        Assert.Equal(1, await Command(new Replies()).RunAsync(["--tag", "gpu", "linux"], default));
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Tag_needs_no_checkout_and_no_reachable_board()
-    {
-        var probed = false;
-        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
-        {
-            probed = true;
-            return Task.FromResult<string?>(null);
-        });
-
-        Assert.Equal(0, await cmd.RunAsync(["--tag", "gpu"], default));
-        Assert.False(probed);
-    }
-
-    [Fact]
-    public async Task Show_lists_the_tags_with_the_layer()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu", "--tag", "linux"], default);
-
-        await Command(new Replies()).RunAsync(["--show"], default);
-
-        Assert.Contains($"HATCH_TAGS:        gpu, linux  ({ConfigPath})", Said);
-    }
-
-    [Fact]
-    public async Task Show_with_no_tags_says_unset()
-    {
-        await Command(new Replies()).RunAsync(["--show"], default);
-        Assert.Contains("HATCH_TAGS:        <unset>", Said);
-    }
-
-    [Fact]
-    public async Task Origin_after_tag_leaves_the_tags_in_the_file()
-    {
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--origin", "https://new"], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Key_after_tag_leaves_the_tags_in_the_file()
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept"]);
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--key", "hatch_ak_new"], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Repo_after_tag_leaves_the_tags_in_the_file()
-    {
-        var a = Tree("a");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--repo", a], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
-    [Fact]
-    public async Task Workspace_after_tag_leaves_the_tags_in_the_file()
-    {
-        var dir = Path.Combine(_temp, "clones");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-
-        await Command(new Replies()).RunAsync(["--workspace", dir], default);
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(ConfigPath));
-    }
-
     // ---- --log ----
 
     [Fact]
@@ -1636,7 +1431,7 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", "off"], default);
         Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
         Assert.Contains($"HATCH_LOG={logs}", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--origin", "https://other"], default);
@@ -1651,15 +1446,15 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Tag_after_log_and_log_after_tag_keep_both()
+    public async Task Dangerous_after_log_and_log_after_dangerous_keep_both()
     {
         var logs = Path.Combine(_temp, "logs-both");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
 
         await Command(new Replies()).RunAsync(["--log", logs], default);
 
         var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.Contains($"HATCH_LOG={logs}", written);
     }
 
@@ -1738,7 +1533,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Dangerous_writes_the_word_and_touches_nothing_else(string typed, string written)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_MODELS=opus"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--dangerous", typed], default));
 
@@ -1746,7 +1541,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_DANGEROUS={written}", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_MODELS=opus", lines);
     }
 
     [Fact]
@@ -1779,7 +1574,7 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", "off"], default);
         Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--models", "opus"], default);
         Assert.Contains("HATCH_DANGEROUS=off", File.ReadAllLines(ConfigPath));
 
         await Command(new Replies()).RunAsync(["--log", logs], default);
@@ -1797,16 +1592,16 @@ public sealed class ConfigCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Log_and_tag_after_dangerous_and_dangerous_after_them_keep_all_three()
+    public async Task Log_and_models_after_dangerous_and_dangerous_after_them_keep_all_three()
     {
         var logs = Path.Combine(_temp, "logs-three");
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
+        await Command(new Replies()).RunAsync(["--models", "opus"], default);
         await Command(new Replies()).RunAsync(["--log", logs], default);
 
         await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
 
         var written = File.ReadAllLines(ConfigPath);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_MODELS=opus", written);
         Assert.Contains($"HATCH_LOG={logs}", written);
         Assert.Contains("HATCH_DANGEROUS=off", written);
     }
@@ -1885,7 +1680,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Models_writes_the_joined_list_and_touches_nothing_else()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_HAS=dotnet"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--models", "haiku", "--models", "sonnet"], default));
 
@@ -1893,7 +1688,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_MODELS=haiku,sonnet", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_HAS=dotnet", lines);
     }
 
     [Fact]
@@ -1970,9 +1765,6 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", clones], default);
         Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
-
         await Command(new Replies()).RunAsync(["--dangerous", "off"], default);
         Assert.Contains("HATCH_MODELS=haiku,sonnet", File.ReadAllLines(ConfigPath));
 
@@ -1994,7 +1786,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Models_needs_no_checkout_and_no_reachable_board()
     {
         var probed = false;
-        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
+        var cmd = Command(new Replies(), root: null, probe: (_, _) =>
         {
             probed = true;
             return Task.FromResult<string?>(null);
@@ -2024,7 +1816,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Has_writes_the_joined_list_and_touches_nothing_else()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
-        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_TAGS=gpu"]);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_KEY=hatch_ak_kept", "HATCH_MODELS=opus"]);
 
         Assert.Equal(0, await Command(new Replies()).RunAsync(["--has", "dotnet@10", "--has", "node"], default));
 
@@ -2032,7 +1824,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains("HATCH_HAS=dotnet@10,node", lines);
         Assert.Contains("HATCH_BASE=https://kept", lines);
         Assert.Contains("HATCH_KEY=hatch_ak_kept", lines);
-        Assert.Contains("HATCH_TAGS=gpu", lines);
+        Assert.Contains("HATCH_MODELS=opus", lines);
     }
 
     [Fact]
@@ -2106,9 +1898,6 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--workspace", clones], default);
         Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
 
-        await Command(new Replies()).RunAsync(["--tag", "gpu"], default);
-        Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
-
         await Command(new Replies()).RunAsync(["--models", "haiku"], default);
         Assert.Contains("HATCH_HAS=dotnet@10,node", File.ReadAllLines(ConfigPath));
 
@@ -2133,7 +1922,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Has_needs_no_checkout_and_no_reachable_board()
     {
         var probed = false;
-        var cmd = Command(new Replies(), root: null, probe: (_, _, _) =>
+        var cmd = Command(new Replies(), root: null, probe: (_, _) =>
         {
             probed = true;
             return Task.FromResult<string?>(null);
@@ -2191,18 +1980,6 @@ public sealed class ConfigCommandTests : IDisposable
     // ---- --here ----
 
     [Fact]
-    public async Task Here_tag_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
-    {
-        var (root, checkoutEnv) = HereCheckout();
-
-        Assert.Equal(
-            0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--tag", "gpu"], default));
-
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(checkoutEnv));
-        Assert.False(File.Exists(ConfigPath));
-    }
-
-    [Fact]
     public async Task Here_origin_writes_the_checkout_file_and_leaves_the_per_user_file_untouched()
     {
         var (root, checkoutEnv) = HereCheckout();
@@ -2232,7 +2009,7 @@ public sealed class ConfigCommandTests : IDisposable
         string? probedKey = null;
         var code = await Command(
                 new Replies(), root: root, checkoutEnv: checkoutEnv,
-                probe: (settings, _, _) =>
+                probe: (settings, _) =>
                 {
                     probedKey = settings.Key;
                     return Task.FromResult<string?>("To Do");
@@ -2241,7 +2018,7 @@ public sealed class ConfigCommandTests : IDisposable
 
         Assert.Equal(0, code);
         Assert.Equal("", probedKey);
-        Assert.Contains("no key - calls will name themselves", Complained);
+        Assert.Contains("hatch: no key - read commands work as the local person, but a loop needs one.", Complained);
     }
 
     [Fact]
@@ -2309,17 +2086,17 @@ public sealed class ConfigCommandTests : IDisposable
     /// the per-user file always carries.
     /// </summary>
     [Fact]
-    public async Task Here_tag_with_no_prior_checkout_file_writes_only_the_tag()
+    public async Task Here_dangerous_with_no_prior_checkout_file_writes_only_the_word()
     {
         var (root, checkoutEnv) = HereCheckout();
 
         Assert.Equal(
             0,
             await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
-                .RunAsync(["--here", "--tag", "breakdown"], default));
+                .RunAsync(["--here", "--dangerous", "off"], default));
 
         var written = File.ReadAllLines(checkoutEnv).Where(l => l.Length > 0 && l[0] != '#').ToArray();
-        Assert.Equal(["HATCH_TAGS=breakdown"], written);
+        Assert.Equal(["HATCH_DANGEROUS=off"], written);
     }
 
     /// <summary>
@@ -2328,7 +2105,7 @@ public sealed class ConfigCommandTests : IDisposable
     /// own - so neither leaks into the file <c>--here</c> writes.
     /// </summary>
     [Fact]
-    public async Task Here_tag_carries_forward_only_the_checkout_files_own_lines()
+    public async Task Here_dangerous_carries_forward_only_the_checkout_files_own_lines()
     {
         var (root, checkoutEnv) = HereCheckout("HATCH_BASE=https://this-checkout");
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
@@ -2341,27 +2118,15 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(
             0,
             await Command(new Replies(), environment: environment, root: root, checkoutEnv: checkoutEnv)
-                .RunAsync(["--here", "--tag", "gpu"], default));
+                .RunAsync(["--here", "--dangerous", "off"], default));
 
         var written = File.ReadAllLines(checkoutEnv);
         Assert.Contains("HATCH_BASE=https://this-checkout", written);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_KEY=", StringComparison.Ordinal));
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Here_runner_is_refused_with_the_exact_sentence()
-    {
-        var (root, checkoutEnv) = HereCheckout();
-
-        var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv)
-            .RunAsync(["--here", "--runner", "Liz Lemon"], default);
-
-        Assert.Equal(1, code);
-        Assert.Contains("hatch: a runner's name is already this checkout's - --runner needs no --here", Complained);
-        Assert.False(File.Exists(checkoutEnv));
-    }
 
     [Fact]
     public async Task Here_show_is_refused_as_a_flag_show_does_not_take()
@@ -2377,7 +2142,7 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Here_outside_a_checkout_is_refused_with_the_exact_sentence()
     {
-        var code = await Command(new Replies(), root: null).RunAsync(["--here", "--tag", "gpu"], default);
+        var code = await Command(new Replies(), root: null).RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("hatch: --here writes this checkout's scripts/.env - run it inside one", Complained);
@@ -2390,7 +2155,7 @@ public sealed class ConfigCommandTests : IDisposable
         var (root, checkoutEnv) = HereCheckout();
 
         var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv, checkoutIgnoresEnv: _ => false)
-            .RunAsync(["--here", "--tag", "gpu"], default);
+            .RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("is not ignored by this checkout's git", Complained);
@@ -2413,7 +2178,7 @@ public sealed class ConfigCommandTests : IDisposable
         string? probedBase = null;
         var code = await Command(
                 new Replies(), root: root, checkoutEnv: checkoutEnv,
-                probe: (settings, _, _) =>
+                probe: (settings, _) =>
                 {
                     probedBase = settings.Base;
                     return Task.FromResult<string?>("To Do");
@@ -2457,11 +2222,11 @@ public sealed class ConfigCommandTests : IDisposable
     {
         var (rootA, checkoutEnvA) = HereCheckout();
         Assert.Equal(
-            0, await Command(new Replies(), root: rootA, checkoutEnv: checkoutEnvA).RunAsync(["--here", "--tag", "x"], default));
+            0, await Command(new Replies(), root: rootA, checkoutEnv: checkoutEnvA).RunAsync(["--here", "--dangerous", "off"], default));
 
         var (rootB, checkoutEnvB) = HereCheckout();
         Assert.Equal(
-            0, await Command(new Replies(), root: rootB, checkoutEnv: checkoutEnvB).RunAsync(["--tag", "x", "--here"], default));
+            0, await Command(new Replies(), root: rootB, checkoutEnv: checkoutEnvB).RunAsync(["--dangerous", "off", "--here"], default));
 
         var linesA = File.ReadAllLines(checkoutEnvA).Where(l => l.Length > 0 && l[0] != '#');
         var linesB = File.ReadAllLines(checkoutEnvB).Where(l => l.Length > 0 && l[0] != '#');
@@ -2483,16 +2248,16 @@ public sealed class ConfigCommandTests : IDisposable
     // ---- --profile ----
 
     [Fact]
-    public async Task Profile_tag_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
+    public async Task Profile_models_writes_the_profile_file_and_leaves_the_per_user_file_untouched()
     {
         var profilePath = Profile();
 
         Assert.Equal(
             0,
             await Command(new Replies(), profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "gpu"], default));
+                .RunAsync(["--models", "opus"], default));
 
-        Assert.Contains("HATCH_TAGS=gpu", File.ReadAllLines(profilePath));
+        Assert.Contains("HATCH_MODELS=opus", File.ReadAllLines(profilePath));
         Assert.False(File.Exists(ConfigPath));
     }
 
@@ -2576,17 +2341,17 @@ public sealed class ConfigCommandTests : IDisposable
     /// for.
     /// </summary>
     [Fact]
-    public async Task Profile_tag_with_no_prior_profile_file_writes_only_the_tag()
+    public async Task Profile_dangerous_with_no_prior_profile_file_writes_only_the_word()
     {
         var profilePath = Profile();
 
         Assert.Equal(
             0,
             await Command(new Replies(), profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "breakdown"], default));
+                .RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(profilePath).Where(l => l.Length > 0 && l[0] != '#').ToArray();
-        Assert.Equal(["HATCH_TAGS=breakdown"], written);
+        Assert.Equal(["HATCH_DANGEROUS=off"], written);
     }
 
     /// <summary>
@@ -2596,7 +2361,7 @@ public sealed class ConfigCommandTests : IDisposable
     /// <c>--profile</c> writes.
     /// </summary>
     [Fact]
-    public async Task Profile_tag_carries_forward_only_the_profiles_own_lines()
+    public async Task Profile_dangerous_carries_forward_only_the_profiles_own_lines()
     {
         var profilePath = Profile("HATCH_BASE=https://this-profile");
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
@@ -2609,28 +2374,13 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(
             0,
             await Command(new Replies(), environment: environment, profileName: "work", profilePath: profilePath)
-                .RunAsync(["--tag", "gpu"], default));
+                .RunAsync(["--dangerous", "off"], default));
 
         var written = File.ReadAllLines(profilePath);
         Assert.Contains("HATCH_BASE=https://this-profile", written);
-        Assert.Contains("HATCH_TAGS=gpu", written);
+        Assert.Contains("HATCH_DANGEROUS=off", written);
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_KEY=", StringComparison.Ordinal));
         Assert.DoesNotContain(written, l => l.StartsWith("HATCH_CLAUDE_BIN=", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task Show_names_the_profile_on_the_runner_line()
-    {
-        var root = Directory.CreateTempSubdirectory("hatch-config-root-").FullName;
-        var canonical = Checkout.Canonical(root);
-        RunnerNames.Record.Set(RunnersPath, "a", canonical, "Toby");
-        RunnerNames.Record.Set(RunnersPath, null, canonical, "Bare");
-
-        await Command(new Replies(), root: root, profileName: "a", profilePath: Profile())
-            .RunAsync(["--show"], default);
-
-        Assert.Contains($"runner:           Toby  ({RunnersPath})  (profile: a)", Said);
-        Assert.DoesNotContain("Bare", Said);
     }
 
     [Fact]
@@ -2652,7 +2402,7 @@ public sealed class ConfigCommandTests : IDisposable
         var profilePath = Profile();
 
         var code = await Command(new Replies(), root: root, checkoutEnv: checkoutEnv, profileName: "work", profilePath: profilePath)
-            .RunAsync(["--here", "--tag", "gpu"], default);
+            .RunAsync(["--here", "--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("hatch: --here and --profile write to two different places - pick one", Complained);
@@ -2669,7 +2419,7 @@ public sealed class ConfigCommandTests : IDisposable
     public async Task Invalid_profile_name_is_refused_before_anything_is_written()
     {
         var code = await Command(new Replies(), profileName: "li z", profilePath: null)
-            .RunAsync(["--tag", "gpu"], default);
+            .RunAsync(["--dangerous", "off"], default);
 
         Assert.Equal(1, code);
         Assert.Contains("is not a valid profile name", Complained);
@@ -2681,14 +2431,14 @@ public sealed class ConfigCommandTests : IDisposable
     [Fact]
     public async Task Show_with_an_explicit_profile_names_Layer_Profile_for_every_value_it_supplies()
     {
-        var profilePath = Profile("HATCH_BASE=https://from-profile", "HATCH_TAGS=gpu");
+        var profilePath = Profile("HATCH_BASE=https://from-profile", "HATCH_DANGEROUS=off");
 
         var code = await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--show"], default);
 
         Assert.Equal(0, code);
         Assert.Contains($"profile:          work  ({profilePath})", Said);
         Assert.Contains($"HATCH_BASE:        https://from-profile  ({profilePath})", Said);
-        Assert.Contains($"HATCH_TAGS:        gpu  ({profilePath})", Said);
+        Assert.Contains($"HATCH_DANGEROUS:   off - this runner refuses dangerous work  ({profilePath})", Said);
     }
 
     [Fact]

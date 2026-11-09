@@ -143,20 +143,6 @@ public class IssueReleaseNoteControllerTests
     }
 
     [Fact]
-    public async Task AKeylessRunnerThatNamedItself_IsHeldToTheSameRule()
-    {
-        var h = await NewAsync();
-        var issue = await h.FileAsync();
-        h.Caller.Person = null;
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-
-        var refused = await h.Notes.PutIssueReleaseNote(issue.Key, new ReleaseNoteRequest("x"), Guid.NewGuid(), default);
-
-        Assert.IsType<ConflictObjectResult>(refused.Result);
-        Assert.Null((await h.RowAsync(issue.Key)).ReleaseNote);
-    }
-
-    [Fact]
     public async Task AKey_AgainstNoClaim_IsRefused()
     {
         var h = await NewAsync();

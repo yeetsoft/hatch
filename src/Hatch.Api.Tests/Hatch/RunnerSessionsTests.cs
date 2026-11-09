@@ -230,14 +230,6 @@ public class RunnerSessionsTests
         Assert.Equal(42, dto.SessionId);
     }
 
-    [Fact]
-    public void Instruct_ANullRefusesDangerous_AnswersFalse()
-    {
-        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan");
-
-        Assert.False(dto.RefusesDangerous);
-    }
-
     // ---- MarkGoneAsync ----
 
     [SkippableFact]

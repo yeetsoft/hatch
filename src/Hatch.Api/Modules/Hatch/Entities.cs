@@ -222,6 +222,28 @@ public class EfHatchProject
     public DateTimeOffset? CheckApprovesMergeAt { get; set; }
 
     /// <summary>
+    /// Whether a no-code declaration on an issue closes it outright, rather
+    /// than leaving it for a person. Off by default. The close arm of
+    /// <see cref="Dispatch.HopKind"/> reads it.
+    /// Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    public bool NoCodeCloses { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="NoCodeCloses"/>, as a name rather than
+    /// a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null until
+    /// the first change. Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? NoCodeClosesBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="NoCodeCloses"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutNoCodeCloses"/>.
+    /// </summary>
+    public DateTimeOffset? NoCodeClosesAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered
@@ -3374,6 +3396,19 @@ public class EfHatchRunner
 
     /// <summary>When the order was placed.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
+
+    /// <summary>
+    /// When this row was retired - a fact about the row, never a heartbeat:
+    /// written once, by the operation that supersedes it, on the same terms as
+    /// <see cref="ExhaustedUntil"/> except that nothing ever clears it. Null
+    /// means not retired; a row with this set is never live and never elected,
+    /// however recent its <see cref="LastSeenAt"/>.
+    /// </summary>
+    public DateTimeOffset? RetiredAt { get; set; }
+
+    /// <summary>The <see cref="Name"/> of the row that superseded this one, read beside <see cref="RetiredAt"/>.</summary>
+    [MaxLength(MaxNameLength)]
+    public string? RetiredBy { get; set; }
 }
 
 /// <summary>
@@ -3586,4 +3621,36 @@ public class EfHatchRunnerSession
 
     /// <summary>When the order was placed, as <see cref="EfHatchRunner.OrderedAt"/>.</summary>
     public DateTimeOffset? OrderedAt { get; set; }
+
+    public const int MaxOsLength = 64;
+    public const int MaxArchLength = 16;
+    public const int MaxAgentVersionLength = 64;
+    public const int MaxUsernameLength = 64;
+    public const int MaxIpLength = 64;
+
+    /// <summary>The operating system this session's process runs on.</summary>
+    [MaxLength(MaxOsLength)]
+    public string? Os { get; set; }
+
+    /// <summary>The CPU architecture this session's process runs on.</summary>
+    [MaxLength(MaxArchLength)]
+    public string? Arch { get; set; }
+
+    /// <summary>The agent CLI's own version string, as this session's process reported it.</summary>
+    [MaxLength(MaxAgentVersionLength)]
+    public string? AgentVersion { get; set; }
+
+    /// <summary>Whether this session's process is running inside a container.</summary>
+    public bool? Container { get; set; }
+
+    /// <summary>The OS username this session's process runs as.</summary>
+    [MaxLength(MaxUsernameLength)]
+    public string? Username { get; set; }
+
+    /// <summary>The address this session's process last connected from, as the server read it off the connection.</summary>
+    [MaxLength(MaxIpLength)]
+    public string? Ip { get; set; }
+
+    /// <summary>When this session's process itself started.</summary>
+    public DateTimeOffset? ProcessStartedAt { get; set; }
 }

@@ -36,6 +36,9 @@ namespace Hatch.Contracts;
 /// <param name="CheckApprovesMerge">Whether a passing check counts as the approval that lets a pull request merge - see <see cref="EfHatchProject.CheckApprovesMerge"/>. Off by default.</param>
 /// <param name="CheckApprovesMergeBy">Who last changed <paramref name="CheckApprovesMerge"/>, or null until the first change - see <see cref="EfHatchProject.CheckApprovesMergeBy"/>.</param>
 /// <param name="CheckApprovesMergeAt">When <paramref name="CheckApprovesMerge"/> was last changed, or null until the first change - see <see cref="EfHatchProject.CheckApprovesMergeAt"/>.</param>
+/// <param name="NoCodeCloses">Whether a no-code declaration on an issue closes it outright - see <see cref="EfHatchProject.NoCodeCloses"/>. Off by default.</param>
+/// <param name="NoCodeClosesBy">Who last changed <paramref name="NoCodeCloses"/>, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesBy"/>.</param>
+/// <param name="NoCodeClosesAt">When <paramref name="NoCodeCloses"/> was last changed, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -48,7 +51,8 @@ public record ProjectDto(
     int? ReflectionCadenceDays = null, DateTimeOffset? ReflectionLastPeriodStart = null, DateTimeOffset? ReflectionNextDueAt = null,
     bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null,
     bool StoriesOnEpics = false,
-    bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null)
+    bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null,
+    bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -133,6 +137,9 @@ public record ProjectStoriesOnEpicsWriteRequest(bool StoriesOnEpics);
 
 /// <summary>A write to whether a passing check approves a project's pull request to merge - see <see cref="EfHatchProject.CheckApprovesMerge"/>.</summary>
 public record ProjectCheckApprovesMergeWriteRequest(bool CheckApprovesMerge);
+
+/// <summary>A write to whether a no-code declaration closes an issue outright - see <see cref="EfHatchProject.NoCodeCloses"/>.</summary>
+public record ProjectNoCodeClosesWriteRequest(bool NoCodeCloses);
 
 /// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
 /// <param name="Project">The project written.</param>
@@ -421,6 +428,7 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="DangerousFrom">The key of the ancestor <paramref name="Dangerous"/> comes from; null when it is this issue's own or there is none.</param>
 /// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
+/// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -457,7 +465,8 @@ public record IssueCardDto(
     string? Dangerous = null,
     string? DangerousFrom = null,
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
-    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
+    string? NoCode = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -3991,6 +4000,8 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// When the runner's key last had its secret replaced - null while it never
 /// has been, or there is no key at all.
 /// </param>
+/// <param name="RetiredAt">When this row was retired - null for one that is not.</param>
+/// <param name="SupersededBy">The name of the row that superseded this one, read beside <paramref name="RetiredAt"/> - null for a row that is not retired.</param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4045,7 +4056,9 @@ public record RunnerDto(
     DateTimeOffset? RevokedAt = null,
     Guid? OwnerPersonId = null,
     IReadOnlyList<RunnerSessionDto> Sessions = null!,
-    DateTimeOffset? RotatedAt = null)
+    DateTimeOffset? RotatedAt = null,
+    DateTimeOffset? RetiredAt = null,
+    string? SupersededBy = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4102,7 +4115,14 @@ public record RunnerSessionDto(
     string? OrderKind = null,
     string? OrderKey = null,
     string? OrderedBy = null,
-    DateTimeOffset? OrderedAt = null)
+    DateTimeOffset? OrderedAt = null,
+    string? Os = null,
+    string? Arch = null,
+    string? AgentVersion = null,
+    bool? Container = null,
+    string? Username = null,
+    DateTimeOffset? ProcessStartedAt = null,
+    string? Ip = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -4147,7 +4167,7 @@ public enum RunnerBoardDrift
 /// itself.
 /// </summary>
 /// <remarks>
-/// The seven bounds are <em>reported</em>, not requested: they are what this
+/// The six bounds are <em>reported</em>, not requested: they are what this
 /// process started with, and they are written only when the row is being
 /// created. A restart of the same loop sends them again and the server ignores
 /// them, which is what stops a restart from undoing an operator's edit.
@@ -4196,17 +4216,17 @@ public enum RunnerBoardDrift
 /// does not make it look new.
 /// </param>
 /// <param name="Tags">
-/// This runner's own tags, written on every beat like <see cref="Remotes"/> -
-/// refused whole per <see cref="RunnerTags.Normalise"/> rather than capped
-/// or dropped entry by entry, since a tag is a decision and a heartbeat is
-/// not the one to guess it.
+/// Ignored; a runner's tags are never taken off a beat, the old route or the
+/// session route alike. A tag is a decision and a heartbeat is not the one to
+/// make it - only <see cref="RunnerPatchRequest.Tags"/> moves them. Kept on
+/// the wire so an older CLI still sending it is not refused for the sake of it.
 /// </param>
 /// <param name="Projects">
-/// The project keys this runner was started bound to (<c>--project</c>), read
-/// only on a fresh <c>loop</c> beat, with the other four bounds: it sets the
-/// row's list, and none given clears it. On any other beat it is ignored.
-/// Normalised server-side (trimmed, upper-cased, de-duplicated); a key is not
-/// checked against the projects here, since dispatch is where one is judged.
+/// The project keys this runner is bound to (<c>--project</c>) - a fact about
+/// the process, like <see cref="Remotes"/>: carried on every beat, overwritten
+/// each time, never a seed-once field. None given clears it. Normalised
+/// server-side (trimmed, upper-cased, de-duplicated); a key is not checked
+/// against the projects here, since dispatch is where one is judged.
 /// </param>
 /// <param name="Standing">
 /// Whether this runner was started inside one of the checkouts it is
@@ -4216,7 +4236,7 @@ public enum RunnerBoardDrift
 /// <param name="Fresh">
 /// True only on the first answered beat of a loop process that carried no
 /// night state, i.e. one typed by hand or the first start under a supervisor:
-/// the seven bounds in this body are then the flags it was started with, and
+/// the six bounds in this body are then the flags it was started with, and
 /// they overwrite the row's. Absent (an older CLI, <c>hatch work</c>, a
 /// supervisor restart) leaves the row's bounds alone.
 /// </param>
@@ -4237,9 +4257,9 @@ public enum RunnerBoardDrift
 /// <param name="Spent">The priced spend of those increments, in dollars, on the terms <see cref="Runs"/> has.</param>
 /// <param name="Host">The short name of the machine this runner is on, on the terms <see cref="Runs"/> has.</param>
 /// <param name="RefusesDangerous">
-/// Whether this runner was started refusing dangerous work. Seeded once, like
-/// <see cref="Tags"/>: the first beat that says writes it onto the row, and
-/// from then on only <c>PATCH</c> moves it. Absent says nothing.
+/// Whether this runner refuses dangerous work - a fact about the process,
+/// like <see cref="Remotes"/>: carried on every beat, overwritten each time,
+/// never a seed-once field. Absent leaves the row alone.
 /// </param>
 /// <param name="ThrottledUntil">
 /// This runner is over its own <c>--max-tokens-per-hour</c> and expects to be
@@ -4262,6 +4282,16 @@ public enum RunnerBoardDrift
 /// <c>PATCH</c> field. Absent leaves the row's list alone; present is refused
 /// whole, or kept whole, per <see cref="DependencySet.Normalise"/>.
 /// </param>
+/// <param name="Os">
+/// The operating system this process runs on - a fact about the process,
+/// written on every beat, on the terms <see cref="Host"/> has: absent leaves
+/// the session's value alone.
+/// </param>
+/// <param name="Arch">The CPU architecture this process runs on, on the same terms as <see cref="Os"/>.</param>
+/// <param name="AgentVersion">The agent CLI's own version string, on the same terms as <see cref="Os"/>.</param>
+/// <param name="Container">Whether this process is running inside a container, on the same terms as <see cref="Os"/>.</param>
+/// <param name="Username">The OS username this process runs as, on the same terms as <see cref="Os"/>.</param>
+/// <param name="ProcessStartedAt">When this process itself started, on the same terms as <see cref="Os"/>.</param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4298,7 +4328,13 @@ public record RunnerHeartbeatRequest(
     long? TokensUsed = null,
     long? TokensLastHour = null,
     IReadOnlyList<string>? Models = null,
-    IReadOnlyList<string>? Has = null);
+    IReadOnlyList<string>? Has = null,
+    string? Os = null,
+    string? Arch = null,
+    string? AgentVersion = null,
+    bool? Container = null,
+    string? Username = null,
+    DateTimeOffset? ProcessStartedAt = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's
@@ -4342,24 +4378,14 @@ public record RunnerUsageWindowDto(
 /// answered back on the same heartbeat that asked.
 /// </param>
 /// <param name="Tags">
-/// The row's tags as they stand, <see cref="RunnerDto.Tags"/> - seeded once
-/// from this runner's own first heartbeat and from then on only a <c>PATCH</c>
-/// moves them, so a later beat reads back what the board set rather than what
-/// it just said.
+/// The row's tags as they stand, <see cref="RunnerDto.Tags"/> - never taken
+/// off a beat, only a <c>PATCH</c> moves them, so a later beat reads back
+/// what the board set rather than what it just said.
 /// </param>
 /// <param name="Order">
 /// The order this heartbeat picked up and is clearing by answering it - null
 /// where there was none, or where this beat was not a <c>loop</c> beat (see
 /// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
-/// </param>
-/// <param name="Projects">
-/// The project keys the row is bound to, <see cref="RunnerDto.Projects"/> - in
-/// the order they were given, empty where it is bound to none.
-/// </param>
-/// <param name="RefusesDangerous">
-/// The row's <see cref="RunnerDto.RefusesDangerous"/> as it stands. Null means
-/// this Hatch does not answer it (an older Hatch); a current Hatch always
-/// answers true or false.
 /// </param>
 public record RunnerInstructionDto(
     string State,
@@ -4371,8 +4397,6 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Drives = null,
     IReadOnlyList<string>? Tags = null,
     RunnerOrderDto? Order = null,
-    IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null,
     long? MaxTokens = null,
     long? MaxTokensPerHour = null,
     string? RunnerName = null,
@@ -4397,15 +4421,6 @@ public record RunnerInstructionDto(
 /// heartbeat's own tags, this is the one write that reaches a row after its
 /// first beat has seeded it.
 /// </param>
-/// <param name="Projects">
-/// Absent leaves the row's project bound alone, an empty list clears it, a
-/// list sets it. A key that names no project is refused, naming it.
-/// </param>
-/// <param name="RefusesDangerous">
-/// Absent leaves the row alone; true or false sets it. A bool, not the string
-/// tri-state of the numbers, since there is nothing to clear: false is the
-/// off position.
-/// </param>
 public record RunnerPatchRequest(
     string? State = null,
     string? Under = null,
@@ -4413,8 +4428,6 @@ public record RunnerPatchRequest(
     string? MaxSpend = null,
     string? UntilAt = null,
     IReadOnlyList<string>? Tags = null,
-    IReadOnlyList<string>? Projects = null,
-    bool? RefusesDangerous = null,
     string? MaxTokens = null,
     string? MaxTokensPerHour = null);
 
@@ -4458,8 +4471,7 @@ public record CredentialDto(string ProtectedToken);
 /// <param name="Kind">
 /// <c>person</c> (a grant holds a person), <c>local</c> (the wall is off and
 /// the machine's own person is speaking), <c>none</c> (the wall is off and
-/// nobody local answered either), <c>key</c> (an API key), or <c>runner</c>
-/// (a wall-off runner header).
+/// nobody local answered either), or <c>key</c> (an API key).
 /// </param>
 /// <param name="Name">What events written from this caller will say.</param>
 /// <param name="Role">

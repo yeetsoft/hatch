@@ -98,19 +98,8 @@ var memberSlot = RunnerSet.SlotFrom(environment);
 // refuse for want of the origin it is there to ask for.
 if (command == "config")
 {
-    var fold = Settings.Layers(checkoutEnv, environment, profileFile: profileFile);
-    var configured = fold("HATCH_RUNNER").Value;
-    // The name the profile file was chosen by, like profileFile above: an
-    // explicit name needs only its shape to be valid; otherwise the active one,
-    // and only when resolving it succeeded - a refusal leaves a dangling name.
-    var configProfileName = profileArg is not null && Settings.ValidProfileName(profileArg)
-        ? profileArg
-        : Settings.TryResolveProfile(null, environment, out var activeProfile, out _, out _) ? activeProfile : null;
-    var configRunnerName = await ResolveRunnerAsync(
-        fold("HATCH_BASE").Value, fold("HATCH_KEY").Value, configured, root ?? here, configProfileName, CancellationToken.None);
-
     return await new ConfigCommand(
-            say, new Input(), environment, checkoutEnv, configRunnerName, Root: root,
+            say, new Input(), environment, checkoutEnv, Root: root,
             ProfileName: profileArg, ProfilePath: profileFile)
         .RunAsync(rest, CancellationToken.None);
 }
@@ -246,7 +235,7 @@ var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
 using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
-var board = new Board(client, settings.Tags, settings.RefusesDangerous);
+var board = new Board(client, refusesDangerous: settings.RefusesDangerous);
 
 LiveTerminal? live = null;
 KeyReader? keys = null;
@@ -692,8 +681,6 @@ internal partial class Program
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",
-        "  HATCH_TAGS         comma-separated tags this runner advertises; a project's",
-        "                     runner tags need them",
         "  HATCH_WORKSPACE    a directory this runner owns entirely, where it clones every",
         "                     repository the board binds that it has no checkout of;",
         "                     unset means a per-user default, `off` means never clone",

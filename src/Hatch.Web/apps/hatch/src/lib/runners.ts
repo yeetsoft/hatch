@@ -15,7 +15,6 @@
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
-import { runnerProjectsDraft, runnerProjectsRequest, sameProjects } from './runnerProjects';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
 import type { Runner, RunnerPatchRequest } from '../types';
@@ -332,8 +331,7 @@ export function tokenBudget(runner: Runner): TokenBudgetLine[] {
 }
 
 /** The bounds as the form holds them: strings, because that is what inputs are
-    and what the wire takes - all but `refusesDangerous`, a boolean because a
-    checkbox is. */
+    and what the wire takes. */
 export interface RunnerBounds {
   under: string;
   maxRuns: string;
@@ -344,8 +342,6 @@ export interface RunnerBounds {
   /** The wire form, or `''` - what MomentField hands back. */
   untilAt: string;
   tags: string;
-  projects: string;
-  refusesDangerous: boolean;
 }
 
 /** What a row's bounds look like in the form that edits them. */
@@ -359,8 +355,6 @@ export function boundsOf(runner: Runner): RunnerBounds {
       runner.maxTokensPerHourSource === 'runner' && runner.maxTokensPerHour !== null ? thousands(runner.maxTokensPerHour) : '',
     untilAt: runner.untilAt ?? '',
     tags: runnerTagsDraft(runner.tags),
-    projects: runnerProjectsDraft(runner.projects),
-    refusesDangerous: runner.refusesDangerous,
   };
 }
 
@@ -386,9 +380,7 @@ export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
   return (
     (['under', 'maxRuns', 'maxSpend', 'untilAt'] as const).some((f) => draft[f].trim() !== saved[f].trim()) ||
     (['maxTokens', 'maxTokensPerHour'] as const).some((f) => tokensDiffer(draft[f], saved[f])) ||
-    !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
-    !sameProjects(runnerProjectsRequest(draft.projects), runner.projects) ||
-    draft.refusesDangerous !== saved.refusesDangerous
+    !sameTags(runnerTagsRequest(draft.tags), runner.tags)
   );
 }
 
@@ -431,8 +423,6 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     maxTokensPerHour: tokensWire(draft.maxTokensPerHour),
     untilAt: draft.untilAt.trim(),
     tags: runnerTagsRequest(draft.tags),
-    projects: runnerProjectsRequest(draft.projects),
-    refusesDangerous: draft.refusesDangerous,
   };
 }
 

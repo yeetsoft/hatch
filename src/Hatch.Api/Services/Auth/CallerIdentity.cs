@@ -60,8 +60,7 @@ public interface ICallerIdentity
     /// <summary>
     /// The name to write into an audit row: the person holding the device, else
     /// the API key's own name, else - where the wall is off - the local
-    /// person or the runner that named itself, else the literal
-    /// <c>operator</c>.
+    /// person, else the literal <c>operator</c>.
     ///
     /// A name rather than a foreign key, and the same column takes all three,
     /// because a trail should still read after the row it named is gone - and
@@ -79,11 +78,10 @@ public interface ICallerIdentity
 
     /// <summary>
     /// Who this request is, when nothing authenticated it and nothing was
-    /// going to - the local person at the machine, or the runner that named
-    /// itself in <see cref="LocalCaller.RunnerHeader"/>. Null whenever the wall
-    /// is up, and null whenever a grant or a key already answered. The local
-    /// person is off once the install can sign anybody in (a sign-in authority
-    /// configured, or a person enrolled): the runner's name still answers.
+    /// going to - the local person at the machine. Null whenever the wall is
+    /// up, null whenever a grant or a key already answered, and null once the
+    /// install can sign anybody in (a sign-in authority configured, or a
+    /// person enrolled).
     ///
     /// A third lane rather than a synthetic <see cref="EfApiKey"/>, and the
     /// reason is worth stating: <see cref="RoleGate"/> branches on the key
@@ -94,19 +92,12 @@ public interface ICallerIdentity
     Task<Actor?> LocalAsync(CancellationToken ct);
 
     /// <summary>
-    /// Whether a program is calling rather than a person - a key, or a keyless
-    /// runner that named itself. The one question the two narrowings in Hatch
-    /// ask (<c>IssueWorkLogController.NotAKey</c> and
+    /// Whether a program is calling rather than a person - a bearer key, and
+    /// nothing else. The one question the two narrowings in Hatch ask
+    /// (<c>IssueWorkLogController.NotAKey</c> and
     /// <c>IssueClaimController.NotAPerson</c>), asked once here so they cannot
     /// come to disagree about what an agent is.
     /// </summary>
-    /// <remarks>
-    /// Not a security boundary and does not claim to be. Where the wall is off,
-    /// the runner header is a name anybody could set or omit - see
-    /// docs/auth-architecture.md, "Local mode". It is a guardrail against an
-    /// agent doing a person's job by accident, which is the failure that
-    /// actually happens.
-    /// </remarks>
     Task<bool> IsProgramAsync(CancellationToken ct);
 
     /// <summary>
@@ -213,27 +204,19 @@ public class CallerIdentity(
     /// The third lane, memoized like the other two.
     /// </summary>
     /// <remarks>
-    /// <para>Four conditions, all of them necessary for a runner, and a fifth
-    /// for the local person: the install must be one that cannot sign anybody
-    /// in - no sign-in authority configured and no person enrolled
+    /// <para>Three conditions, all of them necessary: the wall has to be off -
+    /// this is local mode's identity and nothing else. Both other lanes have
+    /// to have answered nothing, because a browser signed in as somebody and a
+    /// bearer key are both more specific answers than "whoever started the
+    /// app". And the install must be one that cannot sign anybody in - no
+    /// sign-in authority configured and no person enrolled
     /// (<see cref="LocalCaller.PersonSpeaks"/>). Past that point an
-    /// unidentified caller is a stranger and gets no name at all. The wall has to be off -
-    /// this is local mode's identity and nothing else, and reading the header
-    /// where the wall is up would be a way in. There has to be a request, or
-    /// there is nobody to be. And both other lanes have to have answered
-    /// nothing, because a browser signed in as somebody and a bearer key are
-    /// both more specific answers than "whoever started the app".</para>
+    /// unidentified caller is a stranger and gets no name at all.</para>
     ///
-    /// <para>The header is preferred to the person for the same reason: a
-    /// process that went to the trouble of naming itself is telling the truth
-    /// about not being the person at the keyboard. A runner is never in
-    /// <see cref="IActorDirectory.LiveAsync"/>, so nothing can be assigned to
-    /// one - it is a name for a trail and not somebody to give work to.</para>
-    ///
-    /// <para>The site settings read happens only on the person branch, so a
-    /// runner's call costs no query - and with the wall up neither branch is
-    /// reached, which is what makes criterion 8's "no site-settings read" true
-    /// by construction rather than by a check.</para>
+    /// <para>The site settings read happens only once every earlier condition
+    /// holds, so with the wall up, or with a grant or a key already answered,
+    /// it costs no query - which is what makes criterion 8's "no
+    /// site-settings read" true by construction rather than by a check.</para>
     /// </remarks>
     public async Task<Actor?> LocalAsync(CancellationToken ct)
     {
@@ -241,12 +224,9 @@ public class CallerIdentity(
         localResolved = true;
 
         if (options.Enabled) return local = null;
-        if (accessor.HttpContext is not { } context) return local = null;
+        if (accessor.HttpContext is null) return local = null;
         if (await PersonAsync(ct) is not null) return local = null;
         if (await ApiKeyAsync(ct) is not null) return local = null;
-
-        if (LocalCaller.RunnerName(context.Request.Headers[LocalCaller.RunnerHeader]) is { } runner)
-            return local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor(runner), runner);
 
         // The name is the install's, not the caller's: once the install can sign
         // anybody in, a caller who presented nothing is nobody in particular.
@@ -260,7 +240,7 @@ public class CallerIdentity(
     }
 
     public async Task<bool> IsProgramAsync(CancellationToken ct) =>
-        await ApiKeyAsync(ct) is not null || await LocalAsync(ct) is { Kind: ActorKind.Key };
+        await ApiKeyAsync(ct) is not null;
 
     /// <summary>
     /// The grant's owner, and deliberately untouched by

@@ -30,12 +30,12 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_TAGS", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS",
+        "HATCH_WORKSPACE", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
     public static readonly string[] BoardBoundNames =
-        ["HATCH_BASE", "HATCH_KEY", "HATCH_RUNNER", "HATCH_TAGS", "HATCH_WORKSPACE", "HATCH_REPOS"];
+        ["HATCH_BASE", "HATCH_KEY", "HATCH_RUNNER", "HATCH_WORKSPACE", "HATCH_REPOS"];
 
     /// <summary>Whether <paramref name="name"/> is board-bound.</summary>
     public static bool IsBoardBound(string name) => BoardBoundNames.Contains(name, StringComparer.Ordinal);
@@ -108,13 +108,6 @@ public sealed partial record Settings
     /// standing one - empty where nothing is named.
     /// </summary>
     public IReadOnlyList<string> Repos { get; init; } = [];
-
-    /// <summary>
-    /// What this machine can do that a project's runner tags ask for - said
-    /// on every heartbeat and dispatch read, so the board can match work to a
-    /// runner that is actually able to do it.
-    /// </summary>
-    public IReadOnlyList<string> Tags { get; init; } = [];
 
     /// <summary>
     /// A directory this runner owns entirely, where it clones every repository
@@ -425,7 +418,6 @@ public sealed partial record Settings
         var retry = Read("HATCH_RETRY_SECONDS");
         var reposRaw = Read("HATCH_REPOS");
         var workspace = Read("HATCH_WORKSPACE");
-        var tagsRaw = Read("HATCH_TAGS");
         var logRaw = Read("HATCH_LOG");
         var dangerousRaw = Read("HATCH_DANGEROUS");
         var modelsRaw = Read("HATCH_MODELS");
@@ -459,16 +451,6 @@ public sealed partial record Settings
         var repos = reposRaw is { Length: > 0 }
             ? reposRaw.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [];
-
-        if (ParseTags(tagsRaw, out var tags) is { } sentence)
-        {
-            refusal = $"""
-                hatch: HATCH_TAGS - {sentence}
-
-                  Fix it with `hatch config --tag <tag>` (bare `--tag` clears it), or change the exported variable.
-                """;
-            return false;
-        }
 
         if (ParseDangerous(dangerousRaw, out var refusesDangerous) is { } dangerousSentence)
         {
@@ -530,7 +512,6 @@ public sealed partial record Settings
             Workspace = IsWorkspaceOff(workspace) ? null : workspace ?? DefaultWorkspacePath(profileName),
             WorkspaceDefaulted = workspace is null,
             LogDirectory = logRaw is null || IsLogOff(logRaw) ? null : IsLogOn(logRaw) ? DefaultLogPath() : logRaw,
-            Tags = tags,
             RefusesDangerous = refusesDangerous,
             Models = models,
             Has = has,
@@ -573,26 +554,6 @@ public sealed partial record Settings
         $"hatch: HATCH_RUNNER in {Where(ignored, checkoutEnvFile, profileFile, userFile)} is ignored - a name " +
         "belongs to a checkout. Set it with `hatch config --runner <name>`, export it, or put it in this " +
         "checkout's scripts/.env.";
-
-    /// <summary>
-    /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
-    /// then run through <see cref="RunnerTags.Normalise"/> - null or blank
-    /// answers an empty <paramref name="tags"/> with no refusal. Answers the
-    /// refusal sentence, or null once <paramref name="tags"/> is the trimmed,
-    /// lowercased, deduplicated list. Public because <c>ConfigCommand.Show</c>
-    /// reuses it to validate <c>--tag</c> the same way.
-    /// </summary>
-    public static string? ParseTags(string? raw, out IReadOnlyList<string> tags)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            tags = [];
-            return null;
-        }
-
-        var list = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return RunnerTags.Normalise(list, out tags);
-    }
 
     /// <summary>
     /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,

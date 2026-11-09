@@ -891,6 +891,43 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.NoCodeCloses"/> is on - a no-code
+    /// declaration on an issue closes it outright, rather than leaving it for
+    /// a person. Only an owner may call this. It is accepted whatever the
+    /// project binds or has playbooks for, and writing the value a project
+    /// already has changes nothing, the audit columns included. This route is
+    /// the only way to write the flag; <c>PATCH</c> and <c>POST</c> do not
+    /// reach it.
+    /// </summary>
+    [HttpPut("{id:int}/no-code-closes")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutNoCodeCloses(int id, ProjectNoCodeClosesWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether a no-code declaration closes the ticket") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.NoCodeCloses != project.NoCodeCloses)
+        {
+            project.NoCodeCloses = request.NoCodeCloses;
+            project.NoCodeClosesBy = await caller.ActorNameAsync(ct);
+            project.NoCodeClosesAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} no-code closes set to {NoCodeCloses} by {Actor}", project.Key, project.NoCodeCloses, project.NoCodeClosesBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
@@ -964,7 +1001,8 @@ public class ProjectsController(
             ReflectionCadence.NextDue(project.ReflectionCadenceDays, project.ReflectionLastPeriodStart, now),
             project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt,
             project.StoriesOnEpics,
-            project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt);
+            project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt,
+            project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

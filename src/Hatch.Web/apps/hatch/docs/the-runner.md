@@ -421,8 +421,8 @@ The merged set is also sent on every dispatch read - `queue`, `work <key>`
 and the loop's own pass - one `has=` per entry, and never on a hop. A move
 whose project needs a dependency this runner's set does not satisfy is folded
 for it with the board's own sentence, printed unchanged: `AER-1 needs dotnet
-10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8`. So a
-runner never claims a ticket only to find its machine cannot run it.
+10 or newer (acme/repo's .hatch/dependencies.json) - this runner has dotnet
+8`. So a runner never claims a ticket only to find its machine cannot run it.
 [What a repository needs](#what-a-repository-needs) says where that need is
 written.
 
@@ -433,11 +433,11 @@ written.
 shape is `{"dependencies": [ ... ]}`, and an entry is an id string or
 `{"id": ..., "version": ...}`. The ids are the master list - `make`, `dotnet`,
 `node`, `playwright-browsers`, `postgres`, `pwsh` - each declared once. A
-version is one to three dotted whole numbers, and it is met by any detected
-version whose leading components equal it: `10` is met by `10.0.100`, `22.11` is
-not met by `22.10.0`, and `22` means 22.x, not 22 or newer. A need the list
-lacks is a runner tag instead ([What a runner
-advertises](#what-a-runner-advertises)).
+version is one to three dotted whole numbers, and it is a minimum, met by that
+version and anything newer: `22` is met by `22.0.1` and `24.22.0` and not by
+`21.9.9`; `10.0.100` is met by `10.0.302` and not by `10.0.99`; `22.1` is not
+met by a bare `22`. A need the list lacks is a runner tag instead ([What a
+runner advertises](#what-a-runner-advertises)).
 
 **Where it is read.** The runner's poll reads the blob off the trunk through
 git, beside `.hatch/playbooks.yaml`, and reports it to `PUT
@@ -457,10 +457,10 @@ on the trunk"*. An absent file, or one no runner has read yet, folds nothing, so
 a repository that has not opted in is exactly as it was.
 
 **On the Projects page.** In Manage, Projects, editing a project shows what the
-board knows beside each bound repository: *needs dotnet 10, node 22, ...*,
-*declares no dependencies*, or *no runner has read its declaration yet*. An
-invalid file shows its problem and *last good sha* with the short sha where one
-parsed, and a **File** chip to the blob.
+board knows beside each bound repository: *needs dotnet 10 or newer, node 22
+or newer, ...*, *declares no dependencies*, or *no runner has read its
+declaration yet*. An invalid file shows its problem and *last good sha* with
+the short sha where one parsed, and a **File** chip to the blob.
 
 **This repository's own file** is the worked example:
 
@@ -498,11 +498,10 @@ dangerous work. Any other value refuses every command with a sentence.
 `--here` and `--profile` write the setting where they write anything else, and
 it is machine-bound: a profile still reads it from the per-user file.
 
-**The setting seeds the row once.** The first heartbeat writes it onto the
-runner's row; after that **the row is where it lives**, and `hatch config
---dangerous` typed at a checkout whose runner already has a row changes nothing
-on the board. A running loop adopts the row's answer on its next heartbeat and
-says so once: `hatch: the board set --dangerous off` (or `on`).
+**The setting is a fact about the process.** Every heartbeat writes it onto
+the runner's row afresh, re-sent each beat rather than seeded once, and
+`hatch config --dangerous` takes effect on the next start of the runner it
+was written for - there is no row for a running loop to adopt it from.
 
 A runner can also refuse one ticket rather than every dangerous one: a session
 that decides the work is not one this runner can do runs `hatch recuse AER-12

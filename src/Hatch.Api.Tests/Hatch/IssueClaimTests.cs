@@ -684,46 +684,6 @@ public class IssueClaimTests
         Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
     }
 
-    /// <summary>
-    /// The same narrowing where the wall is off. An agent without a credential
-    /// can take a ticket off another agent just as well as one with, so the
-    /// question is "is this a program" rather than "does it hold a key" - and
-    /// the sentence is the one a key is refused with, because it is the truth
-    /// about which lane the caller is in.
-    /// </summary>
-    [SkippableFact]
-    public async Task ATokenlessRelease_IsRefusedToAKeylessRunnerToo()
-    {
-        await using var h = await NewAsync();
-        var issue = await h.FileAsync();
-        await h.TakeAsync(issue);
-
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-
-        var refused = Assert.IsType<ObjectResult>(await h.Claims.ReleaseClaim(issue, null, default));
-        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
-        Assert.Equal("clearing another runner's claim is the operator's, not an agent's", refused.Value);
-
-        // And the local person may - which is the operator's press on the
-        // issue page working exactly as it does under a wall.
-        h.Caller.Local = new Actor(ActorKind.Person, LocalCaller.PersonId, "Ada");
-        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, default));
-        Assert.Null((await h.RowAsync(issue)).ClaimToken);
-    }
-
-    /// <summary>The narrowing is the tokenless lane and only it, for a runner as for a key.</summary>
-    [SkippableFact]
-    public async Task AKeylessRunnerMayStillReleaseItsOwnClaim()
-    {
-        await using var h = await NewAsync();
-        var issue = await h.FileAsync();
-        var token = await h.TakeAsync(issue);
-
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-
-        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
-    }
-
     [SkippableFact]
     public async Task ReleasingAnUnclaimedIssue_WritesNothing()
     {
@@ -767,18 +727,18 @@ public class IssueClaimTests
     }
 
     /// <summary>
-    /// The trail names the runner rather than "operator" on both ends of a
-    /// lease taken with no key - criterion 4's "its events name the runner",
-    /// which is the whole reason the lane has a name at all.
+    /// The trail names the key rather than "operator" on both ends of a
+    /// lease - criterion 4's "its events name the runner", which is the whole
+    /// reason a key's own name lands on both claim events.
     /// </summary>
     [SkippableFact]
-    public async Task AKeylessRunnersTakeAndRelease_AreNamedAfterIt()
+    public async Task AKeysTakeAndRelease_AreNamedAfterIt()
     {
         await using var h = await NewAsync();
         var issue = await h.FileAsync();
 
         h.Caller.Person = null;
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
+        h.Caller.Key = new EfApiKey { Name = "host:/src", Prefix = "hatch_ak_x", Hash = [1], CreatedAt = Now };
 
         var token = await h.TakeAsync(issue, "host:/src");
         await h.Claims.ReleaseClaim(issue, token, default);
@@ -1610,6 +1570,71 @@ public class IssueClaimTests
         Assert.Equal(7, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Percent);
     }
 
+    // ---- A touch names the holder by ClaimedBy, not by Where ----
+
+    private const string SharedWhere = "somewhere:/checkouts/shared";
+
+    private static EfApiKey LiveLoopKey() => new()
+    {
+        Name = "live-loop",
+        Prefix = "hatch_ak_x",
+        Hash = [1],
+        CreatedAt = Now,
+    };
+
+    [SkippableFact]
+    public async Task ABeat_BumpsOnlyTheRowNamedByClaimedBy()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = LiveLoopKey();
+        var ghostSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("ghost", ghostSeenAt, where: SharedWhere);
+        await h.AddRunnerAsync("live-loop", Now, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.Equal(Now.AddSeconds(10), (await h.RunnerAsync("live-loop")).LastSeenAt);
+        Assert.Equal(ghostSeenAt, (await h.RunnerAsync("ghost")).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithTheToken_BumpsOnlyTheRowNamedByClaimedBy()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = LiveLoopKey();
+        var ghostSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("ghost", ghostSeenAt, where: SharedWhere);
+        await h.AddRunnerAsync("live-loop", Now, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.Claims.ReleaseClaim(issue, token, default);
+
+        Assert.Equal(Now.AddSeconds(10), (await h.RunnerAsync("live-loop")).LastSeenAt);
+        Assert.Equal(ghostSeenAt, (await h.RunnerAsync("ghost")).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task ABeatWhoseClaimedByNamesNoRow_TouchesNothing()
+    {
+        await using var h = await NewAsync();
+        var seenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync(Runner, seenAt, where: Runner);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, Runner);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, null, null);
+
+        Assert.Equal(seenAt, (await h.RunnerAsync(Runner)).LastSeenAt);
+    }
+
     [SkippableFact]
     public async Task ABeatWithNoUsableReading_LeavesTheRowsReadingAsSeeded()
     {
@@ -1885,15 +1910,16 @@ public class IssueClaimTests
         /// </summary>
         public async Task AddRunnerAsync(
             string name, DateTimeOffset lastSeenAt, Guid? forPersonId = null,
-            DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null)
+            DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null,
+            string? where = null, DateTimeOffset? firstSeenAt = null)
         {
             var db = Connect();
             db.Runners.Add(new EfHatchRunner
             {
                 Name = name,
-                Where = name,
+                Where = where ?? name,
                 Kind = EfHatchRunner.LoopKind,
-                FirstSeenAt = lastSeenAt,
+                FirstSeenAt = firstSeenAt ?? lastSeenAt,
                 LastSeenAt = lastSeenAt,
                 State = EfHatchRunner.Running,
                 ForPersonId = forPersonId,

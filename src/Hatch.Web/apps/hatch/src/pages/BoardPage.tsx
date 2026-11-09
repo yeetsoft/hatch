@@ -716,7 +716,7 @@ export function BoardPage() {
         }
         trailing={
           <>
-            <GoToWorkControl plan={goToWork} status={status} project={filter.project} scope={scope.keys} reload={reloadRunners} isPhone={isPhone} />
+            <GoToWorkControl plan={goToWork} status={status} reload={reloadRunners} isPhone={isPhone} />
             <QueueControl cards={board.issues} runners={runners} onTake={onTake} />
             {!stacked && <FlowVizControl on={flowViz} onToggle={() => setFlowViz((v) => !v)} />}
             {isPhone ? (

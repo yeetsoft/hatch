@@ -157,6 +157,7 @@ public class SearchController(
                 i.Held,
                 i.PullRequestUrl,
                 i.ClosedAt,
+                i.NoCode,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -193,6 +194,7 @@ public class SearchController(
                 i.Held,
                 i.PullRequestUrl,
                 i.ClosedAt,
+                i.NoCode,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -261,7 +263,8 @@ public class SearchController(
                 OnePr: onePr,
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
-                ClosedAt: i.ClosedAt);
+                ClosedAt: i.ClosedAt,
+                NoCode: i.NoCode);
 
             var matched = new List<string>(4);
             if (i.TitleMatched) matched.Add("title");

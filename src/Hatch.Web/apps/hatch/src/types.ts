@@ -331,6 +331,8 @@ export interface IssueCard {
   /** When this issue last entered a terminal column, or null. See
       IssueCardDto.ClosedAt. */
   closedAt?: string | null;
+  /** Why the issue finished with no code, or absent. See IssueCardDto.NoCode. */
+  noCode?: string | null;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.
@@ -1908,16 +1910,15 @@ export interface ExhaustedRunner {
 
 /** Who is at the browser. Mirrors MeDto.
 
-    Answered in both modes; 204 (read as null) only for a key or runner, which
-    is nobody the bar should draw. */
+    Answered in both modes; 204 (read as null) only for a key, which is
+    nobody the bar should draw. */
 export interface Me {
   /** `local` when the wall is off, `person` when a grant holds a person, `none`
       when the wall is off and nobody local answered either - a browser that has
-      not signed in. `key` and `runner` mirror the two other MeDto.Kind values,
-      but a browser never actually receives either - only a Bearer key or an
-      X-Hatch-Runner header reaches those branches, and a browser's fetch sends
-      neither. */
-  kind: 'local' | 'person' | 'none' | 'key' | 'runner';
+      not signed in. `key` mirrors MeDto's other Kind value, but a browser
+      never actually receives it - only a Bearer key reaches that branch, and
+      a browser's fetch sends none. */
+  kind: 'local' | 'person' | 'none' | 'key';
   /** What events written from this browser will say. Empty for `none`. */
   name: string;
   /** Null for `local`, which has no role to gate on. */
@@ -2435,6 +2436,10 @@ export interface Runner {
   sessions?: { where: string; lastSeenAt: string }[];
   /** When the key's secret was last replaced, or null while it never has been or there is no key. */
   rotatedAt?: string | null;
+  /** When this row was retired, or null for one that is not. */
+  retiredAt?: string | null;
+  /** The name of the row that superseded this one, or null for a row that is not retired. */
+  supersededBy?: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
@@ -2456,13 +2461,6 @@ export interface RunnerPatchRequest {
       list sets it - the one write that reaches a row after its first beat
       has seeded it. */
   tags?: string[];
-  /** The project keys to hold the runner to. Absent leaves the row's projects
-      alone, an empty list clears the bound, a list sets it; the server refuses
-      a key it does not know. */
-  projects?: string[];
-  /** Whether the runner refuses work flagged dangerous. Absent leaves the row
-      alone. */
-  refusesDangerous?: boolean;
 }
 
 /** A one-off order for a loop: work this ticket, or run one pass. Mirrors RunnerOrderRequest. */
