@@ -1341,9 +1341,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                         lastProbedResetsAt = session?.ResetsAt;
                         tally.CorrectExhausted(session);
                         var spentAt = runtime.Clock.GetUtcNow();
-                        foreach (var (model, until) in ModelNarrowing.Spent(found, spentAt))
+                        foreach (var (model, resetsAt) in ModelNarrowing.Spent(found, spentAt))
                         {
-                            if (runtime.Narrowing.Narrow(model, until, spentAt)) SayNarrowed(model, until);
+                            if (runtime.Narrowing.Narrow(model, resetsAt, spentAt)) SayNarrowed(model, resetsAt);
                         }
                         runtime.Say.Line(session is not null
                             ? $"hatch: probe found a session window, resetsAt={session.ResetsAt:O}"
