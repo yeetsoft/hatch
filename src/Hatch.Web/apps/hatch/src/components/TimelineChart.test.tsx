@@ -94,6 +94,7 @@ describe('TimelineChart', () => {
     expect(html).not.toContain('/issues/other');
     expect(count(html, 'hatch-timeline-key')).toBe(1);
     expect(html).toContain('aria-label="Children of HA-1"');
+    expect(html).toContain('title="Children of HA-1"');
     expect(html).toContain('aria-label="Other"');
   });
 

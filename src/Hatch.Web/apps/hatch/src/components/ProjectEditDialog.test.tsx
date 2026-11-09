@@ -91,6 +91,18 @@ describe('ProjectEditDialog', () => {
     expect(html).toContain('no runner has read its declaration yet');
   });
 
+  it('hints each reorder arrow in the words its label carries', () => {
+    const remote = 'git@forge.example:owner/repo.git';
+    const html = render(
+      project({ canAdminister: true, repositories: [{ remote, canonical: 'forge.example/owner/repo', baseBranch: null }] }),
+    );
+
+    for (const way of ['up', 'down']) {
+      expect(html).toContain(`aria-label="Move ${remote} ${way}"`);
+      expect(html).toContain(`title="Move ${remote} ${way}"`);
+    }
+  });
+
   it('says nothing about a declaration where the project binds no repository', () => {
     const html = render(project({ canAdminister: true, repositories: [] }));
 

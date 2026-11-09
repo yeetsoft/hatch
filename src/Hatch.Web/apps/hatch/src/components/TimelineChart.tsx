@@ -65,6 +65,7 @@ export function TimelineChart({ timeline, statuses, scale, offsetMinutes, now, e
                   className="hatch-timeline-toggle"
                   aria-expanded={row.expanded}
                   aria-label={`Children of ${name}`}
+                  title={`Children of ${name}`}
                   onClick={() => onToggle(issue.key)}
                 >
                   {row.expanded ? '−' : '+'}

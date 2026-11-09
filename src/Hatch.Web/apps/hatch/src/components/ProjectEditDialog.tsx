@@ -347,6 +347,7 @@ export function ProjectEditDialog({
               <Button
                 disabled={index === 0}
                 aria-label={`Move ${repo.remote} up`}
+                title={`Move ${repo.remote} up`}
                 onClick={() => write(moved(list, index, index - 1))}
               >
                 ↑
@@ -354,6 +355,7 @@ export function ProjectEditDialog({
               <Button
                 disabled={index === list.length - 1}
                 aria-label={`Move ${repo.remote} down`}
+                title={`Move ${repo.remote} down`}
                 onClick={() => write(moved(list, index, index + 1))}
               >
                 ↓
