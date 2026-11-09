@@ -226,7 +226,6 @@ public class BackupRestoreDrillTests
             Name = $"drill-{unique}",
             Prefix = unique[..EfApiKey.PrefixLength],
             Hash = [1],
-            Scopes = [ApiKeyScopes.Hatch],
             CreatedAt = now,
         });
         await app.SaveChangesAsync();

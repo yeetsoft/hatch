@@ -186,23 +186,6 @@ public sealed class HatchClientTests
     }
 
     /// <summary>
-    /// The client has no special case for scope_mismatch: it prints as itself
-    /// like any other code.
-    /// </summary>
-    [Fact]
-    public async Task A_403_scope_mismatch_prints_the_code()
-    {
-        using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"scope_mismatch\"}");
-        using var client = new HatchClient(Settings("hatch_ak_test"), "test:/checkout", wire);
-
-        var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
-
-        Assert.Equal("hatch: 403 - scope_mismatch", thrown.Message);
-    }
-
-    /// <summary>
     /// The one code that really is a key refusal still gets the fixed
     /// sentence, in place of the code rather than beside it.
     /// </summary>

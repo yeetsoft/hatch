@@ -108,7 +108,7 @@ public class RunnersController(
     /// first, and nothing else.
     /// </summary>
     /// <remarks>
-    /// Open to every key the <c>hatch</c> scope admits, and the same list
+    /// Open to every key, and the same list
     /// whoever asks: a name is already public - every <c>claim_taken</c> event
     /// carries it - while where a runner is, whom it is for, what it holds and
     /// what its line says are what stays inside <see cref="GetRunners"/>'s

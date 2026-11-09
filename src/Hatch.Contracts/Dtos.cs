@@ -185,7 +185,7 @@ public record StatusDto(
 /// column is still a name.
 ///
 /// There is no <c>IsWip</c> here or on <see cref="StatusPatchRequest"/>: this
-/// route accepts the <c>hatch</c> scope on every verb, and the WIP section is
+/// route accepts a key on every verb, and the WIP section is
 /// the operator's to set - see <see cref="EfHatchStatus.IsWip"/> and
 /// <c>WipController</c>.
 /// </summary>
@@ -1927,7 +1927,7 @@ public record PlaybookProposalApproveResponse(int Approved, IReadOnlyList<Playbo
 /// </summary>
 /// <remarks>
 /// Its own request, and its own route, because
-/// <see cref="IssuesController"/> accepts the <c>hatch</c> scope and this must
+/// <see cref="IssuesController"/> accepts a key and this must
 /// not - see <see cref="IssuePlaybookController"/>. There is no prompt here on
 /// purpose: a prompt is the <em>method</em> for a transition, and a per-issue
 /// method is a paragraph, which is what a description is.
@@ -4365,7 +4365,6 @@ public record CredentialDto(string ProtectedToken);
 /// who already holds a grant and so has nothing to sign in to.
 /// </param>
 /// <param name="Owner">The key's owner's name, for <c>key</c> with an owner. Null for every other kind.</param>
-/// <param name="Scopes">The key's scopes, for <c>key</c>. Null for every other kind.</param>
 public record MeDto(
     string Kind, string Name, string? Role, bool Configured, bool CanSignOut, bool CanSignIn,
-    string? Owner = null, string[]? Scopes = null);
+    string? Owner = null);

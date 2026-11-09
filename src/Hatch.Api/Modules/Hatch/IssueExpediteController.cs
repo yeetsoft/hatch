@@ -21,8 +21,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// <para>Its own controller for the same reason
 /// <see cref="AssigneeController"/> and <see cref="IssuePlaybookController"/>
 /// are, and cut the same way: no class-level attribute, so neither write below
-/// inherits scope from anything. <see cref="IssuesController"/> accepts the
-/// <c>hatch</c> scope on every route it holds, so one more field on
+/// inherits key acceptance from anything. <see cref="IssuesController"/> accepts a
+/// key on every route it holds, so one more field on
 /// <c>IssuePatchRequest</c> would have made this a key's write - and priority
 /// decides what the loop reaches for first, so a key that could set one could
 /// put its own ticket at the front of every night (docs/hatch.md, "The one edge
