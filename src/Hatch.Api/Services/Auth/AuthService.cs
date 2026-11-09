@@ -106,6 +106,15 @@ public interface IAuthService
     Task<bool> RevokeApiKeyAsync(Guid id, CancellationToken ct);
 
     /// <summary>
+    /// Replaces a key's secret in place: the old secret stops verifying and the
+    /// new one verifies as the same row, so its name, owner and history carry
+    /// over. The returned secret, like a minted one, is shown once. Returns null
+    /// for an unknown id; refusing a revoked key is the caller's job, as with
+    /// revoke.
+    /// </summary>
+    Task<ApiKeyCreated?> RotateApiKeyAsync(Guid id, CancellationToken ct);
+
+    /// <summary>
     /// Changes or clears whose tickets a key's <c>--mine</c> means. Returns
     /// false for an unknown key id, which a caller turns into a 404; an
     /// unknown person id is the caller's to check before this runs, the same
@@ -406,6 +415,22 @@ public class AuthService(
         }
 
         return true;
+    }
+
+    public async Task<ApiKeyCreated?> RotateApiKeyAsync(Guid id, CancellationToken ct)
+    {
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id, ct);
+        if (key is null) return null;
+
+        var secret = AuthTokens.NewApiKey();
+        key.Prefix = AuthTokens.ApiKeyPrefixOf(secret);
+        key.Hash = AuthTokens.Hash(secret);
+        key.RotatedAt = time.GetUtcNow();
+        await db.SaveChangesAsync(ct);
+
+        // Never the secret, nor its prefix: the log names which key changed.
+        logger.LogWarning("API key {KeyId} ({Name}) rotated", key.Id, key.Name);
+        return new ApiKeyCreated(key, secret);
     }
 
     public async Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct)

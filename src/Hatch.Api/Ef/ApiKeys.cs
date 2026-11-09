@@ -99,5 +99,8 @@ public class EfApiKey
     /// </summary>
     public DateTimeOffset? RevokedAt { get; set; }
 
+    /// <summary>When the secret was last replaced, null for a key never rotated.</summary>
+    public DateTimeOffset? RotatedAt { get; set; }
+
     public bool IsLive(DateTimeOffset now) => RevokedAt is null || RevokedAt > now;
 }

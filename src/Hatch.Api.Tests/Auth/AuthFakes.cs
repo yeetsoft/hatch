@@ -112,6 +112,11 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
 
     public List<Guid> KeysRevoked { get; } = [];
 
+    /// <summary>What RotateApiKeyAsync answers; null is how a test reaches the 404.</summary>
+    public ApiKeyCreated? RotateResult { get; set; }
+
+    public List<Guid> KeysRotated { get; } = [];
+
     /// <summary>Every owner change asked for, key id and the person id (or null, to clear).</summary>
     public List<(Guid Id, Guid? PersonId)> OwnersSet { get; } = [];
 
@@ -140,6 +145,12 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
     {
         KeysRevoked.Add(id);
         return Task.FromResult(RevokeKeyResult);
+    }
+
+    public Task<ApiKeyCreated?> RotateApiKeyAsync(Guid id, CancellationToken ct)
+    {
+        KeysRotated.Add(id);
+        return Task.FromResult(RotateResult);
     }
 
     public Task<bool> SetApiKeyOwnerAsync(Guid id, Guid? personId, CancellationToken ct)
