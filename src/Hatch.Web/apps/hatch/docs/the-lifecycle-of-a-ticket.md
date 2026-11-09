@@ -31,8 +31,9 @@ In order, left to right:
   merging cleanly or whose build has failed, and that increment starts and ends
   in the same column.
 - **Done** — shipped, and terminal. Only a person moves work into it, or the
-  board itself, carrying a pre-approved parent through once its children are
-  done.
+  board itself, carrying a parent through once its children are done: a
+  pre-approved one, or one in a project whose **A passing check approves the
+  merge** setting is on.
 
 **Approved is not a stock column.** It is the optional eighth that a board adds
 between review and Done, ticking **Protected** on it and then **Merges PR**. A
@@ -109,10 +110,12 @@ are seven kinds, and each is a condition and a landing column:
 - **approve** — a pre-approved issue in review with a pull request recorded
   that would merge cleanly or only needs bringing current. It is carried into
   the column ticked **Merges PR**.
-- **close** — a pre-approved parent in review with no pull request recorded and
-  every child done, or a pre-approved ticket that declared it was finished with
-  no code. It is carried into the first terminal column to review's
-  right.
+- **close** — a parent in review with no pull request recorded and every child
+  done, when the parent is pre-approved or its project has **A passing check
+  approves the merge** on; or a pre-approved ticket that declared it was
+  finished with no code. The setting does not carry the declared ticket, since
+  it is not a person's word that nothing was built. It is carried into the
+  first terminal column to review's right.
 
 They are asked in that order, and the order matters: nothing that already
 qualifies for an earlier kind changes meaning by qualifying for a later one.
@@ -123,7 +126,10 @@ conditions read, and [letting the loop merge for
 you](letting-the-loop-merge-for-you) covers pre-approval.
 
 The approve and close hops are the board's own version of the two moves a
-person makes by hand off review, dashed the same as the optional column above:
+person makes by hand off review, dashed the same as the optional column above.
+Pre-approval carries either; the project's setting
+([letting the loop merge for you](letting-the-loop-merge-for-you)) carries the
+close for a parent whose children are all done:
 
 ```mermaid
 flowchart TD
