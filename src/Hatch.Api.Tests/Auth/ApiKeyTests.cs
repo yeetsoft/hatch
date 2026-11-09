@@ -1,12 +1,10 @@
 using Hatch.Api.Common;
-using Hatch.Api.Controllers;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Media;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -269,7 +267,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/auth/keys", null, PersonRole.Admin, acceptKey: false, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/hatch/runners", null, PersonRole.Admin, acceptKey: false, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
@@ -354,161 +352,6 @@ public class ApiKeyTests
         Assert.Equal(expected, AuthBearer.Read(context.Request));
     }
 
-    // ---- Minting, through the endpoint ----
-
-    [Fact]
-    public async Task TheMintEndpoint_HandsBackTheSecretExactlyOnce()
-    {
-        var auth = new StubAuthService(null);
-        var key = Key("Claude");
-        auth.MintResult = new ApiKeyCreated(key, "hatch_ak_thesecret");
-        auth.Keys.Add(key);
-        var controller = NewKeysController(auth);
-
-        var minted = Value(await controller.CreateKey(new CreateApiKeyRequest("Claude"), default));
-
-        Assert.Equal("hatch_ak_thesecret", minted.Secret);
-        var (name, owner) = auth.KeysCreated.Single();
-        Assert.Equal("Claude", name);
-        Assert.Null(owner);
-
-        // And never again: the list carries the prefix and nothing more.
-        var listed = Assert.Single(Value(await controller.ListKeys(default)));
-        Assert.Equal(key.Prefix, listed.Prefix);
-        Assert.DoesNotContain("thesecret", listed.Prefix);
-    }
-
-    [Fact]
-    public async Task AKeyWithNoName_IsRefused()
-    {
-        var controller = NewKeysController(new StubAuthService(null));
-
-        var result = await controller.CreateKey(new CreateApiKeyRequest("  "), default);
-
-        Assert.Contains("needs a name", Reason(result.Result));
-    }
-
-    [Fact]
-    public async Task ADuplicateName_Is409()
-    {
-        // MintResult stays null, which is how the service says the name is taken.
-        var controller = NewKeysController(new StubAuthService(null));
-
-        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
-
-        Assert.Contains("already a key called", Reason(result.Result));
-    }
-
-    [Fact]
-    public async Task RevokingAKeyThatIsNotThere_Is404()
-    {
-        var auth = new StubAuthService(null) { RevokeKeyResult = false };
-        var controller = NewKeysController(auth);
-
-        Assert.IsType<NotFoundResult>(await controller.RevokeKey(Guid.NewGuid(), default));
-    }
-
-    // ---- Owner ----
-
-    /// <summary>With no owner named, the key belongs to whoever is minting it.</summary>
-    [Fact]
-    public async Task MintingWithNoOwnerNamed_DefaultsToTheAdminMintingIt()
-    {
-        var admin = new EfPerson { Id = Guid.NewGuid(), Name = "Nathan", Role = PersonRole.Admin, CreatedAt = Now, UpdatedAt = Now };
-        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
-        var actors = new StubActorDirectory();
-        actors.AddPerson(admin.Name, admin.Id);
-        var controller = NewKeysController(auth, actors, new StubCallerIdentity { Person = admin });
-
-        await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
-
-        Assert.Equal(admin.Id, auth.KeysCreated.Single().OwnerPersonId);
-    }
-
-    /// <summary>With the wall off there is no admin to default to, so the key belongs to nobody rather than to a made-up person.</summary>
-    [Fact]
-    public async Task MintingWithNoOwnerNamed_AndNoAdmin_BelongsToNobody()
-    {
-        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
-        var controller = NewKeysController(auth);
-
-        await controller.CreateKey(new CreateApiKeyRequest("Claude"), default);
-
-        Assert.Null(auth.KeysCreated.Single().OwnerPersonId);
-    }
-
-    [Fact]
-    public async Task MintingWithAnOwnerNamed_UsesIt()
-    {
-        var ada = Guid.NewGuid();
-        var auth = new StubAuthService(null) { MintResult = new ApiKeyCreated(Key("Claude"), "hatch_ak_thesecret") };
-        var actors = new StubActorDirectory();
-        actors.AddPerson("Ada", ada);
-        var controller = NewKeysController(auth, actors);
-
-        await controller.CreateKey(new CreateApiKeyRequest("Claude", ada), default);
-
-        Assert.Equal(ada, auth.KeysCreated.Single().OwnerPersonId);
-    }
-
-    [Fact]
-    public async Task MintingWithAnOwnerThatDoesNotExist_IsRefused()
-    {
-        var auth = new StubAuthService(null);
-        var controller = NewKeysController(auth);
-
-        var result = await controller.CreateKey(new CreateApiKeyRequest("Claude", Guid.NewGuid()), default);
-
-        Assert.Contains("does not exist", Reason(result.Result));
-        Assert.Empty(auth.KeysCreated);
-    }
-
-    [Fact]
-    public async Task TheOwnerCanBeChanged()
-    {
-        var ada = Guid.NewGuid();
-        var auth = new StubAuthService(null);
-        var actors = new StubActorDirectory();
-        actors.AddPerson("Ada", ada);
-        var controller = NewKeysController(auth, actors);
-        var id = Guid.NewGuid();
-
-        Assert.IsType<NoContentResult>(await controller.SetOwner(id, new ApiKeyOwnerRequest(ada), default));
-
-        Assert.Equal((id, ada), auth.OwnersSet.Single());
-    }
-
-    [Fact]
-    public async Task TheOwnerCanBeCleared()
-    {
-        var auth = new StubAuthService(null);
-        var controller = NewKeysController(auth);
-        var id = Guid.NewGuid();
-
-        Assert.IsType<NoContentResult>(await controller.SetOwner(id, new ApiKeyOwnerRequest(null), default));
-
-        Assert.Equal((id, (Guid?)null), auth.OwnersSet.Single());
-    }
-
-    [Fact]
-    public async Task SettingTheOwnerToSomebodyWhoDoesNotExist_IsRefused()
-    {
-        var controller = NewKeysController(new StubAuthService(null));
-
-        var result = await controller.SetOwner(Guid.NewGuid(), new ApiKeyOwnerRequest(Guid.NewGuid()), default);
-
-        Assert.Contains("does not exist", Reason(result));
-    }
-
-    [Fact]
-    public async Task SettingTheOwnerOfAKeyThatIsNotThere_Is404()
-    {
-        var auth = new StubAuthService(null) { SetOwnerResult = false };
-        var controller = NewKeysController(auth);
-
-        Assert.IsType<NotFoundResult>(await controller.SetOwner(Guid.NewGuid(), new ApiKeyOwnerRequest(null), default));
-    }
-
     // ---- Harness ----
 
     private static EfApiKey Key(string name) => new()
@@ -565,14 +408,6 @@ public class ApiKeyTests
             new StubSiteSettings());
     }
 
-    /// <summary>A controller with a response to write headers onto - the mint sets no-store on one.</summary>
-    private static ApiKeysController NewKeysController(
-        IAuthService auth, IActorDirectory? actors = null, ICallerIdentity? caller = null) =>
-        new(auth, actors ?? new StubActorDirectory(), caller ?? new StubCallerIdentity(), NullLogger<ApiKeysController>.Instance)
-        {
-            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
-        };
-
     private static IHttpContextAccessor Accessor(HttpContext context) =>
         new HttpContextAccessor { HttpContext = context };
 
@@ -584,15 +419,4 @@ public class ApiKeyTests
 
         return (new AuthService(db, Options.Create(new AuthOptions()), time, NullLogger<AuthService>.Instance), db, time);
     }
-
-    private static T Value<T>(ActionResult<T> result) =>
-        result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");
-
-    private static string Reason(IActionResult? result) => result switch
-    {
-        ObjectResult o => $"{o.StatusCode}: {o.Value}",
-        StatusCodeResult s => s.StatusCode.ToString(),
-        null => "no result",
-        _ => result.GetType().Name,
-    };
 }

@@ -2513,13 +2513,14 @@ export interface AuthMe {
 
 // ---- API keys ----
 
-/** Whose tickets a key's `--mine` reaches. Mirrors ApiKeyOwnerDto. */
+/** Whose tickets a key's `--mine` reaches. The page's own shape, built from `Runner`/`RunnerMinted` in `lib/apiKeys.ts`. */
 export interface ApiKeyOwner {
   id: string;
   name: string;
 }
 
-/** One API key as the Admin page lists it. Mirrors ApiKeyDto. The secret is
+/** One API key as the Admin page lists it - the page's own shape, built from
+    `Runner`/`RunnerMinted` in `lib/apiKeys.ts`. The secret is
     not here and never is: it exists once, in the response to the mint. */
 export interface ApiKey {
   id: string;
@@ -2533,13 +2534,13 @@ export interface ApiKey {
   owner: ApiKeyOwner | null;
 }
 
-/** A freshly minted key. Mirrors ApiKeyMintedDto. */
+/** A freshly minted key, in the page's own shape - built from `RunnerMinted` in `lib/apiKeys.ts`. */
 export interface ApiKeyMinted {
   key: ApiKey;
   secret: string;
 }
 
-/** Mirrors CreateApiKeyRequest. Omitted `ownerPersonId` defaults to the admin minting it. */
+/** Sent as `CreateRunnerRequest`. Omitted `ownerPersonId` defaults to the admin minting it. */
 export interface ApiKeyCreateRequest {
   name: string;
   ownerPersonId?: string;

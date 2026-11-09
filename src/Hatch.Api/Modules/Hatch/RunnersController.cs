@@ -568,7 +568,7 @@ public class RunnersController(
     /// </summary>
     [HttpPut("{name}/owner")]
     [RequireAdmin]
-    public async Task<IActionResult> SetRunnerOwner(string name, [FromBody] ApiKeyOwnerRequest? request, CancellationToken ct)
+    public async Task<IActionResult> SetRunnerOwner(string name, [FromBody] RunnerOwnerRequest? request, CancellationToken ct)
     {
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (request?.PersonId is { } personId && await actors.ResolveAsync(ActorKind.Person, personId, ct) is null)

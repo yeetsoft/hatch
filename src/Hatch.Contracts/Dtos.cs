@@ -4070,6 +4070,14 @@ public record RunnerMintedDto(RunnerDto Runner, string Secret);
 public record CreateRunnerRequest(string? Name, Guid? OwnerPersonId = null, IReadOnlyList<string>? Tags = null);
 
 /// <summary>
+/// Changes or clears an existing runner's owner. A record with one nullable
+/// field rather than a bare Guid in the URL, the same shape
+/// <c>LinkPersonRequest</c> takes and for the same reason: "nobody" is
+/// something the API can be told, not the absence of being told anything.
+/// </summary>
+public record RunnerOwnerRequest(Guid? PersonId);
+
+/// <summary>
 /// Where a runner's own reported build sits relative to the board's -
 /// <c>Hatch.Api.Models.HatchRevision.RevisionDrift</c>'s four answers, kept as
 /// a wire enum of its own since <see cref="RunnerDto"/> cannot reference that
