@@ -809,9 +809,12 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 A runner is a key. `GET /runners` joins each key to its config - the
 `RunnerConfigs` row, by the key's id - and to its heartbeat row, by name
 (`Runner.JoinAsync`); a key that has never run is listed, not live. A heartbeat
-no key claims is still listed, with its key fields null. The heartbeat table is
-a bridge that HA-1937 retires. `?live=true` keeps the entries whose heartbeat
-is not past `Runners.DropBefore`.
+no key claims is still listed, with its key fields null. HA-1937 adds the
+session routes below beside the heartbeat table, not instead of it
+(`Runner.IsLive`, `RunnerSessions.MarkAllGoneAsync`): a key with no sessions
+behaves exactly as before, and a key with some is judged by the beat and its
+sessions together, never one instead of the other. `?live=true` keeps the
+entries whose heartbeat is not past `Runners.DropBefore`.
 
 `/runners/{name}` is the one call a running loop makes about itself, and the
 whole round trip: it reports what it is - its repositories, whether it
@@ -897,6 +900,37 @@ unread, 204 either way. Ordering `work` also writes an `ordered` event
 sharing a loop's own name) leaves an order exactly as it found it - the
 instruction is for the loop's own next pass, not for a single increment that
 will never read it back.
+
+`POST /runners/sessions` is the session heartbeat `RunnerSessions` answers to
+- the bearer key alone, never a name or a header, so `403`s with none ("a
+session heartbeat is the bearer key's, not a name or a header"). The body is
+the same `RunnerHeartbeatRequest` `/runners/{name}` takes, minus `tags`,
+`models` and `has`: a session has no column for any of them, and they are
+silently dropped. The row matched is this key's own session at the body's
+`where` - `(ApiKeyId, Where)` is the pair a session is held by - touched if it
+is still live, seeded fresh if not; `409`s ("`<key> is already the runner on
+<where>`") only for `fresh: true`, `kind: loop`, and a live session already at
+that `where`. It answers a `RunnerInstructionDto`, now carrying `sessionId`.
+
+`PATCH /runners/{name}/sessions/{id}` sets one session's state
+(`RunnerSessionPatchRequest { state }`) without touching any sibling session
+under the same key; `404`s an id that is not this key's own.
+
+`POST`/`DELETE /runners/{name}/sessions/{id}/order` are `/runners/{name}/order`'s
+own request and refusals, narrowed to one session: `400`s a kind that is not
+`work` or `pass`; `404`s a `work` key naming an issue that does not exist;
+`409`s a `once` session, a `stopping` session, and a session that already
+holds an order, naming the kind and key held and saying to withdraw it first.
+`DELETE` withdraws it unread, `204` either way.
+
+`POST /runners/{name}/pause-all` and `POST /runners/{name}/stop-all` set
+every *live* `loop` session under this key to `paused` or `stopping` at once
+- a `once` session, an already-ended one, and one past the gone horizon are
+left alone. Both answer `204` with no body.
+
+All five session routes share one gate before they touch a session: not a
+person, a usable name, a key by that name, then `PatchRunner`'s own `403`
+("only `<owner>`, or an admin, may control `<runner>`").
 
 `GET /runners` answers with the rows the caller may see:
 
