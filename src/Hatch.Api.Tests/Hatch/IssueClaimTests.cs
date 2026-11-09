@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1582,6 +1583,14 @@ public class IssueClaimTests
         CreatedAt = Now,
     };
 
+    private static EfApiKey ElderKey() => new()
+    {
+        Name = "elder",
+        Prefix = "hatch_ak_x",
+        Hash = [1],
+        CreatedAt = Now,
+    };
+
     [SkippableFact]
     public async Task ABeat_BumpsOnlyTheRowNamedByClaimedBy()
     {
@@ -1702,6 +1711,61 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue, Runner);
 
         Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(42), Now)).Result);
+    }
+
+    // ---- Election reads the touched row, not the shared Where ----
+
+    [SkippableFact]
+    public async Task OfTwoRowsSharingAWhere_TheClaimsHolderIsElectedNotTheOlderGhost()
+    {
+        await using var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        h.Caller.Person = null;
+        h.Caller.Key = LiveLoopKey();
+        var ghostSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync(
+            "ghost", ghostSeenAt, where: SharedWhere, firstSeenAt: Now.AddDays(-1), remotes: "example.com/o/r");
+        await h.AddRunnerAsync("live-loop", Now, where: SharedWhere, remotes: "example.com/o/r");
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, null, null);
+
+        var drivers = await h.RunnersRule.DriversAsync(h.Connect(), new StubAuthService(), h.Time.GetUtcNow(), default);
+
+        Assert.Equal(["AER"], drivers["live-loop"]);
+        Assert.True(!drivers.TryGetValue("ghost", out var ghostDrives) || ghostDrives.Count == 0);
+    }
+
+    [SkippableFact]
+    public async Task ALongRunningHolder_StaysElectedPastTheHorizonWhileAYoungerRowBeatsNormally()
+    {
+        await using var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        h.Caller.Person = null;
+        h.Caller.Key = ElderKey();
+        await h.AddRunnerAsync("elder", Now, firstSeenAt: Now.AddDays(-1), remotes: "example.com/o/r");
+        await h.AddRunnerAsync("younger", Now, remotes: "example.com/o/r");
+        var issue = await h.FileAsync();
+        // The checkout the claim is taken at, not elder's own Where - a claim
+        // heartbeat finds its holder by ClaimedBy alone, so this proves the
+        // touch is not secretly riding on the two happening to match.
+        var token = await h.TakeAsync(issue, Runner);
+
+        for (var i = 0; i < 5; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(30));
+            await BeatAsync(h, issue, token, null, null);
+            await h.Connect().Runners.Where(r => r.Name == "younger")
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, h.Time.GetUtcNow()), default);
+
+            var drivers = await h.RunnersRule.DriversAsync(
+                h.Connect(), new StubAuthService(), h.Time.GetUtcNow(), default);
+
+            Assert.Equal(["AER"], drivers["elder"]);
+            Assert.Empty(drivers["younger"]);
+        }
     }
 
     // ---- Who let go of what ----
@@ -1911,7 +1975,7 @@ public class IssueClaimTests
         public async Task AddRunnerAsync(
             string name, DateTimeOffset lastSeenAt, Guid? forPersonId = null,
             DateTimeOffset? usageReadAt = null, RunnerUsageWindowDto[]? usage = null,
-            string? where = null, DateTimeOffset? firstSeenAt = null)
+            string? where = null, DateTimeOffset? firstSeenAt = null, string? remotes = null)
         {
             var db = Connect();
             db.Runners.Add(new EfHatchRunner
@@ -1925,6 +1989,25 @@ public class IssueClaimTests
                 ForPersonId = forPersonId,
                 UsageReadAt = usageReadAt,
                 Usage = usage is null ? null : JsonSerializer.Serialize(usage),
+                Remotes = remotes,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        private int nextRepoOrder;
+
+        /// <summary>A remote bound to the shared project, written straight to the table - RunnersControllerTests's own pattern.</summary>
+        public async Task BindRepositoryAsync(string remote)
+        {
+            var db = Connect();
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            db.ProjectRepositories.Add(new EfHatchProjectRepository
+            {
+                ProjectId = ProjectId,
+                Remote = remote,
+                Canonical = canonical!,
+                SortOrder = nextRepoOrder++,
+                CreatedAt = Now,
             });
             await db.SaveChangesAsync();
         }
