@@ -22,9 +22,17 @@ namespace Hatch.Api.Tests.E2e;
 ///
 /// <para>The four screenshots land in the case's artifact directory through
 /// <see cref="E2eHarness.ScreenshotAsync"/>; whether the chips read in both
-/// themes is the screenshot's call, not an assertion. A phone fact is the same
-/// walk with a different profile: the steps are methods taking the harness, the
-/// deadline, the base address and the violation list.</para>
+/// themes is the screenshot's call, not an assertion. The phone fact
+/// (<see cref="TheScopeControl_RendersOnThePhone"/>, the <c>iPhone 14 Pro</c>
+/// WebKit profile) is the same walk: the steps are methods taking the harness,
+/// the deadline, the base address and the violation list, with the phone's own
+/// steps beside them.</para>
+///
+/// <para><see cref="Trigger"/> is not prefixed with the top bar because the
+/// control is not always in it: on the desk it leads the bar, on a phone
+/// <c>App.tsx</c> draws it in <c>.hatch-scope-strip</c>, a sibling after the bar.
+/// Only <see cref="NavSelector"/> keeps the prefix, and on a phone it must match
+/// nothing.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class ScopeControlRendersTests(ITestOutputHelper output)
@@ -40,8 +48,20 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
     /// <summary>How far apart two vertical centres may sit and still be on one line, in CSS pixels.</summary>
     private const double CentreTolerance = 1;
 
-    /// <summary>The trigger in either state: <c>ScopeControl.tsx</c> gives both the Menu's label as its accessible name.</summary>
-    private const string Trigger = E2eHarness.TopBar + " button.hatch-menu__trigger[aria-label=\"Projects in scope\"]";
+    /// <summary>How far the board's height arithmetic may be off, in CSS pixels.</summary>
+    private const double BoardFitsTolerance = 1;
+
+    /// <summary>The strip's <c>min-height</c> in <c>App.css</c>, in CSS pixels.</summary>
+    private const double StripHeight = 44;
+
+    /// <summary>The trigger in either state, in the bar on the desk and in the strip on the phone: <c>ScopeControl.tsx</c> gives both states the Menu's label as its accessible name, and no other trigger has it.</summary>
+    private const string Trigger = "button.hatch-menu__trigger[aria-label=\"Projects in scope\"]";
+
+    /// <summary>The phone's strip, a sibling after the top bar in <c>App.tsx</c>, mounted only with two or more projects.</summary>
+    private const string Strip = ".hatch-scope-strip";
+
+    /// <summary>The board page, which exists once the board has loaded.</summary>
+    private const string Board = ".hatch-board-page";
 
     private const string Chip = ".hatch-scope-control__chip";
 
@@ -85,6 +105,61 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             Assert.True(
                 violations.Count == 0,
                 $"The scope control does not render as asked ({violations.Count} violation(s)):{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
+
+            harness.AssertNoPageErrors();
+        }
+        catch (Exception e) when (e is not Xunit.SkipException)
+        {
+            harness.Fail();
+            throw;
+        }
+        finally
+        {
+            await harness.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// The same script on the phone (393x660): the strip under the bar rather than
+    /// the control in it, and the board's height arithmetic. Every shared step
+    /// runs unchanged; the phone's own steps sit between them.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public async Task TheScopeControl_RendersOnThePhone()
+    {
+        Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
+        Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
+
+        var harness = new E2eHarness("ScopeControlPhone");
+        var deadline = new Deadline(TimeSpan.FromSeconds(CaseBudgetSeconds), harness.LogsSoFar);
+        try
+        {
+            await harness.LaunchBrowserAsync(deadline, DeviceProfile.IPhone14Pro);
+
+            Assert.True(
+                File.Exists(E2eHarness.BundleIndex()),
+                $"{E2eHarness.BundleIndex()} is missing: build the SPA first (`make test-e2e`, or `npm run build -w apps/hatch` in src/Hatch.Web).");
+
+            await harness.CreateDatabasesAsync(deadline);
+            var baseUrl = await harness.StartHostAsync(deadline);
+
+            var violations = new List<string>();
+
+            await deadline.BoundAsync("filing the first project", () => FileProjectsAsync(baseUrl, ("AAA", null)));
+            await OneProjectDrawsNoControlAsync(harness, deadline, baseUrl, violations);
+            await NoStripOnOneProjectAsync(harness, deadline, baseUrl, violations);
+
+            await deadline.BoundAsync("filing two more projects", () => FileProjectsAsync(baseUrl, ("BBB", "#2f9e44"), ("CCC", "#d6336c")));
+            await UnscopedOnThePhoneAsync(harness, deadline, baseUrl, violations);
+            await OpenThePanelAsync(harness, deadline, baseUrl, violations);
+            await PanelBelowTheStripAsync(harness, deadline, baseUrl, violations);
+            await WalkTheScopeDownAsync(harness, deadline, baseUrl, violations);
+            await ScopedOnThePhoneAsync(harness, deadline, baseUrl, violations);
+            await DarkAsync(harness, deadline, baseUrl, violations);
+
+            Assert.True(
+                violations.Count == 0,
+                $"The scope control does not render as asked on the phone ({violations.Count} violation(s)):{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
 
             harness.AssertNoPageErrors();
         }
@@ -179,6 +254,184 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
 
         output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, "unscoped-light")}");
     }
+
+    /// <summary>
+    /// One project draws no strip. Called straight after
+    /// <see cref="OneProjectDrawsNoControlAsync"/>, whose waits have already
+    /// outrun the project fetch, so the absence is not an early look.
+    /// </summary>
+    private async Task NoStripOnOneProjectAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
+    {
+        var visible = await harness.IsVisibleAsync(deadline, Strip);
+        output.WriteLine($"--- one project: strip visible {visible}");
+
+        if (visible) violations.Add("one project: the scope strip is drawn on a one-project install");
+    }
+
+    /// <summary>
+    /// Looks 1 and 3 unscoped, on the phone: no nav in the bar, the strip flush
+    /// under the bar and 44px tall with the trigger inside it, quiet, no chip,
+    /// the plain title, and the board filling what the bar and strip leave.
+    /// </summary>
+    private async Task UnscopedOnThePhoneAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
+    {
+        await harness.GoToAsync(deadline, "");
+        await harness.WaitForTopBarAsync(deadline);
+        await harness.WaitForVisibleAsync(deadline, Trigger);
+
+        var m = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "measuring the unscoped strip",
+            $$"""
+            () => {
+              const box = el => {
+                const r = el.getBoundingClientRect();
+                return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, height: r.height };
+              };
+              const trigger = document.querySelector('{{Trigger}}');
+              return {
+                barBottom: document.querySelector('{{E2eHarness.TopBar}}').getBoundingClientRect().bottom,
+                strip: box(document.querySelector('{{Strip}}')),
+                trigger: box(trigger),
+                text: trigger.textContent.trim(),
+                scoped: trigger.classList.contains('hatch-scope-control--scoped'),
+                chips: document.querySelectorAll('{{Chip}}').length,
+                nav: document.querySelectorAll('{{NavSelector}}').length,
+              };
+            }
+            """);
+        var title = await TitleAsync(harness, deadline);
+        output.WriteLine($"--- three projects, unscoped, phone: {m}, title \"{title}\"");
+
+        var barBottom = m.GetProperty("barBottom").GetDouble();
+        var strip = m.GetProperty("strip");
+        var stripTop = strip.GetProperty("top").GetDouble();
+        var stripHeight = strip.GetProperty("height").GetDouble();
+
+        if (m.GetProperty("nav").GetInt32() != 0)
+            violations.Add($"unscoped: {m.GetProperty("nav").GetInt32()} primary nav(s) in the bar on a phone");
+        if (Math.Abs(stripTop - barBottom) > Tolerance)
+            violations.Add($"unscoped: the strip starts at {stripTop}, not at the bar's bottom {barBottom}");
+        if (Math.Abs(stripHeight - StripHeight) > Tolerance)
+            violations.Add($"unscoped: the strip is {stripHeight}px tall, not {StripHeight}");
+        if (!Inside(m.GetProperty("trigger"), strip))
+            violations.Add($"unscoped: the trigger {m.GetProperty("trigger")} is not inside the strip {strip}");
+        if (m.GetProperty("text").GetString() != "All projects" || m.GetProperty("scoped").GetBoolean())
+            violations.Add($"unscoped: the trigger reads \"{m.GetProperty("text").GetString()}\" and is not the unscoped one");
+        if (m.GetProperty("chips").GetInt32() != 0)
+            violations.Add($"unscoped: {m.GetProperty("chips").GetInt32()} chip(s) drawn with nothing scoped");
+        if (title != "Hatch") violations.Add($"unscoped: the tab title is \"{title}\", not \"Hatch\"");
+
+        await BoardFitsAsync(harness, deadline, "unscoped", violations);
+
+        output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, "unscoped-light")}");
+    }
+
+    /// <summary>The open panel hangs below the strip, not over it. Called straight after <see cref="OpenThePanelAsync"/>, with the panel still open.</summary>
+    private async Task PanelBelowTheStripAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
+    {
+        var m = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "measuring the panel against the strip",
+            $$"""
+            () => ({
+              panelTop: document.querySelector('{{Panel}}').getBoundingClientRect().top,
+              stripBottom: document.querySelector('{{Strip}}').getBoundingClientRect().bottom,
+            })
+            """);
+        output.WriteLine($"--- panel against the strip: {m}");
+
+        var panelTop = m.GetProperty("panelTop").GetDouble();
+        var stripBottom = m.GetProperty("stripBottom").GetDouble();
+        if (panelTop < stripBottom - Tolerance)
+            violations.Add($"panel: starts at {panelTop}, above the strip's bottom {stripBottom}");
+    }
+
+    /// <summary>
+    /// Look 1 scoped, on the phone: a load with a scope, the trigger within the
+    /// screen with its chips, and the board's arithmetic again. Called after
+    /// <see cref="WalkTheScopeDownAsync"/>, which ends unscoped with the panel
+    /// shut, so the strip is measured undisturbed; the theme is still light and
+    /// the walk and <see cref="DarkAsync"/> already write the scoped screenshots.
+    /// </summary>
+    private async Task ScopedOnThePhoneAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
+    {
+        await harness.GoToAsync(deadline, "?scope=AAA,BBB");
+        await harness.WaitForVisibleAsync(deadline, Chip);
+
+        var m = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "measuring the scoped trigger",
+            $$"""
+            () => {
+              const r = document.querySelector('{{Trigger}}').getBoundingClientRect();
+              return { left: r.left, right: r.right, innerWidth: window.innerWidth };
+            }
+            """);
+        output.WriteLine($"--- scoped, phone: {m}");
+
+        var left = m.GetProperty("left").GetDouble();
+        var right = m.GetProperty("right").GetDouble();
+        var innerWidth = m.GetProperty("innerWidth").GetDouble();
+        if (left < -Tolerance || right > innerWidth + Tolerance)
+            violations.Add($"scoped: the trigger lies at [{left}, {right}], outside [0, {innerWidth}]");
+
+        await BoardFitsAsync(harness, deadline, "scoped", violations);
+    }
+
+    /// <summary>
+    /// The board's <c>min-height</c> is <c>100dvh - 48px</c>, less the strip's 44px
+    /// when it is drawn (<c>App.css</c>): the bar, the strip and the board must
+    /// add up to the viewport. scrollHeight and clientHeight are logged and not
+    /// asserted, since a stacked board can legitimately scroll.
+    /// </summary>
+    private async Task BoardFitsAsync(E2eHarness harness, Deadline deadline, string state, List<string> violations)
+    {
+        await harness.WaitForVisibleAsync(deadline, Board);
+
+        var m = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            $"measuring the board's height ({state})",
+            $$"""
+            () => {
+              const raw = getComputedStyle(document.querySelector('{{Board}}')).minHeight;
+              const px = parseFloat(raw);
+              return {
+                barBottom: document.querySelector('{{E2eHarness.TopBar}}').getBoundingClientRect().bottom,
+                stripHeight: document.querySelector('{{Strip}}').getBoundingClientRect().height,
+                minHeightRaw: raw,
+                minHeight: Number.isFinite(px) ? px : null,
+                innerHeight: window.innerHeight,
+                scrollHeight: document.documentElement.scrollHeight,
+                clientHeight: document.documentElement.clientHeight,
+              };
+            }
+            """);
+        output.WriteLine($"--- board fits, {state}: {m}");
+
+        var minHeightRaw = m.GetProperty("minHeightRaw").GetString();
+        if (m.GetProperty("minHeight").ValueKind != JsonValueKind.Number)
+        {
+            violations.Add($"board {state}: the board's min-height is \"{minHeightRaw}\", not a length in pixels");
+            return;
+        }
+
+        var barBottom = m.GetProperty("barBottom").GetDouble();
+        var stripHeight = m.GetProperty("stripHeight").GetDouble();
+        var minHeight = m.GetProperty("minHeight").GetDouble();
+        var innerHeight = m.GetProperty("innerHeight").GetDouble();
+        if (Math.Abs(barBottom + stripHeight + minHeight - innerHeight) > BoardFitsTolerance)
+            violations.Add(
+                $"board {state}: bar bottom {barBottom} + strip {stripHeight} + board min-height {minHeight} (\"{minHeightRaw}\") " +
+                $"is {barBottom + stripHeight + minHeight}, not the viewport's {innerHeight}");
+    }
+
+    /// <summary>Whether <paramref name="inner"/> lies within <paramref name="outer"/>, both <c>{ top, left, right, bottom }</c> boxes, to <see cref="Tolerance"/>.</summary>
+    private static bool Inside(JsonElement inner, JsonElement outer) =>
+        inner.GetProperty("left").GetDouble() >= outer.GetProperty("left").GetDouble() - Tolerance
+        && inner.GetProperty("right").GetDouble() <= outer.GetProperty("right").GetDouble() + Tolerance
+        && inner.GetProperty("top").GetDouble() >= outer.GetProperty("top").GetDouble() - Tolerance
+        && inner.GetProperty("bottom").GetDouble() <= outer.GetProperty("bottom").GetDouble() + Tolerance;
 
     /// <summary>Look 2, the opening: a row per project, all ticked, the footer All button disabled, the panel on screen.</summary>
     private async Task OpenThePanelAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)

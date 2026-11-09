@@ -3206,6 +3206,14 @@ public class EfHatchRunner
     public string? Tags { get; set; }
 
     /// <summary>
+    /// The models this runner says it can run, newline-joined in the order
+    /// given - a fact about the running process, overwritten on every
+    /// heartbeat that names any and never seeded once like
+    /// <see cref="Tags"/>. Null is never said, and reads as none.
+    /// </summary>
+    public string? Models { get; set; }
+
+    /// <summary>
     /// Whether this runner refuses dangerous work. Seeded once by a heartbeat
     /// that says it; from then on only a <c>PATCH</c> moves it, so a restart
     /// with a different flag leaves the row alone. Null is never said, and

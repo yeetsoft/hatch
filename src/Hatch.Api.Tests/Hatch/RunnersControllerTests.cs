@@ -217,6 +217,97 @@ public class RunnersControllerTests
         Assert.False((await h.OneAsync()).Standing);
     }
 
+    // ---- Models ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingModels_StoresThemInTheOrderGiven()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: ["haiku", "sonnet"]));
+
+        Assert.Equal(["haiku", "sonnet"], (await h.OneAsync()).Models);
+    }
+
+    [Fact]
+    public async Task ALaterHeartbeat_OverwritesTheModelsAPriorOneReported()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: ["haiku", "sonnet"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: ["opus"]));
+
+        Assert.Equal(["opus"], (await h.OneAsync()).Models);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: []));
+        Assert.Empty((await h.OneAsync()).Models);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoModels_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: ["haiku", "sonnet"]));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal(["haiku", "sonnet"], (await h.OneAsync()).Models);
+    }
+
+    [Fact]
+    public async Task ARowThatNeverReportedModels_ReadsThemEmpty()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Empty((await h.OneAsync()).Models);
+    }
+
+    [Fact]
+    public async Task AModelOfAnotherAgent_IsRefusedBeforeAnythingOnTheRowChanges()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Agent: "claude", Models: ["haiku"]));
+        var seenAt = (await h.RowAsync()).LastSeenAt;
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+
+        // Not BeatAsync: it throws on anything but a value, and this refusal
+        // is the assertion.
+        var refusal = await h.Runners.Heartbeat(
+            Runner, new RunnerHeartbeatRequest(Agent: "claude", Models: ["gpt-6-luna"]), default);
+
+        var owner = ModelFamilies.Default.AgentOf("gpt-6-luna");
+        Assert.Contains(
+            $"\"gpt-6-luna\" is a {owner} model - this runner's agent is claude",
+            Reason(refusal.Result), StringComparison.Ordinal);
+        var row = await h.RowAsync();
+        Assert.Equal("haiku", row.Models);
+        Assert.Equal(seenAt, row.LastSeenAt);
+    }
+
+    [Fact]
+    public async Task AModelThatIsNoKnownAliasOrId_IsRefusedWithTheRulesSentenceAndLeavesTheRowAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Models: ["haiku"]));
+
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Models: ["nonsense"]), default);
+
+        Assert.Equal(ModelFamilies.Default.Refusal("nonsense"), Reason(refusal.Result));
+        Assert.Equal("haiku", (await h.RowAsync()).Models);
+    }
+
+    [Fact]
+    public async Task ARefusedFirstBeat_CreatesNoRow()
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Models: ["nonsense"]), default);
+
+        Assert.Equal(ModelFamilies.Default.Refusal("nonsense"), Reason(refusal.Result));
+        Assert.Empty(await h.Db.Runners.ToListAsync());
+    }
+
     // ---- Tags ----
 
     [Fact]
