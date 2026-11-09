@@ -287,6 +287,27 @@ public class RunnerSessionsTests
         Assert.Null((await check.RunnerSessions.SingleAsync(s => s.Id == otherKeyStaleId)).EndedAt);
     }
 
+    [SkippableFact]
+    public async Task MarkAllGoneAsync_EndsEveryPastHorizonSessionAcrossEveryKey()
+    {
+        var connectionString = await ConnectAsync();
+        var keyId = Guid.NewGuid();
+        var otherKeyId = Guid.NewGuid();
+
+        await using var seed = Connect(connectionString);
+        var staleId = await InsertAsync(seed, keyId, lastSeenAt: Now.AddMinutes(-5));
+        var otherStaleId = await InsertAsync(seed, otherKeyId, lastSeenAt: Now.AddMinutes(-5));
+        var freshId = await InsertAsync(seed, keyId, lastSeenAt: Now);
+
+        await using var db = Connect(connectionString);
+        Assert.Equal(2, await With().MarkAllGoneAsync(db, Now, default));
+
+        await using var check = Connect(connectionString);
+        Assert.Equal(Now, (await check.RunnerSessions.SingleAsync(s => s.Id == staleId)).EndedAt);
+        Assert.Equal(Now, (await check.RunnerSessions.SingleAsync(s => s.Id == otherStaleId)).EndedAt);
+        Assert.Null((await check.RunnerSessions.SingleAsync(s => s.Id == freshId)).EndedAt);
+    }
+
     // ---- TrimHistoryAsync ----
 
     [SkippableFact]

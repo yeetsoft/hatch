@@ -81,6 +81,72 @@ public class RunnersTests
         Assert.Equal(new HatchOptions().RunnerGoneAfterSeconds, With(-5).GoneAfterSeconds);
     }
 
+    // ---- Liveness, with a session added in ----
+
+    [Fact]
+    public void AKeyWithNoBeatAndNoSession_IsNotLive()
+    {
+        var runner = new Runner(null, null, null);
+
+        Assert.False(runner.IsLive(With(), Sessions(), Now));
+    }
+
+    [Fact]
+    public void AKeyWithNoBeatButALiveSession_IsLive()
+    {
+        var runner = new Runner(null, null, null, [Session(lastSeenAt: Now)]);
+
+        Assert.True(runner.IsLive(With(60), Sessions(60), Now));
+    }
+
+    [Fact]
+    public void ASessionExactlyAtTheCutoff_IsLive_OneTickPast_IsNot()
+    {
+        var atCutoff = new Runner(null, null, null, [Session(lastSeenAt: Now.AddSeconds(-60))]);
+        var pastCutoff = new Runner(null, null, null, [Session(lastSeenAt: Now.AddSeconds(-60).AddTicks(-1))]);
+
+        Assert.True(atCutoff.IsLive(With(60), Sessions(60), Now));
+        Assert.False(pastCutoff.IsLive(With(60), Sessions(60), Now));
+    }
+
+    [Fact]
+    public void AnEndedSession_IsNotLive_EvenHeardFromJustNow()
+    {
+        var runner = new Runner(null, null, null, [Session(lastSeenAt: Now, endedAt: Now)]);
+
+        Assert.False(runner.IsLive(With(60), Sessions(60), Now));
+    }
+
+    [Fact]
+    public void ALiveBeatAndAGoneSession_IsLive_OnTheBeatAlone()
+    {
+        var runner = new Runner(null, null, Row(), [Session(lastSeenAt: Now.AddSeconds(-999))]);
+
+        Assert.True(runner.IsLive(With(60), Sessions(60), Now));
+    }
+
+    [Fact]
+    public void AnAgedBeatAndALiveSession_IsLive_OnTheSessionAlone()
+    {
+        var aged = Row();
+        aged.LastSeenAt = Now.AddHours(-3);
+        var runner = new Runner(null, null, aged, [Session(lastSeenAt: Now)]);
+
+        Assert.True(runner.IsLive(With(60), Sessions(60), Now));
+    }
+
+    private static RunnerSessions Sessions(int goneAfterSeconds = 90) => new(With(goneAfterSeconds));
+
+    private static EfHatchRunnerSession Session(DateTimeOffset lastSeenAt, DateTimeOffset? endedAt = null) => new()
+    {
+        ApiKeyId = Guid.NewGuid(),
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        StartedAt = lastSeenAt,
+        LastSeenAt = lastSeenAt,
+        EndedAt = endedAt,
+    };
+
     // ---- What a row draws ----
 
     [Fact]

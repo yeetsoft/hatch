@@ -1288,6 +1288,143 @@ public class RunnersControllerTests
         Assert.Equal(["second:/tree", "first:/tree"], (await h.ListAsync()).Select(r => r.Name));
     }
 
+    // ---- Sessions, and liveness drawn from one ----
+
+    [Fact]
+    public async Task Live_ListsAKeyWithOnlyALiveSession()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal("session-only", (await h.OneAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Live_DropsAKeyWhoseOnlySessionIsPastTheHorizon()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+
+        Assert.Empty(await h.ListAsync());
+    }
+
+    [Fact]
+    public async Task AKeyWithNoSessions_HasAnEmptySessionsList()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Empty((await h.OneAsync()).Sessions);
+    }
+
+    [Fact]
+    public async Task ASessionOnlyKey_DrivesTheProject()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Drives);
+    }
+
+    [Fact]
+    public async Task TwoLiveSessionsUnderOneKey_DriveAsOneNameNeverTwiceNorAThrow()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("two-sessions");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now.AddSeconds(5), "here:/checkouts/two", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(["AER"], (await h.OneAsync()).Drives);
+    }
+
+    [Fact]
+    public async Task AnOlderBeat_OutranksANewerSessionUnderAnotherName()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.BeatAsync("here:/beat", new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var key = await h.AddKeyAsync("session-runner");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, h.Time.GetUtcNow(), "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.ListAsync();
+        Assert.Equal(["AER"], rows.Single(r => r.Name == "here:/beat").Drives);
+        Assert.Empty(rows.Single(r => r.Name == "session-runner").Drives!);
+    }
+
+    [Fact]
+    public async Task WithTheWallUp_AnOwnersSession_DrivesAnOwnedProject_OverAStrangersOlderBeat()
+    {
+        var h = await NewAsync(wall: true);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var owner = h.Actors.AddPerson("Owner");
+        var stranger = h.Actors.AddPerson("Stranger");
+        await h.AddMemberAsync(owner.Id, ProjectMemberRole.Owner);
+
+        await h.LoopBeatAsync("here:/stranger", stranger);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        var key = await h.AddKeyAsync("owner-session", owner.Id);
+        h.Db.RunnerSessions.Add(NewSession(key.Id, h.Time.GetUtcNow(), "here:/checkouts/one", remotes: "git@example.com:o/r.git"));
+        await h.Db.SaveChangesAsync();
+
+        var rows = await h.ListAsync();
+        Assert.Equal(["AER"], rows.Single(r => r.Name == "owner-session").Drives);
+        Assert.Empty(rows.Single(r => r.Name == "here:/stranger").Drives!);
+    }
+
+    [Fact]
+    public async Task GetRunner_ListsSessionsNewestFirst_TheLiveOneCarriesItsClaim_AnEndedOneDoesNot()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+
+        var older = NewSession(key.Id, Now, Runner);
+        older.EndedAt = Now;
+        h.Db.RunnerSessions.Add(older);
+        await h.Db.SaveChangesAsync();
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        var newer = NewSession(key.Id, h.Time.GetUtcNow(), Runner);
+        h.Db.RunnerSessions.Add(newer);
+        await h.Db.SaveChangesAsync();
+
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key, Runner, chatter: "working it");
+
+        var found = await h.GetAsync(Runner);
+
+        Assert.Equal(2, found!.Sessions.Count);
+        Assert.Equal(newer.Id, found.Sessions[0].Id);
+        Assert.Equal(issue.Key, found.Sessions[0].ClaimKey);
+        Assert.Equal(older.Id, found.Sessions[1].Id);
+        Assert.Null(found.Sessions[1].ClaimKey);
+    }
+
+    private static EfHatchRunnerSession NewSession(Guid apiKeyId, DateTimeOffset at, string? where, string? remotes = null) => new()
+    {
+        ApiKeyId = apiKeyId,
+        Kind = EfHatchRunner.LoopKind,
+        State = EfHatchRunner.Running,
+        StartedAt = at,
+        LastSeenAt = at,
+        Where = where,
+        Remotes = remotes,
+    };
+
     // ---- Names ----
 
     [Fact]
@@ -3539,6 +3676,19 @@ public class RunnersControllerTests
         Assert.Equal(2, await h.Db.RunnerSessions.CountAsync());
         Assert.Equal(EfHatchRunner.OnceKind, (await h.Db.RunnerSessions.AsNoTracking()
             .SingleAsync(s => s.Where == "here:/checkouts/two")).Kind);
+    }
+
+    [SkippableFact]
+    public async Task GetRunners_StampsEndedAtOnASessionPastTheHorizon()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+        await h.ListAllAsync();
+
+        Assert.Equal(h.Time.GetUtcNow(), (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).EndedAt);
     }
 
     private static async Task<string> ConnectAsync()
