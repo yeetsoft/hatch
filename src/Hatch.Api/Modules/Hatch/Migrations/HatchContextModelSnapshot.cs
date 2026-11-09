@@ -1465,6 +1465,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("ExhaustedUntil")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Has")
+                        .HasColumnType("text");
+
                     b.Property<string>("Host")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -1499,6 +1502,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.Property<bool?>("Mine")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("Models")
+                        .HasColumnType("text");
 
                     b.Property<string>("OrderKey")
                         .HasMaxLength(32)

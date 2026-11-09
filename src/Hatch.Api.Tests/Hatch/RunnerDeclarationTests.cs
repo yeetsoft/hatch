@@ -52,7 +52,11 @@ public class RunnerDeclarationTests
     {
         var actors = new StubActorDirectory();
         var key = Key();
-        var beat = Beat(key.Name, b => { b.Projects = "AER"; b.Tags = "gpu"; b.RefusesDangerous = true; });
+        var beat = Beat(key.Name, b =>
+        {
+            b.Projects = "AER"; b.Tags = "gpu"; b.RefusesDangerous = true;
+            b.Has = "dotnet"; b.Models = "haiku"; b.Agent = "claude";
+        });
         var runner = new Runner(key, null, beat);
 
         var fromSessionOverload = await RunnerDeclaration.OfAsync(runner, [], actors, default);
@@ -64,7 +68,10 @@ public class RunnerDeclarationTests
         Assert.Equal(fromBeatOverload.Tags.Has, fromSessionOverload.Tags.Has);
         Assert.Equal(fromBeatOverload.Tags.RefusesDangerous, fromSessionOverload.Tags.RefusesDangerous);
         Assert.Equal(fromBeatOverload.Has.Judged, fromSessionOverload.Has.Judged);
+        Assert.Equal(fromBeatOverload.Has.Has, fromSessionOverload.Has.Has);
         Assert.Equal(fromBeatOverload.Models.Judged, fromSessionOverload.Models.Judged);
+        Assert.Equal(fromBeatOverload.Models.Has, fromSessionOverload.Models.Has);
+        Assert.Equal(fromBeatOverload.Models.Agent, fromSessionOverload.Models.Agent);
         Assert.Equal(fromBeatOverload.Projects, fromSessionOverload.Projects);
         Assert.Equal(fromBeatOverload.Repos.IsDeclared, fromSessionOverload.Repos.IsDeclared);
     }
@@ -124,5 +131,63 @@ public class RunnerDeclarationTests
 
         Assert.Equal("git@example.com:o/r.git", declared.Repos.Match("example.com/o/r"));
         Assert.Contains("gpu", declared.Tags.Has);
+    }
+
+    [Fact]
+    public async Task TwoBeatLessSessions_UnionTheirHasInSessionOrder()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var sessionA = Session(key.Id, s => s.Has = "a\nb");
+        var sessionB = Session(key.Id, s => s.Has = "a\nc");
+        var runner = new Runner(key, null, null);
+
+        var declared = await RunnerDeclaration.OfAsync(runner, [sessionA, sessionB], actors, default);
+
+        Assert.True(declared.Has.Judged);
+        Assert.Equal(["a", "b", "c"], declared.Has.Has);
+    }
+
+    [Fact]
+    public async Task TwoBeatLessSessions_UnionTheirModelsInSessionOrder()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var sessionA = Session(key.Id, s => { s.Models = "a\nb"; s.Agent = "claude"; });
+        var sessionB = Session(key.Id, s => s.Models = "a\nc");
+        var runner = new Runner(key, null, null);
+
+        var declared = await RunnerDeclaration.OfAsync(runner, [sessionA, sessionB], actors, default);
+
+        Assert.True(declared.Models.Judged);
+        Assert.Equal(["a", "b", "c"], declared.Models.Has);
+        Assert.Equal("claude", declared.Models.Agent);
+    }
+
+    [Fact]
+    public async Task NoSessionAndNoBeatDeclaration_HasIsUnjudged()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var session = Session(key.Id, s => s.Projects = "AER");
+        var runner = new Runner(key, null, null);
+
+        var declared = await RunnerDeclaration.OfAsync(runner, [session], actors, default);
+
+        Assert.Equal(HasDeclaration.Unjudged, declared.Has);
+    }
+
+    [Fact]
+    public async Task ABeatsHasAlongsideASessionsOwn_IsTheBeatsOnly()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var beat = Beat(key.Name, b => b.Has = "a");
+        var session = Session(key.Id, s => s.Has = "b");
+        var runner = new Runner(key, null, beat);
+
+        var declared = await RunnerDeclaration.OfAsync(runner, [session], actors, default);
+
+        Assert.Equal(["a"], declared.Has.Has);
     }
 }

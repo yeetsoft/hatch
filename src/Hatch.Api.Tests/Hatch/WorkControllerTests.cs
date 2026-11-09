@@ -5193,6 +5193,21 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_AsRunner_WithOnlyASessionDeclaringModels_FoldsARowThatWantsAnother()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var key = await h.AddKeyAsync(RunnerName());
+        await h.AddSessionAsync(key, where: "here:/one", agent: "claude", models: "haiku\nsonnet", standing: true);
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: key.Name));
+
+        Assert.Equal(NotOffered(issue, "todo", "fable", "claude"), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+    }
+
+    [Fact]
     public async Task LetGoBy_APeerThatLacksTheModel_IsNotOneThatCouldTakeTheTicket()
     {
         var h = await NewAsync();
@@ -5208,6 +5223,28 @@ public class WorkControllerTests
         Assert.Null(Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
 
         peer.Models = "haiku\nsonnet\nfable";
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(
+            DeferralSentence(a, 7),
+            Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_ASessionOnlyPeerThatLacksTheModel_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var key = await h.AddKeyAsync(RunnerName());
+        var session = await h.AddSessionAsync(key, where: "here:/one", agent: "claude", models: "haiku\nsonnet", standing: true);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // The peer is a key with no beat at all - a session-only loop - and its own scan folds the ticket.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
+
+        session.Models = "haiku\nsonnet\nfable";
         await h.Db.SaveChangesAsync();
         Assert.Equal(
             DeferralSentence(a, 7),
@@ -13869,7 +13906,7 @@ public class WorkControllerTests
         public async Task<EfHatchRunnerSession> AddSessionAsync(
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
-            bool? standing = null)
+            bool? standing = null, string? models = null, string? has = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -13886,6 +13923,8 @@ public class WorkControllerTests
                 Under = under,
                 Agent = agent,
                 Standing = standing,
+                Models = models,
+                Has = has,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();
