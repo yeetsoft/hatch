@@ -441,6 +441,93 @@ public sealed class LifecycleTests
         Assert.Contains("could not be filed", comment.Body, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// HA-1990: the mirror of <see cref="A_usage_limit_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one"/> -
+    /// an unservable model takes the same push-then-one-comment path, not the
+    /// stall path, for the same reason a usage limit and a preemption do: the
+    /// session did not get to say whether what it left is fit to publish.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refusal_pushes_the_branch_and_writes_one_comment_instead_of_the_tidy_one()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        // Pushed before Leave finds the tree, so what Leave sees is already clean.
+        Assert.Equal(
+            [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
+            h.Workspace.Calls);
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments);
+        Assert.Contains("fable", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("no longer offers", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("for the rest of this run", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("fake-agent --resume fake-session-1", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+
+        // No question is opened, and nothing blocks the next pass from picking
+        // this ticket straight back up.
+        Assert.DoesNotContain(comments, c => c.Kind == "question");
+    }
+
+    /// <summary>HA-1990's mirror of the usage limit's own "until" phrasing.</summary>
+    [Fact]
+    public async Task A_model_refusal_with_a_known_reset_says_until_not_for_the_rest_of_the_run()
+    {
+        using var h = new Harness(clock: new FakeTimeProvider(DateTimeOffset.Parse("2026-09-28T20:00:00+00:00")));
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        var resetAt = DateTimeOffset.Parse("2026-09-29T19:40:00+00:00");
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, resetAt) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var comment = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+        Assert.Contains("until", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("for the rest of this run", comment.Body);
+    }
+
+    /// <summary>HA-1990's mirror of <see cref="A_usage_limit_with_nothing_to_push_still_writes_the_one_comment"/>.</summary>
+    [Fact]
+    public async Task A_model_refusal_with_nothing_to_push_still_writes_the_one_comment()
+    {
+        using var h = new Harness();
+        Board(h, work: Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") });
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        var comment = Assert.Single(
+            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+        Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_recorded_pull_request_is_synced_and_none_is_not()
     {
