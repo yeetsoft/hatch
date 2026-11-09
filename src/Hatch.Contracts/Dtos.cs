@@ -4055,7 +4055,53 @@ public record RunnerDto(
 /// One session an api key behind a runner has open, read beside the key's
 /// own fields on <see cref="RunnerDto"/>.
 /// </summary>
-public record RunnerSessionDto(string Where, DateTimeOffset LastSeenAt);
+public record RunnerSessionDto(
+    int Id,
+    string? Where,
+    string Kind,
+    string? Host,
+    string State,
+    DateTimeOffset StartedAt,
+    DateTimeOffset LastSeenAt,
+    DateTimeOffset? EndedAt,
+    string? ClaimKey = null,
+    string? Line = null,
+    DateTimeOffset? LineAt = null,
+    string? ClaimStatus = null,
+    string? Under = null,
+    int? MaxRuns = null,
+    decimal? MaxSpend = null,
+    long? MaxTokens = null,
+    long? MaxTokensPerHour = null,
+    DateTimeOffset? UntilAt = null,
+    int? Runs = null,
+    decimal? Spent = null,
+    long? TokensUsed = null,
+    long? TokensLastHour = null,
+    DateTimeOffset? ExhaustedUntil = null,
+    DateTimeOffset? ThrottledUntil = null,
+    string? Usage = null,
+    DateTimeOffset? UsageReadAt = null,
+    IReadOnlyList<string>? Remotes = null,
+    bool? Clones = null,
+    bool? Mine = null,
+    bool? Standing = null,
+    string? Agent = null,
+    string? Revision = null,
+    int? Sequence = null,
+    DateTimeOffset? BuiltAt = null,
+    string? SourceRevision = null,
+    int? SourceSequence = null,
+    IReadOnlyList<string>? Projects = null,
+    bool? RefusesDangerous = null,
+    string? OrderKind = null,
+    string? OrderKey = null,
+    string? OrderedBy = null,
+    DateTimeOffset? OrderedAt = null)
+{
+    public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
+    public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
+}
 
 /// <summary>
 /// A freshly minted runner key, answered once at creation - the only time
@@ -4323,7 +4369,9 @@ public record RunnerInstructionDto(
     IReadOnlyList<string>? Projects = null,
     bool? RefusesDangerous = null,
     long? MaxTokens = null,
-    long? MaxTokensPerHour = null);
+    long? MaxTokensPerHour = null,
+    string? RunnerName = null,
+    int? SessionId = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
