@@ -78,6 +78,12 @@ describe('Chicklet', () => {
     }
   });
 
+  it('hints what the × closes, in the words a screen reader hears', () => {
+    const close = li(filing)[0].match(/<button[^>]*class="hatch-confirmation-close"[^>]*>/)![0];
+    const label = /aria-label="([^"]+)"/.exec(close)![1];
+    expect(close).toContain(`title="${label}"`);
+  });
+
   it('puts the key, then the body with the title, then the ×', () => {
     const html = li(filing)[0];
 

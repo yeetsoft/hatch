@@ -82,6 +82,8 @@ export function StatusPicker({
     onMove(statusId);
   };
 
+  const label = `Status: ${status.name}. Move ${issueKey}`;
+
   return (
     <>
       <button
@@ -92,7 +94,8 @@ export function StatusPicker({
         aria-expanded={open}
         aria-controls={bandId}
         aria-busy={busy}
-        aria-label={`Status: ${status.name}. Move ${issueKey}`}
+        aria-label={label}
+        title={label}
         disabled={busy}
         onClick={onTriggerClick}
         onKeyDown={onEscape}

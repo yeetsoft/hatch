@@ -27,19 +27,25 @@ export function ScopeControl({
 
   const scoped = keys.length > 0;
   const allKeys = projects.map((project) => project.key);
+  // The hint rides on the button itself, so it shows over the padding and the
+  // caret as well as the chips - a title on an inner chip covers only that chip.
+  const scopeWords = `Projects in scope: ${projects
+    .filter((project) => keys.includes(project.key))
+    .map((project) => project.name)
+    .join(', ')}`;
 
   return (
     <Menu
-      label="Projects in scope"
+      label={scoped ? scopeWords : 'Projects in scope'}
       tone="accent"
       hover={false}
       trigger={(props) =>
         scoped ? (
-          <button {...props} className={`${props.className} hatch-scope-control--scoped`}>
+          <button {...props} className={`${props.className} hatch-scope-control--scoped`} title={scopeWords}>
             {projects
               .filter((project) => keys.includes(project.key))
               .map((project) => (
-                <span key={project.key} className="hatch-scope-control__chip" style={markVars(project.color)} title={project.name}>
+                <span key={project.key} className="hatch-scope-control__chip" style={markVars(project.color)}>
                   {project.key}
                 </span>
               ))}

@@ -177,6 +177,7 @@ export function BoardCard({
   }
 
   const { total, done } = storyCount(stories, statuses);
+  const strip = stripLabel(total, done, stories.filter(needsMe).length);
 
   return (
     <div ref={setNodeRef} className={classes(true)} style={style}>
@@ -207,7 +208,8 @@ export function BoardCard({
         className="hatch-card-stories"
         aria-expanded={!collapsed}
         aria-controls={storiesId}
-        aria-label={stripLabel(total, done, stories.filter(needsMe).length)}
+        aria-label={strip}
+        title={strip}
         onClick={() => onToggle?.(card.key)}
       >
         <StoryStrip stories={stories} statuses={statuses} />

@@ -336,6 +336,7 @@ export function Chicklet({
         type="button"
         className="hatch-confirmation-close"
         aria-label={`Dismiss ${c.issueKey}`}
+        title={`Dismiss ${c.issueKey}`}
         onClick={() => onDismiss(c.id)}
       >
         ×

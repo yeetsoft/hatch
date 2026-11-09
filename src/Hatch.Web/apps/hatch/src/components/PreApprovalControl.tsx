@@ -236,6 +236,7 @@ export function PreApprovalControl({
         aria-controls={bandId}
         aria-busy={busy}
         aria-label={label}
+        title={label}
         disabled={busy}
         onClick={onTriggerClick}
         onKeyDown={onEscape}

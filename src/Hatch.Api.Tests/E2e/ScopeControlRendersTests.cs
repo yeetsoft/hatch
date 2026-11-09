@@ -53,8 +53,8 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
     /// <summary>The strip's <c>min-height</c> in <c>App.css</c>, in CSS pixels.</summary>
     private const double StripHeight = 44;
 
-    /// <summary>The trigger in either state, in the bar on the desk and in the strip on the phone: <c>ScopeControl.tsx</c> gives both states the Menu's label as its accessible name, and no other trigger has it.</summary>
-    private const string Trigger = "button.hatch-menu__trigger[aria-label=\"Projects in scope\"]";
+    /// <summary>The trigger in either state, in the bar on the desk and in the strip on the phone: <c>ScopeControl.tsx</c> gives both states the Menu's label as its accessible name (scoped, that is "Projects in scope: " and the names), and no other trigger starts with it.</summary>
+    private const string Trigger = "button.hatch-menu__trigger[aria-label^=\"Projects in scope\"]";
 
     /// <summary>The phone's strip, a sibling after the top bar in <c>App.tsx</c>, mounted only with two or more projects.</summary>
     private const string Strip = ".hatch-scope-strip";
@@ -489,6 +489,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
         await UntickAsync(harness, deadline, 2);
         await WaitForScopeAsync(harness, deadline, "AAA,BBB", "AAA, BBB - Hatch");
         await CheckScopedAsync(harness, deadline, "AAA, BBB", ["AAA", "BBB"], history, violations);
+        await HintCoversTheWholeTriggerAsync(harness, deadline, "AAA, BBB", "Projects in scope: Project AAA, Project BBB", violations);
         output.WriteLine($"screenshot: {await harness.ScreenshotAsync(deadline, "scoped-light")}");
 
         // The panel may or may not have stayed open under the tick; the case copes with either.
@@ -524,6 +525,48 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             violations.Add("walk: the page reloaded back to All (window.__noReload is gone)");
         if (m.GetProperty("history").GetInt32() != history)
             violations.Add($"walk: history.length is {m.GetProperty("history").GetInt32()} after the walk, not {history}: the scope was pushed, not replaced");
+    }
+
+    /// <summary>
+    /// The hint is the button's own <c>title</c>, so it shows over every part of the
+    /// box. A headless screenshot cannot show a native tooltip, so this stands in for
+    /// the hover: at each corner (2px in), each edge midpoint and the caret's centre,
+    /// the innermost titled element under the point must be the trigger.
+    /// </summary>
+    private async Task HintCoversTheWholeTriggerAsync(
+        E2eHarness harness, Deadline deadline, string step, string words, List<string> violations)
+    {
+        var m = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            $"probing the trigger's hint ({step})",
+            $$"""
+            () => {
+              window.scrollTo(0, 0);
+              const trigger = document.querySelector('{{Trigger}}');
+              const r = trigger.getBoundingClientRect();
+              const caret = trigger.querySelector('.hatch-menu__caret').getBoundingClientRect();
+              const l = r.left + 2, t = r.top + 2, rt = r.right - 2, b = r.bottom - 2;
+              const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+              const points = {
+                topLeft: [l, t], top: [cx, t], topRight: [rt, t], right: [rt, cy],
+                bottomRight: [rt, b], bottom: [cx, b], bottomLeft: [l, b], left: [l, cy],
+                caret: [caret.left + caret.width / 2, caret.top + caret.height / 2],
+              };
+              const missed = Object.entries(points)
+                .filter(([, [x, y]]) => document.elementFromPoint(x, y)?.closest('[title]') !== trigger)
+                .map(([name, [x, y]]) => {
+                  const hit = document.elementFromPoint(x, y);
+                  return `${name} (hit <${hit?.tagName.toLowerCase()} class="${hit?.className}">)`;
+                });
+              return { title: trigger.title, missed };
+            }
+            """);
+        output.WriteLine($"--- hint probe {step}: {m}");
+
+        if (m.GetProperty("title").GetString() != words)
+            violations.Add($"hint {step}: the trigger's title is \"{m.GetProperty("title").GetString()}\", not \"{words}\"");
+        foreach (var point in m.GetProperty("missed").EnumerateArray())
+            violations.Add($"hint {step}: the trigger's own title is not the one under its {point.GetString()} point");
     }
 
     /// <summary>Look 1 scoped, and the no-reload and replace-not-push claims, at one step of the walk.</summary>

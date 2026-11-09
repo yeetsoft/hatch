@@ -210,6 +210,7 @@ export function IssuePicker({
         aria-controls={listId}
         // The name is the label and nothing else: the face and the hint stay out of it.
         aria-label={label}
+        title={label}
         disabled={saving}
         onClick={() => (open ? close() : openList())}
         onKeyDown={(e) => {

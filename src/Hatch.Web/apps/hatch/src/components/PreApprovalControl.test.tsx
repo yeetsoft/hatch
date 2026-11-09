@@ -24,6 +24,7 @@ describe('PreApprovalControl', () => {
 
     expect(html).toContain('Express');
     expect(html).toContain('aria-label="Pre-approval: Express. Set HA-14&#x27;s pre-approval"');
+    expect(html).toContain('title="Pre-approval: Express. Set HA-14&#x27;s pre-approval"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('inherited from');
   });

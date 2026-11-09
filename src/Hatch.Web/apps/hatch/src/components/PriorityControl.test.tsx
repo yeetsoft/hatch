@@ -23,6 +23,7 @@ describe('PriorityControl', () => {
 
     expect(html).toContain('Expedited');
     expect(html).toContain('aria-label="Priority: Expedited. Set HA-14&#x27;s priority"');
+    expect(html).toContain('title="Priority: Expedited. Set HA-14&#x27;s priority"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain('inherited from');
   });
