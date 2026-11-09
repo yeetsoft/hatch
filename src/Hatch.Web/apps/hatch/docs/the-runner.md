@@ -401,6 +401,13 @@ Runners page draw, above. A supervisor restart is a new process, so it
 detects again with no code of its own; an id neither detection nor `HATCH_HAS`
 covers says why once on stderr, as `hatch: <id> not detected - <why>`.
 
+The merged set is also sent on every dispatch read - `queue`, `work <key>`
+and the loop's own pass - one `has=` per entry, and never on a hop. A move
+whose project needs a dependency this runner's set does not satisfy is folded
+for it with the board's own sentence, printed unchanged: `AER-1 needs dotnet
+10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8`. So a
+runner never claims a ticket only to find its machine cannot run it.
+
 ## What a runner refuses
 
 A ticket can be flagged dangerous: security testing, load testing, anything

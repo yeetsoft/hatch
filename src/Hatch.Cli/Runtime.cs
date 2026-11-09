@@ -208,6 +208,7 @@ public sealed record Runtime(
         SourceRevision = () => new GitSourceRevision(Root),
         NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), Settings.Tags, Settings.RefusesDangerous)
         {
+            Has = Has,
             Models = () => AdvertisedModels() ?? [],
             Agent = Adapter.Id,
         },
