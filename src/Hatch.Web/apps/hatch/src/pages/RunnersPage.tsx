@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, Field, PageHeader, Table, Text } from '@hatch/ui';
 import { orderRunner, patchRunner, withdrawOrder } from '../api/client';
 import { MomentField } from '../components/MomentField';
-import { RunnerProjectsField } from '../components/RunnerProjectsField';
 import { RunnerTagsField } from '../components/RunnerTagsField';
 import { agoPhrase } from '../lib/claim';
 import { message } from '../lib/errors';
@@ -430,23 +429,7 @@ export function BoundsForm({
           value={draft.tags}
           onChange={(next) => set('tags', next)}
         />
-        <RunnerProjectsField
-          label="Projects"
-          hint="One project key per line. Empty is every project. Does not change the merge train."
-          value={draft.projects}
-          onChange={(next) => set('projects', next)}
-        />
       </div>
-
-      <label>
-        <input
-          type="checkbox"
-          checked={draft.refusesDangerous}
-          onChange={(e) => setDraft({ ...draft, refusesDangerous: e.target.checked })}
-        />
-        Refuse dangerous work
-      </label>
-      <Text tone="muted">A flagged issue is never handed to this runner. Off is the default.</Text>
 
       {problem && <p className="text-danger">{problem}</p>}
 

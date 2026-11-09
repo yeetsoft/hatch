@@ -116,12 +116,9 @@ export function statusLine(runners: Runner[] | null, now: Date): StatusLine {
   return { ...best.line, more };
 }
 
-/** The PATCH a press sends to each target. `project` is the filter's key and
-    wins; `scope` is the fallback, copied so the body never aliases the caller's
-    array; `[]` is every project, which clears the runner's projects. */
-export function goToWorkBody(mode: 'pause' | 'go', project: string, scope: string[]): RunnerPatchRequest {
-  if (mode === 'pause') return { state: 'paused' };
-  return { state: 'running', projects: project ? [project] : [...scope] };
+/** The PATCH a press sends to each target: a state alone. */
+export function goToWorkBody(mode: 'pause' | 'go'): RunnerPatchRequest {
+  return mode === 'pause' ? { state: 'paused' } : { state: 'running' };
 }
 
 /**
@@ -129,15 +126,10 @@ export function goToWorkBody(mode: 'pause' | 'go', project: string, scope: strin
  * refused, then rejects with the first refusal's own words. A plan with no
  * targets does nothing.
  */
-export async function applyGoToWork(
-  plan: GoToWorkPlan,
-  project: string,
-  scope: string[],
-  patch: typeof patchRunner = patchRunner,
-): Promise<void> {
+export async function applyGoToWork(plan: GoToWorkPlan, patch: typeof patchRunner = patchRunner): Promise<void> {
   if (plan.mode !== 'pause' && plan.mode !== 'go') return;
 
-  const results = await Promise.allSettled(plan.targets.map((t) => patch(t.name, goToWorkBody(plan.mode, project, scope))));
+  const results = await Promise.allSettled(plan.targets.map((t) => patch(t.name, goToWorkBody(plan.mode))));
 
   const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected');
   if (failed) throw new Error(message(failed.reason));
