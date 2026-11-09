@@ -49,6 +49,11 @@ public static class HatchModule
         // the instant it is judging against.
         services.AddSingleton<Runners>();
 
+        // A session's own judgement, on the same terms as Runners beside it,
+        // and built on it rather than beside it: liveness is the same horizon
+        // a beat already draws.
+        services.AddSingleton<RunnerSessions>();
+
         // The board's own horizon, on the same terms as Runners above it.
         services.AddSingleton<DoneHorizon>();
 
