@@ -14,8 +14,11 @@ public delegate Task<ProbeResult> Probe(string file, string[] args, TimeSpan tim
 /// <summary>
 /// One tool, asked about: present with a version, present with none, or absent
 /// with one sentence of why. <c>Id</c> is a <see cref="Dependencies"/> id.
+/// <c>Via</c> is null when no login shell was offered, <c>PATH</c> when one
+/// was offered but did not answer, or the shell's own invocation (e.g.
+/// <c>zsh -lic</c>) when it did.
 /// </summary>
-public sealed record DetectorResult(string Id, bool Present, string? Version, string? Why);
+public sealed record DetectorResult(string Id, bool Present, string? Version, string? Why, string? Via = null);
 
 /// <summary>
 /// What one run of every detector saw, held so a caller can merge it against
@@ -84,6 +87,11 @@ public static class Detect
 {
     public static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>How long a login shell gets to answer, longer than <see cref="ProbeTimeout"/> because a profile with a version manager is slower than a bare <c>--version</c>.</summary>
+    public static readonly TimeSpan ShellTimeout = TimeSpan.FromSeconds(10);
+
+    private const string Marker = "hatch-probe";
+
     private const int OutputLimit = 64 * 1024;
     private const int MaxDigits = 9;
 
@@ -93,26 +101,48 @@ public static class Detect
     /// Every detector, once, concurrently: <see cref="Make"/>, <see cref="Dotnet"/>,
     /// <see cref="Node"/>, <see cref="Pwsh"/> and <see cref="Postgres"/> alongside
     /// <see cref="PlaywrightBrowsers"/>, which needs no probe. <paramref name="os"/>
-    /// is <see cref="CurrentOs"/>'s own answer. Five of the six cannot outlast one
-    /// <see cref="ProbeTimeout"/>; <see cref="Postgres"/> can take up to four, since
-    /// it tries three binaries and a Docker daemon in turn before giving up. A
-    /// probe that throws is not caught here - the five detectors above already
-    /// convert a failure into <c>Present=false</c> rather than throwing, so only
+    /// is <see cref="CurrentOs"/>'s own answer. <see cref="Make"/>, <see cref="Dotnet"/>,
+    /// <see cref="Node"/> and <see cref="Pwsh"/> ask <paramref name="env"/>'s login
+    /// shell (<see cref="ShellFor"/>) before the direct PATH probe, so one of them
+    /// can now take <see cref="ShellTimeout"/> plus <see cref="ProbeTimeout"/> (15
+    /// seconds) rather than <see cref="ProbeTimeout"/> alone; <see cref="Postgres"/>
+    /// can take up to four <see cref="ProbeTimeout"/>s, since it tries three
+    /// binaries and a Docker daemon in turn before giving up. A probe that throws
+    /// is not caught here - the five detectors above already convert a failure
+    /// into <c>Present=false</c> rather than throwing, so only
     /// <see cref="OperationCanceledException"/> from <paramref name="ct"/> is ever
     /// seen to propagate.
     /// </summary>
     public static async Task<Detection> RunAsync(string? path, string os, Func<string, string?> env, Probe probe, CancellationToken ct)
     {
-        var make = Make(path, probe, ct);
-        var dotnet = Dotnet(path, probe, ct);
-        var node = Node(path, probe, ct);
-        var pwsh = Pwsh(path, probe, ct);
+        var shell = ShellFor(os, env);
+
+        var make = Make(path, probe, ct, shell);
+        var dotnet = Dotnet(path, probe, ct, shell);
+        var node = Node(path, probe, ct, shell);
+        var pwsh = Pwsh(path, probe, ct, shell);
         var postgres = Postgres(path, probe, ct);
         var playwright = Task.FromResult(PlaywrightBrowsers(os, env));
 
         var results = await Task.WhenAll(make, dotnet, node, pwsh, postgres, playwright);
 
         return new Detection(results.OrderBy(result => result.Id, StringComparer.Ordinal).ToArray());
+    }
+
+    /// <summary>
+    /// <paramref name="env"/>'s <c>SHELL</c>, when it names a file that exists, to
+    /// ask first for a tool the direct PATH probe cannot see - a version manager's
+    /// shim, installed only by a profile a non-interactive child never reads.
+    /// Null on <c>windows</c>, since Git Bash and PowerShell could not be verified
+    /// on a real host; null too with <c>SHELL</c> unset, blank, or naming a file
+    /// that is not there.
+    /// </summary>
+    public static string? ShellFor(string os, Func<string, string?> env)
+    {
+        if (os == "windows") return null;
+
+        var shell = env("SHELL")?.Trim();
+        return string.IsNullOrEmpty(shell) || !File.Exists(shell) ? null : shell;
     }
 
     /// <summary><c>windows</c>, <c>macos</c> or <c>linux</c> - what <see cref="PlaywrightBrowsers"/> and <see cref="RunAsync"/> take as <c>os</c>.</summary>
@@ -164,17 +194,17 @@ public static class Detect
         return entries!.Select(entry => entry.Version is null ? entry.Id : $"{entry.Id}@{entry.Version}").ToArray();
     }
 
-    public static Task<DetectorResult> Make(string? path, Probe probe, CancellationToken ct) =>
-        Walk("make", ["--version"], path, probe, ParseMake, ct);
+    public static Task<DetectorResult> Make(string? path, Probe probe, CancellationToken ct, string? shell = null) =>
+        Walk("make", ["--version"], path, probe, ParseMake, ct, shell);
 
-    public static Task<DetectorResult> Dotnet(string? path, Probe probe, CancellationToken ct) =>
-        Walk("dotnet", ["--list-sdks"], path, probe, ParseDotnet, ct);
+    public static Task<DetectorResult> Dotnet(string? path, Probe probe, CancellationToken ct, string? shell = null) =>
+        Walk("dotnet", ["--list-sdks"], path, probe, ParseDotnet, ct, shell);
 
-    public static Task<DetectorResult> Node(string? path, Probe probe, CancellationToken ct) =>
-        Walk("node", ["--version"], path, probe, ParseNode, ct);
+    public static Task<DetectorResult> Node(string? path, Probe probe, CancellationToken ct, string? shell = null) =>
+        Walk("node", ["--version"], path, probe, ParseNode, ct, shell);
 
-    public static Task<DetectorResult> Pwsh(string? path, Probe probe, CancellationToken ct) =>
-        Walk("pwsh", ["--version"], path, probe, ParsePwsh, ct);
+    public static Task<DetectorResult> Pwsh(string? path, Probe probe, CancellationToken ct, string? shell = null) =>
+        Walk("pwsh", ["--version"], path, probe, ParsePwsh, ct, shell);
 
     /// <summary>
     /// Whether the Playwright browsers cache holds anything. Reads only
@@ -398,7 +428,65 @@ public static class Detect
         return kept.ToString();
     }
 
+    /// <summary>
+    /// <paramref name="shell"/> first, when not null - the incident class is a
+    /// tool a version manager's shim puts only where a login shell's profile
+    /// looks, not where the loop's own PATH probe can see it - then
+    /// <see cref="WalkPath"/> when the shell cannot answer. With <paramref
+    /// name="shell"/> null this is exactly <see cref="WalkPath"/>.
+    /// </summary>
     private static async Task<DetectorResult> Walk(
+        string name, string[] args, string? path, Probe probe, Func<string?, string?> parse, CancellationToken ct, string? shell)
+    {
+        if (shell is null) return await WalkPath(name, args, path, probe, parse, ct);
+
+        var (answer, failure) = await TryShell(name, args, shell, probe, parse, ct);
+        if (answer is not null) return answer;
+
+        var result = await WalkPath(name, args, path, probe, parse, ct);
+        return result.Present
+            ? result with { Via = "PATH", Why = $"`{Path.GetFileName(shell)} -lic` {failure}" }
+            : result with { Via = "PATH" };
+    }
+
+    /// <summary>
+    /// Asks <paramref name="shell"/> for <paramref name="name"/> with <c>-lic</c>,
+    /// a marker printed first so a banner before it and stderr noise after it
+    /// (both `RealProbe` keeps) do not reach <paramref name="parse"/>. Answers
+    /// the result when the shell found the tool, else null with one sentence of
+    /// why, for <see cref="Walk"/> to fold into its own PATH-probe <c>Why</c>.
+    /// </summary>
+    private static async Task<(DetectorResult? Answer, string? Failure)> TryShell(
+        string name, string[] args, string shell, Probe probe, Func<string?, string?> parse, CancellationToken ct)
+    {
+        var script = $"printf '{Marker}\\n'; {name} {string.Join(' ', args)}";
+        var probed = await probe(shell, ["-lic", script], ShellTimeout, ct);
+
+        if (!probed.Completed)
+            return (null, $"did not answer within {ShellTimeout.TotalSeconds:0} seconds");
+        if (probed.ExitCode != 0)
+            return (null, $"exited with code {probed.ExitCode}");
+
+        if (TextAfterMarker(probed.Output) is not { } text)
+            return (null, "printed no marker");
+
+        return (new DetectorResult(name, true, parse(text), null, $"{Path.GetFileName(shell)} -lic"), null);
+    }
+
+    /// <summary>The text after the last line that, trimmed, is exactly <see cref="Marker"/> - null with no such line.</summary>
+    private static string? TextAfterMarker(string? output)
+    {
+        var lines = (output ?? "").Split('\n');
+        var last = -1;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Trim() == Marker) last = i;
+        }
+
+        return last < 0 ? null : string.Join('\n', lines[(last + 1)..]);
+    }
+
+    private static async Task<DetectorResult> WalkPath(
         string name, string[] args, string? path, Probe probe, Func<string?, string?> parse, CancellationToken ct)
     {
         var command = $"`{name} {string.Join(' ', args)}`";
