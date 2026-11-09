@@ -4013,7 +4013,14 @@ public record RunnerDto(
     long? TokensLastHour = null,
     DateTimeOffset? ThrottledUntil = null,
     IReadOnlyList<string> Models = null!,
-    IReadOnlyList<string> Has = null!)
+    IReadOnlyList<string> Has = null!,
+    Guid? ApiKeyId = null,
+    string? Prefix = null,
+    DateTimeOffset? CreatedAt = null,
+    DateTimeOffset? LastUsedAt = null,
+    DateTimeOffset? RevokedAt = null,
+    Guid? OwnerPersonId = null,
+    IReadOnlyList<RunnerSessionDto> Sessions = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4021,7 +4028,20 @@ public record RunnerDto(
     public IReadOnlyList<string> Models { get; init; } = Models ?? [];
     public IReadOnlyList<string> Has { get; init; } = Has ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
+    public IReadOnlyList<RunnerSessionDto> Sessions { get; init; } = Sessions ?? [];
 }
+
+/// <summary>
+/// One session an api key behind a runner has open, read beside the key's
+/// own fields on <see cref="RunnerDto"/>.
+/// </summary>
+public record RunnerSessionDto(string Where, DateTimeOffset LastSeenAt);
+
+/// <summary>
+/// A freshly minted runner key, answered once at creation - the only time
+/// the secret itself is readable.
+/// </summary>
+public record RunnerMintedDto(RunnerDto Runner, string Secret);
 
 /// <summary>
 /// Where a runner's own reported build sits relative to the board's -

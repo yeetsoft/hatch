@@ -776,8 +776,9 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner heard from lately that the caller may see, most recent first |
+| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
 | GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
+| GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, tags, projects, and `refusesDangerous` |
 | POST | `/runners/{name}/order` | **person** | Orders this runner to work a named ticket, or to pass on its next pick |

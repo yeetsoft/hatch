@@ -307,7 +307,7 @@ export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatc
 // There is no heartbeat here. A browser is not a runner, and the only caller
 // that could ever post one is the loop itself.
 
-export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners?live=true');
 /** Every live runner's name, unscoped. */
 export const getRunnerNames = () => fetchJson<string[]>('/api/hatch/runners/names');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>

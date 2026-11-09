@@ -129,7 +129,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// what that means.
     /// </summary>
     public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners", ct) ?? [];
+        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners?live=true", ct) ?? [];
 
     /// <summary>
     /// Every live runner's name and nothing else - what
