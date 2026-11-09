@@ -1732,6 +1732,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// The tags are still sent every beat, but the server takes them only on a
     /// row's first-ever beat; after that the row is the board's, the answer
     /// carries it back, and <see cref="Fold"/> adopts it.
+    /// <c>Has</c> is sent on every beat, unconditionally, empty list included,
+    /// so a machine with nothing clears whatever an older start advertised.
     /// </remarks>
     private async Task<RunnerInstructionDto?> BeatAsync(
         Chatter line, string? under, bool mine, Tally tally, bool once, CancellationToken ct)
@@ -1759,6 +1761,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 UntilAt: tally.UntilAt,
                 Remotes: runtime.Checkouts.Where(c => c.Remote is not null).Select(c => c.Remote!).ToList(),
                 Tags: runtime.Settings.Tags,
+                Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
                 Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,

@@ -537,7 +537,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             $$"""
             () => ({
               title: document.title,
-              chips: [...document.querySelectorAll('{{Chip}}')].map(c => ({ text: c.textContent.trim(), hasMark: c.firstElementChild !== null })),
+              chips: [...document.querySelectorAll('{{Chip}}')].map(c => ({ text: c.textContent.trim(), hasMark: c.querySelector('.hatch-project-mark') !== null })),
               triggerScoped: document.querySelector('{{Trigger}}').classList.contains('hatch-scope-control--scoped'),
               reload: window.__noReload ?? null,
               history: history.length,
@@ -552,10 +552,10 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             for (var i = 0; i < keys.Length; i++)
             {
                 var text = chips[i].GetProperty("text").GetString() ?? "";
-                if (!text.Contains(keys[i], StringComparison.Ordinal))
-                    violations.Add($"scoped {step}: chip {i} reads \"{text}\" and does not carry {keys[i]}");
-                if (!chips[i].GetProperty("hasMark").GetBoolean())
-                    violations.Add($"scoped {step}: chip {i} ({keys[i]}) has no project mark");
+                if (text != keys[i])
+                    violations.Add($"scoped {step}: chip {i} reads \"{text}\", not exactly {keys[i]}");
+                if (chips[i].GetProperty("hasMark").GetBoolean())
+                    violations.Add($"scoped {step}: chip {i} ({keys[i]}) draws a project mark inside a same-colour chip");
             }
 
         if (!m.GetProperty("triggerScoped").GetBoolean())

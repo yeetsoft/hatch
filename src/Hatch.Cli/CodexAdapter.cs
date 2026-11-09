@@ -166,6 +166,9 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
     public virtual UsageLimit.Recognised? RecogniseLimit(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         UsageLimit.RecogniseCodex(said, endedAt, runnerZone);
 
+    public virtual ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
+        ModelRefusal.Codex(said);
+
     /// <summary>
     /// The binary to spawn, which is only known once <see cref="CanSpawn"/> has
     /// said there is one. A caller that skipped the question is a bug, and
