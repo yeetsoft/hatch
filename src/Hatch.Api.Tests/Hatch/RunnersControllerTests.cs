@@ -3006,6 +3006,17 @@ public class RunnersControllerTests
         Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
     }
 
+    [Fact]
+    public async Task Create_NoOwnerNamed_AndNobodyIsCalling_BelongsToNobody()
+    {
+        var h = await NewAsync(nobody: true);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.Null(minted.Runner.OwnerPersonId);
+        Assert.Null(Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -3403,7 +3414,7 @@ public class RunnersControllerTests
         public async Task<IActionResult> RevokeAsync(string name) => await Runners.RevokeRunner(name, default);
 
         public async Task<IActionResult> SetOwnerAsync(string name, Guid? personId) =>
-            await Runners.SetRunnerOwner(name, new ApiKeyOwnerRequest(personId), default);
+            await Runners.SetRunnerOwner(name, new RunnerOwnerRequest(personId), default);
 
         public async Task<RunnerDto> OrderAsync(string name, RunnerOrderRequest request) =>
             Value(await Runners.PostRunnerOrder(name, request, default));

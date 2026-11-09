@@ -167,7 +167,7 @@ internal sealed class StubAuthService(EfAuthGrant? grant = null) : IAuthService
 /// A caller a test can set directly - the person, the key, or the local actor -
 /// without building a real <see cref="Microsoft.AspNetCore.Http.HttpContext"/>.
 /// For a controller or service that just needs "who is asking" answered a
-/// fixed way, the way <see cref="ApiKeysController"/> and
+/// fixed way, the way <c>RunnersController</c> and
 /// <see cref="Hatch.Api.Services.Auth.ActorDirectory.PrincipalAsync"/>'s
 /// callers do.
 /// </summary>
