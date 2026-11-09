@@ -480,7 +480,15 @@ public sealed class Claim : IAsyncDisposable
             // Not through the throwing lane: a release that was refused is a
             // lease that has already gone, which is the state a DELETE was
             // asking for.
-            await _client.Send(HttpMethod.Delete, path, null, budget.Token);
+            var answer = await _client.Send(HttpMethod.Delete, path, null, budget.Token);
+
+            // A Hatch too old to know "unservable" 400s the value it has never
+            // heard of. Asked again with the token alone, it gives the lease
+            // back as any plain release does; only this outcome is retried,
+            // since a 400 on any other is the endpoint refusing something
+            // else. Otherwise the claim would sit out its lease.
+            if (answer.Status == HttpStatusCode.BadRequest && outcome == ClaimOutcomes.Unservable)
+                await _client.Send(HttpMethod.Delete, $"/api/hatch/issues/{Key}/claim?token={Token}", null, budget.Token);
         }
         catch (OperationCanceledException)
         {

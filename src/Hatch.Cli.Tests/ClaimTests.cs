@@ -117,6 +117,54 @@ public sealed class ClaimTests
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
+    /// <summary>A Hatch too old to know the value 400s it; the lease is still given back, by the plain release.</summary>
+    [Fact]
+    public async Task An_unservable_release_a_hatch_400s_is_asked_again_without_an_outcome()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Unservable);
+
+        var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
+        Assert.Equal(2, released.Count);
+        Assert.Contains("outcome=unservable", released[0].Query, StringComparison.Ordinal);
+        Assert.Contains(Token.ToString(), released[1].Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("outcome", released[1].Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_unservable_release_a_hatch_accepts_is_sent_once()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Unservable);
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
+    [Fact]
+    public async Task A_dropped_release_answered_400_is_not_retried()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped);
+
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+    }
+
     [Fact]
     public async Task A_release_names_worked_the_same_way()
     {

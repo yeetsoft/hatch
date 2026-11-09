@@ -324,10 +324,11 @@ An open question on the ticket is itself the flag, so the second stall on a
 ticket that already has one only comments. A session that asked a question is
 no stall, and neither is one that recused: `hatch recuse` ends the increment
 with the ticket released `recused`, free for another runner, with no comment
-and no mark of its own. Nor is running out of usage, being preempted, or a
-skip with `k`: none counts toward a stall or toward the three failed
-increments below, and a session stopped by a hard limit published what it
-left.
+and no mark of its own. Nor is running out of usage, being preempted, a model
+the account cannot spawn, or a skip with `k`: none counts toward a stall or
+toward the three failed increments below, and a refused session is released
+`unservable`, with no stall, mark or question. A session stopped by a hard
+limit published what it left.
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
 
 Losing the lease is the one exception that cuts the other way: a takeover or

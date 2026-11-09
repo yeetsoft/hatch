@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Hatch.Cli.Tests;
 
@@ -20,9 +21,10 @@ public sealed class PickerTests
     /// </summary>
     private static Picker MakePicker(
         Harness h, IReadOnlyList<CheckoutEntry>? checkouts = null, string? standingRoot = null,
-        string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null) =>
+        string agent = "claude", ModelFamilies? families = null, IAgentAdapter? adapter = null,
+        ModelNarrowing? narrowing = null, TimeProvider? clock = null) =>
         new(h.Board, "test:/checkout", h.Say, checkouts ?? h.Runtime.Checkouts, standingRoot ?? h.Root, null,
-            agent: agent, families: families, adapter: adapter);
+            agent: agent, families: families, adapter: adapter, narrowing: narrowing, clock: clock);
 
     /// <summary>Claude's family and one more, so a runner can be the other agent.</summary>
     private static readonly ModelFamilies TwoAgents = new([
@@ -343,6 +345,124 @@ public sealed class PickerTests
 
         Assert.Equal(Pick.Hopped, picked.Outcome);
         Assert.Null(picked.Skipped);
+    }
+
+    private const string Narrowed =
+        "runs on opus - this runner's claude no longer offers it for the rest of this run";
+
+    private static ModelNarrowing OpusNarrowed()
+    {
+        var narrowing = new ModelNarrowing();
+        narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
+        return narrowing;
+    }
+
+    [Fact]
+    public async Task A_row_whose_model_is_narrowed_is_skipped_before_it_is_claimed()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "opus"), Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal("AER-2", picked.Work!.Issue.Key);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Equal([$"  AER-1  {Narrowed}"], picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_named_row_whose_model_is_narrowed_is_declined_and_nothing_is_claimed()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+
+        var picked = await MakePicker(h, narrowing: OpusNarrowed()).NamedAsync("AER-1", default, Harness.Beat);
+
+        Assert.Equal($"AER-1 - {Narrowed}", picked.Declined);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_whose_only_clear_row_is_narrowed_is_skipped_and_nothing_is_claimed()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", model: "opus") });
+
+        var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Skipped, picked.Outcome);
+        Assert.Equal([$"  AER-1  {Narrowed}"], picked.Skipped);
+        Assert.Empty(picked.Busy);
+        Assert.Null(picked.Work);
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path.EndsWith("/claim", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_hop_row_on_a_narrowed_model_is_not_skipped()
+    {
+        using var h = new Harness();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1", hop: true, model: "opus") });
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Hopped, picked.Outcome);
+        Assert.Null(picked.Skipped);
+    }
+
+    [Fact]
+    public async Task A_row_with_no_model_is_not_skipped_by_any_narrowing()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, narrowing: OpusNarrowed()).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Null(picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task A_narrowing_that_has_run_out_does_not_skip()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var start = DateTimeOffset.UtcNow;
+        var clock = new FakeTimeProvider(start);
+        var narrowing = new ModelNarrowing();
+        narrowing.Narrow("opus", start.AddHours(1), start);
+        clock.Advance(TimeSpan.FromHours(2));
+
+        h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-2", model: "opus") });
+        h.Wire.Reply("POST", Claimed, HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2"));
+        h.Wire.Reply("DELETE", Claimed, HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h, narrowing: narrowing, clock: clock).PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Null(picked.Skipped);
+
+        await picked.Claim!.ReleaseAsync();
     }
 
     [Fact]
