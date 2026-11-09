@@ -573,6 +573,44 @@ public sealed class WorkCommandTests
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// HA-1990's mirror of <see cref="A_preemption_pushes_and_writes_one_comment_through_hatch_work_too"/> -
+    /// a model refusal takes the same push-then-one-comment path through
+    /// <c>hatch work</c> too. Nothing to assert about narrowing: this door
+    /// has no beat, and never calls <see cref="ModelNarrowing.Narrow"/>.
+    /// </summary>
+    [Fact]
+    public async Task A_model_refusal_pushes_and_writes_one_comment_through_hatch_work_too()
+    {
+        using var h = new Harness();
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1") with { Playbook = Fixtures.Playbook(model: "fable") });
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        Bookkeeping(h, "AER-1");
+
+        var runtime = h.Runtime with { Adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised(null, null) } };
+        h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke("FAKE-RESULT fake-session-1|Did a fake thing|In fake detail.|7|2.5|45000");
+            return Task.FromResult(new SessionResult(1, ""));
+        };
+
+        Assert.Equal(0, await new WorkCommand(runtime).RunAsync(["AER-1"], default));
+
+        Assert.Contains(h.Workspace.Calls, c => c.StartsWith("push ", StringComparison.Ordinal));
+
+        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comment = Assert.Single(comments);
+        Assert.Contains("fable", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("no longer offers", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
+        Assert.Contains("fake-agent --resume fake-session-1", comment.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain(comments, c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task With_no_CLI_to_spawn_it_refuses_before_it_reads_the_board()
     {

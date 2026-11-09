@@ -351,6 +351,9 @@ try
             Controls = controls,
         }.WithGit();
 
+        board.Models = () => runtime.AdvertisedModels() ?? [];
+        board.Agent = adapter.Id;
+
         return command switch
         {
             "work" => await new WorkCommand(runtime).RunAsync(rest, cancelling.Token),
@@ -370,6 +373,18 @@ try
     if (command == "queue")
         queueDetection = await Detect.RunAsync(
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+
+    // `queue` and `next` read what a pass would, so they declare what this
+    // runner can spawn the way `work` does - without a Runtime, since they spawn
+    // nothing. An agent id that does not resolve declares nothing: `work` is
+    // where a bad one is refused.
+    if (command is "queue" or "next"
+        && Agents.Resolve(settings.Agent, settings, null, out _, out var readAdapter, out _))
+    {
+        var narrowing = new ModelNarrowing();
+        board.Models = () => Runtime.Advertised(settings, readAdapter, narrowing, TimeProvider.System.GetUtcNow()) ?? [];
+        board.Agent = readAdapter.Id;
+    }
 
     var cli = new Cli(board, say, new Input(), settings, runnerName)
     {
