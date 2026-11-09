@@ -99,11 +99,10 @@ hatch_ak_…`.
 
 - **Where it is minted.** **Manage → API keys**, admin only — no key may
   mint, revoke or re-own a key, only a person at that screen. The form takes
-  **Name** ("What the audit trail will call it"), **Scopes** ("What the key
-  may reach. A key with none reaches nothing.") and **Belongs to** ("Whose
+  **Name** ("What the audit trail will call it") and **Belongs to** ("Whose
   tickets this key's `--mine` will reach"), then **Mint key**. The secret is
   shown once, on the page, and never again.
-- **One scope, `hatch`.** Everything under `/api/hatch`, less the routes that
+- **What a key reaches.** Everything under `/api/hatch`, less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
   way. Among them: a ticket's assignee, priority, hold and pre-approval; its
@@ -152,9 +151,7 @@ to sign-in instead.
       at every level.
     - `not_admin` — the person's role is below what the route asks for.
     - `no_person` — an enrolled device nobody has claimed.
-    - `key_not_accepted` — a key reached a route that takes no key at all.
-    - `scope_mismatch` — a key reached a route that takes a scope this key does
-      not carry.
+    - `key_not_accepted` — a key reached a route that takes no key.
   - **A project or person-only refusal** is a bare sentence rather than a
     code:
     - `only an owner or approver of <KEY> may move work into "<column>"`
