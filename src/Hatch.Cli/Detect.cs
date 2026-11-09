@@ -16,7 +16,7 @@ public delegate Task<ProbeResult> Probe(string file, string[] args, TimeSpan tim
 /// with one sentence of why. <c>Id</c> is a <see cref="Dependencies"/> id.
 /// <c>Via</c> is null when no login shell was offered, <c>PATH</c> when one
 /// was offered but did not answer, or the shell's own invocation (e.g.
-/// <c>zsh -lic</c>) when it did.
+/// <c>zsh -l -i +m</c>) when it did.
 /// </summary>
 public sealed record DetectorResult(string Id, bool Present, string? Version, string? Why, string? Via = null);
 
@@ -445,22 +445,24 @@ public static class Detect
 
         var result = await WalkPath(name, args, path, probe, parse, ct);
         return result.Present
-            ? result with { Via = "PATH", Why = $"`{Path.GetFileName(shell)} -lic` {failure}" }
+            ? result with { Via = "PATH", Why = $"`{Path.GetFileName(shell)} -l -i +m` {failure}" }
             : result with { Via = "PATH" };
     }
 
     /// <summary>
-    /// Asks <paramref name="shell"/> for <paramref name="name"/> with <c>-lic</c>,
+    /// Asks <paramref name="shell"/> for <paramref name="name"/> with <c>-l -i +m</c>,
     /// a marker printed first so a banner before it and stderr noise after it
-    /// (both `RealProbe` keeps) do not reach <paramref name="parse"/>. Answers
-    /// the result when the shell found the tool, else null with one sentence of
-    /// why, for <see cref="Walk"/> to fold into its own PATH-probe <c>Why</c>.
+    /// (both `RealProbe` keeps) do not reach <paramref name="parse"/>. <c>+m</c>
+    /// turns job control off, overriding an interactive shell's default of
+    /// turning it on and claiming the terminal. Answers the result when the
+    /// shell found the tool, else null with one sentence of why, for
+    /// <see cref="Walk"/> to fold into its own PATH-probe <c>Why</c>.
     /// </summary>
     private static async Task<(DetectorResult? Answer, string? Failure)> TryShell(
         string name, string[] args, string shell, Probe probe, Func<string?, string?> parse, CancellationToken ct)
     {
         var script = $"printf '{Marker}\\n'; {name} {string.Join(' ', args)}";
-        var probed = await probe(shell, ["-lic", script], ShellTimeout, ct);
+        var probed = await probe(shell, ["-l", "-i", "+m", "-c", script], ShellTimeout, ct);
 
         if (!probed.Completed)
             return (null, $"did not answer within {ShellTimeout.TotalSeconds:0} seconds");
@@ -470,7 +472,7 @@ public static class Detect
         if (TextAfterMarker(probed.Output) is not { } text)
             return (null, "printed no marker");
 
-        return (new DetectorResult(name, true, parse(text), null, $"{Path.GetFileName(shell)} -lic"), null);
+        return (new DetectorResult(name, true, parse(text), null, $"{Path.GetFileName(shell)} -l -i +m"), null);
     }
 
     /// <summary>The text after the last line that, trimmed, is exactly <see cref="Marker"/> - null with no such line.</summary>
