@@ -8706,7 +8706,7 @@ public class WorkControllerTests
     }
 
     [Fact]
-    public async Task PreApproved_WithTheSettingOn_IsStillAnApproveHopIntoTheMergeColumn()
+    public async Task PreApproved_WithTheSettingOnAndACheckRow_DispatchesAsTheCheckNotTheApproveHop()
     {
         var h = await NewAsync();
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
@@ -8716,6 +8716,35 @@ public class WorkControllerTests
         h.Db.Playbooks.Add(Playbook(h.Review, approved.Id, "story", "sonnet", isCheck: true));
         await h.Db.SaveChangesAsync();
         var issue = await h.FileAsync("story", "ready to merge, and a check also covers it", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entry.Blocked);
+        Assert.False(entry.Hop);
+        Assert.Null(entry.HopKind);
+        Assert.Equal(approved.Id, entry.ToStatus!.Id);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+        Assert.True(work.Playbook!.IsCheck);
+        Assert.False(work.Hop);
+
+        var result = await h.Work.HopWork(Key(issue), null, null, null, default);
+        var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
+        Assert.Contains("not a hop", (string)refusal.Value!);
+    }
+
+    [Fact]
+    public async Task PreApproved_WithTheSettingOnAndNoCheckRow_IsStillAnApproveHopIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "ready to merge, and nothing covers the move", h.Review);
         await h.PreApprovedAsync(issue);
         await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
         await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
