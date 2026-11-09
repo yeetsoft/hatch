@@ -24,6 +24,8 @@ The sections, in order:
   and where Create runner sits.
 - **The detail** — the five sections, grouped by who writes each field, what
   each saves, and where its refusal lands.
+- **Creating, rotating and revoking** — the create modal, the one-time secret
+  panel, and the two confirmations.
 
 ## Routes and layout
 
@@ -347,3 +349,100 @@ under {under}", linked, when set.
 Omitted entirely when empty, by the renders-nothing discipline. A `<Table
 scroll>`: Where, Kind, Started, Ended, Runs, Spent, Tokens; newest first, at
 most 20 — the server's own retention (HA-1937); no controls.
+
+## Creating, rotating and revoking
+
+The three writes that touch the key itself, and the one panel that shows a
+secret. Each decision is stated once here; the buttons that open the two
+confirmations are placed by [Identity and key](#identity-and-key), and who may
+press them by [Who sees what](#who-sees-what).
+
+### Create
+
+`Create runner` opens a `Modal` at its default width, the actions in its
+`footer`. The form has two fields and no more.
+
+- **`Field` Name** is prefilled from `GET /api/hatch/runners/suggest-name`, with
+  the hint "A name from the cast list; yours to change. It is the runner's
+  identity and cannot be renamed". A `Suggest another` secondary button beside
+  it asks again and replaces what is in the field.
+- **`Field` Owner** is a `<select>` of people and "nobody", defaulting to the
+  caller's own person, as
+  [`ApiKeysPage.tsx`](../src/Hatch.Web/apps/hatch/src/pages/ApiKeysPage.tsx)
+  does with `getAuthMe().personId`.
+- **There are no tags here.** They are set on the detail afterwards (see [What
+  it may work](#what-it-may-work)).
+- **The footer is Cancel and Create.** Create is `variant="primary"` with
+  `loading`, and is disabled while the trimmed name is empty or longer than
+  `MAX_NAME_LENGTH` (120, today in
+  [`lib/apiKeys.ts`](../src/Hatch.Web/apps/hatch/src/lib/apiKeys.ts)). The
+  constant is named, not the file, so the sentence survives the move to
+  `lib/runners.ts`. The Name input is reached by Tab: the modal focuses its
+  panel, as every `Modal` does.
+- **A refusal** (409 duplicate, 400, 403) is a `text-danger` line in the modal,
+  above the footer. The form keeps what was typed and the modal stays open.
+- **On success** the modal closes, the page navigates to `/runners/:name`, and
+  the secret panel shows there.
+
+The call is `POST /api/hatch/runners` (HA-1936), which answers the new secret
+once, with `Cache-Control: no-store`. A revoked name stays taken: creating
+another runner needs another name, which is the server's 409.
+
+### The secret panel
+
+A `Card` at the top of that runner's detail, above Identity and key, on the
+phone as on the desk. Its heading is "New secret for {name}". Its text is
+"Shown once. Copy it now: it is kept nowhere you can read it, and reloading this
+page loses it."
+
+Then two `Command`s, in this order:
+
+1. `hatch config --origin {window.location.origin}`
+2. `hatch config --key {secret}`
+
+The key goes second because it needs an origin set first, as `RunnerPage` does
+today. Under them: "Or run `hatch config` and paste the key at the prompt, which
+keeps it out of your shell history." `Done` dismisses the panel.
+
+- **The secret lives only in the layout's `useState`.** It is never in storage,
+  never in the URL, never in router state.
+- **It is cleared by `Done`, by leaving the `/runners` routes, and by a
+  reload.** Nothing brings it back, because nothing else holds it.
+- **Rotation reuses the panel**, with one more sentence: "The old secret stopped
+  working when this was made."
+
+### Rotate
+
+`Modal` "Rotate {name}'s key?". Body: "A new secret is made now and the current
+one stops working at once. Every loop using it is refused on its next call until
+it is given the new secret. The name, owner, tags, bounds, sessions and history
+carry over. The new secret is shown once."
+
+- **The footer is `Leave it` and `Rotate key`.** `Leave it` is secondary and
+  first. `Rotate key` is `variant="primary"` with `loading`: a rotation is
+  recoverable, so it is not drawn as danger.
+- **A failure draws `text-danger` inside the modal,** which stays open.
+- **On success the modal closes** and the secret panel shows the new secret.
+
+The call is `POST /api/hatch/runners/{name}/rotate` (HA-1943), which answers the
+new secret once, as create does.
+
+### Revoke
+
+`Modal` "Revoke {name}?". Body: "Anything using this key is refused from the
+next call, and its sessions end. The runner, its tags, history and attribution
+stay, marked revoked, so the audit trail can still name it. To replace a leaked
+secret and keep the runner working, rotate instead."
+
+- **The footer is `Leave it` and `Revoke`.** `Leave it` is secondary and the
+  first button in the footer, so it is the first Tab stop: the modal focuses its
+  panel and no control in it, so Enter never lands on `Revoke`. `Revoke` is
+  `variant="danger"` with `loading`.
+- **A failure draws `text-danger` inside the modal,** which stays open.
+- **There is no typed-name confirmation,** consistent with today's page. The
+  body's last sentence, which points at rotate, is the guard against revoking
+  when a leak was the reason.
+
+The call is `POST /api/hatch/runners/{name}/revoke` (HA-1936). That revoking
+ends a runner's live sessions is taken from this design, not from either brief;
+if the revoke work lands differently, the body is the sentence to change.
