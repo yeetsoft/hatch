@@ -194,6 +194,22 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         Client.WriteAsync<PlaybookFileDto>(HttpMethod.Put, "/api/hatch/playbook-files", request, ct);
 
     /// <summary>
+    /// Every dependency file verdict the board holds, and the path it is
+    /// reading at - read once per poll and matched locally against each
+    /// checkout, the same as <see cref="PlaybookFilesAsync"/>.
+    /// </summary>
+    public async Task<DependencyFilesDto> DependencyFilesAsync(CancellationToken ct) =>
+        await Client.GetAsync<DependencyFilesDto>("/api/hatch/dependency-files", ct) ?? new DependencyFilesDto("", []);
+
+    /// <summary>
+    /// What one repository's trunk now holds for the dependency file path -
+    /// see <see cref="DependencyFileRequest"/>. The remote is spelled the way
+    /// this runner has it; the board canonicalises it.
+    /// </summary>
+    public Task<DependencyFileDto?> DependencyFileAsync(DependencyFileRequest request, CancellationToken ct) =>
+        Client.WriteAsync<DependencyFileDto>(HttpMethod.Put, "/api/hatch/dependency-files", request, ct);
+
+    /// <summary>
     /// Files the bug HA-95's button would have filed for this trunk build. A
     /// key sends no body - express, the priority and the column are the
     /// project's own standing permission (HA-792), not this call's to name. A
