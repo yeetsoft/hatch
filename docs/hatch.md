@@ -46,6 +46,8 @@ the next heading of the same level and stop.
     tip come to?
   - [Playbook file](#playbook-file) - What does a repository's trunk hold at
     `.hatch/playbooks.yaml`?
+  - [Dependency file](#dependency-file) - What does a repository's trunk hold at
+    `.hatch/dependencies.json`?
   - [Comment, question and answer](#comment-question-and-answer) - Which
     comments are more than notes, and how are they bound?
   - [Search](#search) - How are issues, comments and work logs searched?
@@ -2611,6 +2613,61 @@ off every checkout's trunk that has an origin, whether or not anything of its
 is in review and whether or not any project reads it, so a quiet board
 still has a current copy on the page.
 
+### Dependency file
+
+`EfHatchDependencyFile` — `Remote`, `Canonical`, `Trunk`, `Sha`, `State`, `Hash`,
+`Entries` (`jsonb`), `Problem`, `LastGoodSha`, `LastGoodHash`, `Url`, `CheckedAt`,
+`Runner`, `CheckedBy`. What a repository's trunk holds at
+`.hatch/dependencies.json`, as of the last time a runner's poll checked — the
+entries the file parsed to, or the one sentence saying why it did not. Like a
+[playbook file](#playbook-file), a dependencies file is a fact about a
+repository's trunk and nobody's issue, so it is not keyed on one. An entry is
+an id — one of the dependencies Hatch knows, from `Dependencies.Default` — and
+an optional `version`, a string of one to three dotted whole numbers.
+
+**One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
+reason a playbook file's own key is: two projects may bind one repository with
+different base branches, and a single row would let one project's read
+overwrite the other's.
+
+`State` is one of `parsed`, `invalid` or `absent`. `parsed` means the bytes at
+the path were valid UTF-8, valid JSON, and every entry in them validated
+against `DependencyDeclaration.Parse` — an id Hatch knows, declared once, with
+a version in the shape it expects — `Entries` holds what they resolved to.
+`invalid` means the bytes exist but failed one of those checks — a bad shape,
+a duplicate id, an id Hatch does not know, a malformed version — and `Problem`
+carries the one sentence saying which, with the entry's position where the
+parser found one. `absent` means the trunk has no file at that path at all.
+`Hash`, the file's SHA-256 in lower hex, is set whenever the bytes were read
+at all — `parsed` or `invalid` — and only null for `absent`; `Entries` is set
+only for `parsed`, and `Problem` only for `invalid`.
+
+`LastGoodSha` and `LastGoodHash` remember the most recent sha and hash that
+parsed, so an `invalid` row's card can still say what to roll back to. A write
+that parses clears both — the row is its own good copy now. A write that
+fails to parse, immediately following one that parsed, copies that superseded
+sha and hash into them before the row is overwritten; a second `invalid`
+write in a row, with no parse between, leaves them exactly as they were. A
+write that finds the file `absent` leaves them untouched too — whatever was
+last remembered good stays remembered until a parse clears it or a fresh
+transition out of `parsed` updates it.
+
+`PUT /api/hatch/dependency-files` writes a row and a key may, for the reason
+it may write a playbook file — the caller is a runner, reporting what it
+read, not proposing it. `{ remote, trunk, sha, content?, url?, runner }`,
+`content` the blob's exact bytes, base64-encoded, and absent for a trunk with
+nothing at the path. The route hashes and parses the content itself rather
+than trusting a client-sent verdict, and refuses in the same shape the
+playbook file's write does — an uncanonicalisable remote, an empty or
+over-long trunk, sha or runner — plus content that is not valid base64 or
+over the parser's own size limit; an unsafe or over-long `url` is not
+refused, it is simply stored as null. **No event, and no question**: there
+is no issue to write either on, and a bad dependencies file is this row's
+own state, not a stall a session is asked about. `GET /api/hatch/dependency-files`
+answers every stored row, ordered by canonical then trunk, with the path
+itself (`.hatch/dependencies.json`) alongside them, each entry's id resolved
+to its current label.
+
 ### Comment, question and answer
 
 `EfHatchComment` — `IssueId`, `Author`, `Body` (markdown), `Kind`, `AnswersId`,
@@ -3419,6 +3476,8 @@ AcceptScope = "hatch")]` except where noted. Issue routes take the display key (
 | `/trunk-builds/{id}/bug` | POST | No class-level scope, the way expedite is cut, but the method itself takes the `hatch` scope, gated at runtime rather than by the attribute, since the attribute cannot vary by project — see [the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut). Files the bug a failing trunk's *File a bug* button asks for (HA-95), in the project that binds the repository (lowest project id first, else the lowest-id project that binds it at all) — see [what is waiting on you](#what-is-waiting-on-you). A person's own call is unchanged: expedited, no pre-approval, the board's first column, each overridable in the body. **A key's priority, pre-approval level and column come from the project instead, never from the body** — its own `AutoHealBugPriority`, `AutoHealBugPreApproval` and `AutoHealBugStatusId`, written only through the owner-only `PUT .../landing`. `409` once the row is no longer failing; `400` naming the Projects page when no project binds it, or when a key's project has auto-filing off; a second call answers the bug already filed rather than filing another |
 | `/playbook-files` | GET | Every stored [playbook file](#playbook-file), ordered by canonical then trunk, with the path itself alongside them — what the Playbooks page reads once a load, and what a runner's poll reads once a poll to know whether it has already put this sha |
 | `/playbook-files` | PUT | Keeps a runner's [playbook file](#playbook-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
+| `/dependency-files` | GET | Every stored [dependency file](#dependency-file), ordered by canonical then trunk, with the path itself alongside them, each entry's id resolved to its current label |
+| `/dependency-files` | PUT | Keeps a runner's [dependency file](#dependency-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict via `DependencyDeclaration.Parse`. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
 | `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
