@@ -186,6 +186,34 @@ run](the-runner#when-it-will-not-run).
   checkout its own with `hatch config --here --workspace <dir>`, or stop
   that loop. See [several runners on one machine](the-runner#several-runners-on-one-machine).
 
+## A ticket sits in Breakdown and no runner picks it up
+
+- **The column runs on a model no live runner offers.** `fable` is the
+  example here and the Breakdown column's default; any alias or pinned id
+  behaves the same. `hatch queue` says which: *HA-12 in Breakdown runs on
+  fable - this runner's claude does not offer it*, and closes with *3 issues
+  wait for a runner that offers fable*. The attention panel's **Waiting on a
+  runner** says the same, board-wide: [watching the
+  loop](watching-the-loop#what-is-waiting-on-you).
+- **Fix it from either end.** Start a runner whose account has the model, or
+  put the playbook on a tier somebody offers - by a proposal, never an edit:
+  [playbooks](playbooks#model-and-effort). A runner that finds out the hard
+  way narrows the model itself, and the increment ends released `unservable`,
+  which is not a stall: [when it will not
+  run](the-runner#when-it-will-not-run).
+
+## A ticket stalls on a missing toolchain
+
+- **The repository builds with tools the runner's machine lacks, and nothing
+  said so.** Declare them in `.hatch/dependencies.json`: [what a repository
+  needs](the-runner#what-a-repository-needs). From the next poll the board
+  folds the project's development steps for every runner that lacks them, by
+  name - *HA-12 needs dotnet 10 (acme/repo's .hatch/dependencies.json) - this
+  runner has dotnet 8* - and stops sending the ticket there.
+- **A need the list cannot say is a runner tag.** See [what a runner
+  advertises](the-runner#what-a-runner-advertises). A runner with a tool
+  detection cannot see declares it with `HATCH_HAS`: [has](the-runner#has).
+
 ## The Runner page offers no downloads
 
 - **This build published no runner binaries.** An image built before the
