@@ -3760,6 +3760,21 @@ public record PlaybookFileDto(
 
 public record PlaybookFilesDto(string Path, IReadOnlyList<PlaybookFileDto> Files);
 
+/// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
+/// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>
+public record DependencyFileRequest(
+    string Remote, string Trunk, string Sha, string? Content, string? Url, string Runner);
+
+/// <summary>DeclaredDependency with its id resolved to the current label - the shape a client reads.</summary>
+public record DependencyFileEntryDto(string Id, string Label, string? Version);
+
+public record DependencyFileDto(
+    long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
+    IReadOnlyList<DependencyFileEntryDto> Entries, string? Problem, string? LastGoodSha, string? LastGoodHash,
+    string? Url, DateTimeOffset CheckedAt, string Runner, string CheckedBy);
+
+public record DependencyFilesDto(string Path, IReadOnlyList<DependencyFileDto> Files);
+
 /// <summary>
 /// What the board would like a runner to do: carry on, hold, or finish and
 /// stop.

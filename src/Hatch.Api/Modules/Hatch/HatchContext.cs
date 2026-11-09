@@ -34,6 +34,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchLanding> Landings => Set<EfHatchLanding>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
     public DbSet<EfHatchPlaybookFile> PlaybookFiles => Set<EfHatchPlaybookFile>();
+    public DbSet<EfHatchDependencyFile> DependencyFiles => Set<EfHatchDependencyFile>();
     public DbSet<EfHatchVerdict> Verdicts => Set<EfHatchVerdict>();
 
     /// <summary>
@@ -444,6 +445,11 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
         modelBuilder.Entity<EfHatchPlaybookFile>(e =>
         {
             e.Property(f => f.Rows).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<EfHatchDependencyFile>(e =>
+        {
+            e.Property(f => f.Entries).HasColumnType("jsonb");
         });
 
         // Search documents, the same STORED-generated-column shape
