@@ -26,9 +26,10 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners) : ControllerBase
+    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners,
+    IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
 {
-    private readonly Dispatch _dispatch = new(db, actors, claims, time);
+    private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions);
 
     /// <summary>
     /// The issue an unattended run should pick up: the top of the rightmost
@@ -330,12 +331,17 @@ public class WorkController(
                     "ancestorKey may not be given alongside it");
             }
 
-            var dropBefore = runners.DropBefore(time.GetUtcNow());
-            var row = await db.Runners.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Name == asRunner && r.LastSeenAt >= dropBefore, ct);
-            if (row is null) return BadRequest($"there is no runner named {asRunner}");
+            var now = time.GetUtcNow();
+            var joined = keys is not null
+                ? await Runner.JoinAsync(db, keys, ct)
+                : await db.Runners.AsNoTracking().Select(r => new Runner(null, null, r)).ToListAsync(ct);
+            var found = joined.FirstOrDefault(r => string.Equals(r.Name, asRunner, StringComparison.Ordinal));
+            if (found is null || sessions is null || !found.IsLive(runners, sessions, now))
+                return BadRequest($"there is no runner named {asRunner}");
 
-            var declared = await RunnerDeclaration.OfAsync(row, actors, ct);
+            var live = found.Sessions?.Where(s => sessions.IsLive(s, now) && s.Kind == EfHatchRunner.LoopKind).ToList()
+                ?? [];
+            var declared = await RunnerDeclaration.OfAsync(found, live, actors, ct);
             if (declared.Refusal is { } unowned) return BadRequest(unowned);
 
             repos = declared.Repos;
