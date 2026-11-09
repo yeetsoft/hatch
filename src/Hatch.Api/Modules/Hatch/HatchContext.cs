@@ -51,6 +51,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     /// API key's id, with no foreign key into the core schema.
     /// </summary>
     public DbSet<EfHatchRunnerConfig> RunnerConfigs => Set<EfHatchRunnerConfig>();
+    public DbSet<EfHatchRunnerSession> RunnerSessions => Set<EfHatchRunnerSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -288,6 +289,10 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // The same scale EfHatchRunner.MaxSpend has.
             e.Property(c => c.MaxSpend).HasPrecision(18, 2);
         });
+
+        modelBuilder.Entity<EfHatchRunnerSession>().Property(s => s.MaxSpend).HasPrecision(18, 2);
+        modelBuilder.Entity<EfHatchRunnerSession>().Property(s => s.Spent).HasPrecision(18, 8);
+        modelBuilder.Entity<EfHatchRunnerSession>().Property(s => s.Usage).HasColumnType("jsonb");
 
         // jsonb for the reason EfHatchWorkLogEntry.ModelUsage below is.
         modelBuilder.Entity<EfHatchRunner>().Property(r => r.Usage).HasColumnType("jsonb");
