@@ -208,8 +208,9 @@ run](the-runner#when-it-will-not-run).
   said so.** Declare them in `.hatch/dependencies.json`: [what a repository
   needs](the-runner#what-a-repository-needs). From the next poll the board
   folds the project's development steps for every runner that lacks them, by
-  name - *HA-12 needs dotnet 10 (acme/repo's .hatch/dependencies.json) - this
-  runner has dotnet 8* - and stops sending the ticket there.
+  name - *HA-12 needs dotnet 10 or newer (acme/repo's
+  .hatch/dependencies.json) - this runner has dotnet 8* - and stops sending
+  the ticket there.
 - **A need the list cannot say is a runner tag.** See [what a runner
   advertises](the-runner#what-a-runner-advertises). A runner with a tool
   detection cannot see declares it with `HATCH_HAS`: [has](the-runner#has).
