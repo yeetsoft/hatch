@@ -159,9 +159,6 @@ services:
       # against a Hatch with its wall off.
       HATCH_KEY: "${HATCH_KEY:-}"
       HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
-      # The tags this container advertises, comma-separated (gpu,linux). Empty
-      # advertises none.
-      HATCH_TAGS: "${HATCH_TAGS:-}"
       HATCH_OLLAMA_HOST: "${HATCH_OLLAMA_HOST:-}"
       HATCH_OLLAMA_TIERS: "${HATCH_OLLAMA_TIERS:-}"
       # Which agent this container's loop spawns: claude, codex, grok or ollama. Its

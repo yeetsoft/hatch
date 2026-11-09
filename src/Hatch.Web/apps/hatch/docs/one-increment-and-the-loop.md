@@ -407,8 +407,12 @@ the Runners page: a running loop's own binding is what the row shows.
 `hatch work` takes the same flag for a one-off scan but never sends it on its
 own heartbeat, so it never reaches the row.
 
-The six bounds below are also controls on **Agents → Runners**, and a value set there is folded
-in on the next heartbeat, including being cleared (*Watching the loop*).
+The six bounds below, and tags, are also controls on **Agents → Runners**, and
+a value set there is folded in on the next heartbeat, including being cleared
+(*Watching the loop*). `--project` and `--dangerous` are read-only there,
+drawn from the runner's own flags rather than set from the page: the row
+always shows the latest heartbeat's own binding, never something seeded
+once.
 
 From the loop's side, a bound reaches that row when the loop starts fresh: a
 loop started by hand, or the supervisor's first start. Its first heartbeat

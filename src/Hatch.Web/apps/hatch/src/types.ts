@@ -2341,9 +2341,9 @@ export interface Runner {
   /** The project keys this runner is held to, upper-case; empty is every
       project. A bound on the loop's own work - the merge train ignores it. */
   projects: string[];
-  /** Whether this runner refuses work flagged dangerous. Seeded once from the
-      loop's first heartbeat that says, and from then on only a PATCH moves it.
-      Never null: a row that was never told reads false. */
+  /** Whether this runner refuses work flagged dangerous. A fact from the
+      runner's own heartbeat, never edited here. Never null: a row that was
+      never told reads false. */
   refusesDangerous: boolean;
   /** The models this runner offers - a fact from its own heartbeat, empty for
       one that has reported none, including an older CLI that predates the
