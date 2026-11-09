@@ -5475,6 +5475,121 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_Takers_OneLacksTheDependencyOneHasIt()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a, r => r.Has = "dotnet@8");
+        await AddLoopRunnerAsync(h, b, r => r.Has = "dotnet@10");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Equal(new[] { b }, entry.Takers);
+        Assert.Equal(
+            new RunnerReasonDto(a, NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8")),
+            entry.Untaken!.Single());
+    }
+
+    [Fact]
+    public async Task Queue_Takers_NeitherHasTheDependency()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a, r => r.Has = "dotnet@8");
+        await AddLoopRunnerAsync(h, b, r => r.Has = "dotnet@8");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        var sentence = NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8");
+        Assert.Empty(entry.Takers!);
+        Assert.Equal(
+            new[] { a, b }.OrderBy(n => n, StringComparer.Ordinal).Select(n => new RunnerReasonDto(n, sentence)),
+            entry.Untaken);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_TwoTakersLeavesUntakenEmpty()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        await h.FileAsync("task", "being built", h.InProgress);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a, r => r.Has = "dotnet@10");
+        await AddLoopRunnerAsync(h, b, r => r.Has = "dotnet@10");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Equal(new[] { a, b }.OrderBy(n => n, StringComparer.Ordinal), entry.Takers);
+        Assert.Empty(entry.Untaken!);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_OmittedLeavesBothNull()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "being built", h.InProgress);
+        await AddLoopRunnerAsync(h, RunnerName(), r => r.Has = "dotnet@10");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Null(entry.Takers);
+        Assert.Null(entry.Untaken);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_NoLiveRunnerIsNull_AndSoIsOnlyAStaleOne()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("task", "being built", h.InProgress);
+
+        var none = Only(await h.Work.GetQueue(0, null, default, takers: true));
+        Assert.Null(none.Takers);
+        Assert.Null(none.Untaken);
+
+        await AddLoopRunnerAsync(h, RunnerName(), r => r.LastSeenAt = Now.AddHours(-1));
+
+        var stale = Only(await h.Work.GetQueue(0, null, default, takers: true));
+        Assert.Null(stale.Takers);
+        Assert.Null(stale.Untaken);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_ARowFoldedForEveryoneIsNullNotEmpty()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "asked and waiting", h.Todo);
+        await h.AskAsync(issue, "which way?");
+        await AddLoopRunnerAsync(h, RunnerName());
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Null(entry.Takers);
+        Assert.Null(entry.Untaken);
+    }
+
+    [Fact]
+    public async Task Queue_Takers_ABeatAndASessionOfOneKeyCountAsOneName()
+    {
+        var h = await NewAsync();
+        await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        await h.FileAsync("task", "being built", h.InProgress);
+        var key = await h.AddKeyAsync(RunnerName());
+        await AddLoopRunnerAsync(h, key.Name, r => r.Has = "dotnet@10");
+        await h.AddSessionAsync(key, "here:/one", standing: true);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Equal(new[] { key.Name }, entry.Takers);
+    }
+
+    [Fact]
     public async Task Dependencies_ABadEntry_IsRefusedWithTheDependencySetSentence()
     {
         var h = await NewAsync();

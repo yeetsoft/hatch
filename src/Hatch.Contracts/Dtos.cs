@@ -2499,6 +2499,17 @@ public record WorkRepositoryDto(string Remote, string Canonical, string? BaseBra
 /// sentence starts <c>deadlocked - </c>; <paramref name="BlockedKind"/> is
 /// what the fold said and is unchanged.
 /// </param>
+/// <param name="Takers">
+/// Names of the live runners that could take this row right now, sorted.
+/// Null when the caller did not ask (<c>takers=true</c> on the queue read);
+/// empty when no live runner can.
+/// </param>
+/// <param name="Untaken">
+/// One entry per live runner that cannot take this row, each with the
+/// fold's own sentence for why, filled in only when fewer than two runners
+/// can take it. Null alongside a null <paramref name="Takers"/>; empty when
+/// two or more can.
+/// </param>
 public record QueueEntryDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -2512,7 +2523,17 @@ public record QueueEntryDto(
     string? Model = null,
     IReadOnlyList<string>? DeniedTools = null,
     string? BlockedKind = null,
-    bool Deadlocked = false);
+    bool Deadlocked = false,
+    IReadOnlyList<string>? Takers = null,
+    IReadOnlyList<RunnerReasonDto>? Untaken = null);
+
+/// <summary>
+/// One live runner that cannot take a queue row right now, and why - see
+/// <see cref="QueueEntryDto.Untaken"/>.
+/// </summary>
+/// <param name="Runner">The runner's name.</param>
+/// <param name="Reason">The fold's own sentence for why that runner cannot take it.</param>
+public record RunnerReasonDto(string Runner, string Reason);
 
 /// <summary>
 /// One issue in the review column that a runner holds a checkout for, and what
