@@ -4,6 +4,7 @@ using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.DeviceMapping;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -2908,6 +2909,192 @@ public class RunnersControllerTests
         Assert.Equal(Runner, row?.Name);
     }
 
+    // ---- Minting one ----
+
+    [Fact]
+    public async Task Create_MintsAKeyAndItsConfigAndAnswersTheSecretOnceUncached()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", Tags: [" Docker ", "docker", "GPU"])));
+
+        Assert.StartsWith("hatch_ak_", minted.Secret, StringComparison.Ordinal);
+        Assert.Equal("Abed Nadir", minted.Runner.Name);
+        Assert.NotNull(minted.Runner.ApiKeyId);
+        Assert.Equal(["docker", "gpu"], minted.Runner.Tags);
+
+        var key = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(minted.Runner.ApiKeyId, key.Id);
+
+        var config = Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Equal(key.Id, config.ApiKeyId);
+        Assert.Equal(["docker", "gpu"], RunnerTagColumn.Read(config.Tags).Order(StringComparer.Ordinal));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Create_WritesAConfigRowEvenWithNoTags()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var config = Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Empty(RunnerTagColumn.Read(config.Tags));
+    }
+
+    [Fact]
+    public async Task Create_ARunnerAlreadyCalledThat_IsAConflictAndStaysOneKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        var again = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        Assert.IsType<ConflictObjectResult>(again.Result);
+        Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Single(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AKeyCaller_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(program: true);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir"));
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AnOwnerWhoDoesNotExist_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: Guid.NewGuid()));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Equal("that person does not exist", Reason(refused.Result));
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_ANamedOwner_OwnsTheRunner()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var owner = h.Actors.AddPerson("Annie");
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", OwnerPersonId: owner.Id)));
+
+        Assert.Equal(owner.Id, minted.Runner.OwnerPersonId);
+        Assert.Equal(owner.Id, Assert.Single(await h.Keys.ListApiKeysAsync(default)).OwnerPersonId);
+    }
+
+    [Fact]
+    public async Task Create_NoOwnerNamed_DefaultsToTheCallingPerson()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("Abed Nadir")));
+
+        Assert.Equal(h.PersonId, minted.Runner.OwnerPersonId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("names")]
+    [InlineData("Names")]
+    [InlineData("SUGGEST-NAME")]
+    [InlineData("TOO-LONG")]
+    public async Task Create_ANameThatCannotBeUsed_IsRefusedAndNothingIsWritten(string? name)
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        if (name == "TOO-LONG") name = new string('x', EfApiKey.MaxNameLength + 1);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest(name));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_ABadTag_IsRefusedAndNothingIsWritten()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refused = await h.CreateAsync(new CreateRunnerRequest("Abed Nadir", Tags: ["a b"]));
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+        Assert.Empty(await h.Keys.ListApiKeysAsync(default));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    // ---- Suggesting a name ----
+
+    [Fact]
+    public async Task Suggest_OnAnEmptyBoard_IsTheFirstNameOnTheCastList()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        Assert.Equal(RunnerCast.All[0], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_AfterMintingThatName_IsTheNext()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(await h.SuggestAsync())));
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsANameOnlyAHeartbeatHolds()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(RunnerCast.All[0], new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsAKeyNameWhateverItsCase()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var lowered = RunnerCast.All[0].ToLowerInvariant();
+        Assert.NotEqual(RunnerCast.All[0], lowered);
+        await h.AddKeyAsync(lowered);
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_SkipsARevokedKeysName()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(RunnerCast.All[0]);
+        await h.RevokeKeyAsync(key.Id);
+
+        Assert.Equal(RunnerCast.All[1], await h.SuggestAsync());
+    }
+
+    [Fact]
+    public async Task Suggest_WithEveryCastNameTaken_NumbersTheFirst()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        foreach (var name in RunnerCast.All) await h.AddKeyAsync(name);
+
+        Assert.Equal($"{RunnerCast.All[0]} 2", await h.SuggestAsync());
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
@@ -3001,6 +3188,15 @@ public class RunnersControllerTests
         }
 
         public async Task<IReadOnlyList<string>> NamesAsync() => Value(await Runners.GetRunnerNames(default));
+
+        /// <summary>Mints a runner as the harness's caller, with the response the controller writes its headers to.</summary>
+        public async Task<ActionResult<RunnerMintedDto>> CreateAsync(CreateRunnerRequest request)
+        {
+            Runners.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            return await Runners.CreateRunner(request, default);
+        }
+
+        public async Task<string> SuggestAsync() => Value(await Runners.SuggestRunnerName(default));
 
         public async Task<RunnerDto> OneAsync() => Assert.Single(await ListAsync());
 

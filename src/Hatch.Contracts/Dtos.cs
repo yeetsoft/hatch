@@ -4064,6 +4064,12 @@ public record RunnerSessionDto(string Where, DateTimeOffset LastSeenAt);
 public record RunnerMintedDto(RunnerDto Runner, string Secret);
 
 /// <summary>
+/// What mints a runner. No name is refused; no owner reads as the caller;
+/// no tags reads as none.
+/// </summary>
+public record CreateRunnerRequest(string? Name, Guid? OwnerPersonId = null, IReadOnlyList<string>? Tags = null);
+
+/// <summary>
 /// Where a runner's own reported build sits relative to the board's -
 /// <c>Hatch.Api.Models.HatchRevision.RevisionDrift</c>'s four answers, kept as
 /// a wire enum of its own since <see cref="RunnerDto"/> cannot reference that

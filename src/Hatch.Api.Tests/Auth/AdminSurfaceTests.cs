@@ -494,6 +494,8 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
 
         // A related edge, cut the same way and for a different reason: under
         // the loop's "people only" rule an assignee is a dispatch gate, so a
@@ -744,6 +746,8 @@ public class AdminSurfaceTests
         "RunnersController.PatchRunner",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
 
         // Marking the night as seen is a person's own mark, never a key's or
         // a keyless runner's. See OvernightController.PostSeen.
@@ -920,6 +924,13 @@ public class AdminSurfaceTests
         "WorkLogController.GetSessions",
     ];
 
+    /// <summary>Hatch routes that are the operator's, mirroring <see cref="UserOutsideHatch"/>.</summary>
+    private static readonly string[] AdminInHatch =
+    [
+        "RunnersController.CreateRunner",
+        "RunnersController.SuggestRunnerName",
+    ];
+
     private static readonly string[] UserOutsideHatch =
     [
         "PeopleController.GetAll",
@@ -933,7 +944,7 @@ public class AdminSurfaceTests
         foreach (var (name, method) in GuardedActions())
         {
             var attribute = RequiredRole(method)!;
-            var expected = IsHatch(method) || UserOutsideHatch.Contains(name) ? PersonRole.User : PersonRole.Admin;
+            var expected = (IsHatch(method) && !AdminInHatch.Contains(name)) || UserOutsideHatch.Contains(name) ? PersonRole.User : PersonRole.Admin;
 
             Assert.True(expected == attribute.Minimum, $"{name} asks for {attribute.Minimum}, audited at {expected}");
         }
