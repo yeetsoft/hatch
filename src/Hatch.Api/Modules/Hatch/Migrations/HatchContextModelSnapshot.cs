@@ -1194,6 +1194,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<Guid?>("ForPersonId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Has")
+                        .HasColumnType("text");
+
                     b.Property<string>("Host")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
