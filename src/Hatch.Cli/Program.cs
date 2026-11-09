@@ -323,6 +323,8 @@ try
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
         foreach (var id in detection.Missing(settings.Has))
             say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
+        var has = detection.Merge(settings.Has);
+        board.Has = has;
 
         var runtime = new Runtime(
             Settings: settings,
@@ -346,7 +348,7 @@ try
             LogPath = log?.Path,
             SetDir = environment.GetValueOrDefault(RunnerSet.DirVariable),
             Slot = memberSlot,
-            Has = detection.Merge(settings.Has),
+            Has = has,
             Readout = readoutState,
             Controls = controls,
         }.WithGit();
@@ -367,12 +369,14 @@ try
         };
     }
 
-    // `queue` makes no beat; the merged set is held for a later gate to read,
-    // not sent anywhere here. The other fourteen commands have no use for it.
+    // `queue` makes no beat; the merged set rides on its dispatch read, so the
+    // board folds what this machine cannot run. The other fourteen commands have
+    // no use for it.
     Detection? queueDetection = null;
     if (command == "queue")
         queueDetection = await Detect.RunAsync(
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
+    board.Has = queueDetection?.Merge(settings.Has) ?? [];
 
     // `queue` and `next` read what a pass would, so they declare what this
     // runner can spawn the way `work` does - without a Runtime, since they spawn

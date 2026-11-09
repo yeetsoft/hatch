@@ -21,6 +21,16 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     public IReadOnlyList<string> Tags { get; set; } = tags ?? [];
 
     /// <summary>
+    /// What this runner's machine has - detected and declared, merged - sent as
+    /// one <c>has=</c> each on every dispatch read, so the board folds a move
+    /// whose project needs a dependency this machine does not satisfy. A
+    /// property set once detection finishes, not a constructor parameter: the
+    /// board is built before detection runs. A hop sends none, since the
+    /// board never judges a hop on it.
+    /// </summary>
+    public IReadOnlyList<string> Has { get; set; } = [];
+
+    /// <summary>
     /// The models this runner can spawn, read afresh at each dispatch read and
     /// sent as one <c>model=</c> each, so the board folds a move whose model the
     /// runner does not offer. A delegate rather than a list because the board is
@@ -250,6 +260,7 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
         if (heldToken is { } token) parts.Add($"heldToken={token}");
         parts.AddRange(DeclareParts(checkouts, clones));
         parts.AddRange(TagParts());
+        parts.AddRange(HasParts());
         parts.AddRange(ModelParts());
         parts.AddRange(DangerousParts());
 
@@ -404,13 +415,15 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
     /// This runner's checkouts, as query parameters: a repeatable <c>remote=</c>
     /// per checkout that has one, and <c>standing=true</c> where one of them is
     /// the process's own, then a repeatable <c>tag=</c> per tag this runner
-    /// carries, then a repeatable <c>model=</c> per model it offers and its
+    /// carries, then a repeatable <c>has=</c> per entry it has, then a
+    /// repeatable <c>model=</c> per model it offers and its
     /// <c>agent=</c>, then a repeatable <c>project=</c> per project it is bound to.
     /// Prefixed with <c>&amp;</c> for a query that already has something in
     /// it, which every caller's does.
     /// </summary>
     private string Declare(IReadOnlyList<CheckoutEntry> checkouts, bool clones = false) =>
         DeclareParts(checkouts, clones).Concat(TagParts())
+            .Concat(HasParts())
             .Concat(ModelParts())
             .Concat(DangerousParts())
             .Concat(ProjectParts())
@@ -419,6 +432,8 @@ public sealed class Board(HatchClient client, IReadOnlyList<string>? tags = null
             : "";
 
     private IEnumerable<string> TagParts() => Tags.Select(t => $"tag={Uri.EscapeDataString(t)}");
+
+    private IEnumerable<string> HasParts() => Has.Select(h => $"has={Uri.EscapeDataString(h)}");
 
     private IEnumerable<string> ModelParts()
     {

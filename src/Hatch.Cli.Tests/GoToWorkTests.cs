@@ -385,6 +385,35 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
+    public async Task The_queue_and_work_reads_carry_one_has_per_entry_this_runner_has()
+    {
+        using var h = new Harness(has: ["dotnet@10.0.100", "pwsh"]);
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        foreach (var read in reads)
+        {
+            Assert.Contains("has=dotnet%4010.0.100", read.Query);
+            Assert.Contains("has=pwsh", read.Query);
+            Assert.Equal(2, read.Query.Split('&').Count(p => p.StartsWith("has=", StringComparison.Ordinal)));
+        }
+    }
+
+    [Fact]
+    public async Task With_nothing_this_runner_has_the_reads_carry_no_has()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.All(h.Wire.To("GET", Queue), c => Assert.DoesNotContain("has=", c.Query));
+    }
+
+    [Fact]
     public async Task With_no_models_given_the_reads_carry_everything_the_agent_offers()
     {
         using var h = new Harness();
@@ -2750,6 +2779,22 @@ public sealed class GoToWorkTests
         {
             Assert.DoesNotContain("tag=", call.Query);
         }
+    }
+
+    [Fact]
+    public async Task A_hop_carries_no_has()
+    {
+        using var h = new Harness(has: ["dotnet@10.0.100", "pwsh"]);
+        h.Wire.Once(
+            "GET", Queue, HttpStatusCode.OK,
+            System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
+        h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
+        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Contains("has=pwsh", h.Wire.To("GET", Queue)[0].Query);
+        Assert.DoesNotContain("has=", h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0].Query);
     }
 
     [Fact]
