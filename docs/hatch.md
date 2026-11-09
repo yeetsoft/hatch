@@ -8469,7 +8469,7 @@ and the board still starts nothing: it only sets that paused row running at its
 next heartbeat.
 
 **The runner is named as its claim names it** — a character off the cast list
-in `src/Hatch.Cli/runner-names.txt` (main and recurring characters from three
+in `src/Hatch.Contracts/runner-names.txt` (main and recurring characters from three
 TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
 string every [claim](#claim) already carries. A runner has one identity and
 this is it; the table is keyed on it. The choice is made once per checkout —
