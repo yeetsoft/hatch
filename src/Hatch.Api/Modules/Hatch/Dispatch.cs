@@ -747,20 +747,28 @@ public sealed class Dispatch(
     /// entry, including one with no takers at all. Empty where no live
     /// runner exists, or where the board scan itself fails.
     /// </summary>
-    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct) =>
+        (await TakersWithRowsAsync(offsetMinutes, liveSince, ct)).Takers;
+
+    /// <summary>
+    /// <see cref="TakersAsync"/>'s body, with the undeclared board scan it ran
+    /// handed back too, so a caller that needs the rows does not scan twice.
+    /// The board is null where no live runner exists or the scan failed.
+    /// </summary>
+    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
-        if (fleet.Count == 0) return new Dictionary<long, StepTakers>();
+        if (fleet.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
         var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
-        if (board.Failure is not null) return new Dictionary<long, StepTakers>();
+        if (board.Failure is not null) return (null, new Dictionary<long, StepTakers>());
 
         var judged = board.Rows
             .Where(r => r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
             .Select(r => r.Issue.Id)
             .ToList();
-        if (judged.Count == 0) return new Dictionary<long, StepTakers>();
+        if (judged.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
         var groups = fleet
             .GroupBy(p => p.Name, StringComparer.Ordinal)
@@ -808,7 +816,47 @@ public sealed class Dispatch(
                     : []);
         }
 
-        return result;
+        return (board, result);
+    }
+
+    /// <summary>
+    /// The projects whose clear implementation steps no live runner, or only
+    /// one, can take - the union of <see cref="TakersAsync"/>'s takers over a
+    /// project's steps has at most one name. Each row names the steps, the
+    /// taker if any, and why each other live runner cannot. Empty where no
+    /// runner is live. Ordered by project key.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    {
+        var (board, takers) = await TakersWithRowsAsync(offsetMinutes, liveSince, ct);
+        if (board is null || Columns.Implementation(board.Statuses) is not { } implementation) return [];
+
+        var listed = new List<RunnerCapacityDto>();
+        foreach (var project in board.Rows
+                     .Where(r => r.From.Id == implementation.Id && !r.Hop && takers.ContainsKey(r.Issue.Id))
+                     .GroupBy(r => r.Issue.Project!.Key)
+                     .OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var steps = project.OrderBy(r => r.Issue.Rank).ThenBy(r => r.Issue.Id).ToList();
+            var union = steps
+                .SelectMany(s => takers[s.Issue.Id].Takers)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
+            if (union.Count > 1) continue;
+
+            // A project is listed only when every step has fewer than two
+            // takers, so every step carries its Untaken; the first step's, less
+            // any runner that takes a later one, is already in name order.
+            var reasons = takers[steps[0].Issue.Id].Untaken.Where(u => !union.Contains(u.Runner)).ToList();
+
+            listed.Add(new RunnerCapacityDto(
+                project.Key, steps.Count,
+                steps.Take(10).Select(s => IssueKey.Format(project.Key, s.Issue.Number)).ToList(),
+                union, reasons));
+        }
+
+        return listed;
     }
 
     /// <summary>
