@@ -37,6 +37,25 @@ public sealed class ModelNarrowing
         }
     }
 
+    /// <summary>
+    /// The models a probe reading shows spent: each per-model weekly window at
+    /// 100% or more and still ahead of its reset, whose label names a tier,
+    /// paired with that reset. A label that names none (<c>Weekly (model)</c>)
+    /// narrows nothing - there is no alias to drop.
+    /// </summary>
+    public static IEnumerable<(string Model, DateTimeOffset Until)> Spent(IReadOnlyList<UsageWindow> windows, DateTimeOffset now)
+    {
+        foreach (var window in windows)
+        {
+            if (window.Window != "weeklyModel" || window.Utilization < 1) continue;
+            if (window.ResetsAt is not { } at || at <= now) continue;
+
+            var model = ModelFamilies.Aliases.FirstOrDefault(
+                alias => window.Label.Contains(alias, StringComparison.OrdinalIgnoreCase));
+            if (model is not null) yield return (model, at);
+        }
+    }
+
     /// <summary>The models in the order given, less any narrowed at <paramref name="now"/>.</summary>
     public IReadOnlyList<string> Offered(IEnumerable<string> models, DateTimeOffset now)
     {
