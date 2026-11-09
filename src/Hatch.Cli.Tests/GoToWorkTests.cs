@@ -609,60 +609,6 @@ public sealed class GoToWorkTests
         else Assert.DoesNotContain("dangerous=", call.Query);
     }
 
-    /// <summary>
-    /// <see cref="OnePassTold"/> for whether dangerous work is refused: a loop
-    /// started refusing or not, answered with <paramref name="told"/>.
-    /// </summary>
-    private static async Task<Harness> OnePassToldDangerous(bool started, bool? told)
-    {
-        var h = new Harness(refusesDangerous: started);
-        OneTicket(h);
-        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
-            new RunnerInstructionDto("running", null, 1, null, null, RefusesDangerous: told));
-
-        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
-        return h;
-    }
-
-    [Fact]
-    public async Task The_board_refusing_dangerous_work_is_adopted_and_the_next_read_carries_it()
-    {
-        using var h = await OnePassToldDangerous(false, true);
-
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
-        Assert.Single(h.Say.Said, l => l == "hatch: the board set --dangerous off");
-        Assert.True(h.Runtime.Board.RefusesDangerous);
-    }
-
-    [Fact]
-    public async Task The_board_taking_dangerous_work_drops_the_refusal_from_the_next_read()
-    {
-        using var h = await OnePassToldDangerous(true, false);
-
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.DoesNotContain("dangerous=", c.Query));
-        Assert.Single(h.Say.Said, l => l == "hatch: the board set --dangerous on");
-        Assert.False(h.Runtime.Board.RefusesDangerous);
-    }
-
-    [Fact]
-    public async Task An_older_hatch_that_answers_no_dangerous_refusal_leaves_the_loops_own_alone()
-    {
-        using var h = await OnePassToldDangerous(true, null);
-
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
-        Assert.True(h.Runtime.Board.RefusesDangerous);
-        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--dangerous", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public async Task A_board_whose_dangerous_refusal_matches_the_loops_says_nothing()
-    {
-        using var h = await OnePassToldDangerous(true, true);
-
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("dangerous=false", c.Query));
-        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--dangerous", StringComparison.Ordinal));
-    }
-
     // ---- --project: the projects a runner is bound to ----
 
     private static RunnerHeartbeatRequest OnlyBeat(Harness h) =>
@@ -684,14 +630,14 @@ public sealed class GoToWorkTests
     }
 
     [Fact]
-    public async Task No_project_flag_sends_no_projects_and_reads_with_none()
+    public async Task No_project_flag_sends_an_empty_list_and_reads_with_none()
     {
         using var h = new Harness();
         OneTicket(h);
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Null(OnlyBeat(h).Projects);
+        Assert.Empty(OnlyBeat(h).Projects);
         Assert.DoesNotContain("project=", h.Wire.To("GET", Queue)[0].Query);
     }
 
@@ -736,60 +682,32 @@ public sealed class GoToWorkTests
         Assert.Equal(new[] { "FIL" }, beat.Read<RunnerHeartbeatRequest>().Projects);
     }
 
-    /// <summary>
-    /// <see cref="OnePassTold"/> for the projects: a loop started with
-    /// <paramref name="started"/> flags, answered with <paramref name="told"/>.
-    /// </summary>
-    private static async Task<Harness> OnePassToldProjects(string[] started, IReadOnlyList<string>? told)
-    {
-        var h = new Harness();
-        OneTicket(h);
-        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null, Projects: told));
-
-        string[] args = ["--max-runs", "1", .. started.SelectMany(p => new[] { "--project", p })];
-        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(args, default));
-        return h;
-    }
-
     [Fact]
-    public async Task The_board_s_projects_replace_the_loops_own_and_the_next_read_carries_them()
+    public async Task Dangerous_and_project_are_never_moved_by_the_answer()
     {
-        using var h = await OnePassToldProjects([], ["FIL", "AER"]);
+        using var h = new Harness(refusesDangerous: true);
+        OneTicket(h, "AER-1");
+        OneTicket(h, "AER-2");
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
 
-        Assert.Single(h.Say.Said, l => l == "hatch: the board set --project FIL AER");
-        Assert.Equal(new[] { "FIL", "AER" }, h.Runtime.Board.Projects);
-        var reads = h.Wire.To("GET", Queue);
-        Assert.Contains("project=FIL", reads[^1].Query);
-        Assert.Contains("project=AER", reads[^1].Query);
-    }
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(
+            ["--max-runs", "2", "--project", "FIL"], default));
 
-    [Fact]
-    public async Task The_board_clearing_the_projects_clears_the_next_read()
-    {
-        using var h = await OnePassToldProjects(["FIL"], []);
-
-        Assert.Single(h.Say.Said, l => l == "hatch: the board set --project off");
-        Assert.Empty(h.Runtime.Board.Projects);
-        Assert.DoesNotContain("project=", h.Wire.To("GET", Queue)[^1].Query);
-    }
-
-    [Fact]
-    public async Task A_board_whose_projects_match_the_loops_says_nothing()
-    {
-        using var h = await OnePassToldProjects(["FIL", "AER"], ["FIL", "AER"]);
-
-        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("project=FIL", c.Query));
-    }
-
-    [Fact]
-    public async Task An_older_hatch_that_answers_no_projects_leaves_them_alone()
-    {
-        using var h = await OnePassToldProjects(["FIL"], null);
-
-        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
+        Assert.True(h.Runtime.Board.RefusesDangerous);
         Assert.Equal(new[] { "FIL" }, h.Runtime.Board.Projects);
-        Assert.All(h.Wire.To("GET", Queue), c => Assert.Contains("project=FIL", c.Query));
+
+        var reads = h.Wire.To("GET", Queue);
+        Assert.True(reads.Count >= 2);
+        Assert.All(reads, c => Assert.Contains("dangerous=false", c.Query));
+        Assert.All(reads, c => Assert.Contains("project=FIL", c.Query));
+
+        var beats = Beats(h);
+        Assert.True(beats.Count >= 2);
+        Assert.All(beats, b => Assert.True(b.RefusesDangerous));
+        Assert.All(beats, b => Assert.Equal(new[] { "FIL" }, b.Projects));
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--dangerous", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
     }
 
     // ---- A fresh loop says so on its first answered beat ----

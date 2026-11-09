@@ -498,11 +498,10 @@ dangerous work. Any other value refuses every command with a sentence.
 `--here` and `--profile` write the setting where they write anything else, and
 it is machine-bound: a profile still reads it from the per-user file.
 
-**The setting seeds the row once.** The first heartbeat writes it onto the
-runner's row; after that **the row is where it lives**, and `hatch config
---dangerous` typed at a checkout whose runner already has a row changes nothing
-on the board. A running loop adopts the row's answer on its next heartbeat and
-says so once: `hatch: the board set --dangerous off` (or `on`).
+**The setting is a fact about the process.** Every heartbeat writes it onto
+the runner's row afresh, re-sent each beat rather than seeded once, and
+`hatch config --dangerous` takes effect on the next start of the runner it
+was written for - there is no row for a running loop to adopt it from.
 
 A runner can also refuse one ticket rather than every dangerous one: a session
 that decides the work is not one this runner can do runs `hatch recuse AER-12

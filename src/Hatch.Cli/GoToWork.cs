@@ -697,7 +697,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         "                     and the two are otherwise identical",
         "  --under            stay inside one epic's subtree",
         "  --project <key>    take only this project's tickets, repeatable - the whole",
-        "                     list for this run, until the board sets another",
+        "                     list for this run",
         "  --once             one pass, and out",
         "  --standby          start paused: the runner reports in and takes nothing until",
         "                     the board's Go to Work sets it running. Ignored by a",
@@ -1778,7 +1778,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Has: runtime.Has,
                 Models: runtime.AdvertisedModels(),
                 RefusesDangerous: runtime.Settings.RefusesDangerous,
-                Projects: runtime.Board.Projects.Count > 0 ? runtime.Board.Projects : null,
+                Projects: runtime.Board.Projects,
                 Clones: runtime.Settings.Workspace is not null,
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
@@ -1854,8 +1854,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// folds in is the effective cap and not only the row's own. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
-    /// null bound means cleared. Whether dangerous work is refused is the same: a null
-    /// answer is an older Hatch and leaves the loop's own alone.
+    /// null bound means cleared. Dangerous and the project list are never read
+    /// back at all - only the tags and the six bounds (<c>--under</c>,
+    /// <c>--max-runs</c>, <c>--max-spend</c>, <c>--max-tokens</c>,
+    /// <c>--max-tokens-per-hour</c>, <c>--until</c>) are.
     /// </remarks>
     private string? Fold(RunnerInstructionDto told, Tally tally, string? under)
     {
@@ -1877,18 +1879,6 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
             runtime.Board.Tags = tags;
-        }
-
-        if (told.RefusesDangerous is { } refuses && refuses != runtime.Board.RefusesDangerous)
-        {
-            moved.Add($"--dangerous {(refuses ? "off" : "on")}");
-            runtime.Board.RefusesDangerous = refuses;
-        }
-
-        if (told.Projects is { } projects && !projects.SequenceEqual(runtime.Board.Projects))
-        {
-            moved.Add($"--project {(projects.Count > 0 ? string.Join(" ", projects) : "off")}");
-            runtime.Board.Projects = projects;
         }
 
         if (moved.Count > 0) runtime.Say.Line($"hatch: the board set {string.Join(", ", moved)}");

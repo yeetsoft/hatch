@@ -208,8 +208,6 @@ public sealed class RunnerSessions(Runners runners)
             Drives: [],
             Tags: tags,
             Order: null,
-            Projects: null,
-            RefusesDangerous: null,
             MaxTokens: bounds.MaxTokens.Value,
             MaxTokensPerHour: bounds.MaxTokensPerHour.Value,
             RunnerName: runnerName,

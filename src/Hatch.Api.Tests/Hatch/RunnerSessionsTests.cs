@@ -230,19 +230,6 @@ public class RunnerSessionsTests
         Assert.Equal(42, dto.SessionId);
     }
 
-    [Fact]
-    public void Instruct_NeverAnswersProjectsOrRefusesDangerous()
-    {
-        var session = Session();
-        session.Projects = "AER";
-        session.RefusesDangerous = true;
-
-        var dto = RunnerSessions.Instruct(session, null, "here:/checkouts/one", "Nathan");
-
-        Assert.Null(dto.Projects);
-        Assert.Null(dto.RefusesDangerous);
-    }
-
     // ---- MarkGoneAsync ----
 
     [SkippableFact]
