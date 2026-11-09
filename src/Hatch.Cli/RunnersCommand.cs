@@ -45,7 +45,7 @@ public sealed class RunnersCommand(Cli cli)
 
         if (json)
         {
-            const string path = "/api/hatch/runners";
+            const string path = "/api/hatch/runners?live=true";
             var answer = await cli.Board.Client.Send(HttpMethod.Get, path, null, ct);
             if (!answer.Ok)
             {

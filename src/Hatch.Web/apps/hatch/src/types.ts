@@ -2415,6 +2415,20 @@ export interface Runner {
   /** Where this runner's own build sits against its own reported source - the
       checkout's history, not the API. Mirrors RunnerDto's SourceDrift. */
   sourceDrift: RevisionDrift;
+  /** The api key this entry is minted as, or null for a heartbeat no key claims. */
+  apiKeyId?: string | null;
+  /** The leading characters of the key's own secret, for display only, or null with no key. */
+  prefix?: string | null;
+  /** When the key was minted, or null with no key. */
+  createdAt?: string | null;
+  /** When the key was last used, or null with no key or one never used. */
+  lastUsedAt?: string | null;
+  /** When the key was revoked, or null while it still works or there is no key. */
+  revokedAt?: string | null;
+  /** Who the key belongs to, or null for a key owned by nobody or no key at all. */
+  ownerPersonId?: string | null;
+  /** The sessions this key's runner has open. */
+  sessions?: { where: string; lastSeenAt: string }[];
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

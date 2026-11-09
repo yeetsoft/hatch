@@ -209,7 +209,7 @@ public class RunnersFitTests(ITestOutputHelper output)
             Drives: [],
             Order: new RunnerOrderDto(RunnerOrderKinds.Work, "E2E-2", "someone", now));
 
-        await FulfilAsync(context, "**/api/hatch/runners", new[] { wide, ordered });
+        await FulfilAsync(context, "**/api/hatch/runners*", new[] { wide, ordered });
     }
 
     private static Task FulfilAsync<T>(IBrowserContext context, string pattern, T body) =>

@@ -6,6 +6,7 @@ using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.DeviceMapping;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -2716,6 +2717,7 @@ public class RunnersControllerTests
         Assert.True(Guard(nameof(RunnersController.Heartbeat))!.AcceptKey);
         Assert.True(Guard(nameof(RunnersController.GetRunners))!.AcceptKey);
         Assert.True(Guard(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
+        Assert.True(Guard(nameof(RunnersController.GetRunner))!.AcceptKey);
 
         var patch = Guard(nameof(RunnersController.PatchRunner));
         Assert.NotNull(patch);
@@ -2730,6 +2732,181 @@ public class RunnersControllerTests
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
             .Cast<RequireRoleAttribute>()
             .SingleOrDefault();
+
+    // ---- The key is the runner ----
+
+    [Fact]
+    public async Task AKeyWithNoBeat_IsListed_AsThoughItHadJustStarted_ButNotInLive()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("here:/checkouts/fresh");
+
+        var row = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/fresh", row.Name);
+        Assert.Equal(RunnerKinds.Loop, row.Kind);
+        Assert.Equal(RunnerStates.Running, row.State);
+        Assert.Equal(key.Id, row.ApiKeyId);
+        Assert.Equal(key.Prefix, row.Prefix);
+        Assert.Equal(key.CreatedAt, row.CreatedAt);
+        Assert.Null(row.RevokedAt);
+
+        Assert.Empty(await h.ListAsync());
+    }
+
+    [Fact]
+    public async Task ARevokedKey_IsStillListed_WithRevokedAt()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("here:/checkouts/gone");
+        await h.RevokeKeyAsync(key.Id);
+
+        var row = Assert.Single(await h.ListAllAsync());
+        Assert.NotNull(row.RevokedAt);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoKey_IsListed_WithEveryKeyFieldNull()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.OneAsync();
+        Assert.Null(row.ApiKeyId);
+        Assert.Null(row.Prefix);
+        Assert.Null(row.CreatedAt);
+        Assert.Null(row.LastUsedAt);
+        Assert.Null(row.RevokedAt);
+    }
+
+    [Fact]
+    public async Task Live_DropsAKeyOnlyRunnerAndAnAgedBeat()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync("here:/checkouts/keyonly");
+        await h.BeatAsync("here:/checkouts/aged", new RunnerHeartbeatRequest());
+
+        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
+        await h.BeatAsync("here:/checkouts/fresh", new RunnerHeartbeatRequest());
+
+        Assert.Equal(["here:/checkouts/fresh"], (await h.ListAsync()).Select(r => r.Name));
+        Assert.Equal(3, (await h.ListAllAsync()).Count);
+    }
+
+    [Fact]
+    public async Task AConfigRow_OverridesTheBeatsOwnBoundsAndTags()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Under: "AER-1", MaxRuns: 5, Tags: ["from-beat"]));
+        var key = await h.AddKeyAsync(Runner);
+
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = key.Id,
+            Tags = RunnerTagColumn.Write(["from-config"]),
+            Under = "AER-2",
+            MaxRuns = 40,
+            MaxSpend = 12.5m,
+            MaxTokens = 1000,
+            MaxTokensPerHour = 100,
+            UntilAt = Now.AddDays(1),
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.OneAsync();
+        Assert.Equal(["from-config"], row.Tags);
+        Assert.Equal("AER-2", row.Under);
+        Assert.Equal(40, row.MaxRuns);
+        Assert.Equal(12.5m, row.MaxSpend);
+        Assert.Equal(1000, row.MaxTokens);
+        Assert.Equal(100, row.MaxTokensPerHour);
+        Assert.Equal(Now.AddDays(1), row.UntilAt);
+    }
+
+    [Fact]
+    public async Task APersonCalling_SeesEveryKeyRunnerToo()
+    {
+        var h = await NewAsync(wall: true);
+        await h.AddKeyAsync("here:/checkouts/owned-key", h.PersonId);
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        var rows = await h.ListAllAsync();
+        Assert.Equal(["here:/checkouts/owned-key", "here:/checkouts/ownerless-key"], rows.Select(r => r.Name).OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task AnAdminsKey_SeesEveryKeyRunnerToo()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.Admin);
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        Assert.Equal(2, (await h.ListAllAsync()).Count);
+    }
+
+    [Fact]
+    public async Task AUsersKey_SeesOnlyItsOwnersKeyRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = new Actor(ActorKind.Person, h.PersonId, "Owner");
+        await h.AddKeyAsync("here:/checkouts/owned-key", h.PersonId);
+        await h.AddKeyAsync("here:/checkouts/someone-elses-key", Guid.NewGuid());
+
+        var owned = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/owned-key", owned.Name);
+    }
+
+    [Fact]
+    public async Task AUsersKey_WithNoPrincipal_SeesOnlyTheOwnerlessKeyRunner()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+        await h.AddKeyAsync("here:/checkouts/ownerless-key");
+
+        var visible = Assert.Single(await h.ListAllAsync());
+        Assert.Equal("here:/checkouts/ownerless-key", visible.Name);
+    }
+
+    // ---- Reading one ----
+
+    [Fact]
+    public async Task GetRunner_AnswersTheVisibleRowByName()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.GetAsync(Runner);
+        Assert.Equal(Runner, row?.Name);
+    }
+
+    [Fact]
+    public async Task GetRunner_404sForAnUnknownName()
+    {
+        var h = await NewAsync();
+
+        Assert.Null(await h.GetAsync("nobody:/here"));
+    }
+
+    [Fact]
+    public async Task GetRunner_404sForAnInvisibleName()
+    {
+        var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
+        h.Actors.Principal = null;
+        await h.AddKeyAsync("here:/checkouts/owned-key", Guid.NewGuid());
+
+        Assert.Null(await h.GetAsync("here:/checkouts/owned-key"));
+    }
+
+    [Fact]
+    public async Task GetRunner_ResolvesAnEscapedName()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        var row = await h.GetAsync("here:%2Fcheckouts%2Fone");
+        Assert.Equal(Runner, row?.Name);
+    }
 
     // ---- Harness ----
 
@@ -2811,11 +2988,30 @@ public class RunnersControllerTests
             return await Db.IssueEvents.Where(e => e.IssueId == issue.Id).OrderBy(e => e.At).ToListAsync();
         }
 
-        public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default));
+        public required IAuthService Keys { get; init; }
+
+        public async Task<IReadOnlyList<RunnerDto>> ListAsync() => Value(await Runners.GetRunners(default, live: true));
+
+        public async Task<IReadOnlyList<RunnerDto>> ListAllAsync() => Value(await Runners.GetRunners(default, live: false));
+
+        public async Task<RunnerDto?> GetAsync(string name)
+        {
+            var result = await Runners.GetRunner(name, default);
+            return result.Result is NotFoundResult or NotFoundObjectResult ? null : Value(result);
+        }
 
         public async Task<IReadOnlyList<string>> NamesAsync() => Value(await Runners.GetRunnerNames(default));
 
         public async Task<RunnerDto> OneAsync() => Assert.Single(await ListAsync());
+
+        /// <summary>A key with no beat - a runner never heard from yet, revocable with <see cref="RevokeKeyAsync"/>.</summary>
+        public async Task<EfApiKey> AddKeyAsync(string name, Guid? ownerPersonId = null)
+        {
+            var created = await Keys.CreateApiKeyAsync(name, ownerPersonId, default);
+            return created!.Key;
+        }
+
+        public async Task RevokeKeyAsync(Guid id) => await Keys.RevokeApiKeyAsync(id, default);
 
         /// <summary>
         /// The stored row itself, for the fields no wire DTO carries -
@@ -2875,6 +3071,9 @@ public class RunnersControllerTests
         await db.SaveChangesAsync();
 
         var time = new FakeTimeProvider(Now);
+        var coreDb = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var keys = new AuthService(coreDb, Options.Create(new AuthOptions { Enabled = wall }), time, NullLogger<AuthService>.Instance);
         var claims = TestClaims.With();
         var runners = new Runners(
             Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
@@ -2904,13 +3103,14 @@ public class RunnersControllerTests
         return new Harness
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
-                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour)),
+                siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,
             ProjectId = hatch.Id,
             Actors = actors,
             PersonId = id,
+            Keys = keys,
         };
     }
 

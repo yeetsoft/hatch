@@ -487,6 +487,7 @@ public class AdminSurfaceTests
         // a bound on how much a runner may spend and how long it may run. An
         // agent that could raise its own --max-spend could raise its own
         // budget. See RunnersController.
+        "RunnersController.GetRunner",
         "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
@@ -887,6 +888,7 @@ public class AdminSurfaceTests
         "ReportsController.GetCumulativeFlow",
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",
+        "RunnersController.GetRunner",
         "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",

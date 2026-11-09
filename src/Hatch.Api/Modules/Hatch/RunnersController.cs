@@ -41,66 +41,87 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
-    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings) : ControllerBase
+    TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys) : ControllerBase
 {
     /// <summary>
-    /// Every runner that has spoken to this Hatch lately, most recently heard
-    /// from first.
+    /// Every runner this Hatch knows of: one entry per visible key - revoked
+    /// included, with its config - plus one for every visible heartbeat row no
+    /// key claims. <c>?live=true</c> narrows that to the entries actually
+    /// answering lately, the list the board and the Runners page both draw by
+    /// default.
     /// </summary>
     /// <remarks>
-    /// Two reads and no join. The claims are every issue holding one - tens of
-    /// cards on the busiest board this is for - matched to runners in memory,
-    /// because the thing being matched on is a name a checkout computed and not
-    /// a key anybody indexed.
+    /// Three whole reads and a join in memory - see <see cref="Runner.JoinAsync"/>
+    /// - because the thing being matched on is a name, not a key anybody
+    /// indexed, and the scale here is tens of rows.
     ///
-    /// <para>Rows outside <see cref="VisibleAsync"/>'s reach are dropped from
-    /// the same table <see cref="Heartbeat"/> writes <c>ForPersonId</c> to,
-    /// through <see cref="IActorDirectory.PrincipalAsync"/> - the same
-    /// resolution, so "whose runner is this" and "who may see it" cannot
-    /// disagree.</para>
+    /// <para>Rows outside <see cref="VisibleAsync"/>'s reach are dropped by the
+    /// same resolution <see cref="Heartbeat"/> writes <c>ForPersonId</c>
+    /// through, via <see cref="IActorDirectory.PrincipalAsync"/> - so "whose
+    /// runner is this" and "who may see it" cannot disagree.</para>
     /// </remarks>
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptKey = true)]
-    public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<RunnerDto>>> GetRunners(CancellationToken ct, [FromQuery] bool live = false)
     {
         var now = time.GetUtcNow();
-
-        // The drop horizon in the WHERE, so a runner nobody has heard from
-        // since last night is not something a client has to know to filter out.
-        // The row stays where it is: one that comes back under the same name
-        // finds its own bounds still on it.
-        var dropBefore = runners.DropBefore(now);
-
         var (all, personId) = await VisibleAsync(ct);
 
-        var query = db.Runners.AsNoTracking().Where(r => r.LastSeenAt >= dropBefore);
-        if (!all)
-        {
-            query = personId is { } id ? query.Where(r => r.ForPersonId == id) : query.Where(r => r.ForPersonId == null);
-        }
-
-        var rows = await query
-            .OrderByDescending(r => r.LastSeenAt)
-            .ToListAsync(ct);
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var visible = joined.Where(r => all || r.OwnerPersonId == personId).ToList();
+        if (live) visible = visible.Where(r => r.IsLive(runners, now)).ToList();
 
         var held = await runners.HeldAsync(db, claims, now, ct);
         var drivers = await runners.DriversAsync(db, now, ct);
-
         var wallEnabled = auth.Value.Enabled;
         var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
         var site = await siteSettings.GetAsync(ct);
 
-        var dtos = new List<RunnerDto>(rows.Count);
-        foreach (var r in rows)
-        {
-            var forName = r.ForPersonId is { } forId ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name : null;
-            var canControl = CanControl(r.ForPersonId, wallEnabled, callerPerson);
-            var order = r.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, r.OrderKey, r.OrderedBy, r.OrderedAt) : null;
-            dtos.Add(runners.Project(r, Holding(held, r.Name), drivers.GetValueOrDefault(r.Name, []), forName, canControl, order, yours: Yours(r.ForPersonId, wallEnabled, callerPerson),
-                defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour));
-        }
+        var dtos = new List<RunnerDto>(visible.Count);
+        foreach (var r in visible)
+            dtos.Add(await ProjectAsync(r, held, drivers, wallEnabled, callerPerson, site, ct));
 
         return dtos;
+    }
+
+    /// <summary>One visible runner by its name, or <c>404</c> for a name nothing has ever used or this caller may not see.</summary>
+    [HttpGet("{name}")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerDto>> GetRunner(string name, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var now = time.GetUtcNow();
+        var (all, personId) = await VisibleAsync(ct);
+
+        var joined = await Runner.JoinAsync(db, keys, ct);
+        var found = joined.FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (found is null || !(all || found.OwnerPersonId == personId)) return NotFound();
+
+        var held = await runners.HeldAsync(db, claims, now, ct);
+        var drivers = await runners.DriversAsync(db, now, ct);
+        var wallEnabled = auth.Value.Enabled;
+        var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+        var site = await siteSettings.GetAsync(ct);
+
+        return await ProjectAsync(found, held, drivers, wallEnabled, callerPerson, site, ct);
+    }
+
+    /// <summary>One joined row as the wire shape, resolving the owner's name and the control bits that take it.</summary>
+    private async Task<RunnerDto> ProjectAsync(
+        Runner runner, Dictionary<string, (string Key, ClaimSnapshot Claim, string? Status)> held,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> drivers, bool wallEnabled, EfPerson? callerPerson,
+        SiteSettingsSnapshot site, CancellationToken ct)
+    {
+        var ownerId = runner.OwnerPersonId;
+        var forName = ownerId is { } id ? (await actors.ResolveAsync(ActorKind.Person, id, ct))?.Name : null;
+        var canControl = CanControl(ownerId, wallEnabled, callerPerson);
+        var order = runner.Beat?.OrderKind is { Length: > 0 } ok ? new RunnerOrderDto(ok, runner.Beat.OrderKey, runner.Beat.OrderedBy, runner.Beat.OrderedAt) : null;
+
+        return runners.Project(
+            runner, Holding(held, runner.Name), drivers.GetValueOrDefault(runner.Name, []), forName, canControl, order,
+            yours: Yours(ownerId, wallEnabled, callerPerson),
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
