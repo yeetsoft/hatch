@@ -114,12 +114,12 @@ public sealed record Runtime(
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back
-    /// what it has been asked to do. Named by <see cref="RunnerName"/>; its
-    /// claims carry <see cref="Where"/> instead, the session's checkout rather
-    /// than the runner's own name, since one runner's several sessions each
-    /// hold at most one ticket at a different <see cref="Where"/>.
+    /// what it has been asked to do. The key names the runner and the session
+    /// is <see cref="Where"/>, the checkout; its claims carry <see cref="Where"/>
+    /// too, since one runner's several sessions each hold at most one ticket
+    /// at a different <see cref="Where"/>.
     /// </summary>
-    public Runners Runners() => new(Board.Client, RunnerName);
+    public Runners Runners() => new(Board.Client);
 
     /// <summary>
     /// The models a beat advertises: <c>HATCH_MODELS</c> where it was set and

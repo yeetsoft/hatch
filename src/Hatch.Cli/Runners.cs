@@ -14,14 +14,14 @@ namespace Hatch.Cli;
 /// weather, and it is why this is not built out of the throwing lane.</para>
 ///
 /// <para>The four bounds go up on every beat and are read on none: the server
-/// writes them when it first sees the name and never again, so what a person
+/// writes them when it first sees the session and never again, so what a person
 /// set at midnight survives the loop's own half-hourly restart. Sending them
 /// each time is what makes the row show the truth from its first appearance
 /// without the runner having to know whether it is new.</para>
 /// </remarks>
-public sealed class Runners(HatchClient client, string name)
+public sealed class Runners(HatchClient client)
 {
-    private readonly string _path = $"/api/hatch/runners/{Uri.EscapeDataString(name)}";
+    private const string Path = "/api/hatch/runners/sessions";
 
     /// <summary>
     /// Still here. Answers what the board would like, or the one refusal that
@@ -29,9 +29,9 @@ public sealed class Runners(HatchClient client, string name)
     /// </summary>
     public async Task<RunnerBeat> BeatAsync(RunnerHeartbeatRequest beat, CancellationToken ct)
     {
-        var answer = await client.Send(HttpMethod.Post, _path, beat, ct);
+        var answer = await client.Send(HttpMethod.Post, Path, beat, ct);
 
-        // The one answer this is not: this name is already live somewhere else,
+        // The one answer this is not: a live loop is already at this `where`,
         // and going on would be two live runners heartbeating one row - which is
         // exactly the merge the board's own refusal exists to prevent.
         if (answer.Conflict) return new RunnerBeat(null, answer.Sentence);

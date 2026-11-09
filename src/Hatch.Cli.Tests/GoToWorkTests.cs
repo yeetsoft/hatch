@@ -215,7 +215,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--mine"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.True(beat.Mine);
     }
@@ -230,7 +230,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(machine.Os, beat.Os);
         Assert.Equal(machine.Arch, beat.Arch);
@@ -249,7 +249,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Os);
         Assert.Null(beat.Arch);
@@ -298,7 +298,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.True(beat.Standing);
     }
@@ -317,7 +317,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.Revision);
         Assert.Equal(4127, beat.Sequence);
@@ -334,7 +334,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("dev", beat.Revision);
         Assert.Equal(0, beat.Sequence);
@@ -351,7 +351,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.SourceRevision);
         Assert.Equal(4127, beat.SourceSequence);
@@ -367,7 +367,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.SourceRevision);
         Assert.Null(beat.SourceSequence);
@@ -386,7 +386,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Tags);
 
@@ -495,7 +495,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.NotNull(beat.Has);
         Assert.Equal(dependencies, beat.Has);
@@ -510,7 +510,7 @@ public sealed class GoToWorkTests
     {
         var h = new Harness(tags: started);
         OneTicket(h);
-        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+        h.Wire.Json("POST", "/api/hatch/runners/sessions",
             new RunnerInstructionDto("running", null, 1, null, null, Tags: told));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
@@ -637,7 +637,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(refuses, beat.RefusesDangerous);
 
@@ -716,7 +716,7 @@ public sealed class GoToWorkTests
             ["--once", "--repo", tree, "--project", "FIL"], default));
 
         Assert.Contains("project=FIL", h.Wire.To("GET", Queue)[0].Query);
-        var beat = h.Wire.Calls.Single(c => c.Method == "POST" && c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal));
+        var beat = h.Wire.Calls.Single(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions");
         Assert.Equal(new[] { "FIL" }, beat.Read<RunnerHeartbeatRequest>().Projects);
     }
 
@@ -1059,7 +1059,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.False(beat.Standing);
     }
@@ -1075,7 +1075,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(readAt, beat.UsageReadAt);
         var window = Assert.Single(beat.Usage!);
@@ -1093,7 +1093,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Usage);
         Assert.Null(beat.UsageReadAt);
@@ -1191,7 +1191,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
 
         var beats = h.Wire.Calls
-            .Where(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Where(c => c.Path == "/api/hatch/runners/sessions")
             .ToList();
         Assert.True(beats.Count >= 2, "at least two beats were sent");
         Assert.Equal($"AER-2  {sentence}", beats[1].Read<RunnerHeartbeatRequest>().Line);
@@ -1255,7 +1255,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         var window = Assert.Single(beat.Usage!);
         Assert.Equal("session", window.Window);
@@ -1339,7 +1339,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")
+            .Single(c => c.Path == "/api/hatch/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(readAt, beat.UsageReadAt);
         var window = Assert.Single(beat.Usage!);
@@ -1909,7 +1909,7 @@ public sealed class GoToWorkTests
         Assert.Equal(2, recorded.Values.Distinct().Count());
 
         var wheres = h.Wire.Calls
-            .Where(c => c.Method == "POST" && c.Path.StartsWith("/api/hatch/runners/", StringComparison.Ordinal))
+            .Where(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions")
             .Select(c => c.Read<RunnerHeartbeatRequest>().Where)
             .Distinct()
             .ToList();
@@ -2025,12 +2025,9 @@ public sealed class GoToWorkTests
 
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
-        var runnerName = await Checkout.RunnerAsync(
-            null, Checkout.Host(), elsewhere, null, null, default, h.Runtime.RunnersPath);
-
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", elsewhere], default));
 
-        Assert.Contains(h.Wire.Calls, c => c.Path == $"/api/hatch/runners/{Uri.EscapeDataString(runnerName)}");
+        Assert.Contains(h.Wire.Calls, c => c.Path == "/api/hatch/runners/sessions");
 
         var call = Assert.Single(h.Wire.To("GET", Queue));
         Assert.DoesNotContain("standing=true", call.Query);
@@ -2266,13 +2263,13 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("paused", null, null, null, null));
+        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("paused", null, null, null, null));
 
         using var cts = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
 
         await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/runners/test%3A%2Fcheckout") > 0, "the first heartbeat");
+            () => h.Wire.Count("POST", "/api/hatch/runners/sessions") > 0, "the first heartbeat");
         await Harness.Eventually(
             () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
             "the board's own paused line");
@@ -2290,7 +2287,7 @@ public sealed class GoToWorkTests
 
     // ---- HA-1359: an order, read once from the heartbeat and acted on between increments ----
 
-    private const string Beat = "/api/hatch/runners/test%3A%2Fcheckout";
+    private const string Beat = "/api/hatch/runners/sessions";
 
     /// <summary>
     /// The board answering a heartbeat with an order, <paramref name="times"/> beats in a row, and then
@@ -3629,7 +3626,7 @@ public sealed class GoToWorkTests
     public async Task Stopping_from_the_board_ends_the_wait_rather_than_carrying_it_through()
     {
         using var h = new Harness();
-        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
 
         Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }.Write(h.Supervised.NightStatePath));
 
@@ -3797,7 +3794,7 @@ public sealed class GoToWorkTests
     public async Task A_board_stop_sends_no_stopped_beat()
     {
         using var h = new Harness();
-        h.Wire.Json("POST", "/api/hatch/runners/test%3A%2Fcheckout", new RunnerInstructionDto("stopping", null, null, null, null));
+        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
 
@@ -4137,7 +4134,7 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
 
         // The heartbeat says the same: a run that gave way declares no clones.
-        var beat = h.Wire.To("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}")[0];
+        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0];
         Assert.False(beat.Read<RunnerHeartbeatRequest>().Clones);
     }
 
@@ -4501,7 +4498,7 @@ public sealed class GoToWorkTests
         // process started with, the way a real server's first-seen seed does -
         // folding back a bare null would clear the cap this test relies on to
         // end the loop.
-        h.Wire.Json("POST", $"/api/hatch/runners/{Uri.EscapeDataString("test:/checkout")}",
+        h.Wire.Json("POST", "/api/hatch/runners/sessions",
             new RunnerInstructionDto("running", null, 1, null, null, "Nathan", Drives: ["AER"]));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
