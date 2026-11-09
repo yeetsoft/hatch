@@ -166,6 +166,9 @@ public sealed class FakeAdapter : IAgentAdapter
         return true;
     }
 
+    /// <summary>What this agent says it can spawn; set it empty to say it can name nothing.</summary>
+    public IReadOnlyList<string> Models { get; set; } = ModelFamilies.Aliases;
+
     public bool PromptOnStdin { get; set; } = true;
 
     public bool CanHook { get; set; } = true;
