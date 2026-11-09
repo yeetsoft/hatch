@@ -273,7 +273,6 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_AGENT` | `claude`, `codex`, `grok` or `ollama` | `claude` |
 | `HATCH_OLLAMA_HOST` | Where the Ollama server is, for an `ollama` agent (see *Reaching an Ollama outside the container*) | Empty; required under `ollama` |
 | `HATCH_OLLAMA_TIERS` | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent | Empty: the CLI's own default model |
-| `HATCH_TAGS` | The tags it advertises, comma-separated | Empty |
 | `HATCH_KEY` | An API key, for a Hatch with its wall on | Empty. Not required, and not useful here: against a wall the container cannot fetch its credential |
 
 Five more are set for the container, and are not for changing: `HATCH_BASE`
