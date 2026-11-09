@@ -124,10 +124,10 @@ public class WorkController(
     /// The caller's own runner name, when it wants a ticket it let go of
     /// last left to a different live runner: while its own newest release of
     /// an issue was <c>dropped</c> and another live runner could take the
-    /// issue, the issue is folded for this caller and no one else. Last, and
-    /// named a query parameter, because the <c>X-Hatch-Runner</c> header is
-    /// stripped when a key is used. A name matching no row is fine - it only
-    /// means no peer was told apart from it. Absent folds nothing.
+    /// issue, the issue is folded for this caller and no one else. A key's
+    /// name is the runner; the query parameter names it for the fold. A name
+    /// matching no row is fine - it only means no peer was told apart from
+    /// it. Absent folds nothing.
     /// </param>
     /// <param name="model">
     /// The models the caller's runner offers, repeatable - aliases or pinned
@@ -539,10 +539,10 @@ public class WorkController(
     /// <param name="runner">
     /// The caller's own runner name, when it wants an issue omitted for it
     /// (its own omission or an ancestor's) folded with the same sentence the
-    /// scan gives: <see cref="Dispatch.OmissionFold"/>. Last, and named a query
-    /// parameter, because the <c>X-Hatch-Runner</c> header is stripped when a
-    /// key is used. A name matching no row is fine - the omission is matched on
-    /// the name alone. Absent, or naming another runner, folds nothing.
+    /// scan gives: <see cref="Dispatch.OmissionFold"/>. A key's name is the
+    /// runner; the query parameter names it for the fold. A name matching no
+    /// row is fine - the omission is matched on the name alone. Absent, or
+    /// naming another runner, folds nothing.
     /// </param>
     /// <param name="model">
     /// The models the caller's runner offers, repeatable - see
@@ -628,9 +628,9 @@ public class WorkController(
     /// <param name="runner">
     /// The caller's own runner name, when it wants an issue omitted for it
     /// (its own omission or an ancestor's) refused with the same sentence the
-    /// scan gives: <see cref="Dispatch.OmissionFold"/>. Last, and named a query
-    /// parameter, because the <c>X-Hatch-Runner</c> header is stripped when a
-    /// key is used. Absent, or naming another runner, folds nothing.
+    /// scan gives: <see cref="Dispatch.OmissionFold"/>. A key's name is the
+    /// runner; the query parameter names it for the fold. Absent, or naming
+    /// another runner, folds nothing.
     /// </param>
     [HttpPost("{key}/hop")]
     public async Task<ActionResult<IssueDto>> HopWork(

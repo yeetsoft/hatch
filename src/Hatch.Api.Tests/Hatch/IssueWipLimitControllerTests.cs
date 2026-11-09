@@ -217,22 +217,6 @@ public class IssueWipLimitControllerTests
         Assert.Empty(await h.EventsAsync(epic.Key));
     }
 
-    /// <summary>A keyless runner in local mode is a program too - the check asks "is this a program", not "is there a key".</summary>
-    [Fact]
-    public async Task AKeylessRunnerWhereTheWallIsOff_IsRefusedTheSameWay()
-    {
-        var h = await NewAsync();
-        var epic = await h.FileAsync("epic", "the epic");
-
-        h.Caller.Person = null;
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-
-        var refused = Assert.IsType<ObjectResult>(
-            (await h.Wip.PatchIssueWipLimit(epic.Key, new IssueWipLimitRequest("2"), default)).Result);
-        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
-        Assert.Empty(await h.EventsAsync(epic.Key));
-    }
-
     [Fact]
     public async Task AKey_ReadsItThroughGetIssue()
     {

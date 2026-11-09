@@ -135,18 +135,6 @@ public class OvernightControllerTests
         Assert.Equal("marking the night as seen is the operator's, not an agent's", refused.Value);
     }
 
-    [Fact]
-    public async Task PostSeen_IsRefusedToAKeylessRunnerToo()
-    {
-        var h = await NewAsync();
-        h.Caller.Local = new Actor(ActorKind.Key, LocalCaller.RunnerIdFor("host:/src"), "host:/src");
-
-        var refused = Assert.IsType<ObjectResult>(await h.Controller.PostSeen(CancellationToken.None));
-
-        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
-        Assert.Equal("marking the night as seen is the operator's, not an agent's", refused.Value);
-    }
-
     /// <summary>
     /// The wall off, nobody local either (HA-1425): not a program, so
     /// <see cref="OvernightController.PostSeen"/> gets past its own gate, and

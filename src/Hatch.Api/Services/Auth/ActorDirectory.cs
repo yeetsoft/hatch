@@ -91,21 +91,16 @@ public interface IActorDirectory
     /// Whose work this caller is doing - what a <c>--mine</c> dispatch pass
     /// reads to decide which tickets are its own. The signed-in person; else
     /// the calling key's owner, resolved live so a deleted person reads as
-    /// nobody; else, where the wall is off, the local person - including a
-    /// runner that named itself with <see cref="LocalCaller.RunnerHeader"/>,
-    /// which is not this method's answer even though it is <see cref="MeAsync"/>'s.
-    /// Null when none of those apply: a key that belongs to nobody, or the
-    /// wall is up and nothing authenticated the request.
+    /// nobody; else, where the wall is off, the local person. Null when none
+    /// of those apply: a key that belongs to nobody, or the wall is up and
+    /// nothing authenticated the request.
     /// </summary>
     /// <remarks>
-    /// Not <see cref="MeAsync"/> under another name, and the difference is the
-    /// whole reason this exists. <c>MeAsync</c> says who is <em>calling</em>,
-    /// which is what an audit trail wants - a runner is itself, not a stand-in
-    /// for whoever started it. This says whose tickets the caller works on,
-    /// which for a keyless runner in local mode is the person at the machine,
-    /// not the runner's own transient name - a runner is never assignable
-    /// (see the liveness remarks above), so it could never be "its own"
-    /// tickets in the first place.
+    /// Not <see cref="MeAsync"/> under another name. <c>MeAsync</c> says who
+    /// is <em>calling</em>, which is what an audit trail wants - a key is
+    /// itself, not a stand-in for its owner. This says whose tickets the
+    /// caller works on, which for a key is its owner rather than the key's
+    /// own name.
     /// </remarks>
     Task<Actor?> PrincipalAsync(CancellationToken ct);
 }
@@ -145,9 +140,8 @@ public class ActorDirectory(
         // among many on a picker: it is the one press that is always the same
         // press, which is why "Assign to me" exists at all.
         //
-        // Only a person, never a runner. A runner is transient and self-named,
-        // so nothing may be assigned to one - ResolveAsync answering null for
-        // its id is the correct reading of an id that means nothing tomorrow.
+        // Only a person. LocalAsync never answers a Key-kind Actor, but the
+        // pattern match is the correct reading regardless of its shape.
         Actor[] me = await caller.LocalAsync(ct) is { Kind: ActorKind.Person } local ? [local] : [];
 
         return live =
@@ -183,11 +177,7 @@ public class ActorDirectory(
 
     /// <summary>
     /// The person, the key's live owner, then - where the wall is off - the
-    /// local person by construction rather than by delegating to
-    /// <see cref="ICallerIdentity.LocalAsync"/>, whose third lane answers a
-    /// runner header with the runner's own transient name. See the interface
-    /// remarks for why that answer is right for <see cref="MeAsync"/> and
-    /// wrong for this.
+    /// local person.
     /// </summary>
     public async Task<Actor?> PrincipalAsync(CancellationToken ct)
     {
@@ -199,8 +189,7 @@ public class ActorDirectory(
 
         // LocalAsync's own gate already covers "the wall is off, there is a
         // request, and neither branch above answered" - reused here as the
-        // presence check, and not for its answer: a runner header would make
-        // it a key, and this wants the person regardless.
+        // presence check, and not for its answer.
         if (await caller.LocalAsync(ct) is null) return null;
 
         var configured = (await settings.GetAsync(ct)).LocalPersonName;

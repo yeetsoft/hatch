@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -168,11 +167,10 @@ public class IssueScopeNoticeTests(ITestOutputHelper output)
     /// <summary>The project part of an issue key, <c>KEY-12</c> being <c>KEY</c>.</summary>
     private static string ProjectOf(string issueKey) => issueKey[..issueKey.LastIndexOf('-')];
 
-    /// <summary>Two projects, filed the way any caller files them with the wall off - naming itself with the runner header - and an issue under each.</summary>
+    /// <summary>Two projects, filed the way any caller files them with the wall off - the local person may file everything this test files - and an issue under each.</summary>
     private static async Task<(string First, string Second)> FileTwoIssuesAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         var keys = new List<string>();
         foreach (var key in new[] { "SCA", "SCB" })

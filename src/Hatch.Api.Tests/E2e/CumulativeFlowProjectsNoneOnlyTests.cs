@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -102,11 +101,10 @@ public class CumulativeFlowProjectsNoneOnlyTests
         }
     }
 
-    /// <summary>Two projects, filed the way any caller files them with the wall off - naming itself with the runner header - and a task under each, named for its own project so each row reads e.g. <c>CFA — CFA</c>.</summary>
+    /// <summary>Two projects, filed the way any caller files them with the wall off - the local person may file everything this test files - and a task under each, named for its own project so each row reads e.g. <c>CFA — CFA</c>.</summary>
     private static async Task FileIssuesAsync(string baseUrl)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         foreach (var key in Keys)
         {

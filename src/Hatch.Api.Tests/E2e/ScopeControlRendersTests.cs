@@ -1,5 +1,4 @@
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Services.Auth;
 using Hatch.Api.Tests.Hatch;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -628,11 +627,10 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             title);
     }
 
-    /// <summary>Projects filed the way any caller files them with the wall off: naming itself with the runner header.</summary>
+    /// <summary>Projects filed the way any caller files them with the wall off: the local person may file everything this test files.</summary>
     private static async Task FileProjectsAsync(string baseUrl, params (string Key, string? Color)[] projects)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        http.DefaultRequestHeaders.Add(LocalCaller.RunnerHeader, "e2e");
 
         foreach (var (key, color) in projects)
             await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new(key, $"Project {key}", color));
