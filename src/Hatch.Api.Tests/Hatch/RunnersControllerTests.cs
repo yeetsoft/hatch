@@ -3796,6 +3796,76 @@ public class RunnersControllerTests
         Assert.Equal(h.Time.GetUtcNow(), (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).EndedAt);
     }
 
+    [SkippableFact]
+    public async Task SessionHeartbeat_NamingModelsAndHas_StoresThemNewlineJoined()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "claude", Models: ["haiku", "sonnet"], Has: ["dotnet", "node"]));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("haiku\nsonnet", row.Models);
+        Assert.Equal("dotnet\nnode", row.Has);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeatNamingNewOnes_Overwrites()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "claude", Models: ["haiku"], Has: ["dotnet"]));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Where: Runner, Agent: "claude", Models: ["sonnet"], Has: ["node"]));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("sonnet", row.Models);
+        Assert.Equal("node", row.Has);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatOmittingThem_LeavesThemUntouched()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Agent: "claude", Models: ["haiku"], Has: ["dotnet"]));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("haiku", row.Models);
+        Assert.Equal("dotnet", row.Has);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABadDependency_Is400AndWritesNoRow()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Has: ["not a dependency"]));
+
+        Assert.Equal(DependencySet.Normalise(["not a dependency"], out _), Reason(result.Result));
+        Assert.Equal(0, await h.Db.RunnerSessions.CountAsync());
+    }
+
+    [Fact]
+    public async Task GetRunner_OfABeatLessKeyWithALiveSession_ShowsItsModelsAndHas()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("hatch");
+        await h.SeedSessionAsync(key.Id, "loop", Runner, models: "haiku\nsonnet", has: "dotnet");
+
+        var dto = await h.GetAsync("hatch");
+
+        Assert.Equal(["haiku", "sonnet"], dto!.Models);
+        Assert.Equal(["dotnet"], dto.Has);
+    }
+
     // ---- Session controls ----
 
     [Fact]
@@ -4267,7 +4337,8 @@ public class RunnersControllerTests
 
         /// <summary>A session written straight to the table - no heartbeat, no Postgres - for the session control tests, which judge a row they placed themselves rather than one a beat produced.</summary>
         public async Task<EfHatchRunnerSession> SeedSessionAsync(
-            Guid apiKeyId, string kind, string? where = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null)
+            Guid apiKeyId, string kind, string? where = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null,
+            string? models = null, string? has = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -4278,6 +4349,8 @@ public class RunnersControllerTests
                 StartedAt = Now,
                 LastSeenAt = lastSeenAt ?? Now,
                 EndedAt = endedAt,
+                Models = models,
+                Has = has,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

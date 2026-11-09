@@ -908,9 +908,10 @@ will never read it back.
 `POST /runners/sessions` is the session heartbeat `RunnerSessions` answers to
 - the bearer key alone, never a name or a header, so `403`s with none ("a
 session heartbeat is the bearer key's, not a name or a header"). The body is
-the same `RunnerHeartbeatRequest` `/runners/{name}` takes, minus `tags`,
-`models` and `has`: a session has no column for any of them, and they are
-silently dropped. The row matched is this key's own session at the body's
+the same `RunnerHeartbeatRequest` `/runners/{name}` takes, minus `tags`: a
+session has no column for it, and it is silently dropped. `models` and `has`
+are validated exactly as on `/runners/{name}` - `400` on a refusal - and
+stored on the session. The row matched is this key's own session at the body's
 `where` - `(ApiKeyId, Where)` is the pair a session is held by - touched if it
 is still live, seeded fresh if not; `409`s ("`<key> is already the runner on
 <where>`") only for `fresh: true`, `kind: loop`, and a live session already at

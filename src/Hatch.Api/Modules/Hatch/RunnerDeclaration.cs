@@ -104,10 +104,12 @@ public sealed record RunnerDeclaration(
             .ToList();
         var refusesDangerous = (beat?.RefusesDangerous ?? false) || live.Any(s => s.RefusesDangerous == true);
 
-        var has = beat?.Has is null ? HasDeclaration.Unjudged : HasDeclaration.Of(beat.Has.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        var declaredHas = Declared(beat?.Has, live.Select(s => s.Has));
+        var has = declaredHas.Count == 0 ? HasDeclaration.Unjudged : HasDeclaration.Of(declaredHas);
 
         var agent = beat?.Agent ?? live.Select(s => s.Agent).FirstOrDefault(a => !string.IsNullOrWhiteSpace(a));
-        var models = ModelDeclaration.Of(beat?.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries), agent);
+        var declaredModels = Declared(beat?.Models, live.Select(s => s.Models));
+        var models = ModelDeclaration.Of(declaredModels.Count == 0 ? null : declaredModels, agent);
 
         var contributors = new List<IReadOnlyList<string>>();
         if (beat is not null) contributors.Add(beat.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? []);
@@ -120,4 +122,19 @@ public sealed record RunnerDeclaration(
         return new RunnerDeclaration(
             repos, under, mine, TagDeclaration.Of(tags, refusesDangerous), has, models, projects, principal, runner.Name);
     }
+
+    /// <summary>
+    /// Per field, <c>has</c> and <c>models</c> alike: <paramref name="beatLines"/>
+    /// when the beat said any, else the distinct ordinal union of
+    /// <paramref name="sessionLines"/> in session order, else nothing. One
+    /// reading shared by this declaration and <see cref="Runners.Project"/>'s
+    /// <see cref="RunnerDto"/>, so the two cannot drift apart.
+    /// </summary>
+    internal static IReadOnlyList<string> Declared(string? beatLines, IEnumerable<string?> sessionLines) =>
+        beatLines is not null
+            ? beatLines.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            : sessionLines
+                .SelectMany(s => s?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [])
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 }
