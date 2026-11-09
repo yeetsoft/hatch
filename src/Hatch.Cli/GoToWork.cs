@@ -1760,7 +1760,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             : null;
 
         var beat = await runtime.Runners().BeatAsync(
-            new RunnerHeartbeatRequest(
+            runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
                 Standby: tally.Standby && tally.Fresh && !once ? true : null,
@@ -1804,7 +1804,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
                 Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
-                UsageReadAt: usage.UsageReadAt),
+                UsageReadAt: usage.UsageReadAt)),
             ct);
 
         // The one heartbeat answer that ends a run: this name is already the

@@ -304,4 +304,16 @@ public sealed class ClaudeAdapterTests : IDisposable
         Assert.Equal("Fable 5.1", refusal!.Value.Model);
         Assert.Null(refusal.Value.ResetAt);
     }
+
+    [Fact]
+    public void Executable_is_the_configured_binary_when_it_exists()
+    {
+        Assert.Equal(_bin, new ClaudeAdapter(_bin).Executable);
+    }
+
+    [Fact]
+    public void Executable_is_null_for_a_configured_path_that_does_not_exist()
+    {
+        Assert.Null(new ClaudeAdapter("/does/not/exist").Executable);
+    }
 }

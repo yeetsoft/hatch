@@ -329,7 +329,7 @@ public sealed class WorkCommand(Runtime runtime)
             : null;
 
         var beat = await runtime.Runners().BeatAsync(
-            new RunnerHeartbeatRequest(
+            runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: RunnerKinds.Once,
                 Line: key is { Length: > 0 } ticket ? $"one increment on {ticket}" : "one increment, by hand",
                 Has: runtime.Has,
@@ -342,7 +342,7 @@ public sealed class WorkCommand(Runtime runtime)
                 Sequence: runtime.CliRevision.Sequence,
                 BuiltAt: runtime.CliRevision.BuiltAt,
                 SourceRevision: source?.Sha,
-                SourceSequence: source?.Sequence),
+                SourceSequence: source?.Sequence)),
             ct);
 
         if (beat.Refusal is { Length: > 0 } refusal)
