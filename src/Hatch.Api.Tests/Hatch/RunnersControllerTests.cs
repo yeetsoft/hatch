@@ -3307,6 +3307,121 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(await h.RevokeAsync("nobody:/at/all"));
     }
 
+    // ---- Rotating a runner's secret ----
+
+    [Fact]
+    public async Task Rotate_ANewSecret_TheOldOneStopsVerifying_AndTheNewOneIsTheSameKey()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.Null(await h.Keys.VerifyApiKeyAsync(minted.Secret, default));
+        var verified = await h.Keys.VerifyApiKeyAsync(rotated.Secret, default);
+        Assert.NotNull(verified);
+        Assert.Equal(minted.Runner.ApiKeyId, verified!.Id);
+        Assert.Equal(Runner, verified.Name);
+    }
+
+    [Fact]
+    public async Task Rotate_UpdatesPrefixAndRotatedAt_OnTheAnswerAndOnGet()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+        Assert.Null(minted.Runner.RotatedAt);
+
+        var rotated = Value(await h.RotateAsync(Runner));
+
+        Assert.NotNull(rotated.Runner.RotatedAt);
+        Assert.NotEqual(minted.Runner.Prefix, rotated.Runner.Prefix);
+
+        var fetched = await h.GetAsync(Runner);
+        Assert.Equal(rotated.Runner.Prefix, fetched?.Prefix);
+        Assert.Equal(rotated.Runner.RotatedAt, fetched?.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_KeepsOwnerTagsAndSessions()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var owner = h.Actors.AddPerson("Ada");
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner, OwnerPersonId: owner.Id, Tags: ["gpu"])));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        var before = await h.GetAsync(Runner);
+
+        Value(await h.RotateAsync(Runner));
+
+        var after = await h.GetAsync(Runner);
+        Assert.Equal(before?.OwnerPersonId, after?.OwnerPersonId);
+        Assert.Equal(before?.Tags, after?.Tags);
+        Assert.Equal(before?.Sessions, after?.Sessions);
+        Assert.Equal(Runner, Assert.Single(await h.ListAllAsync()).Name);
+    }
+
+    [Fact]
+    public async Task Rotate_IsSentNoStore()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        Value(await h.RotateAsync(Runner));
+
+        Assert.Equal("no-store", h.Runners.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task Rotate_OfANameNoKeyAnswersTo_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.IsType<NotFoundResult>((await h.RotateAsync(Runner)).Result);
+        Assert.IsType<NotFoundResult>((await h.RotateAsync("nobody:/at/all")).Result);
+    }
+
+    [Fact]
+    public async Task Rotate_OfARevokedKey_Is409_AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var key = await h.AddKeyAsync(Runner);
+        await h.RevokeKeyAsync(key.Id);
+        var hashBefore = (await h.Keys.ListApiKeysAsync(default)).Single().Hash;
+
+        var refused = await h.RotateAsync(Runner);
+
+        Assert.IsType<ConflictObjectResult>(refused.Result);
+        var after = Assert.Single(await h.Keys.ListApiKeysAsync(default));
+        Assert.Equal(hashBefore, after.Hash);
+        Assert.Null(after.RotatedAt);
+    }
+
+    [Fact]
+    public async Task Rotate_AKeyCaller_Is403()
+    {
+        var h = await NewAsync(program: true);
+        var key = await h.AddKeyAsync(Runner);
+        var hashBefore = key.Hash.ToArray();
+
+        var refused = await h.RotateAsync(Runner);
+
+        var result = Assert.IsAssignableFrom<ObjectResult>(refused.Result);
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Equal(hashBefore, Assert.Single(await h.Keys.ListApiKeysAsync(default)).Hash);
+    }
+
+    [Fact]
+    public async Task Rotate_ANameWithSlashes_ReachedByItsEscapedSegment()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        Value(await h.CreateAsync(new CreateRunnerRequest(Runner)));
+
+        var rotated = Value(await h.RotateAsync(Uri.EscapeDataString(Runner)));
+
+        Assert.Equal(Runner, rotated.Runner.Name);
+    }
+
     [Fact]
     public async Task SetOwner_SetsAndClearsTheKeysOwner()
     {
@@ -3412,6 +3527,13 @@ public class RunnersControllerTests
             Value(await Runners.PatchRunner(name, request, default));
 
         public async Task<IActionResult> RevokeAsync(string name) => await Runners.RevokeRunner(name, default);
+
+        /// <summary>Rotates a runner's secret, with the response the controller writes its headers to.</summary>
+        public async Task<ActionResult<RunnerMintedDto>> RotateAsync(string name)
+        {
+            Runners.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            return await Runners.RotateRunner(name, default);
+        }
 
         public async Task<IActionResult> SetOwnerAsync(string name, Guid? personId) =>
             await Runners.SetRunnerOwner(name, new RunnerOwnerRequest(personId), default);
