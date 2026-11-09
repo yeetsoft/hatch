@@ -2294,6 +2294,10 @@ export interface Runner {
   /** The project keys this runner is held to, upper-case; empty is every
       project. A bound on the loop's own work - the merge train ignores it. */
   projects: string[];
+  /** The models this runner offers - a fact from its own heartbeat, empty for
+      one that has reported none, including an older CLI that predates the
+      field. */
+  models: string[];
   drives: string[];
   /** Whether this runner makes a clone for itself when it lacks one. */
   clones: boolean | null;

@@ -30,6 +30,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   repositories: [],
   tags: [],
   projects: [],
+  models: [],
   drives: [],
   clones: null,
   mine: null,
@@ -296,6 +297,14 @@ describe('RunnersPage RunnerDetails', () => {
 
   it('draws nothing for a build when revision is null', () => {
     expect(renderDetails(runner({ revision: null }))).not.toContain('dev build');
+  });
+
+  it('draws the models a runner has offered', () => {
+    expect(renderDetails(runner({ models: ['haiku', 'sonnet'] }))).toContain('models haiku, sonnet');
+  });
+
+  it('draws nothing from modelsLabel when there are none', () => {
+    expect(renderDetails(runner({ models: [] }))).not.toContain('models');
   });
 });
 
