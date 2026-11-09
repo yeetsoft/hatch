@@ -9,7 +9,7 @@ const options = [
   { value: 'c', text: 'Gamma' },
 ];
 
-function render(chosen: string[], allowNone = false) {
+function render(chosen: string[]) {
   return renderToStaticMarkup(
     <ChecklistFacet
       label="Things"
@@ -18,8 +18,6 @@ function render(chosen: string[], allowNone = false) {
       options={options}
       chosen={chosen}
       onChange={noop}
-      lockTitle="Keep at least one thing"
-      allowNone={allowNone}
     />,
   );
 }
@@ -56,7 +54,6 @@ describe('ChecklistFacet', () => {
         options={options.map(({ value, text }) => ({ value, text }))}
         chosen={['a', 'b', 'c']}
         onChange={noop}
-        lockTitle="Keep at least one thing"
       />,
     );
     expect(html).not.toContain('hatch-types-count');
@@ -74,14 +71,6 @@ describe('ChecklistFacet', () => {
   it('is lit only when fewer than every option is chosen', () => {
     expect(render(['a', 'b', 'c'])).not.toContain('hatch-facet--lit');
     expect(render(['a', 'b'])).toContain('hatch-facet--lit');
-  });
-
-  it('disables and titles only the one row left when a single option is chosen', () => {
-    const rs = rows(render(['a']));
-    expect(rs[0]).toContain('disabled=""');
-    expect(rs[0]).toContain(`title="Keep at least one thing"`);
-    expect(rs[1]).not.toContain('disabled=""');
-    expect(rs[2]).not.toContain('disabled=""');
   });
 
   it('disables no row when two or more are chosen', () => {
@@ -114,27 +103,19 @@ describe('ChecklistFacet', () => {
     }
   });
 
-  it('draws no None anywhere without allowNone', () => {
-    expect(render(['a', 'b'])).not.toContain('None');
-    expect(render(['a'])).not.toContain('None');
+  it('draws None beside All, disabled only when nothing is chosen', () => {
+    expect(render(['a', 'b'])).toContain('class="hatch-filter-clear">None</button>');
+    expect(render([])).toContain('disabled="">None</button>');
   });
 
-  describe('with allowNone', () => {
-    it('draws None beside All, disabled only when nothing is chosen', () => {
-      expect(render(['a', 'b'], true)).toContain('class="hatch-filter-clear">None</button>');
-      expect(render([], true)).toContain('disabled="">None</button>');
-    });
+  it('leaves All enabled and the trigger lit when nothing is chosen', () => {
+    const html = render([]);
+    expect(html).toContain('<button type="button" class="hatch-filter-clear">All</button>');
+    expect(html).toContain('hatch-facet--lit');
+  });
 
-    it('leaves All enabled and the trigger lit when nothing is chosen', () => {
-      const html = render([], true);
-      expect(html).toContain('<button type="button" class="hatch-filter-clear">All</button>');
-      expect(html).toContain('hatch-facet--lit');
-    });
-
-    it('locks no row when a single option is chosen', () => {
-      const html = render(['a'], true);
-      for (const r of rows(html)) expect(r).not.toContain('disabled=""');
-      expect(html).not.toContain('title="Keep at least one thing"');
-    });
+  it('locks no row when a single option is chosen', () => {
+    const html = render(['a']);
+    for (const r of rows(html)) expect(r).not.toContain('disabled=""');
   });
 });

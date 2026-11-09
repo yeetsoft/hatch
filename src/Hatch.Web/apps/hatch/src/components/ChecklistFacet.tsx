@@ -19,8 +19,6 @@ export function ChecklistFacet({
   options,
   chosen,
   onChange,
-  lockTitle,
-  allowNone = false,
 }: {
   label: string;
   summary: string;
@@ -28,12 +26,6 @@ export function ChecklistFacet({
   options: { value: string; text: string; count?: number }[];
   chosen: string[];
   onChange: (next: string[]) => void;
-  lockTitle: string;
-  /**
-   * Draws None beside All and lets the last ticked box be unticked. Scaffold
-   * for HA-1843, which HA-1844 turns on for the reports and deletes.
-   */
-  allowNone?: boolean;
 }) {
   const lit = chosen.length < options.length;
 
@@ -52,14 +44,12 @@ export function ChecklistFacet({
       <div className="hatch-types-panel" role="group" aria-label={groupLabel}>
         {options.map((option) => {
           const on = chosen.includes(option.value);
-          const last = !allowNone && on && chosen.length === 1;
           return (
             <div key={option.value} className="hatch-types-item">
-              <label className="hatch-types-label" title={last ? lockTitle : undefined}>
+              <label className="hatch-types-label">
                 <input
                   type="checkbox"
                   checked={on}
-                  disabled={last}
                   onChange={() => onChange(toggleChoice(chosen, option.value, options.map((o) => o.value)))}
                 />
                 <span className="hatch-types-name">{option.text}</span>
@@ -85,11 +75,9 @@ export function ChecklistFacet({
           >
             All
           </button>
-          {allowNone && (
-            <button type="button" className="hatch-filter-clear" disabled={chosen.length === 0} onClick={() => onChange([])}>
-              None
-            </button>
-          )}
+          <button type="button" className="hatch-filter-clear" disabled={chosen.length === 0} onClick={() => onChange([])}>
+            None
+          </button>
         </div>
       </div>
     </Menu>

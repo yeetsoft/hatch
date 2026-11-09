@@ -26,8 +26,4 @@ describe('ProjectsFacet', () => {
   it('labels the panel Projects', () => {
     expect(render(['HA'])).toContain('aria-label="Projects"');
   });
-
-  it('locks the last project with Keep at least one project', () => {
-    expect(render(['HA'])).toContain('title="Keep at least one project"');
-  });
 });
