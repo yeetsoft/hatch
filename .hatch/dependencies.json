@@ -1,0 +1,10 @@
+{
+  "dependencies": [
+    "make",
+    { "id": "dotnet", "version": "10" },
+    { "id": "node", "version": "22" },
+    { "id": "pwsh", "version": "7" },
+    "playwright-browsers",
+    "postgres"
+  ]
+}
