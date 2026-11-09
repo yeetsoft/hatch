@@ -88,6 +88,8 @@ Of the board's own hops, only the approve hop crosses a protected column's gate.
 
 A check's pass applied from the review column crosses the same gate, on a project with *A passing check approves the merge* turned on: that setting is the owner's or approver's own permission too, given on the project rather than the ticket, and the apply carries it out the same way the approve hop carries a pre-approval out. See `docs/hatch.md`, 'Check' for the column rule and 'The five paths past the terminal guard' for why it is a path and not a hole.
 
+That permission only matters once a review row is actually matched against the merge column, which on such a project it now can be. A branch with nothing to fix — no conflict, no failing build — used to leave the ticket sitting in review for a person to move by hand; now it is matched against the merge column's own playbook row instead, the same as an ordinary advance to the next column, and goes straight there with no session run for it. Only a clean branch reaches this: a conflict or a failing build is still fix work in review first, whatever the setting.
+
 Trying the move any other way answers with a 403 — the gate working, not a fault in the key.
 
 ## The merge train

@@ -345,19 +345,26 @@ public sealed class Dispatch(
                         ? playbooks
                         : repoSourcedRows[issue.ProjectId].Concat(boardWidePlaybooks).ToList();
 
-                    var playbook = Match(candidatePlaybooks, status.Id, to.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
-                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var merged = verdicts.TryGetValue(issue.Id, out var found) ? found : [];
                     var built = builds.TryGetValue(issue.Id, out var foundBuilds) ? foundBuilds : [];
+                    var checkColumn = CheckColumn(issue, status, statuses, merged, built);   // null off the review column
+                    var checkRow = checkColumn is null
+                        ? null
+                        : Match(candidatePlaybooks, status.Id, checkColumn.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+                    var rowTarget = ReviewTarget(statuses, status, checkColumn, checkRow) ?? to;
+                    var playbook = checkRow is { IsCheck: true }
+                        ? checkRow
+                        : Match(candidatePlaybooks, status.Id, rowTarget.Id, issue.Type, family.Children(issue.Id).Count > 0, issue.ProjectId);
+                    var waiting = open.GetValueOrDefault(issue.Id, 0);
                     var parent = family.ParentOf(issue.Id);
                     var sendBackStreak = sendBackStreaks?.GetValueOrDefault(issue.Id, 0) ?? 0;
-                    var hopKind = HopKind(issue, status, to, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
+                    var hopKind = HopKind(issue, status, rowTarget, family, statuses, wip, parent, playbook, sendBackStreak, claimed.Claims!.StallResumeLimit, gate.EffectivePreApproval(issue.Id).Level, merged, built, claimed.Now,
                         status.ParentPulls ? ImplementationPlaybook(candidatePlaybooks, statuses, issue, family) : null);
                     var hop = hopKind is not null;
                     var hopUnder = hopKind == HopKinds.Under ? parent?.Key : null;
                     var rowTo = hopKind == HopKinds.Approve ? Columns.Advance(statuses, status)
                         : hopKind == HopKinds.Close ? Columns.Closes(statuses, status)
-                        : to;
+                        : rowTarget;
                     MergeWork.Judgement? landing = landed.TryGetValue(issue.Id, out var landedJudgement) ? landedJudgement : null;
                     var letGo = issue.StalledAt is not null ? letGoCounts?.GetValueOrDefault(issue.Id, 0) ?? 0 : 0;
                     DependencyRequirement? requirement = null;
@@ -1249,6 +1256,50 @@ public sealed class Dispatch(
                 : WorkKinds.Advance;
 
     /// <summary>
+    /// The merge column a passing check would carry this row into, or null
+    /// where none would: a project with the setting off, an issue with no
+    /// pull request recorded, or a branch <see cref="ReviewWork"/> finds
+    /// nothing for an agent to fix on - the same rule <see cref="WorkController"/>
+    /// applies when a check's verdict actually lands (WorkController.cs:831-832),
+    /// asked here of the row rather than of a recorded verdict. The pull
+    /// request test comes first so <see cref="Columns.Approves"/>, the
+    /// cheaper of the two, short-circuits before the branch is judged.
+    /// </summary>
+    public static EfHatchStatus? CheckColumn(
+        EfHatchIssue issue, EfHatchStatus from, List<EfHatchStatus> statuses,
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds) =>
+        !string.IsNullOrWhiteSpace(issue.PullRequestUrl)
+        && Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge) is { } approved
+        && ReviewWork.Judge(issue, merges, builds).Fold is not null
+            ? approved
+            : null;
+
+    /// <summary>
+    /// Where a review row's match against the playbook table is read against:
+    /// <paramref name="checkColumn"/> when the row that matched is itself a
+    /// check (<see cref="EfHatchPlaybook.IsCheck"/>), since such a row names
+    /// the merge column rather than the review column it was matched under;
+    /// <see cref="Columns.Target"/> otherwise, exactly as every other move is.
+    /// </summary>
+    public static EfHatchStatus? ReviewTarget(
+        List<EfHatchStatus> statuses, EfHatchStatus from, EfHatchStatus? checkColumn, EfHatchPlaybook? checkRow) =>
+        checkRow is { IsCheck: true } ? checkColumn : Columns.Target(statuses, from);
+
+    /// <summary>
+    /// Whether this move is the one a check playbook covers: a move off the
+    /// review column, into the merge column a passing check would carry it
+    /// to, matched by a row itself ticked <see cref="EfHatchPlaybook.IsCheck"/>.
+    /// A move <see cref="Blocked"/>'s protected fold must let through rather
+    /// than refuse to the operator alone, the same way <see cref="HopKinds.Approve"/>
+    /// already does for a pre-approved issue.
+    /// </summary>
+    public static bool ChecksInto(
+        EfHatchIssue issue, EfHatchStatus from, EfHatchStatus to, EfHatchPlaybook? playbook, List<EfHatchStatus> statuses) =>
+        to.Id != from.Id
+        && playbook is { IsCheck: true }
+        && Columns.Approves(statuses, from, issue.Project!.CheckApprovesMerge)?.Id == to.Id;
+
+    /// <summary>
     /// Why an agent should not be spawned for this issue, or null when it
     /// should. Every fold in one place and in one order, so that the scan
     /// prints the same sentence the walk acted on.
@@ -1578,7 +1629,14 @@ public sealed class Dispatch(
         if (to.IsTerminal && hopKind != HopKinds.Close)
             return new Blocking($"the next column is \"{to.Name}\", and only the operator moves work there", BlockedKinds.Person);
 
-        if (to.IsProtected && hopKind != HopKinds.Approve)
+        // The second exemption, beside the Approve hop: a check's own claim
+        // on the review column runs the session that reads this, and
+        // IssuesController refuses a key's move into a protected column no
+        // matter who asks it - the only write this check ever makes is
+        // VerdictWork's, once the verdict it reported comes back a pass. So
+        // a row ChecksInto covers is not a person's to open the gate on; it
+        // is this check's own, read back rather than refused.
+        if (to.IsProtected && hopKind != HopKinds.Approve && !ChecksInto(issue, from, to, playbook, statuses))
             return new Blocking($"the next column is \"{to.Name}\", and only its approvers move work there", BlockedKinds.Person);
 
         var held = claimed.HeldWithKind(issue);
@@ -1752,8 +1810,23 @@ public sealed class Dispatch(
         // that is passing, running or unread needs nothing at all - so it is the
         // least useful thing to say about an issue that is folded for a reason
         // somebody can act on.
+        //
+        // A clean, checked branch with a merge column after review is the one
+        // exception: there is something to say about it, and it is not the
+        // review judge's sentence, because nothing is idle - a check's own
+        // verdict would carry the row on if a playbook covered the move it
+        // actually makes. The missing-playbook sentence below says that for
+        // every other move; this says it for the one this project's setting
+        // adds, before the move is ever asked about generically.
         if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
-            return new Blocking(reviewBlock, BlockedKinds.Other);
+            return CheckColumn(issue, from, statuses, verdicts, builds) is { } merge
+                ? new Blocking(
+                    $"a passing check would carry it into \"{merge.Name}\", but no check playbook covers \"{from.Name}\" to \"{merge.Name}\" for {An(issue.Type)} - " +
+                    (repoSourced is { Trunk: { } checkTrunk }
+                        ? $"add one to .hatch/playbooks.yaml on {checkTrunk}, or a board-wide one on the Playbooks page"
+                        : "add one on the Playbooks page"),
+                    BlockedKinds.Other)
+                : new Blocking(reviewBlock, BlockedKinds.Other);
 
         // A story, bug or task standing left of the implementation column
         // stops where it stands until its own parent reaches it - whatever
@@ -1856,7 +1929,13 @@ public sealed class Dispatch(
     /// the same column and an epic stands exactly in the implementation
     /// column - see HA-113's own decision on the overlap. Never on a move that
     /// ends where it starts: a review self-move is never a hop for the first
-    /// three, by construction.
+    /// three, by construction. No arm but <see cref="HopKinds.Approve"/> ever
+    /// names a protected column that is the review column's own merge
+    /// column: <paramref name="to"/> reaching one there is a check's claim
+    /// carrying its verdict, not a hop, so the express, epic, under and
+    /// parent arms are withheld from it exactly as they are from a review
+    /// self-move - a mid-board protected column elsewhere on the board is
+    /// untouched by this and keeps whichever arm already named it.
     /// </remarks>
     public static string? HopKind(
         EfHatchIssue issue, EfHatchStatus from, EfHatchStatus? to, FamilyGate family,
@@ -1865,7 +1944,12 @@ public sealed class Dispatch(
         IReadOnlyList<EfHatchMergeCheck> verdicts, IReadOnlyList<EfHatchBuildCheck> builds, DateTimeOffset now,
         EfHatchPlaybook? implementationPlaybook = null)
     {
-        var crosses = to is not null && to.Id != from.Id;
+        // For the review column a protected `to` that differs from `from` can
+        // only be the check's own merge column, because Columns.Target
+        // self-dispatches review before any protected next column - so this
+        // is never the mid-board protected column a board ticks elsewhere.
+        var intoCheck = to is { IsProtected: true } && Columns.AwaitingReview(statuses)?.Id == from.Id;
+        var crosses = to is not null && to.Id != from.Id && !intoCheck;
 
         if (crosses && effectivePreApproval >= PreApprovalLevels.Express && from.ExpressSkips) return HopKinds.Express;
 
@@ -1887,7 +1971,7 @@ public sealed class Dispatch(
                 return HopKinds.Under;
         }
 
-        if (from.ParentPulls && family.Pulls(issue, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook))
+        if (from.ParentPulls && family.Pulls(issue, statuses) && !PullWithheld(issue, from, parent, family, statuses, implementationPlaybook) && !intoCheck)
             return HopKinds.Parent;
 
         if (SendBackEligible(issue, from, family, statuses, playbook) && sendBackStreak < sendBackStreakLimit)
