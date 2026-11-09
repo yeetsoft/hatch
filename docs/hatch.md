@@ -4988,7 +4988,18 @@ a deadlocked dependency row still groups with the dependency rows.
 ### The hop
 
 **The loop's own write, on the loop's own say-so.** Seven kinds, asked in this
-order:
+order. A check's own dispatch into the merge column is never one of them: on a
+project with *A passing check approves the merge* on, `ScanAsync` and
+`WorkController.ResolveAsync` route a passing review row into the merge column
+as a plain `advance` move, not as a hop `HopWork` writes
+([the review check](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
+says where that routing happens). `HopKind`'s own `intoCheck` guard
+(`Dispatch.cs:1947-1952`) keeps that move from being misread as one of the
+first three kinds anyway: a protected `to` that differs from `from` on the
+review column can only be the check's own merge column — `Columns.Target`
+self-dispatches review ahead of any other protected column — so `crosses`
+reads false there, and the express, epic and under arms stay withheld from it
+exactly as they are from a review self-move.
 
 1. **express** — an issue that is [express](#pre-approval) and stands in a column
    marked [`ExpressSkips`](#status), with no unanswered question.
@@ -5543,6 +5554,22 @@ and `Dispatch.Blocked` makes its sentence the row's, as the merge column's is
 branch, and `ReviewWork.Judge` says, returning the kind and the fold together so
 the two cannot disagree.
 
+**A project with *A passing check approves the merge* on has a second answer.**
+Fix work still comes first: a branch that conflicts, or whose build failed,
+is still the self-move above, matched review-to-review, whatever the setting.
+Where neither holds - a branch `ReviewWork.Judge` would not fold - the setting
+means this row is matched against the merge column instead, and ends there
+rather than back in review: `Dispatch.ScanAsync`'s own walk (`Dispatch.cs:350-357`)
+and `WorkController.RouteAsync` (`WorkController.cs:1551-1568`, called from
+`HopWork` at `:664` and `ResolveAsync` at `:1405`) both ask `Dispatch.CheckColumn`
+(`Dispatch.cs:1268-1275` - null off the setting, off an issue with no pull
+request recorded, or off a branch `ReviewWork.Judge` would still fold) and, where
+it names a column, `Dispatch.ReviewTarget` (`:1284-1286`) reads the match
+against that merge column rather than against review - so a row a playbook
+matches there with a row itself ticked `IsCheck` ends with `to` the merge
+column and kind `advance`, the same kind every other move carries, in place of
+the review self-move above.
+
 **Code decides, not a prompt.** A runner asks git (`git merge-tree`) and
 reports a [merge check](#merge-check), and asks its own `gh` and reports a
 [build check](#build-check); the dispatcher reads what the board holds and
@@ -5635,10 +5662,16 @@ for the review column: review is still whatever stands immediately left of
 it. `Columns.Target` (`:77-80`) is why the review column's own advance never
 lands a session in the merge column either: it dispatches a column to
 itself, rather than past it, exactly when the next column is terminal **or**
-protected, and a merge column is always protected (below). `In Review`
-advancing therefore stays `In Review`, the same self-dispatch
-[the conflict-and-build section](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review)
-already describes, not a step into the column beside it.
+protected, and a merge column is always protected (below). `Columns.Target`
+itself is unchanged by any of this and still self-dispatches review
+unconditionally - it has no idea a check exists. What changes is what
+`RouteAsync` and `ScanAsync` ask first: both read `Dispatch.CheckColumn` and
+`Dispatch.ReviewTarget`
+([the review check](#the-issue-in-review-whose-branch-conflicts-or-whose-build-failed-is-dispatched-to-review))
+before ever falling back to `Columns.Target`, so "`In Review` advancing...
+stays `In Review`" is now true only when no check playbook covers the move;
+where one does, `to` is the merge column directly, with no session run for
+that row, because the row that matched there is itself ticked `IsCheck`.
 
 **The gate.** A merge column is always `IsProtected` as well — ticking
 `MergesPullRequest` requires it (see [Status](#status)) — so every
@@ -6127,7 +6160,9 @@ the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
-runner tag it does not advertise, a ticket omitted for it, or a flagged-dangerous issue it refuses, among them: no new kind.
+runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, or a
+clean, checked review row a passing check would carry into the merge column
+but no check playbook covers the move for, among them: no new kind.
 
 **A ticket this runner let go of is folded for it while another could take
 it.** Send `?runner=<name>` (or `?asRunner=`) and a row whose newest claim
