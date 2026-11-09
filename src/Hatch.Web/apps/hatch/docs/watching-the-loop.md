@@ -74,8 +74,9 @@ on this page.
 A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
 on a paused one), **Stop after this one**, and a **Details** panel - where it
 runs, the agent it runs, the models it offers, its build - a short sha and how
-long ago, or `dev build` for one that hasn't been stamped - what it drives, and
-the repositories it serves, then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
+long ago, or `dev build` for one that hasn't been stamped - what it drives, the
+repositories it serves, and the dependencies it has - `has dotnet 10.0.100,
+node 22.11.0`, shown only when it reported any - then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
 not just a day), **Tags**, **Projects** (one key per line; empty is every project, and the merge train is unaffected), with **Save bounds** and **Revert** - and an Order
 control: a box for a ticket
 key with **Work this ticket**, and **Run one pass**. The loop takes an order at
@@ -91,6 +92,10 @@ runners and heartbeat as one, but never set a bound or a control, since an
 agent that could raise its own **Max spend**
 could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
 covers what each bound actually does.
+
+The models and the dependencies are what the runner's last beat reported -
+detection merged with `HATCH_HAS`, as [has](the-runner#has) describes - and
+nothing a person sets on this page.
 
 The two token boxes take a token count, like `500k` or `2M`, and show it back
 as `500,000` when you leave the box. Empty clears the cap. A value that is not
@@ -284,7 +289,20 @@ tool, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar. **Backups**
 appears only when the configured backup is failing or stale, and links to
-Settings, where the folder is fixed. **Agent** - things the loop is already on: **Branches that
+Settings, where the folder is fixed.
+
+Each row under **Waiting on a runner** is the issue's key, a link, its title,
+and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
+`no live runner has pwsh 7 and playwright-browsers`; a move that needs both
+joins them with `; `. A pinned id reads `pinned to <id> - no live runner's
+agent is <agent>`. A board with no live runner at all lists nothing - that is
+the *no runner* condition, not this one - and neither does a split fleet, one
+runner lacking the model and another the tool, since no single sentence is
+true of all of them. With nothing to list, the group says *Nothing is waiting
+on a runner.* [hatch queue](cli-reference#queue) prints the same list at the
+terminal.
+
+**Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.
