@@ -234,7 +234,8 @@ public class IssueClaimController(
             if (!ClaimOutcomes.IsValid(outcome))
                 return BadRequest(
                     $"\"{outcome}\" is not an outcome - it is \"{ClaimOutcomes.Dropped}\", \"{ClaimOutcomes.Worked}\", " +
-                    $"\"{ClaimOutcomes.Preempted}\", \"{ClaimOutcomes.Recused}\", or nothing at all");
+                    $"\"{ClaimOutcomes.Preempted}\", \"{ClaimOutcomes.Recused}\", " +
+                    $"\"{ClaimOutcomes.Unservable}\", or nothing at all");
             given = outcome;
         }
 

@@ -44,6 +44,7 @@ public class LetGoTests
     [InlineData(ClaimOutcomes.Worked)]
     [InlineData(ClaimOutcomes.Preempted)]
     [InlineData(ClaimOutcomes.Recused)]
+    [InlineData(ClaimOutcomes.Unservable)]
     [InlineData(null)]
     public void ANewerReleaseOfAnyOtherOutcome_ClearsTheRecord(string? outcome)
     {
@@ -112,6 +113,25 @@ public class LetGoTests
         var held = Other(EfHatchIssueEvent.Held, "{}", 0);
 
         Assert.Equal(2, Count(drop, held, drop));
+    }
+
+    [Fact]
+    public void Count_StepsOverAnUnservableRelease()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var unservable = Release(ClaimOutcomes.Unservable, "runner", 1);
+
+        Assert.Equal(2, Count(drop, unservable, drop));
+    }
+
+    [Fact]
+    public void Count_AnUnservableBetweenAWorkedAndADrop_ChangesNothing()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var unservable = Release(ClaimOutcomes.Unservable, "runner", 1);
+        var worked = Release(ClaimOutcomes.Worked, "runner", 2);
+
+        Assert.Equal(1, Count(drop, unservable, worked, drop));
     }
 
     [Fact]

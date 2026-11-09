@@ -51,6 +51,7 @@ import type {
   Playbook,
   PlaybookCreateRequest,
   PlaybookFilesDto,
+  DependencyFilesDto,
   PlaybookPatchRequest,
   PlaybookProposal,
   OmitRunnerRequest,
@@ -292,6 +293,8 @@ export const deletePlaybook = (id: number) =>
   fetchJson<void>(`/api/hatch/playbooks/${id}`, { method: 'DELETE' });
 
 export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/playbook-files');
+
+export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatch/dependency-files');
 
 // ---- Runners ----
 //
