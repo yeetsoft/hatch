@@ -2436,6 +2436,10 @@ export interface Runner {
   sessions?: { where: string; lastSeenAt: string }[];
   /** When the key's secret was last replaced, or null while it never has been or there is no key. */
   rotatedAt?: string | null;
+  /** When this row was retired, or null for one that is not. */
+  retiredAt?: string | null;
+  /** The name of the row that superseded this one, or null for a row that is not retired. */
+  supersededBy?: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
