@@ -14,7 +14,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <remarks>
 /// No class-level attribute - the same split <see cref="ProjectsController"/>
 /// draws, for the same reason: <see cref="GetOvernight"/> is a read, open to
-/// a person and to a <c>hatch</c>-scoped key alike the way
+/// a person and to a key alike the way
 /// <see cref="WorkLogController"/>'s reads are, but <see cref="PostSeen"/> is
 /// a person's own mark and nothing else's.
 /// </remarks>

@@ -2084,7 +2084,6 @@ public class IssueClaimTests
         Name = "hatch",
         Prefix = "hatch_ak_x",
         Hash = [1],
-        Scopes = [ApiKeyScopes.Hatch],
         CreatedAt = Now,
     };
 

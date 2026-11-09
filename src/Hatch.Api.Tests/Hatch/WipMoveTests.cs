@@ -930,7 +930,6 @@ public class WipMoveTests
         Name = "hatch",
         Prefix = "hatch_ak_x",
         Hash = [1],
-        Scopes = [ApiKeyScopes.Hatch],
         CreatedAt = Now,
     };
 

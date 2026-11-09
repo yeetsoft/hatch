@@ -323,7 +323,7 @@ public class PullRequestStateControllerTests
     // ---- The gate ----
 
     [Fact]
-    public void WritingOne_IsOpenToAHatchScopedKey()
+    public void WritingOne_IsOpenToAKey()
     {
         var guard = typeof(PullRequestStateController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)

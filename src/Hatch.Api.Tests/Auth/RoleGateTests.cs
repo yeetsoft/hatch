@@ -108,24 +108,20 @@ public class RoleGateTests
     }
 
     /// <summary>
-    /// The key lane is decided on scope alone, so the level asked for changes
+    /// The key lane is decided on <c>acceptKey</c> alone, so the level asked for changes
     /// nothing: the same answer at User and at Admin.
     /// </summary>
     [Theory]
     [InlineData(PersonRole.User)]
     [InlineData(PersonRole.Admin)]
-    public async Task DecidesAKeyOnScopeAlone_WhateverTheLevel(PersonRole minimum)
+    public async Task DecidesAKeyOnAcceptKeyAlone_WhateverTheLevel(PersonRole minimum)
     {
-        var key = Key("Claude", ApiKeyScopes.Hatch);
+        var key = Key("Claude");
         var gate = NewGate(new StubCallerIdentity(null, key));
 
         var accepted = await gate.EvaluateAsync("GET", "/api/hatch/board", null, minimum, true, default);
         Assert.Equal(RoleOutcome.Key, accepted.Outcome);
         Assert.Same(key, accepted.ApiKey);
-
-        var otherGate = NewGate(new StubCallerIdentity(null, Key("Claude", "other")));
-        var mismatch = await otherGate.EvaluateAsync("GET", "/api/x", null, minimum, true, default);
-        Assert.Equal(RoleDecision.ScopeMismatch, mismatch.Reason);
 
         var notAccepted = await gate.EvaluateAsync("GET", "/api/people/x/sessions", null, minimum, acceptKey: false, default);
         Assert.Equal(RoleDecision.KeyNotAccepted, notAccepted.Reason);
@@ -146,13 +142,12 @@ public class RoleGateTests
         Assert.Equal(1, caller.Asked);
     }
 
-    private static EfApiKey Key(string name, params string[] scopes) => new()
+    private static EfApiKey Key(string name) => new()
     {
         Id = Guid.NewGuid(),
         Name = name,
         Prefix = "hatch_ak_abc",
         Hash = new byte[AuthHash.Length],
-        Scopes = scopes,
         CreatedAt = DateTimeOffset.UnixEpoch,
     };
 

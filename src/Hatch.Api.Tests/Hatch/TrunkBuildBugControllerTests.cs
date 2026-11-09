@@ -284,13 +284,13 @@ public class TrunkBuildBugControllerTests
     // ---- The gate ----
 
     [Fact]
-    public void PostingIt_CarriesNoClassLevelAttribute_SoTheRouteTakesNoKeyScope()
+    public void PostingIt_CarriesNoClassLevelAttribute_SoTheRouteTakesNoKey()
     {
         Assert.Null(typeof(TrunkBuildBugController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false).SingleOrDefault());
     }
 
     [Fact]
-    public void PostingIt_AcceptsTheHatchScope_AtPersonMinimum()
+    public void PostingIt_AcceptsAKey_AtPersonMinimum()
     {
         var guard = typeof(TrunkBuildBugController)
             .GetMethods()

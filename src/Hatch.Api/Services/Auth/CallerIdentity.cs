@@ -88,7 +88,7 @@ public interface ICallerIdentity
     /// A third lane rather than a synthetic <see cref="EfApiKey"/>, and the
     /// reason is worth stating: <see cref="RoleGate"/> branches on the key
     /// being a row, so a fabricated one would satisfy the compiler and then be
-    /// asked for scopes no table could answer. A lane that is explicit refuses
+    /// asked for fields no table could answer. A lane that is explicit refuses
     /// to be mistaken for one that is not.
     /// </summary>
     Task<Actor?> LocalAsync(CancellationToken ct);

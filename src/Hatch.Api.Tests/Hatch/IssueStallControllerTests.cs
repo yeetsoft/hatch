@@ -183,7 +183,7 @@ public class IssueStallControllerTests
     }
 
     [Fact]
-    public void StallCarriesNoScopeAttribute()
+    public void StallCarriesNoClassLevelAttribute()
     {
         Assert.Empty(typeof(IssueStallController)
             .GetMethod(nameof(IssueStallController.PutStall))!
@@ -260,13 +260,12 @@ public class IssueStallControllerTests
         };
     }
 
-    /// <summary>A key with the hatch scope, the same shape every other controller's tests refuse one with.</summary>
+    /// <summary>A key, the same shape every other controller's tests refuse one with.</summary>
     private static EfApiKey AKey() => new()
     {
         Name = "hatch",
         Prefix = "hatch_ak_x",
         Hash = [1],
-        Scopes = [ApiKeyScopes.Hatch],
         CreatedAt = Now,
     };
 

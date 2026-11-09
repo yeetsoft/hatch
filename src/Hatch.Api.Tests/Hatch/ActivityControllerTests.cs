@@ -235,7 +235,7 @@ public class ActivityControllerTests
     // ---- Who may read it ----
 
     [Fact]
-    public void TheRoute_AcceptsTheHatchScope()
+    public void TheRoute_AcceptsAKey()
     {
         var guard = typeof(ActivityController)
             .GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false)
@@ -318,7 +318,6 @@ public class ActivityControllerTests
                 Name = "hatch",
                 Hash = [1],
                 Prefix = "hatch_ak_x",
-                Scopes = [ApiKeyScopes.Hatch],
                 CreatedAt = Now,
             },
         };

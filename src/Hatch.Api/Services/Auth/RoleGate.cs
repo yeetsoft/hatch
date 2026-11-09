@@ -13,7 +13,7 @@ public enum RoleOutcome
     /// <summary>The caller's device belongs to a person whose <see cref="EfPerson.Role"/> reaches the level asked for.</summary>
     Person,
 
-    /// <summary>An API key carrying the scope this route is willing to accept. Not a person, and never an administrator - a key reaches exactly what its scopes name.</summary>
+    /// <summary>An API key on a route that accepts one. Not a person, and never an administrator.</summary>
     Key,
 
     /// <summary>Refused. What that looks like is the caller's choice: a 404 for the admin app, a 403 for the API.</summary>
@@ -45,9 +45,6 @@ public record RoleDecision(RoleOutcome Outcome, EfPerson? Person, string? Reason
     /// sessions, editing the house. Those are the operator's, and a key is not a person.
     /// </summary>
     public const string KeyNotAccepted = "key_not_accepted";
-
-    /// <summary>An API key reaching a route that accepts a key but this key does not carry the hatch scope.</summary>
-    public const string ScopeMismatch = "scope_mismatch";
 
     public bool IsAllowed => Outcome != RoleOutcome.Refused;
 
@@ -146,13 +143,9 @@ public class RoleGate(
         // same machine would have got.
         if (await caller.ApiKeyAsync(ct) is { } key)
         {
-            if (!acceptKey)
-                return Refuse(RoleDecision.KeyNotAccepted, method, path, clientIp, null);
-
-            // Interim: a key must still carry the hatch scope. A later task deletes this check.
-            return key.HasScope(ApiKeyScopes.Hatch)
+            return acceptKey
                 ? RoleDecision.AllowKey(key)
-                : Refuse(RoleDecision.ScopeMismatch, method, path, clientIp, null);
+                : Refuse(RoleDecision.KeyNotAccepted, method, path, clientIp, null);
         }
 
         var grant = await caller.GrantAsync(ct);

@@ -7,8 +7,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// Who may change a playbook: a person at a browser, and nobody else.
 /// </summary>
 /// <remarks>
-/// <see cref="RequireRoleAttribute"/> already refuses a key that names no
-/// scope, but a keyless runner and a plain script reach the controller as a
+/// <see cref="RequireRoleAttribute"/> already refuses a key on a route that accepts
+/// none, but a keyless runner and a plain script reach the controller as a
 /// person with the wall off. A real browser's fetch sets <c>Sec-Fetch-Mode</c>
 /// on every request it makes, navigation or <c>fetch()</c>, so its absence
 /// is what a program looks like, and the check needs no branch on the wall.
