@@ -311,6 +311,7 @@ describe('coverage', () => {
       deniedTools: ['Bash'],
       isCheck: false,
       quietLimitSeconds: null,
+      maxRunSeconds: null,
     });
     const playbook = (r: CoverageRow): Playbook => ({
       ...fileRow(r),
