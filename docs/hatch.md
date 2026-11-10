@@ -5913,8 +5913,11 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
-370, 470, 520`): a runner acts only on a project it was elected to drive.
+which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
+370, 470, 520`): a runner acts only on a project it was elected to drive. The
+one exception is the pull request half's `merged` read: reporting a merge
+somebody already made needs read access alone, so any runner holding a
+checkout reports it for a merge-column row, driver or not.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
 TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
@@ -7932,9 +7935,13 @@ having moved, and is silent; any other refusal is one line. `merged` and
 null) is left alone too, the same as `open`: a closed-without-merging pull
 request there is a real stuck state and is not this half's to surface. A
 merge-column row
-(`MergeWork` not null) is the one exception, and only where this runner is the
-one this project's merge train is elected to - see the note after the two
-halves below: there, `closed` calls `/work/{key}/closed` once, which records
+(`MergeWork` not null) is the one exception. A `merged` read there advances
+the issue on every runner that holds the checkout, with no driver and whether
+or not the branch is still on origin - the same `/work/{key}/merged` call and
+the same terminal line as a review row, and a second runner's `409` is walked
+past silently. `closed` and `open` there stay the driver's: only where this
+runner is the one this project's merge train is elected to - see the note after
+the two halves below - `closed` calls `/work/{key}/closed` once, which records
 `PullRequestClosedAt` the first time and moves nothing, and comments once -
 "Its pull request was closed without merging." - deduplicated by issue key, so
 a quiet interval after says nothing again. A pull request state of `unknown`
@@ -8013,7 +8020,8 @@ next tick tries again. A landing that goes through prints `hatch: HA-12 landed
 on main -> Done`. It is the one half here that acts on a *review* row rather
 than a merge-column row, and the election below gates it all the same.
 
-The merge-column exception just above, and every half after it, run only
+The merge-column exception just above (its `closed` record and `open` put;
+its `merged` read is every runner's), and every half after it, run only
 where this runner is the one a heartbeat answer elected to drive this
 project's merge train: a choice made for a runner, never by it, and not this
 section's to explain further. The landing confirmation above is not among
