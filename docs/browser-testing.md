@@ -57,6 +57,15 @@ a row's `.hatch-reorder--wrap` is clipped: outside the card at desktop, outside
 the table or under 44px on the phone profile, outside its own cell, or squeezed
 past its own `scrollWidth`.
 
+`OmittedRunnersTests.cs` drives the issue page's Omitted runners section against
+the real host: an own, a recused and an inherited row, Lift, Omit, the refusal
+sentences, and the fit of every row and add control inside the Details card, on
+both profiles. A card overflow at the iPhone 14 Pro width (HA-2172) was seen on
+a Windows dev machine but does not reproduce under the Linux WebKit this case's
+own CI job runs, most likely a font-fallback difference between the two rather
+than a bug every browser hits - the phone case runs whole and holds the same
+bar the desktop case does, since the CI e2e gate fails on any skip.
+
 ## Render any page with no code written
 
 The screenshot CLI renders one URL to one image. It is `playwright.ps1`, built
