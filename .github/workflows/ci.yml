@@ -301,6 +301,13 @@ jobs:
               exit 0
             fi
             echo "::warning::Install browsers attempt $attempt did not finish within 8 minutes; retrying"
+            # A timed-out attempt's own apt-get can still be running past the
+            # timeout, holding the dpkg lock, which fails every later attempt
+            # instantly rather than ever reaching the mirror again. Clear it.
+            sudo pkill -9 -f apt-get || true
+            sudo pkill -9 -f dpkg || true
+            sudo rm -f /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock
+            sudo dpkg --configure -a || true
           done
           exit 1
 
