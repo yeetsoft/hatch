@@ -2,14 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
    empty wordings" against a refactor that might reorder the extraction by
    accident. */
 const noop = () => Promise.resolve();
+
+// react-dom/server escapes an apostrophe as `&#x27;` - runnerCapacityEmptyWords
+// is the only empty wording here that carries one.
+const htmlEscaped = (s: string): string => s.replace(/'/g, '&#x27;');
 
 let dialogProps: {
   open: boolean;
@@ -105,6 +109,15 @@ const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunne
   ...over,
 });
 
+const runnerCapacity = (over: Partial<RunnerCapacity> = {}): RunnerCapacity => ({
+  projectKey: 'AER',
+  steps: 2,
+  keys: ['AER-30', 'AER-31'],
+  takers: [],
+  reasons: [{ runner: 'Nathan-PC', reason: 'out of usage' }],
+  ...over,
+});
+
 const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
   projectKey: 'AER',
   projectName: 'Aerie',
@@ -122,12 +135,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws waiting on a runner first, then deadlocked, trunk builds, pull requests, then questions, each with the panel’s own empty wording', () => {
+  it('draws waiting on a runner first, then runner capacity, deadlocked, trunk builds, pull requests, then questions, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual([
       'Waiting on a runner',
+      'Runner capacity',
       'Deadlocked',
       'Trunk builds that fail',
       'Pull requests to review',
@@ -138,6 +152,7 @@ describe('AttentionHuman', () => {
     ]);
 
     const waitingAt = html.indexOf(waitingOnARunnerEmptyWords());
+    const runnerCapacityAt = html.indexOf(htmlEscaped(runnerCapacityEmptyWords()));
     const deadlockedAt = html.indexOf(deadlockedEmptyWords());
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
@@ -147,7 +162,9 @@ describe('AttentionHuman', () => {
     const questionAt = html.indexOf(questionEmptyWords());
 
     expect(waitingAt).toBeGreaterThan(-1);
-    expect(waitingAt).toBeLessThan(deadlockedAt);
+    expect(waitingAt).toBeLessThan(runnerCapacityAt);
+    expect(runnerCapacityAt).toBeGreaterThan(-1);
+    expect(runnerCapacityAt).toBeLessThan(deadlockedAt);
     expect(deadlockedAt).toBeGreaterThan(-1);
     expect(deadlockedAt).toBeLessThan(trunkAt);
     expect(trunkAt).toBeLessThan(reviewAt);
@@ -170,8 +187,9 @@ describe('AttentionHuman', () => {
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
     expect(headings[0]).toBe('Waiting on a runner');
-    expect(headings[1]).toBe('Backups');
-    expect(headings[2]).toBe('Deadlocked');
+    expect(headings[1]).toBe('Runner capacity');
+    expect(headings[2]).toBe('Backups');
+    expect(headings[3]).toBe('Deadlocked');
     expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
     expect(html).toContain('The last backup failed.');
     expect(html).toContain('Last successful backup:');
@@ -232,6 +250,39 @@ describe('AttentionHuman', () => {
     expect(html).toContain(`in ${row.move} - ${row.missing}`);
     expect(html).toContain(`href="/issues/${row.key}"`);
     expect(html.match(/href="\/runners"/g)).toHaveLength(1);
+  });
+
+  it('shows the empty words when runnerCapacity is empty or absent, with no rows', () => {
+    for (const over of [{ runnerCapacity: [] }, {}]) {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <AttentionHuman attention={attention(over)} now={new Date()} reload={noop} />
+        </MemoryRouter>,
+      );
+
+      expect(html).toContain(htmlEscaped(runnerCapacityEmptyWords()));
+    }
+  });
+
+  it('lists a runner capacity row’s project key, words and every key linked to the issue', () => {
+    const row = runnerCapacity();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ runnerCapacity: [row] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).not.toContain(runnerCapacityEmptyWords());
+    expect(html).toContain('>Runner capacity</h3>');
+    expect(html).toContain(row.projectKey);
+    expect(html).toContain(runnerCapacityWords(row));
+    for (const key of row.keys) {
+      expect(html).toContain(`href="/issues/${key}"`);
+    }
+    // No rows under Waiting on a runner here, so no link to it either - this
+    // section draws no Runners-page link of its own.
+    expect(html.match(/href="\/runners"/g) ?? []).toHaveLength(0);
   });
 
   it('shows the empty words when nothing is deadlocked', () => {
