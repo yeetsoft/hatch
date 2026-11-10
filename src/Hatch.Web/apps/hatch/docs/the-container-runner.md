@@ -21,7 +21,7 @@ type the word `runner`.
 runtime**: no .NET, no Node, no Python, no compilers.
 
 The container advertises what it has like any runner, and its Dockerfile
-installs none of `make`, `dotnet`, `node`, `pwsh`, Playwright's browsers or a
+installs none of `make`, `dotnet`, `node`, `pwsh`, Playwright's browsers, Docker or a
 Postgres. So for a repository that declares a toolchain in
 `.hatch/dependencies.json`, the board folds it from that project's development
 steps ([what a repository needs](the-runner#what-a-repository-needs)), and it

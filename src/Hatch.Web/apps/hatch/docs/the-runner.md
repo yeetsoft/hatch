@@ -380,22 +380,31 @@ hatch config --has dotnet@10.0.100 --has pwsh
 `--has` is repeatable, and bare `--has` clears them. A comma inside one value
 is refused (`--has dotnet,pwsh` is one unknown id, not two), with nothing
 written. So is an id the master list does not know: `` `cobol` is not a
-dependency Hatch knows - the list is dotnet, make, node, playwright-browsers,
-postgres, pwsh ``. A bad `HATCH_HAS` in a file or the environment refuses
-every command with the same sentence, after `hatch: HATCH_HAS -`. It is
+dependency Hatch knows - the list is docker, dotnet, make, node,
+playwright-browsers, postgres, pwsh ``. A bad `HATCH_HAS` in a file or the
+environment refuses every command with the same sentence, after `hatch: HATCH_HAS -`. It is
 machine-bound, so a profile still reads it from the per-user file.
 
 **Detection runs once**, at the start of `go-to-work`, `do-my-work`, `work`
-and `queue`, concurrently across all six dependencies: `make`, `dotnet`,
-`node` and `pwsh` (and which version each answers), whether a
-Playwright browsers cache exists, and whether Postgres answers - a binary on
-`PATH`, or failing that a Docker daemon's `docker info`. The four tools are
-asked of `$SHELL` first, run as `-l -i +m -c` so a version manager loaded from
+and `queue`, concurrently across all seven dependencies: `make`, `dotnet`,
+`node`, `pwsh` and `docker` (and which version each answers), whether a
+Playwright browsers cache exists, and whether Postgres answers. `docker` is
+present only when `docker info` answers, so the daemon is running, and
+`docker compose version` succeeds; its version is the client's. `postgres` is
+present when a `postgres`, `pg_ctl` or `pg_isready` binary on `PATH` answers
+`--version`; a Docker daemon no longer counts for it. The five tools are asked
+of `$SHELL` first, run as `-l -i +m -c` so a version manager loaded from
 the profile is seen (`+m` turns job control off), with a 10 second limit, and
 of `PATH` (5 seconds) only if the shell fails to answer. That is macOS and
-Linux: Windows, or no usable `SHELL`, reads `PATH` alone. So those four can
-take 15 seconds (10 and 5), and Postgres up to 20, since it tries three
-binaries and a daemon at 5 seconds each. What
+Linux: Windows, or no usable `SHELL`, reads `PATH` alone. So `make`, `dotnet`,
+`node` and `pwsh` can take 15 seconds (10 and 5), `docker` up to 20 (10, then 5
+for `docker info` and 5 for `docker compose version`), and Postgres up to 15,
+since it tries three binaries at 5 seconds each. Because detection runs once,
+a Docker daemon that was not running at start is absent until Docker is
+started and the loop restarted; stderr says so as
+`hatch: docker not detected - the Docker daemon did not answer ...`. An
+operator who set `HATCH_HAS=postgres` to cover a machine that only had Docker
+needs `HATCH_HAS=docker` now. What
 detection finds is merged with what `HATCH_HAS` declares - a declared entry
 adds only what detection missed, never removing what detection found - and
 the merged set is what a beat advertises: the same one `hatch runners` and the
@@ -420,7 +429,7 @@ written.
 `.hatch/dependencies.json` on the trunk of each repository a project binds. The
 shape is `{"dependencies": [ ... ]}`, and an entry is an id string or
 `{"id": ..., "version": ...}`. The ids are the master list - `make`, `dotnet`,
-`node`, `playwright-browsers`, `postgres`, `pwsh` - each declared once. A
+`node`, `playwright-browsers`, `postgres`, `pwsh`, `docker` - each declared once. A
 version is one to three dotted whole numbers, and it is a minimum, met by that
 version and anything newer: `22` is met by `22.0.1` and `24.22.0` and not by
 `21.9.9`; `10.0.100` is met by `10.0.302` and not by `10.0.99`; `22.1` is not
@@ -460,7 +469,7 @@ the short sha where one parsed, and a **File** chip to the blob.
     { "id": "node", "version": "22" },
     { "id": "pwsh", "version": "7" },
     "playwright-browsers",
-    "postgres"
+    "docker"
   ]
 }
 ```
