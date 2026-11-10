@@ -390,7 +390,12 @@ last and when, a name and an instant, null until the first change, and
 `NoCodeCloses` (`bool`, default `false` - whether a no-code declaration on an
 issue closes it outright), with `NoCodeClosesBy` and `NoCodeClosesAt` beside
 it - who changed it last and when, a name and an instant, null until the
-first change.
+first change, and
+`OnePullRequestPolicy` (`"optional"` by default, or `"enforced"` - whether a
+story or bug may carry a one-pull-request setting of its own, see [One pull
+request](#one-pull-request)), with `OnePullRequestPolicyBy` and
+`OnePullRequestPolicyAt` beside it - who changed it last and when, a name and
+an instant, null until the first change.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -462,6 +467,18 @@ nothing, the stamp included. The close hop reads the flag, carrying a
 declared childless issue through pre-approved or not once it is on, see [the
 hop](#the-hop); a declared row it carries this way also stops being one of
 [what is waiting on you](#what-is-waiting-on-you)'s `noCodeHeld`.
+
+`OnePullRequestPolicy` is written through its own route too, `PUT
+/projects/{id}/one-pr-policy` (`ProjectsController.PutOnePrPolicy`), guarded
+the same way - `[RequireRole(User)]`, `NotAPerson` checked again in the
+action, then an owner check answering `403` naming the project's key (*"only
+an owner of `<KEY>` may change its one-pull-request policy"*) to anyone else,
+and `404` on an unknown project. Anything but `optional` or `enforced` is
+`400`, naming the bad value and the two good ones. A change stamps
+`OnePullRequestPolicyBy` and `OnePullRequestPolicyAt`; re-sending the value the
+project already holds writes nothing, the stamp included. `PATCH` and `POST`
+do not reach it. Tightening it reconciles the overrides that already exist, see
+[One pull request](#one-pull-request).
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -1769,6 +1786,25 @@ and carries no setting is first given, as its own, the value it was reading —
 one `one_pr_changed` event on each, `inherit` to that value. Stories with
 nothing started keep following the default. "Started" is the same test the lock
 uses, so a story fixed this way is locked from then on like any other.
+
+**The project's policy.** A project also carries `OnePullRequestPolicy`:
+`optional` (the default - a story or bug may override the project's default
+either way, as above) or `enforced` (no story or bug may carry a setting of its
+own). Under `enforced`, every override that exists is locked: it either
+predates the policy, on a story that had already started when the policy
+tightened, or was written by that tightening's own reconciliation. This field
+decides what happens to the overrides that already exist; refusing a new one
+under `enforced` is separate work. Tightening (`optional` to `enforced`)
+reconciles in the same save: every story or bug with an override and no started
+work returns to inherit, one `one_pr_changed` event each, `from` the
+override's `on` or `off`, `to` `inherit`, with `fixedBecause` saying *the
+project began enforcing its default with nothing under this story started*. One
+with started work keeps its override untouched. Loosening (`enforced` to
+`optional`) writes nothing to any issue. "Started" is not a second definition:
+it is the test `OnePrLock.OverriddenAndUnstartedAsync` applies - any descendant
+in the implementation column or to its right, terminal included - the same one
+`PutLanding` uses to fix started stories that inherit. A board with no
+implementation column returns nothing, so nothing is reconciled.
 
 A bug was refused an override until it could carry one, so its tasks were always
 begun on branches of their own. The migration `FreezeBugOnePr` gives every bug
