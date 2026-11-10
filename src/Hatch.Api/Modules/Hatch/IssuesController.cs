@@ -940,6 +940,16 @@ public class IssuesController(
                 rekeyed.Add((oldKeys[m.Id], newKey));
             }
 
+            // A story or bug that carries an override and has nothing started
+            // under it goes back to inheriting, so the invariant "every override
+            // under an enforced project is locked" holds across a move too. In
+            // memory: the status is whatever this edit has already staged.
+            if (target.OnePullRequestPolicy == OnePullRequestPolicies.Enforced)
+                OnePrLock.ReturnToInherit(
+                    OnePrLock.OverriddenAndUnstartedAmong(
+                        moving, await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct)),
+                    actor, now, "the story moved into a project that enforces its one-PR default with nothing under it started");
+
             // Left behind rather than carried with the root, only when the
             // request asked for that split - DeleteIssue's own outdent
             // writes no event for the same shape of change, but there the
