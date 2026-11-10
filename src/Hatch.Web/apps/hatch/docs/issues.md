@@ -124,6 +124,19 @@ story or bug with nothing started under it to the project's default; one with
 started work keeps its override. Anyone who is not an owner sees the choice
 read out, but cannot change it.
 
+Under such a project, the issue page draws the three steps disabled, with the
+reason — that the project enforces its default, and that an owner can make it
+optional on the Projects page — as their title. The line beneath still says
+what is in effect: `On · the project's default, enforced` or
+`Off · the project's default, enforced` for a story or bug with nothing of its
+own to keep; `On · set on this story before the project enforced its default;
+locked` or the `Off` and `bug` forms of it for one whose override predates the
+policy and was kept because its work had started. A task's line is unchanged
+by any of this — `inherited from` the story it is under, whatever the story's
+own line reads. The New Issue form, which has no story yet to lock, shows one
+muted line in its place instead of the steps, saying that the chosen project
+enforces its own default, and files no setting of its own for the one-PR field.
+
 ## Pre-approval
 
 Three levels: none, express, preapproved — read live from the nearest
