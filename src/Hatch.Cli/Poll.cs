@@ -30,6 +30,10 @@ namespace Hatch.Cli;
 ///
 /// <para><b>The build half asks about one sha, until its build concludes.</b>
 /// <c>ls-remote</c> has already given every branch's tip, so it needs no fetch.
+/// The branch is the one origin has for the issue or, where it has several, the
+/// one the stored <c>clean</c> or <c>conflicted</c> merge check names (it
+/// fetched, so it knows which is open); where it names none of them the poll
+/// says so in one line and reads no build.
 /// A build that has concluded on a sha does not change, short of a re-run, so a
 /// <c>passed</c> or <c>failed</c> verdict is asked about once - and a board that
 /// already holds one for the tip vouches for it, which is what stops a runner
@@ -385,7 +389,8 @@ public sealed class Poll
 
     /// <summary>
     /// The build half for one checkout: for each issue whose branch is the one
-    /// branch origin has for it, read the build on its tip unless something
+    /// branch origin has for it - or, where it has several, the one its stored
+    /// merge check names - read the build on its tip unless something
     /// already vouches for it, and report what it came to.
     /// </summary>
     /// <remarks>
@@ -406,10 +411,17 @@ public sealed class Poll
             {
                 ct.ThrowIfCancellationRequested();
 
-                // Exactly one branch: the merge check that says which is the
-                // issue's is what made it an issue with a branch at all, and a
-                // build is about a tip, not about a guess between two.
-                if (heads.Candidates(target.Key) is not [var branch]) continue;
+                // The one branch, or the one the stored merge check names among
+                // several: a build is about a tip, not about a guess between
+                // two. None is silent - a merged, deleted branch is the
+                // commonest case - but several that the merge check names none
+                // of is a line, since nothing else says why no build is read.
+                if (heads.BranchFor(target.Key, target.Stored) is not { } branch)
+                {
+                    if (heads.Candidates(target.Key) is { Count: > 1 } several)
+                        complain($"hatch: {target.Key} has {several.Count} branches on origin in {name} ({string.Join(", ", several)}) and its merge check names none of them, so its build was not read");
+                    continue;
+                }
                 var sha = heads.Shas[branch];
 
                 var memory = (path, target.Key);
