@@ -170,6 +170,64 @@ describe('ProjectEditDialog', () => {
     expect(html).not.toContain('Binds the tracker');
   });
 
+  it('shows an owner both one-pull-request policy radios and the hint, optional checked for an optional project', () => {
+    const html = render(project({ canAdminister: true, onePullRequestPolicy: 'optional' }));
+
+    expect(html).toContain('Stories may set their own, either way');
+    expect(html).toContain('Every story follows the project');
+    expect(html).toContain('no story or bug may be given a setting of its own');
+    expect(html).toMatch(/<input type="radio"[^>]*checked=""[^>]*\/>Stories may set their own, either way/);
+  });
+
+  it('shows an owner enforced checked for an enforced project', () => {
+    const html = render(project({ canAdminister: true, onePullRequestPolicy: 'enforced' }));
+
+    expect(html).toMatch(/<input type="radio"[^>]*checked=""[^>]*\/>Every story follows the project/);
+  });
+
+  it('shows an owner who set the one-pull-request policy, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        onePullRequestPolicyBy: 'Dana',
+        onePullRequestPolicyAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the one-pull-request policy has never been written', () => {
+    const html = render(project({ canAdminister: true, onePullRequestPolicyBy: null, onePullRequestPolicyAt: null }));
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else the one-pull-request policy worked into the summary sentence, and no radios', () => {
+    const optional = render(project({ canAdminister: false, onePullRequest: true, onePullRequestPolicy: 'optional' }));
+    expect(optional).toContain('one pull request per story, which a story may override');
+
+    const enforced = render(project({ canAdminister: false, onePullRequest: false, onePullRequestPolicy: 'enforced' }));
+    expect(enforced).toContain('one pull request per task, which every story follows');
+
+    expect(optional).not.toContain('Stories may set their own, either way');
+    expect(optional).not.toContain('Every story follows the project');
+  });
+
+  it('shows anyone else the one-pull-request policy audit sentence when set', () => {
+    const html = render(
+      project({
+        canAdminister: false,
+        onePullRequestPolicyBy: 'Dana',
+        onePullRequestPolicyAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(
+      `The one-pull-request policy was set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}.`,
+    );
+  });
+
   it('shows an owner the check-approves-merge checkbox and its hint', () => {
     const html = render(project({ canAdminister: true }));
 
