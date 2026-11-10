@@ -128,17 +128,19 @@ public sealed class Claim : IAsyncDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _interval;
     private long _stallLapseTicks;
+    private long _runLimitTicks;
     private Task? _heartbeat;
     private int _released;
 
     private Claim(
         HatchClient client, string key, Guid token, int ttlSeconds, TimeSpan interval, TimeSpan? stallLapse,
-        DateTimeOffset takenAt)
+        TimeSpan? runLimit, DateTimeOffset takenAt)
     {
         _client = client;
         _quiet = client.Quiet();
         _interval = interval;
         _stallLapseTicks = stallLapse?.Ticks ?? -1;
+        _runLimitTicks = runLimit?.Ticks ?? -1;
         Key = key;
         Token = token;
         TtlSeconds = ttlSeconds;
@@ -178,6 +180,24 @@ public sealed class Claim : IAsyncDisposable
             Volatile.Write(ref _stallLapseTicks, TimeSpan.FromSeconds(seconds).Ticks);
     }
 
+    /// <summary>
+    /// The playbook's run-time cap, timed from <see cref="TakenAt"/> - null for
+    /// no cap. What the take said, until <see cref="UseRunLimit"/> follows the
+    /// playbook the dispatch matched.
+    /// </summary>
+    public TimeSpan? RunLimit => Volatile.Read(ref _runLimitTicks) is var ticks and >= 0 ? new TimeSpan(ticks) : null;
+
+    /// <summary>
+    /// Follows the matched playbook's run limit, for a claim that was taken
+    /// before the playbook was attached. Counts only when positive, as <see
+    /// cref="UseQuietLimit"/> does.
+    /// </summary>
+    public void UseRunLimit(int seconds)
+    {
+        if (seconds > 0)
+            Volatile.Write(ref _runLimitTicks, TimeSpan.FromSeconds(seconds).Ticks);
+    }
+
     private ReadoutState? _readout;
 
     /// <summary>
@@ -213,13 +233,13 @@ public sealed class Claim : IAsyncDisposable
     public string? LostReason => Volatile.Read(ref _lostReasonSet) != 0 ? Volatile.Read(ref _lostReason) : null;
 
     /// <summary>
-    /// Lost, and not to <see cref="ClaimLostReasons.Quiet"/> - the one reason
-    /// this runner let go of its own lease rather than having it taken. A
-    /// legacy bare-string refusal or the stall-lapse give-up carries no
-    /// reason at all, which reads as true: neither of those is this runner
-    /// going quiet on purpose.
+    /// Lost, and not to <see cref="ClaimLostReasons.Quiet"/> or <see
+    /// cref="ClaimLostReasons.RunTime"/> - the two reasons this runner let go
+    /// of its own lease rather than having it taken. A legacy bare-string
+    /// refusal or the stall-lapse give-up carries no reason at all, which
+    /// reads as true: neither of those is this runner going quiet on purpose.
     /// </summary>
-    public bool LostToOthers => Lost is not null && LostReason != ClaimLostReasons.Quiet;
+    public bool LostToOthers => Lost is not null && LostReason is not (ClaimLostReasons.Quiet or ClaimLostReasons.RunTime);
 
     /// <summary>
     /// What to do the moment the lease goes: stop the session, so that nothing
@@ -294,6 +314,7 @@ public sealed class Claim : IAsyncDisposable
         var claim = new Claim(
             client, key, taken.Token, taken.TtlSeconds, interval ?? Interval(taken.TtlSeconds),
             stallLapse ?? (taken.StallLapseSeconds > 0 ? TimeSpan.FromSeconds(taken.StallLapseSeconds) : null),
+            taken.MaxRunSeconds > 0 ? TimeSpan.FromSeconds(taken.MaxRunSeconds) : null,
             takenAt);
         claim._heartbeat = Task.Run(() => claim.BeatAsync(claim._stop.Token), CancellationToken.None);
         return (claim, null);
@@ -448,9 +469,10 @@ public sealed class Claim : IAsyncDisposable
     /// </param>
     /// <param name="reason">
     /// One of <see cref="ClaimLostReasons"/> - the endpoint accepts only
-    /// <see cref="ClaimLostReasons.Quiet"/> and 400s anything else. Sent only
-    /// alongside an outcome, and only when given, so every release before
-    /// this one - none of which named a reason - is unchanged.
+    /// <see cref="ClaimLostReasons.Quiet"/> or <see cref="ClaimLostReasons.RunTime"/>
+    /// and 400s anything else. Sent only alongside an outcome, and only when
+    /// given, so every release before this one - none of which named a
+    /// reason - is unchanged.
     /// </param>
     public async Task ReleaseAsync(string? outcome = null, string? reason = null)
     {

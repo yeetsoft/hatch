@@ -75,6 +75,31 @@ public sealed class FakeSessions : ISessionRunner
             return new SessionResult(0, "");
         };
 
+    /// <summary>
+    /// A session that keeps saying something every ~5ms until its token is
+    /// cancelled - the run-time watcher's own counterpart to <see
+    /// cref="UntilStopped"/>: this one never goes quiet, so a test driving it
+    /// exercises the run-time cap and not the quiet one.
+    /// </summary>
+    public static Func<SessionRequest, Action<string>?, CancellationToken, Task<SessionResult>> Chattering() =>
+        async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+
+            try
+            {
+                while (true)
+                {
+                    onLine?.Invoke(Fixtures.ToolUse("Bash", "make test-api"));
+                    await Task.Delay(TimeSpan.FromMilliseconds(5), ct);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return new SessionResult(143, "");
+            }
+        };
+
     public Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct)
     {
         Spawned.Add(request);

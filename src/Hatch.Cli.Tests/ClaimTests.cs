@@ -359,6 +359,25 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
     }
 
+    [Fact]
+    public async Task A_run_time_refusal_names_its_reason_and_is_not_lost_to_others()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim has run past its playbook's limit","reason":"run-time"}""");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await Harness.Eventually(() => claim!.Lost is not null, "the lease to be reported lost");
+        Assert.Equal("this claim has run past its playbook's limit", claim!.Lost);
+        Assert.Equal(ClaimLostReasons.RunTime, claim.LostReason);
+        Assert.False(claim.LostToOthers);
+
+        await claim.ReleaseAsync();
+    }
+
     [Theory]
     [InlineData(ClaimLostReasons.Taken)]
     [InlineData(ClaimLostReasons.Expired)]
@@ -460,6 +479,53 @@ public sealed class ClaimTests
     }
 
     [Fact]
+    public async Task The_take_answer_s_MaxRunSeconds_feeds_RunLimit_and_zero_is_null()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK,
+            Fixtures.Taken(Token, maxRunSeconds: 3600));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.Equal(TimeSpan.FromSeconds(3600), claim!.RunLimit);
+
+        await claim.ReleaseAsync();
+
+        using var h2 = new Harness();
+        h2.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h2.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim2, _) = await Claim.TakeAsync(h2.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.Null(claim2!.RunLimit);
+
+        await claim2.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task UseRunLimit_sets_RunLimit_when_positive_and_ignores_zero_and_negative()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        Assert.Null(claim!.RunLimit);
+
+        claim.UseRunLimit(0);
+        Assert.Null(claim.RunLimit);
+        claim.UseRunLimit(-5);
+        Assert.Null(claim.RunLimit);
+
+        claim.UseRunLimit(3600);
+        Assert.Equal(TimeSpan.FromSeconds(3600), claim.RunLimit);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
     public async Task Chatter_SaidAt_is_null_until_a_line_is_set_and_then_tracks_the_clock()
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
@@ -500,6 +566,22 @@ public sealed class ClaimTests
         var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
         Assert.Contains("reason=quiet", released.Query, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_release_sends_reason_run_time_when_given_it()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.RunTime);
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
+        Assert.Contains("reason=run-time", released.Query, StringComparison.Ordinal);
     }
 
     [Fact]

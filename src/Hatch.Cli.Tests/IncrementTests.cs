@@ -34,6 +34,23 @@ public sealed class IncrementTests
         return claim!;
     }
 
+    /// <summary>
+    /// The same as <see cref="HoldingAsync"/>, but with a <c>maxRunSeconds</c>
+    /// on the take, with <c>stallLapseSeconds</c> alongside it so the two
+    /// watchers can be told apart in a test - what starts the run-time
+    /// watcher in <see cref="Increment.SpawnAsync"/>.
+    /// </summary>
+    private static async Task<Claim> HoldingWithRunLimitAsync(
+        Harness h, string key, Guid token, int maxRunSeconds, int stallLapseSeconds = 0)
+    {
+        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK,
+            Fixtures.Taken(token, stallLapseSeconds: stallLapseSeconds, maxRunSeconds: maxRunSeconds));
+        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, key, "test:/checkout", default, Harness.Beat);
+        return claim!;
+    }
+
     [Fact]
     public async Task An_increment_posts_its_bill_and_asks_the_board_where_the_ticket_ended_up()
     {
@@ -2363,6 +2380,221 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
         Assert.Null(report.ReleaseReason);
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+
+        await claim.ReleaseAsync();
+    }
+
+    // ---- HA-2143: the claim's own run-time cap, raced the same way the quiet window is ----
+
+    /// <summary>
+    /// A chattering session never goes quiet, so only the run-time watcher can
+    /// stop it - at the playbook's own cap, timed from the take. The first time
+    /// in a row this happens to a ticket it is let go of quietly, the same
+    /// ladder a quiet stop climbs.
+    /// </summary>
+    [Fact]
+    public async Task A_chattering_session_is_stopped_for_run_time_and_let_go_the_first_time()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2, stallLapseSeconds: 600);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.Chattering();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.False(report.QuietStopped);
+        Assert.False(report.LostLease);
+        Assert.True(report.LetGo);
+        Assert.Equal(143, report.ExitCode);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("this playbook's run limit is 2s", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A quiet run is capped the same way: the run-time watcher covers both paths.</summary>
+    [Fact]
+    public async Task A_chattering_quiet_run_is_capped_the_same_way()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.Chattering();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: true, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A check increment is capped the same way too.</summary>
+    [Fact]
+    public async Task A_chattering_check_increment_is_capped_the_same_way()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0, isCheck: true));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.Chattering();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0, isCheck: true), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>No cap - zero on the take - starts no watcher at all, and a chattering session just runs to completion.</summary>
+    [Fact]
+    public async Task No_run_limit_starts_no_watcher_and_the_session_runs_to_completion()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(report.RunTimeStopped);
+        Assert.True(report.Moved);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>The second time in a row, a run-time stop is flagged exactly like any other stall.</summary>
+    [Fact]
+    public async Task A_chattering_session_stopped_for_run_time_a_second_time_in_a_row_is_flagged()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+
+        h.Sessions.Behaviour = FakeSessions.Chattering();
+
+        var running = h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 200 && !running.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        var report = await running.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.False(report.LetGo);
+        Assert.Equal("flagged", report.Flag);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("this playbook's run limit is 2s", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
+
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Contains("this playbook's run limit is 2s", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
+    /// A heartbeat refused with <c>reason: "run-time"</c> is read the same way a
+    /// locally fired watcher is - here with no local watcher at all (no cap on
+    /// the take), which is the server's own run-time rule catching it on its own.
+    /// </summary>
+    [Fact]
+    public async Task A_heartbeat_refused_for_run_time_with_no_local_watcher_reads_the_same_way()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+            """{"error":"this claim has run past its playbook's limit","reason":"run-time"}""");
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = FakeSessions.UntilStopped();
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.RunTimeStopped);
+        Assert.False(report.QuietStopped);
+        Assert.False(report.LostLease);
+        Assert.True(report.LetGo);
+        Assert.Equal(143, report.ExitCode);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
+
+        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Contains("this playbook's run limit is", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
