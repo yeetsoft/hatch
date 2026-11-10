@@ -54,6 +54,17 @@ has:
   budget`. A cap inherited from the site default carries the same
   `(default)` marker here as it does in Bounds.
 
+Beneath a row, one quieter line per live session it holds: where it is working
+from, its agent and its OS (each `-` where it has not said), and a **Doing**
+badge decided by the same rule as the row's own, with the held ticket as a link.
+Two checkouts that report under one name are one runner row with two of these
+lines. A session is live when it has not ended and has been heard from within
+the runner's silence limit; an ended or silent one is left out, and a runner
+with no live sessions draws exactly the row above and nothing more. The lines
+have no controls, since Pause, Stop and orders are the runner's and not a
+session's, and a retired row draws none. It is the same list `hatch runners`
+indents under each runner.
+
 Renaming a checkout's runner retires its old name. The moment a loop beats from
 a checkout under a new name, every older loop row from that same checkout, for
 the same owner, is marked retired: it reads **Retired** in place of **Doing**
