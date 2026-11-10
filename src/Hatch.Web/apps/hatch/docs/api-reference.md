@@ -539,7 +539,7 @@ the second half of this page, after the board's own.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
@@ -1192,7 +1192,16 @@ entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
 (null when no other runner was eligible), `headKey` (the issue at the head of
 the train) and `at`. It is empty, not null, when no train is stalled, and the
 panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
-counted, since a runner that died never checks in to clear it.
+counted, since a runner that died never checks in to clear it. `runnerCapacity`
+lists the projects whose clear implementation steps no live runner, or only
+one, can take - always computed, with no query flag - ordered by project key;
+each entry carries `projectKey`, `steps` (how many clear implementation steps
+the project has), `keys` (the first ten, in rank order), `takers` (the union
+of runners able to take at least one of them - zero or one name, never more,
+since a project with two or more is not listed at all) and `reasons` (one
+`{runner, reason}` per live runner outside `takers`, from the project's
+highest-ranked step that runner cannot take). Empty, not null, when nothing
+qualifies or no runner is live.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
