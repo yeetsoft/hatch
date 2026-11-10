@@ -27,6 +27,17 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/statuses")]
 public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
 {
+    /// <summary>
+    /// The one mapping from a column to its <see cref="StatusDto"/>. Every route
+    /// that returns a column goes through it, so a field added to the DTO is
+    /// one edit here and no route can leave it at its <c>false</c> default.
+    /// Every argument is positional on purpose: nothing is defaulted, so a new
+    /// field fails to compile rather than being dropped silently.
+    /// </summary>
+    internal static StatusDto ToDto(EfHatchStatus s) =>
+        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
+            s.AgentFiles, s.IsImplementation, s.IsProtected, s.MergesPullRequest, RunnerTagColumn.Read(s.RunnerTags));
+
     [HttpGet]
     [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IReadOnlyList<StatusDto>>> GetStatuses(CancellationToken ct)
@@ -36,9 +47,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
             .ThenBy(s => s.Id)
             .ToListAsync(ct);
 
-        return statuses.Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-                s.AgentFiles, s.IsImplementation, s.IsProtected, s.MergesPullRequest, RunnerTagColumn.Read(s.RunnerTags)))
+        return statuses.Select(ToDto)
             .ToList();
     }
 
@@ -67,10 +76,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
 
         return CreatedAtAction(
             nameof(GetStatuses),
-            new StatusDto(
-                status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-                status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-                status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags)));
+            ToDto(status));
     }
 
     [HttpPatch("{id:int}")]
@@ -124,10 +130,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         }
 
         await db.SaveChangesAsync(ct);
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -147,10 +150,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.ExpressSkips = request.ExpressSkips;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -170,10 +170,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.ParentPulls = request.ParentPulls;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -205,10 +202,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.AgentFiles = request.AgentFiles;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -240,10 +234,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.IsImplementation = request.IsImplementation;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles,
-            status.IsImplementation, status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -282,10 +273,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.IsProtected = request.On;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-            status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -317,10 +305,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
         status.MergesPullRequest = request.On;
         await db.SaveChangesAsync(ct);
 
-        return new StatusDto(
-            status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-            status.IsProtected, status.MergesPullRequest, RunnerTagColumn.Read(status.RunnerTags));
+        return ToDto(status);
     }
 
     /// <summary>
@@ -352,9 +337,7 @@ public class StatusesController(HatchContext db, ICallerIdentity caller, TimePro
             logger.LogInformation("Column {ColumnName} runner tags set to {RunnerTags} by {Actor}", status.Name, string.Join(",", normalised), await caller.ActorNameAsync(ct));
         }
 
-        return new StatusDto(status.Id, status.Name, status.SortOrder, status.IsTerminal, status.IsDeferred, status.IsWip,
-            status.Color, status.ExpressSkips, status.ParentPulls, status.AgentFiles, status.IsImplementation,
-            status.IsProtected, status.MergesPullRequest, normalised);
+        return ToDto(status);
     }
 
     /// <summary>

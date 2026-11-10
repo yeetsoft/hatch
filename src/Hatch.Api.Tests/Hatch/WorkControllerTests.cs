@@ -3000,6 +3000,43 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task AColumn_ReadsTheSameOnStatusesBoardQueueAndWork()
+    {
+        var h = await NewAsync();
+        var column = await h.Db.Statuses.SingleAsync(s => s.Id == h.InProgress);
+        column.IsWip = true;
+        column.ExpressSkips = true;
+        column.ParentPulls = true;
+        column.AgentFiles = true;
+        column.IsImplementation = true;
+        column.IsProtected = true;
+        column.MergesPullRequest = true;
+        await h.Db.SaveChangesAsync();
+        await h.TagColumnAsync(h.InProgress, "macos");
+        var story = await h.FileAsync("story", "headed for the column", h.Todo);
+
+        var listed = Value(await h.Statuses.GetStatuses(default)).Single(s => s.Id == h.InProgress);
+        var onBoard = Value(await h.Board.GetBoard(default)).Statuses.Single(s => s.Id == h.InProgress);
+        var queued = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(story)).ToStatus;
+        var onWork = Value(await h.Work.GetWork(Key(story), null, default)).Statuses!.Single(s => s.Id == h.InProgress);
+
+        // The comparison below passes trivially if everything reads false, so
+        // pin the reference copy first.
+        Assert.True(listed.IsProtected);
+        Assert.True(listed.MergesPullRequest);
+        Assert.True(listed.AgentFiles);
+        Assert.True(listed.IsImplementation);
+        Assert.NotNull(queued);
+
+        // JSON rather than the records: RunnerTags is a list, which a record
+        // compares by reference. JSON also covers any field added later.
+        var expected = JsonSerializer.Serialize(listed);
+        Assert.Equal(expected, JsonSerializer.Serialize(onBoard));
+        Assert.Equal(expected, JsonSerializer.Serialize(queued));
+        Assert.Equal(expected, JsonSerializer.Serialize(onWork));
+    }
+
+    [Fact]
     public async Task Work_CarriesAColumnsOwnRunnerTags()
     {
         var h = await NewAsync();
@@ -13747,6 +13784,8 @@ public class WorkControllerTests
         public required IAuthService Keys { get; init; }
         public required RunnerSessions Sessions { get; init; }
         public required WorkController Work { get; init; }
+        public required BoardController Board { get; init; }
+        public required StatusesController Statuses { get; init; }
         public required PlaybooksController Playbooks { get; init; }
         public required StubCallerIdentity Caller { get; init; }
         public required int ProjectId { get; init; }
@@ -14666,6 +14705,8 @@ public class WorkControllerTests
             Work = new WorkController(
                 db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, runners, keys, sessions),
+            Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
+            Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
             Playbooks = new PlaybooksController(db, new FakeTimeProvider(Now), new StubCallerIdentity())
             {
                 ControllerContext = new ControllerContext
