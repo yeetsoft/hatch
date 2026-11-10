@@ -1,5 +1,5 @@
-# What a build of this repository needs - make, dotnet 10, node 22, pwsh 7
-# and Playwright's browsers - is declared in
+# What a build of this repository needs - make, dotnet 10, node 22, pwsh 7,
+# Playwright's browsers and docker (with compose) - is declared in
 # .hatch/dependencies.json, which the board reads to decide which runners may
 # work development steps here. A tool or version this file starts needing
 # moves there in the same change.
@@ -119,6 +119,9 @@ publish-hatch:
 # is built out of conditional UPDATEs, and EF's in-memory provider cannot execute
 # one at all - so `make test-api` alone can be green having verified none of
 # them, and CI runs this lane rather than that one.
+#
+# The database comes from `make db` (`docker compose up -d db`), so this lane needs
+# Docker with compose and no native Postgres.
 #
 # The restore-drill test (BackupRestoreDrillTests) also needs pg_dump and psql of
 # the server's major (18) on PATH, else it skips with a message saying why.
