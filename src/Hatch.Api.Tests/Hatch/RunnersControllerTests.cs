@@ -3804,6 +3804,59 @@ public class RunnersControllerTests
         Assert.Empty(notElected.Value!.Drives!);
     }
 
+    // ---- What the loop was told, kept beside the election (AR-80) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_StoresWhatItWasTold_AndEmptyWhenItWasToldNothing()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var stored = await h.Db.RunnerSessions.AsNoTracking().ToListAsync();
+        Assert.Equal("AER", stored.Single(s => s.ApiKeyId == one.Id).DrivesTold);
+        Assert.Equal("", stored.Single(s => s.ApiKeyId == two.Id).DrivesTold);
+    }
+
+    [SkippableFact]
+    public async Task TheRunnersList_CarriesWhatTheLiveSessionWasTold_NotWhatTheElectionSaysNow()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        // The loop was told it drives the project; blank what it was told, as a
+        // server answering every beat with nothing would have, and the election
+        // run again on the read still elects it.
+        var session = await h.Db.RunnerSessions.SingleAsync();
+        session.DrivesTold = "";
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.OneAsync();
+        Assert.Equal(["AER"], row.Drives);
+        Assert.NotNull(row.DrivesTold);
+        Assert.Empty(row.DrivesTold!);
+    }
+
+    [Fact]
+    public async Task TheRunnersList_HasNoDrivesTold_ForASessionNeverAnswered()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null((await h.OneAsync()).DrivesTold);
+    }
+
     // ---- The stall watch, run off a session beat (HA-2129) ----
 
     [SkippableFact]
@@ -4002,14 +4055,89 @@ public class RunnersControllerTests
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
         var before = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
 
-        h.Time.Advance(TimeSpan.FromMinutes(1));
+        h.Time.Advance(TimeSpan.FromSeconds(20));
         var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
 
         var refusal = Assert.IsType<ConflictObjectResult>(result.Result);
-        Assert.Contains("hatch is already the runner on", refusal.Value!.ToString(), StringComparison.Ordinal);
+        var held = Assert.IsType<RunnerSessionRefusalDto>(refusal.Value);
+        Assert.Contains("hatch is already the runner on", held.Error, StringComparison.Ordinal);
+        Assert.Equal(before.LastSeenAt, held.LastSeenAt);
+        Assert.Equal(Horizon - 20, held.GoneInSeconds);
         Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
         var after = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
         Assert.Equal(before.LastSeenAt, after.LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task EndSession_EndsThisKeysOwnSessionAndIsIdempotent()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+        var id = (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Id;
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.IsType<NoContentResult>(await h.Runners.EndSession(id, default));
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.IsType<NoContentResult>(await h.Runners.EndSession(id, default));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(Now.AddSeconds(10), row.EndedAt);
+    }
+
+    [SkippableFact]
+    public async Task EndSession_AnotherKeysSessionOrNoSuchId_Is404()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        var other = await h.AddKeyAsync("here:/other");
+        var theirs = await h.SeedSessionAsync(other.Id, "loop", "here:/others");
+
+        Assert.IsType<NotFoundResult>(await h.Runners.EndSession(theirs.Id, default));
+        Assert.IsType<NotFoundResult>(await h.Runners.EndSession(int.MaxValue, default));
+        Assert.Null((await h.Db.RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == theirs.Id)).EndedAt);
+    }
+
+    [Fact]
+    public async Task EndSession_WithNoKey_Is403()
+    {
+        var h = await NewAsync(nobody: true);
+
+        var result = await h.Runners.EndSession(1, default);
+
+        Assert.Equal(403, Assert.IsType<ObjectResult>(result).StatusCode);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatRightAfterEnd_SeedsANewSession()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+        var first = (await h.Db.RunnerSessions.AsNoTracking().SingleAsync()).Id;
+        await h.Runners.EndSession(first, default);
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        Assert.IsType<RunnerInstructionDto>(result.Value);
+        var rows = await h.Db.RunnerSessions.AsNoTracking().OrderBy(s => s.Id).ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.NotNull(rows[0].EndedAt);
+        Assert.Null(rows[1].EndedAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatAfterTheGoneHorizon_SeedsANewSession()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        h.Time.Advance(TimeSpan.FromSeconds(Horizon + 1));
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        Assert.IsType<RunnerInstructionDto>(result.Value);
+        Assert.Equal(2, await h.Db.RunnerSessions.CountAsync());
     }
 
     [SkippableFact]

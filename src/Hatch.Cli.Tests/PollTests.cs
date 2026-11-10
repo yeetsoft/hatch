@@ -987,6 +987,71 @@ public sealed class PollTests
         Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
     }
 
+    /// <summary>The same review, but origin has two branches for the key and the board holds a merge check that names <paramref name="branch"/> (or none).</summary>
+    private static Rig TwoBranches(string verdict, string? branch)
+    {
+        var stored = Fixtures.MergeCheck(verdict, "main", "example.test/repo", holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = branch, BranchSha = branch is null ? null : Tip2,
+        };
+        var rig = new Rig().Board(Fixtures.Review("AER-1", [], [stored], []));
+        rig.Keeps("AER-1", Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", sha: Tip2));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-1-thing-2", Tip2)]);
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = verdict switch
+        {
+            MergeVerdicts.Clean => new Verdict(MergeVerdicts.Clean, "main", Trunk, "aer-1-thing-2", Tip2, [], true),
+            MergeVerdicts.Conflicted => new Verdict(MergeVerdicts.Conflicted, "main", Trunk, "aer-1-thing-2", Tip2, ["a.txt"], false),
+            _ => new Verdict(MergeVerdicts.Ambiguous, "main", Trunk, null, null, []),
+        };
+        return rig;
+    }
+
+    [Theory]
+    [InlineData(MergeVerdicts.Clean)]
+    [InlineData(MergeVerdicts.Conflicted)]
+    public async Task Two_branches_one_named_by_the_stored_merge_check_have_the_build_on_that_branchs_tip_read(string verdict)
+    {
+        using var rig = TwoBranches(verdict, "aer-1-thing-2");
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip2}"], rig.H.Forge.Reads);
+        var put = Assert.Single(rig.H.Wire.To("PUT", PutBuild("AER-1"))).Read<BuildCheckRequest>();
+        Assert.Equal("aer-1-thing-2", put.Branch);
+        Assert.Equal(Tip2, put.Sha);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("aer-1-elsewhere")]
+    public async Task Two_branches_and_a_stored_merge_check_naming_neither_is_one_line_and_no_build_read(string? branch)
+    {
+        using var rig = TwoBranches(branch is null ? MergeVerdicts.Ambiguous : MergeVerdicts.Clean, branch);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        var line = Assert.Single(rig.H.Say.Complained, l => l.Contains("aer-1-thing"));
+        Assert.Contains("aer-1-thing-2", line);
+        Assert.Empty(rig.H.Forge.Reads);
+        Assert.Empty(rig.H.Wire.To("PUT", PutBuild("AER-1")));
+    }
+
+    [Fact]
+    public async Task Two_branches_with_a_stored_verdict_naming_one_are_fetched_once_and_not_again_while_the_fingerprint_holds()
+    {
+        using var rig = TwoBranches(MergeVerdicts.Clean, "aer-1-thing-2");
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+        await rig.Later().RunAsync();
+
+        Assert.Equal(1, rig.Count("fetch"));
+        Assert.Single(rig.H.Wire.To("PUT", Put("AER-1")));
+    }
+
     [Fact]
     public async Task A_forge_that_cannot_answer_reports_nothing_says_one_line_once_and_leaves_the_merge_half_alone()
     {

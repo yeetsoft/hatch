@@ -148,12 +148,12 @@ public static class Fixtures
         string key, string? blocked = null, bool expedited = false, bool hop = false, string? priority = null,
         string? hopKind = null, string? hopUnder = null, string? model = null,
         IReadOnlyList<string>? deniedTools = null, IReadOnlyList<string>? takers = null,
-        IReadOnlyList<RunnerReasonDto>? untaken = null) =>
+        IReadOnlyList<RunnerReasonDto>? untaken = null, string? trainNote = null) =>
         new(
             Issue(key, expedited: expedited, express: hop, priority: priority), Status(3, "In Progress"),
             Status(4, "In Review"), blocked, Hop: hop, HopKind: hop ? hopKind ?? HopKinds.Express : null,
             HopUnder: hop ? hopUnder : null, Model: model, DeniedTools: deniedTools, Takers: takers,
-            Untaken: untaken);
+            Untaken: untaken, TrainNote: trainNote);
 
     /// <summary>A verdict as a runner would have put it, conflicted unless said otherwise.</summary>
     public static MergeCheckDto MergeCheck(
@@ -333,6 +333,25 @@ public static class Fixtures
             message = new { content = new[] { new { type = "tool_use", name, input = new { command } } } },
         });
 
+    /// <summary>A shell call carrying the id its result answers to - what makes it a call that can stay open.</summary>
+    public static string ToolUse(string name, string command, string id) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "assistant",
+            message = new { content = new[] { new { type = "tool_use", id, name, input = new { command } } } },
+        });
+
+    /// <summary>The user event a tool call's result arrives in.</summary>
+    public static string ToolResult(string id, string content = "ok", bool isError = false) =>
+        JsonSerializer.Serialize(new
+        {
+            type = "user",
+            message = new
+            {
+                content = new[] { new { type = "tool_result", tool_use_id = id, content, is_error = isError } },
+            },
+        });
+
     /// <summary>A tool call with any input object; a sub-agent's carries its parent's tool use id.</summary>
     public static string ToolUse(string name, object input, string? parentToolUseId = null) =>
         JsonSerializer.Serialize(new Dictionary<string, object?>
@@ -467,12 +486,14 @@ public static class Fixtures
     public static string CodexThreadStarted(string threadId = "t-1") =>
         JsonSerializer.Serialize(new { type = "thread.started", thread_id = threadId });
 
-    public static string CodexItemStarted(string itemType, string? command = null, string? tool = null, string? query = null) =>
+    public static string CodexItemStarted(
+        string itemType, string? command = null, string? tool = null, string? query = null, string? id = null) =>
         JsonSerializer.Serialize(new
         {
             type = "item.started",
             item = new Dictionary<string, object?>
             {
+                ["id"] = id,
                 ["type"] = itemType,
                 ["command"] = command,
                 ["tool"] = tool,
@@ -482,12 +503,14 @@ public static class Fixtures
 
     public static string CodexItemCompleted(
         string itemType, string status = "completed", string? aggregatedOutput = null,
-        string[]? changedPaths = null, string? errorMessage = null, string? text = null, string? message = null) =>
+        string[]? changedPaths = null, string? errorMessage = null, string? text = null, string? message = null,
+        string? id = null) =>
         JsonSerializer.Serialize(new
         {
             type = "item.completed",
             item = new Dictionary<string, object?>
             {
+                ["id"] = id,
                 ["type"] = itemType,
                 ["status"] = status,
                 ["aggregated_output"] = aggregatedOutput,

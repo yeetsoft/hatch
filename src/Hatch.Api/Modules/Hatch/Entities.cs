@@ -3677,6 +3677,15 @@ public class EfHatchRunnerSession
     /// <summary>The dependencies this session says it has, newline-joined in the order given, as <see cref="EfHatchRunner.Has"/>.</summary>
     public string? Has { get; set; }
 
+    /// <summary>
+    /// The project keys this session's last heartbeat was answered with as the
+    /// ones it drives, newline-joined like <see cref="EfHatchRunner.Projects"/>.
+    /// Empty when it was told it drives nothing; null before any answer. What
+    /// the loop was told, as opposed to what the election gives when the page
+    /// asks again.
+    /// </summary>
+    public string? DrivesTold { get; set; }
+
     /// <summary><see cref="RunnerOrderKinds.Work"/> or <see cref="RunnerOrderKinds.Pass"/>, as <see cref="EfHatchRunner.OrderKind"/>.</summary>
     [MaxLength(RunnerOrderKinds.MaxLength)]
     public string? OrderKind { get; set; }

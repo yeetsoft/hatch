@@ -705,7 +705,7 @@ public sealed class MergeTrainTests
     }
 
     [Fact]
-    public async Task A_runner_with_no_checkout_of_the_repository_is_silently_skipped()
+    public async Task A_runner_with_no_checkout_of_the_repository_skips_the_row_and_says_so_once()
     {
         var repo = Fixtures.Repository("https://example.other/repo.git", MergeCanonical);
         var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
@@ -728,7 +728,9 @@ public sealed class MergeTrainTests
         Assert.Empty(rig.H.Forge.PullRequestReads);
         Assert.Empty(rig.H.Forge.MergeCalls);
         Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
-        Assert.Empty(rig.H.Say.Complained);
+        Assert.Equal(
+            "hatch: AER-1 - no checkout here matches its repository, so its pull request is not read",
+            Assert.Single(rig.H.Say.Complained));
     }
 
     [Fact]
@@ -964,7 +966,7 @@ public sealed class MergeTrainTests
     }
 
     [Fact]
-    public async Task A_runner_with_no_checkout_of_the_repository_is_silently_skipped_by_the_update_half()
+    public async Task A_runner_with_no_checkout_of_the_repository_skips_the_update_half_and_says_so_once()
     {
         var repo = Fixtures.Repository("https://example.other/repo.git", MergeCanonical);
         var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", MergeCanonical, holdsTrunk: true) with
@@ -982,7 +984,9 @@ public sealed class MergeTrainTests
 
         Assert.Empty(rig.H.Forge.PullRequestReads);
         Assert.Empty(rig.H.Forge.UpdateCalls);
-        Assert.Empty(rig.H.Say.Complained);
+        Assert.Equal(
+            "hatch: AER-1 - no checkout here matches its repository, so its pull request is not read",
+            Assert.Single(rig.H.Say.Complained));
     }
 
     [Fact]
@@ -1240,8 +1244,61 @@ public sealed class MergeTrainTests
 
         await rig.RunAsync();
 
-        Assert.Empty(rig.H.Say.Complained);
+        // The first 409 is the race the walk-on was written for: nothing about the merge is said.
+        // (The told-nothing line is another matter, and has its own tests.)
+        Assert.DoesNotContain(rig.H.Say.Complained, l => l.Contains("would not take the merge", StringComparison.Ordinal));
         Assert.DoesNotContain(rig.H.Say.Said, l => l.Contains("pull request merged", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_loop_told_it_drives_nothing_says_so_once_while_it_lasts_and_again_when_it_changes()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+
+        await rig.RunAsync();
+        await rig.RunAsync();
+
+        var line = Assert.Single(rig.H.Say.Complained, l => l.Contains("drives no merge train", StringComparison.Ordinal));
+        Assert.Contains("AER", line, StringComparison.Ordinal);
+
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        await rig.RunAsync();
+        rig.Runtime.Readout.SetDrives([]);
+        await rig.RunAsync();
+
+        Assert.Equal(2, rig.H.Say.Complained.Count(l => l.Contains("drives no merge train", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_loop_not_yet_told_anything_says_nothing_about_driving()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+
+        await rig.RunAsync();
+
+        Assert.DoesNotContain(rig.H.Say.Complained, l => l.Contains("drives no merge train", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_409_that_repeats_with_the_same_sentence_is_said_once_while_it_lasts()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+        rig.H.Wire.Reply("POST", Merged("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+        Assert.DoesNotContain(rig.H.Say.Complained, l => l.Contains("would not take the merge", StringComparison.Ordinal));
+
+        await rig.RunAsync();
+        var said = Assert.Single(rig.H.Say.Complained, l => l.Contains("would not take the merge", StringComparison.Ordinal));
+        Assert.Contains("AER-1 moved", said, StringComparison.Ordinal);
+
+        await rig.RunAsync();
+        Assert.Single(rig.H.Say.Complained, l => l.Contains("would not take the merge", StringComparison.Ordinal));
     }
 
     [Fact]

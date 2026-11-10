@@ -330,6 +330,10 @@ public sealed class BoardCommands(Cli cli)
     /// <para>Whichever of those a row says, it ends with <see cref="TakersWords"/>
     /// when the board named who could take it - and only then, so a row two or
     /// more runners could take prints exactly what it always did.</para>
+    ///
+    /// <para>A merge-column row the board says the merge train is not acting on
+    /// from here ends with <c>(merge train: …)</c> and the board's reason - no
+    /// checkout, not driven, or the merged route's refusal.</para>
     /// </remarks>
     public static IReadOnlyList<string> Draw(IReadOnlyList<QueueEntryDto> queue)
     {
@@ -365,7 +369,8 @@ public sealed class BoardCommands(Cli cli)
                     + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
                     + q.FromStatus.Name.PadRight(columnWidth) + "  "
                     + words
-                    + (taken.Length > 0 ? $"  ({taken})" : "");
+                    + (taken.Length > 0 ? $"  ({taken})" : "")
+                    + (q.TrainNote is { Length: > 0 } train ? $"  (merge train: {train})" : "");
             })
             .ToList();
     }

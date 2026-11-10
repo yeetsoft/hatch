@@ -51,7 +51,7 @@ internal static class TestClaims
 
     public static Preemption Preemption(
         HatchContext db, TimeProvider time, IssueClaims? claims = null, IActorDirectory? actors = null,
-        Runners? runners = null)
+        Runners? runners = null, IAuthService? keys = null)
     {
         var rule = claims ?? With();
         return new Preemption(
@@ -59,7 +59,8 @@ internal static class TestClaims
             new Dispatch(db, actors ?? new StubActorDirectory(), rule, time),
             rule,
             runners ?? Runners(),
-            time);
+            time,
+            keys);
     }
 }
 

@@ -81,7 +81,18 @@ few seconds early, and stops the session on its own before a heartbeat could
 ever be refused this way. Either way the token is still this runner's, and
 the increment reports it as a stall rather than a lost lease, so the usual
 let-go-then-flag ladder ([Stalls](#stalls)) applies to it the same as a
-session that simply ended without moving the ticket. Any other heartbeat
+session that simply ended without moving the ticket.
+
+What counts as a word on the claim is a line the session prints, and, while a
+tool call is running, the runner's own `still running: <the call>, <n>m`,
+carried at least once a minute. A long test run inside one call therefore needs
+no polling: the session can wait out a single call of any length the agent
+itself allows (ten minutes for a shell call) without being stopped for quiet.
+The line names the call and its minutes, never its output. It stops when the
+call returns, is not sent while the session thinks or writes between calls,
+and ends once a call has stayed open past the agent's own timeout, so a hung
+call is still caught. A `--quiet` session prints nothing and carries none of
+it. Any other heartbeat
 failure is weather and is retried, but one that keeps failing past the
 ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) stops the
 session itself rather than let it keep working a ticket the board may already

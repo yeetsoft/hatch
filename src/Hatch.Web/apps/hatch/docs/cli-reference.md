@@ -227,7 +227,9 @@ Every issue a dispatch pass would look at, in the order it looks, each with the
 reason it would be folded past or the transition it is clear for. It is the
 dry run for the loop and the answer to "why did it not pick up the ticket I
 meant". It spawns nothing and writes nothing, and a board with nothing to look
-at says so in a sentence.
+at says so in a sentence. Runner tags are judged on the calling key's own tags
+from the Runners page, the same ones its loop carries, so a tagged project is
+not reported as "advertises none" to a key that has them.
 It reads as this checkout's runner, so a row can say a ticket is left for another
 runner.
 
@@ -264,6 +266,14 @@ rows above show; unnarrowed, it matches the panel. For example: `3 issues
 wait for a runner that offers fable` or `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`. A server too old to send the list
 prints nothing extra.
+
+`queue` asks the board which live runners could take each clear row right
+now - `next` and `work` do not - so a row's own line can end with a second
+clause in parentheses: `only host:/a can take this` when just one runner
+can, or `no live runner can take this: host:/a: busy; host:/b: omitted` when
+none can, naming every live runner ruled out and the fold's own reason for
+each. Silent when two or more runners can take it, or when the board did not
+judge.
 
 ### changelog
 
