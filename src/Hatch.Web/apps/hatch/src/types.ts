@@ -368,6 +368,11 @@ export interface IssueClaim {
       ago` can be read as fine under an hour-long lease and as a runner going
       quiet under a five-minute one. */
   ttlSeconds: number;
+  /** The quiet window this claim is judged against, in seconds - its own
+      where its playbook set one, the board's otherwise, `0` when lapsing is
+      off for it. Lets a client say when a claim goes quiet; it is not what
+      decides that, and an already-quiet claim still arrives as null. */
+  stallLapseSeconds: number;
 }
 
 /** One check that failed, and a link to it where the forge gave one. Mirrors FailingCheckDto. */

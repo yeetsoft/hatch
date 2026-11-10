@@ -157,6 +157,18 @@ public class IssueClaimsTests
     }
 
     [Fact]
+    public void AProjectedClaim_CarriesItsOwnWindowOrTheGlobalOne()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 10);
+        ClaimSnapshot Held(int? limit) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, Now, null, null, QuietLimitSeconds: limit);
+
+        Assert.Equal(1500, claims.Project(Held(1500), Now)!.StallLapseSeconds);
+        Assert.Equal(600, claims.Project(Held(null), Now)!.StallLapseSeconds);
+        Assert.Equal(0, TestClaims.With(stallLapseMinutes: 0).Project(Held(null), Now)!.StallLapseSeconds);
+    }
+
+    [Fact]
     public void AQuietLimitOfZeroOrNegative_FallsBackToTheGlobalWindow()
     {
         var claims = TestClaims.With(stallLapseMinutes: 5);

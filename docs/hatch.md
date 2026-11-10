@@ -2172,7 +2172,9 @@ session has no stream to see a call open in, so it carries none of this. Every r
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
-refused `409` with `this claim has gone quiet for 5 minutes`, beside the three
+refused `409` with `this claim has gone quiet for 5 minutes` - the claim's own
+window, in whole minutes, so `25 minutes` for 1500 seconds, `1 minute` for 60,
+and `90 seconds` where it is not a whole number of them - beside the three
 reasons a heartbeat could already be refused, and checked before "expired"
 where a claim happens to qualify as both. The `409` answers `{ error,
 reason }` - `error` the sentence it always printed, `reason` one of
@@ -2186,9 +2188,10 @@ this off entirely for a claim with no window of its own — such a claim is then
 judged on its TTL alone — and a
 negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
 already has. The window rides back with the take as `stallLapseSeconds`, in
-seconds, `0` when lapsing is off — the server is what honours it, so the
-server is what says what it is, the same argument `TtlSeconds` makes for
-itself.
+seconds, `0` when lapsing is off, and on every claim a read carries - the board
+card, the issue, the search - as that claim's own window rather than the
+board's. The server is what honours it, so the server is what says what it is,
+the same argument `TtlSeconds` makes for itself.
 
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from

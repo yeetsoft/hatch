@@ -178,7 +178,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 claim!.ClaimedBy ?? "", claim.Runner ?? "",
                 claim.ClaimedAt ?? claim.HeartbeatAt!.Value, claim.HeartbeatAt!.Value,
                 claim.Chatter, claim.ChatterAt,
-                TtlSeconds)
+                TtlSeconds, WindowFor(claim))
             : null;
 
     /// <summary>
