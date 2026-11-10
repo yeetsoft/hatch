@@ -73,6 +73,11 @@ public class RunnersController(
         // guarded the same way ProjectsController.cs does for its own sweep.
         if (db.Database.IsRelational()) await sessions.MarkAllGoneAsync(db, now, ct);
 
+        // Plain tracked reads and writes, unlike the sweep above - runs on
+        // every provider, so an adopted row is already reflected in this same
+        // response's own join below.
+        await runners.AdoptByOwnerAsync(db, keys, now, ct);
+
         var joined = await Runner.JoinAsync(db, keys, ct);
         var visible = joined.Where(r => all || r.OwnerPersonId == personId).ToList();
         if (live) visible = visible.Where(r => r.IsLive(runners, sessions, now)).ToList();
