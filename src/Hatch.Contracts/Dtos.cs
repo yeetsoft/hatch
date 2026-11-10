@@ -783,7 +783,15 @@ public record ClaimRequest(string Runner, int? PlaybookId = null)
 /// <paramref name="TtlSeconds"/> rides back rather than being configured on
 /// both sides.
 /// </param>
-public record ClaimTakenDto(Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0);
+/// <param name="MaxRunSeconds">
+/// How long this claim may run, in seconds, or <c>0</c> where it has no cap -
+/// the playbook's own <c>MaxRunSeconds</c> where it names one. A holder past
+/// it is refused with <see cref="ClaimLostReasons.RunTime"/>, however
+/// recently it spoke.
+/// </param>
+public record ClaimTakenDto(
+    Guid Token, string ClaimedBy, DateTimeOffset ClaimedAt, int TtlSeconds, int StallLapseSeconds = 0,
+    int MaxRunSeconds = 0);
 
 /// <summary>
 /// What a heartbeat answers where the caller is the runner the board has
@@ -838,14 +846,17 @@ public static class ClaimOutcomes
 
 /// <summary>
 /// Why a runner's claim was refused, on the <c>409</c> of a heartbeat or a
-/// release (<see cref="ClaimRefusedDto"/>) - the four shapes a presented
-/// token can be refused in. A release may also name <see cref="Quiet"/> as the
-/// reason it is letting go, and accepts no other.
+/// release (<see cref="ClaimRefusedDto"/>) - the five shapes a presented
+/// token can be refused in. A release may also name <see cref="Quiet"/> or
+/// <see cref="RunTime"/> as the reason it is letting go, and accepts no other.
 /// </summary>
 public static class ClaimLostReasons
 {
     /// <summary>The runner's own lease, gone quiet for the stall lapse.</summary>
     public const string Quiet = "quiet";
+
+    /// <summary>The runner's own lease, run past its playbook's cap.</summary>
+    public const string RunTime = "run-time";
 
     /// <summary>The runner's own lease, simply over.</summary>
     public const string Expired = "expired";
@@ -856,7 +867,7 @@ public static class ClaimLostReasons
     /// <summary>The row carries somebody else's token.</summary>
     public const string Taken = "taken";
 
-    public static bool IsValid(string reason) => reason is Quiet or Expired or Cleared or Taken;
+    public static bool IsValid(string reason) => reason is Quiet or RunTime or Expired or Cleared or Taken;
 }
 
 /// <summary>

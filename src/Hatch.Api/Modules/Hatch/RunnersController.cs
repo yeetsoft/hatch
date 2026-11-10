@@ -263,11 +263,6 @@ public class RunnersController(
     /// its key and its <c>--where</c> have not changed.
     /// </summary>
     /// <remarks>
-    /// <para><b>Additive.</b> Nothing in this checkout's own loop calls this
-    /// yet - <c>GoToWork.cs</c> stays on <see cref="Heartbeat"/> until HA-1939
-    /// can mint a keyless install a key - so only the tests below exercise
-    /// it, the same note HA-2005 left on <see cref="EfHatchRunnerConfig"/>.</para>
-    ///
     /// <para>The literal <c>sessions</c> segment beats <c>{name}</c> on
     /// <c>POST</c> the same way <c>names</c> and <c>suggest-name</c> already
     /// do - so a runner that happens to be named <c>sessions</c> can no
@@ -277,6 +272,11 @@ public class RunnersController(
     /// <para><c>tags</c> on the body is neither validated nor stored here: a
     /// session has no column for it, and it is silently dropped, the same as
     /// an older Hatch ignoring a field it has never heard of.</para>
+    ///
+    /// <para><c>LegacyName</c> on the body adopts an unadopted
+    /// <see cref="EfHatchRunner"/> row of that name onto the bearer key, through
+    /// <see cref="AdoptByNameAsync"/> - the same route a pre-upgrade CLI's own
+    /// beat takes on <see cref="Heartbeat"/>.</para>
     /// </remarks>
     [HttpPost("sessions")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
@@ -285,6 +285,17 @@ public class RunnersController(
         if (await caller.ApiKeyAsync(ct) is not { } key)
             return StatusCode(403, "a session heartbeat is the bearer key's, not a name or a header");
 
+        return await HeartbeatSessionAsync(key, request, request.LegacyName, ct);
+    }
+
+    /// <summary>
+    /// The body of a key-bearing beat, shared by <see cref="SessionHeartbeat"/>
+    /// and a key-bearing <see cref="Heartbeat"/>: a legacy CLI that only knows
+    /// <c>POST /runners/{name}</c> now lands here too, the moment it carries a
+    /// key, rather than writing an <see cref="EfHatchRunner"/> row.
+    /// </summary>
+    private async Task<ActionResult<RunnerInstructionDto>> HeartbeatSessionAsync(EfApiKey key, RunnerHeartbeatRequest request, string? legacyName, CancellationToken ct)
+    {
         if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
         if (DependencySet.Normalise(request.Has, out var normalisedHas) is { } hasRefusal) return BadRequest(hasRefusal);
 
@@ -330,6 +341,13 @@ public class RunnersController(
             await db.SaveChangesAsync(ct);
         }
 
+        // Before RetireRenamedAsync/CarryTagsAsync below, so a row adopted on
+        // this very beat already has the config those two read. A lost race
+        // clears the tracker, so this re-reads the session to keep it tracked
+        // for the writes still to come.
+        if (await AdoptByNameAsync(key, legacyName, now, ct))
+            session = await db.RunnerSessions.FirstAsync(s => s.Id == session.Id, ct);
+
         if (kind == EfHatchRunner.LoopKind)
         {
             await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
@@ -352,6 +370,48 @@ public class RunnersController(
         var forName = (await ForAsync(ct))?.Name ?? key.Name;
 
         return RunnerSessions.Instruct(session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+    }
+
+    /// <summary>
+    /// A key-bearing beat naming an unadopted <see cref="EfHatchRunner"/> row
+    /// adopts it onto the calling key, through the same
+    /// <see cref="Runners.AdoptRowAsync"/> the owner sweep runs - config
+    /// carried where none exists yet, omissions re-keyed, <c>AdoptedAt</c> and
+    /// <c>AdoptedInto</c> set. Saves on its own, since the caller's own session
+    /// save already happened; a lost race against a concurrent beat clears the
+    /// change tracker, the same as <see cref="Runners.AdoptByOwnerAsync"/>'s
+    /// own sweep - returns <c>true</c> in exactly that case, so the caller
+    /// knows its own tracked session no longer is one.
+    /// </summary>
+    /// <remarks>
+    /// A row belonging to a different person than the key is left alone -
+    /// a key must not swallow another person's row by guessing its name. An
+    /// ownerless key (the wall off) is not stopped by this, since nothing on
+    /// either side proves the row is somebody else's.
+    /// </remarks>
+    private async Task<bool> AdoptByNameAsync(EfApiKey key, string? legacyName, DateTimeOffset now, CancellationToken ct)
+    {
+        if (Named(legacyName ?? "") is not { } name) return false;
+
+        var row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == name && r.AdoptedAt == null, ct);
+        if (row is null) return false;
+
+        if (row.ForPersonId is not null && key.OwnerPersonId is not null && row.ForPersonId != key.OwnerPersonId) return false;
+
+        await runners.AdoptRowAsync(db, row, key, now, null, ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return false;
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent beat won the config insert - the same race
+            // AdoptByOwnerAsync's own sweep already accepts.
+            db.ChangeTracker.Clear();
+            return true;
+        }
     }
 
     /// <summary>
@@ -413,12 +473,20 @@ public class RunnersController(
     /// would call too long would be the wrong trade twice over - so the line is
     /// truncated, a bound that makes no sense is dropped, and only a nameless
     /// runner is turned away.</para>
+    ///
+    /// <para>A key-bearing beat lands here instead as a session - the route a
+    /// pre-upgrade CLI that only knows this verb and a key now takes, through
+    /// the same <see cref="HeartbeatSessionAsync"/> <see cref="SessionHeartbeat"/>
+    /// answers to, with <paramref name="name"/> read as the row to adopt rather
+    /// than one to write. A keyless beat is unchanged by any of this.</para>
     /// </remarks>
     [HttpPost("{name}")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<RunnerInstructionDto>> Heartbeat(
         string name, RunnerHeartbeatRequest request, CancellationToken ct)
     {
+        if (await caller.ApiKeyAsync(ct) is { } key) return await HeartbeatSessionAsync(key, request, legacyName: name, ct);
+
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
         if (RunnerModels.Normalise(request.Models, request.Agent, out var normalisedModels) is { } modelsRefusal) return BadRequest(modelsRefusal);
         if (DependencySet.Normalise(request.Has, out var normalisedHas) is { } hasRefusal) return BadRequest(hasRefusal);

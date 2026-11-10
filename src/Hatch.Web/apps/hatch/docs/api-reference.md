@@ -624,12 +624,15 @@ the same rule in two places. The lease's length is the
 carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
 quiet window where its playbook set one, the board's otherwise, `0` when lapsing
 is off for it - so a caller never has to know the setting's name to honor it.
+The take also answers `MaxRunSeconds`, the run cap its playbook set in seconds
+(`0` for none).
 The claim object on every read (the board card, the issue, the search) carries
 the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
 `playbookId` may be a repo-sourced file row's (negative) id, the same one
 `GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
-copied from the playbook named, and a heartbeat naming none leaves it alone. It
+copied from the playbook named, as is its run cap, and a heartbeat naming none
+leaves both alone. It
 writes no event on
 an ordinary beat, only on a preemption, which is the board's own decision to
 make room for an emergency ticket and is the one case a heartbeat answers a
@@ -640,12 +643,13 @@ re-claiming is not a thing a runner does, it heartbeats - and a claim on an
 ancestor or descendant issue refuses it too: one runner per line of the tree.
 A heartbeat or release refused for its token answers `409` with `{ error,
 reason }` - `error` the sentence a person reads, `reason` one of `quiet`
-(the holder's own token, gone quiet), `expired` (its own token, simply
+(the holder's own token, gone quiet), `run-time` (its own token, past the run
+cap its playbook set - `this claim ran past its 60-minute limit`), `expired` (its own token, simply
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
 `outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable` - and an optional
-`reason` - only `quiet` - both read only alongside a token, and `reason`
+`reason` - `quiet` or `run-time` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
 way.
@@ -819,7 +823,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; with a key this lands as a session, adopting the row of that name |
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for old CLIs |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
@@ -983,8 +987,9 @@ seven - `os`, `arch`, `agentVersion`, `container`, `username`,
 
 The body may also carry `legacyName`: the old runner identity the checkout's
 per-user record holds, which the CLI sends on a loop's first beat only - never
-on a later beat, and never on a `--once` one. This Hatch does not act on it
-yet unless a later change says so.
+on a later beat, and never on a `--once` one. An unadopted row of that name is
+adopted onto the calling key - config carried where none exists yet, its
+omissions re-keyed - unless the row belongs to a different owner than the key.
 
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
