@@ -346,7 +346,8 @@ export interface IssueCard {
   /** When this issue last entered a terminal column, or null. See
       IssueCardDto.ClosedAt. */
   closedAt?: string | null;
-  /** Why the issue finished with no code, or absent. See IssueCardDto.NoCode. */
+  /** Why the issue finished with no code, or absent; null on an issue with
+      children, whatever it declared. See IssueCardDto.NoCode. */
   noCode?: string | null;
 }
 
