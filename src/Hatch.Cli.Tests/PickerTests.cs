@@ -608,6 +608,56 @@ public sealed class PickerTests
         await picked.Claim.ReleaseAsync();
     }
 
+    /// <summary>HA-2143: once the playbook is attached, the claim's run limit is the playbook's, only when it names one.</summary>
+    [Theory]
+    [InlineData(3600, HttpStatusCode.NoContent, 3600)]
+    [InlineData(3600, HttpStatusCode.InternalServerError, null)]
+    [InlineData(null, HttpStatusCode.NoContent, null)]
+    [InlineData(0, HttpStatusCode.NoContent, null)]
+    public async Task A_playbook_run_limit_reaches_the_claim_only_when_the_attach_lands(
+        int? maxRunSeconds, HttpStatusCode heartbeat, int? expectedSeconds)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", maxRunSeconds: maxRunSeconds));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal(expectedSeconds is { } s ? TimeSpan.FromSeconds(s) : (TimeSpan?)null, picked.Claim!.RunLimit);
+
+        await picked.Claim.ReleaseAsync();
+    }
+
+    /// <summary>HA-2143: a playbook carrying both limits applies both to the claim.</summary>
+    [Fact]
+    public async Task A_playbook_carrying_both_limits_applies_both()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: 1500, maxRunSeconds: 3600));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", HttpStatusCode.NoContent, "");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal(TimeSpan.FromSeconds(1500), picked.Claim!.StallLapse);
+        Assert.Equal(TimeSpan.FromSeconds(3600), picked.Claim.RunLimit);
+
+        await picked.Claim.ReleaseAsync();
+    }
+
     /// <summary>A failed attach is weather, not a reason to let the claim go - the walk keeps the ticket either way.</summary>
     [Fact]
     public async Task A_failed_playbook_attach_does_not_cost_the_dispatch()
