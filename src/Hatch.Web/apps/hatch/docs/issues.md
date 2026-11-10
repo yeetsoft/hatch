@@ -131,7 +131,9 @@ wears the 😎 glyph on its board card and in the peek, in whatever column it
 stands in, with the reason in the glyph's title. It goes when the declaration
 is cleared or set aside. [The lifecycle of a
 ticket](the-lifecycle-of-a-ticket) has how the declaration is made and set
-aside.
+aside. In review, it is carried to Done with no person when it is pre-approved
+or its project has **A no-code declaration closes the ticket** on; otherwise it
+waits for a person.
 
 ## Runner tags
 
