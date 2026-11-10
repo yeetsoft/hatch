@@ -413,6 +413,16 @@ export const lastUsedLabel = (iso: string | null): string => (iso === null ? 'ne
  */
 export const isControllable = (runner: Runner) => runner.kind === 'loop' && runner.canControl && !isRetired(runner);
 
+/** Which of the detail's three variants a caller sees - "Who sees what" in docs/runners-page-design.md. */
+export type DetailVariant = 'admin' | 'owner' | 'viewer';
+
+/** Admin sees everything; an owner who is not admin sees their own controls; everyone else is read-only. */
+export const detailVariant = (isAdmin: boolean, runner: Runner): DetailVariant =>
+  isAdmin ? 'admin' : runner.canControl ? 'owner' : 'viewer';
+
+/** A revoked runner has no actions for anyone. */
+export const runnerActionable = (runner: Runner) => !runner.revokedAt;
+
 /** The repositories a runner serves, as one phrase - or null when it has
     named none. */
 export function repositoriesLabel(runner: Runner): string | null {

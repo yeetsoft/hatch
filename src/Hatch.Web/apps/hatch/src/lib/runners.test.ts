@@ -8,6 +8,7 @@ import {
   boundsRequest,
   budgetTone,
   dangerousLabel,
+  detailVariant,
   drivesLabel,
   formRefusal,
   groupByHost,
@@ -15,6 +16,7 @@ import {
   isIssueKeyShape,
   orderSentence,
   isControllable,
+  runnerActionable,
   MAX_SPEND_HINT,
   mineLabel,
   repositoriesLabel,
@@ -382,6 +384,25 @@ describe('isControllable', () => {
 
   it('is false for a once runner even where canControl is true', () => {
     expect(isControllable(runner({ kind: 'once', canControl: true }))).toBe(false);
+  });
+});
+
+describe('detailVariant', () => {
+  it('is admin whenever the caller is admin, owner otherwise, viewer when neither', () => {
+    expect(detailVariant(true, runner())).toBe('admin');
+    expect(detailVariant(false, runner({ canControl: true }))).toBe('owner');
+    expect(detailVariant(false, runner({ canControl: false }))).toBe('viewer');
+  });
+
+  it('is still admin on a revoked runner', () => {
+    expect(detailVariant(true, runner({ revokedAt: at(-1000) }))).toBe('admin');
+  });
+});
+
+describe('runnerActionable', () => {
+  it('is true with no revokedAt and false once set', () => {
+    expect(runnerActionable(runner())).toBe(true);
+    expect(runnerActionable(runner({ revokedAt: at(-1000) }))).toBe(false);
   });
 });
 
