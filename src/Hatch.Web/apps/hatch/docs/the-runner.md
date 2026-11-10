@@ -254,6 +254,11 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 - `missing:` - everything neither detection nor `HATCH_HAS` found, comma-separated,
   or `none`. Detected here quietly: an absent id prints no line on stderr the
   way it does for a beat;
+- `<id> via:` - one line for each detected id that was asked of the shell or
+  fell back to `PATH`: the shell's own invocation, as `zsh -l -i +m`, or
+  `PATH - <why>` with the reason the shell did not answer. An id that was not
+  found gets none, since `missing:` has it. No line at all on Windows, or with
+  no usable `SHELL`;
 - a note after the line it explains, when a value was passed over or never
   looked for. `<layer>` is `exported`, a file path, or the profile path:
 
@@ -386,17 +391,23 @@ machine-bound, so a profile still reads it from the per-user file.
 
 **Detection runs once**, at the start of `go-to-work`, `do-my-work`, `work`
 and `queue`, concurrently across all six dependencies: `make`, `dotnet`,
-`node` and `pwsh` on `PATH` (and which version each answers), whether a
+`node` and `pwsh` (and which version each answers), whether a
 Playwright browsers cache exists, and whether Postgres answers - a binary on
-`PATH`, or failing that a Docker daemon's `docker info`. None of the six can
-outlast five seconds alone, but Postgres tries three binaries and a daemon in
-turn before giving up, so it alone can take up to four times that. What
+`PATH`, or failing that a Docker daemon's `docker info`. The four tools are
+asked of `$SHELL` first, run as `-l -i +m -c` so a version manager loaded from
+the profile is seen (`+m` turns job control off), with a 10 second limit, and
+of `PATH` (5 seconds) only if the shell fails to answer. That is macOS and
+Linux: Windows, or no usable `SHELL`, reads `PATH` alone. So those four can
+take 15 seconds (10 and 5), and Postgres up to 20, since it tries three
+binaries and a daemon at 5 seconds each. What
 detection finds is merged with what `HATCH_HAS` declares - a declared entry
 adds only what detection missed, never removing what detection found - and
 the merged set is what a beat advertises: the same one `hatch runners` and the
 Runners page draw, above. A supervisor restart is a new process, so it
 detects again with no code of its own; an id neither detection nor `HATCH_HAS`
-covers says why once on stderr, as `hatch: <id> not detected - <why>`.
+covers says why once on stderr, as `hatch: <id> not detected - <why>`, and an
+id read from `PATH` after the shell failed says so once, as `hatch: <id> read
+from PATH, not the shell - <why>`.
 
 The merged set is also sent on every dispatch read - `queue`, `work <key>`
 and the loop's own pass - one `has=` per entry, and never on a hop. A move
@@ -899,8 +910,11 @@ go-to-work` on macOS and Linux, `scripts\hatch.ps1 go-to-work` on Windows (or,
 where the execution policy refuses scripts, `powershell -NoProfile
 -ExecutionPolicy Bypass -File .\scripts\hatch.ps1 go-to-work`). Each session a
 loop spawns reaches that loop's own origin and key, from its standing checkout
-or a clone in its own workspace. **Agents → Runners** shows both runners at
-once, each with its tags and where it is working from.
+or a clone in its own workspace. **Agents → Runners** shows what each loop
+reports. Loops that report under two names are two rows; two checkouts that
+report under one name are one row with a quieter line beneath it for each
+checkout, giving where it is working from, its agent and OS, and what it is
+doing - the same list `hatch runners` indents under a runner.
 
 One terminal, several runners: `--runners <n>` (1 to 16) starts `n` of them
 from the one command, instead of a checkout and a terminal for each:

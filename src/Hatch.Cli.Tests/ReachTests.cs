@@ -154,29 +154,14 @@ public sealed class ReachTests
     }
 
     [Fact]
-    public void AsRunner_sets_HATCH_RUNNER_over_whatever_was_there()
-    {
-        var environment = Env("/usr/bin");
-        environment["HATCH_RUNNER"] = "someone-else";
-
-        Reach.AsRunner(environment, "test:/checkout");
-
-        Assert.Equal("test:/checkout", environment["HATCH_RUNNER"]);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("  ")]
-    public void AsRunner_with_no_name_leaves_the_environment_alone(string? name)
+    public void ToHatch_drops_an_inherited_HATCH_RUNNER_since_the_key_names_the_runner()
     {
         var environment = Env("/usr/bin");
         environment["HATCH_RUNNER"] = "inherited";
 
-        Reach.AsRunner(environment, name);
+        Reach.ToHatch(environment, new Settings { Base = "https://example.hatch", Key = "hatch_ak_test" });
 
-        Assert.Equal("inherited", environment["HATCH_RUNNER"]);
-        Assert.Equal(2, environment.Count);
+        Assert.DoesNotContain("HATCH_RUNNER", environment.Keys);
     }
 
     [Fact]

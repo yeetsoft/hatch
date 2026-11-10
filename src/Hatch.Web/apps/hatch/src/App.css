@@ -3218,6 +3218,17 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* One live session under its runner's row: quieter, and indented so it reads as
+   part of the row above rather than as another runner. */
+.hatch-runner-session td {
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
+.hatch-runner-session td:first-child {
+  padding-left: calc(var(--space-4, 1rem) + 1rem);
+}
+
 .hatch-runner-group-title {
   font-size: var(--t-label);
   font-weight: 700;
@@ -7100,6 +7111,7 @@ button.hatch-option.chosen {
 
 .hatch-queue-words {
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .hatch-queue-trains {

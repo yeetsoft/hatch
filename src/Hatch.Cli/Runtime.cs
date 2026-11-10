@@ -53,16 +53,7 @@ public sealed record Runtime(
     public Controls Controls { get; init; } = new(keysOn: false);
 
     /// <summary>
-    /// Where a checkout's chosen name is recorded - <see cref="RunnerNames.Record"/>'s
-    /// file, beside <see cref="Settings.UserConfigPath"/>. Replaceable so a test
-    /// reads and writes its own temp file rather than the machine's.
-    /// </summary>
-    public string RunnersPath { get; init; } = RunnerNames.Record.DefaultPath();
-
-    /// <summary>
-    /// The resolved active-or-named profile's name, not its file: the key
-    /// <see cref="Checkout.RunnerAsync"/> records the runner's name under, so
-    /// two profiles serving one workspace do not share a name. Null with no
+    /// The resolved active-or-named profile's name, not its file. Null with no
     /// profile.
     /// </summary>
     public string? ProfileName { get; init; }
@@ -76,7 +67,7 @@ public sealed record Runtime(
 
     /// <summary>
     /// Where the named profiles live. Replaceable so a test reads its own
-    /// directory rather than the machine's, like <see cref="RunnersPath"/>.
+    /// directory rather than the machine's.
     /// </summary>
     public string ProfilesDirectory { get; init; } = Settings.ProfilesDirectory();
 
@@ -195,12 +186,12 @@ public sealed record Runtime(
         throw new InvalidOperationException("no source revision reader was configured");
 
     /// <summary>
-    /// A fresh <see cref="Board"/> named for a runner this run was not started
-    /// as - what <c>--repo</c> rebuilds when it changes <see cref="RunnerName"/>
-    /// after this client already exists. Replaceable so a test can keep talking
-    /// to its own stub wire rather than a real one.
+    /// A fresh <see cref="Board"/> over the same key - what <c>--repo</c>
+    /// rebuilds when it changes <see cref="Where"/> after this client already
+    /// exists. Replaceable so a test can keep talking to its own stub wire
+    /// rather than a real one.
     /// </summary>
-    public Func<string, Board> NewBoard { get; init; } = _ =>
+    public Func<Board> NewBoard { get; init; } = () =>
         throw new InvalidOperationException("no board factory was configured");
 
     /// <summary>The real ones, over whichever checkout each call names.</summary>
@@ -210,7 +201,7 @@ public sealed record Runtime(
         Forge = (path, canonical) => new GhForge(path, canonical),
         Self = () => new LoopSource(Root),
         SourceRevision = () => new GitSourceRevision(Root),
-        NewBoard = runnerName => new Board(new HatchClient(Settings, runnerName, onWaiting: Say.Complain), refusesDangerous: Settings.RefusesDangerous)
+        NewBoard = () => new Board(new HatchClient(Settings, onWaiting: Say.Complain), refusesDangerous: Settings.RefusesDangerous)
         {
             Has = Has,
             Models = () => AdvertisedModels() ?? [],

@@ -45,6 +45,10 @@ internal static class TestClaims
     public static DoneHorizon DoneHorizon(int hours = 48) =>
         new(Options.Create(new HatchOptions { DoneHorizonHours = hours }));
 
+    /// <summary>The runner horizon rule at its shipped default, for a harness with nothing to say about it.</summary>
+    public static Runners Runners() =>
+        new(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision());
+
     public static Preemption Preemption(
         HatchContext db, TimeProvider time, IssueClaims? claims = null, IActorDirectory? actors = null,
         Runners? runners = null)
@@ -54,7 +58,7 @@ internal static class TestClaims
             db,
             new Dispatch(db, actors ?? new StubActorDirectory(), rule, time),
             rule,
-            runners ?? new Runners(Options.Create(new HatchOptions()), Options.Create(new global::Hatch.Api.Services.Auth.AuthOptions()), new StubHatchRevision()),
+            runners ?? Runners(),
             time);
     }
 }

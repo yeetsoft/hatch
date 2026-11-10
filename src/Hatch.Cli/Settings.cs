@@ -29,13 +29,13 @@ public sealed partial record Settings
     public static readonly string[] FileNames =
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
-        "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_RUNNER", "HATCH_REPOS",
+        "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_REPOS",
         "HATCH_WORKSPACE", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>
     public static readonly string[] BoardBoundNames =
-        ["HATCH_BASE", "HATCH_KEY", "HATCH_RUNNER", "HATCH_WORKSPACE", "HATCH_REPOS"];
+        ["HATCH_BASE", "HATCH_KEY", "HATCH_WORKSPACE", "HATCH_REPOS"];
 
     /// <summary>Whether <paramref name="name"/> is board-bound.</summary>
     public static bool IsBoardBound(string name) => BoardBoundNames.Contains(name, StringComparer.Ordinal);
@@ -99,9 +99,6 @@ public sealed partial record Settings
 
     /// <summary>The trunk the loop resets to, when it is not the one origin calls its default.</summary>
     public string? BaseBranch { get; init; }
-
-    /// <summary>What the board calls this runner, overriding <c>host:/path/to/checkout</c>.</summary>
-    public string? Runner { get; init; }
 
     /// <summary>
     /// The checkouts a loop with no checkout of its own serves, beside the
@@ -224,14 +221,6 @@ public sealed partial record Settings
     /// document can choose when to say it.
     /// </summary>
     public string? KeyNote { get; init; }
-
-    /// <summary>
-    /// One line saying a <c>HATCH_RUNNER</c> was set in the profile or the
-    /// per-user file and so not read - null where none was. A name belongs to
-    /// a checkout, not to a person or a board, so neither layer is ever read
-    /// for it regardless of whether a profile is active.
-    /// </summary>
-    public string? RunnerNote { get; init; }
 
     /// <summary>Where each value came from, so <c>config --show</c> can say.</summary>
     public IReadOnlyDictionary<string, Layer> Sources { get; init; } =
@@ -389,7 +378,7 @@ public sealed partial record Settings
         string? profileFile = null)
     {
         var sources = new Dictionary<string, Layer>(StringComparer.Ordinal);
-        var (fold, ignoredKeyLayer, ignoredRunnerLayer) =
+        var (fold, ignoredKeyLayer) =
             LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile);
         var profileName = profileFile is null ? null : Path.GetFileName(profileFile);
 
@@ -413,7 +402,6 @@ public sealed partial record Settings
         var ollamaTiersRaw = Read("HATCH_OLLAMA_TIERS");
         var agentRaw = Read("HATCH_AGENT");
         var baseBranch = Read("HATCH_BASE_BRANCH");
-        var runner = Read("HATCH_RUNNER");
         var heartbeat = Read("HATCH_HEARTBEAT");
         var retry = Read("HATCH_RETRY_SECONDS");
         var reposRaw = Read("HATCH_REPOS");
@@ -505,7 +493,6 @@ public sealed partial record Settings
             OllamaTiers = ollamaTiers,
             Agent = string.IsNullOrWhiteSpace(agentRaw) ? "claude" : agentRaw,
             BaseBranch = baseBranch,
-            Runner = runner,
             HeartbeatSeconds = pulse,
             RetrySeconds = retrySeconds,
             Repos = repos,
@@ -519,9 +506,6 @@ public sealed partial record Settings
             KeyNote = ignoredKeyLayer() is { } ignoredKey
                 ? IgnoredKeySentence(
                     ignoredKey, sources["HATCH_BASE"], checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
-                : null,
-            RunnerNote = ignoredRunnerLayer() is { } ignoredRunner
-                ? IgnoredRunnerSentence(ignoredRunner, checkoutEnvFile, profileFile, userConfigFile ?? UserConfigPath())
                 : null,
         };
         return true;
@@ -547,13 +531,6 @@ public sealed partial record Settings
                $"HATCH_BASE comes from {Where(origin, checkoutEnvFile, profileFile, userFile)}, " +
                $"and a key goes with its origin. {fix}";
     }
-
-    /// <summary>The one line saying which layer held a runner name that was not read, and what to do.</summary>
-    private static string IgnoredRunnerSentence(
-        Layer ignored, string? checkoutEnvFile, string? profileFile, string userFile) =>
-        $"hatch: HATCH_RUNNER in {Where(ignored, checkoutEnvFile, profileFile, userFile)} is ignored - a name " +
-        "belongs to a checkout. Set it with `hatch config --runner <name>`, export it, or put it in this " +
-        "checkout's scripts/.env.";
 
     /// <summary>
     /// <paramref name="raw"/> split on commas, trimmed and emptied of blanks,
@@ -639,26 +616,18 @@ public sealed partial record Settings
         LayersWithNotes(checkoutEnvFile, environment, userConfigFile, profileFile).Fold;
 
     /// <summary>
-    /// <see cref="Layers"/>, and with it which layer held a <c>HATCH_KEY</c> or
-    /// a <c>HATCH_RUNNER</c> the fold ignored - read from the same files, so
-    /// nothing is read twice.
+    /// <see cref="Layers"/>, and with it which layer held a <c>HATCH_KEY</c> the
+    /// fold ignored - read from the same files, so nothing is read twice.
     /// </summary>
     /// <remarks>
     /// A key goes with its origin: <c>HATCH_KEY</c> answers only from the layer
     /// <c>HATCH_BASE</c> came from, and is unset where that layer carries none.
     /// A key in a lower or higher layer would be presented to a board it was
     /// never issued for.
-    /// <para>A runner name goes with a checkout: <c>HATCH_RUNNER</c> answers
-    /// only from <see cref="Layer.Environment"/> or <see cref="Layer.Checkout"/>,
-    /// never from <see cref="Layer.Profile"/> or <see cref="Layer.User"/> -
-    /// a flat rule, holding whether or not a profile is active, since a name
-    /// a person carries between checkouts would be presented to whichever
-    /// board that checkout happens to serve.</para>
     /// </remarks>
     public static (
         Func<string, (string? Value, Layer From)> Fold,
-        Func<Layer?> IgnoredKeyLayer,
-        Func<Layer?> IgnoredRunnerLayer) LayersWithNotes(
+        Func<Layer?> IgnoredKeyLayer) LayersWithNotes(
         string? checkoutEnvFile, IDictionary<string, string?> environment,
         string? userConfigFile = null, string? profileFile = null)
     {
@@ -692,14 +661,6 @@ public sealed partial record Settings
 
         (string? Value, Layer From) Fold(string name)
         {
-            if (name == "HATCH_RUNNER")
-            {
-                foreach (var layer in RunnerOrder)
-                    if (In(layer, name) is { } value) return (value, layer);
-
-                return (null, Layer.Unset);
-            }
-
             if (name != "HATCH_KEY") return Lookup(name);
 
             var origin = Lookup("HATCH_BASE").From;
@@ -719,27 +680,8 @@ public sealed partial record Settings
             return null;
         }
 
-        Layer? IgnoredRunnerLayer()
-        {
-            // Nothing to warn about where the environment or the checkout
-            // already supplies one - that is the deliberate, winning override,
-            // not a silently dropped setting.
-            if (RunnerOrder.Any(layer => In(layer, "HATCH_RUNNER") is not null)) return null;
-
-            foreach (var layer in RunnerIgnoredOrder)
-                if (In(layer, "HATCH_RUNNER") is not null) return layer;
-
-            return null;
-        }
-
-        return (Fold, IgnoredKeyLayer, IgnoredRunnerLayer);
+        return (Fold, IgnoredKeyLayer);
     }
-
-    /// <summary>Where <c>HATCH_RUNNER</c> alone is read from - a name belongs to a checkout, never a profile or the per-user file.</summary>
-    private static readonly Layer[] RunnerOrder = [Layer.Environment, Layer.Checkout];
-
-    /// <summary>The layers <c>HATCH_RUNNER</c> is never read from, walked in <see cref="Order"/>'s own precedence.</summary>
-    private static readonly Layer[] RunnerIgnoredOrder = [Layer.Profile, Layer.User];
 
     private static readonly Layer[] Order = [Layer.Environment, Layer.Checkout, Layer.Profile, Layer.User];
 
@@ -763,6 +705,10 @@ public sealed partial record Settings
 
             var name = line[..split].Trim();
             var value = line[(split + 1)..].Trim();
+
+            // A name an older file may still carry, and nothing reads: skipped
+            // without a word, since the line was valid when it was written.
+            if (name == "HATCH_RUNNER") continue;
 
             if (!FileNames.Contains(name, StringComparer.Ordinal))
             {

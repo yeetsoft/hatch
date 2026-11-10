@@ -93,6 +93,12 @@ export interface Project {
   checkApprovesMergeBy: string | null;
   /** When checkApprovesMerge was last changed on this project, or null until the first write. */
   checkApprovesMergeAt: string | null;
+  /** Whether a ticket that declared it finished with no code is carried from review to Done with no person. See ProjectDto.NoCodeCloses. */
+  noCodeCloses: boolean;
+  /** Who last changed noCodeCloses, or null until the first write. */
+  noCodeClosesBy: string | null;
+  /** When noCodeCloses was last changed on this project, or null until the first write. */
+  noCodeClosesAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -1011,6 +1017,11 @@ export interface ProjectCheckApprovesMergeWriteRequest {
   checkApprovesMerge: boolean;
 }
 
+/** A write to whether a no-code declaration closes the ticket. See ProjectNoCodeClosesWriteRequest (Hatch.Contracts). */
+export interface ProjectNoCodeClosesWriteRequest {
+  noCodeCloses: boolean;
+}
+
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and
     the key of the project the flag was taken from, or null if from none. */
 export interface ProjectBindsTrackerResponse {
@@ -1492,6 +1503,21 @@ export interface QueueEntry {
   /** True on a row no pass will clear on its own; its `blocked` sentence starts
       `deadlocked - `. `blockedKind` is unchanged. As on `QueueEntryDto`. */
   deadlocked?: boolean;
+  /** The names of the live runners that could take this row's step, sorted;
+      null or absent where the server did not judge (the read did not ask, or the
+      row is blocked), empty where nobody can. As on `QueueEntryDto`. */
+  takers?: string[] | null;
+  /** Every live runner that cannot take this row's step and why, filled only
+      where `takers` has fewer than two names; null or absent where not judged.
+      As on `QueueEntryDto`. */
+  untaken?: RunnerReason[] | null;
+}
+
+/** A live runner and the one reason it cannot take a step. Mirrors
+    `RunnerReasonDto`. */
+export interface RunnerReason {
+  runner: string;
+  reason: string;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status
@@ -2449,14 +2475,36 @@ export interface Runner {
   revokedAt?: string | null;
   /** Who the key belongs to, or null for a key owned by nobody or no key at all. */
   ownerPersonId?: string | null;
-  /** The sessions this key's runner has open. */
-  sessions?: { where: string; lastSeenAt: string }[];
+  /** The sessions this key's runner has open, newest first. Mirrors RunnerDto.Sessions; absent on a stub that predates the field. */
+  sessions?: RunnerSession[];
   /** When the key's secret was last replaced, or null while it never has been or there is no key. */
   rotatedAt?: string | null;
   /** When this row was retired, or null for one that is not. */
   retiredAt?: string | null;
   /** The name of the row that superseded this one, or null for a row that is not retired. */
   supersededBy?: string | null;
+}
+
+/** One session beneath a runner: one `go-to-work` loop, so two checkouts
+    reporting under one name are one runner with two of these. Only the fields
+    the page reads; mirrors RunnerSessionDto. */
+export interface RunnerSession {
+  id: number;
+  where: string | null;
+  kind: string;
+  host: string | null;
+  state: RunnerState;
+  startedAt: string;
+  lastSeenAt: string;
+  /** When the session ended, or null while it is open. */
+  endedAt: string | null;
+  claimKey: string | null;
+  claimStatus?: string | null;
+  line?: string | null;
+  agent: string | null;
+  os: string | null;
+  exhaustedUntil: string | null;
+  throttledUntil: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

@@ -10,6 +10,7 @@ import {
   queueMarker,
   queueTally,
   queueWords,
+  takersWords,
   trainDriverWords,
 } from './queue';
 import { HttpError } from './errors';
@@ -291,6 +292,73 @@ describe('queueWords', () => {
     const row = entry({ toStatus: null });
 
     expect(queueWords(row)).toBe('-> ?');
+  });
+
+  it('adds the lone taker after the arrow, in a second parenthesis', () => {
+    const row = entry({ takers: ['host:/a'] });
+
+    expect(queueWords(row)).toBe('-> In Progress  (only host:/a can take this)');
+  });
+
+  it('adds why no live runner can take a clear row', () => {
+    const row = entry({
+      takers: [],
+      untaken: [
+        { runner: 'host:/a', reason: 'busy' },
+        { runner: 'host:/b', reason: 'omitted' },
+      ],
+    });
+
+    expect(queueWords(row)).toBe('-> In Progress  (no live runner can take this: host:/a: busy; host:/b: omitted)');
+  });
+
+  it('adds nothing for two takers or a row not judged', () => {
+    expect(queueWords(entry({ takers: ['host:/a', 'host:/b'] }))).toBe('-> In Progress');
+    expect(queueWords(entry({ takers: null }))).toBe('-> In Progress');
+  });
+
+  it('leaves a blocked row with no takers judged as it was', () => {
+    const row = entry({ blocked: 'waiting on a dependency', takers: null });
+
+    expect(queueWords(row)).toBe('waiting on a dependency');
+  });
+
+  it('keeps a hop\'s own parenthesis and puts the takers after it', () => {
+    const row = entry({ hop: true, takers: ['host:/a'] });
+
+    expect(queueWords(row)).toBe('-> In Progress  (express, no session)  (only host:/a can take this)');
+  });
+});
+
+describe('takersWords', () => {
+  it('names the one runner that can take it', () => {
+    expect(takersWords(entry({ takers: ['host:/a'] }))).toBe('only host:/a can take this');
+  });
+
+  it('names every live runner that cannot, with its reason, when none can', () => {
+    const row = entry({
+      takers: [],
+      untaken: [
+        { runner: 'host:/a', reason: 'busy' },
+        { runner: 'host:/b', reason: 'omitted' },
+      ],
+    });
+
+    expect(takersWords(row)).toBe('no live runner can take this: host:/a: busy; host:/b: omitted');
+  });
+
+  it('leaves no trailing colon when none can and no reason came with it', () => {
+    expect(takersWords(entry({ takers: [], untaken: [] }))).toBe('no live runner can take this');
+    expect(takersWords(entry({ takers: [], untaken: null }))).toBe('no live runner can take this');
+  });
+
+  it('says nothing for two or more takers', () => {
+    expect(takersWords(entry({ takers: ['host:/a', 'host:/b'] }))).toBe('');
+  });
+
+  it('says nothing where the server did not judge', () => {
+    expect(takersWords(entry({ takers: null }))).toBe('');
+    expect(takersWords(entry())).toBe('');
   });
 });
 
@@ -581,6 +649,13 @@ describe('flowSentence', () => {
     });
 
     expect(flowSentence(row, card({ statusId: 1 }))).toBe('clear for To Do -> In Progress - nothing in its way');
+  });
+
+  it('carries the takers clause the queue row carries', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), takers: ['host:/a'] });
+
+    expect(flowSentence(row, card({ statusId: 1 }))).toBe(queueWords(row));
+    expect(flowSentence(row, card({ statusId: 1 }))).toContain('(only host:/a can take this)');
   });
 });
 

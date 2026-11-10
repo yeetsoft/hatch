@@ -1449,6 +1449,144 @@ public class RunnersControllerTests
         Assert.Equal(["AER"], row.Drives);
     }
 
+    // ---- Retiring the rows a heartbeat supersedes ----
+
+    private static EfHatchRunner Quiet(string name, Guid? owner, string where = "w", string kind = EfHatchRunner.LoopKind,
+        DateTimeOffset? first = null, DateTimeOffset? last = null) => new()
+    {
+        Name = name, Kind = kind, Where = where, ForPersonId = owner, State = EfHatchRunner.Running,
+        FirstSeenAt = first ?? Now.AddHours(-1), LastSeenAt = last ?? Now.AddMinutes(-30),
+    };
+
+    private static EfHatchRunner Stored(Harness h, string name) => h.Db.Runners.AsNoTracking().Single(r => r.Name == name);
+
+    [Fact]
+    public async Task ANewRowBeating_RetiresAnOlderQuietRow_AndSoDoesAnExistingRow()
+    {
+        var h = await NewAsync(wall: true);
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        h.Db.Runners.Add(Quiet("old:/one", nathan.Id));
+        h.Db.Runners.Add(Quiet("old:/two", nathan.Id));
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        var one = Stored(h, "old:/one");
+        Assert.Equal(Now, one.RetiredAt);
+        Assert.Equal("new:/tree", one.RetiredBy);
+        Assert.Null(Stored(h, "new:/tree").RetiredAt);
+
+        // An existing row that beats retires one too: the second old row is
+        // put back to quiet-and-unretired, and the next beat finds it.
+        var two = await h.Db.Runners.SingleAsync(r => r.Name == "old:/two");
+        two.RetiredAt = null;
+        two.RetiredBy = null;
+        await h.Db.SaveChangesAsync();
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        Assert.Equal(Now.AddMinutes(1), Stored(h, "old:/two").RetiredAt);
+        Assert.Equal(Now, Stored(h, "old:/one").RetiredAt);
+    }
+
+    [Fact]
+    public async Task AnOlderRowStillBeating_IsLeftAlone()
+    {
+        var h = await NewAsync(wall: true);
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        h.Db.Runners.Add(Quiet("old:/one", nathan.Id, last: Now));
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        var old = Stored(h, "old:/one");
+        Assert.Null(old.RetiredAt);
+        Assert.Null(old.RetiredBy);
+    }
+
+    [Fact]
+    public async Task ARowThatIsNotTheSameOwnerWhereKindOrOlder_IsLeftAlone()
+    {
+        var h = await NewAsync(wall: true);
+        var nathan = h.Actors.AddPerson("Nathan");
+        var other = h.Actors.AddPerson("Other");
+        h.Actors.Principal = nathan;
+        h.Db.Runners.Add(Quiet("other-owner", other.Id));
+        h.Db.Runners.Add(Quiet("other-where", nathan.Id, where: "elsewhere"));
+        h.Db.Runners.Add(Quiet("other-kind", nathan.Id, kind: EfHatchRunner.OnceKind));
+        h.Db.Runners.Add(Quiet("later", nathan.Id, first: Now.AddMinutes(1)));
+        h.Db.Runners.Add(Quiet("same-first", nathan.Id, first: Now));
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        foreach (var name in new[] { "other-owner", "other-where", "other-kind", "later", "same-first" })
+        {
+            var row = Stored(h, name);
+            Assert.Null(row.RetiredAt);
+            Assert.Null(row.RetiredBy);
+        }
+    }
+
+    [Fact]
+    public async Task WithNoOwner_TheWallUpRetiresNothing_AndTheWallOffMatchesNullToNull()
+    {
+        var up = await NewAsync(wall: true);
+        up.Db.Runners.Add(Quiet("old:/one", null));
+        await up.Db.SaveChangesAsync();
+
+        await up.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        Assert.Null(Stored(up, "old:/one").RetiredAt);
+
+        var off = await NewAsync();
+        off.Db.Runners.Add(Quiet("old:/one", null));
+        await off.Db.SaveChangesAsync();
+
+        await off.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        Assert.Equal(Now, Stored(off, "old:/one").RetiredAt);
+        Assert.Equal("new:/tree", Stored(off, "old:/one").RetiredBy);
+    }
+
+    [Fact]
+    public async Task ARetiredRowsOwnHeartbeat_ClearsTheRetirement()
+    {
+        var h = await NewAsync(wall: true);
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        var old = Quiet("old:/one", nathan.Id);
+        old.RetiredAt = Now.AddMinutes(-5);
+        old.RetiredBy = "new:/tree";
+        h.Db.Runners.Add(old);
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("old:/one", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        var row = Stored(h, "old:/one");
+        Assert.Null(row.RetiredAt);
+        Assert.Null(row.RetiredBy);
+    }
+
+    [Fact]
+    public async Task ASecondHeartbeatFromTheSupersedingRow_DoesNotMoveTheRetirement()
+    {
+        var h = await NewAsync(wall: true);
+        var nathan = h.Actors.AddPerson("Nathan");
+        h.Actors.Principal = nathan;
+        h.Db.Runners.Add(Quiet("old:/one", nathan.Id));
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+        h.Time.Advance(TimeSpan.FromMinutes(4));
+        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
+
+        Assert.Equal(Now, Stored(h, "old:/one").RetiredAt);
+    }
+
     [Fact]
     public async Task ARetiredRow_IsStillInListAll_WithTheMarkAndNoDrives()
     {
@@ -3670,6 +3808,151 @@ public class RunnersControllerTests
 
         var refusal = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(403, refusal.StatusCode);
+    }
+
+    // ---- A session beat retires the rows its checkout has renamed away from ----
+
+    private const string RenamedWhere = "host:/checkouts/one";
+
+    private static EfHatchRunner Renamed(string name, Guid? owner, string? where = RenamedWhere, string kind = EfHatchRunner.LoopKind) => new()
+    {
+        Name = name, Kind = kind, Where = where, ForPersonId = owner, State = EfHatchRunner.Running,
+        FirstSeenAt = Now.AddHours(-1), LastSeenAt = Now, Remotes = "example.com/o/r",
+    };
+
+    /// <summary>Whether a row counts as live, and which projects it is elected to drive - the two things a retired row loses.</summary>
+    private static async Task<(bool Live, IReadOnlyList<string> Drives)> StandingAsync(Harness h, string name, bool wall)
+    {
+        var runners = new Runners(
+            Options.Create(new HatchOptions { RunnerGoneAfterSeconds = Horizon }),
+            Options.Create(new AuthOptions { Enabled = wall }),
+            new StubRevision("dev", 0));
+        var joined = await global::Hatch.Api.Modules.Hatch.Runner.JoinAsync(h.Db, h.Keys, default);
+        var live = joined.Single(r => r.Name == name).IsLive(runners, new RunnerSessions(runners), h.Time.GetUtcNow());
+        var drivers = await runners.DriversAsync(h.Db, h.Keys, h.Time.GetUtcNow(), default);
+
+        return (live, drivers.GetValueOrDefault(name, []));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALoopBeatUnderANewName_RetiresTheOldRowAtOnce_AndItIsNeitherLiveNorElected()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        await h.Db.SaveChangesAsync();
+
+        // Before the beat the old row is live and drives the project.
+        var before = await StandingAsync(h, "old:/one", wall: true);
+        Assert.True(before.Live);
+        Assert.Equal(["AER"], before.Drives);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        var old = await h.Db.Runners.AsNoTracking().SingleAsync(r => r.Name == "old:/one");
+        Assert.Equal(Now, old.RetiredAt);
+        Assert.Equal("hatch", old.RetiredBy);
+        var after = await StandingAsync(h, "old:/one", wall: true);
+        Assert.False(after.Live);
+        Assert.Empty(after.Drives);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ARowFromAnotherCheckoutOrOwnerOrKind_IsNeverRetired()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Renamed("elsewhere", h.PersonId, where: "host:/checkouts/two"));
+        h.Db.Runners.Add(Renamed("nowhere", h.PersonId, where: null));
+        h.Db.Runners.Add(Renamed("someone-elses", Guid.NewGuid()));
+        h.Db.Runners.Add(Renamed("unowned", null));
+        h.Db.Runners.Add(Renamed("a-pass", h.PersonId, kind: EfHatchRunner.OnceKind));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        foreach (var row in await h.Db.Runners.AsNoTracking().ToListAsync())
+        {
+            Assert.Null(row.RetiredAt);
+            Assert.Null(row.RetiredBy);
+        }
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ABeatWithNoWhere_RetiresNothing()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        h.Db.Runners.Add(Renamed("nowhere", h.PersonId, where: null));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        Assert.All(await h.Db.Runners.AsNoTracking().ToListAsync(), r => Assert.Null(r.RetiredAt));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ARetiredRowWhoseNameIsTheKeys_IsUnretiredByTheBeat()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        var back = Renamed("hatch", h.PersonId);
+        back.RetiredAt = Now.AddMinutes(-5);
+        back.RetiredBy = "other:/one";
+        h.Db.Runners.Add(back);
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        var row = await h.Db.Runners.AsNoTracking().SingleAsync();
+        Assert.Null(row.RetiredAt);
+        Assert.Null(row.RetiredBy);
+        Assert.True((await StandingAsync(h, "hatch", wall: true)).Live);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AOnceBesideALoop_RetiresNothing_AndALaterLoopBeatDoesNotMoveTheStamp()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        await h.Db.SaveChangesAsync();
+
+        // The pass shares the loop's name and its (key, where): it speaks for
+        // no rename, so the old row is left exactly as it was.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
+        Assert.Null((await h.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: RenamedWhere));
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: RenamedWhere));
+
+        Assert.Equal(Now, (await h.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_WithNoOwnerAndTheWallUp_RetiresNothing_AndWithTheWallOffMatchesNullToNull()
+    {
+        var connectionString = await ConnectAsync();
+        var up = await NewAsync(program: true, wall: true, connectionString: connectionString);
+        up.Db.Runners.Add(Renamed("old:/one", null));
+        await up.Db.SaveChangesAsync();
+
+        await up.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        Assert.Null((await up.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+
+        var connectionString2 = await ConnectAsync();
+        var off = await NewAsync(program: true, connectionString: connectionString2);
+        off.Db.Runners.Add(Renamed("old:/one", null));
+        await off.Db.SaveChangesAsync();
+
+        await off.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        Assert.Equal("hatch", (await off.Db.Runners.AsNoTracking().SingleAsync()).RetiredBy);
     }
 
     [SkippableFact]

@@ -203,7 +203,7 @@ public class MessageDeliveryTests
             get
             {
                 var db = Connect();
-                return new(db, TestClaims.With(), Caller, Time, TestClaims.Preemption(db, Time));
+                return new(db, TestClaims.With(), Caller, Time, TestClaims.Preemption(db, Time), TestClaims.Runners());
             }
         }
 

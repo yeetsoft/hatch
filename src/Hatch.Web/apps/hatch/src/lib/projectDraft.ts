@@ -13,6 +13,7 @@ import type {
   ProjectBindsTrackerWriteRequest,
   ProjectStoriesOnEpicsWriteRequest,
   ProjectCheckApprovesMergeWriteRequest,
+  ProjectNoCodeClosesWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
   ProjectReflectionWriteRequest,
@@ -39,6 +40,7 @@ export interface ProjectDraft {
     bindsTracker: boolean;
     storiesOnEpics: boolean;
     checkApprovesMerge: boolean;
+    noCodeCloses: boolean;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
   };
@@ -58,6 +60,7 @@ export interface ProjectDraft {
   bindsTracker: boolean;
   storiesOnEpics: boolean;
   checkApprovesMerge: boolean;
+  noCodeCloses: boolean;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
   reflectionCadenceDays: string;
@@ -94,6 +97,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       bindsTracker: project.bindsTracker,
       storiesOnEpics: project.storiesOnEpics,
       checkApprovesMerge: project.checkApprovesMerge,
+      noCodeCloses: project.noCodeCloses,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
     },
@@ -113,6 +117,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     bindsTracker: project.bindsTracker,
     storiesOnEpics: project.storiesOnEpics,
     checkApprovesMerge: project.checkApprovesMerge,
+    noCodeCloses: project.noCodeCloses,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
   };
@@ -177,6 +182,11 @@ export function projectStoriesOnEpicsDiff(draft: ProjectDraft): ProjectStoriesOn
 /** The check-approves-merge flag, or null when it was not changed. */
 export function projectCheckApprovesMergeDiff(draft: ProjectDraft): ProjectCheckApprovesMergeWriteRequest | null {
   return draft.checkApprovesMerge !== draft.known.checkApprovesMerge ? { checkApprovesMerge: draft.checkApprovesMerge } : null;
+}
+
+/** The no-code-closes flag, or null when it was not changed. */
+export function projectNoCodeClosesDiff(draft: ProjectDraft): ProjectNoCodeClosesWriteRequest | null {
+  return draft.noCodeCloses !== draft.known.noCodeCloses ? { noCodeCloses: draft.noCodeCloses } : null;
 }
 
 /** Its own route and its own request shape, like projectRepoSourcedDiff - an

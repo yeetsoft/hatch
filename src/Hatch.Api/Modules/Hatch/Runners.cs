@@ -391,6 +391,59 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> DriversAsync(
         HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
     {
+        var (candidates, people, projects) = await LiveCandidatesAsync(db, keys, now, ct);
+
+        // From the candidates' own distinct names, not live.ToDictionary: two
+        // sessions under one key are two candidates of the same name, and a
+        // dictionary keyed straight off live's rows would throw on the second.
+        var byRunner = candidates
+            .Select(c => c.Name)
+            .Distinct(StringComparer.Ordinal)
+            .ToDictionary(name => name, _ => new List<string>(), StringComparer.Ordinal);
+
+        foreach (var project in projects)
+        {
+            var driver = EligibleCandidates(candidates, people, project).Select(c => c.Name).FirstOrDefault();
+            if (driver is not null) byRunner[driver].Add(project.Key);
+        }
+
+        return byRunner.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The same election as <see cref="DriversAsync"/>, keyed by the
+    /// project's id rather than the driver's name, and keeping the elected
+    /// candidate's own <c>LastSeenAt</c> rather than throwing it away - what
+    /// the merge-train head's sentence names its driver by
+    /// (<see cref="Dispatch.BlockedWithKind"/>). A project with no eligible
+    /// live candidate has no entry at all, rather than a null one.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>> ProjectDriversAsync(
+        HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
+    {
+        var (candidates, people, projects) = await LiveCandidatesAsync(db, keys, now, ct);
+
+        var byProject = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        foreach (var project in projects)
+        {
+            var driver = EligibleCandidates(candidates, people, project).FirstOrDefault();
+            if (driver.Name is not null) byProject[project.Id] = (driver.Name, driver.LastSeenAt);
+        }
+
+        return byProject;
+    }
+
+    /// <summary>
+    /// Every live candidate for a driver, board-wide, plus who a merge
+    /// belongs to per project and the projects themselves - the shared read
+    /// <see cref="DriversAsync"/> and <see cref="ProjectDriversAsync"/> both
+    /// elect from, so the two can never disagree about who is live.
+    /// </summary>
+    private async Task<(
+        List<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> Candidates,
+        Dictionary<int, HashSet<Guid>> People,
+        List<EfHatchProject> Projects)> LiveCandidatesAsync(HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
+    {
         var cutoff = Cutoff(now);
 
         // Only a loop ever starts a MergeTrain; a `once` runner's own BeatAsync
@@ -398,11 +451,11 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         // strand a project with a driver that can never answer.
         var live = await db.Runners.AsNoTracking()
             .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind && r.RetiredAt == null)
-            .Select(r => new { r.Name, r.FirstSeenAt, r.Remotes, r.Standing, r.ForPersonId })
+            .Select(r => new { r.Name, r.FirstSeenAt, r.LastSeenAt, r.Remotes, r.Standing, r.ForPersonId })
             .ToListAsync(ct);
 
         var candidates = live
-            .Select(r => (r.Name, r.FirstSeenAt, r.ForPersonId, Repos: RepositoryDeclaration.From(
+            .Select(r => (r.Name, r.FirstSeenAt, r.LastSeenAt, r.ForPersonId, Repos: RepositoryDeclaration.From(
                 r.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), r.Standing, null)))
             .ToList();
 
@@ -423,7 +476,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
                 .Select(s =>
                 {
                     var key = keysById[s.ApiKeyId];
-                    return (key.Name, s.StartedAt, key.OwnerPersonId, Repos: RepositoryDeclaration.From(
+                    return (key.Name, s.StartedAt, s.LastSeenAt, key.OwnerPersonId, Repos: RepositoryDeclaration.From(
                         s.Remotes?.Split('\n', StringSplitOptions.RemoveEmptyEntries), s.Standing, null));
                 }));
         }
@@ -446,33 +499,31 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
 
         var projects = await db.Projects.AsNoTracking().Include(p => p.Repositories).ToListAsync(ct);
 
-        // From the candidates' own distinct names, not live.ToDictionary: two
-        // sessions under one key are two candidates of the same name, and a
-        // dictionary keyed straight off live's rows would throw on the second.
-        var byRunner = candidates
-            .Select(c => c.Name)
-            .Distinct(StringComparer.Ordinal)
-            .ToDictionary(name => name, _ => new List<string>(), StringComparer.Ordinal);
-
-        foreach (var project in projects)
-        {
-            var driver = candidates
-                .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
-                .Where(c => !people.TryGetValue(project.Id, out var qualifying)
-                    || (c.ForPersonId is { } person && qualifying.Contains(person)))
-                // A candidate this project's train has just passed over stays
-                // eligible for every other project - see TrainWatch.Observe -
-                // so being stuck driving one merge column never costs a
-                // candidate its place on the rest of the board.
-                .Where(c => c.Name != project.TrainStalledDriver)
-                .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal)
-                .Select(c => c.Name).FirstOrDefault();
-
-            if (driver is not null) byRunner[driver].Add(project.Key);
-        }
-
-        return byRunner.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value, StringComparer.Ordinal);
+        return (candidates, people, projects);
     }
+
+    /// <summary>
+    /// One project's own candidates, in election order - oldest
+    /// <c>FirstSeenAt</c> first, then <c>Name</c> ordinally, the tie-break
+    /// that makes the election stable (see <see cref="DriversAsync"/>'s own
+    /// remarks). Shared by <see cref="DriversAsync"/> and
+    /// <see cref="ProjectDriversAsync"/> so the two filter chains cannot
+    /// drift apart.
+    /// </summary>
+    private static IEnumerable<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> EligibleCandidates(
+        List<(string Name, DateTimeOffset FirstSeenAt, DateTimeOffset LastSeenAt, Guid? ForPersonId, RepositoryDeclaration Repos)> candidates,
+        Dictionary<int, HashSet<Guid>> people,
+        EfHatchProject project) =>
+        candidates
+            .Where(c => Dispatch.HoldsCheckout(project.Repositories, c.Repos))
+            .Where(c => !people.TryGetValue(project.Id, out var qualifying)
+                || (c.ForPersonId is { } person && qualifying.Contains(person)))
+            // A candidate this project's train has just passed over stays
+            // eligible for every other project - see TrainWatch.Observe -
+            // so being stuck driving one merge column never costs a
+            // candidate its place on the rest of the board.
+            .Where(c => c.Name != project.TrainStalledDriver)
+            .OrderBy(c => c.FirstSeenAt).ThenBy(c => c.Name, StringComparer.Ordinal);
 
     /// <summary>
     /// One line at most, trimmed and capped - <see cref="IssueClaimController"/>'s

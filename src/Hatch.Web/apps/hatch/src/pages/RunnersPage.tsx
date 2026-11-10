@@ -19,13 +19,17 @@ import {
   groupByHost,
   groupedTokens,
   isControllable,
+  isRetired,
   isIssueKeyShape,
+  liveSessions,
   MAX_SPEND_HINT,
   mineLabel,
   orderSentence,
   repositoriesLabel,
   runnerActivity,
   runnerBuildLabel,
+  sessionActivity,
+  sessionParts,
   tagsLabel,
   projectsLabel,
   modelsLabel,
@@ -39,7 +43,7 @@ import {
 } from '../lib/runners';
 import { useRunners } from '../lib/useRunners';
 import { compactTokens, moneyPhrase } from '../lib/workLog';
-import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
+import type { Runner, RunnerOrderRequest, RunnerPatchRequest, RunnerSession } from '../types';
 
 /**
  * Every runner that has spoken to this Hatch lately, and the three things a
@@ -168,7 +172,8 @@ export function Row({
   const [key, setKey] = useState('');
   const activity = runnerActivity(runner, now);
   const controllable = isControllable(runner);
-  const ownedByAnother = runner.kind === 'loop' && !runner.canControl;
+  const retired = isRetired(runner);
+  const ownedByAnother = runner.kind === 'loop' && !runner.canControl && !retired;
   const { words, claimKey } = activityParts(runner, now);
 
   return (
@@ -187,8 +192,12 @@ export function Row({
           {runner.sourceDrift === 'Behind' && <Badge tone="danger">Rebuild</Badge>}
         </td>
         <td>
-          <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
-          {claimKey && (
+          {retired ? (
+            <Badge tone="muted">Retired</Badge>
+          ) : (
+            <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
+          )}
+          {!retired && claimKey && (
             <Link className="hatch-card-key" to={`/issues/${claimKey}`}>
               {claimKey}
             </Link>
@@ -257,9 +266,15 @@ export function Row({
               )}
             </div>
           )}
+          {retired && (
+            <Text tone="muted">{runner.supersededBy ? `replaced by ${runner.supersededBy}` : 'replaced by another name'}</Text>
+          )}
           {ownedByAnother && <Text tone="muted">{`${runner.for ?? 'its owner'}'s to control`}</Text>}
         </td>
       </tr>
+      {!retired && liveSessions(runner, now).map((session) => (
+        <SessionRow key={session.id} session={session} runner={runner} now={now} />
+      ))}
       {open && (
         <tr>
           <td colSpan={7}>
@@ -269,6 +284,29 @@ export function Row({
         </tr>
       )}
     </>
+  );
+}
+
+/** One live session beneath its runner's row: where, agent and OS under the
+    name, and the Doing badge decided by the same rule as the row's own. No
+    controls - Pause and the orders are per runner, not per session. */
+export function SessionRow({ session, runner, now }: { session: RunnerSession; runner: Runner; now: Date }) {
+  const activity = sessionActivity(session, runner, now);
+  const { words, claimKey } = sessionParts(session, runner, now);
+
+  return (
+    <tr className="hatch-runner-session">
+      <td>{[session.where, session.agent, session.os].map((part) => part ?? '-').join(' · ')}</td>
+      <td>
+        <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
+        {claimKey && (
+          <Link className="hatch-card-key" to={`/issues/${claimKey}`}>
+            {claimKey}
+          </Link>
+        )}
+      </td>
+      <td colSpan={5} />
+    </tr>
   );
 }
 

@@ -3439,8 +3439,9 @@ public class EfHatchRunner
 
     /// <summary>
     /// When this row was retired - a fact about the row, never a heartbeat:
-    /// written once, by the operation that supersedes it, on the same terms as
-    /// <see cref="ExhaustedUntil"/> except that nothing ever clears it. Null
+    /// written by the heartbeat that supersedes it, on the same terms as
+    /// <see cref="ExhaustedUntil"/> except that only the row's own heartbeat
+    /// clears it - nothing that acts on the row from outside does. Null
     /// means not retired; a row with this set is never live and never elected,
     /// however recent its <see cref="LastSeenAt"/>.
     /// </summary>

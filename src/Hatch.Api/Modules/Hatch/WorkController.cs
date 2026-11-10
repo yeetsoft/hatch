@@ -29,7 +29,7 @@ public class WorkController(
     IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners,
     IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
 {
-    private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions);
+    private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
 
     /// <summary>
     /// The issue an unattended run should pick up: the top of the rightmost
@@ -696,6 +696,10 @@ public class WorkController(
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
             : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
+        var drivers = keys is not null
+            ? await runners.ProjectDriversAsync(db, keys, now, ct)
+            : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
@@ -708,6 +712,7 @@ public class WorkController(
             repos, merged, built, hopKind, statuses,
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            driver: driver,
             landing: landing,
             tags: tags,
             asking: Asking(runner));
@@ -718,7 +723,9 @@ public class WorkController(
         var target = hopKind == HopKinds.SendBack ? Columns.SendBack(statuses)! : rowTo!;
         var actor = await caller.ActorNameAsync(ct);
 
-        var closedBySetting = hopKind == HopKinds.Close && preApprovalLevel != PreApprovalLevels.PreApproved;
+        var preApproved = preApprovalLevel == PreApprovalLevels.PreApproved;
+        var closedByNoCodeSetting = hopKind == HopKinds.Close && !preApproved && NoCode.Declared(issue) && issue.Project!.NoCodeCloses;
+        var closedBySetting = hopKind == HopKinds.Close && !preApproved && !closedByNoCodeSetting;
 
         var payload = hopKind switch
         {
@@ -729,6 +736,7 @@ public class WorkController(
                 from, target, ("sendback", true),
                 ("length", issue.Description.Length), ("limit", playbook?.BriefLimit))),
             HopKinds.Approve => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
+            HopKinds.Close when closedByNoCodeSetting => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("approved", "nocode"), ("nocode", true))),
             HopKinds.Close when closedBySetting => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("approved", "setting"))),
             HopKinds.Close when NoCode.Declared(issue) =>JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true), ("nocode", true))),
             HopKinds.Close => JsonSerializer.Serialize(IssueEventPayload.StatusChanged(from, target, ("preapproved", true))),
@@ -766,15 +774,17 @@ public class WorkController(
             {
                 IssueId = issue.Id,
                 Author = actor,
-                Body = closedBySetting
-                    ? $"Closed under {key}'s setting, a passing check approves the merge: every child is done."
-                    : NoCode.Declared(issue)
-                        ? preApprovalFromKey is null
-                            ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
-                            : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
-                        : preApprovalFromKey is null
-                            ? "Closed by its pre-approval on its own row: every child is done."
-                            : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
+                Body = closedByNoCodeSetting
+                    ? $"Closed under {key}'s setting, a no-code declaration closes the ticket: finished with no code - {issue.NoCode}."
+                    : closedBySetting
+                        ? $"Closed under {key}'s setting, a passing check approves the merge: every child is done."
+                        : NoCode.Declared(issue)
+                            ? preApprovalFromKey is null
+                                ? $"Closed by its pre-approval on its own row: finished with no code - {issue.NoCode}."
+                                : $"Closed by its pre-approval from {preApprovalFromKey}: finished with no code - {issue.NoCode}."
+                            : preApprovalFromKey is null
+                                ? "Closed by its pre-approval on its own row: every child is done."
+                                : $"Closed by its pre-approval from {preApprovalFromKey}: every child is done.",
                 CreatedAt = now,
             });
         }
@@ -1457,10 +1467,14 @@ public class WorkController(
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var requirement = has.Judged ? await _dispatch.DependencyRequirementAsync(issue.Project!, ct) : null;
+        var drivers = keys is not null
+            ? await runners.ProjectDriversAsync(db, keys, claimed.Now, ct)
+            : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking, models: models,
+            repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);

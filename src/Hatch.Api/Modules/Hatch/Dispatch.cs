@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// </summary>
 public sealed class Dispatch(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IAuthService? keys = null, RunnerSessions? sessions = null)
+    IAuthService? keys = null, RunnerSessions? sessions = null, Runners? runners = null)
 {
     // ---- The walk ----
 
@@ -257,6 +257,7 @@ public sealed class Dispatch(
         // order, since both calls read the same verdicts and builds fetched
         // above.
         IReadOnlyDictionary<long, TrainSlot> trainSlots = new Dictionary<long, TrainSlot>();
+        IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)> drivers = new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
         if (merges is not null && byColumn.TryGetValue(merges.Id, out var inTrain))
         {
             // A task waiting on its story's pull request has none of its own to
@@ -264,6 +265,9 @@ public sealed class Dispatch(
             // checks at all would be elected head over a real pull request.
             var merging = inTrain.Where(i => !family.IsWaiting(i.Id)).ToList();
             (_, trainSlots) = await ReadTrainAsync(merging, effective, verdicts, builds, now, ct);
+
+            if (keys is not null && runners is not null)
+                drivers = await runners.ProjectDriversAsync(db, keys, now, ct);
         }
 
         // Resolved only when some candidate actually reads at economy or low
@@ -370,6 +374,7 @@ public sealed class Dispatch(
                         issue, status, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
                         implementation, assignees[issue.Id], repos, merged, built, hopKind, statuses, wip, epics,
                         trainSlots.GetValueOrDefault(issue.Id),
+                        drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
                         has: has, requirement: requirement);
                     if (!hop && ModelFold(issue, status, playbook, models) is not null) modelFolded = true;
@@ -476,7 +481,7 @@ public sealed class Dispatch(
 
     /// <summary>
     /// The calling key's own account, read the same way <see cref="UtilizationController.Get"/>
-    /// does - the freshest whole reading across its runners - and judged twice:
+    /// does - the freshest whole reading across its runners and sessions - and judged twice:
     /// economy's stricter arithmetic and low's laxer one. Resolved lazily by
     /// <see cref="ScanAsync"/>, only when some candidate actually reads at
     /// economy or low level, and read once regardless of how many candidates
@@ -492,11 +497,7 @@ public sealed class Dispatch(
             return new PaceReadings(noAccount, noAccountLow);
         }
 
-        var runners = await db.Runners.AsNoTracking()
-            .Where(r => r.ForPersonId == principal.Id && r.Usage != null)
-            .ToListAsync(ct);
-
-        var reading = Utilization.Of(runners, time.GetUtcNow());
+        var reading = await Utilization.ReadAsync(db, keys, principal.Id, time.GetUtcNow(), ct);
         if (reading is null)
         {
             var noReading = EconomyPace.Behind("economy - no usage reading for this account yet; a runner's first session gives one");
@@ -747,20 +748,28 @@ public sealed class Dispatch(
     /// entry, including one with no takers at all. Empty where no live
     /// runner exists, or where the board scan itself fails.
     /// </summary>
-    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<long, StepTakers>> TakersAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct) =>
+        (await TakersWithRowsAsync(offsetMinutes, liveSince, ct)).Takers;
+
+    /// <summary>
+    /// <see cref="TakersAsync"/>'s body, with the undeclared board scan it ran
+    /// handed back too, so a caller that needs the rows does not scan twice.
+    /// The board is null where no live runner exists or the scan failed.
+    /// </summary>
+    private async Task<(Scan? Board, Dictionary<long, StepTakers> Takers)> TakersWithRowsAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var fleet = (await LivePeersAsync(now, liveSince, null, ct)).Where(p => p.Declaration.Refusal is null).ToList();
-        if (fleet.Count == 0) return new Dictionary<long, StepTakers>();
+        if (fleet.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
         var board = await ScanAsync(offsetMinutes, null, null, RepositoryDeclaration.Undeclared, false, ct);
-        if (board.Failure is not null) return new Dictionary<long, StepTakers>();
+        if (board.Failure is not null) return (null, new Dictionary<long, StepTakers>());
 
         var judged = board.Rows
             .Where(r => r.Blocked is null || r.BlockedKind == BlockedKinds.Turn)
             .Select(r => r.Issue.Id)
             .ToList();
-        if (judged.Count == 0) return new Dictionary<long, StepTakers>();
+        if (judged.Count == 0) return (null, new Dictionary<long, StepTakers>());
 
         var groups = fleet
             .GroupBy(p => p.Name, StringComparer.Ordinal)
@@ -808,7 +817,47 @@ public sealed class Dispatch(
                     : []);
         }
 
-        return result;
+        return (board, result);
+    }
+
+    /// <summary>
+    /// The projects whose clear implementation steps no live runner, or only
+    /// one, can take - the union of <see cref="TakersAsync"/>'s takers over a
+    /// project's steps has at most one name. Each row names the steps, the
+    /// taker if any, and why each other live runner cannot. Empty where no
+    /// runner is live. Ordered by project key.
+    /// </summary>
+    public async Task<IReadOnlyList<RunnerCapacityDto>> RunnerCapacityAsync(int offsetMinutes, DateTimeOffset liveSince, CancellationToken ct)
+    {
+        var (board, takers) = await TakersWithRowsAsync(offsetMinutes, liveSince, ct);
+        if (board is null || Columns.Implementation(board.Statuses) is not { } implementation) return [];
+
+        var listed = new List<RunnerCapacityDto>();
+        foreach (var project in board.Rows
+                     .Where(r => r.From.Id == implementation.Id && !r.Hop && takers.ContainsKey(r.Issue.Id))
+                     .GroupBy(r => r.Issue.Project!.Key)
+                     .OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var steps = project.OrderBy(r => r.Issue.Rank).ThenBy(r => r.Issue.Id).ToList();
+            var union = steps
+                .SelectMany(s => takers[s.Issue.Id].Takers)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(n => n, StringComparer.Ordinal)
+                .ToList();
+            if (union.Count > 1) continue;
+
+            // A project is listed only when every step has fewer than two
+            // takers, so every step carries its Untaken; the first step's, less
+            // any runner that takes a later one, is already in name order.
+            var reasons = takers[steps[0].Issue.Id].Untaken.Where(u => !union.Contains(u.Runner)).ToList();
+
+            listed.Add(new RunnerCapacityDto(
+                project.Key, steps.Count,
+                steps.Take(10).Select(s => IssueKey.Format(project.Key, s.Issue.Number)).ToList(),
+                union, reasons));
+        }
+
+        return listed;
     }
 
     /// <summary>
@@ -854,7 +903,7 @@ public sealed class Dispatch(
                              .ThenBy(n => n.Version, StringComparer.Ordinal))
                 {
                     if (withHas.Any(d => d.Has.VersionsOf(need.Id).Any(v => DependencyVersion.Satisfies(need.Version, v)))) continue;
-                    needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+                    needed.Add(NeedPhrase(need));
                 }
 
                 if (needed.Count > 0) parts.Add($"no live runner has {Listed(needed)}");
@@ -1203,13 +1252,18 @@ public sealed class Dispatch(
             ? $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is flagged dangerous ({reason}) - this runner refuses dangerous work"
             : null;
 
+    /// <summary>A declared need as a sentence: a version is a minimum, so it reads <c>or newer</c>.</summary>
+    private static string NeedPhrase(DependencyNeed need) =>
+        need.Version is null ? need.Id : $"{need.Id} {need.Version} or newer";
+
     /// <summary>
     /// Why this caller's runner cannot run the issue's code: a bound
     /// repository declares a development dependency the runner's
     /// <c>?has=</c> does not satisfy, or one of the declaring files is invalid.
     /// Null for a scan that is <see cref="HasDeclaration.Unjudged"/>, and when
     /// every need is met. A need is met when any version the runner lists for
-    /// its id satisfies it; a bare need is met by the id at any version.
+    /// its id is at least the declared one; a declared version is a minimum,
+    /// and a bare need is met by the id at any version.
     /// </summary>
     private static string? DependencyFold(EfHatchIssue issue, HasDeclaration has, DependencyRequirement requirement)
     {
@@ -1226,7 +1280,7 @@ public sealed class Dispatch(
             var versions = has.VersionsOf(need.Id);
             if (versions.Any(v => DependencyVersion.Satisfies(need.Version, v))) continue;
 
-            needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+            needed.Add(NeedPhrase(need));
             offered.Add(versions.Count == 0
                 ? $"no {need.Id}"
                 : Listed(versions.Select(v => v is null ? need.Id : $"{need.Id} {v}").ToList()));
@@ -1693,6 +1747,7 @@ public sealed class Dispatch(
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
+        (string Name, DateTimeOffset LastSeenAt)? driver = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
@@ -1703,7 +1758,7 @@ public sealed class Dispatch(
         DependencyRequirement? requirement = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
-            implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, landing,
+            implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
             repoSourced, tags, projects, asking, models, has, requirement).Sentence;
 
     /// <summary>
@@ -1736,6 +1791,7 @@ public sealed class Dispatch(
         WipSection? wip,
         IReadOnlyDictionary<long, EpicLimit> epics,
         TrainSlot? train = null,
+        (string Name, DateTimeOffset LastSeenAt)? driver = null,
         MergeWork.Judgement? landing = null,
         RepoSourcedPlaybooks? repoSourced = null,
         TagDeclaration? tags = null,
@@ -1787,6 +1843,17 @@ public sealed class Dispatch(
                 && judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
                 return new Blocking($"{judgement.Sentence} - waiting its turn behind {slot.HeadKey}, " +
                        $"position {slot.Position} in the train", BlockedKinds.Turn);
+
+            // A held or pushed-back row already explains itself - held,
+            // conflicted, a closed pull request, a catch-up timeout - the
+            // same reason the waiting clause above is not repeated here. Only
+            // a row that reads as actionable names who is acting on it.
+            if (judgement.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending)
+                return new Blocking(
+                    driver is { } d
+                        ? $"{judgement.Sentence} - for the driver, last heard from {Minutes((int)(claimed.Now - d.LastSeenAt).TotalSeconds)} ago"
+                        : "no live runner is eligible to drive this project's merges",
+                    BlockedKinds.Other);
 
             return new Blocking(judgement.Sentence, BlockedKinds.Other);
         }
@@ -2099,9 +2166,11 @@ public sealed class Dispatch(
     /// by it (HA-202). Beside the merge arm stands the close arm (HA-472): a
     /// pre-approved issue, or one in a project whose CheckApprovesMerge is on,
     /// in review with no pull request and a column to close to, whose children
-    /// are all done, or that is pre-approved and declared it finished with no
-    /// code (<see cref="NoCode"/>) - the setting alone never carries a childless
-    /// issue, and a declared issue with open children still waits for them. The order
+    /// are all done; or a declared issue (<see cref="NoCode"/>) in review with no
+    /// pull request and a column to close to, carried when it is pre-approved
+    /// or its project's NoCodeCloses is on - the merge setting (CheckApprovesMerge)
+    /// alone never carries a childless one, and a declared issue with open
+    /// children still waits for them. The order
     /// matters only where a board ticks both ExpressSkips and ParentPulls on
     /// the same column and an epic stands exactly in the implementation
     /// column - see HA-113's own decision on the overlap. Never on a move that
@@ -2167,9 +2236,8 @@ public sealed class Dispatch(
 
         if (Columns.AwaitingReview(statuses)?.Id == from.Id
             && Columns.Closes(statuses, from) is not null
-            && (effectivePreApproval == PreApprovalLevels.PreApproved || issue.Project!.CheckApprovesMerge)
+            && ((effectivePreApproval == PreApprovalLevels.PreApproved || issue.Project!.CheckApprovesMerge) && family.Children(issue.Id).Count > 0 || NoCode.Declared(issue) && (effectivePreApproval == PreApprovalLevels.PreApproved || issue.Project!.NoCodeCloses))
             && issue.PullRequestUrl is not { Length: > 0 }
-            && (family.Children(issue.Id).Count > 0 || (NoCode.Declared(issue) && effectivePreApproval == PreApprovalLevels.PreApproved))
             && (IssueTypeKinds.RunsChildren(issue.Type)
                 ? family.EpicFold(issue.Id, statuses) is null
                 : family.OpenChildren(issue.Id).Count == 0))

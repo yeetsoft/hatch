@@ -83,11 +83,14 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // A stalled train is a project's, not a column's - whatever the board's shape.
         var trainStalled = await TrainStalledAsync(ct);
 
+        // The projects whose clear implementation steps one live runner, or none, can take.
+        var runnerCapacity = await dispatch.RunnerCapacityAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
+
         // A board too short to have a review column has nothing in review, and
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -109,6 +112,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.PullRequestClosedAt,
                 Landing = i.Project!.Landing,
                 i.Project.ChecksRequired,
+                i.Project.NoCodeCloses,
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
@@ -300,12 +304,14 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         }
 
         // A declared issue the close hop would carry is the board's. One that is
-        // not pre-approved stays in review for a person, with the reason it gave:
-        // it has no pull request to be a row in Reviews and is not "without" one.
+        // neither pre-approved nor in a project whose NoCodeCloses is on stays in
+        // review for a person, with the reason it gave: it has no pull request to
+        // be a row in Reviews and is not "without" one.
         var noCodeHeld = inReview
             .Where(i => string.IsNullOrWhiteSpace(i.PullRequestUrl)
                 && NoCode.Declared(i.NoCode)
-                && tree.EffectivePreApproval(i.Id).Level != PreApprovalLevels.PreApproved)
+                && tree.EffectivePreApproval(i.Id).Level != PreApprovalLevels.PreApproved
+                && !i.NoCodeCloses)
             .Select(i => new NoCodeHeldDto(IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.NoCode!))
             .ToList();
 
@@ -356,7 +362,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled);
+            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity);
     }
 
     /// <summary>

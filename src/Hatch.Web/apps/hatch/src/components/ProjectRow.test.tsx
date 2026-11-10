@@ -36,6 +36,9 @@ const BASE: Project = {
   checkApprovesMerge: false,
   checkApprovesMergeBy: null,
   checkApprovesMergeAt: null,
+  noCodeCloses: false,
+  noCodeClosesBy: null,
+  noCodeClosesAt: null,
 };
 
 const noop = () => undefined;

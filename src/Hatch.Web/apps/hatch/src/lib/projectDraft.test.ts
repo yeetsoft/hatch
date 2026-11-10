@@ -3,6 +3,7 @@ import {
   openProjectDraft,
   projectBindsTrackerDiff,
   projectCheckApprovesMergeDiff,
+  projectNoCodeClosesDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
@@ -43,6 +44,9 @@ describe('openProjectDraft', () => {
       checkApprovesMerge: true,
       checkApprovesMergeBy: null,
       checkApprovesMergeAt: null,
+      noCodeCloses: true,
+      noCodeClosesBy: null,
+      noCodeClosesAt: null,
       bindsTrackerBy: null,
       bindsTrackerAt: null,
       reflectionCadenceDays: null,
@@ -55,6 +59,7 @@ describe('openProjectDraft', () => {
     expect(draft.name).toBe('Aerial');
     expect(draft.key).toBe('AER');
     expect(draft.checkApprovesMerge).toBe(true);
+    expect(draft.noCodeCloses).toBe(true);
     expect(draft.known).toEqual({
       name: 'Aerial',
       key: 'AER',
@@ -72,6 +77,7 @@ describe('openProjectDraft', () => {
       bindsTracker: false,
       storiesOnEpics: true,
       checkApprovesMerge: true,
+      noCodeCloses: true,
       runnerTags: [],
       reflectionCadenceDays: null,
     });
@@ -106,6 +112,9 @@ describe('openProjectDraft', () => {
       checkApprovesMerge: false,
       checkApprovesMergeBy: null,
       checkApprovesMergeAt: null,
+      noCodeCloses: false,
+      noCodeClosesBy: null,
+      noCodeClosesAt: null,
       bindsTrackerBy: null,
       bindsTrackerAt: null,
       reflectionCadenceDays: null,
@@ -137,42 +146,43 @@ describe('projectDraftDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
 
   it('is empty when nothing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: null, repositories: null });
   });
 
   it('carries only name when only name changed', () => {
-    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: 'Renamed', key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { name: 'Renamed' }, repositories: null });
   });
 
   it('carries only key when only key changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: 'NEW', color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { key: 'NEW' }, repositories: null });
   });
 
   it('carries only color when only color changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: '#111827', icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: '#111827', icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { color: '#111827' }, repositories: null });
   });
 
   it('carries only icon when only icon changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: 'comet', repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: 'comet', repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { icon: 'comet' }, repositories: null });
   });
 
   it('sends an empty string to clear color', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: null, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: null, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { color: '' }, repositories: null });
   });
 
   it('sends an empty string to clear icon', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: null, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: null, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectDraftDiff(draft)).toEqual({ patch: { icon: '' }, repositories: null });
   });
 
@@ -200,6 +210,7 @@ describe('projectDraftDiff', () => {
       bindsTracker: reorderedKnown.bindsTracker,
       storiesOnEpics: reorderedKnown.storiesOnEpics,
       checkApprovesMerge: reorderedKnown.checkApprovesMerge,
+      noCodeCloses: reorderedKnown.noCodeCloses,
       runnerTags: '',
       reflectionCadenceDays: '',
     };
@@ -221,7 +232,7 @@ describe('projectDraftDiff', () => {
     { label: 'a removed entry', repositories: [] },
     { label: 'an edited baseBranch', repositories: [{ remote: 'a', baseBranch: 'develop' }] },
   ])('reports a change on $label', ({ repositories }) => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
 
     const diff = projectDraftDiff(draft);
 
@@ -248,6 +259,7 @@ describe('projectDraftDiff', () => {
       bindsTracker: known.bindsTracker,
       storiesOnEpics: known.storiesOnEpics,
       checkApprovesMerge: known.checkApprovesMerge,
+      noCodeCloses: known.noCodeCloses,
       runnerTags: '',
       reflectionCadenceDays: '',
     };
@@ -274,58 +286,59 @@ describe('projectLandingDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
 
   it('is null when nothing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toBeNull();
   });
 
   it('carries only landing when only landing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ landing: 'trunk' });
   });
 
   it('carries only checksRequired when only checksRequired changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: false, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: false, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ checksRequired: false });
   });
 
   it('carries both when both changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: false, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: 'trunk', checksRequired: false, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ landing: 'trunk', checksRequired: false });
   });
 
   it('carries only onePullRequest when only onePullRequest changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: true, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: true, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ onePullRequest: true });
   });
 
   it('carries only autoHealBugEnabled when only autoHealBugEnabled changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: false, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: false, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ autoHealBugEnabled: false });
   });
 
   it('carries only autoHealBugPriority when only autoHealBugPriority changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: 'expedited', autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: 'expedited', autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ autoHealBugPriority: 'expedited' });
   });
 
   it('carries only autoHealBugPreApproval when only autoHealBugPreApproval changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: 'preapproved', autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: 'preapproved', autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ autoHealBugPreApproval: 'preapproved' });
   });
 
   it('carries only autoHealBugStatusId as a string when only autoHealBugStatusId changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: 5, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: 5, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ autoHealBugStatusId: '5' });
   });
 
   it('clears autoHealBugStatusId with an empty string when set back to automatic', () => {
     const withColumn = { ...known, autoHealBugStatusId: 5 };
-    const draft: ProjectDraft = { known: withColumn, name: withColumn.name, key: withColumn.key, color: withColumn.color, icon: withColumn.icon, repositories: withColumn.repositories, landing: withColumn.landing, checksRequired: withColumn.checksRequired, onePullRequest: withColumn.onePullRequest, autoHealBugEnabled: withColumn.autoHealBugEnabled, autoHealBugPriority: withColumn.autoHealBugPriority, autoHealBugPreApproval: withColumn.autoHealBugPreApproval, autoHealBugStatusId: null, repoSourced: withColumn.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known: withColumn, name: withColumn.name, key: withColumn.key, color: withColumn.color, icon: withColumn.icon, repositories: withColumn.repositories, landing: withColumn.landing, checksRequired: withColumn.checksRequired, onePullRequest: withColumn.onePullRequest, autoHealBugEnabled: withColumn.autoHealBugEnabled, autoHealBugPriority: withColumn.autoHealBugPriority, autoHealBugPreApproval: withColumn.autoHealBugPreApproval, autoHealBugStatusId: null, repoSourced: withColumn.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectLandingDiff(draft)).toEqual({ autoHealBugStatusId: '' });
   });
 
@@ -349,6 +362,7 @@ describe('projectLandingDiff', () => {
       bindsTracker: off.bindsTracker,
       storiesOnEpics: off.storiesOnEpics,
       checkApprovesMerge: off.checkApprovesMerge,
+      noCodeCloses: off.noCodeCloses,
       runnerTags: '',
       reflectionCadenceDays: '',
     };
@@ -374,23 +388,24 @@ describe('projectRepoSourcedDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
 
   it('is null when nothing changed', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectRepoSourcedDiff(draft)).toBeNull();
   });
 
   it('carries repoSourced when it changed from false to true', () => {
-    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: true, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known, name: known.name, key: known.key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: true, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectRepoSourcedDiff(draft)).toEqual({ repoSourced: true });
   });
 
   it('carries repoSourced when it changed from true to false', () => {
     const trueKnown = { ...known, repoSourced: true };
-    const draft: ProjectDraft = { known: trueKnown, name: trueKnown.name, key: trueKnown.key, color: trueKnown.color, icon: trueKnown.icon, repositories: trueKnown.repositories, landing: trueKnown.landing, checksRequired: trueKnown.checksRequired, onePullRequest: trueKnown.onePullRequest, autoHealBugEnabled: trueKnown.autoHealBugEnabled, autoHealBugPriority: trueKnown.autoHealBugPriority, autoHealBugPreApproval: trueKnown.autoHealBugPreApproval, autoHealBugStatusId: trueKnown.autoHealBugStatusId, repoSourced: false, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' };
+    const draft: ProjectDraft = { known: trueKnown, name: trueKnown.name, key: trueKnown.key, color: trueKnown.color, icon: trueKnown.icon, repositories: trueKnown.repositories, landing: trueKnown.landing, checksRequired: trueKnown.checksRequired, onePullRequest: trueKnown.onePullRequest, autoHealBugEnabled: trueKnown.autoHealBugEnabled, autoHealBugPriority: trueKnown.autoHealBugPriority, autoHealBugPreApproval: trueKnown.autoHealBugPreApproval, autoHealBugStatusId: trueKnown.autoHealBugStatusId, repoSourced: false, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' };
     expect(projectRepoSourcedDiff(draft)).toEqual({ repoSourced: false });
   });
 });
@@ -413,6 +428,7 @@ describe('projectCheckApprovesMergeDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
@@ -434,6 +450,7 @@ describe('projectCheckApprovesMergeDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge,
+    noCodeCloses: false,
     runnerTags: '',
     reflectionCadenceDays: '',
   });
@@ -448,6 +465,64 @@ describe('projectCheckApprovesMergeDiff', () => {
 
   it('carries checkApprovesMerge when a known-true project was unticked', () => {
     expect(projectCheckApprovesMergeDiff(draftOf(false, true))).toEqual({ checkApprovesMerge: false });
+  });
+});
+
+describe('projectNoCodeClosesDiff', () => {
+  const known = {
+    name: 'Aerial',
+    key: 'AER',
+    color: '#6b7280',
+    icon: 'rocket',
+    repositories: [{ remote: 'a', baseBranch: 'main' }],
+    landing: 'pull-request' as const,
+    checksRequired: true,
+    onePullRequest: false,
+    autoHealBugEnabled: true,
+    autoHealBugPriority: 'emergency' as const,
+    autoHealBugPreApproval: 'express' as const,
+    autoHealBugStatusId: null,
+    repoSourced: false,
+    bindsTracker: false,
+    storiesOnEpics: false,
+    checkApprovesMerge: false,
+    noCodeCloses: false,
+    runnerTags: [],
+    reflectionCadenceDays: null,
+  };
+  const draftOf = (noCodeCloses: boolean, was = false): ProjectDraft => ({
+    known: { ...known, noCodeCloses: was },
+    name: known.name,
+    key: known.key,
+    color: known.color,
+    icon: known.icon,
+    repositories: known.repositories,
+    landing: known.landing,
+    checksRequired: known.checksRequired,
+    onePullRequest: known.onePullRequest,
+    autoHealBugEnabled: known.autoHealBugEnabled,
+    autoHealBugPriority: known.autoHealBugPriority,
+    autoHealBugPreApproval: known.autoHealBugPreApproval,
+    autoHealBugStatusId: known.autoHealBugStatusId,
+    repoSourced: known.repoSourced,
+    bindsTracker: false,
+    storiesOnEpics: false,
+    checkApprovesMerge: false,
+    noCodeCloses,
+    runnerTags: '',
+    reflectionCadenceDays: '',
+  });
+
+  it('is null when nothing changed', () => {
+    expect(projectNoCodeClosesDiff(draftOf(false))).toBeNull();
+  });
+
+  it('carries noCodeCloses when it was ticked', () => {
+    expect(projectNoCodeClosesDiff(draftOf(true))).toEqual({ noCodeCloses: true });
+  });
+
+  it('carries noCodeCloses when a known-true project was unticked', () => {
+    expect(projectNoCodeClosesDiff(draftOf(false, true))).toEqual({ noCodeCloses: false });
   });
 });
 
@@ -469,6 +544,7 @@ describe('projectBindsTrackerDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
@@ -490,6 +566,7 @@ describe('projectBindsTrackerDiff', () => {
     bindsTracker,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: '',
     reflectionCadenceDays: '',
   });
@@ -521,6 +598,7 @@ describe('projectStoriesOnEpicsDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
@@ -542,6 +620,7 @@ describe('projectStoriesOnEpicsDiff', () => {
     bindsTracker: false,
     storiesOnEpics,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: '',
     reflectionCadenceDays: '',
   });
@@ -577,10 +656,11 @@ describe('projectDraftKeyObjection', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };
-  const withKey = (key: string): ProjectDraft => ({ known, name: known.name, key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, runnerTags: '', reflectionCadenceDays: '' });
+  const withKey = (key: string): ProjectDraft => ({ known, name: known.name, key, color: known.color, icon: known.icon, repositories: known.repositories, landing: known.landing, checksRequired: known.checksRequired, onePullRequest: known.onePullRequest, autoHealBugEnabled: known.autoHealBugEnabled, autoHealBugPriority: known.autoHealBugPriority, autoHealBugPreApproval: known.autoHealBugPreApproval, autoHealBugStatusId: known.autoHealBugStatusId, repoSourced: known.repoSourced, bindsTracker: false, storiesOnEpics: false, checkApprovesMerge: false, noCodeCloses: false, runnerTags: '', reflectionCadenceDays: '' });
 
   it('is no objection when the key is unchanged', () => {
     expect(projectDraftKeyObjection(withKey('AER'), '')).toBeNull();
@@ -621,6 +701,7 @@ describe('projectRunnerTagsDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: ['macos', 'xcode'],
     reflectionCadenceDays: null,
   };
@@ -642,6 +723,7 @@ describe('projectRunnerTagsDiff', () => {
     bindsTracker: known.bindsTracker,
     storiesOnEpics: known.storiesOnEpics,
     checkApprovesMerge: known.checkApprovesMerge,
+    noCodeCloses: known.noCodeCloses,
     runnerTags,
     reflectionCadenceDays: '',
   });
@@ -681,6 +763,7 @@ describe('projectReflectionDiff', () => {
     bindsTracker: false,
     storiesOnEpics: false,
     checkApprovesMerge: false,
+    noCodeCloses: false,
     runnerTags: [],
     reflectionCadenceDays: null,
   };

@@ -71,6 +71,14 @@ describe('describe', () => {
     ).toBe("In Review → Done, closed by the project's setting");
   });
 
+  it("marks a close the project's no-code setting made, after the ordinary from/to", () => {
+    expect(
+      describeEvent(
+        event({ kind: 'status_changed', payload: { from: 'In Review', to: 'Done', approved: 'nocode' } }),
+      ),
+    ).toBe("In Review → Done, closed by the project's no-code setting");
+  });
+
   it('marks a passing check as an approval, after the ordinary from/to', () => {
     expect(
       describeEvent(

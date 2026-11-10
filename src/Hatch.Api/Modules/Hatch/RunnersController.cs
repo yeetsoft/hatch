@@ -337,6 +337,8 @@ public class RunnersController(
             await db.SaveChangesAsync(ct);
         }
 
+        if (kind == EfHatchRunner.LoopKind) await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
+
         await ReinstateAsync(key.Name, now, ct);
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
@@ -417,6 +419,9 @@ public class RunnersController(
 
             try
             {
+                // Before the save, so the one write carries the new row and
+                // the retirements together.
+                await RetireSuperseded(row, now, ct);
                 await db.SaveChangesAsync(ct);
 
                 // A row born on this very beat has never been ordered.
@@ -452,10 +457,42 @@ public class RunnersController(
         }
 
         Touch(row, kind, line, now, request, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas));
+        await RetireSuperseded(row, now, ct);
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
             defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+    }
+
+    /// <summary>
+    /// Retires every older row that this heartbeat's row has replaced: same
+    /// checkout, same owner, same kind, first seen earlier, and quiet past the
+    /// cutoff. A checkout that was renamed leaves its old row behind, and
+    /// nothing else would ever say it is gone for good. Idempotent - it runs on
+    /// every beat, and a row already retired is not touched again. Null owner
+    /// with the wall up proves nothing, so it retires nothing; with the wall
+    /// off, null matches null. Does not save: the caller's write carries it.
+    /// </summary>
+    private async Task RetireSuperseded(EfHatchRunner row, DateTimeOffset now, CancellationToken ct)
+    {
+        if (row.Where is not { Length: > 0 } where) return;
+        if (row.ForPersonId is null && auth.Value.Enabled) return;
+
+        var name = row.Name;
+        var kind = row.Kind;
+        var owner = row.ForPersonId;
+        var first = row.FirstSeenAt;
+        var cutoff = runners.Cutoff(now);
+
+        var older = await db.Runners.Where(r => r.Name != name && r.Where == where && r.Kind == kind
+            && r.ForPersonId == owner && r.FirstSeenAt < first && r.LastSeenAt < cutoff
+            && r.RetiredAt == null).ToListAsync(ct);
+
+        foreach (var r in older)
+        {
+            r.RetiredAt = now;
+            r.RetiredBy = name;
+        }
     }
 
     /// <summary>
@@ -471,6 +508,45 @@ public class RunnersController(
 
     /// <summary>The name an answer nobody pressed is written under - the same shape <see cref="IssueClaimController"/>'s own constant takes, mirrored rather than shared, since that one is private.</summary>
     private const string HatchActor = "Hatch";
+
+    /// <summary>
+    /// A loop beat under <paramref name="name"/> from <paramref name="where"/>
+    /// retires every other loop row from that same checkout, at once: renaming a
+    /// checkout's runner starts a new name and leaves the old row behind, and
+    /// nothing else would say it is gone for good. The row named
+    /// <paramref name="name"/> is the one that is beating, so its own mark is
+    /// cleared instead. Idempotent - a row already retired is not touched
+    /// again, so its stamp is the beat that first retired it. Only rows of the
+    /// same owner are touched: a null owner with the wall up proves nothing, so
+    /// it retires nothing, and with the wall off null matches null. A
+    /// <c>once</c> beat never reaches here - it shares the loop's name and
+    /// proves nothing about what else has gone.
+    /// </summary>
+    private async Task RetireRenamedAsync(string name, Guid? owner, string? where, DateTimeOffset now, CancellationToken ct)
+    {
+        if (where is not { Length: > 0 }) return;
+
+        var own = await db.Runners.FirstOrDefaultAsync(r => r.Name == name && r.RetiredAt != null, ct);
+        if (own is not null)
+        {
+            own.RetiredAt = null;
+            own.RetiredBy = null;
+        }
+
+        if (owner is not null || !auth.Value.Enabled)
+        {
+            var older = await db.Runners.Where(r => r.Name != name && r.Where == where
+                && r.Kind == EfHatchRunner.LoopKind && r.ForPersonId == owner && r.RetiredAt == null).ToListAsync(ct);
+
+            foreach (var r in older)
+            {
+                r.RetiredAt = now;
+                r.RetiredBy = name;
+            }
+        }
+
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+    }
 
     /// <summary>
     /// This runner's own beat, reinstating any project it had been passed over
@@ -1277,6 +1353,9 @@ public class RunnersController(
     {
         row.Kind = kind;
         row.LastSeenAt = now;
+        // The row's own beat is the one thing that un-retires it.
+        row.RetiredAt = null;
+        row.RetiredBy = null;
 
         switch (line)
         {

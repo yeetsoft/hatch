@@ -390,17 +390,6 @@ public sealed class GrokAdapterTests : IDisposable
         Path.Combine(Path.GetTempPath(), $"hatch-grok-{request.SessionId ?? Guid.Empty.ToString()}.md");
 
     [Fact]
-    public void The_spawned_session_names_the_runner_that_dispatched_it()
-    {
-        var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true, RunnerName: "test:/checkout");
-        var adapter = Adapter();
-
-        Assert.Equal("test:/checkout", adapter.BuildHeadless(request).Environment["HATCH_RUNNER"]);
-
-        adapter.Release(request);
-    }
-
-    [Fact]
     public void The_spawned_session_carries_the_runners_own_HATCH_BASE_and_HATCH_KEY()
     {
         var request = new SessionRequest("/root", "sonnet", "high", "prompt", Quiet: true,

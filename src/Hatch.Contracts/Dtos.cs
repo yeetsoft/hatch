@@ -1479,6 +1479,12 @@ public record ReviewDto(
 /// a runner that died never does. Empty, not null, when there is none, on every
 /// board shape. Defaults to null so an older client still reads.
 /// </param>
+/// <param name="RunnerCapacity">
+/// One row per project whose clear implementation steps no live runner, or only
+/// one, can take, each with the reasons the rest cannot. Ordered by project key.
+/// Empty, not null, when nothing qualifies or no runner is live. Defaults to
+/// null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1495,7 +1501,8 @@ public record AttentionDto(
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null,
     IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null,
-    IReadOnlyList<TrainStalledDto>? TrainStalled = null);
+    IReadOnlyList<TrainStalledDto>? TrainStalled = null,
+    IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1608,7 +1615,7 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// <param name="Move">The column the move starts from.</param>
 /// <param name="Missing">
 /// What no live runner has, in a sentence: <c>no live runner offers fable</c>,
-/// or <c>no live runner has pwsh 7 and playwright-browsers</c>.
+/// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
 
@@ -1623,6 +1630,22 @@ public record WaitingOnARunnerDto(string Key, string Title, string Type, string 
 /// <param name="HeadKey">The issue at the head of the train when it stalled.</param>
 /// <param name="At">When the train was passed over.</param>
 public record TrainStalledDto(string ProjectKey, string ProjectName, string PassedOverRunner, string? ElectedRunner, string HeadKey, DateTimeOffset At);
+
+/// <summary>
+/// A project whose clear implementation steps no live runner, or only one, can
+/// take - see <see cref="AttentionDto.RunnerCapacity"/>.
+/// </summary>
+/// <param name="ProjectKey">The project's key.</param>
+/// <param name="Steps">How many clear implementation steps the project has.</param>
+/// <param name="Keys">The first ten of those steps, in rank order.</param>
+/// <param name="Takers">
+/// The live runners that can take at least one of the steps; at most one name.
+/// </param>
+/// <param name="Reasons">
+/// Why each live runner outside <paramref name="Takers"/> cannot, in the
+/// queue's own words, by runner name.
+/// </param>
+public record RunnerCapacityDto(string ProjectKey, int Steps, IReadOnlyList<string> Keys, IReadOnlyList<string> Takers, IReadOnlyList<RunnerReasonDto> Reasons);
 
 // ---- The board ----
 

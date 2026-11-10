@@ -1174,6 +1174,30 @@ public sealed class DetectTests
         finally { Remove(root); }
     }
 
+    // ---- FallbackNotes --------------------------------------------------
+
+    [Fact]
+    public void FallbackNotes_gives_one_sentence_for_a_present_result_read_from_PATH()
+    {
+        var detection = new Detection([
+            new DetectorResult("node", true, "22.4.0", "`zsh -l -i +m` exited with code 127", "PATH"),
+        ]);
+
+        Assert.Equal(["node read from PATH, not the shell - `zsh -l -i +m` exited with code 127"], detection.FallbackNotes());
+    }
+
+    [Fact]
+    public void FallbackNotes_gives_none_for_a_shell_answer_an_absent_result_or_no_shell()
+    {
+        var detection = new Detection([
+            new DetectorResult("dotnet", true, "10.0.100", null, "zsh -l -i +m"),
+            new DetectorResult("make", false, null, "`make` is not on PATH", "PATH"),
+            new DetectorResult("pwsh", true, "7.5.0", null),
+        ]);
+
+        Assert.Empty(detection.FallbackNotes());
+    }
+
     // ---- Lookup -------------------------------------------------------
 
     [Fact]

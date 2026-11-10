@@ -54,6 +54,28 @@ has:
   budget`. A cap inherited from the site default carries the same
   `(default)` marker here as it does in Bounds.
 
+Beneath a row, one quieter line per live session it holds: where it is working
+from, its agent and its OS (each `-` where it has not said), and a **Doing**
+badge decided by the same rule as the row's own, with the held ticket as a link.
+Two checkouts that report under one name are one runner row with two of these
+lines. A session is live when it has not ended and has been heard from within
+the runner's silence limit; an ended or silent one is left out, and a runner
+with no live sessions draws exactly the row above and nothing more. The lines
+have no controls, since Pause, Stop and orders are the runner's and not a
+session's, and a retired row draws none. It is the same list `hatch runners`
+indents under each runner.
+
+Renaming a checkout's runner retires its old name. The moment a loop beats from
+a checkout under a new name, every older loop row from that same checkout, for
+the same owner, is marked retired: it reads **Retired** in place of **Doing**
+and `replaced by <new name>` in place of the controls, draws no Pause, Stop or
+Order, and is never counted as live or elected to drive a merge train. Only a
+loop beat retires a row, and only from the same checkout: a `once` pass beside
+a loop uses the loop's name and retires nothing, and a beat from another
+checkout retires nothing. A retired row that beats again under its own name
+is un-retired and counts as live again; otherwise it drops off with the rest,
+two hours after its last beat.
+
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
 dollars. A machine with one runner draws no such line, and a runner that never
@@ -164,6 +186,16 @@ when, and the last line that checkout printed. Clearing a claim by hand makes
 the ticket claimable again at once; the runner notices and stops at its next
 heartbeat, within a minute by default, so until then its session may still
 push or move the ticket.
+
+A session's heartbeat carries six machine fields - `os`, `arch`,
+`agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`,
+seven in all. The six come from the CLI itself and are missing for a session
+run by a CLI old enough to predate them; `ip` is never one of the six - it
+is the server's own reading of the connection, taken after the forwarded
+header from the proxy in front of it is applied, so it is set on every
+session regardless of CLI version, including one that sends none of the
+other six. Nothing else is collected: no environment variable, no process
+id, no MAC address.
 
 ## Overnight
 
