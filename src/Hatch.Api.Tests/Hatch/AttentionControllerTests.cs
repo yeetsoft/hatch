@@ -1933,6 +1933,115 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(deadlocked);
     }
 
+    // ---- The stalled merge train (HA-2094) ----
+
+    private const string StalledPayload = """{"passedOver":"here:/one","elected":"here:/two"}""";
+
+    private static async Task StallAsync(Harness h, EfHatchIssue head, string payload, DateTimeOffset at, string? driver = "here:/one")
+    {
+        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = driver;
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = head.Id,
+            Actor = "Hatch",
+            Kind = EfHatchIssueEvent.DriverStalled,
+            Payload = payload,
+            At = at,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Attention_ListsAStalledTrainWithItsHeadAndBothRunners()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.Equal([new TrainStalledDto("AER", "Hatch", "here:/one", "here:/two", Key(head), Now)], stalled);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAStalledTrainWithNoElectedRunnerAsNull()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, """{"passedOver":"here:/one","elected":null}""", Now);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal("here:/one", row.PassedOverRunner);
+        Assert.Null(row.ElectedRunner);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAProjectWhoseDriverWasReinstated()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now, driver: null);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_NamesTheHeadOfTheLaterStall()
+    {
+        var h = await NewAsync();
+        var earlier = await h.FileAsync("story", "earlier head", h.Todo);
+        var later = await h.FileAsync("story", "later head", h.Todo);
+        await StallAsync(h, later, StalledPayload, Now);
+        await StallAsync(h, earlier, StalledPayload, Now.AddHours(-1));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal(Key(later), row.HeadKey);
+        Assert.Equal(Now, row.At);
+    }
+
+    [Fact]
+    public async Task Attention_PassesOverAStallEventNamingAnotherDriver()
+    {
+        var h = await NewAsync();
+        var old = await h.FileAsync("story", "old head", h.Todo);
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now.AddHours(-1));
+        await StallAsync(h, old, """{"passedOver":"here:/three","elected":null}""", Now);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal(Key(head), row.HeadKey);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAStalledProjectWithNoEventToNameAHead()
+    {
+        var h = await NewAsync();
+        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = "here:/one";
+        await h.Db.SaveChangesAsync();
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyTrainStalledListOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
     // ---- The merges column half (HA-466) ----
 
     [Fact]

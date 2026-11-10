@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Contracts;
@@ -79,6 +80,9 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // The controller holds Runners, so the cutoff comes from here.
         var waitingOnARunner = await dispatch.WaitingOnARunnerAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
 
+        // A stalled train is a project's, not a column's - whatever the board's shape.
+        var trainStalled = await TrainStalledAsync(ct);
+
         // The projects whose clear implementation steps one live runner, or none, can take.
         var runnerCapacity = await dispatch.RunnerCapacityAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
 
@@ -86,7 +90,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, RunnerCapacity: runnerCapacity);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -380,7 +384,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, runnerCapacity);
+            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity);
     }
 
     /// <summary>
@@ -403,5 +407,66 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .OrderBy(r => r.ExhaustedUntil)
             .Select(r => new ExhaustedRunnerDto(r.Name, r.Where, r.ExhaustedUntil!.Value))
             .ToList();
+    }
+
+    /// <summary>
+    /// Every project whose merge train passed its driver over and has not
+    /// reinstated it, with the head issue the pass-over was written on. The
+    /// head is not on the project: the newest <c>driver_stalled</c> event naming
+    /// the project's current driver carries it, and a project with no such
+    /// event - its issue was deleted - is left out rather than given a head.
+    /// </summary>
+    private async Task<IReadOnlyList<TrainStalledDto>> TrainStalledAsync(CancellationToken ct)
+    {
+        var stalled = await db.Projects.AsNoTracking()
+            .Where(p => p.TrainStalledDriver != null)
+            .OrderBy(p => p.Key)
+            .Select(p => new { p.Id, p.Key, p.Name, Driver = p.TrainStalledDriver! })
+            .ToListAsync(ct);
+
+        if (stalled.Count == 0) return [];
+
+        var ids = stalled.Select(p => p.Id).ToList();
+        var events = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Kind == EfHatchIssueEvent.DriverStalled && ids.Contains(e.Issue!.ProjectId))
+            .Select(e => new { e.Id, e.At, e.Payload, e.Issue!.ProjectId, e.Issue.Number })
+            .ToListAsync(ct);
+
+        // In memory: ordering a DateTimeOffset in SQL is not portable across providers.
+        var newestFirst = events.OrderByDescending(e => e.At).ThenByDescending(e => e.Id).ToList();
+
+        var rows = new List<TrainStalledDto>();
+        foreach (var project in stalled)
+        {
+            foreach (var e in newestFirst.Where(e => e.ProjectId == project.Id))
+            {
+                var (passedOver, elected) = StalledPayload(e.Payload);
+                if (!string.Equals(passedOver, project.Driver, StringComparison.Ordinal)) continue;
+
+                rows.Add(new TrainStalledDto(project.Key, project.Name, project.Driver, elected, IssueKey.Format(project.Key, e.Number), e.At));
+                break;
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>The runner a <c>driver_stalled</c> event passed over and the one it elected, each null where the payload did not say.</summary>
+    private static (string? PassedOver, string? Elected) StalledPayload(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload)) return (null, null);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return (Read(doc.RootElement, "passedOver"), Read(doc.RootElement, "elected"));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+
+        static string? Read(JsonElement root, string name) =>
+            root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     }
 }
