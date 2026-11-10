@@ -265,6 +265,14 @@ wait for a runner that offers fable` or `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`. A server too old to send the list
 prints nothing extra.
 
+`queue` asks the board which live runners could take each clear row right
+now - `next` and `work` do not - so a row's own line can end with a second
+clause in parentheses: `only host:/a can take this` when just one runner
+can, or `no live runner can take this: host:/a: busy; host:/b: omitted` when
+none can, naming every live runner ruled out and the fold's own reason for
+each. Silent when two or more runners can take it, or when the board did not
+judge.
+
 ### changelog
 
 ```
