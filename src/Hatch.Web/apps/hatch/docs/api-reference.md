@@ -973,6 +973,11 @@ seven - `os`, `arch`, `agentVersion`, `container`, `username`,
 `RunnerSessionDto` is what `GET /runners` answers under each runner's
 `sessions`, and what `hatch runners --json` prints unchanged.
 
+The body may also carry `legacyName`: the old runner identity the checkout's
+per-user record holds, which the CLI sends on a loop's first beat only - never
+on a later beat, and never on a `--once` one. This Hatch does not act on it
+yet unless a later change says so.
+
 `PATCH /runners/{name}/sessions/{id}` sets one session's state
 (`RunnerSessionPatchRequest { state }`) without touching any sibling session
 under the same key; `404`s an id that is not this key's own.
