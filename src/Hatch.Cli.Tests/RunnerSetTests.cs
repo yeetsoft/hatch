@@ -345,18 +345,18 @@ public sealed class RunnerSetTests
         Assert.Null(RunnerSet.SlotFrom(new Dictionary<string, string?>()));
 
     [Fact]
-    public void A_member_keeps_its_origin_and_workspace_and_loses_its_checkouts_and_name()
+    public void A_member_keeps_its_origin_key_and_workspace_and_loses_its_checkouts()
     {
         var settings = new Settings
         {
-            Repos = ["/a"], Runner = "Fry", Base = "https://example.test", Key = "k", Workspace = "/w",
+            Repos = ["/a"], Base = "https://example.test", Key = "k", Workspace = "/w",
         };
 
         var member = RunnerSet.ForMember(settings);
 
         Assert.Empty(member.Repos);
-        Assert.Null(member.Runner);
         Assert.Equal("https://example.test", member.Base);
+        Assert.Equal("k", member.Key);
         Assert.Equal("/w", member.Workspace);
     }
 

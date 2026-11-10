@@ -160,12 +160,6 @@ public sealed class HatchClient : IDisposable
         }
     }
 
-    /// <summary>
-    /// The header a keyless call names itself with. The same one
-    /// <c>LocalCaller</c> reads on the server, spelled once on each side.
-    /// </summary>
-    public const string RunnerHeader = "X-Hatch-Runner";
-
     private readonly HttpClient _http;
     private readonly bool _owned;
     private readonly bool _shared;
@@ -174,11 +168,6 @@ public sealed class HatchClient : IDisposable
     private readonly Action<string>? _onWaiting;
     private HatchClient? _quiet;
 
-    /// <param name="runnerName">
-    /// What a keyless call calls itself. Only read when there is no key, and
-    /// only read at all by a Hatch with its wall off - see
-    /// docs/auth-architecture.md, "Local mode".
-    /// </param>
     /// <param name="clock">
     /// What <see cref="Send"/> measures its retry window against, and waits
     /// on between attempts - <see cref="TimeProvider.System"/> for every real
@@ -192,7 +181,7 @@ public sealed class HatchClient : IDisposable
     /// idle poll build a client with none, through <see cref="Quiet"/>.
     /// </param>
     public HatchClient(
-        Settings settings, string? runnerName = null, HttpMessageHandler? handler = null,
+        Settings settings, HttpMessageHandler? handler = null,
         TimeProvider? clock = null, Action<string>? onWaiting = null)
     {
         _owned = handler is null;
@@ -202,15 +191,12 @@ public sealed class HatchClient : IDisposable
             Timeout = TimeSpan.FromMinutes(2),
         };
 
-        // One or the other, never both. A key is a credential and outranks a
-        // name; the header is only a name, and only a Hatch with its wall off
-        // reads one.
+        // A key is the caller's whole identity, name included. Keyless adds
+        // nothing: a Hatch with its wall off takes the call as the local person.
         Keyed = !string.IsNullOrWhiteSpace(settings.Key);
         if (Keyed)
             _http.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", settings.Key);
-        else
-            _http.DefaultRequestHeaders.Add(RunnerHeader, runnerName ?? "hatch");
 
         Origin = settings.Base;
         _clock = clock ?? TimeProvider.System;

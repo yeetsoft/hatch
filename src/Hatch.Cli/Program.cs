@@ -117,6 +117,15 @@ if (!Settings.TryLoad(checkoutEnv, environment, out var settings, out var missin
     return 1;
 }
 
+// A loop's name is its key's, so a loop without a key has none to run as. Said
+// here, before the host branch below, so a set is refused as a lone runner is,
+// and before any lock, claim or request.
+if (LoopKey.Refuses(command, rest, settings))
+{
+    say.Complain(LoopKey.Refusal);
+    return 1;
+}
+
 // Before the checkouts are discovered, because that says things - a stray
 // under HATCH_REPOS is a line on standard output - and a hook's standard output
 // is a document the session parses. `inbox` prints JSON or nothing.
@@ -127,20 +136,17 @@ if (command == "inbox")
         out var inboxAdapter, out var inboxRefusal))
         return 0;
 
-    var inboxRunnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, root ?? here, profileName, CancellationToken.None);
-    using var hooked = new HatchClient(settings, inboxRunnerName);
+    using var hooked = new HatchClient(settings);
     return await new InboxCommand(new Board(hooked), say, Console.In, TimeProvider.System, inboxAdapter.HookOutput)
         .RunAsync(rest, CancellationToken.None);
 }
 
 // After `inbox`, whose output is a document the session parses.
 if (settings.KeyNote is { } keyNote) say.Complain(keyNote);
-if (settings.RunnerNote is { } runnerNote) say.Complain(runnerNote);
 
 // The handed --workspace is applied before the first discovery, not left for
-// go-to-work to apply: discovery names the runner, and a name record keyed on
-// the default workspace would be slot 1's, claimed by a member that never
-// served it.
+// go-to-work to apply: discovery names the checkout, and the default workspace
+// would be slot 1's, claimed by a member that never served it.
 if (memberSlot is { } slot)
 {
     settings = RunnerSet.ForMember(settings);
@@ -228,13 +234,24 @@ foreach (var stray in strays)
 // The standing checkout's path when there is one, otherwise the first named
 // checkout's - not "the checkout the process is standing in" any more.
 var primaryRoot = Checkouts.NamingRoot(checkouts, settings.Workspace, here);
-var runnerName = await ResolveRunnerAsync(settings.Base, settings.Key, settings.Runner, primaryRoot, profileName, CancellationToken.None);
+var readsName = command is "work" or "go-to-work" or "do-my-work" or "queue" or "recuse" or "standby";
+var runnerName = readsName ? await LoopKey.NameAsync(settings, CancellationToken.None) : "";
+
+// A loop that cannot name itself would claim as nobody. The rest only print or
+// post the name, and say nothing where there is none.
+if (runnerName is null && command is "work" or "go-to-work" or "do-my-work")
+{
+    say.Complain("hatch: could not read this key's name from /api/hatch/me - check the key with `hatch config --show`");
+    return 1;
+}
+
+runnerName ??= "";
 
 // A lambda rather than say.Complain directly: `say` is reassigned below to a
 // LiveTerminal once the readout is known to apply, and a call made after that
 // point should still say "waiting" through whichever terminal is current
 // rather than the plain one this line started with.
-using var client = new HatchClient(settings, runnerName, onWaiting: line => say.Complain(line));
+using var client = new HatchClient(settings, onWaiting: line => say.Complain(line));
 var board = new Board(client, refusesDangerous: settings.RefusesDangerous);
 
 LiveTerminal? live = null;
@@ -312,6 +329,8 @@ try
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
         foreach (var id in detection.Missing(settings.Has))
             say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
+        foreach (var note in detection.FallbackNotes())
+            say.Complain($"hatch: {note}");
         var has = detection.Merge(settings.Has);
         board.Has = has;
 
@@ -475,28 +494,6 @@ PosixSignalRegistration? Handle(PosixSignal signal)
         // caught; the ones that do not were never going to arrive.
         return null;
     }
-}
-
-/// <summary>
-/// <see cref="Checkout.RunnerAsync"/>, with the throwaway client it needs to
-/// ask the board what is already live - built and disposed here so every call
-/// site above names a checkout the same way without repeating the plumbing.
-/// </summary>
-/// <remarks>
-/// A second, real client is still built by the caller for everything after:
-/// this one exists only long enough to read <c>GET /api/hatch/runners</c>, and
-/// its own name never reaches the board for anything else.
-/// </remarks>
-async Task<string> ResolveRunnerAsync(string? origin, string? key, string? configured, string forRoot, string? profile, CancellationToken ct)
-{
-    var host = Checkout.Host();
-
-    using var lookupClient = string.IsNullOrWhiteSpace(origin)
-        ? null
-        : new HatchClient(new Settings { Base = origin.TrimEnd('/'), Key = key ?? "" }, Checkout.Where(host, forRoot));
-
-    return await Checkout.RunnerAsync(
-        configured, host, forRoot, profile, lookupClient is null ? null : new Board(lookupClient), ct);
 }
 
 internal partial class Program
@@ -672,8 +669,8 @@ internal partial class Program
         "checkout you are standing in, then the per-user file `config` writes.",
         "",
         "  HATCH_BASE         https://hatch.<your domain>",
-        "  HATCH_KEY          hatch_ak_... Optional against a Hatch with its wall off,",
-        "                     where calls name themselves with a runner header instead",
+        "  HATCH_KEY          hatch_ak_... A runner's name is its key's, so a loop needs one;",
+        "                     the reading commands go without against a Hatch with its wall off",
         "  HATCH_CLAUDE_BIN   the claude CLI, if it is not on PATH",
         "  HATCH_CLAUDE_TOOLS the tools an unattended claude session starts with (default: Bash,Read,",
         "                     Edit,Write,Grep,Glob,Monitor,TaskStop; `default` is claude's full set)",
@@ -681,8 +678,6 @@ internal partial class Program
         "  HATCH_GROK_BIN     the grok CLI, if it is not on PATH",
         "  HATCH_AGENT        which agent spawns a session: claude, codex, grok or ollama (default: claude)",
         "  HATCH_BASE_BRANCH  the trunk go-to-work resets to between increments",
-        "  HATCH_RUNNER       what the board calls this runner (default: a character from",
-        "                     the cast list, chosen once per checkout - see `hatch config`)",
         "  HATCH_ROOT         the checkout to work in (default: upwards from here)",
         "  HATCH_REPOS        checkouts a loop with no checkout of its own serves, joined on",
         "                     the platform's path separator (: on Unix, ; on Windows)",

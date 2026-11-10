@@ -337,6 +337,8 @@ public class RunnersController(
             await db.SaveChangesAsync(ct);
         }
 
+        if (kind == EfHatchRunner.LoopKind) await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
+
         await ReinstateAsync(key.Name, now, ct);
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
@@ -506,6 +508,45 @@ public class RunnersController(
 
     /// <summary>The name an answer nobody pressed is written under - the same shape <see cref="IssueClaimController"/>'s own constant takes, mirrored rather than shared, since that one is private.</summary>
     private const string HatchActor = "Hatch";
+
+    /// <summary>
+    /// A loop beat under <paramref name="name"/> from <paramref name="where"/>
+    /// retires every other loop row from that same checkout, at once: renaming a
+    /// checkout's runner starts a new name and leaves the old row behind, and
+    /// nothing else would say it is gone for good. The row named
+    /// <paramref name="name"/> is the one that is beating, so its own mark is
+    /// cleared instead. Idempotent - a row already retired is not touched
+    /// again, so its stamp is the beat that first retired it. Only rows of the
+    /// same owner are touched: a null owner with the wall up proves nothing, so
+    /// it retires nothing, and with the wall off null matches null. A
+    /// <c>once</c> beat never reaches here - it shares the loop's name and
+    /// proves nothing about what else has gone.
+    /// </summary>
+    private async Task RetireRenamedAsync(string name, Guid? owner, string? where, DateTimeOffset now, CancellationToken ct)
+    {
+        if (where is not { Length: > 0 }) return;
+
+        var own = await db.Runners.FirstOrDefaultAsync(r => r.Name == name && r.RetiredAt != null, ct);
+        if (own is not null)
+        {
+            own.RetiredAt = null;
+            own.RetiredBy = null;
+        }
+
+        if (owner is not null || !auth.Value.Enabled)
+        {
+            var older = await db.Runners.Where(r => r.Name != name && r.Where == where
+                && r.Kind == EfHatchRunner.LoopKind && r.ForPersonId == owner && r.RetiredAt == null).ToListAsync(ct);
+
+            foreach (var r in older)
+            {
+                r.RetiredAt = now;
+                r.RetiredBy = name;
+            }
+        }
+
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+    }
 
     /// <summary>
     /// This runner's own beat, reinstating any project it had been passed over

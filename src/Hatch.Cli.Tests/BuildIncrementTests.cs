@@ -628,6 +628,5 @@ public sealed class BuildIncrementTests
 
         var attached = Assert.Single(h.Sessions.Attached);
         Assert.Contains("fresh failure", attached.Prompt, StringComparison.Ordinal);
-        Assert.Equal(h.Runtime.RunnerName, attached.RunnerName);
     }
 }

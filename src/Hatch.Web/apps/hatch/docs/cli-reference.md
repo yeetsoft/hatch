@@ -89,7 +89,8 @@ header instead. Never put it in a repository, either way.
 - `--show` says what is set and which layer each value came from, including an
   `identity:` line naming who `/api/hatch/me` says the caller is - printed as
   `<unreachable>` rather than failing when the origin is unset or does not
-  answer - and `has:`/`missing:`, detected quietly and merged with `HATCH_HAS`.
+  answer - and `has:`/`missing:`, plus an `<id> via:` line for each tool the
+  shell or `PATH` answered, detected quietly and merged with `HATCH_HAS`.
   What it prints is in [the runner](the-runner#what---show-prints).
 - `--origin <origin>` writes the origin alone, asking nothing, and leaves the
   key and everything else as they were.
@@ -301,6 +302,12 @@ that runner's own live sessions alone. The OS is what the session itself
 reported (for example `Darwin 23.6.0`), not something the CLI looks up. A
 session missing its `where`, agent or OS prints `-` in its place. A runner with
 no live session - a gone runner included - prints no line beneath it.
+
+`--json` carries more than this plain-text line shows: the full set the
+endpoint answers under each session - `os`, `arch`, `agentVersion`,
+`container`, `username`, `processStartedAt`, and `ip` (the server's own
+reading of the connection, never sent by the CLI) - where the table above
+prints only `os`.
 
 A runner that has reported its own process adds `  on HOST`, `N runs` and
 `$X.XX` (the machine, the increments run and the dollars spent), then the

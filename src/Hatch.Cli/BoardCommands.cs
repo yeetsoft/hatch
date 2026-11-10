@@ -52,6 +52,11 @@ public sealed class BoardCommands(Cli cli)
         "  no session)\" is a hop: the loop carries it on itself with no session,",
         "  rather than spawning one.",
         "",
+        "  A row that ends \"(only <runner> can take this)\" has one live runner",
+        "  that can take its next step, and no other. A row that ends \"(no live",
+        "  runner can take this: <runner>: <reason>; ...)\" has none, and says",
+        "  what rules each live runner out. A row with two or more says nothing.",
+        "",
         "  The queue closes with one line per distinct thing no live runner",
         "  offers or has, among the issues it just printed - a server too old to",
         "  say so prints nothing extra.",
@@ -227,7 +232,7 @@ public sealed class BoardCommands(Cli cli)
             else return Usage.Refuse(cli.Say, "queue takes [--mine] and one ancestor key", QueueUsage);
         }
 
-        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName);
+        var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName, takers: true);
 
         // An empty board is a sentence and not a blank line: "there is nothing"
         // and "something went wrong and printed nothing" look identical
@@ -321,6 +326,10 @@ public sealed class BoardCommands(Cli cli)
     /// to it would read <c>In Review  -&gt; In Review</c>. It says what it is
     /// instead: <c>In Review  resolving conflicts with main</c>. So does a build
     /// dispatch: <c>In Review  fixing its failing build (api, CI)</c>.</para>
+    ///
+    /// <para>Whichever of those a row says, it ends with <see cref="TakersWords"/>
+    /// when the board named who could take it - and only then, so a row two or
+    /// more runners could take prints exactly what it always did.</para>
     /// </remarks>
     public static IReadOnlyList<string> Draw(IReadOnlyList<QueueEntryDto> queue)
     {
@@ -330,28 +339,47 @@ public sealed class BoardCommands(Cli cli)
         var anyFirst = queue.Any(q => q.Issue.Priority != PriorityLevels.NormalName);
 
         return queue.Select(q =>
-                (anyFirst
-                    ? q.Issue.Priority switch
-                    {
-                        PriorityLevels.EmergencyName => "!!",
-                        PriorityLevels.ExpeditedName => "! ",
-                        PriorityLevels.LowName => "- ",
-                        PriorityLevels.EconomyName => "~ ",
-                        PriorityLevels.PausedName => "||",
-                        _ => "  ",
-                    }
-                    : "")
-                + q.Issue.Key.PadRight(keyWidth) + "  "
-                + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
-                + q.FromStatus.Name.PadRight(columnWidth) + "  "
-                + (q.Blocked is { Length: > 0 } why
+            {
+                var words = q.Blocked is { Length: > 0 } why
                     ? why
                     : q.ClearNote is { Length: > 0 } note
                     ? $"clear for {q.FromStatus.Name} -> {q.ToStatus?.Name ?? "?"} - {note}"
                     : q.Kind == WorkKinds.Conflicts ? Conflicts.Words(q.Issue)
                     : q.Kind == WorkKinds.Build ? Builds.Words(q.Issue)
                     : q.Hop ? $"-> {q.ToStatus?.Name ?? "?"}  ({Picker.HopReason(q.HopKind, q.HopUnder)})"
-                    : $"-> {q.ToStatus?.Name ?? "?"}"))
+                    : $"-> {q.ToStatus?.Name ?? "?"}";
+                var taken = TakersWords(q);
+
+                return (anyFirst
+                        ? q.Issue.Priority switch
+                        {
+                            PriorityLevels.EmergencyName => "!!",
+                            PriorityLevels.ExpeditedName => "! ",
+                            PriorityLevels.LowName => "- ",
+                            PriorityLevels.EconomyName => "~ ",
+                            PriorityLevels.PausedName => "||",
+                            _ => "  ",
+                        }
+                        : "")
+                    + q.Issue.Key.PadRight(keyWidth) + "  "
+                    + $"[{q.Issue.Type}]".PadRight(typeWidth) + "  "
+                    + q.FromStatus.Name.PadRight(columnWidth) + "  "
+                    + words
+                    + (taken.Length > 0 ? $"  ({taken})" : "");
+            })
             .ToList();
     }
+
+    /// <summary>
+    /// What a row says about who could take its next step: nothing when the
+    /// board did not say or two or more live runners could, the one runner's
+    /// name when only one could, and what rules each live runner out when none
+    /// could. A none with no reasons to name stays silent too - there is nothing
+    /// to print after it.
+    /// </summary>
+    public static string TakersWords(QueueEntryDto q) =>
+        q.Takers is { Count: 1 } one ? $"only {one[0]} can take this"
+        : q.Takers is { Count: 0 } && q.Untaken is { Count: > 0 } ruled
+            ? "no live runner can take this: " + string.Join("; ", ruled.Select(r => $"{r.Runner}: {r.Reason}"))
+        : "";
 }

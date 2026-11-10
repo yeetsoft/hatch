@@ -75,17 +75,20 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// Every issue a pass would look at, in the order it looks, each with the
     /// reason it would be folded past - or nothing, where it is clear. The
     /// runner's name, where it has one, is sent so the board can leave a ticket
-    /// that runner let go of to a different live runner.
+    /// that runner let go of to a different live runner. <paramref name="takers"/>
+    /// asks the board to say, per row, which live runners could take its next
+    /// step - only <c>queue</c> prints that, so a dispatch pass never asks.
     /// </summary>
     public async Task<IReadOnlyList<QueueEntryDto>> QueueAsync(
         IReadOnlyList<CheckoutEntry> checkouts, string? under, int offsetMinutes, CancellationToken ct,
-        bool clones = false, bool mine = false, string? runner = null)
+        bool clones = false, bool mine = false, string? runner = null, bool takers = false)
     {
         var scope = string.IsNullOrEmpty(under) ? "" : $"&ancestorKey={Uri.EscapeDataString(under)}";
         var narrowed = mine ? "&mine=true" : "";
         var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
+        var who = takers ? "&takers=true" : "";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
@@ -131,15 +134,6 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
         await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners?live=true", ct) ?? [];
-
-    /// <summary>
-    /// Every live runner's name and nothing else - what
-    /// <see cref="Checkout.RunnerAsync"/> reads to skip a name already held.
-    /// Throws on a Hatch too old to have the route, the same as every other
-    /// read here; the caller decides what that means.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> RunnerNamesAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<string>>("/api/hatch/runners/names", ct) ?? [];
 
     /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
     public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);

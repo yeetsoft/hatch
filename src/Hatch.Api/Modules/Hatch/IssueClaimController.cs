@@ -33,7 +33,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/issues/{key}/claim")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
-    HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption) : ControllerBase
+    HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
+    Runners runners) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -157,8 +158,8 @@ public class IssueClaimController(
 
         // Only a lease that actually renewed touches the row - see "One column
         // for liveness" on the ticket, and the remark on Runners.Project.
-        await TouchRunnerAsync(claim, now, ct);
-        await WriteUsageAsync(claim.Runner, request, ct);
+        var beat = await TouchRunnerAsync(claim, now, ct);
+        await WriteUsageAsync(claim, beat, request, ct);
 
         if (await preemption.ForAsync(issue, ct) is not { } emergency) return NoContent();
 
@@ -343,58 +344,110 @@ public class IssueClaimController(
     // ---- One column for liveness ----
 
     /// <summary>
-    /// Bumps the holding runner's own row to now - an unconditional courtesy
-    /// write, with no token to fence against, matching
+    /// The one record a beat touched: the key whose live session it moved, if
+    /// it moved one, and the runner row it moved, if it moved one.
+    /// </summary>
+    private readonly record struct Beat(Guid? SessionKeyId, string? RunnerName);
+
+    /// <summary>
+    /// Marks the holding loop as heard from, in exactly one place - the
+    /// caller's own record and no other. An unconditional courtesy write, with
+    /// no token to fence against, matching
     /// <see cref="IssueClaims.TryRefreshAsync"/>'s own <c>ExecuteUpdateAsync</c>
     /// style rather than loading a tracked row for a second
-    /// <c>SaveChangesAsync</c>. The claim's holder is found by <c>ClaimedBy</c>
-    /// against the row's <see cref="EfHatchRunner.Name"/> - its primary key, so
-    /// at most one row matches - and not by <see cref="EfHatchRunner.Where"/>,
-    /// which every row a checkout has ever had shares: touching by
-    /// <c>Where</c> kept ghost rows at that checkout live (HA-2074). A
-    /// heartbeat racing the runner's own first
-    /// <c>POST /api/hatch/runners/{name}</c> matches no row and does nothing -
-    /// fine, there is nothing yet to bump. This is what keeps
-    /// <see cref="EfHatchRunner.LastSeenAt"/> the one fact
-    /// <see cref="Preemption"/>'s rule 5 reads, current the moment a claim
-    /// heartbeat or a claim release touches it, rather than only on the
-    /// runner's own next beat.
+    /// <c>SaveChangesAsync</c>. In order:
+    /// <list type="number">
+    /// <item>Under a key, the live (not ended) <see cref="EfHatchRunnerSession"/>
+    /// of that key at the claim's checkout - what a current CLI beats.</item>
+    /// <item>The runner row named by <c>ClaimedBy</c>, its primary key, so at
+    /// most one row: the wall off, where the claim's holder is the runner's
+    /// own name, or a key named like its runner.</item>
+    /// <item>Only where no session matched: for an older CLI beating
+    /// <c>POST /api/hatch/runners/{name}</c> under a key named otherwise, the
+    /// single row at the checkout that was live when the claim was taken - an
+    /// older CLI beats just before it claims. A row under a superseded name was
+    /// already gone by then, so it is never revived (HA-2074's ghost), and a
+    /// checkout with a live session never reaches this step.</item>
+    /// </list>
+    /// A heartbeat racing the runner's own first beat matches nothing and does
+    /// nothing - there is nothing yet to bump. This is what keeps
+    /// <see cref="EfHatchRunner.LastSeenAt"/> and
+    /// <see cref="EfHatchRunnerSession.LastSeenAt"/> current the moment a claim
+    /// heartbeat or a claim release touches them, rather than only on the
+    /// loop's own next beat.
     /// </summary>
-    private async Task TouchRunnerAsync(ClaimSnapshot claim, DateTimeOffset now, CancellationToken ct)
+    private async Task<Beat> TouchRunnerAsync(ClaimSnapshot claim, DateTimeOffset now, CancellationToken ct)
     {
-        if (claim.ClaimedBy is null || claim.Runner is null) return;
+        if (claim.ClaimedBy is null || claim.Runner is null) return default;
 
-        await db.Runners.Where(r => r.Name == claim.ClaimedBy)
+        var sessions = 0;
+        Guid? keyId = null;
+        if (await caller.ApiKeyAsync(ct) is { } key)
+        {
+            sessions = await db.RunnerSessions
+                .Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner && s.EndedAt == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+
+            if (sessions > 0) keyId = key.Id;
+        }
+
+        var byName = await db.Runners.Where(r => r.Name == claim.ClaimedBy)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
-        if (await caller.ApiKeyAsync(ct) is not { } key) return;
-        await db.RunnerSessions.Where(s => s.ApiKeyId == key.Id && s.Where == claim.Runner)
+        if (byName > 0) return new Beat(keyId, claim.ClaimedBy);
+        if (sessions > 0 || claim.ClaimedAt is not { } claimedAt) return new Beat(keyId, null);
+
+        var cutoff = runners.Cutoff(claimedAt);
+        var liveAtClaim = await db.Runners
+            .Where(r => r.Where == claim.Runner && r.RetiredAt == null && r.LastSeenAt >= cutoff)
+            .OrderByDescending(r => r.LastSeenAt).ThenBy(r => r.Name)
+            .Select(r => r.Name)
+            .FirstOrDefaultAsync(ct);
+
+        if (liveAtClaim is null) return default;
+
+        await db.Runners.Where(r => r.Name == liveAtClaim)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
+
+        return new Beat(null, liveAtClaim);
     }
 
     /// <summary>
-    /// Hands the holding runner's usage reading to its own row, so
-    /// <c>GET /api/hatch/utilization</c> stays current while an increment
-    /// runs - the runner's own heartbeat is sent only between increments.
-    /// Nothing is written where the beat carries no windows or no read time:
-    /// <see cref="Utilization.Of"/> skips a row with no read time, so a
-    /// reading without one could only null out a good timestamp. The guard on
-    /// <c>UsageReadAt</c> is in the <c>WHERE</c> rather than a read first,
-    /// because this and the runner's own heartbeat race, and a reading older
-    /// than the one the row holds is not the account's current word. Equal
-    /// writes.
+    /// Hands the holding loop's usage reading to the record
+    /// <see cref="TouchRunnerAsync"/> touched - its live session and/or the one
+    /// runner row - so <c>GET /api/hatch/utilization</c> stays current while an
+    /// increment runs; the loop's own heartbeat is sent only between
+    /// increments. Never to a row by checkout: that reached every name the
+    /// checkout had ever used. Nothing is written where the beat carries no
+    /// windows or no read time: <see cref="Utilization.Of(IEnumerable{ValueTuple{string, DateTimeOffset?}}, DateTimeOffset)"/>
+    /// skips a reading with no read time, so one without could only null out a
+    /// good timestamp. The guard on <c>UsageReadAt</c> is in the <c>WHERE</c>
+    /// rather than a read first, because this and the loop's own heartbeat
+    /// race, and a reading older than the one held is not the account's
+    /// current word. Equal writes.
     /// </summary>
-    private Task WriteUsageAsync(string? runner, ClaimHeartbeatRequest request, CancellationToken ct)
+    private async Task WriteUsageAsync(
+        ClaimSnapshot claim, Beat beat, ClaimHeartbeatRequest request, CancellationToken ct)
     {
-        if (runner is null
+        if (claim.Runner is null
             || request.UsageReadAt is not { } readAt
             || Utilization.Serialise(request.Usage) is not { } usage)
-            return Task.CompletedTask;
+            return;
 
-        return db.Runners
-            .Where(r => r.Where == runner && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
-            .ExecuteUpdateAsync(
-                s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
+        var runner = claim.Runner;
+
+        if (beat.SessionKeyId is { } keyId)
+            await db.RunnerSessions
+                .Where(s => s.ApiKeyId == keyId && s.Where == runner && s.EndedAt == null
+                    && (s.UsageReadAt == null || s.UsageReadAt <= readAt))
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
+
+        if (beat.RunnerName is { } name)
+            await db.Runners
+                .Where(r => r.Name == name && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
     }
 
     // ---- Odds and ends ----

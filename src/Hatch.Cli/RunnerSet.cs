@@ -178,12 +178,12 @@ public static class RunnerSet
 
     /// <summary>
     /// <paramref name="settings"/> as a member of a set (slot 2 or more) runs
-    /// them: no named checkouts and no pinned name. It is handed one workspace
-    /// and serves that alone; a <c>HATCH_REPOS</c> checkout would be locked by
-    /// the first runner to reach it and refused to every sibling, and a
-    /// <c>HATCH_RUNNER</c> would give every member the same name.
+    /// them: no named checkouts. It is handed one workspace and serves that
+    /// alone; a <c>HATCH_REPOS</c> checkout would be locked by the first runner
+    /// to reach it and refused to every sibling. The key is kept - every member
+    /// is the same runner, told apart on the server by its session.
     /// </summary>
-    public static Settings ForMember(Settings settings) => settings with { Repos = [], Runner = null };
+    public static Settings ForMember(Settings settings) => settings with { Repos = [] };
 
     /// <summary>
     /// The value after the last <c>--workspace</c> in <paramref name="args"/>,

@@ -79,6 +79,9 @@ const TABLE_PROJECT: Project = {
   checkApprovesMerge: false,
   checkApprovesMergeBy: null,
   checkApprovesMergeAt: null,
+  noCodeCloses: false,
+  noCodeClosesBy: null,
+  noCodeClosesAt: null,
 };
 
 const REPO_PROJECT: Project = { ...TABLE_PROJECT, repoSourced: true };

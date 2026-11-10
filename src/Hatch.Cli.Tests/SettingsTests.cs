@@ -988,14 +988,13 @@ public sealed class SettingsTests : IDisposable
     public void A_profile_skips_every_board_bound_name_in_the_per_user_file_but_not_the_machine_bound_ones()
     {
         var user = Write("user.config",
-            "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine", "HATCH_RUNNER=mine",
+            "HATCH_BASE=https://mine", "HATCH_KEY=hatch_ak_mine",
             "HATCH_WORKSPACE=/mine/workspace", "HATCH_REPOS=/mine/repo",
             "HATCH_CLAUDE_BIN=/mine/claude", "HATCH_AGENT=codex");
         var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
 
         Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
 
-        Assert.Null(settings.Runner);
         Assert.Empty(settings.Repos);
         Assert.True(settings.WorkspaceDefaulted);
         Assert.Equal("", settings.Key);
@@ -1004,19 +1003,16 @@ public sealed class SettingsTests : IDisposable
     }
 
     /// <summary>
-    /// Everything but <c>HATCH_RUNNER</c> still reads from the per-user file
-    /// with no profile active, exactly as before HA-1484 - a name belongs to a
-    /// checkout, never a person, with or without a profile.
+    /// Every value still reads from the per-user file with no profile active,
+    /// exactly as before HA-1484.
     /// </summary>
     [Fact]
-    public void With_no_profile_the_same_user_file_reads_every_value_as_today_except_HATCH_RUNNER()
+    public void With_no_profile_the_same_user_file_reads_every_value_as_today()
     {
-        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_RUNNER=mine", "HATCH_REPOS=/mine/repo");
+        var user = Write("user.config", "HATCH_BASE=https://mine", "HATCH_REPOS=/mine/repo");
 
         Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user));
 
-        Assert.Null(settings.Runner);
-        Assert.Contains($"HATCH_RUNNER in {user} is ignored", settings.RunnerNote);
         Assert.Contains("/mine/repo", settings.Repos);
     }
 
@@ -1024,12 +1020,11 @@ public sealed class SettingsTests : IDisposable
     public void A_named_profile_with_no_file_behind_it_still_skips_the_user_file_for_board_bound_names()
     {
         var missingProfile = Path.Combine(_temp, "no-such-profile.config"); // never written
-        var user = Write("user.config", "HATCH_RUNNER=mine", "HATCH_CLAUDE_BIN=/mine/claude");
+        var user = Write("user.config", "HATCH_CLAUDE_BIN=/mine/claude");
 
         Assert.True(Settings.TryLoad(
             null, Env(("HATCH_BASE", "https://exported")), out var settings, out _, user, missingProfile));
 
-        Assert.Null(settings.Runner);
         Assert.Equal("/mine/claude", settings.ClaudeBin);
     }
 
@@ -1038,7 +1033,7 @@ public sealed class SettingsTests : IDisposable
     {
         var checkout = Write("checkout.env", "HATCH_WORKSPACE=/checkout/workspace");
         var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile");
-        var user = Write("user.config", "HATCH_RUNNER=mine");
+        var user = Path.Combine(_temp, "does-not-exist");
 
         Assert.True(Settings.TryLoad(
             checkout, Env(("HATCH_REPOS", "/exported/repo")), out var settings, out _, user, profile));
@@ -1046,7 +1041,6 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal("/checkout/workspace", settings.Workspace);
         Assert.False(settings.WorkspaceDefaulted);
         Assert.Contains("/exported/repo", settings.Repos);
-        Assert.Null(settings.Runner);
     }
 
     // ---- the key goes with its origin ----
@@ -1234,55 +1228,36 @@ public sealed class SettingsTests : IDisposable
         Assert.False(Settings.Pinned("", Env()));
     }
 
-    // ---- a runner name belongs to a checkout ----
+    // ---- a runner's name is its key's ----
 
+    /// <summary>
+    /// A line an older file may still carry, and a variable somebody still
+    /// exports: neither names a runner, and neither says a word about it.
+    /// </summary>
     [Fact]
-    public void HATCH_RUNNER_in_the_per_user_file_is_ignored_with_a_note()
-    {
-        var user = Write("user.config", "HATCH_RUNNER=from-the-user-file");
-
-        Assert.True(Settings.TryLoad(null, Env(("HATCH_BASE", "https://somewhere")), out var settings, out _, user));
-
-        Assert.Null(settings.Runner);
-        Assert.Contains($"HATCH_RUNNER in {user} is ignored", settings.RunnerNote);
-    }
-
-    [Fact]
-    public void HATCH_RUNNER_in_a_profile_is_ignored_with_a_note()
-    {
-        var profile = Write("profile.config", "HATCH_BASE=https://mine", "HATCH_RUNNER=from-the-profile");
-        var user = Path.Combine(_temp, "does-not-exist");
-
-        Assert.True(Settings.TryLoad(null, Env(), out var settings, out _, user, profile));
-
-        Assert.Null(settings.Runner);
-        Assert.Contains($"HATCH_RUNNER in {profile} is ignored", settings.RunnerNote);
-    }
-
-    [Fact]
-    public void An_exported_HATCH_RUNNER_still_wins_over_a_profile()
-    {
-        var profile = Write("profile.config", "HATCH_BASE=https://from-the-profile", "HATCH_RUNNER=from-the-profile");
-        var user = Path.Combine(_temp, "does-not-exist");
-
-        Assert.True(Settings.TryLoad(
-            null, Env(("HATCH_RUNNER", "from-the-environment")), out var settings, out _, user, profile));
-
-        Assert.Equal("from-the-environment", settings.Runner);
-        Assert.Null(settings.RunnerNote);
-    }
-
-    [Fact]
-    public void A_checkouts_own_scripts_env_HATCH_RUNNER_still_wins()
+    public void HATCH_RUNNER_set_anywhere_is_ignored_without_a_word()
     {
         var checkout = Write("checkout.env", "HATCH_BASE=https://from-the-checkout", "HATCH_RUNNER=from-the-checkout");
         var profile = Write("profile.config", "HATCH_RUNNER=from-the-profile");
-        var user = Path.Combine(_temp, "does-not-exist");
+        var user = Write("user.config", "HATCH_RUNNER=from-the-user-file");
 
-        Assert.True(Settings.TryLoad(checkout, Env(), out var settings, out _, user, profile));
+        var original = Console.Error;
+        var captured = new StringWriter();
+        Console.SetError(captured);
+        try
+        {
+            Assert.True(Settings.TryLoad(
+                checkout, Env(("HATCH_RUNNER", "from-the-environment")), out var settings, out _, user, profile));
 
-        Assert.Equal("from-the-checkout", settings.Runner);
-        Assert.Null(settings.RunnerNote);
+            Assert.Equal("https://from-the-checkout", settings.Base);
+            Assert.Null(settings.KeyNote);
+        }
+        finally
+        {
+            Console.SetError(original);
+        }
+
+        Assert.Equal("", captured.ToString());
     }
 
     public void Dispose()

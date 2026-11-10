@@ -5297,7 +5297,7 @@ public class WorkControllerTests
         foreach (var issue in new[] { doing, conflicted, red })
         {
             var entry = queue.Single(e => e.Issue.Key == Key(issue));
-            Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), entry.Blocked);
+            Assert.Equal(NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), entry.Blocked);
             Assert.Equal(BlockedKinds.Other, entry.BlockedKind);
         }
 
@@ -5332,6 +5332,20 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Dependencies_AVersionIsAMinimum_ANewerRunnerIsNotFolded()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("node", "22"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["node@24.1.0"])).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, has: ["node@22"])).Blocked);
+        Assert.Equal(
+            NeedsSentence(issue, "node 22 or newer", repo.Canonical, "node 21.6.0"),
+            Only(await h.Work.GetQueue(0, null, default, has: ["node@21.6.0"])).Blocked);
+    }
+
+    [Fact]
     public async Task Dependencies_NoHasSent_FoldsNothing()
     {
         var h = await NewAsync();
@@ -5359,7 +5373,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default, has: ["dotnet@8", "node@20"]));
 
         Assert.Equal(
-            $"{Key(issue)} needs dotnet 10, make and node 22 " +
+            $"{Key(issue)} needs dotnet 10 or newer, make and node 22 or newer " +
             $"({one.Canonical} and {two.Canonical}'s {DependencyDeclaration.Path}) - " +
             "this runner has dotnet 8, no make and node 20",
             entry.Blocked);
@@ -5415,7 +5429,7 @@ public class WorkControllerTests
         Assert.Equal(Key(clear), next.Issue.Key);
 
         var named = Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@8"]));
-        Assert.Equal(NeedsSentence(folded, "dotnet 10", repo.Canonical, "dotnet 8"), named.Blocked);
+        Assert.Equal(NeedsSentence(folded, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), named.Blocked);
 
         Assert.Null(Value(await h.Work.GetWork(Key(folded), null, default, has: ["dotnet@10"])).Blocked);
     }
@@ -5442,7 +5456,7 @@ public class WorkControllerTests
         await AddLoopRunnerAsync(h, silent);
 
         var folded = Only(await h.Work.GetQueue(0, null, default, asRunner: lacks));
-        Assert.Equal(NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8"), folded.Blocked);
+        Assert.Equal(NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8"), folded.Blocked);
         Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
 
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: silent)).Blocked);
@@ -5489,7 +5503,7 @@ public class WorkControllerTests
 
         Assert.Equal(new[] { b }, entry.Takers);
         Assert.Equal(
-            new RunnerReasonDto(a, NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8")),
+            new RunnerReasonDto(a, NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8")),
             entry.Untaken!.Single());
     }
 
@@ -5506,7 +5520,7 @@ public class WorkControllerTests
 
         var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
 
-        var sentence = NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8");
+        var sentence = NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8");
         Assert.Empty(entry.Takers!);
         Assert.Equal(
             new[] { a, b }.OrderBy(n => n, StringComparer.Ordinal).Select(n => new RunnerReasonDto(n, sentence)),
@@ -6225,7 +6239,7 @@ public class WorkControllerTests
 
         var response = (ObjectResult)result.Result!;
         Assert.Equal(StatusCodes.Status409Conflict, response.StatusCode);
-        Assert.Equal("no runner has checked its branch against the trunk yet", response.Value?.ToString());
+        Assert.Equal("no live runner is eligible to drive this project's merges", response.Value?.ToString());
         Assert.Empty((await h.Db.Issues.Include(i => i.Events).FirstAsync(i => i.Id == issue.Id)).Events);
         Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
     }
@@ -6460,7 +6474,7 @@ public class WorkControllerTests
         // this falls to the ordinary merge-column fold instead.
         Assert.False(entry.Hop);
         Assert.Equal(WorkKinds.Merge, entry.Kind);
-        Assert.Equal("its branch holds main and its build passes", entry.Blocked);
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
     [Fact]
@@ -6921,6 +6935,107 @@ public class WorkControllerTests
 
         Assert.False(entry.Hop);
         Assert.NotNull(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ListsADeclaredNoCodeChildlessReviewRowInASettingOnProjectAsACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetNoCodeClosesAsync();
+        var issue = await h.FileAsync("task", "declared, closed by the setting", h.Review);
+        await h.DeclareNoCodeAsync(issue, "nothing to push");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.True(entry.Hop);
+        Assert.Equal(HopKinds.Close, entry.HopKind);
+        Assert.Equal(h.Done, entry.ToStatus!.Id);
+        Assert.Null(entry.Blocked);
+    }
+
+    [Fact]
+    public async Task HopWork_OnADeclaredNoCodeRowInASettingOnProject_ClosesItUnderTheSetting()
+    {
+        var h = await NewAsync();
+        await h.SetNoCodeClosesAsync();
+        var issue = await h.FileAsync("task", "declared, closed by the setting", h.Review);
+        await h.DeclareNoCodeAsync(issue, "nothing to push");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            $"Closed under {Key(issue)}'s setting, a no-code declaration closes the ticket: finished with no code - nothing to push.",
+            comment.Body);
+        var e = Assert.Single(row.Events, ev => ev.Kind == EfHatchIssueEvent.StatusChanged);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("nocode", payload.GetProperty("approved").GetString());
+        Assert.True(payload.GetProperty("nocode").GetBoolean());
+        Assert.False(payload.TryGetProperty("preapproved", out _));
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeChildlessReviewRowInASettingOffProject_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "declared, but the setting is off", h.Review);
+        await h.DeclareNoCodeAsync(issue, "nothing to push");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+        Assert.Equal(NoCode.Sentence, entry.Blocked);
+    }
+
+    [Fact]
+    public async Task ADeclaredNoCodeRowWithAnOpenChildInASettingOnProject_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetNoCodeClosesAsync();
+        var issue = await h.FileAsync("story", "declared, but not finished", h.Review);
+        await h.DeclareNoCodeAsync(issue, "the children are the work");
+        await h.FileAsync("task", "still open", h.Todo, parentId: issue.Id);
+
+        var entry = Value(await h.Work.GetQueue(0, null, default)).Single(e => e.Issue.Key == Key(issue));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task AnUndeclaredChildlessReviewRowInASettingOnProject_IsNotACloseHop()
+    {
+        var h = await NewAsync();
+        await h.SetNoCodeClosesAsync();
+        var issue = await h.FileAsync("task", "never declared", h.Review);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.False(entry.Hop);
+    }
+
+    [Fact]
+    public async Task HopWork_OnAPreApprovedDeclaredNoCodeRowInASettingOnProject_KeepsThePreApprovalCommentAndPayload()
+    {
+        var h = await NewAsync();
+        await h.SetNoCodeClosesAsync();
+        var issue = await h.FileAsync("task", "needed no change", h.Review);
+        await h.PreApprovedAsync(issue);
+        await h.DeclareNoCodeAsync(issue, "the setting was already right");
+
+        await h.Work.HopWork(Key(issue), null, null, null, default);
+
+        var row = await h.Db.Issues.Include(i => i.Events).AsNoTracking().FirstAsync(i => i.Id == issue.Id);
+        Assert.Equal(h.Done, row.StatusId);
+        var comment = Assert.Single(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
+        Assert.Equal(
+            "Closed by its pre-approval on its own row: finished with no code - the setting was already right.",
+            comment.Body);
+        var e = Assert.Single(row.Events, ev => ev.Kind == EfHatchIssueEvent.StatusChanged);
+        var payload = System.Text.Json.JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.True(payload.GetProperty("preapproved").GetBoolean());
+        Assert.True(payload.GetProperty("nocode").GetBoolean());
     }
 
     [Fact]
@@ -9616,7 +9731,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(WorkKinds.Pending, entry.Kind);
-        Assert.Equal("no runner has checked its branch against the trunk yet", entry.Blocked);
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
     [Fact]
@@ -9632,7 +9747,7 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(WorkKinds.Update, entry.Kind);
-        Assert.Equal("bringing its branch current from main", entry.Blocked);
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
     [Fact]
@@ -9649,13 +9764,72 @@ public class WorkControllerTests
         var entry = Only(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(WorkKinds.Merge, entry.Kind);
-        Assert.Equal("its branch holds main and its build passes", entry.Blocked);
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithALiveStandingDriver_NamesItOnTheHeadsRow()
+    {
+        var h = await NewAsync();
+        var driver = RunnerName();
+        await AddLoopRunnerAsync(h, driver, row => row.Standing = true);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal("its branch holds main and its build passes - for the driver, last heard from 1 minute ago", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_WithNoEligibleLiveRunner_ReadsTheNoDriverSentence()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, nobody to drive it", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal(WorkKinds.Merge, entry.Kind);
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
+    }
+
+    [Fact]
+    public async Task MergeColumn_ADriverPastGoneAfterSeconds_FlipsTheHeadBackToTheNoDriverSentence()
+    {
+        var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "ready to merge, its driver has since gone quiet", approved.Id);
+        await h.VerdictAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        // No beat required to notice: this is a pure read, judged fresh
+        // against the clock on every scan, the same lazy expiry a claim uses.
+        h.Time.Advance(TimeSpan.FromSeconds(new HatchOptions().RunnerGoneAfterSeconds + 1));
+
+        var entry = Only(await h.Work.GetQueue(0, null, default));
+
+        Assert.Equal("no live runner is eligible to drive this project's merges", entry.Blocked);
     }
 
     [Fact]
     public async Task MergeColumn_WithAnExpeditedRowAheadOfANormalOne_OnlyTheNormalOneNamesTheWait()
     {
         var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
         h.Db.Add(approved);
         await h.Db.SaveChangesAsync();
@@ -9672,7 +9846,7 @@ public class WorkControllerTests
         var entries = Value(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key(expedited)).Blocked);
         Assert.Equal(BlockedKinds.Other, entries.Single(e => e.Issue.Key == Key(expedited)).BlockedKind);
         Assert.Equal(
@@ -9685,6 +9859,7 @@ public class WorkControllerTests
     public async Task MergeColumn_WithAHeldRowAheadOfACleanOne_TheCleanOneIsTheHeadAndNamesNoWait()
     {
         var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
         h.Db.Add(approved);
         await h.Db.SaveChangesAsync();
@@ -9701,7 +9876,7 @@ public class WorkControllerTests
             "no branch on origin is named for it",
             entries.Single(e => e.Issue.Key == Key(held)).Blocked);
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key(clean)).Blocked);
     }
 
@@ -9729,7 +9904,7 @@ public class WorkControllerTests
             "its pull request has not caught up with its branch in 15 minutes - it names fffffff, its branch is at bbbbbbb",
             entries.Single(e => e.Issue.Key == Key(waiting)).Blocked);
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "no live runner is eligible to drive this project's merges",
             entries.Single(e => e.Issue.Key == Key(clean)).Blocked);
 
         var rows = Value(await h.Work.GetReview(null, true, default));
@@ -9767,6 +9942,7 @@ public class WorkControllerTests
     public async Task MergeColumn_WithAClosedPullRequestAheadOfTwoCleanRows_TheFirstCleanRowIsHead()
     {
         var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
         h.Db.Add(approved);
         await h.Db.SaveChangesAsync();
@@ -9789,7 +9965,7 @@ public class WorkControllerTests
             "its pull request was closed without merging",
             entries.Single(e => e.Issue.Key == Key(closed)).Blocked);
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key(first)).Blocked);
         Assert.Equal(
             $"its branch holds main and its build passes - waiting its turn behind {Key(first)}, position 3 in the train",
@@ -9800,6 +9976,7 @@ public class WorkControllerTests
     public async Task MergeColumn_InTwoProjects_EachWaitingRowNamesItsOwnProjectsHead()
     {
         var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
         var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
         h.Db.Add(approved);
         await h.Db.SaveChangesAsync();
@@ -9819,10 +9996,10 @@ public class WorkControllerTests
         var entries = Value(await h.Work.GetQueue(0, null, default));
 
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key(headA)).Blocked);
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key("OTH", headB)).Blocked);
         Assert.Equal(
             $"its branch holds main and its build passes - waiting its turn behind {Key(headA)}, position 2 in the train",
@@ -9865,13 +10042,14 @@ public class WorkControllerTests
     public async Task MergeColumn_ARowTheTrainBroughtCurrent_KeepsTheHeadOverAnEarlierRowThatNeedsUpdating()
     {
         var h = await NewAsync();
+        await AddLoopRunnerAsync(h, RunnerName(), row => row.Standing = true);
         var (first, second) = await MarkedBehindAnUpdateAsync(h);
 
         var entries = Value(await h.Work.GetQueue(0, null, default));
         var rows = Value(await h.Work.GetReview(null, true, default));
 
         Assert.Equal(
-            "its branch holds main and its build passes",
+            "its branch holds main and its build passes - for the driver, last heard from 0 minutes ago",
             entries.Single(e => e.Issue.Key == Key(second)).Blocked);
         Assert.Equal(
             $"bringing its branch current from main - waiting its turn behind {Key(second)}, position 1 in the train",
@@ -13662,6 +13840,14 @@ public class WorkControllerTests
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             project.CheckApprovesMerge = on;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's no-code-closes flag, written straight onto the row.</summary>
+        public async Task SetNoCodeClosesAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.NoCodeCloses = on;
             await Db.SaveChangesAsync();
         }
 

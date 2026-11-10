@@ -456,7 +456,10 @@ the action, then an owner check answering `403` naming the project's key
 the ticket"*) to anyone else, and `404` on an unknown project. It has no
 repository or playbook precondition. A change stamps `NoCodeClosesBy` and
 `NoCodeClosesAt`; re-sending the value the project already holds writes
-nothing, the stamp included. Nothing reads the flag yet - no hop folds it in.
+nothing, the stamp included. The close hop reads the flag, carrying a
+declared childless issue through pre-approved or not once it is on, see [the
+hop](#the-hop); a declared row it carries this way also stops being one of
+[what is waiting on you](#what-is-waiting-on-you)'s `noCodeHeld`.
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -1913,21 +1916,27 @@ the work needed no branch, and anything that shows otherwise defeats it:
 **Where it stands.** The declared issue stands in the review column with no
 pull request, and the board does not wait for one:
 
-- Not [pre-approved](#pre-approval), it is held there. `ReviewWork.Judge` folds
-  it first, with *finished with no code - a person closes it*, so no review
-  session is spawned for a branch that does not exist, and it is not a row in
-  `reviews`. It is not counted in `inReviewWithoutPullRequest` either, because
-  having none is what it declared. The attention panel lists it, with the
-  reason, under **Finished with no code** (`noCodeHeld` - see [what is waiting
-  on you](#what-is-waiting-on-you)), and a person closes it.
-- [Pre-approved](#pre-approval), the **close** hop carries it into the first
-  terminal column right of review - the one case that hop takes an issue with no
+- Not [pre-approved](#pre-approval) and not in a project whose `NoCodeCloses`
+  is on, it is held there. `ReviewWork.Judge` folds it first, with *finished
+  with no code - a person closes it*, so no review session is spawned for a
+  branch that does not exist, and it is not a row in `reviews`. It is not
+  counted in `inReviewWithoutPullRequest` either, because having none is what
+  it declared. The attention panel lists it, with the reason, under
+  **Finished with no code** (`noCodeHeld` - see [what is waiting on
+  you](#what-is-waiting-on-you)), and a person closes it.
+- [Pre-approved](#pre-approval), or standing in a project whose
+  `NoCodeCloses` is on, the **close** hop carries it into the first terminal
+  column right of review - the one case that hop takes an issue with no
   children (see [the hop](#the-hop), kind 7), because the declaration stands in
-  for the children it would otherwise have needed. The hop's comment says
-  *finished with no code* and gives the reason, its `status_changed` event
-  carries `nocode: true`, and whatever [depends](#dependency) on the ticket is
-  dispatched on the next pass. A declared issue that has open children still
-  waits for them.
+  for the children it would otherwise have needed. A pre-approved row keeps
+  its own comment and `status_changed` payload (`preapproved: true`); carried
+  by the setting alone (not pre-approved), the comment names the project's
+  setting instead and the payload carries `approved: "nocode"` in place of
+  `preapproved`. Either way the comment says *finished with no code* and
+  gives the reason, the payload carries `nocode: true`, and whatever
+  [depends](#dependency) on the ticket is dispatched on the next pass. A
+  declared issue that has open children still waits for them, whichever
+  carried it - `CheckApprovesMerge` alone never carries a childless one.
 - A task under a story or bug that shares one pull request is not [waiting on
   that pull request](#one-pull-request) once it has declared: the wait is for
   code that was pushed, and it has none.
@@ -3439,7 +3448,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
-| `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. Nothing reads the flag yet |
+| `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |
 | `/projects/{id}/members/{personId}` | DELETE | **Person only**, owner only, the same guard as the PUT beside it. `409` where it would leave the project with no owner |
@@ -3481,7 +3490,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
 | `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId`, `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
-| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the claim's own runner row only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
+| `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it (`400` for an unknown playbook); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the holding session, or to the one runner row the beat kept live (never to every row at the checkout), only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
 | `/issues/{key}/merge-check` | PUT | Keeps a runner's [verdict](#merge-check) for one repository. `{ remote, trunk, trunkSha, verdict, branch?, branchSha?, files?, runner, holdsTrunk? }`; answers with what it now holds. Refused, in a sentence, for a remote that does not canonicalise, an unknown verdict, `conflicted` with no files, and `clean` or `conflicted` with no branch sha; `404` on an unknown key. The column is not checked. A verdict that repeats the stored one writes no event, and neither does a change to `holdsTrunk` alone |
@@ -3572,12 +3581,15 @@ reading, carried one hop further. The runner reports it on the heartbeat it
 already sends — `Usage` and `UsageReadAt` beside `Exhausted` in
 `RunnerHeartbeatRequest` — and, while an increment runs, on the claim
 heartbeat too (`usage` and `usageReadAt` on `ClaimHeartbeatRequest`, written to
-the claim's own runner row only when the row holds nothing newer), a third
+the holding session, or the one runner row the beat kept live, only when that
+record holds nothing newer), a third
 carrier beside the `/usage` probe and the stream. Hatch keeps it against the
 person the calling key belongs to, the same resolution `--mine` already takes
 (`IActorDirectory.PrincipalAsync`). Bob's runner's numbers never appear under
-Alice's name, because each is kept on Bob's and Alice's own rows and the
-endpoint only ever answers the caller's own.
+Alice's name, because each is kept on Bob's and Alice's own rows and sessions
+and the endpoint only ever answers the caller's own: it reads the person's
+runner rows and the sessions of the keys they own, and the freshest whole
+reading wins.
 
 This is HA-120's answered question — *session stream* over a Hatch-held
 battery — applied to the nav: it costs a number that only moves while a
@@ -5077,26 +5089,29 @@ exactly as they are from a review self-move.
    scan already matched - this kind does not fire either: the check's own
    plain advance already carries it, and pre-approval adds nothing past what
    a passing check already would (HA-1592).
-7. **close** — a [pre-approved](#pre-approval) parent, or a parent in a
-   project whose *A passing check approves the merge* setting is on
-   ([`CheckApprovesMerge`](#project)), standing in the
-   review column with *no* pull request recorded, every child done by its
-   own type's rule — an epic's own fold ignores a deferred child the way
-   [running an epic](#running-an-epic) describes, while a story, bug or
-   task counts one open child as enough to hold it (`Dispatch.cs:1555-1563`)
-   — carried into the first terminal column strictly right of review
-   (`Columns.Closes`, `Columns.cs:204-208`), whatever that column is named.
-   A childless issue is never carried by this kind, with one exception: an
-   issue that declared itself [finished with no code](#finished-with-no-code)
-   (`hatch pr KEY --none`, `PUT /issues/{key}/no-code`). Having something filed
-   under it, or that declaration, is one of the kind's own conditions; a
-   declared issue that does have open children still waits for them, and the
-   rest of the kind - pre-approved, in review, no pull request recorded - holds
-   for it as for any parent. The declaration is a statement that nothing was
-   built, so it needs no children to have been done in its place. That
-   exception stays pre-approval-only: the setting is not a person's say-so
-   that nothing was built, so a declared issue in a project whose setting is
-   on, and not pre-approved, still waits in review for a person.
+7. **close** — standing in the review column with *no* pull request
+   recorded, and every child done by its own type's rule — an epic's own
+   fold ignores a deferred child the way [running an epic](#running-an-epic)
+   describes, while a story, bug or task counts one open child as enough to
+   hold it (`Dispatch.cs:2170-2176`) — carried into the first terminal
+   column strictly right of review (`Columns.Closes`, `Columns.cs:204-208`),
+   whatever that column is named, when either of two things is true: it is a
+   parent — something is filed under it — and it is
+   [pre-approved](#pre-approval) or stands in a project whose *A passing
+   check approves the merge* setting is on ([`CheckApprovesMerge`](#project));
+   or it declared itself [finished with no code](#finished-with-no-code)
+   (`hatch pr KEY --none`, `PUT /issues/{key}/no-code`) and is pre-approved or
+   stands in a project whose *A no-code declaration closes the ticket*
+   setting is on ([`NoCodeCloses`](#project)) — this second branch carries a
+   declared issue whether or not it has children, as long as any it has are
+   done. A childless, undeclared issue is never carried by this kind, and
+   `CheckApprovesMerge` alone never carries a childless one even if it is
+   declared: only a declaration that is itself pre-approved, or that stands
+   under `NoCodeCloses`, does that. A declared issue with open children
+   still waits for them, whichever setting or pre-approval would otherwise
+   have carried it — the declaration is a statement that nothing was built,
+   so it needs no children to have been done in its place, but it still
+   needs the children it does have to be.
 
 Both are asked last, after sendback, so neither changes the meaning of a
 row that already qualifies for one of the first five.
@@ -5156,36 +5171,47 @@ seven shapes depending on which kind carried it: `{ from, to, express: true }`,
 `{ from, to, pulled: true }` for a parent pull, `{ from, to, sendback: true,
 length, limit }` naming the brief's own length and its playbook's own
 limit, `{ from, to, preapproved: true }` — shared by the sixth kind and
-the seventh, the only two that share a shape — the same shape
-`IssuesController.MoveIssue` writes, with one more field, so a card that
-passed a gate with nobody present says so on its own trail, or `{ from, to,
-approved: "setting" }` for a seventh-kind close carried by the project's
-*A passing check approves the merge* setting alone. The setting's close has no
-`preapproved` field, since nobody's pre-approval carried it; where a parent is
-both pre-approved and in a project whose setting is on, the pre-approval's own
-shape and comment are written, unchanged. The seventh kind
+a pre-approved seventh — the same shape `IssuesController.MoveIssue`
+writes, with one more field, so a card that passed a gate with nobody
+present says so on its own trail, or, for a seventh-kind close carried by a
+setting alone (not pre-approved), one of two shapes naming which: `{ from,
+to, approved: "setting" }` for the project's *A passing check approves the
+merge* setting carrying a parent, or `{ from, to, approved: "nocode",
+nocode: true }` for its *A no-code declaration closes the ticket* setting
+carrying a declared issue. Neither setting's close carries a `preapproved`
+field, since nobody's pre-approval carried it; where an issue is both
+pre-approved and in a project whose setting is on, the pre-approval's own
+shape and comment are written, unchanged. A pre-approved seventh kind
 carrying an issue that [declared itself finished with no
-code](#finished-with-no-code) adds `nocode: true` beside `preapproved: true`.
+code](#finished-with-no-code) adds `nocode: true` beside `preapproved: true`
+instead.
 
 Both the sixth and seventh kinds write a second thing in the same save as
 the move: a comment, naming the ancestor the pre-approval was read from
 where it is inherited, or saying it stands on the issue's own row where it
-is not, or, for a close carried by the setting alone, naming the setting (`WorkController.cs:616-648`). The approve hop's own comment quotes
+is not, or, for a close carried by a setting alone, naming the setting
+(`WorkController.cs:616-648`). The approve hop's own comment quotes
 `MergeWork.Judge`'s own sentence for the branch, the same sentence `hatch
 queue` would otherwise have printed for it: *"Approved by its pre-approval
 from AER-12: \<the merge judge's own sentence\>."* where the level is
 inherited, or *"Approved by its pre-approval on its own row: \<the merge
 judge's own sentence\>."* where it is the issue's own. The close hop's own
-comment is one of three, the fixed sentence every child being done already is: *"Closed
-by its pre-approval from AER-12: every child is done."*, or *"Closed by
-its pre-approval on its own row: every child is done."* on the issue's own
-level. For an issue that declared it [finished with no
-code](#finished-with-no-code) the comment says so and gives the reason:
-*"Closed by its pre-approval from AER-12: finished with no code -
-\<reason\>."*, or *"... on its own row: ..."*, and the `status_changed` event
-carries `nocode: true` beside `preapproved: true`. The third is the setting's:
-*"Closed under AER-12's setting, a passing check approves the merge: every
-child is done."*, written with the `approved: "setting"` payload above.
+comment is one of four. Pre-approved, the fixed sentence every child being
+done already is: *"Closed by its pre-approval from AER-12: every child is
+done."*, or *"Closed by its pre-approval on its own row: every child is
+done."* on the issue's own level. For an issue that declared it [finished
+with no code](#finished-with-no-code) and is pre-approved, the comment says
+so and gives the reason instead: *"Closed by its pre-approval from AER-12:
+finished with no code - \<reason\>."*, or *"... on its own row: ..."*, and
+the `status_changed` event carries `nocode: true` beside `preapproved:
+true`. Carried by a setting alone, the third names *A passing check
+approves the merge*: *"Closed under AER-12's setting, a passing check
+approves the merge: every child is done."*, written with the `approved:
+"setting"` payload above. The fourth names *A no-code declaration closes
+the ticket*, for a declared issue carried by that setting and not
+pre-approved: *"Closed under AER-12's setting, a no-code declaration closes
+the ticket: finished with no code - \<reason\>."*, written with the
+`approved: "nocode"` payload above.
 
 **Why the server performs the hop, on its own route, rather than the CLI
 calling the ordinary move endpoint:** `IssuesController.MoveIssue` moves
@@ -5549,15 +5575,23 @@ has been, and it is also what makes the same runner's second heartbeat, before
 it releases, find nobody left to tell it — its own event is already on the
 row, so it answers a plain `204` the second time, having already reacted once.
 
-**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt` and
-nothing else, so the claim heartbeat and the claim release (the runner's own
-lane, not the operator's tokenless clobber) both touch the holding runner's
-row directly, the moment either happens — an unconditional `ExecuteUpdateAsync`
-against `Runners`, matching zero rows harmlessly where a heartbeat races the
-runner's own first `POST /api/hatch/runners/{name}`. Without this, a runner
-that has just released would read as *gone* rather than *free* for as long as
-its row's own last beat was stale, which is exactly the moment rule 5 needs to
-answer correctly.
+**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt`, so the
+claim heartbeat and the claim release (the runner's own lane, not the
+operator's tokenless clobber) both mark the holding loop as heard from, the
+moment either happens, in exactly one place — the caller's own record, by an
+unconditional `ExecuteUpdateAsync`. Under a key that is the live (not ended)
+session of that key at the claim's checkout, which is what a current CLI beats.
+Failing that it is the runner row named by `ClaimedBy` (the wall off, where the
+holder is the runner's own name). Failing both, for an older CLI beating
+`POST /api/hatch/runners/{name}` under a key named otherwise, it is the single
+row at the checkout that was live when the claim was taken; a row under a
+superseded name was already gone by then and is never revived, and a checkout
+with a live session never reaches this step. A heartbeat that races the
+runner's own first beat matches nothing, harmlessly. The beat's usage reading
+goes to that same record and no other. (Rule 5 itself still reads runner rows
+alone; sessions are a separate gap.) Without this, a runner that has just
+released would read as *gone* rather than *free* for as long as its last beat
+was stale, which is exactly the moment rule 5 needs to answer correctly.
 
 ### The issue in review whose branch conflicts, or whose build failed, is dispatched to review
 
@@ -5866,7 +5900,13 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). Ties go to
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A row's
+`LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
+release of the claim it holds, found by the claim's `ClaimedBy` matching
+the row's `Name`; that is what keeps a driver live and elected through a
+long increment. It is not moved by another row's claim, even at the same
+`Where`, so a ghost row left by a loop that came back under a new name
+ages out. Ties go to
 the oldest `FirstSeenAt`, then `Name` ordinally (`:239`) — deliberately
 stable, so a project's driver only moves once it actually drops out of live.
 The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
@@ -8724,6 +8764,23 @@ key's `RunnerConfig` as a ceiling, never past it — the smaller of the two
 wins, and a tie reads as the session's own, not the ceiling's
 (`RunnerSessions.Effective`/`Narrow`) — the same rule a beat already follows
 against the site default above.
+
+**A session's heartbeat carries six machine fields, plus `ip`.**
+`RunnerSessions.Project` is the one projection that fills
+`RunnerSessionDto` — `os`, `arch`, `agentVersion`, `container`, `username`,
+`processStartedAt`, `ip` — for every reader of a session: the heartbeat's
+own answer, `GET /runners`, and `hatch runners --json`. The six named first
+come off the heartbeat's body (`RunnerHeartbeatRequest`) and are missing for
+a session run by a CLI old enough to predate them. `ip` is not one of the
+six and has no body field at all —
+`RunnersController.SessionHeartbeat` reads it off
+`HttpContext.Connection.RemoteIpAddress`, which `UseForwardedHeaders` has
+already rewritten from the proxy's forwarded header before the controller
+runs, so it is the server's own reading of the connection, never the CLI's
+say. That reading is taken whenever the connection has one, regardless of
+CLI version — a session from a CLI old enough to send none of the six still
+carries `ip`. Nothing else is collected: no environment variable, no
+process id, no MAC address.
 
 **Three things a person can say**, and the loop obeys each at its next
 heartbeat:

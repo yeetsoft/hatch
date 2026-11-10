@@ -66,6 +66,7 @@ import type {
   ProjectBindsTrackerWriteRequest,
   ProjectStoriesOnEpicsWriteRequest,
   ProjectCheckApprovesMergeWriteRequest,
+  ProjectNoCodeClosesWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
   ProjectRepositoryWriteRequest,
@@ -170,6 +171,9 @@ export const putProjectStoriesOnEpics = (id: number, request: ProjectStoriesOnEp
 /** Sets whether a green check on a pull request approves its merge. */
 export const putProjectCheckApprovesMerge = (id: number, request: ProjectCheckApprovesMergeWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/check-approves-merge`, { method: 'PUT', ...asJson(request) });
+/** Sets whether a no-code declaration closes the ticket. */
+export const putProjectNoCodeCloses = (id: number, request: ProjectNoCodeClosesWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/no-code-closes`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember =(id: number, personId: string, role: string) =>
   fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>
@@ -521,10 +525,16 @@ export const getNextWorkUnder = (ancestorKey: string) =>
  * subtree yet. `asRunner`, given, answers off that runner's own declared row
  * instead of this undeclared read - see WorkController.GetQueue's own doc
  * comment for the four it still refuses alongside it.
+ *
+ * `takers`, given, adds to each clear row the live runners that could take its
+ * step (`takers`) and, where fewer than two can, why each of the rest cannot
+ * (`untaken`). It costs the server one scan per live runner, so only the queue
+ * modal asks; the flow-viz board poll does not.
  */
-export const getQueue = (asRunner: string | null = null) => {
+export const getQueue = (asRunner: string | null = null, takers = false) => {
   const params = new URLSearchParams({ offsetMinutes: String(-new Date().getTimezoneOffset()) });
   if (asRunner !== null) params.set('asRunner', asRunner);
+  if (takers) params.set('takers', 'true');
   return fetchJson<QueueEntry[]>(`/api/hatch/work/queue?${params.toString()}`);
 };
 

@@ -252,7 +252,6 @@ public sealed class GrokAdapter : IAgentAdapter
         // so the word has to resolve inside it. See Reach. Its calls name the
         // runner that dispatched it, not the person the checkout belongs to.
         Reach.OnPath(start.Environment, Reach.OwnDirectory(Environment.ProcessPath));
-        Reach.AsRunner(start.Environment, request.RunnerName);
         Reach.ToHatch(start.Environment, request.Settings);
 
         if (MapModel(request.Model) is { } mapped)

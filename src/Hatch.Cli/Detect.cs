@@ -54,6 +54,16 @@ public sealed record Detection(IReadOnlyList<DetectorResult> Results)
             .Select(result => result.Id).ToArray();
     }
 
+    /// <summary>
+    /// One sentence for every present result read from <c>PATH</c> after a
+    /// shell was offered and did not answer, in <see cref="Results"/> order.
+    /// An absent result carries the same <c>PATH</c> but is already in
+    /// <see cref="Missing"/>, so it gets none here.
+    /// </summary>
+    public IReadOnlyList<string> FallbackNotes() =>
+        Results.Where(result => result is { Present: true, Via: "PATH" })
+            .Select(result => $"{result.Id} read from PATH, not the shell - {result.Why}").ToArray();
+
     private bool CoveredByDetection(string declaredEntry)
     {
         var (id, version) = Split(declaredEntry);

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
@@ -198,7 +199,9 @@ public class UtilizationControllerTests
 
         private readonly List<HatchContext> open = [];
 
-        public UtilizationController Utilization => new(Connect(), Actors, Time);
+        public StubAuthService Keys { get; } = new();
+
+        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys);
 
         private HatchContext Connect()
         {

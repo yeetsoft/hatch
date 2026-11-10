@@ -1136,7 +1136,7 @@ public sealed record ConfigCommand(
     /// <summary>What is set, and which of the three layers it came from.</summary>
     private async Task<int> ShowAsync(CancellationToken ct)
     {
-        var (fold, ignoredKeyLayer, ignoredRunnerLayer) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var (fold, ignoredKeyLayer) = Settings.LayersWithNotes(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
         var exists = File.Exists(ConfigPath) ? "" : " (does not exist yet)";
 
         Say.Line($"file:             {ConfigPath}{exists}");
@@ -1224,9 +1224,6 @@ public sealed record ConfigCommand(
             if (name == "HATCH_KEY" && ignoredKeyLayer() is { } ignored)
                 note += $"  (ignored: {Where(ignored)} holds a key, but HATCH_BASE comes from " +
                          $"{Where(fold("HATCH_BASE").From)} - set both there, or neither)";
-            if (name == "HATCH_RUNNER" && ignoredRunnerLayer() is { } ignoredRunner)
-                note += $"  (ignored: {Where(ignoredRunner)} holds a name, but a runner's name belongs to a checkout - " +
-                         "export it, or put it in scripts/.env)";
             if (Settings.IsBoardBound(name) && ProfilePath is not null)
                 note += "  (profile active: the per-user file was not consulted)";
 
@@ -1308,6 +1305,10 @@ public sealed record ConfigCommand(
 
         Say.Line($"{"has:".PadRight(19)}{DrawHas(detection.Merge(declaredHas))}");
         Say.Line($"{"missing:".PadRight(19)}{DrawHas(detection.Missing(declaredHas))}");
+
+        // Present results only: an absent one is already in missing:.
+        foreach (var result in detection.Results.Where(result => result.Present && result.Via is not null))
+            Say.Line($"{(result.Id + " via:").PadRight(19)}{(result.Why is null ? result.Via : $"{result.Via} - {result.Why}")}");
 
         return 0;
     }
