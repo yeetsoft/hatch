@@ -27,7 +27,6 @@ public class RepositoryDependencyFileTests
                 new DeclaredDependency("node", "22"),
                 new DeclaredDependency("pwsh", "7"),
                 new DeclaredDependency("playwright-browsers", null),
-                new DeclaredDependency("postgres", null),
             ],
             dependencies);
     }
