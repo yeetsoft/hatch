@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getRunners } from '../api/client';
+import { getAllRunners, getRunners } from '../api/client';
 import type { Runner } from '../types';
 
 /** How often the page re-asks. Shorter than the nav battery's two minutes
@@ -39,19 +39,22 @@ export interface RunnersState {
  * `enabled` is for `QueueControl`, which is mounted on the board all the time:
  * its modal must not poll while closed, so turning this false clears the timer
  * and the listener and turning it true reads at once.
+ *
+ * `all` reads every runner, revoked and gone ones included, for the runners
+ * page; left false it reads the live ones, which is what the board wants.
  */
-export function useRunners(enabled = true): RunnersState {
+export function useRunners(enabled = true, all = false): RunnersState {
   const [runners, setRunners] = useState<Runner[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setRunners(await getRunners());
+      setRunners(await (all ? getAllRunners() : getRunners()));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'the runners could not be read');
     }
-  }, []);
+  }, [all]);
 
   useEffect(() => {
     if (!enabled) return;
