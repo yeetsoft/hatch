@@ -106,12 +106,12 @@ export function NavAttention() {
                 legible without colour, and the accessible name above says the
                 same thing in words. A pill per non-empty section, so an empty
                 half takes no room rather than showing a zero. */}
+            {trunkBuilds > 0 && <span className="hatch-attention-pill hatch-attention-pill-trunk">{trunkBuilds}</span>}
             {deadlocked > 0 && (
               <span className="hatch-attention-pill hatch-attention-pill-deadlocked">{deadlocked}</span>
             )}
-            {trunkBuilds > 0 && <span className="hatch-attention-pill hatch-attention-pill-trunk">{trunkBuilds}</span>}
-            {reviews > 0 && <span className="hatch-attention-pill hatch-attention-pill-review">{reviews}</span>}
             {questions > 0 && <span className="hatch-attention-pill hatch-attention-pill-question">{questions}</span>}
+            {reviews > 0 && <span className="hatch-attention-pill hatch-attention-pill-review">{reviews}</span>}
           </span>
         )}
         {tone === 'asking' && pills > 0 && (
