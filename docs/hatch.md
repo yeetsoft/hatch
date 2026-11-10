@@ -3892,6 +3892,17 @@ recorded: it was never going to have a pull request, and where it stands from
 there is `LandingWork`'s to say, in `landingHeld` above or in the loop's
 hands.
 
+A row in `reviews` whose project has *A passing check approves the merge* on,
+and whose move from the review column into the merge column a check row
+covers (`Columns.Approves` names the column; `Dispatch.MatchAsync` matches the
+row there by the issue's type and shape, and the playbook found is itself
+ticked `IsCheck`), is left out the same way a pre-approved row the judge would
+carry is - a check is what clears it, not a person. A row no check row covers
+stays listed, since a person is who unblocks it: by writing the pull request,
+or by dragging. It counts towards nothing else, the same as the pre-approval
+carve-out immediately above it - not `reviews`, not `reviewsHeldBack`, not the
+badge, which follows the list.
+
 `noCodeHeld` is every issue in review that declared it was finished with no
 code (`PUT /issues/{key}/no-code`) and is not [pre-approved](#pre-approval):
 no pull request will ever be recorded for it and the loop will not close it, so
