@@ -313,13 +313,13 @@ public class RunnersController(
 
         if (kind == EfHatchRunner.LoopKind) await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
 
-        await ReinstateAsync(key.Name, now, ct);
+        var drives = (await TrainDriversAsync(key.Name, now, ct)).GetValueOrDefault(key.Name, []);
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         var site = await siteSettings.GetAsync(ct);
         var forName = (await ForAsync(ct))?.Name ?? key.Name;
 
-        return RunnerSessions.Instruct(session, config, key.Name, forName, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+        return RunnerSessions.Instruct(session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
     }
 
     /// <summary>
