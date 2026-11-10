@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, EmptyState, Field, Modal } from '@hatch/ui';
+import { Button, EmptyState, Field, Modal, Text } from '@hatch/ui';
 import { createIssue } from '../api/client';
 import { removeAttachmentLinks } from '../lib/attachmentList';
 import { resolveDefaultProject, readRememberedProject, writeRememberedProject } from '../lib/defaultProject';
@@ -27,6 +27,48 @@ import type { AssigneeDirectory, Issue, IssueCard, IssueType, Project } from '..
     has. */
 export function omitDefault<T>(level: T, defaultLevel: T): T | undefined {
   return level === defaultLevel ? undefined : level;
+}
+
+/** The one-PR Field for a story or a bug: the steps, or, under a project that
+    enforces its own default, one muted line saying so in place of them - and
+    nothing at all for any other type. Exported so a test can render it on a
+    story or a bug directly, the dialog's own `type` being state no render of
+    it from the outside can reach (see `omitDefault` above). */
+export function OnePrField({
+  type,
+  projectKey,
+  enforced,
+  value,
+  busy,
+  onChange,
+}: {
+  type: IssueType;
+  projectKey: string | null | undefined;
+  enforced: boolean;
+  value: OnePrSetting;
+  busy: boolean;
+  onChange: (value: OnePrSetting) => void;
+}) {
+  if (type !== 'story' && type !== 'bug') return null;
+
+  return (
+    <Field
+      label="One pull request"
+      as="div"
+      hint={`Whether this ${type}'s tasks share its branch and open one pull request, merged once, instead of one each.`}
+    >
+      {enforced ? (
+        <Text tone="muted">{projectKey} enforces its one-PR default on every story</Text>
+      ) : (
+        <OnePrSteps
+          value={value}
+          label={`Set the new ${type}'s one pull request setting`}
+          busy={busy}
+          onChange={onChange}
+        />
+      )}
+    </Field>
+  );
 }
 
 /**
@@ -84,6 +126,7 @@ export function NewIssueDialog({
   const parent = parentKey && parents.some((c) => c.key === parentKey) ? parentKey : null;
   const keyPreview = projectKey ? `${projectKey}-…` : null;
   const canApprove = projects.find((p) => p.id === chosen)?.canApprove ?? false;
+  const enforced = projects.find((p) => p.id === chosen)?.onePullRequestPolicy === 'enforced';
   // Clamped on the way out like `parent` is: a stored preapproved that the
   // chosen project's approver may not set would otherwise be refused by the
   // server once File it is pressed, rather than kept locked here as it was
@@ -111,7 +154,7 @@ export function NewIssueDialog({
         description,
         readyAt,
         dueAt,
-        onePr: onePrToFile(type, onePr),
+        onePr: onePrToFile(type, onePr, enforced),
         priority: omitDefault(priority, 'normal'),
         preApproval: omitDefault(clampedPreApproval, 'none'),
       });
@@ -151,7 +194,15 @@ export function NewIssueDialog({
             <EmptyState message="No projects yet. Make one on the Projects page first." />
           ) : (
             <>
-              <ProjectChooser legend="Project" projects={projects} value={chosen} onChange={setProjectId} />
+              <ProjectChooser
+                legend="Project"
+                projects={projects}
+                value={chosen}
+                onChange={(id) => {
+                  setProjectId(id);
+                  setOnePr('inherit');
+                }}
+              />
 
               <Field label="Type">
                 <select value={type} onChange={(e) => {
@@ -166,20 +217,14 @@ export function NewIssueDialog({
                 </select>
               </Field>
 
-              {(type === 'story' || type === 'bug') && (
-                <Field
-                  label="One pull request"
-                  as="div"
-                  hint={`Whether this ${type}'s tasks share its branch and open one pull request, merged once, instead of one each.`}
-                >
-                  <OnePrSteps
-                    value={onePr}
-                    label={`Set the new ${type}'s one pull request setting`}
-                    busy={saving}
-                    onChange={setOnePr}
-                  />
-                </Field>
-              )}
+              <OnePrField
+                type={type}
+                projectKey={projectKey}
+                enforced={enforced}
+                value={onePr}
+                busy={saving}
+                onChange={setOnePr}
+              />
 
               {/* `as="div"` for the reason on the issue page's Parent field: the
                   popup would otherwise join the control's accessible name. */}

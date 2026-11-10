@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { NewIssueDialog, omitDefault } from './NewIssueDialog';
+import { NewIssueDialog, OnePrField, omitDefault } from './NewIssueDialog';
 import { REMEMBERED_PROJECT_STORAGE_KEY } from '../lib/defaultProject';
 import { IssueConfirmationsContext, type IssueConfirmations } from '../lib/useIssueConfirmations';
 import type { AssigneeDirectory, Project } from '../types';
@@ -303,6 +303,45 @@ describe('NewIssueDialog', () => {
     expect(html).toContain('hatch-preapproval-said');
     expect(html).not.toContain('hatch-priority-pill-press');
     expect(html).not.toContain('hatch-preapproval-pill-press');
+  });
+});
+
+describe('OnePrField', () => {
+  it('shows the enforced line and no steps for a story under an enforced project', () => {
+    const html = renderToStaticMarkup(
+      <OnePrField type="story" projectKey="HATCH" enforced value="inherit" busy={false} onChange={noop} />,
+    );
+
+    expect(html).toContain('HATCH');
+    expect(html).toContain('enforces its one-PR default on every story');
+    expect(html).not.toContain('hatch-one-pr-steps');
+  });
+
+  it('shows the enforced line and no steps for a bug under an enforced project', () => {
+    const html = renderToStaticMarkup(
+      <OnePrField type="bug" projectKey="HATCH" enforced value="inherit" busy={false} onChange={noop} />,
+    );
+
+    expect(html).toContain('HATCH');
+    expect(html).toContain('enforces its one-PR default on every story');
+    expect(html).not.toContain('hatch-one-pr-steps');
+  });
+
+  it('shows the steps and no enforced line for a story left optional', () => {
+    const html = renderToStaticMarkup(
+      <OnePrField type="story" projectKey="HATCH" enforced={false} value="inherit" busy={false} onChange={noop} />,
+    );
+
+    expect(html).toContain('hatch-one-pr-steps');
+    expect(html).not.toContain('enforces');
+  });
+
+  it('renders nothing for a task, enforced or not', () => {
+    const html = renderToStaticMarkup(
+      <OnePrField type="task" projectKey="HATCH" enforced value="inherit" busy={false} onChange={noop} />,
+    );
+
+    expect(html).toBe('');
   });
 });
 
