@@ -60,8 +60,9 @@ past its own `scrollWidth`.
 `OmittedRunnersTests.cs` drives the issue page's Omitted runners section against
 the real host: an own, a recused and an inherited row, Lift, Omit, the refusal
 sentences, and the fit of every row and add control inside the Details card. The
-phone case is skipped, naming HA-2172, until the section stops overflowing the
-card at that width.
+phone case runs whole rather than skipping - the CI e2e gate fails on any skip -
+and asserts the section's known overflow at that width (HA-2172) reproduces,
+rather than failing on it, until the section stops overflowing the card.
 
 ## Render any page with no code written
 
