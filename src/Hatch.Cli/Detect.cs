@@ -85,8 +85,9 @@ public sealed record Detection(IReadOnlyList<DetectorResult> Results)
 /// <summary>
 /// Whether <c>make</c>, <c>dotnet</c>, <c>node</c> and <c>pwsh</c> are on
 /// <c>PATH</c>, and which version, within a probe that cannot outlast
-/// <see cref="ProbeTimeout"/>; whether a Playwright browsers cache exists; and
-/// whether a Postgres server's binaries answer.
+/// <see cref="ProbeTimeout"/>; whether a Playwright browsers cache exists;
+/// whether a Postgres server's binaries answer; and whether a Docker daemon
+/// and Docker Compose v2 both answer.
 /// </summary>
 /// <remarks>
 /// A detector writes nothing to stderr; the caller does, with the sentence it
@@ -109,16 +110,19 @@ public static class Detect
 
     /// <summary>
     /// Every detector, once, concurrently: <see cref="Make"/>, <see cref="Dotnet"/>,
-    /// <see cref="Node"/>, <see cref="Pwsh"/> and <see cref="Postgres"/> alongside
-    /// <see cref="PlaywrightBrowsers"/>, which needs no probe. <paramref name="os"/>
-    /// is <see cref="CurrentOs"/>'s own answer. <see cref="Make"/>, <see cref="Dotnet"/>,
-    /// <see cref="Node"/> and <see cref="Pwsh"/> ask <paramref name="env"/>'s login
-    /// shell (<see cref="ShellFor"/>) before the direct PATH probe, so one of them
-    /// can now take <see cref="ShellTimeout"/> plus <see cref="ProbeTimeout"/> (15
-    /// seconds) rather than <see cref="ProbeTimeout"/> alone; <see cref="Postgres"/>
-    /// can take up to three <see cref="ProbeTimeout"/>s, since it tries three
-    /// binaries in turn before giving up. A probe that throws
-    /// is not caught here - the five detectors above already convert a failure
+    /// <see cref="Node"/>, <see cref="Pwsh"/>, <see cref="Docker"/> and
+    /// <see cref="Postgres"/> alongside <see cref="PlaywrightBrowsers"/>, which
+    /// needs no probe. <paramref name="os"/> is <see cref="CurrentOs"/>'s own
+    /// answer. <see cref="Make"/>, <see cref="Dotnet"/>, <see cref="Node"/>,
+    /// <see cref="Pwsh"/> and <see cref="Docker"/> ask <paramref name="env"/>'s
+    /// login shell (<see cref="ShellFor"/>) before the direct PATH probe, so one
+    /// of them can now take <see cref="ShellTimeout"/> plus <see cref="ProbeTimeout"/>
+    /// (15 seconds) rather than <see cref="ProbeTimeout"/> alone; <see cref="Docker"/>
+    /// can take <see cref="ShellTimeout"/> plus two <see cref="ProbeTimeout"/>s (20
+    /// seconds), since its PATH route tries the daemon and then Compose in turn;
+    /// <see cref="Postgres"/> can take up to three <see cref="ProbeTimeout"/>s,
+    /// since it tries three binaries in turn before giving up. A probe that throws
+    /// is not caught here - the six detectors above already convert a failure
     /// into <c>Present=false</c> rather than throwing, so only
     /// <see cref="OperationCanceledException"/> from <paramref name="ct"/> is ever
     /// seen to propagate.
@@ -131,10 +135,11 @@ public static class Detect
         var dotnet = Dotnet(path, probe, ct, shell);
         var node = Node(path, probe, ct, shell);
         var pwsh = Pwsh(path, probe, ct, shell);
+        var docker = Docker(path, probe, ct, shell);
         var postgres = Postgres(path, probe, ct);
         var playwright = Task.FromResult(PlaywrightBrowsers(os, env));
 
-        var results = await Task.WhenAll(make, dotnet, node, pwsh, postgres, playwright);
+        var results = await Task.WhenAll(make, dotnet, node, pwsh, docker, postgres, playwright);
 
         if (shell is not null && !Console.IsInputRedirected && !OperatingSystem.IsWindows())
             Tty.TryReclaimForeground();
@@ -313,6 +318,115 @@ public static class Detect
         var at = (output ?? "").IndexOf(marker, StringComparison.Ordinal);
         return at < 0 ? null : Leading(output![(at + marker.Length)..]);
     }
+
+    /// <summary>
+    /// A Docker daemon that answers <c>docker info</c>, with Docker Compose v2
+    /// (the <c>compose</c> plugin) also answering <c>docker compose version</c>;
+    /// present only with both. The shell route runs one script that checks all
+    /// three in turn and falls back to the PATH route on anything it cannot read
+    /// cleanly off that script's own exit code.
+    /// </summary>
+    public static async Task<DetectorResult> Docker(string? path, Probe probe, CancellationToken ct, string? shell = null)
+    {
+        if (shell is null) return await DockerOnPath(path, probe, ct);
+
+        var (answer, failure) = await TryDockerShell(shell, probe, ct);
+        if (answer is not null) return answer;
+
+        var result = await DockerOnPath(path, probe, ct);
+        return result.Present
+            ? result with { Via = "PATH", Why = $"`{Path.GetFileName(shell)} -l -i +m` {failure}" }
+            : result with { Via = "PATH" };
+    }
+
+    /// <summary>
+    /// The first <c>Version:</c> line after the <c>Client:</c> section header of
+    /// <c>docker info</c> output - the client's own version, not a plugin's
+    /// (nested under <c>Plugins:</c>, further down) nor <c>Server Version:</c>
+    /// (a different label). Null for null, empty, or no <c>Client:</c> section.
+    /// </summary>
+    public static string? ParseDocker(string? output)
+    {
+        var lines = (output ?? "").Split('\n');
+        var client = Array.FindIndex(lines, line => line.Trim() == "Client:");
+        if (client < 0) return null;
+
+        foreach (var line in lines.Skip(client + 1))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("Version:", StringComparison.Ordinal))
+                return Leading(trimmed["Version:".Length..]);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Runs the daemon-plus-Compose script on <paramref name="shell"/>. Answers
+    /// the result when the script's own exit code says present, absent for the
+    /// daemon, or absent for Compose; else null with one sentence of why, for
+    /// <see cref="Docker"/> to fold into its own PATH-probe <c>Why</c> - the same
+    /// fallback <see cref="Walk"/> takes for the other shell-first detectors.
+    /// </summary>
+    private static async Task<(DetectorResult? Answer, string? Failure)> TryDockerShell(string shell, Probe probe, CancellationToken ct)
+    {
+        const string id = "docker";
+        var script = $"printf '{Marker}\\n'; command -v docker >/dev/null || exit 127; " +
+                     $"docker info || exit {DaemonExitCode}; docker compose version || exit {ComposeExitCode}";
+        var probed = await probe(shell, ["-l", "-i", "+m", "-c", script], ShellTimeout, ct);
+        var via = $"{Path.GetFileName(shell)} -l -i +m";
+
+        if (!probed.Completed)
+            return (null, $"did not answer within {ShellTimeout.TotalSeconds:0} seconds");
+
+        if (probed.ExitCode == DaemonExitCode)
+            return (new DetectorResult(id, false, null, DaemonWhy(""), via), null);
+
+        if (probed.ExitCode == ComposeExitCode)
+            return (new DetectorResult(id, false, null, ComposeWhy, via), null);
+
+        if (probed.ExitCode != 0)
+            return (null, $"exited with code {probed.ExitCode}");
+
+        if (TextAfterMarker(probed.Output) is not { } text)
+            return (null, "printed no marker");
+
+        return (new DetectorResult(id, true, ParseDocker(text), null, via), null);
+    }
+
+    /// <summary>
+    /// <c>docker</c> on <c>PATH</c>, then <c>docker info</c>, then
+    /// <c>docker compose version</c> - each must answer before the next is
+    /// asked, so this can wait up to two <see cref="ProbeTimeout"/>s.
+    /// </summary>
+    private static async Task<DetectorResult> DockerOnPath(string? path, Probe probe, CancellationToken ct)
+    {
+        const string id = "docker";
+
+        if (Reach.Find("docker", path) is not { } file)
+            return new DetectorResult(id, false, null, "`docker` is not on PATH");
+
+        var info = await probe(file, ["info"], ProbeTimeout, ct);
+        if (!info.Completed)
+            return new DetectorResult(id, false, null, DaemonWhy($" within {ProbeTimeout.TotalSeconds:0} seconds"));
+        if (info.ExitCode != 0)
+            return new DetectorResult(id, false, null, DaemonWhy($" (exit code {info.ExitCode})"));
+
+        var compose = await probe(file, ["compose", "version"], ProbeTimeout, ct);
+        if (!compose.Completed || compose.ExitCode != 0)
+            return new DetectorResult(id, false, null, ComposeWhy);
+
+        return new DetectorResult(id, true, ParseDocker(info.Output), null);
+    }
+
+    private static string DaemonWhy(string detail) =>
+        $"the Docker daemon did not answer `docker info`{detail} - start Docker, then restart the loop";
+
+    private const string ComposeWhy = "`docker compose version` failed - Docker Compose v2 (the `compose` plugin) is needed";
+
+    private const int DaemonExitCode = 70;
+
+    private const int ComposeExitCode = 71;
 
     /// <summary><c>GNU Make 4.3</c> is <c>4.3</c>: the first non-blank line, which is all the copyright lines after it are not.</summary>
     public static string? ParseMake(string? output) => Leading(FirstLine(output));

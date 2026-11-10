@@ -836,6 +836,199 @@ public sealed class DetectTests
             () => Detect.Postgres(fake.Directory, cancelled, CancellationToken.None));
     }
 
+    // ---- docker -------------------------------------------------------
+
+    private const string DockerInfo =
+        "Client:\n" +
+        " Version:    27.3.1\n" +
+        " Context:    default\n" +
+        " Debug Mode: false\n" +
+        " Plugins:\n" +
+        "  buildx: Docker Buildx (Docker Inc.)\n" +
+        "    Version:  v0.17.1\n" +
+        "    Path:     /usr/libexec/docker/cli-plugins/docker-buildx\n" +
+        "  compose: Docker Compose (Docker Inc.)\n" +
+        "    Version:  v2.29.7\n" +
+        "    Path:     /usr/libexec/docker/cli-plugins/docker-compose\n" +
+        "\n" +
+        "Server:\n" +
+        " Containers: 10\n" +
+        " Server Version: 27.3.1\n";
+
+    private const string ShellDocker = "hatch-probe\n" + DockerInfo;
+
+    [Theory]
+    [InlineData(DockerInfo, "27.3.1")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("Server:\n Server Version: 27.3.1\n", null)]
+    public void Docker_reads_the_clients_own_version_not_the_servers_or_a_plugins(string? output, string? expected)
+    {
+        var version = Detect.ParseDocker(output);
+
+        Assert.Equal(expected, version);
+        Assert.Null(DependencyVersion.Problem(version));
+    }
+
+    [Fact]
+    public async Task Docker_is_present_when_the_daemon_and_compose_both_answer()
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+        var calls = new List<(string File, string[] Args)>();
+
+        var result = await Detect.Docker(fake.Directory, Answering(DockerInfo, calls: calls), CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("docker", true, "27.3.1", null), result);
+        Assert.Equal([["info"], ["compose", "version"]], calls.Select(call => call.Args));
+    }
+
+    [Fact]
+    public async Task Docker_is_absent_with_nothing_on_path_and_nothing_asked()
+    {
+        using var fake = new FakePath(FileNames("something-else")[0]);
+
+        var result = await Detect.Docker(fake.Directory, NeverAsked, CancellationToken.None);
+        var none = await Detect.Docker(null, NeverAsked, CancellationToken.None);
+
+        Assert.Equal(new DetectorResult("docker", false, null, "`docker` is not on PATH"), result);
+        Assert.Equal(result, none);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_daemon_that_fails_or_hangs_is_absent_and_compose_is_never_asked(bool hangs)
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+        var asked = new List<string[]>();
+        Probe probe = (_, args, _, _) =>
+        {
+            asked.Add(args);
+            return Task.FromResult(hangs ? Hung : new ProbeResult(true, 1, "Cannot connect to the Docker daemon\n"));
+        };
+
+        var result = await Detect.Docker(fake.Directory, probe, CancellationToken.None);
+
+        Assert.False(result.Present);
+        Assert.Contains("daemon", result.Why);
+        Assert.Equal([["info"]], asked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Compose_that_fails_or_hangs_is_absent_once_the_daemon_has_already_answered(bool hangs)
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+        Probe probe = (_, args, _, _) => Task.FromResult(
+            args[0] == "info" ? new ProbeResult(true, 0, DockerInfo) : hangs ? Hung : new ProbeResult(true, 1, "unknown command\n"));
+
+        var result = await Detect.Docker(fake.Directory, probe, CancellationToken.None);
+
+        Assert.False(result.Present);
+        Assert.Contains("docker compose version", result.Why);
+    }
+
+    [Fact]
+    public async Task A_cancelled_docker_probe_propagates()
+    {
+        using var fake = new FakePath(FileNames("docker")[0]);
+        Probe cancelled = (_, _, _, _) => throw new OperationCanceledException();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => Detect.Docker(fake.Directory, cancelled, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_shell_that_answers_finds_docker_on_its_own_path_not_the_loops()
+    {
+        using var shell = new FakePath("fakesh");
+        var calls = new List<(string File, string[] Args)>();
+
+        var result = await Detect.Docker(
+            null, ByShellOrPath(shell.File, Said(ShellDocker), Hung, calls), CancellationToken.None, shell.File);
+
+        Assert.Equal(new DetectorResult("docker", true, "27.3.1", null, "fakesh -l -i +m"), result);
+        var call = Assert.Single(calls);
+        Assert.Equal(shell.File, call.File);
+        var script = call.Args[4];
+        Assert.Contains("docker info", script);
+        Assert.Contains("docker compose version", script);
+    }
+
+    [Fact]
+    public async Task A_shell_exit_70_is_absent_for_the_daemon_and_path_is_never_probed()
+    {
+        using var shell = new FakePath("fakesh");
+        var calls = new List<(string File, string[] Args)>();
+
+        var result = await Detect.Docker(
+            null, ByShellOrPath(shell.File, Said("", exit: 70), Hung, calls), CancellationToken.None, shell.File);
+
+        Assert.False(result.Present);
+        Assert.Contains("daemon", result.Why);
+        Assert.Equal("fakesh -l -i +m", result.Via);
+        Assert.Equal(shell.File, Assert.Single(calls).File);
+    }
+
+    [Fact]
+    public async Task A_shell_exit_71_is_absent_for_compose_and_path_is_never_probed()
+    {
+        using var shell = new FakePath("fakesh");
+        var calls = new List<(string File, string[] Args)>();
+
+        var result = await Detect.Docker(
+            null, ByShellOrPath(shell.File, Said("", exit: 71), Hung, calls), CancellationToken.None, shell.File);
+
+        Assert.False(result.Present);
+        Assert.Contains("docker compose version", result.Why);
+        Assert.Equal("fakesh -l -i +m", result.Via);
+        Assert.Equal(shell.File, Assert.Single(calls).File);
+    }
+
+    [Fact]
+    public async Task A_shell_exit_127_falls_back_to_path()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("docker")[0]);
+
+        var result = await Detect.Docker(
+            path.Directory, ByShellOrPath(shell.File, Said("", exit: 127), Said(DockerInfo)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("27.3.1", result.Version);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("exited with code 127", result.Why);
+    }
+
+    [Fact]
+    public async Task A_shell_that_hangs_falls_back_to_path_for_docker()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("docker")[0]);
+
+        var result = await Detect.Docker(
+            path.Directory, ByShellOrPath(shell.File, Hung, Said(DockerInfo)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("did not answer within 10 seconds", result.Why);
+    }
+
+    [Fact]
+    public async Task A_shell_that_prints_no_marker_falls_back_to_path_for_docker()
+    {
+        using var shell = new FakePath("fakesh");
+        using var path = new FakePath(FileNames("docker")[0]);
+
+        var result = await Detect.Docker(
+            path.Directory, ByShellOrPath(shell.File, Said(DockerInfo), Said(DockerInfo)), CancellationToken.None, shell.File);
+
+        Assert.True(result.Present);
+        Assert.Equal("PATH", result.Via);
+        Assert.Contains("printed no marker", result.Why);
+    }
+
     // ---- the real probe ---------------------------------------------------
 
     [Fact]
@@ -928,12 +1121,13 @@ public sealed class DetectTests
         string.Join(System.IO.Path.PathSeparator, tools.Select(tool => tool.Directory));
 
     [Fact]
-    public async Task RunAsync_detects_all_six_concurrently_matching_the_default_dependency_list()
+    public async Task RunAsync_detects_all_seven_concurrently_matching_the_default_dependency_list()
     {
         using var make = new FakePath(FileNames("make")[0]);
         using var dotnet = new FakePath(FileNames("dotnet")[0]);
         using var node = new FakePath(FileNames("node")[0]);
         using var pwsh = new FakePath(FileNames("pwsh")[0]);
+        using var docker = new FakePath(FileNames("docker")[0]);
         using var postgres = new FakePath(FileNames("postgres")[0]);
         var browsers = Root();
         try
@@ -946,11 +1140,12 @@ public sealed class DetectTests
                 ["dotnet"] = Said(DotnetSdks),
                 ["node"] = Said(Node),
                 ["pwsh"] = Said(Pwsh),
+                ["docker"] = Said(DockerInfo),
                 ["postgres"] = Said(PostgresServer),
             };
 
             var detection = await Detect.RunAsync(
-                CombinedPath(make, dotnet, node, pwsh, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
+                CombinedPath(make, dotnet, node, pwsh, docker, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
                 ByTool(answers), CancellationToken.None);
 
             Assert.Equal(
@@ -962,12 +1157,13 @@ public sealed class DetectTests
     }
 
     [Fact]
-    public async Task RunAsync_keeps_the_other_five_when_one_probe_hangs()
+    public async Task RunAsync_keeps_the_others_when_one_probe_hangs()
     {
         using var make = new FakePath(FileNames("make")[0]);
         using var dotnet = new FakePath(FileNames("dotnet")[0]);
         using var node = new FakePath(FileNames("node")[0]);
         using var pwsh = new FakePath(FileNames("pwsh")[0]);
+        using var docker = new FakePath(FileNames("docker")[0]);
         using var postgres = new FakePath(FileNames("postgres")[0]);
         var browsers = Root();
         try
@@ -979,6 +1175,7 @@ public sealed class DetectTests
                 ["dotnet"] = Said(DotnetSdks),
                 ["node"] = Said(Node),
                 ["pwsh"] = Said(Pwsh),
+                ["docker"] = Said(DockerInfo),
                 ["postgres"] = Said(PostgresServer),
             };
 
@@ -989,7 +1186,7 @@ public sealed class DetectTests
             };
 
             var detection = await Detect.RunAsync(
-                CombinedPath(make, dotnet, node, pwsh, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
+                CombinedPath(make, dotnet, node, pwsh, docker, postgres), "linux", Env(("PLAYWRIGHT_BROWSERS_PATH", browsers)),
                 hangsOnMake, CancellationToken.None);
 
             var byId = detection.Results.ToDictionary(result => result.Id);
@@ -997,6 +1194,7 @@ public sealed class DetectTests
             Assert.True(byId["dotnet"].Present);
             Assert.True(byId["node"].Present);
             Assert.True(byId["pwsh"].Present);
+            Assert.True(byId["docker"].Present);
             Assert.True(byId["postgres"].Present);
             Assert.True(byId["playwright-browsers"].Present);
         }
