@@ -1441,7 +1441,7 @@ public class AttentionControllerTests : IDisposable
         Assert.Equal([Key(third), Key(second), Key(first)], row.Keys);
         Assert.Equal(["host:/b"], row.Takers);
         Assert.Equal(
-            [new RunnerReasonDto("host:/a", NeedsSentence(third, "dotnet 10", repo.Canonical, "dotnet 8"))],
+            [new RunnerReasonDto("host:/a", NeedsSentence(third, "dotnet 10 or newer", repo.Canonical, "dotnet 8"))],
             row.Reasons);
     }
 
@@ -1457,7 +1457,7 @@ public class AttentionControllerTests : IDisposable
         var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
 
         Assert.Empty(row.Takers);
-        var sentence = NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8");
+        var sentence = NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8");
         Assert.Equal([new RunnerReasonDto("host:/a", sentence), new RunnerReasonDto("host:/b", sentence)], row.Reasons);
     }
 
