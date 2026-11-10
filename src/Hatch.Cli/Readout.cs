@@ -62,7 +62,7 @@ public sealed class ReadoutState
     private RunnerSnapshot _runner = RunnerSnapshot.Empty;
     private IReadOnlyList<UsageWindow> _usage = [];
     private DateTimeOffset? _usageReadAt;
-    private IReadOnlySet<string> _drives = new HashSet<string>(StringComparer.Ordinal);
+    private IReadOnlySet<string>? _drives;
 
     /// <summary>A session is about to be spawned. Clears whatever idle line was showing.</summary>
     public void BeginIncrement(string key, string title, string what, string? issueUrl, DateTimeOffset startedAt, long? budgetTokens = null)
@@ -111,7 +111,24 @@ public sealed class ReadoutState
     /// <summary>Whether this runner is elected to drive the merge train for a project.</summary>
     public bool Drives(string projectKey)
     {
-        lock (_gate) return _drives.Contains(projectKey);
+        lock (_gate) return _drives?.Contains(projectKey) == true;
+    }
+
+    /// <summary>
+    /// Whether a heartbeat has answered yet. False until the first
+    /// <see cref="SetDrives"/>: "told it drives nothing" and "not told yet"
+    /// both make <see cref="Drives"/> false, and only the first is worth a
+    /// line in the terminal.
+    /// </summary>
+    public bool DrivesTold
+    {
+        get { lock (_gate) return _drives is not null; }
+    }
+
+    /// <summary>The project keys the last heartbeat told this runner it drives; empty before one has.</summary>
+    public IReadOnlyCollection<string> DrivenProjects
+    {
+        get { lock (_gate) return _drives is null ? [] : [.. _drives]; }
     }
 
     /// <summary>The account's usage windows, refreshed while a session is running, and the instant they were read.</summary>

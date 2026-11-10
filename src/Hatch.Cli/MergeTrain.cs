@@ -26,6 +26,12 @@ public sealed class MergeTrain : IAsyncDisposable
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
 
+    // The sentence a 409 from the merged route came back with, per issue: the
+    // last tick's, and the one being built. One 409 is the race the walk-on
+    // was written for; the same sentence twice running is not.
+    private Dictionary<string, string> _walkedOn = [];
+    private Dictionary<string, string> _walking = [];
+
     private readonly CancellationTokenSource _stop = new();
     private Task? _clock;
 
@@ -78,6 +84,7 @@ public sealed class MergeTrain : IAsyncDisposable
     public async Task TickAsync(Runtime runtime, CancellationToken ct)
     {
         var saying = new HashSet<string>();
+        _walking = [];
 
         // A line said by the train before this one is not said again: an
         // origin that is down for the night is one line and not four hundred.
@@ -99,6 +106,21 @@ public sealed class MergeTrain : IAsyncDisposable
         }
 
         _saidBefore = saying;
+        _walkedOn = _walking;
+    }
+
+    /// <summary>
+    /// A <c>409</c> from the merged route is walked on the first time: the row
+    /// moved between the read and the write. The same sentence for the same
+    /// row on the next tick is a refusal that is not going away, and is said -
+    /// through the train's said-once dedupe, so while it lasts it is one line.
+    /// </summary>
+    private void NoteWalkOn(Action<string> complain, string key, string? sentence)
+    {
+        if (sentence is not { Length: > 0 }) return;
+        _walking[key] = sentence;
+        if (_walkedOn.TryGetValue(key, out var before) && string.Equals(before, sentence, StringComparison.Ordinal))
+            complain($"hatch: {key} - the board would not take the merge - {sentence}");
     }
 
     private async Task TickCoreAsync(Runtime runtime, Action<string> complain, CancellationToken ct)
@@ -118,6 +140,8 @@ public sealed class MergeTrain : IAsyncDisposable
         // board that returns rows in rank order still reads that way among
         // the rest.
         review = [.. review.OrderBy(i => i.MergeWork?.IsHead == true ? 0 : 1)];
+
+        SayToldNothing(runtime, complain, review);
 
         // The pull request half, independent of the merge and update halves
         // below it: keyed on the issue rather than the checkout, since
@@ -147,6 +171,31 @@ public sealed class MergeTrain : IAsyncDisposable
         // Last, and for the same reason: it writes to nothing but the board,
         // whose route re-judges the row itself.
         await CarryLandedAsync(runtime, complain, review, ct);
+    }
+
+    /// <summary>
+    /// A loop that has been told, by a heartbeat, that it drives no project,
+    /// while the merge column holds work in a repository it has a checkout of.
+    /// It still reports a merge made by hand and merges nothing itself, and
+    /// nothing else says so. Keyed on the projects and not the issues, so a
+    /// row arriving does not say it again; a loop not yet told anything says
+    /// nothing, since the train starts before the first beat.
+    /// </summary>
+    private static void SayToldNothing(Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review)
+    {
+        if (!runtime.Readout.DrivesTold || runtime.Readout.DrivenProjects.Count > 0) return;
+
+        var projects = review
+            .Where(i => i.MergeWork is not null
+                && Checkouts.ToPoll(i.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch).Any())
+            .Select(i => i.ProjectKey)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (projects.Count == 0) return;
+
+        complain($"hatch: the board says this runner drives no merge train, while the merge column holds work for "
+            + $"{string.Join(", ", projects)} - it reports merges made by hand and merges nothing itself");
     }
 
     /// <summary>
@@ -200,7 +249,15 @@ public sealed class MergeTrain : IAsyncDisposable
 
                 var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
                     .FirstOrDefault();
-                if (where is null || failed.Contains(where.Path)) continue;
+                if (where is null)
+                {
+                    // The board listed this row for a checkout this runner holds, so
+                    // the two disagree about which: said, since nothing else is.
+                    complain($"hatch: {issue.Key} - no checkout here matches its repository, so its pull request is not read");
+                    continue;
+                }
+
+                if (failed.Contains(where.Path)) continue;
 
                 var name = Path.GetFileName(where.Path.TrimEnd('/', '\\'));
                 var forge = runtime.Forge(where.Path, where.Canonical);
@@ -275,7 +332,11 @@ public sealed class MergeTrain : IAsyncDisposable
                     continue;
                 }
 
-                if (result.WalkOn is not null) continue;
+                if (result.WalkOn is not null)
+                {
+                    NoteWalkOn(complain, issue.Key, result.WalkOn);
+                    continue;
+                }
 
                 var to = await ResolvedColumnNameAsync(runtime, result.Issue!.StatusId, ct);
                 runtime.Say.Line($"hatch: {PullRequestWords(issue.Key, to)}");
@@ -520,7 +581,11 @@ public sealed class MergeTrain : IAsyncDisposable
                     continue;
                 }
 
-                if (result.WalkOn is not null) continue;
+                if (result.WalkOn is not null)
+                {
+                    NoteWalkOn(complain, issue.Key, result.WalkOn);
+                    continue;
+                }
 
                 await runtime.QuietBoard.CommentAsync(
                     issue.Key, $"Merged its pull request at {judgedSha}, as {runtime.RunnerName}.", ct);

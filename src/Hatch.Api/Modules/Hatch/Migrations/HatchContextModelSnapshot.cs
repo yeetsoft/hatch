@@ -1512,6 +1512,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<bool?>("Container")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("DrivesTold")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("timestamp with time zone");
 
