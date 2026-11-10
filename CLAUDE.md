@@ -59,10 +59,10 @@ operator's credential inherited by everyone who clones it. The key reaches
 `/api/hatch/*` and nothing else, so a `403` means the key is working and the
 route is not one a key may take — ask the operator.
 
-The key is optional against a Hatch running with its wall off, where calls name
-themselves with a runner header instead. So a `401` says which of two things
-happened: a key that was sent and refused, or no key against a Hatch that wants
-one.
+A loop needs a key, wall on or off: a runner's name is its key's. Keyless calls
+against a Hatch with its wall off read as the local person, never a program. So a
+`401` says which of two things happened: a key that was sent and refused, or no
+key against a Hatch that wants one.
 
 ### If the loop spawned you
 

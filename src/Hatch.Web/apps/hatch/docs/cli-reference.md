@@ -12,7 +12,7 @@ take prose, so a comment that reads `--help` is a body, not a request for help.
 A usage mistake is different from a failed call (see [When a call
 fails](#when-a-call-fails)): it prints `hatch: ` and what was wrong, a blank
 line, then that command's usage block, all on standard error, and exits `1`.
-Which origin it talks to, and which key it names itself with, come
+Which origin it talks to, and which key it calls with, come
 from four layers of settings, highest first: [the runner](the-runner) has how
 to get the binary and what those layers are, and [`environment-variables`](environment-variables) has
 every variable.
@@ -63,8 +63,8 @@ same list. Two more commands exist and are left off the table because nobody
 types them: one is called by the container runner's entrypoint, and one by a
 session's hooks. They are in `--help`, in their own groups.
 
-`work`, `go-to-work` and `do-my-work` need a checkout, or a workspace to
-clone into, and `standby` needs the checkout it registers a login item for.
+`work`, `go-to-work` and `do-my-work` need a key, and a checkout or a workspace
+to clone into, and `standby` needs the checkout it registers a login item for.
 Everything else is one request and a sentence about the answer, so
 it runs from anywhere. Every write carries the key's name as its actor, so the
 ticket's history says who did what without anybody being asked to record it.
@@ -74,17 +74,22 @@ ticket's history says who did what without anybody being asked to record it.
 ### config
 
 ```
-hatch config [--show | --origin <origin> | --key <key> | --runner <name>
+hatch config [--show | --origin <origin> | --key <key>
               | --repo <path>... | --workspace <dir> | --models <model>...
               | --has <entry>... | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
 Asks for the origin and the key, and writes them to a per-user file where they
-follow you between checkouts, so you do it once. Bare `hatch config` also asks
-for the name the board should call this runner. The key may be left blank
-against a Hatch with its wall off, where calls name themselves with a runner
-header instead. Never put it in a repository, either way.
+follow you between checkouts, so you do it once. A runner's name is its key's,
+so there is no name to give. Left blank, the key is probed with no key: against
+a Hatch with its wall off, `hatch config` offers `Create a runner on this
+board? [Y/n]`, asks `Runner name [<suggestion>]`, creates the runner, writes
+its secret as the key and prints `created runner <name>`; a taken name is
+refused and nothing is written, and the runner has no owner until an admin sets
+one. Against a Hatch with its wall on, it says there is no key, and an admin
+creates the runner on the Runners page; then `hatch config --key <key>`. A loop
+needs a key either way. Never put it in a repository.
 
 - `--show` says what is set and which layer each value came from, including an
   `identity:` line naming who `/api/hatch/me` says the caller is - printed as
@@ -97,12 +102,6 @@ header instead. Never put it in a repository, either way.
 - `--key <key>` writes the key alone, and needs an origin already set. A key on
   a command line stays in shell history; the prompt does not, so prefer the
   prompt on a machine other people can read.
-- `--runner <name>` sets what the board calls this checkout - a character
-  from the cast list by default, chosen once and kept from then on. Refused,
-  with nothing written, if it is empty, too long, not plain ASCII, or already
-  the name of a live runner. It needs a checkout, and is recorded for the
-  active profile (or the one `--profile` names): a runner's name is still a
-  fact about one checkout, not a setting that follows the person.
 - `--repo <path>` also serves that checkout, for a loop with no checkout of its
   own. It is repeatable, each path must exist and carry a `.git`, and bare
   `--repo` clears them.
@@ -131,8 +130,7 @@ header instead. Never put it in a repository, either way.
   ([the runner](the-runner#has)).
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
-  Refused outside a checkout, combined with `--runner` (a runner's name is
-  already the checkout's own), or combined with `--show`.
+  Refused outside a checkout or combined with `--show`.
 - `--profile <name>` writes that profile's own file instead of the per-user
   file, for every write above. The file need not exist yet. Refused combined
   with `--here` (two different places to write) or an invalid name. `--show
@@ -554,13 +552,14 @@ Open to a key.
 hatch recuse AER-12 "reason"
 ```
 
-What a session calls on its way out: `omit` for this checkout's own runner
-name, the one `hatch config --show` prints. It makes the same write `omit`
+What a session calls on its way out: `omit` for this runner's own name, which
+is its key's. It makes the same write `omit`
 does, and says what it recorded: `recused <runner> from AER-12: <reason>`.
 
 The reason is required, and is at most 200 characters, measured after
 trimming; a missing, blank or overlong one is refused and calls nothing, and
-so is a checkout with no runner name. The dispatcher never hands the issue to
+so is a call with no key (`recuse needs a key - a runner's name is its key's`).
+The dispatcher never hands the issue to
 this runner again, and neither does it hand it any task below the issue. Lift
 it with `hatch omit AER-12 --lift <runner>`. Open to a key.
 

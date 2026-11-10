@@ -155,10 +155,8 @@ services:
       # The service name, over Compose's own network. Nothing about this
       # crosses the machine.
       HATCH_BASE: http://api:8080
-      # The key minted on the Runner page. Needed only with the wall up; empty
-      # against a Hatch with its wall off.
+      # Required: the runner is the key.
       HATCH_KEY: "${HATCH_KEY:-}"
-      HATCH_RUNNER: "${HATCH_RUNNER_NAME:-hatch-runner}"
       HATCH_OLLAMA_HOST: "${HATCH_OLLAMA_HOST:-}"
       HATCH_OLLAMA_TIERS: "${HATCH_OLLAMA_TIERS:-}"
       # Which agent this container's loop spawns: claude, codex, grok or ollama. Its
