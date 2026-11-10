@@ -429,6 +429,161 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(Value(await h.Attention.GetAttention(default)).Conflicts);
     }
 
+    // ---- The stalled half ----
+
+    [Fact]
+    public async Task Attention_ListsAStalledAndAHeldIssueAndNoOther()
+    {
+        var h = await NewAsync();
+        var stalled = await h.FileAsync("story", "stalled", h.Todo, rank: 1024);
+        var held = await h.FileAsync("story", "held", h.Todo, rank: 2048);
+        await h.FileAsync("story", "neither", h.Todo, rank: 3072);
+        stalled.StalledAt = Now.AddMinutes(-5);
+        stalled.StalledWhy = "lapsed";
+        held.Held = true;
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Attention.GetAttention(default)).Stalled!;
+
+        Assert.Equal([Key(stalled), Key(held)], rows.Select(r => r.Key));
+        Assert.Equal(Now.AddMinutes(-5), rows[0].StalledAt);
+        Assert.Equal("lapsed", rows[0].StalledWhy);
+        Assert.False(rows[0].Held);
+        Assert.Null(rows[1].StalledAt);
+        Assert.True(rows[1].Held);
+        Assert.Equal(0, rows[1].LetGo);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyStalledListWhenNothingIsHeldOrStalled()
+    {
+        var h = await NewAsync();
+        await h.FileAsync("story", "plain", h.Todo);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Stalled!);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAStalledOrHeldIssueInATerminalOrDeferredColumn()
+    {
+        var h = await NewAsync();
+        var shelf = await h.ShelfAsync(37);
+        var done = await h.FileAsync("story", "done", h.Done);
+        var doneHeld = await h.FileAsync("story", "done and held", h.Done);
+        var shelved = await h.FileAsync("story", "shelved", shelf);
+        done.StalledAt = Now.AddMinutes(-5);
+        doneHeld.Held = true;
+        shelved.StalledAt = Now.AddMinutes(-5);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).Stalled!);
+    }
+
+    [Fact]
+    public async Task Attention_ListsStalledRowsInBoardOrder_ColumnThenRankThenId()
+    {
+        var h = await NewAsync();
+        var review = await h.FileAsync("story", "review", h.Review);
+        var doing = await h.FileAsync("story", "doing", h.InProgress);
+        var lowerRank = await h.FileAsync("story", "lower rank", h.Todo, rank: 2048);
+        var higherRank = await h.FileAsync("story", "higher rank", h.Todo, rank: 1024);
+        var tieFirst = await h.FileAsync("story", "tie first", h.Inbox, rank: 1024);
+        var tieSecond = await h.FileAsync("story", "tie second", h.Inbox, rank: 1024);
+        review.StalledAt = Now.AddMinutes(-5);
+        doing.Held = true;
+        lowerRank.Held = true;
+        higherRank.Held = true;
+        tieSecond.Held = true;
+        tieFirst.Held = true;
+        await h.Db.SaveChangesAsync();
+
+        Assert.Equal(
+            [Key(tieFirst), Key(tieSecond), Key(higherRank), Key(lowerRank), Key(doing), Key(review)],
+            Value(await h.Attention.GetAttention(default)).Stalled!.Select(r => r.Key));
+    }
+
+    [Fact]
+    public async Task Attention_NamesWhoAStalledRowWaitsOn()
+    {
+        var h = await NewAsync(claims: TestClaims.With(stallResumeLimit: 1));
+        var held = await h.FileAsync("story", "held", h.Todo, rank: 1);
+        var atLimit = await h.FileAsync("story", "at the limit", h.Todo, rank: 2);
+        var inside = await h.FileAsync("story", "inside the window", h.Todo, rank: 3);
+        held.Held = true;
+        atLimit.StalledAt = Now.AddMinutes(-20);
+        inside.StalledAt = Now.AddMinutes(-5);
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = atLimit.Id,
+            Actor = "runner",
+            Kind = EfHatchIssueEvent.ClaimReleased,
+            Payload = System.Text.Json.JsonSerializer.Serialize(new { outcome = ClaimOutcomes.Dropped }),
+            At = Now.AddMinutes(-25),
+        });
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Attention.GetAttention(default)).Stalled!.ToDictionary(r => r.Key);
+
+        Assert.Equal(StalledKinds.Person, rows[Key(held)].Kind);
+        Assert.Equal(StalledKinds.Person, rows[Key(atLimit)].Kind);
+        Assert.Equal(1, rows[Key(atLimit)].LetGo);
+        Assert.Equal(StalledKinds.Loop, rows[Key(inside)].Kind);
+        Assert.NotNull(rows[Key(inside)].Sentence);
+    }
+
+    [Fact]
+    public async Task Attention_NamesAPersonForAStalledRowOnABoardThatNeverResumes()
+    {
+        var h = await NewAsync(claims: TestClaims.With(stallResumeMinutes: 0));
+        var stalled = await h.FileAsync("story", "stalled", h.Todo);
+        stalled.StalledAt = Now.AddMinutes(-5);
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(StalledKinds.Person, Assert.Single(attention.Stalled!).Kind);
+        Assert.Equal(0, attention.StallResumeSeconds);
+    }
+
+    [Fact]
+    public async Task Attention_NamesTheLoopForARowStalledPastTheWindowAndUnderTheLimit_WithNoSentence()
+    {
+        var h = await NewAsync();
+        var stalled = await h.FileAsync("story", "stalled", h.Todo);
+        stalled.StalledAt = Now.AddMinutes(-20);
+        await h.Db.SaveChangesAsync();
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).Stalled!);
+
+        Assert.Equal(StalledKinds.Loop, row.Kind);
+        Assert.Null(row.Sentence);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersTheBoardsResumeWindowInSeconds()
+    {
+        var h = await NewAsync();
+
+        Assert.Equal(TestClaims.StallResumeMinutes * 60, Value(await h.Attention.GetAttention(default)).StallResumeSeconds);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersTheStalledListOnABoardWithNoReviewColumn()
+    {
+        var h = await OneColumnAsync();
+        var gate = new EfHatchStatus { Name = "gate", SortOrder = 5, IsProtected = true };
+        h.Db.Statuses.Add(gate);
+        await h.Db.SaveChangesAsync();
+        var stalled = await h.FileAsync("story", "stalled", gate.Id);
+        stalled.StalledAt = Now.AddMinutes(-5);
+        await h.Db.SaveChangesAsync();
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Equal(Key(stalled), Assert.Single(attention.Stalled!).Key);
+        Assert.Equal(900, attention.StallResumeSeconds);
+    }
+
     // ---- The failing build half ----
 
     [Fact]
@@ -2556,7 +2711,7 @@ public class AttentionControllerTests : IDisposable
     }
 
     /// <summary>A board with the shape the Playbooks migration leaves behind.</summary>
-    private static async Task<Harness> NewAsync(string backupPath = "")
+    private static async Task<Harness> NewAsync(string backupPath = "", IssueClaims? claims = null)
     {
         var db = NewDb();
 
@@ -2583,7 +2738,7 @@ public class AttentionControllerTests : IDisposable
         {
             Db = db,
             Keys = keys,
-            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), TestClaims.With(), time, keys, sessions), backup),
+            Attention = new AttentionController(db, runners, time, new Dispatch(db, new StubActorDirectory(), claims ?? TestClaims.With(), time, keys, sessions), backup),
             Time = time,
             Backup = backup,
             Status = status,

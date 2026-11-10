@@ -86,11 +86,30 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // The projects whose clear implementation steps one live runner, or none, can take.
         var runnerCapacity = await dispatch.RunnerCapacityAsync(0, runners.Cutoff(time.GetUtcNow()), ct);
 
+        // Every issue a person held or the board marked stalled, in board order,
+        // whatever the board's shape - the fold is the queue's own, so this list
+        // and the queue's rows cannot disagree about who it waits on.
+        var stalledCandidates = await db.Issues.AsNoTracking()
+            .Where(i => !i.Status!.IsTerminal && !i.Status!.IsDeferred && (i.StalledAt != null || i.Held))
+            .OrderBy(i => i.Status!.SortOrder).ThenBy(i => i.Rank).ThenBy(i => i.Id)
+            .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number, i.Type, i.Title, i.StalledAt, i.StalledWhy, i.Held })
+            .ToListAsync(ct);
+        var marked = stalledCandidates.Where(i => i.StalledAt is not null).Select(i => i.Id).ToList();
+        var letGoCounts = marked.Count > 0 ? await LetGo.CountsAsync(db, marked, ct) : [];
+        var stalledNow = time.GetUtcNow();
+        var stalled = stalledCandidates.Select(c =>
+        {
+            var letGo = c.StalledAt is not null ? letGoCounts.GetValueOrDefault(c.Id, 0) : 0;
+            var blocking = Dispatch.StalledFold(c.Held, c.StalledAt, c.StalledWhy, letGo, dispatch.StallResumeSeconds, dispatch.StallResumeLimit, stalledNow);
+            var kind = blocking is { Kind: BlockedKinds.Person } ? StalledKinds.Person : StalledKinds.Loop;
+            return new StalledIssueDto(IssueKey.Format(c.ProjectKey, c.Number), c.Title, c.Type, c.StalledAt, c.StalledWhy, c.Held, letGo, blocking?.Sentence, kind);
+        }).ToList();
+
         // A board too short to have a review column has nothing in review, and
         // that is an answer rather than an error: the section draws its empty
         // state and the control stays quiet about a half that cannot exist here.
         if (Columns.AwaitingReview(statuses) is not { } review)
-            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity);
+            return new AttentionDto([], 0, questions, [], TrunkBuilds: trunkBuilds, ExhaustedRunners: exhausted, Deadlocked: deadlocked, Backup: backupRow, WaitingOnARunner: waitingOnARunner, TrainStalled: trainStalled, RunnerCapacity: runnerCapacity, Stalled: stalled, StallResumeSeconds: dispatch.StallResumeSeconds);
 
         // The column's own order, which is the board's: (Rank, Id), the same
         // ordering BoardController slices its columns with, so a row here sits
@@ -384,7 +403,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity);
+            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds);
     }
 
     /// <summary>
