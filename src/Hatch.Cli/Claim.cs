@@ -127,7 +127,7 @@ public sealed class Claim : IAsyncDisposable
     private readonly HatchClient _quiet;
     private readonly CancellationTokenSource _stop = new();
     private readonly TimeSpan _interval;
-    private readonly TimeSpan? _stallLapse;
+    private long _stallLapseTicks;
     private Task? _heartbeat;
     private int _released;
 
@@ -138,7 +138,7 @@ public sealed class Claim : IAsyncDisposable
         _client = client;
         _quiet = client.Quiet();
         _interval = interval;
-        _stallLapse = stallLapse;
+        _stallLapseTicks = stallLapse?.Ticks ?? -1;
         Key = key;
         Token = token;
         TtlSeconds = ttlSeconds;
@@ -161,8 +161,22 @@ public sealed class Claim : IAsyncDisposable
     /// <summary>The client clock, read just before the take's POST - never later than the server's own <c>ClaimedAt</c>.</summary>
     public DateTimeOffset TakenAt { get; }
 
-    /// <summary>The window a heartbeat that cannot reach Hatch at all gives up after - see <see cref="BeatAsync"/>.</summary>
-    public TimeSpan? StallLapse => _stallLapse;
+    /// <summary>
+    /// The window a heartbeat that cannot reach Hatch at all gives up after - see <see cref="BeatAsync"/>.
+    /// What the take said, until <see cref="UseQuietLimit"/> follows the playbook the dispatch matched.
+    /// </summary>
+    public TimeSpan? StallLapse => Volatile.Read(ref _stallLapseTicks) is var ticks and >= 0 ? new TimeSpan(ticks) : null;
+
+    /// <summary>
+    /// Follows the matched playbook's quiet limit, for a claim that was taken before the playbook
+    /// was attached. Counts only when positive, as the server's own rule does: a zero or negative
+    /// limit leaves the window as it was. Read by the heartbeat on its own thread, hence the atomic write.
+    /// </summary>
+    public void UseQuietLimit(int seconds)
+    {
+        if (seconds > 0)
+            Volatile.Write(ref _stallLapseTicks, TimeSpan.FromSeconds(seconds).Ticks);
+    }
 
     private ReadoutState? _readout;
 
@@ -297,7 +311,7 @@ public sealed class Claim : IAsyncDisposable
     /// retrying inside <see cref="HatchClient.Send"/> before it came back here
     /// at all - and the next tick tries again.</para>
     ///
-    /// <para><b>Unless the blips add up to more than <see cref="_stallLapse"/>
+    /// <para><b>Unless the blips add up to more than <see cref="StallLapse"/>
     /// altogether.</b> This is a client-side mitigation and not a guarantee -
     /// the server's own quiet-claim rule is what actually lets somebody else
     /// take the ticket - but a runner that cannot reach Hatch has no way to know
@@ -308,7 +322,7 @@ public sealed class Claim : IAsyncDisposable
     /// window gives up without spending another retry's worth of time finding
     /// out the call still fails - which keeps the give-up within about one
     /// heartbeat interval of the window, not the window plus a retry's slack.
-    /// A <see cref="_stallLapse"/> of zero or null - lapsing off, install-wide -
+    /// A <see cref="StallLapse"/> of zero or null - lapsing off, install-wide -
     /// never gives up this way: every failure reads as weather, as it always
     /// has.</para>
     /// </remarks>
@@ -330,7 +344,7 @@ public sealed class Claim : IAsyncDisposable
                 return;
             }
 
-            if (_stallLapse is { } lapse && lapse > TimeSpan.Zero && _client.Clock.GetUtcNow() - lastGood >= lapse)
+            if (StallLapse is { } lapse && lapse > TimeSpan.Zero && _client.Clock.GetUtcNow() - lastGood >= lapse)
             {
                 _lost.Set($"no answer from Hatch for over {(int)lapse.TotalSeconds}s");
                 return;

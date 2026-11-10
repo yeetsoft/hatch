@@ -114,7 +114,8 @@ public class IssueClaimController(
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
-        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, claims.StallLapseSeconds);
+        var window = claims.WindowFor(new ClaimSnapshot(null, null, null, null, null, null, null, playbook?.Limit));
+        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window);
     }
 
     /// <summary>The name an answer nobody pressed is written under.</summary>
@@ -348,12 +349,17 @@ public class IssueClaimController(
     {
         null => new ClaimRefusedDto("this claim was cleared", ClaimLostReasons.Cleared),
         var held when held == presented => claims.IsQuiet(claim, now)
-            ? new ClaimRefusedDto($"this claim has gone quiet for {claims.StallLapseSeconds / 60} minutes", ClaimLostReasons.Quiet)
+            ? new ClaimRefusedDto($"this claim has gone quiet for {Minutes(claims.WindowFor(claim))}", ClaimLostReasons.Quiet)
             : new ClaimRefusedDto("this claim has expired", ClaimLostReasons.Expired),
         _ => new ClaimRefusedDto(
             claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
             ClaimLostReasons.Taken),
     };
+
+    /// <summary>A window in the unit a person says it in: whole minutes where it is one, seconds otherwise.</summary>
+    private static string Minutes(int seconds) => seconds % 60 == 0
+        ? seconds == 60 ? "1 minute" : $"{seconds / 60} minutes"
+        : $"{seconds} seconds";
 
     // ---- One column for liveness ----
 

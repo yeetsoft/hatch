@@ -111,7 +111,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`.
 
 ## Columns
 
@@ -615,8 +615,11 @@ clock, not a dispatch of its own - `WorkController` is what decides whether
 to send anything at an issue, and a claim that second-guessed that would be
 the same rule in two places. The lease's length is the
 `Hatch__ClaimTtlSeconds` setting (default 300 seconds); taking a claim
-carries it back as `TtlSeconds` alongside `StallLapseSeconds`, so a caller
-never has to know the setting's name to honor it. A heartbeat renews the
+carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
+quiet window where its playbook set one, the board's otherwise, `0` when lapsing
+is off for it - so a caller never has to know the setting's name to honor it.
+The claim object on every read (the board card, the issue, the search) carries
+the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
 `playbookId` may be a repo-sourced file row's (negative) id, the same one
 `GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
@@ -733,7 +736,14 @@ assume the group is uniform.
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
 (millions of tokens), `BriefLimit` (characters) and `QuietLimitSeconds` (seconds a
 claim may go without a word; null inherits the server's quiet lapse), `DeniedTools`, `IsCheck`,
-and `Source` - `"board"` or `"project"`, by whether `ProjectId` names one.
+`Source` - `"board"` or `"project"`, by whether `ProjectId` names one - and
+`UnreachableReason`.
+`UnreachableReason` is read-only and null wherever the dispatcher could pick
+the row; otherwise it is one sentence saying that a dispatch from the row's
+from-column goes to another column, or nowhere. It is derived from the live
+board on every read and never stored, so a column reorder changes it with no
+write to the row, and a proposal's `after` carries it too, judged against the
+row as the proposal would leave it. Saving such a row is not refused.
 The create and patch bodies share that shape with the three-state convention
 every optional field in Hatch takes: absent leaves a field alone (patch) or
 takes its default (create), `""` clears it, a value sets it.

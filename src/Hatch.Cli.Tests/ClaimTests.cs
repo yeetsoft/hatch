@@ -662,6 +662,63 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-1633: the claim follows the playbook's quiet limit ----
+
+    [Fact]
+    public async Task UseQuietLimit_sets_StallLapse_when_positive_and_ignores_zero_and_negative()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+
+        claim!.UseQuietLimit(0);
+        Assert.Equal(TimeSpan.FromSeconds(300), claim.StallLapse);
+        claim.UseQuietLimit(-5);
+        Assert.Equal(TimeSpan.FromSeconds(300), claim.StallLapse);
+
+        claim.UseQuietLimit(1500);
+        Assert.Equal(TimeSpan.FromSeconds(1500), claim.StallLapse);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>A playbook's longer quiet limit stretches how long the heartbeat waits out an unreachable server.</summary>
+    [Fact]
+    public async Task A_heartbeat_gives_up_after_the_quiet_limit_the_claim_was_given_not_the_takes()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var h = new Harness(clock: clock);
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+        claim!.UseQuietLimit(1500);
+
+        // Past the take's 300s, short of the playbook's 1500s: still holding.
+        for (var i = 0; i < 4; i++)
+        {
+            await Task.Delay(20);
+            clock.Advance(TimeSpan.FromSeconds(100));
+        }
+        await Task.Delay(50);
+        Assert.Null(claim.Lost);
+
+        // Past 1500s: gives up, naming the window it used.
+        for (var i = 0; i < 400 && claim.Lost is null; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromSeconds(100));
+        }
+        Assert.NotNull(claim.Lost);
+        Assert.Contains("over 1500s", claim.Lost, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
     // ---- HA-116: giving up on a longer outage ----
 
     /// <summary>

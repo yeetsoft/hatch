@@ -59,8 +59,8 @@ public static class Fixtures
     public static PlaybookDto Playbook(
         string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null,
         IReadOnlyList<string>? deniedTools = null, bool isCheck = false,
-        int? projectId = null, string? projectKey = null, string? projectName = null) =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", null, model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName);
+        int? projectId = null, string? projectKey = null, string? projectName = null, int? quietLimitSeconds = null) =>
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", null, model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName, Source: "board", QuietLimitSeconds: quietLimitSeconds);
 
     public static WorkDto Work(
         string key,
@@ -88,12 +88,13 @@ public static class Fixtures
         string? landing = null,
         PlaybookFileReferenceDto? playbookFile = null,
         bool asksReleaseNote = false,
-        int? nextBriefLimit = null) =>
+        int? nextBriefLimit = null,
+        int? quietLimitSeconds = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
             ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
-            Playbook: hop ? null : Playbook(isCheck: isCheck),
+            Playbook: hop ? null : Playbook(isCheck: isCheck, quietLimitSeconds: quietLimitSeconds),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],

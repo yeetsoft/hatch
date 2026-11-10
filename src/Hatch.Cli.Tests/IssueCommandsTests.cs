@@ -143,7 +143,7 @@ public sealed class IssueCommandsTests
     private static IssueDto Held(string? chatter) =>
         AnIssue(parent: "AER-1") with
         {
-            Claim = new IssueClaimDto("Rall-runner", "Dennis Duffy", Now - TimeSpan.FromMinutes(2), Now - TimeSpan.FromSeconds(10), chatter, null, 90),
+            Claim = new IssueClaimDto("Rall-runner", "Dennis Duffy", Now - TimeSpan.FromMinutes(2), Now - TimeSpan.FromSeconds(10), chatter, null, 90, 600),
         };
 
     [Fact]

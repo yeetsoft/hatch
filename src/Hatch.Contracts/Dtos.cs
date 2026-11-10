@@ -520,7 +520,19 @@ public record IssueClaimDto(
     /// a runner that has gone quiet without deciding for itself when one is
     /// gone.
     /// </summary>
-    int TtlSeconds);
+    int TtlSeconds,
+    /// <summary>
+    /// The quiet window this claim is judged against, in seconds - its own
+    /// where its playbook or its playbook's file row set one, the board's
+    /// otherwise, and <c>0</c> when lapsing is off for this claim. Here for
+    /// the reason <see cref="TtlSeconds"/> is: so a client can say when a
+    /// claim goes quiet without deciding for itself.
+    ///
+    /// It is not a second copy of the rule. <see cref="IssueClaims.IsQuiet"/>
+    /// still decides whether a claim has gone quiet; this only says what it
+    /// was measured against.
+    /// </summary>
+    int StallLapseSeconds);
 
 /// <summary>One issue, whole - the detail page's payload.</summary>
 /// <param name="ChildKeys">Its stories, or its tasks. Keys rather than nested issues: the page links to them and does not draw them.</param>
@@ -765,7 +777,8 @@ public record ClaimRequest(string Runner, int? PlaybookId = null)
 /// </param>
 /// <param name="StallLapseSeconds">
 /// The window this claim goes quiet under, in seconds, or <c>0</c> when quiet
-/// detection is off - see <see cref="IssueClaims.StallLapseSeconds"/>. The server is
+/// detection is off for it - the playbook's own where it has one, otherwise
+/// <see cref="IssueClaims.StallLapseSeconds"/>. The server is
 /// what honours it, so the server is what says what it is, the same reason
 /// <paramref name="TtlSeconds"/> rides back rather than being configured on
 /// both sides.
