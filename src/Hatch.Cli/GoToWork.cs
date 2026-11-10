@@ -651,6 +651,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// <summary>The session this loop's own beats are answered from, once one has been; see <see cref="EndSessionAsync"/>.</summary>
     private int? _sessionId;
 
+    /// <summary>Whether this process's first loop beat has gone with the old runner name; see <see cref="LegacyName"/>.</summary>
+    private bool _legacyNameSent;
+
     /// <summary>How long to wait between reminders that nothing has changed.</summary>
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
@@ -1758,6 +1761,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
             ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
             : null;
 
+        // Once per process, not once per night: a restart is a new process and
+        // says it again, so this is not `tally.Fresh`, which a restart never is.
+        var legacyName = once || _legacyNameSent ? null : LegacyName();
+
         var request = runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
@@ -1778,6 +1785,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 Mine: mine,
                 Standing: runtime.Checkouts.Any(c => c.Standing),
                 Where: runtime.Where,
+                LegacyName: legacyName,
                 // A once beat joins the session at the same `where`, and a fresh
                 // tally's zeros would blank the loop's totals, so it names host only.
                 Runs: once ? null : tally.Runs,
@@ -1806,6 +1814,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
         var beat = await runtime.Runners().BeatAsync(request, ct);
 
+        // Set after the call, so a beat that throws is sent again with the name.
+        if (!once) _legacyNameSent = true;
+
         // A fresh start that finds the checkout's session still live may be
         // looking at a loop that died without ending it, so it waits to see
         // whether that session beats again before calling it a second loop.
@@ -1827,6 +1838,29 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
         return once ? null : beat.Instruction;
+    }
+
+    /// <summary>
+    /// The name this checkout's old <c>runners</c> record holds, if it has one.
+    /// An unreadable file is no name: it must never stop a heartbeat.
+    /// </summary>
+    private string? LegacyName()
+    {
+        try
+        {
+            var key = RunnerNames.Record.Key(runtime.ProfileName, Checkout.Canonical(runtime.Root));
+            return RunnerNames.Record.Read(runtime.RunnerRecordPath).TryGetValue(key, out var name) && name.Length > 0
+                ? name
+                : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>How often a fresh loop asks again while it waits out a session it found live.</summary>
