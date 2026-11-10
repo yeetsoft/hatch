@@ -70,7 +70,7 @@ public class RunnersBudgetTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/runners", StubRunners);
+            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/runners-legacy", StubRunners);
             await harness.WaitForVisibleAsync(deadline, ".hatch-token-budget-line");
 
             var path = await harness.ScreenshotAsync(deadline, screenshot);
