@@ -3910,6 +3910,21 @@ public class RunnersControllerTests
         return (live, drivers.GetValueOrDefault(name, []));
     }
 
+    [Fact]
+    public async Task JoinAsync_SkipsAnAdoptedRow()
+    {
+        var h = await NewAsync(wall: true);
+        var row = Tagged("old:/one", Guid.NewGuid(), "");
+        row.AdoptedAt = Now;
+        row.AdoptedInto = "worker";
+        h.Db.LegacyRunners.Add(row);
+        await h.Db.SaveChangesAsync();
+
+        var joined = await global::Hatch.Api.Modules.Hatch.Runner.JoinAsync(h.Db, h.Keys, default);
+
+        Assert.DoesNotContain(joined, r => r.Name == "old:/one");
+    }
+
     [SkippableFact]
     public async Task SessionHeartbeat_ALoopBeatUnderANewName_RetiresTheOldRowAtOnce_AndItIsNeitherLiveNorElected()
     {
@@ -4145,6 +4160,197 @@ public class RunnersControllerTests
         await off.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
         Assert.Equal("hatch", (await off.Db.LegacyRunners.AsNoTracking().SingleAsync()).RetiredBy);
+    }
+
+    // ---- The owner-matching adoption sweep onto RunnerConfig (HA-2164) ----
+
+    private static Runners NewAdoptionSweep() => new(
+        Options.Create(new HatchOptions()), Options.Create(new AuthOptions()), new StubRevision("dev", 0));
+
+    [Fact]
+    public async Task AdoptByOwner_OneKeyOneRow_FoldsTheRowOntoAConfig()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        var key = await h.AddKeyAsync("worker", owner);
+        var row = Tagged("old:/one", owner, "gpu\nbackend");
+        row.Under = "AER-1";
+        row.MaxRuns = 10;
+        row.MaxSpend = 5.5m;
+        row.MaxTokens = 1000;
+        row.MaxTokensPerHour = 100;
+        row.UntilAt = Now.AddHours(2);
+        h.Db.LegacyRunners.Add(row);
+        await h.FileAsync();
+        var issueId = (await h.Db.Issues.AsNoTracking().SingleAsync()).Id;
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issueId, RunnerName = "old:/one", By = "operator", At = Now.AddHours(-1) });
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal(key.Id, config.ApiKeyId);
+        Assert.Equal(["gpu", "backend"], RunnerTagColumn.Read(config.Tags));
+        Assert.Equal("AER-1", config.Under);
+        Assert.Equal(10, config.MaxRuns);
+        Assert.Equal(5.5m, config.MaxSpend);
+        Assert.Equal(1000, config.MaxTokens);
+        Assert.Equal(100, config.MaxTokensPerHour);
+        Assert.Equal(Now.AddHours(2), config.UntilAt);
+        Assert.Equal(Now, config.UpdatedAt);
+
+        var omission = await h.Db.RunnerOmissions.AsNoTracking().SingleAsync();
+        Assert.Equal("worker", omission.RunnerName);
+        Assert.Equal(issueId, omission.IssueId);
+
+        var stored = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now, stored.AdoptedAt);
+        Assert.Equal("worker", stored.AdoptedInto);
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_OneKeyTwoRows_AdoptsNeither()
+    {
+        var h = await NewAsync(wall: true);
+        var ownerA = Guid.NewGuid();
+        var keyA = await h.AddKeyAsync("worker-a", ownerA);
+        h.Db.LegacyRunners.Add(Tagged("a:/one", ownerA, ""));
+
+        var ownerB = Guid.NewGuid();
+        var keyB = await h.AddKeyAsync("worker-b", ownerB);
+        h.Db.LegacyRunners.Add(Tagged("b:/one", ownerB, "", where: "host:/checkouts/one"));
+        h.Db.LegacyRunners.Add(Tagged("b:/two", ownerB, "", where: "host:/checkouts/two"));
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        Assert.NotNull(await h.Db.RunnerConfigs.AsNoTracking().SingleOrDefaultAsync(c => c.ApiKeyId == keyA.Id));
+        Assert.Equal(Now, (await h.Db.LegacyRunners.AsNoTracking().SingleAsync(r => r.Name == "a:/one")).AdoptedAt);
+
+        Assert.Null(await h.Db.RunnerConfigs.AsNoTracking().SingleOrDefaultAsync(c => c.ApiKeyId == keyB.Id));
+        Assert.All(
+            await h.Db.LegacyRunners.AsNoTracking().Where(r => r.ForPersonId == ownerB).ToListAsync(),
+            r => Assert.Null(r.AdoptedAt));
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_TwoLiveKeysOneRow_AdoptsNothing()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        await h.AddKeyAsync("worker-1", owner);
+        await h.AddKeyAsync("worker-2", owner);
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, ""));
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+        Assert.Null((await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).AdoptedAt);
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_ARevokedKey_DoesNotCount()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        var revoked = await h.AddKeyAsync("worker-old", owner);
+        await h.RevokeKeyAsync(revoked.Id);
+        var live = await h.AddKeyAsync("worker-new", owner);
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, ""));
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleOrDefaultAsync();
+        Assert.NotNull(config);
+        Assert.Equal(live.Id, config!.ApiKeyId);
+        Assert.Equal("worker-new", (await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).AdoptedInto);
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_AKeyWithAConfig_KeepsItButMarksTheRowAdopted()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        var key = await h.AddKeyAsync("worker", owner);
+        var earlier = Now.AddDays(-3);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = key.Id, Tags = "[]", UpdatedAt = earlier });
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, "gpu"));
+        await h.FileAsync();
+        var issueId = (await h.Db.Issues.AsNoTracking().SingleAsync()).Id;
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issueId, RunnerName = "old:/one", By = "operator", At = Now.AddHours(-1) });
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal("[]", config.Tags);
+        Assert.Equal(earlier, config.UpdatedAt);
+
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now, row.AdoptedAt);
+        Assert.Equal("worker", row.AdoptedInto);
+
+        var omission = await h.Db.RunnerOmissions.AsNoTracking().SingleAsync();
+        Assert.Equal("worker", omission.RunnerName);
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_AnOmissionAlreadyOnTheKeyName_IsNotDuplicated()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        await h.AddKeyAsync("worker", owner);
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, ""));
+        await h.FileAsync();
+        var issueId = (await h.Db.Issues.AsNoTracking().SingleAsync()).Id;
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issueId, RunnerName = "old:/one", By = "operator", At = Now.AddHours(-1) });
+        h.Db.Add(new EfHatchIssueRunnerOmission { IssueId = issueId, RunnerName = "worker", By = "operator", At = Now });
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+
+        var omission = await h.Db.RunnerOmissions.AsNoTracking().SingleAsync();
+        Assert.Equal("worker", omission.RunnerName);
+        Assert.Equal(Now, omission.At);
+        Assert.Equal("worker", (await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).AdoptedInto);
+    }
+
+    [Fact]
+    public async Task AdoptByOwner_RunTwice_ChangesNothingTheSecondTime()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        await h.AddKeyAsync("worker", owner);
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now, default);
+        var configAfterFirst = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+
+        await NewAdoptionSweep().AdoptByOwnerAsync(h.Db, h.Keys, Now.AddMinutes(5), default);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal(configAfterFirst.UpdatedAt, config.UpdatedAt);
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now, row.AdoptedAt);
+    }
+
+    [Fact]
+    public async Task GetRunners_AdoptsOnRead_AndAnAdoptedRowIsNotListed()
+    {
+        var h = await NewAsync(wall: true);
+        var owner = Guid.NewGuid();
+        await h.AddKeyAsync("worker", owner);
+        h.Db.LegacyRunners.Add(Tagged("old:/one", owner, "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        var list = await h.ListAllAsync();
+
+        Assert.DoesNotContain("old:/one", list.Select(r => r.Name));
+        Assert.Contains("worker", list.Select(r => r.Name));
+        Assert.Equal(Now, (await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).AdoptedAt);
     }
 
     [SkippableFact]

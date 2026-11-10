@@ -50,6 +50,11 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     /// ordinal, the order the read has always answered in. Four whole reads
     /// and no filter, the way <see cref="Runners.HeldAsync"/> reads its own
     /// table whole: the scale here is tens of rows, never thousands.
+    ///
+    /// A beat that no key claims and that <see cref="Runners.AdoptByOwnerAsync"/>
+    /// has already folded onto a key's config is history, not a runner: it is
+    /// left out of the unclaimed half below rather than listed a second time
+    /// under its own old name.
     /// </summary>
     public static async Task<List<Runner>> JoinAsync(HatchContext db, IAuthService keys, CancellationToken ct)
     {
@@ -75,7 +80,7 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
 
         foreach (var beat in beats)
         {
-            if (!claimed.Contains(beat.Name)) joined.Add(new Runner(null, null, beat));
+            if (!claimed.Contains(beat.Name) && beat.AdoptedAt is null) joined.Add(new Runner(null, null, beat));
         }
 
         return joined

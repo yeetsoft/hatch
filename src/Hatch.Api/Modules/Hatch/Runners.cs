@@ -2,6 +2,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Models.HatchRevision;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -303,6 +304,128 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         own is not null ? (own, "runner")
         : site is not null ? (site, "default")
         : (null, "none");
+
+    /// <summary>
+    /// The one-time migration rule, run as an idempotent sweep rather than a
+    /// schema migration's data step - see HA-1944's "Decisions made". A legacy
+    /// row adopts onto its owner's config only where the match is unambiguous
+    /// both ways: the owner holds exactly one live key, and that key's rows
+    /// number exactly one. Any other count - no live key, two or more keys, or
+    /// two or more rows - adopts nothing for that owner, this pass or any
+    /// later one, until the count on both sides resolves to one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EfHatchIssueRunnerOmission"/>'s own key is
+    /// <c>(IssueId, RunnerName)</c> (<see cref="HatchContext.OnModelCreating"/>),
+    /// so a renamed row's omissions are removed and re-added under the key's
+    /// name rather than updated in place - EF refuses to edit a tracked
+    /// entity's key, and <c>ExecuteUpdateAsync</c> is relational-only. A
+    /// collision - the key's own name already carries an omission on the same
+    /// issue - skips the add, both against what is already saved and against
+    /// what this call has added but not yet saved.
+    ///
+    /// <para>Two concurrent reads can both find no config for the same key and
+    /// both insert one - the primary key is the key's id - so the loser clears
+    /// its own tracker and returns rather than throwing past this call; the
+    /// next read sweeps again and finds the winner's row already adopted.
+    /// There is no logger here, by design - the row's own
+    /// <see cref="EfHatchRunner.AdoptedInto"/> is the trail.</para>
+    /// </remarks>
+    public async Task AdoptByOwnerAsync(HatchContext db, IAuthService keys, DateTimeOffset now, CancellationToken ct)
+    {
+        var keysByOwner = (await keys.ListApiKeysAsync(ct))
+            .Where(k => k.OwnerPersonId is not null && k.IsLive(now))
+            .GroupBy(k => k.OwnerPersonId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = await db.LegacyRunners.Where(r => r.AdoptedAt == null && r.ForPersonId != null).ToListAsync(ct);
+        var addedOmissions = new HashSet<(long IssueId, string RunnerName)>();
+
+        foreach (var group in rows.GroupBy(r => r.ForPersonId!.Value))
+        {
+            if (group.Count() != 1) continue;
+            if (!keysByOwner.TryGetValue(group.Key, out var ownerKeys) || ownerKeys.Count != 1) continue;
+
+            var row = group.Single();
+            var key = ownerKeys[0];
+
+            if (!await db.RunnerConfigs.AnyAsync(c => c.ApiKeyId == key.Id, ct))
+            {
+                db.RunnerConfigs.Add(new EfHatchRunnerConfig
+                {
+                    ApiKeyId = key.Id,
+                    Under = row.Under,
+                    MaxRuns = row.MaxRuns,
+                    MaxSpend = row.MaxSpend,
+                    MaxTokens = row.MaxTokens,
+                    MaxTokensPerHour = row.MaxTokensPerHour,
+                    UntilAt = row.UntilAt,
+                    Tags = RunnerTagColumn.Write(AdoptedTags(row.Tags)),
+                    UpdatedAt = now,
+                });
+            }
+
+            if (!string.Equals(row.Name, key.Name, StringComparison.Ordinal))
+            {
+                var toRekey = await db.RunnerOmissions.Where(o => o.RunnerName == row.Name).ToListAsync(ct);
+                foreach (var omission in toRekey)
+                {
+                    var exists = addedOmissions.Contains((omission.IssueId, key.Name))
+                        || await db.RunnerOmissions.AnyAsync(o => o.IssueId == omission.IssueId && o.RunnerName == key.Name, ct);
+
+                    db.RunnerOmissions.Remove(omission);
+
+                    if (!exists)
+                    {
+                        db.RunnerOmissions.Add(new EfHatchIssueRunnerOmission
+                        {
+                            IssueId = omission.IssueId,
+                            RunnerName = key.Name,
+                            Reason = omission.Reason,
+                            By = omission.By,
+                            At = omission.At,
+                        });
+                        addedOmissions.Add((omission.IssueId, key.Name));
+                    }
+                }
+            }
+
+            row.AdoptedAt = now;
+            row.AdoptedInto = key.Name;
+        }
+
+        if (!db.ChangeTracker.HasChanges()) return;
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+        }
+    }
+
+    /// <summary>
+    /// A row's own tags, normalised and capped at <see cref="RunnerTags.MaxCount"/> -
+    /// the per-tag half of <see cref="RunnersController.CarryTagsAsync"/>'s own
+    /// loop, with nothing to union against: one row adopts onto one key, never
+    /// several.
+    /// </summary>
+    private static IReadOnlyList<string> AdoptedTags(string? tags)
+    {
+        if (tags is not { Length: > 0 }) return [];
+
+        var list = new List<string>();
+        foreach (var raw in tags.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (RunnerTags.Normalise([raw], out var one) is not null || one.Count == 0) continue;
+            if (list.Count >= RunnerTags.MaxCount || list.Contains(one[0])) continue;
+            list.Add(one[0]);
+        }
+
+        return list;
+    }
 
     /// <summary>
     /// Every live claim, by the runner and the <c>where</c> holding it. The key

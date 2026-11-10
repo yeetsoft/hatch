@@ -115,6 +115,14 @@ one branch cannot be moved onto the other. A project that enforces its default
 takes no override at all: `on` and `off` are refused there, and only `inherit`
 is accepted.
 
+The project's own policy is set on **Manage → Projects**, **Edit**, **Landing**
+— an owner's alone, beside the project's one-pull-request default — between
+*Stories may set their own, either way* (the default) and *Every story follows
+the project*. Turning on the latter returns every override that exists on a
+story or bug with nothing started under it to the project's default; one with
+started work keeps its override. Anyone who is not an owner sees the choice
+read out, but cannot change it.
+
 ## Pre-approval
 
 Three levels: none, express, preapproved — read live from the nearest
