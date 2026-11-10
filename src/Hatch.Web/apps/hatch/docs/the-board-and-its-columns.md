@@ -31,7 +31,8 @@ In order, left to right:
   the same column.
 - **Done** — shipped, and terminal. Only a person moves work into it, or the
   close hop below, which carries a pre-approved parent, or a parent in a project
-  whose **A passing check approves the merge** setting is on.
+  whose **A passing check approves the merge** setting is on, and a declared
+  no-code ticket under the same rule.
 
 ## Who moves work
 
@@ -72,10 +73,12 @@ The hops the board makes are:
 - **Approve** — a pre-approved issue in review, whose pull request is current
   and would merge cleanly, goes into the column ticked **Merges PR**.
 - **Close** — a parent in review with every child done, when it is pre-approved
-  or its project has **A passing check approves the merge** on, or a
-  pre-approved ticket that declared it was finished with no code, goes into the
-  first Done column to its right. A declared ticket that is not pre-approved
-  waits in review for a person to close it.
+  or its project has **A passing check approves the merge** on, or a ticket
+  that declared it was finished with no code, when it is pre-approved or its
+  project has **A no-code declaration closes the ticket** on, goes into the
+  first Done column to its right. The merge setting alone does not carry a
+  declared ticket. Without either, a declared ticket waits in review for a
+  person.
 
 [The lifecycle of a ticket](the-lifecycle-of-a-ticket) follows one ticket
 across every column and hop above, start to finish.
