@@ -1121,6 +1121,19 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("OnePullRequestPolicy")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("optional");
+
+                    b.Property<DateTimeOffset?>("OnePullRequestPolicyAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OnePullRequestPolicyBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<long?>("ReflectNowIssueId")
                         .HasColumnType("bigint");
 
