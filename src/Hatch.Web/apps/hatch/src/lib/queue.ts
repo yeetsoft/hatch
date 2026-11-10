@@ -9,8 +9,29 @@ import { HttpError } from './errors';
 /** The sentence a queue row says, in the order `BoardCommands.Draw` picks
     one: the reason it is blocked, why it is clear despite carrying none,
     which dispatch it is, or where it is headed. Mirrors `Draw`'s `?:` chain
-    exactly - the order is the rule, not a style choice. */
+    exactly - the order is the rule, not a style choice. A row the server
+    judged takers for ends with the `takersWords` clause in a second
+    parenthesis, where one runner or none can take it. */
 export function queueWords(entry: QueueEntry): string {
+  const words = rowWords(entry);
+  const takers = takersWords(entry);
+  return takers ? `${words}  (${takers})` : words;
+}
+
+/** Who can take a clear row's step, where that is worth saying: one live runner
+    alone, or none. Empty where two or more can, or where the server did not
+    judge. Mirrors `BoardCommands.TakersWords`. */
+export function takersWords(entry: QueueEntry): string {
+  const takers = entry.takers;
+  if (!takers) return '';
+  if (takers.length === 1) return `only ${takers[0]} can take this`;
+  if (takers.length > 0) return '';
+  const untaken = entry.untaken ?? [];
+  if (untaken.length === 0) return 'no live runner can take this';
+  return `no live runner can take this: ${untaken.map((u) => `${u.runner}: ${u.reason}`).join('; ')}`;
+}
+
+function rowWords(entry: QueueEntry): string {
   if (entry.blocked) return entry.blocked;
   if (entry.clearNote) {
     return `clear for ${entry.fromStatus.name} -> ${entry.toStatus?.name ?? '?'} - ${entry.clearNote}`;

@@ -7100,6 +7100,7 @@ button.hatch-option.chosen {
 
 .hatch-queue-words {
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
 .hatch-queue-trains {

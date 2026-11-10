@@ -6,6 +6,7 @@ import {
   getAttachments,
   getChangelogReport,
   getPlan,
+  getQueue,
   getTimeline,
   getWorkLogHistory,
   getWorkLogSessions,
@@ -462,5 +463,23 @@ describe('getAttachments', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments?ids=a,b');
     expect(result).toEqual(found);
+  });
+});
+
+describe('getQueue', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('asks for takers only where told to', async () => {
+    const fetchMock = vi.fn(async () => new Response('[]', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getQueue();
+    await getQueue(null, true);
+
+    const urls = fetchMock.mock.calls.map((call) => String((call as unknown[])[0]));
+    expect(urls[0]).not.toContain('takers');
+    expect(urls[1]).toContain('takers=true');
   });
 });

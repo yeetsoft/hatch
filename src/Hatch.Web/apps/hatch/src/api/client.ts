@@ -521,10 +521,16 @@ export const getNextWorkUnder = (ancestorKey: string) =>
  * subtree yet. `asRunner`, given, answers off that runner's own declared row
  * instead of this undeclared read - see WorkController.GetQueue's own doc
  * comment for the four it still refuses alongside it.
+ *
+ * `takers`, given, adds to each clear row the live runners that could take its
+ * step (`takers`) and, where fewer than two can, why each of the rest cannot
+ * (`untaken`). It costs the server one scan per live runner, so only the queue
+ * modal asks; the flow-viz board poll does not.
  */
-export const getQueue = (asRunner: string | null = null) => {
+export const getQueue = (asRunner: string | null = null, takers = false) => {
   const params = new URLSearchParams({ offsetMinutes: String(-new Date().getTimezoneOffset()) });
   if (asRunner !== null) params.set('asRunner', asRunner);
+  if (takers) params.set('takers', 'true');
   return fetchJson<QueueEntry[]>(`/api/hatch/work/queue?${params.toString()}`);
 };
 

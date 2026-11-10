@@ -223,6 +223,24 @@ const render = (
   );
 
 describe('QueueModal', () => {
+  it('says which one runner can take a clear row', () => {
+    const html = render('ready', [entry({ takers: ['host:/a'] })]);
+
+    expect(html).toContain('only host:/a can take this');
+  });
+
+  it('says when no live runner can take a clear row', () => {
+    const html = render('ready', [entry({ takers: [], untaken: [{ runner: 'host:/a', reason: 'busy' }] })]);
+
+    expect(html).toContain('no live runner can take this');
+  });
+
+  it('says neither for a row with no takers judged', () => {
+    const html = render('ready', [entry()]);
+
+    expect(html).not.toContain('can take this');
+  });
+
   it('renders rows in the array\'s own order', () => {
     const html = render('ready', [entry({ issue: issue({ key: 'AER-1' }) }), entry({ issue: issue({ key: 'AER-2' }) }), entry({ issue: issue({ key: 'AER-3' }) })]);
 

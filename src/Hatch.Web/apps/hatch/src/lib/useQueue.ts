@@ -40,7 +40,7 @@ export function useQueue(): QueueState {
   const readQueue = useCallback(async (asRunner: string | null) => {
     setStatus('loading');
     try {
-      setQueue(await getQueue(asRunner));
+      setQueue(await getQueue(asRunner, true));
       setStatus('ready');
     } catch (err) {
       if (isRefusedRunner(err, asRunner !== null)) setRunner(null);
