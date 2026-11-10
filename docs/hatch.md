@@ -5972,7 +5972,7 @@ behind {headKey}, position {n} in the train"`. That sentence is also what
 field anywhere in `QueueEntryDto`.
 
 **The driver, and how the heartbeat elects one.** `Runners.DriversAsync`
-(`Runners.cs:196-246`) elects, per project, the longest-live loop that holds
+(`Runners.cs:391-411`) elects, per project, the longest-live loop that holds
 a checkout of it — `Dispatch.HoldsCheckout`, the same rule
 `WorkController.GetReview` uses for its own eligibility, so the two can
 never disagree. With the wall up, a project that has an owner is driven only
@@ -5985,7 +5985,7 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A retired row
+`BeatAsync` throws the instruction away (`Runners.cs:482-484`). A retired row
 (`r.RetiredAt == null` in the same filter) is not a candidate either, however
 recent its `LastSeenAt`; its own next beat clears the retirement and makes it
 one again — see [Runners on the board](#runners-on-the-board). A row's
@@ -5995,14 +5995,20 @@ the row's `Name`; that is what keeps a driver live and elected through a
 long increment. It is not moved by another row's claim, even at the same
 `Where`, so a ghost row left by a loop that came back under a new name
 ages out. Ties go to
-the oldest `FirstSeenAt`, then `Name` ordinally (`:239`) — deliberately
+the oldest `FirstSeenAt`, then `Name` ordinally (`Runners.cs:557`) — deliberately
 stable, so a project's driver only moves once it actually drops out of live.
 The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
-(`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
+(`Dtos.cs:4022, 4136, 4487, 4508`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
-(`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
-370, 470, 520`): a runner acts only on a project it was elected to drive. The
+(`Readout.cs:106-112`, folded on every real heartbeat at `GoToWork.cs:1387`),
+which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:247, 423,
+521, 637, 813, 865`): a runner acts only on a project it was elected to drive.
+Both heartbeats answer `Drives` from the one election, `TrainDriversAsync`
+(`RunnersController.cs:606`): the bare beat, `POST /api/hatch/runners/{name}`
+(`:456, :491`), and the session heartbeat, `POST /api/hatch/runners/sessions`
+(`:330`), which `go-to-work` has sent since HA-2040. So a key that only ever
+runs as a session is told what it drives; a session answer that carried `[]`
+would leave no loop driving any project's train. The
 one exception is the pull request half's `merged` read: reporting a merge
 somebody already made needs read access alone, so any runner holding a
 checkout reports it for a merge-column row, driver or not.
