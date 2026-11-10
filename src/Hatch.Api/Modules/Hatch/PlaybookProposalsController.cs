@@ -256,6 +256,7 @@ public class PlaybookProposalsController(
             row.Budget = next.Budget;
             row.BriefLimit = next.BriefLimit;
             row.QuietLimitSeconds = next.QuietLimitSeconds;
+            row.MaxRunSeconds = next.MaxRunSeconds;
             row.DeniedTools = next.DeniedTools;
             row.IsCheck = next.IsCheck;
             row.ProjectId = next.ProjectId;

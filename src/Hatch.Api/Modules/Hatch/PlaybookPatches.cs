@@ -10,12 +10,13 @@ namespace Hatch.Api.Modules.Hatch;
 internal sealed record PlaybookState(
     int FromStatusId, int ToStatusId, string Types, string Shape,
     string? Prompt, string? DefaultPrompt, string Model, string Effort,
-    int? Budget, int? BriefLimit, int? QuietLimitSeconds, string? DeniedTools, bool IsCheck, int? ProjectId)
+    int? Budget, int? BriefLimit, int? QuietLimitSeconds, string? DeniedTools, bool IsCheck, int? ProjectId,
+    int? MaxRunSeconds = null)
 {
     public static PlaybookState Of(EfHatchPlaybook p) => new(
         p.FromStatusId, p.ToStatusId, p.Types, p.Shape,
         p.Prompt, p.DefaultPrompt, p.Model, p.Effort,
-        p.Budget, p.BriefLimit, p.QuietLimitSeconds, p.DeniedTools, p.IsCheck, p.ProjectId);
+        p.Budget, p.BriefLimit, p.QuietLimitSeconds, p.DeniedTools, p.IsCheck, p.ProjectId, p.MaxRunSeconds);
 
     public string EffectivePrompt => Prompt ?? DefaultPrompt ?? "";
 }
@@ -32,7 +33,7 @@ internal static class PlaybookPatches
     /// Null when the patch is legal against this state and the live board;
     /// otherwise the sentence PATCH has always used. Checked in order: shape,
     /// project id, project, column and clash, prompt, model and effort, budget,
-    /// brief limit, quiet limit, denied tools - so two faults at once report the same one first.
+    /// brief limit, quiet limit, run limit, denied tools - so two faults at once report the same one first.
     /// </summary>
     public static async Task<string?> RefusalAsync(
         HatchContext db, int id, PlaybookState current, PlaybookPatchRequest request,
@@ -90,6 +91,9 @@ internal static class PlaybookPatches
         if (request.QuietLimitSeconds is not null && PlaybookFile.ParseQuietLimit(request.QuietLimitSeconds).Error is { } quietLimitError)
             return quietLimitError;
 
+        if (request.MaxRunSeconds is not null && PlaybookFile.ParseMaxRun(request.MaxRunSeconds).Error is { } maxRunError)
+            return maxRunError;
+
         if (request.DeniedTools is not null &&
             PlaybookFile.InvalidDeniedTools(EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools)) is { } deniedToolsError)
             return deniedToolsError;
@@ -116,6 +120,9 @@ internal static class PlaybookPatches
         var quietLimitSeconds = current.QuietLimitSeconds;
         if (request.QuietLimitSeconds is not null) quietLimitSeconds = PlaybookFile.ParseQuietLimit(request.QuietLimitSeconds).Value;
 
+        var maxRunSeconds = current.MaxRunSeconds;
+        if (request.MaxRunSeconds is not null) maxRunSeconds = PlaybookFile.ParseMaxRun(request.MaxRunSeconds).Value;
+
         var deniedTools = current.DeniedTools;
         if (request.DeniedTools is not null)
             deniedTools = EfHatchPlaybook.WriteDeniedTools(EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools));
@@ -135,6 +142,7 @@ internal static class PlaybookPatches
             Budget = budget,
             BriefLimit = briefLimit,
             QuietLimitSeconds = quietLimitSeconds,
+            MaxRunSeconds = maxRunSeconds,
             DeniedTools = deniedTools,
             IsCheck = request.IsCheck ?? current.IsCheck,
             ProjectId = projectId,

@@ -2383,6 +2383,7 @@ public sealed class Dispatch(
                 Budget = row.Budget,
                 BriefLimit = row.BriefLimit,
                 QuietLimitSeconds = row.QuietLimitSeconds,
+                MaxRunSeconds = row.MaxRunSeconds,
                 DeniedTools = EfHatchPlaybook.WriteDeniedTools(row.DeniedTools),
                 IsCheck = row.IsCheck,
                 CreatedAt = file.CheckedAt,

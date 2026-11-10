@@ -1860,7 +1860,8 @@ public record PlaybookDto(
     string? ProjectName,
     string Source = "board",
     int? QuietLimitSeconds = null,
-    string? UnreachableReason = null);
+    string? UnreachableReason = null,
+    int? MaxRunSeconds = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
@@ -1895,6 +1896,12 @@ public record PlaybookFileReferenceDto(string Path, string Canonical, string Tru
 /// positive integer names a project.
 /// </param>
 /// <param name="IsCheck">Null means false (on create) or leaves it alone (on patch).</param>
+/// <param name="MaxRunSeconds">
+/// The seconds a session under this row may run before it is cut off. Null
+/// means none (on create) or leaves it alone (on patch); <c>""</c> or
+/// whitespace clears it; a parsed positive integer sets it - the same three
+/// states <paramref name="Budget"/> carries.
+/// </param>
 public record PlaybookCreateRequest(
     int FromStatusId,
     int ToStatusId,
@@ -1908,7 +1915,8 @@ public record PlaybookCreateRequest(
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
     bool? IsCheck = null,
-    string? QuietLimitSeconds = null);
+    string? QuietLimitSeconds = null,
+    string? MaxRunSeconds = null);
 
 /// <summary>Null leaves a field alone, as everywhere else in Hatch.</summary>
 /// <param name="Prompt">
@@ -1936,6 +1944,11 @@ public record PlaybookCreateRequest(
 /// names a project - the same three states <paramref name="Budget"/> carries.
 /// </param>
 /// <param name="IsCheck">Null leaves it alone.</param>
+/// <param name="MaxRunSeconds">
+/// The seconds a session under this row may run before it is cut off. Null
+/// leaves it alone; <c>""</c> or whitespace clears it; a parsed positive
+/// integer sets it - the same three states <paramref name="Budget"/> carries.
+/// </param>
 public record PlaybookPatchRequest(
     int? FromStatusId,
     int? ToStatusId,
@@ -1949,7 +1962,8 @@ public record PlaybookPatchRequest(
     IReadOnlyList<string>? DeniedTools = null,
     string? ProjectId = null,
     bool? IsCheck = null,
-    string? QuietLimitSeconds = null);
+    string? QuietLimitSeconds = null,
+    string? MaxRunSeconds = null);
 
 /// <summary>
 /// One change in a proposal submission: the playbook, then every field
@@ -3897,14 +3911,14 @@ public record PlaybookFileRequest(
 public record PlaybookFileRow(
     int FromStatusId, int ToStatusId, IReadOnlyList<string> Types, string Shape, string Prompt,
     string Model, string Effort, int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
-    int? QuietLimitSeconds = null);
+    int? QuietLimitSeconds = null, int? MaxRunSeconds = null);
 
 /// <summary>PlaybookFileRow with its status ids resolved to the board's current names - the shape a client reads. Mirrors PlaybookDto minus Id/UpdatedAt/ProjectId.</summary>
 public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
     int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
-    int? QuietLimitSeconds = null, string? UnreachableReason = null);
+    int? QuietLimitSeconds = null, string? UnreachableReason = null, int? MaxRunSeconds = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
@@ -4416,6 +4430,11 @@ public enum RunnerBoardDrift
 /// <param name="Container">Whether this process is running inside a container, on the same terms as <see cref="Os"/>.</param>
 /// <param name="Username">The OS username this process runs as, on the same terms as <see cref="Os"/>.</param>
 /// <param name="ProcessStartedAt">When this process itself started, on the same terms as <see cref="Os"/>.</param>
+/// <param name="LegacyName">
+/// The runner name the checkout's old per-user <c>runners</c> record held,
+/// sent on a process's first loop beat only. Absent is ordinary: nothing was
+/// recorded, the CLI is an older one, or this is any later beat.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4458,7 +4477,8 @@ public record RunnerHeartbeatRequest(
     string? AgentVersion = null,
     bool? Container = null,
     string? Username = null,
-    DateTimeOffset? ProcessStartedAt = null);
+    DateTimeOffset? ProcessStartedAt = null,
+    string? LegacyName = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

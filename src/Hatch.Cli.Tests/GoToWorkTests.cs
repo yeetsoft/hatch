@@ -748,6 +748,99 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--project", StringComparison.Ordinal));
     }
 
+    // ---- The old runner name goes once, on a process's first loop beat ----
+
+    private static string Recorded(Harness h, string? profile = null, string? name = "old-name")
+    {
+        var path = Path.Combine(h.Temp, "runners");
+        File.WriteAllText(path, $"{RunnerNames.Record.Key(profile, Checkout.Canonical(h.Root))}={name}\n");
+        return path;
+    }
+
+    [Fact]
+    public async Task A_loop_sends_the_legacy_name_on_its_first_beat_only()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+        var runtime = h.Runtime with { RunnerRecordPath = Recorded(h) };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default));
+
+        var beats = Beats(h);
+        Assert.True(beats.Count >= 2);
+        Assert.Equal("old-name", beats[0].LegacyName);
+        Assert.All(beats.Skip(1), b => Assert.Null(b.LegacyName));
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_record_file_never_sends_a_legacy_name()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 2, null, null));
+        var runtime = h.Runtime with { RunnerRecordPath = Path.Combine(h.Temp, "runners") };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default));
+
+        Assert.NotEmpty(Beats(h));
+        Assert.All(Beats(h), b => Assert.Null(b.LegacyName));
+    }
+
+    [Fact]
+    public async Task A_once_beat_never_sends_a_legacy_name()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var runtime = h.Runtime with { RunnerRecordPath = Recorded(h) };
+
+        await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
+
+        Assert.Null(Beats(h).Single().LegacyName);
+    }
+
+    [Fact]
+    public async Task A_profile_reads_its_own_record_key_and_not_the_bare_one()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var keyed = h.Runtime with { ProfileName = "work", RunnerRecordPath = Recorded(h, "work") };
+        await new GoToWorkCommand(keyed).RunAsync(["--once"], default);
+        Assert.Null(Beats(h).Single().LegacyName);
+
+        using var loop = new Harness();
+        OneTicket(loop);
+        loop.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+        var withProfile = loop.Runtime with { ProfileName = "work", RunnerRecordPath = Recorded(loop, "work") };
+        Assert.Equal(0, await new GoToWorkCommand(withProfile).RunAsync(["--max-runs", "1"], default));
+        Assert.Equal("old-name", Beats(loop)[0].LegacyName);
+
+        using var bare = new Harness();
+        OneTicket(bare);
+        bare.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+        var wrongKey = bare.Runtime with { ProfileName = "work", RunnerRecordPath = Recorded(bare) };
+        Assert.Equal(0, await new GoToWorkCommand(wrongKey).RunAsync(["--max-runs", "1"], default));
+        Assert.NotEmpty(Beats(bare));
+        Assert.All(Beats(bare), b => Assert.Null(b.LegacyName));
+    }
+
+    [Fact]
+    public async Task A_restart_carrying_state_still_sends_the_legacy_name_on_its_first_beat()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, new NightState { Restarts = 1 });
+        h.Wire.Json("POST", Beat, new RunnerInstructionDto("running", null, 1, null, null));
+        var runtime = h.Supervised with { RunnerRecordPath = Recorded(h) };
+
+        Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "1"], default));
+
+        var beats = Beats(h);
+        Assert.NotEqual(true, beats[0].Fresh);
+        Assert.Equal("old-name", beats[0].LegacyName);
+        Assert.All(beats.Skip(1), b => Assert.Null(b.LegacyName));
+    }
+
     // ---- A fresh loop says so on its first answered beat ----
 
     private static IReadOnlyList<RunnerHeartbeatRequest> Beats(Harness h) =>
