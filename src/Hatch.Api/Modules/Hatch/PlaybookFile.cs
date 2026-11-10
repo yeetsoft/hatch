@@ -407,10 +407,14 @@ public static class PlaybookFile
             budget, briefLimit, deniedTools, row.IsCheck ?? false, quietLimit);
     }
 
-    /// <summary>A stored row read back for the wire, its status ids resolved to the board's current names.</summary>
-    internal static PlaybookFileRowDto ToDto(PlaybookFileRow row, IReadOnlyDictionary<int, string> names) => new(
+    /// <summary>
+    /// A stored row read back for the wire, its status ids resolved to the board's current names and
+    /// its <see cref="PlaybookFileRowDto.UnreachableReason"/> read from the live <paramref name="statuses"/> - never stored.
+    /// </summary>
+    internal static PlaybookFileRowDto ToDto(
+        PlaybookFileRow row, IReadOnlyDictionary<int, string> names, List<EfHatchStatus> statuses) => new(
         row.FromStatusId, names.GetValueOrDefault(row.FromStatusId, ""),
         row.ToStatusId, names.GetValueOrDefault(row.ToStatusId, ""),
         row.Types, row.Shape, row.Prompt, row.Model, row.Effort, row.Budget, row.BriefLimit, row.DeniedTools, row.IsCheck,
-        row.QuietLimitSeconds);
+        row.QuietLimitSeconds, Columns.UnreachableReason(statuses, row.FromStatusId, row.ToStatusId, row.IsCheck));
 }

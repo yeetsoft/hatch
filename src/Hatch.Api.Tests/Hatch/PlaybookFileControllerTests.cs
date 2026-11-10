@@ -291,6 +291,21 @@ public class PlaybookFileControllerTests
         public Task<ActionResult<PlaybookFileDto>> PutAsync(PlaybookFileRequest request) => Files.PutPlaybookFile(request, default);
 
         public Task<ActionResult<PlaybookFilesDto>> GetAsync() => Files.GetPlaybookFiles(default);
+
+        /// <summary>Adds the columns past Backlog the review and merge rows need: Review, a protected Approved that merges, and a terminal Done.</summary>
+        public async Task FullBoardAsync()
+        {
+            Db.Add(new EfHatchStatus { Name = "Review", SortOrder = 30 });
+            Db.Add(new EfHatchStatus { Name = "Approved", SortOrder = 40, IsProtected = true, MergesPullRequest = true });
+            Db.Add(new EfHatchStatus { Name = "Done", SortOrder = 50, IsTerminal = true });
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task MoveColumnAsync(string name, int sortOrder)
+        {
+            (await Db.Statuses.SingleAsync(s => s.Name == name)).SortOrder = sortOrder;
+            await Db.SaveChangesAsync();
+        }
     }
 
     private static async Task<Harness> NewAsync()
@@ -318,6 +333,92 @@ public class PlaybookFileControllerTests
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {ReasonOf(result.Result)}");
+
+    // ---- UnreachableReason: read from the board as it stands, never stored ----
+
+    private const string Never = " - this row can never run";
+
+    private static string RowYaml(string from, string to, bool isCheck = false) => $"""
+          - from: {from}
+            to: {to}
+            types: [epic]
+            shape: any
+            model: fable
+            effort: max
+            isCheck: {(isCheck ? "true" : "false")}
+            prompt: |
+              A prompt.
+        """;
+
+    private static string FileOf(params string[] rows) => "playbooks:\n" + string.Join("\n", rows);
+
+    [Fact]
+    public async Task ARowAimedPastTheNextColumn_ReadsBackWithTheSentenceNamingTheRealTarget()
+    {
+        var h = await NewAsync();
+        await h.FullBoardAsync();
+
+        await h.PutAsync(Request(Content(FileOf(RowYaml("Breakdown", "Review"))), Sha1));
+        var row = Assert.Single(Assert.Single(Value(await h.GetAsync()).Files).Rows);
+
+        Assert.Equal("a dispatch from \"Breakdown\" goes to \"Backlog\", not \"Review\"" + Never, row.UnreachableReason);
+    }
+
+    [Fact]
+    public async Task ARowAtTheNextColumn_TheReviewRowToItself_AndACheckIntoTheMergeColumn_ReadBackWithNoSentence()
+    {
+        var h = await NewAsync();
+        await h.FullBoardAsync();
+
+        var file = FileOf(
+            RowYaml("Breakdown", "Backlog"), RowYaml("Review", "Review"), RowYaml("Review", "Approved", isCheck: true));
+        Assert.Equal("parsed", Value(await h.PutAsync(Request(Content(file), Sha1))).State);
+
+        var rows = Assert.Single(Value(await h.GetAsync()).Files).Rows;
+
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, r => Assert.Null(r.UnreachableReason));
+    }
+
+    [Fact]
+    public async Task ReorderingColumns_FlipsTheReadingOnTheNextGet_WithNoNewPut()
+    {
+        var h = await NewAsync();
+        await h.FullBoardAsync();
+        await h.PutAsync(Request(Content(FileOf(RowYaml("Breakdown", "Backlog"))), Sha1));
+        var before = Assert.Single(Value(await h.GetAsync()).Files);
+        Assert.Null(Assert.Single(before.Rows).UnreachableReason);
+
+        await h.MoveColumnAsync("Review", 15);
+        var flipped = Assert.Single(Value(await h.GetAsync()).Files);
+
+        Assert.Equal(
+            "a dispatch from \"Breakdown\" goes to \"Review\", not \"Backlog\"" + Never,
+            Assert.Single(flipped.Rows).UnreachableReason);
+        Assert.Equal(before.CheckedAt, flipped.CheckedAt);
+        Assert.Equal(before.Sha, flipped.Sha);
+
+        await h.MoveColumnAsync("Review", 30);
+        Assert.Null(Assert.Single(Assert.Single(Value(await h.GetAsync()).Files).Rows).UnreachableReason);
+    }
+
+    [Fact]
+    public async Task AFileCarryingAnUnreachableRow_IsStillStoredParsed_AndThePutResponseCarriesTheSentence()
+    {
+        var h = await NewAsync();
+        await h.FullBoardAsync();
+
+        var put = Value(await h.PutAsync(Request(Content(FileOf(RowYaml("Breakdown", "Review"))), Sha1)));
+
+        Assert.Equal("parsed", put.State);
+        Assert.Equal(
+            "a dispatch from \"Breakdown\" goes to \"Backlog\", not \"Review\"" + Never,
+            Assert.Single(put.Rows).UnreachableReason);
+
+        var stored = await h.Db.PlaybookFiles.SingleAsync();
+        Assert.Equal("parsed", stored.State);
+        Assert.NotNull(stored.Rows);
+    }
 
     private static string Reason(ActionResult<PlaybookFileDto> result) => ReasonOf(result.Result);
 

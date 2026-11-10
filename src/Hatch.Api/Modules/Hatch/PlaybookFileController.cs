@@ -25,19 +25,21 @@ public class PlaybookFileController(
     [HttpGet]
     public async Task<ActionResult<PlaybookFilesDto>> GetPlaybookFiles(CancellationToken ct)
     {
-        var names = (await db.Statuses.AsNoTracking().ToListAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        var names = statuses.ToDictionary(s => s.Id, s => s.Name);
 
         var rows = await db.PlaybookFiles.AsNoTracking()
             .OrderBy(f => f.Canonical).ThenBy(f => f.Trunk)
             .ToListAsync(ct);
 
-        return new PlaybookFilesDto(PlaybookFile.Path, rows.Select(f => ToDto(f, names)).ToList());
+        return new PlaybookFilesDto(PlaybookFile.Path, rows.Select(f => ToDto(f, names, statuses)).ToList());
     }
 
     /// <summary>Full stored-row shape GET lists - mirrors TrunkBuildProjection.Project.</summary>
-    private static PlaybookFileDto ToDto(EfHatchPlaybookFile f, IReadOnlyDictionary<int, string> names) => new(
+    private static PlaybookFileDto ToDto(
+        EfHatchPlaybookFile f, IReadOnlyDictionary<int, string> names, List<EfHatchStatus> statuses) => new(
         f.Id, f.Remote, f.Canonical, f.Trunk, f.Sha, f.State, f.Hash,
-        EfHatchPlaybookFile.ReadRows(f.Rows).Select(r => PlaybookFile.ToDto(r, names)).ToList(),
+        EfHatchPlaybookFile.ReadRows(f.Rows).Select(r => PlaybookFile.ToDto(r, names, statuses)).ToList(),
         f.Problem, f.LastGoodSha, f.LastGoodHash, f.Url, f.CheckedAt, f.Runner, f.CheckedBy);
 
     /// <summary>
@@ -108,6 +110,7 @@ public class PlaybookFileController(
         }
 
         IReadOnlyDictionary<int, string> names = ImmutableDictionary<int, string>.Empty;
+        var statuses = new List<EfHatchStatus>();
 
         if (decoded is null)
         {
@@ -119,7 +122,7 @@ public class PlaybookFileController(
         else
         {
             var hash = Convert.ToHexStringLower(SHA256.HashData(decoded));
-            var statuses = await db.Statuses.AsNoTracking().ToListAsync(ct);
+            statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
             names = statuses.ToDictionary(s => s.Id, s => s.Name);
             var (parsedRows, problem) = PlaybookFile.Parse(decoded, statuses, families);
 
@@ -154,7 +157,7 @@ public class PlaybookFileController(
         row.CheckedBy = actor;
 
         await db.SaveChangesAsync(ct);
-        return ToDto(row, names);
+        return ToDto(row, names, statuses);
     }
 
     // Copy of TrunkBuildController.SafeUrl, bound to MaxUrlLength instead of MaxCheckUrlLength.
