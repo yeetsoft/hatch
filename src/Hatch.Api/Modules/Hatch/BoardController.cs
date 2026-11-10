@@ -223,7 +223,7 @@ public class BoardController(
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
-                NoCode: i.NoCode);
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
         }
 
         var cards = issues.Select(Card).ToList();

@@ -153,9 +153,17 @@ ticket](the-lifecycle-of-a-ticket) calls the hop.
 A one-line reason, at most 200 characters and trimmed, saying that a ticket
 finished with no code: an investigation, say. `hatch show` prints it as
 `no code:`, and the issue page's facts panel shows a `No code` row reading
-`Finished with no code: <reason>`. The ticket wears the 😎 glyph on its board
-card and in the peek, in whatever column it stands in, with the reason in the
-glyph's title. It goes when the declaration is cleared or set aside.
+`Finished with no code: <reason>`. A childless ticket wears the 😎 glyph on
+its board card and in the peek, in whatever column it stands in, with the
+reason in the glyph's title. It goes when the declaration is cleared or set
+aside.
+
+A ticket with a child never wears the glyph, whatever it declared and
+whenever: a story, a bug, or an epic is carried by its children's own code,
+so a declaration on it says nothing, and the card answer follows the
+children as they stand. The declaration itself is unchanged — it still shows
+on the issue page and in `hatch show`, and still stands in review for the
+close hop and the attention panel.
 
 A session sets it with `hatch pr KEY --none "reason"`. A person sets it from
 the issue page: the edit view's **Finished with no code** field, with **Save**

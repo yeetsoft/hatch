@@ -231,7 +231,7 @@ public class IssuesController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt,
-                NoCode: i.NoCode));
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities)));
         }
 
         return cards;

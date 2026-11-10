@@ -507,6 +507,24 @@ public class IssuesControllerTests
         });
     }
 
+    // ---- NoCode, never on a card with a child ----
+
+    [Fact]
+    public async Task NoCode_DeclaredStoryWithATask_CardCarriesNull()
+    {
+        var h = await NewAsync();
+        var story = await h.CreateAsync("story", "the story");
+        await h.CreateAsync("task", "a chore", parentKey: story.Key);
+        var row = await h.Db.Issues.FirstAsync(i => i.Project!.Key + "-" + i.Number == story.Key);
+        row.NoCode = "delivered by the child tasks' PRs";
+        row.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+
+        Assert.Null(Assert.Single(cards, c => c.Key == story.Key).NoCode);
+    }
+
     // ---- PreApproval, inherited live at read ----
 
     [Fact]
