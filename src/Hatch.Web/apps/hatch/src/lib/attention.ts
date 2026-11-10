@@ -121,11 +121,11 @@ export function attentionLabel(attention: Attention | null): string {
   const deadlocked = attention.deadlocked?.length ?? 0;
 
   const parts: string[] = [];
-  if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
   if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
   if (attention.backup) parts.push('backup needs attention');
-  if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
+  if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
+  if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
 
   const exhausted = attention.exhaustedRunners?.length ?? 0;
   if (exhausted > 0) parts.push(`${count(exhausted, 'runner')} ${exhausted === 1 ? 'is' : 'are'} out of usage`);
