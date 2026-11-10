@@ -32,8 +32,8 @@ public class IssueClaimTests
     /// <summary>The transient id <see cref="Dispatch"/> gives a repo-sourced project's first file row - never on the table.</summary>
     private const int FileRowId = -1_000_000_000;
 
-    private static PlaybookFileRow FileRow(int from, int to, int? quietLimitSeconds = null) =>
-        new(from, to, [], "any", "do the thing", "sonnet", "high", null, null, [], false, quietLimitSeconds);
+    private static PlaybookFileRow FileRow(int from, int to, int? quietLimitSeconds = null, int? maxRunSeconds = null) =>
+        new(from, to, [], "any", "do the thing", "sonnet", "high", null, null, [], false, quietLimitSeconds, maxRunSeconds);
 
     // ---- Taking one ----
 
@@ -326,6 +326,233 @@ public class IssueClaimTests
         Assert.Null((await h.RowAsync(issue)).ClaimQuietLimitSeconds);
     }
 
+    // ---- The run cap ----
+
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybookWithACap_StoresItAndAnswersIt()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", playbook), default));
+
+        Assert.Equal(3600, taken.MaxRunSeconds);
+        var row = await h.RowAsync(issue);
+        Assert.Equal(playbook, row.ClaimPlaybookId);
+        Assert.Equal(3600, row.ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybookWithNoCap_StoresNullAndAnswersZero()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", h.PlaybookId), default));
+
+        Assert.Equal(0, taken.MaxRunSeconds);
+        Assert.Null((await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task ATakeNamingNoPlaybook_StoresNoCapAndAnswersZero()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        Assert.Equal(0, taken.MaxRunSeconds);
+        Assert.Null((await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    /// <summary>A file row has no table id to store, so its cap rides alone, as its window does.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingARepoSourcedFileRowWithACap_SetsTheCapAndStoresNoId()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId, maxRunSeconds: 3600));
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", FileRowId), default));
+
+        Assert.Equal(3600, taken.MaxRunSeconds);
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Equal(3600, row.ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatAttachingAPlaybookWithACap_OverwritesAPriorOne()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var first = await h.AddPlaybookAsync(maxRunSeconds: 7200);
+        var token = await h.TakeAsync(issue, playbookId: first);
+        Assert.Equal(7200, (await h.RowAsync(issue)).ClaimMaxRunSeconds);
+        var second = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, second), default);
+        Assert.Equal(3600, (await h.RowAsync(issue)).ClaimMaxRunSeconds);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, h.PlaybookId), default);
+        Assert.Null((await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    /// <summary>The same three arms of the write keyed on chatter: absent, cleared, and a line.</summary>
+    [SkippableTheory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("a line")]
+    public async Task AHeartbeatAttachingAPlaybookWithACap_WritesItWhateverTheChatterDoes(string? chatter)
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, chatter, playbook), default);
+
+        Assert.Equal(3600, (await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingARepoSourcedFileRowWithACap_SetsTheCapAndClearsTheStoredId()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId, maxRunSeconds: 3600));
+        var token = await h.TakeAsync(issue, playbookId: h.PlaybookId);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, FileRowId), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Equal(3600, row.ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingNoPlaybook_LeavesTheCapAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here"), default);
+
+        Assert.Equal(3600, (await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    [SkippableFact]
+    public async Task ATakeoverOfALapsedLease_NeverInheritsItsCap()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+        await h.TakeAsync(issue, "somewhere:/checkouts/one", playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromSeconds(TestClaims.Ttl + 1));
+        var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+
+        Assert.Equal(0, second.MaxRunSeconds);
+        Assert.Null((await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    /// <summary>Beats once a minute with a line each time, so neither the lease nor the quiet window is what ends it.</summary>
+    private static async Task ChatterPastAsync(Harness h, string issue, Guid token, TimeSpan span)
+    {
+        for (var elapsed = TimeSpan.Zero; elapsed < span; elapsed += TimeSpan.FromMinutes(1))
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(1));
+            Assert.IsType<NoContentResult>(
+                (await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default)).Result);
+        }
+    }
+
+    [SkippableFact]
+    public async Task AClaimOverItsCap_IsRefusedOnHeartbeatWithTheRunTimeReason()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 3600);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        // Chatter all the way: it is neither the lease nor the quiet window.
+        await ChatterPastAsync(h, issue, token, TimeSpan.FromMinutes(59));
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "at the cap"), default)).Result);
+
+        h.Time.Advance(TimeSpan.FromSeconds(1));
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "past it"), default);
+        Assert.Equal("this claim ran past its 60-minute limit", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.RunTime, ConflictReason(refused));
+    }
+
+    [SkippableFact]
+    public async Task ACapNotInWholeMinutes_IsNamedInSeconds()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 90);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromSeconds(91));
+
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal("this claim ran past its 90-second limit", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.RunTime, ConflictReason(refused));
+    }
+
+    [SkippableFact]
+    public async Task AOneMinuteCap_IsNamedInTheSingular()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 60);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.Equal(
+            "this claim ran past its 1-minute limit",
+            Conflict(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default)));
+    }
+
+    /// <summary>Over the cap and quiet at once is the cap's to say: no chatter would have saved the claim from it.</summary>
+    [SkippableFact]
+    public async Task AClaimBothOverItsCapAndQuiet_IsToldRunTime()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 600);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal("this claim ran past its 10-minute limit", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.RunTime, ConflictReason(refused));
+    }
+
+    /// <summary>A release is never refused for the cap: the holder's own token clears, as it does a quiet claim.</summary>
+    [SkippableFact]
+    public async Task AReleaseOfAClaimOverItsCap_StillClears()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(maxRunSeconds: 600);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
+        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+    }
+
     [SkippableFact]
     public async Task AClaimedIssue_RefusesASecondClaimAndSaysWhoHasIt()
     {
@@ -435,8 +662,8 @@ public class IssueClaimTests
         Assert.False(claims.IsLive(ClaimSnapshot.Of(await two.Issues.FirstAsync(i => i.Id == id)), Now));
 
         var mine = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", null, null, Now, default));
-        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", null, null, Now, default));
+        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", null, null, null, Now, default));
+        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", null, null, null, Now, default));
 
         // Exactly one claim, and it is the first one's - the loser wrote
         // nothing at all rather than overwriting a lease it lost.
@@ -564,8 +791,8 @@ public class IssueClaimTests
 
         var mine = Guid.NewGuid();
         var theirs = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", null, null, Now, default));
-        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", null, null, Now, default));
+        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", null, null, null, Now, default));
+        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", null, null, null, Now, default));
 
         // One thread cannot make both look before either lets go, so this
         // ordering ends with exactly one claim: the first check sees the
@@ -1001,6 +1228,21 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithTheRunTimeReason_RecordsItBesideTheOutcome()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        Assert.IsType<NoContentResult>(
+            await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.RunTime, default));
+
+        var payload = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased).Payload!.Value;
+        Assert.Equal(ClaimOutcomes.Dropped, payload.GetProperty("outcome").GetString());
+        Assert.Equal(ClaimLostReasons.RunTime, payload.GetProperty("reason").GetString());
+    }
+
+    [SkippableFact]
     public async Task AReleaseWithAReason_RecordsItBesideTheOutcome()
     {
         await using var h = await NewAsync();
@@ -1037,7 +1279,11 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         Assert.Equal(
-            "\"expired\" is not a reason - it is \"quiet\", or nothing at all",
+            "\"bogus\" is not a reason - it is \"quiet\", \"run-time\", or nothing at all",
+            BadRequest(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, "bogus", default)));
+
+        Assert.Equal(
+            "\"expired\" is not a reason - it is \"quiet\", \"run-time\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Dropped, ClaimLostReasons.Expired, default)));
 
         Assert.Equal(token, (await h.RowAsync(issue)).ClaimToken);
@@ -2763,7 +3009,7 @@ public class IssueClaimTests
         }
 
         /// <summary>A second playbook, distinct from <see cref="PlaybookId"/> - for a test about one overwriting the other.</summary>
-        public async Task<int> AddPlaybookAsync(int? quietLimitSeconds = null)
+        public async Task<int> AddPlaybookAsync(int? quietLimitSeconds = null, int? maxRunSeconds = null)
         {
             var db = Connect();
             var playbook = new EfHatchPlaybook
@@ -2776,6 +3022,7 @@ public class IssueClaimTests
                 Model = "sonnet",
                 Effort = "medium",
                 QuietLimitSeconds = quietLimitSeconds,
+                MaxRunSeconds = maxRunSeconds,
                 CreatedAt = Time.GetUtcNow(),
                 UpdatedAt = Time.GetUtcNow(),
             };

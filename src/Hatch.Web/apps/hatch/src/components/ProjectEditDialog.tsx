@@ -111,7 +111,11 @@ export function ProjectEditDialog({
   // Reset whenever a different project is picked, so a half-typed
   // confirmation and a stale draft cannot be carried from one project to
   // another - the same idiom RekeyDialog uses today for its own fields.
+  // Closing forgets the project too, so reopening the same one starts from
+  // what was saved rather than from the draft and baseline of the last open -
+  // else a second Save re-sends every field the first one already wrote.
   const [opened, setOpened] = useState<number | null>(null);
+  if (!project && opened !== null) setOpened(null);
   if (project && project.id !== opened) {
     setOpened(project.id);
     setDraft(openProjectDraft(project));
