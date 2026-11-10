@@ -1316,7 +1316,7 @@ column the way [runner tags](#runner-tags) are: a list replaced whole would
 lose the who-and-when of the entries it did not touch. Each row carries a
 `Reason` (nullable, at most 200 characters after the trim), the actor name
 that set it (`By`), and when (`At`); the runner is named by the same name
-the `Runners` table is keyed on. Written through `PUT
+the `LegacyRunners` table is keyed on. Written through `PUT
 /issues/{key}/omitted-runners/{runner}`
 (`IssueRunnerOmissionsController.PutOmittedRunner`) with `{ reason }`, and
 lifted through `DELETE` on the same path (`DeleteOmittedRunner`), open to a
@@ -8860,12 +8860,12 @@ only the runners that belong to nobody. `/runners/names` is unchanged - the
 same live names whoever asks. With the wall on, no key exists until an admin
 has minted one, so "the wall is on" stands for "an admin has claimed this
 Hatch". `Dispatch`, `DriversAsync`, `HeldAsync` and the attention read are
-unscoped on purpose: they read the `Runners` table, not the route, and the
+unscoped on purpose: they read the `LegacyRunners` table, not the route, and the
 filter is on the route only.
 
 **The runner is a key; the heartbeat is a bridge.** `GET /api/hatch/runners`
 joins three things: the key (`EfApiKey`), its config (the `RunnerConfigs` row,
-by the key's id) and the heartbeat row (the `Runners` table, by name). A key
+by the key's id) and the heartbeat row (the `LegacyRunners` table, by name). A key
 that has never run is listed, and is not live. A heartbeat no key claims is
 listed too, with its key fields null. `?live=true` keeps only the entries whose
 heartbeat is not past `Runners.DropBefore`. HA-1937 adds the sessions below

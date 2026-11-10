@@ -411,14 +411,14 @@ public class IssueClaimController(
             if (sessions > 0) keyId = key.Id;
         }
 
-        var byName = await db.Runners.Where(r => r.Name == claim.ClaimedBy)
+        var byName = await db.LegacyRunners.Where(r => r.Name == claim.ClaimedBy)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
         if (byName > 0) return new Beat(keyId, claim.ClaimedBy);
         if (sessions > 0 || claim.ClaimedAt is not { } claimedAt) return new Beat(keyId, null);
 
         var cutoff = runners.Cutoff(claimedAt);
-        var liveAtClaim = await db.Runners
+        var liveAtClaim = await db.LegacyRunners
             .Where(r => r.Where == claim.Runner && r.RetiredAt == null && r.LastSeenAt >= cutoff)
             .OrderByDescending(r => r.LastSeenAt).ThenBy(r => r.Name)
             .Select(r => r.Name)
@@ -426,7 +426,7 @@ public class IssueClaimController(
 
         if (liveAtClaim is null) return default;
 
-        await db.Runners.Where(r => r.Name == liveAtClaim)
+        await db.LegacyRunners.Where(r => r.Name == liveAtClaim)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, now), ct);
 
         return new Beat(null, liveAtClaim);
@@ -464,7 +464,7 @@ public class IssueClaimController(
                     s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);
 
         if (beat.RunnerName is { } name)
-            await db.Runners
+            await db.LegacyRunners
                 .Where(r => r.Name == name && (r.UsageReadAt == null || r.UsageReadAt <= readAt))
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(r => r.Usage, usage).SetProperty(r => r.UsageReadAt, readAt), ct);

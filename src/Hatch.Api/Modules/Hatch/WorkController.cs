@@ -346,7 +346,7 @@ public class WorkController(
             var now = time.GetUtcNow();
             var joined = keys is not null
                 ? await Runner.JoinAsync(db, keys, ct)
-                : await db.Runners.AsNoTracking().Select(r => new Runner(null, null, r)).ToListAsync(ct);
+                : await db.LegacyRunners.AsNoTracking().Select(r => new Runner(null, null, r)).ToListAsync(ct);
             var found = joined.FirstOrDefault(r => string.Equals(r.Name, asRunner, StringComparison.Ordinal));
             if (found is null || sessions is null || !found.IsLive(runners, sessions, now))
                 return BadRequest($"there is no runner named {asRunner}");

@@ -574,7 +574,7 @@ public sealed class Dispatch(
     {
         var joined = keys is not null
             ? await Runner.JoinAsync(db, keys, ct)
-            : (await db.Runners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
+            : (await db.LegacyRunners.AsNoTracking().ToListAsync(ct)).Select(r => new Runner(null, null, r)).ToList();
 
         var peers = new List<Peer>();
         foreach (var runner in joined)

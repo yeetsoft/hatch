@@ -3158,7 +3158,7 @@ public class EfHatchWorkLogEntry
 /// expiry the claim uses and for the same reason: there is no timeout to tune
 /// and no sweeper to notice has stopped.</para>
 /// </remarks>
-[Table("Runners")]
+[Table("LegacyRunners")]
 public class EfHatchRunner
 {
     /// <summary>Room for <c>host:/path/to/checkout</c> - the same name a claim carries, because it is the same name.</summary>
@@ -3485,6 +3485,17 @@ public class EfHatchRunner
     /// <summary>The <see cref="Name"/> of the row that superseded this one, read beside <see cref="RetiredAt"/>.</summary>
     [MaxLength(MaxNameLength)]
     public string? RetiredBy { get; set; }
+
+    /// <summary>
+    /// When this row's settings were folded onto a key's
+    /// <see cref="EfHatchRunnerConfig"/>, read beside <see cref="AdoptedInto"/>.
+    /// Null means not adopted. Nothing reads either yet.
+    /// </summary>
+    public DateTimeOffset? AdoptedAt { get; set; }
+
+    /// <summary>The name of the key whose config this row's settings went to, read beside <see cref="AdoptedAt"/>.</summary>
+    [MaxLength(MaxNameLength)]
+    public string? AdoptedInto { get; set; }
 }
 
 /// <summary>

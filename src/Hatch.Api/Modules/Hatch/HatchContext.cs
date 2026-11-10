@@ -43,11 +43,11 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     /// itself by, and related to nothing: a runner is an identity a checkout
     /// computes, not a row that belongs to an issue.
     /// </summary>
-    public DbSet<EfHatchRunner> Runners => Set<EfHatchRunner>();
+    public DbSet<EfHatchRunner> LegacyRunners => Set<EfHatchRunner>();
 
     /// <summary>
     /// What the board has chosen for each runner key, as against
-    /// <see cref="Runners"/>, which is what the processes report. Keyed by the
+    /// <see cref="LegacyRunners"/>, which is what the processes report. Keyed by the
     /// API key's id, with no foreign key into the core schema.
     /// </summary>
     public DbSet<EfHatchRunnerConfig> RunnerConfigs => Set<EfHatchRunnerConfig>();
