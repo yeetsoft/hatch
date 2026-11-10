@@ -3255,6 +3255,16 @@ input.hatch-inline-title-input {
   color: var(--muted);
 }
 
+/* The detail's multi-host warning: live sessions sharing one key but not one
+   machine, which bounds and tags - per runner, never per session - cannot
+   tell apart. */
+.hatch-runner-note {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r);
+}
+
 /* One live session under its runner's row: quieter, and indented so it reads as
    part of the row above rather than as another runner. */
 .hatch-runner-session td {
