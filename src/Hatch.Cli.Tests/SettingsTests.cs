@@ -594,7 +594,7 @@ public sealed class SettingsTests : IDisposable
 
         Assert.Contains("hatch: HATCH_HAS - ", refusal, StringComparison.Ordinal);
         Assert.Contains(
-            "the list is dotnet, make, node, playwright-browsers, postgres, pwsh", refusal, StringComparison.Ordinal);
+            "the list is docker, dotnet, make, node, playwright-browsers, postgres, pwsh", refusal, StringComparison.Ordinal);
         Assert.Contains("hatch config --has <entry>...", refusal, StringComparison.Ordinal);
         Assert.Contains("bare `--has` clears it", refusal, StringComparison.Ordinal);
     }
