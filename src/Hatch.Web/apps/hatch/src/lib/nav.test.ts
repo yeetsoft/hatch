@@ -11,6 +11,8 @@ import type { NavEntry } from './nav';
 // unknown-route fallback) are not pages a menu lists. :name is /runners'
 // nested detail route - the regex below captures a nested <Route>'s path
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
+// /runners-legacy is the old Runners page, kept off the nav only until the e2e
+// cases that read its DOM are rewritten for the new one and it is removed.
 const EXCLUDED_ROUTES = new Set([
   '/',
   '/docs',
@@ -22,6 +24,7 @@ const EXCLUDED_ROUTES = new Set([
   '/docs/*',
   '/settings',
   ':name',
+  '/runners-legacy',
   '*',
 ]);
 

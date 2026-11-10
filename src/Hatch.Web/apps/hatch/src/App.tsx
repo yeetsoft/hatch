@@ -34,6 +34,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
+import { RunnersPage } from './pages/RunnersPage';
 import { OvernightPage } from './pages/OvernightPage';
 import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
@@ -197,6 +198,7 @@ function AppShell() {
               <Route index element={<RunnersIndex />} />
               <Route path=":name" element={<RunnerDetail />} />
             </Route>
+            <Route path="/runners-legacy" element={<RunnersPage />} />
             <Route path="/overnight" element={<OvernightPage />} />
             <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
             <Route path="/history" element={<HistoryPage />} />

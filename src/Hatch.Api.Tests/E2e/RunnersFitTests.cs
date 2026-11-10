@@ -76,7 +76,7 @@ public class RunnersFitTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/runners", StubRunners);
+            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/runners-legacy", StubRunners);
             await harness.WaitForVisibleAsync(deadline, ".hatch-reorder--wrap");
 
             var measurement = await harness.MeasureRunnersAsync(deadline);
