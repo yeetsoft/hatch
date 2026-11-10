@@ -1012,6 +1012,116 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(attention.ApprovedWaiting!);
     }
 
+    // ---- A check row carrying the move into the merge column (HA-2106) ----
+
+    [Fact]
+    public async Task Attention_LeavesOutAReviewRowACheckRowWouldCarryIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, and a check covers the merge", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAReviewRow_WhenNoCheckRowCoversTheMove()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "clean, green, but no check covers the merge", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("clean, green, but no check covers the merge", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        Assert.Equal(ReviewBuildStates.Success, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_StillHoldsBackAConflictedRow_WithTheSettingOnAndACheckRow()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "stopped merging, with a check row waiting", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        var row = Assert.Single(attention.Conflicts);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_StillHoldsBackAFailingBuildRow_WithTheSettingOnAndACheckRow()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "red, with a check row waiting", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        var row = Assert.Single(attention.FailingBuilds);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAReviewRow_WhenTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, a check row exists but the setting is off", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("clean, green, a check row exists but the setting is off", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -1614,7 +1724,7 @@ public class AttentionControllerTests : IDisposable
         return (a, b, b1);
     }
 
-    private static EfHatchPlaybook Playbook(int from, int to, string types, string model) => new()
+    private static EfHatchPlaybook Playbook(int from, int to, string types, string model, bool isCheck = false) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -1623,6 +1733,7 @@ public class AttentionControllerTests : IDisposable
         Prompt = "do the thing",
         Model = model,
         Effort = "high",
+        IsCheck = isCheck,
         CreatedAt = Now,
         UpdatedAt = Now,
     };
@@ -2055,6 +2166,14 @@ public class AttentionControllerTests : IDisposable
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             if (landing is not null) project.Landing = landing;
             if (checksRequired is not null) project.ChecksRequired = checksRequired.Value;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's check-approves-merge flag, written straight onto the row.</summary>
+        public async Task SetCheckApprovesMergeAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.CheckApprovesMerge = on;
             await Db.SaveChangesAsync();
         }
 
