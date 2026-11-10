@@ -885,6 +885,107 @@ public class PlaybooksControllerTests
 
     private static readonly DateTimeOffset Now = new(2026, 9, 2, 12, 0, 0, TimeSpan.Zero);
 
+    // ---- UnreachableReason: filled on every read, from the board as it stands ----
+
+    private const string Never = " - this row can never run";
+
+    [Fact]
+    public async Task ARowToAColumnTheDispatcherNeverPicks_ReadsBackWithTheSentenceNamingTheRealTarget()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+        var row = await h.CreateRowAsync(board.InProgress, board.Approved);
+
+        Assert.Equal(
+            "a dispatch from \"in progress\" goes to \"review\", not \"approved\"" + Never,
+            (await h.ReadAsync(row.Id)).UnreachableReason);
+    }
+
+    [Fact]
+    public async Task ARowTheDispatcherPicks_ReadsBackWithNoSentence()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+        var todoToDoing = await h.CreateRowAsync(board.Todo, board.InProgress);
+        var review = await h.CreateRowAsync(board.Review, board.Review);
+        var check = await h.CreateRowAsync(board.Review, board.Approved, isCheck: true);
+
+        Assert.Null((await h.ReadAsync(todoToDoing.Id)).UnreachableReason);
+        Assert.Null((await h.ReadAsync(review.Id)).UnreachableReason);
+        Assert.Null((await h.ReadAsync(check.Id)).UnreachableReason);
+    }
+
+    [Fact]
+    public async Task ARowFromTheTerminalColumn_ReadsBackWithTheTerminalSentence()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+        var row = await h.CreateRowAsync(board.Done, board.Todo);
+
+        Assert.Equal(
+            "nothing is dispatched from \"done\" - it is a terminal column, so this row can never run",
+            (await h.ReadAsync(row.Id)).UnreachableReason);
+    }
+
+    [Fact]
+    public async Task TheSentence_FollowsTheBoard_NotTheRow()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+        var row = await h.CreateRowAsync(board.Todo, board.InProgress);
+        var updatedAt = (await h.ReadAsync(row.Id)).UpdatedAt;
+        Assert.Null((await h.ReadAsync(row.Id)).UnreachableReason);
+
+        // Pushing "review" to the left of "in progress" makes "review" the column after "todo".
+        await h.MoveColumnAsync(board.Review, 15);
+        var flipped = await h.ReadAsync(row.Id);
+
+        Assert.Equal(
+            "a dispatch from \"todo\" goes to \"review\", not \"in progress\"" + Never,
+            flipped.UnreachableReason);
+        Assert.Equal(updatedAt, flipped.UpdatedAt);
+
+        await h.MoveColumnAsync(board.Review, 30);
+        var restored = await h.ReadAsync(row.Id);
+
+        Assert.Null(restored.UnreachableReason);
+        Assert.Equal(updatedAt, restored.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task CreatingAnUnreachableRow_Succeeds_AndReturnsTheSentence()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+
+        var created = await h.CreateRowAsync(board.InProgress, board.Approved);
+
+        Assert.Equal(
+            "a dispatch from \"in progress\" goes to \"review\", not \"approved\"" + Never,
+            created.UnreachableReason);
+    }
+
+    [Fact]
+    public async Task PatchingARowUnreachable_Succeeds_AndReturnsTheSentence_AndPatchingItBackClearsIt()
+    {
+        var h = await NewAsync();
+        var board = await h.FiveColumnsAsync();
+        var row = await h.CreateRowAsync(board.Todo, board.InProgress);
+        Assert.Null(row.UnreachableReason);
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, board.Approved, null, null, null, null), default));
+
+        Assert.Equal(
+            "a dispatch from \"todo\" goes to \"in progress\", not \"approved\"" + Never,
+            patched.UnreachableReason);
+
+        var mended = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, board.InProgress, null, null, null, null), default));
+
+        Assert.Null(mended.UnreachableReason);
+    }
+
     private sealed class Harness
     {
         public required HatchContext Db { get; init; }
@@ -915,9 +1016,39 @@ public class PlaybooksControllerTests
             await Db.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Lays a five-column board on this harness's database: the two columns it
+        /// starts with, moved to 10 and 20, then review (30), approved (40, protected
+        /// and merging the pull request) and done (50, terminal).
+        /// </summary>
+        public async Task<Board> FiveColumnsAsync()
+        {
+            (await Db.Statuses.SingleAsync(s => s.Id == Todo)).SortOrder = 10;
+            (await Db.Statuses.SingleAsync(s => s.Id == InProgress)).SortOrder = 20;
+            var review = new EfHatchStatus { Name = "review", SortOrder = 30 };
+            var approved = new EfHatchStatus { Name = "approved", SortOrder = 40, IsProtected = true, MergesPullRequest = true };
+            var done = new EfHatchStatus { Name = "done", SortOrder = 50, IsTerminal = true };
+            Db.AddRange(review, approved, done);
+            await Db.SaveChangesAsync();
+            return new Board(Todo, InProgress, review.Id, approved.Id, done.Id);
+        }
+
+        public async Task<PlaybookDto> CreateRowAsync(int from, int to, bool isCheck = false) =>
+            Created(await Playbooks.CreatePlaybook(
+                new PlaybookCreateRequest(from, to, [], "do it", "sonnet", "high", IsCheck: isCheck), default));
+
+        /// <summary>Moves a column through the context, the way an operator's reorder does: no playbook row is written.</summary>
+        public async Task MoveColumnAsync(int statusId, int sortOrder)
+        {
+            (await Db.Statuses.SingleAsync(s => s.Id == statusId)).SortOrder = sortOrder;
+            await Db.SaveChangesAsync();
+        }
+
         public async Task<PlaybookDto> ReadAsync(int id) =>
             Value(await Playbooks.GetPlaybooks(default)).Single(p => p.Id == id);
     }
+
+    private sealed record Board(int Todo, int InProgress, int Review, int Approved, int Done);
 
     private static async Task<Harness> NewAsync(ModelFamilies? families = null)
     {

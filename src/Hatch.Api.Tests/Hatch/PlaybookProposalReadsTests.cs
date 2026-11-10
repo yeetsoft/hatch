@@ -155,6 +155,32 @@ public class PlaybookProposalReadsTests
     }
 
     [Fact]
+    public async Task AChangeMovingToAnUnreachableTarget_CarriesTheSentenceOnAfter_AndNothingOnBefore()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, h.Review, null, null, null, null));
+
+        var read = await h.ReadAsync(proposal.Id);
+        var change = Assert.Single(read.Changes);
+
+        Assert.Equal(
+            "a dispatch from \"todo\" goes to \"in progress\", not \"in review\" - this row can never run",
+            change.After.UnreachableReason);
+        Assert.Null(change.Before.UnreachableReason);
+    }
+
+    [Fact]
+    public async Task AChangeLeavingTheRowReachable_CarriesNoSentenceOnAfter()
+    {
+        var h = await NewAsync();
+        var proposal = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+
+        var change = Assert.Single((await h.ReadAsync(proposal.Id)).Changes);
+
+        Assert.Null(change.After.UnreachableReason);
+    }
+
+    [Fact]
     public async Task AProposalWithAnIssue_CarriesItsKey()
     {
         var h = await NewAsync();
