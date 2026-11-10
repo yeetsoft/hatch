@@ -1944,6 +1944,18 @@ what the issue already holds writes nothing. The route is open to a key, as
 the only way in - `PATCH`, create and the bulk endpoint carry nothing for it.
 `IssueDto` carries `noCode` and `noCodeAt`, and `hatch show` prints the reason.
 
+**Never on a card with a child.** `IssueCardDto.noCode` is null on any issue
+that is some other issue's `parentKey` - a story with tasks, a bug with
+tasks, an epic with stories - whatever it declared and whenever, because its
+children carry the code and a declaration on it says nothing. Every route
+that sends a card (`/board`, `/issues`, `/plan`, `/plan/{key}`,
+`/reports/timeline`, `/reports/changelog`) answers through the one helper,
+`NoCode.OnCard`, reading `PriorityTree.HasChildren` so the six cannot drift;
+a ticket that gains its first child loses the glyph on the next load. The
+declaration itself (`EfHatchIssue.NoCode`, `IssueDto.noCode`, `hatch show`,
+the attention panel and the close hop below) is unchanged - a parent can
+still make it, and it still stands in review for a person to close.
+
 **Declared, never inferred.** A ticket with no branch and no pull request in
 review reads, to the board, as a session that forgot to push, and that reading
 is the useful one: it is the failure the attention panel's *in review without a

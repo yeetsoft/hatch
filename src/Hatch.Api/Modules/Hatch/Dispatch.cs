@@ -2975,6 +2975,11 @@ public sealed class PriorityTree
     // query rather than riding the single-row projection _dangerous does.
     private readonly Dictionary<long, IReadOnlyList<(string Runner, string? Reason, string By, DateTimeOffset At)>> _omissions;
 
+    // Every issue id that some other issue names as its parent - built once
+    // here rather than walked per issue, since HasChildren asks only whether
+    // the set contains the id, never which children.
+    private readonly HashSet<long> _parents;
+
     internal PriorityTree(
         Dictionary<long, (long?, string, int, int)> rows,
         Dictionary<long, (string, bool?, bool, int, bool, bool)>? onePr = null,
@@ -2987,6 +2992,10 @@ public sealed class PriorityTree
         _runnerTags = runnerTags ?? new();
         _dangerous = dangerous ?? new();
         _omissions = omissions ?? new();
+        _parents = rows.Values
+            .Where(r => r.Item1 is not null)
+            .Select(r => r.Item1!.Value)
+            .ToHashSet();
     }
 
     public static async Task<PriorityTree> ForAsync(HatchContext db, CancellationToken ct)
@@ -3213,6 +3222,9 @@ public sealed class PriorityTree
         var row = _onePr[story];
         return (row.OnePr ?? row.ProjectOnePr, own, story == issueId ? null : _rows[story].Key);
     }
+
+    /// <summary>Whether any issue names this one as its parent, whatever its own column.</summary>
+    public bool HasChildren(long issueId) => _parents.Contains(issueId);
 
     /// <summary>
     /// The nearest story or bug at or above an issue, or null. The one walk
