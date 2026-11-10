@@ -161,6 +161,32 @@ export function liveSessions(runner: Runner, now: Date): RunnerSession[] {
   );
 }
 
+/** Live sessions, ordered for the blocks under a runner's name: `startedAt`
+    ascending so a block never reorders as it beats, ties broken by `where`
+    with a null last - a copy, so the server's own order on `runner.sessions`
+    is never disturbed. */
+export function sessionsByStart(sessions: readonly RunnerSession[]): RunnerSession[] {
+  return [...sessions].sort((a, b) => {
+    const started = Date.parse(a.startedAt) - Date.parse(b.startedAt);
+    if (started !== 0) return started;
+    if (a.where === b.where) return 0;
+    if (a.where === null) return 1;
+    if (b.where === null) return -1;
+    return a.where < b.where ? -1 : 1;
+  });
+}
+
+/** The sessions not worth a live block: ended, or open but past the
+    runner's gone horizon - `liveSessions`' complement, newest `startedAt`
+    first, capped at 20, the server's own retention. */
+export function recentSessions(runner: Runner, now: Date): RunnerSession[] {
+  const live = new Set(liveSessions(runner, now).map((session) => session.id));
+  return (runner.sessions ?? [])
+    .filter((session) => !live.has(session.id))
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+    .slice(0, 20);
+}
+
 /** What each activity is worth saying loudly. Working is the one worth a colour
     - it is the row that is spending money right now - and gone is the one worth
     a warning. */
@@ -431,15 +457,33 @@ export function repositoriesLabel(runner: Runner): string | null {
   return runner.clones ? `${repos}, clones what it lacks` : repos;
 }
 
-/** A runner's own build, as the row says it: a short sha and how long ago,
-    `'dev build'` for an unstamped one, or null for an older CLI that has
-    never reported one at all - the one case with nothing to say, mirrored
-    on BuildStamp's own `revision === null` rule. */
-export function runnerBuildLabel(runner: Runner, now: Date): string | null {
-  if (runner.revision === null) return null;
-  if (!isStamped(runner.revision)) return 'dev build';
-  const phrase = buildTimePhrase(runner.revision, runner.builtAt, now);
-  return phrase ? `${shortSha(runner.revision)} · ${phrase.relative}` : shortSha(runner.revision);
+/** A session's own repositories, as `repositoriesLabel`'s mirror over its
+    `remotes` - or null where it has named none. */
+export function sessionRepositoriesLabel(session: RunnerSession): string | null {
+  const remotes = session.remotes ?? [];
+  if (remotes.length === 0) return null;
+  const repos = remotes.join(', ');
+  return session.clones ? `${repos}, clones what it lacks` : repos;
+}
+
+/** A build's own facts, wide enough for a runner or one of its sessions -
+    both carry `revision`/`builtAt`, a session's optional rather than
+    required. */
+interface BuildFacts {
+  revision?: string | null;
+  builtAt?: string | null;
+}
+
+/** A runner's or a session's own build, as the row says it: a short sha and
+    how long ago, `'dev build'` for an unstamped one, or null for an older
+    CLI that has never reported one at all - the one case with nothing to
+    say, mirrored on BuildStamp's own `revision === null` rule. */
+export function runnerBuildLabel(facts: BuildFacts, now: Date): string | null {
+  const revision = facts.revision ?? null;
+  if (revision === null) return null;
+  if (!isStamped(revision)) return 'dev build';
+  const phrase = buildTimePhrase(revision, facts.builtAt ?? null, now);
+  return phrase ? `${shortSha(revision)} · ${phrase.relative}` : shortSha(revision);
 }
 
 /** A runner's tags, joined - or null where it has named none. */
@@ -539,6 +583,19 @@ export function tokenBudget(runner: Runner): TokenBudgetLine[] {
 
   const night = budgetLine(runner.tokensUsed, runner.maxTokens, 'tokens', runner.maxTokensSource === 'default');
   const hour = budgetLine(runner.tokensLastHour, runner.maxTokensPerHour, 'per hour', runner.maxTokensPerHourSource === 'default');
+  return [night, hour].filter((line): line is TokenBudgetLine => line !== null);
+}
+
+/** The same, for one session: its own `maxTokens`/`maxTokensPerHour` against
+    its own usage. Never `(default)` - a session's cap is always its own,
+    never inherited the way a runner's can be. */
+export function sessionTokenBudget(session: RunnerSession): TokenBudgetLine[] {
+  const maxTokens = session.maxTokens ?? null;
+  const maxTokensPerHour = session.maxTokensPerHour ?? null;
+  if (maxTokens === null && maxTokensPerHour === null) return [];
+
+  const night = budgetLine(session.tokensUsed ?? null, maxTokens, 'tokens', false);
+  const hour = budgetLine(session.tokensLastHour ?? null, maxTokensPerHour, 'per hour', false);
   return [night, hour].filter((line): line is TokenBudgetLine => line !== null);
 }
 

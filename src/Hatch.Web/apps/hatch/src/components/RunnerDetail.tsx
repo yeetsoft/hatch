@@ -2,9 +2,48 @@ import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, PageHeader, Text } from '@hatch/ui';
 import { useRunnersOutlet } from './RunnersLayout';
-import { lastUsedLabel } from '../lib/runners';
+import { lastUsedLabel, liveSessions, sessionsByStart } from '../lib/runners';
 import { usePhone } from '../lib/viewport';
+import { RecentSessions } from './RecentSessions';
+import { SessionBlock } from './SessionBlock';
 import type { Runner } from '../types';
+
+/** The detail's two sessions cards - "Live sessions" and "Recent sessions" in
+    docs/runners-page-design.md - shared between the phone and desk branches
+    of `RunnerDetail` so they are written once. A retired runner draws no
+    live blocks: its row's own badge already says so, and a replaced key's
+    sessions are not this screen's to show as live. */
+function SessionsCards({ runner, now }: { runner: Runner; now: Date }) {
+  const live = Boolean(runner.retiredAt) ? [] : liveSessions(runner, now);
+  const hosts = new Set(live.map((session) => session.host).filter((host): host is string => host !== null));
+
+  return (
+    <>
+      <Card>
+        <h2 className="hatch-section-title">Live sessions</h2>
+        {hosts.size >= 2 && (
+          <p className="hatch-runner-note">
+            This key is in use from {hosts.size} machines. Tags and bounds are per runner, so a key is meant to be
+            one machine.
+          </p>
+        )}
+        {live.length === 0 ? (
+          <Text tone="muted">
+            No live sessions. Start one with <code>hatch go-to-work</code> in a checkout set up with this key.
+          </Text>
+        ) : (
+          <ul className="hatch-runner-sessions">
+            {sessionsByStart(live).map((session) => (
+              <SessionBlock key={session.id} session={session} runner={runner} now={now} />
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <RecentSessions runner={runner} now={now} />
+    </>
+  );
+}
 
 /**
  * The detail's first card - "Identity and key" in
@@ -45,6 +84,7 @@ export function RunnerDetail() {
   const { name } = useParams();
   const { runners } = useRunnersOutlet();
   const phone = usePhone();
+  const now = new Date();
 
   if (runners === null) return null;
 
@@ -83,6 +123,7 @@ export function RunnerDetail() {
         </Button>
         <PageHeader title={name} actions={actions} level={1} />
         <IdentityCard runner={runner} />
+        <SessionsCards runner={runner} now={now} />
       </>
     );
   }
@@ -91,6 +132,7 @@ export function RunnerDetail() {
     <>
       <PageHeader title={name} actions={actions} level={2} />
       <IdentityCard runner={runner} />
+      <SessionsCards runner={runner} now={now} />
     </>
   );
 }
