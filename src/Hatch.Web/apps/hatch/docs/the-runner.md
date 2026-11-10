@@ -910,8 +910,11 @@ go-to-work` on macOS and Linux, `scripts\hatch.ps1 go-to-work` on Windows (or,
 where the execution policy refuses scripts, `powershell -NoProfile
 -ExecutionPolicy Bypass -File .\scripts\hatch.ps1 go-to-work`). Each session a
 loop spawns reaches that loop's own origin and key, from its standing checkout
-or a clone in its own workspace. **Agents → Runners** shows both runners at
-once, each with its tags and where it is working from.
+or a clone in its own workspace. **Agents → Runners** shows what each loop
+reports. Loops that report under two names are two rows; two checkouts that
+report under one name are one row with a quieter line beneath it for each
+checkout, giving where it is working from, its agent and OS, and what it is
+doing - the same list `hatch runners` indents under a runner.
 
 One terminal, several runners: `--runners <n>` (1 to 16) starts `n` of them
 from the one command, instead of a checkout and a terminal for each:
