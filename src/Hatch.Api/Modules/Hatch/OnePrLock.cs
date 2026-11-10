@@ -91,4 +91,48 @@ public static class OnePrLock
 
         return await db.Issues.Include(i => i.Events).Where(i => ids.Contains(i.Id)).OrderBy(i => i.Id).ToListAsync(ct);
     }
+
+    /// <summary>
+    /// The stories and bugs of a project that carry an override
+    /// (<see cref="EfHatchIssue.OnePullRequest"/> is not null) and have no started
+    /// work - the ones a tightening to <see cref="OnePullRequestPolicies.Enforced"/>
+    /// returns to inherit. Tracked, with their trail, for the caller to write on.
+    /// </summary>
+    public static async Task<List<EfHatchIssue>> OverriddenAndUnstartedAsync(HatchContext db, int projectId, CancellationToken ct)
+    {
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        if (Columns.Implementation(statuses) is not { } implementation) return [];
+
+        var board = Columns.Board(statuses);
+        var from = board.FindIndex(s => s.Id == implementation.Id);
+
+        var rows = await db.Issues.AsNoTracking()
+            .Where(i => i.ProjectId == projectId)
+            .Select(i => new { i.Id, i.ParentId, i.Type, i.StatusId, i.OnePullRequest })
+            .ToListAsync(ct);
+
+        var children = rows.Where(r => r.ParentId != null).GroupBy(r => r.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var started = rows.ToDictionary(r => r.Id, r => board.FindIndex(s => s.Id == r.StatusId) is var at && at >= 0 && at >= from);
+
+        bool Started(long storyId)
+        {
+            var seen = new HashSet<long> { storyId };
+            var stack = new Stack<long>([storyId]);
+            while (stack.Count > 0)
+                foreach (var child in children.GetValueOrDefault(stack.Pop(), []))
+                {
+                    if (!seen.Add(child.Id)) continue;
+                    if (started[child.Id]) return true;
+                    stack.Push(child.Id);
+                }
+
+            return false;
+        }
+
+        var ids = rows.Where(r => r.Type is "story" or "bug" && r.OnePullRequest is not null && !Started(r.Id)).Select(r => r.Id).ToList();
+        if (ids.Count == 0) return [];
+
+        return await db.Issues.Include(i => i.Events).Where(i => ids.Contains(i.Id)).OrderBy(i => i.Id).ToListAsync(ct);
+    }
 }

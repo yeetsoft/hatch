@@ -59,6 +59,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
 | PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
+| PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -86,7 +87,10 @@ value a project already holds writes nothing. The check-approves-merge PUT body 
 `ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
 already holds writes nothing, the audit fields included. The no-code-closes PUT body is
 `ProjectNoCodeClosesWriteRequest(NoCodeCloses)`, and resending the value a project
-already holds writes nothing, the audit fields included. Every other answer is a `ProjectDto`
+already holds writes nothing, the audit fields included. The one-pr-policy PUT body is
+`ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
+the bad value), owner only, and resending the value a project already holds writes nothing, the audit
+fields included. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -1224,6 +1228,7 @@ PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
 PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
+PUT    /projects/{id}/one-pr-policy
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

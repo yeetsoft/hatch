@@ -928,6 +928,76 @@ public class ProjectsController(
         return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
     }
 
+    /// <summary>
+    /// Whether <see cref="EfHatchProject.OnePullRequestPolicy"/> is
+    /// <see cref="OnePullRequestPolicies.Enforced"/> - every story and bug under
+    /// the project follows its one-PR default - or
+    /// <see cref="OnePullRequestPolicies.Optional"/>. Only an owner may call this.
+    /// Tightening returns each story or bug that overrides the default and has no
+    /// started work to inheriting, with one event each; a started one keeps its
+    /// own setting. Loosening writes nothing beyond the project row, and writing
+    /// the value a project already has changes nothing, the audit columns
+    /// included. This route is the only way to write the policy; <c>PATCH</c> and
+    /// <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/one-pr-policy")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutOnePrPolicy(int id, ProjectOnePrPolicyWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change its one-pull-request policy") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (!OnePullRequestPolicies.All.Contains(request.Policy))
+            return BadRequest($"\"{request.Policy}\" is not a one-PR policy - {OnePullRequestPolicies.Optional} or {OnePullRequestPolicies.Enforced}");
+
+        if (request.Policy != project.OnePullRequestPolicy)
+        {
+            var actor = await caller.ActorNameAsync(ct);
+            var now = time.GetUtcNow();
+
+            // Tightening: an override no work has begun under only stands in the
+            // way of the rule, so it goes back to following the default. A started
+            // one cannot move - its work is already on one branch.
+            if (request.Policy == OnePullRequestPolicies.Enforced)
+            {
+                foreach (var story in await OnePrLock.OverriddenAndUnstartedAsync(db, id, ct))
+                {
+                    story.Events.Add(new EfHatchIssueEvent
+                    {
+                        Actor = actor,
+                        Kind = EfHatchIssueEvent.OnePrChanged,
+                        Payload = JsonSerializer.Serialize(new
+                        {
+                            from = IssueOnePrController.Name(story.OnePullRequest),
+                            to = IssueOnePrController.Name(null),
+                            fixedBecause = "the project began enforcing its default with nothing under this story started",
+                        }),
+                        At = now,
+                    });
+                    story.OnePullRequest = null;
+                    story.UpdatedAt = now;
+                }
+            }
+
+            project.OnePullRequestPolicy = request.Policy;
+            project.OnePullRequestPolicyBy = actor;
+            project.OnePullRequestPolicyAt = now;
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} one-PR policy set to {Policy} by {Actor}", project.Key, project.OnePullRequestPolicy, project.OnePullRequestPolicyBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
     /// <summary>Takes a member off a project. Only an owner may call this, and it refuses to leave a project with no owner at all.</summary>
     [HttpDelete("{id:int}/members/{personId:guid}")]
     [RequireRole(PersonRole.User)]
