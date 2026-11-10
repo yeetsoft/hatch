@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { QUIET_FRACTION, agoPhrase, claimHealth, claimTitle, claimedBySuffix } from './claim';
+import { describe, expect, it, vi } from 'vitest';
+import { QUIET_FRACTION, agoPhrase, claimHealth, claimTitle, claimedBySuffix, headClick, headKey, runnerPath } from './claim';
 import type { IssueClaim } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');
@@ -117,5 +117,66 @@ describe('claimTitle', () => {
     const said = claimTitle(claim({ claimedBy: 'Jeff Winger', runner: 'Jeff Winger' }), NOW);
 
     expect(said).toBe(`Jeff Winger is working this, last heard from ${agoPhrase(claim().heartbeatAt, NOW)}`);
+  });
+});
+
+describe('runnerPath', () => {
+  it('is the runner\'s own page, percent-encoded', () => {
+    expect(runnerPath('Quill')).toBe('/runners/Quill');
+    expect(runnerPath('a b/c')).toBe('/runners/a%20b%2Fc');
+  });
+});
+
+describe('headClick', () => {
+  it('navigates to the runner on a plain click, and takes the event over', () => {
+    const go = vi.fn();
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    headClick('Quill', go)({ preventDefault, stopPropagation });
+
+    expect(go).toHaveBeenCalledWith('/runners/Quill');
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it('leaves a modified or non-primary click alone, for the browser to handle', () => {
+    for (const over of [{ metaKey: true }, { button: 1 }]) {
+      const go = vi.fn();
+      const preventDefault = vi.fn();
+      const stopPropagation = vi.fn();
+
+      headClick('Quill', go)({ ...over, preventDefault, stopPropagation });
+
+      expect(go).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(stopPropagation).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('headKey', () => {
+  it('navigates on Enter, and stops the key reaching dnd-kit', () => {
+    const go = vi.fn();
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    headKey('Quill', go)({ key: 'Enter', preventDefault, stopPropagation });
+
+    expect(go).toHaveBeenCalledWith('/runners/Quill');
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it('stops every other key from reaching dnd-kit too, without navigating', () => {
+    const go = vi.fn();
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    headKey('Quill', go)({ key: 'Tab', preventDefault, stopPropagation });
+
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(go).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });

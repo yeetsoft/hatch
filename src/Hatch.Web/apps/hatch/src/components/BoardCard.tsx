@@ -171,7 +171,7 @@ export function BoardCard({
         {...listeners}
         aria-describedby={describedBy}
       >
-        <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} />
+        <CardFace card={card} waiting={waiting} terminal={terminal} project={project} stories={stories} statuses={statuses} linkRunner />
         <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
       </Link>
     );
@@ -201,6 +201,7 @@ export function BoardCard({
           stories={stories}
           statuses={statuses}
           showStrip={false}
+          linkRunner
         />
         <FlowBand band={band} sentence={sentence ?? undefined} tip={band ? tip : undefined} />
       </Link>
@@ -252,7 +253,8 @@ function CardFace({
   stories,
   statuses,
   showStrip = true,
-}: Required<Omit<CardProps, 'card'>> & { card: IssueCard; showStrip?: boolean }) {
+  linkRunner = false,
+}: Required<Omit<CardProps, 'card'>> & { card: IssueCard; showStrip?: boolean; linkRunner?: boolean }) {
   const { total, done } = storyCount(stories, statuses);
   return (
     <>
@@ -337,7 +339,7 @@ function CardFace({
               the page, so the drag preview carries it too - a card being moved is
               exactly the card where knowing a runner is mid-increment on it
               matters. */}
-          <ClaimBadge claim={card.claim} />
+          <ClaimBadge claim={card.claim} linkRunner={linkRunner} />
           {/* Drawn on the card and not only on the issue page, because a question
               nobody can see is a question nobody answers - and this card is the
               reason the column below it has stopped moving. */}

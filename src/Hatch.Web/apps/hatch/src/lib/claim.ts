@@ -13,6 +13,7 @@
    Pure functions taking `now` rather than reading it, so a board judges every
    card against one instant and the tests are exact. */
 
+import { isPlainClick, type ClickIntent } from './pointer';
 import type { IssueClaim } from '../types';
 
 /** Fresh, or gone quiet: the two states a claim a client can see is in. There
@@ -115,3 +116,41 @@ export function claimedBySuffix(claim: IssueClaim): string {
 export function claimTitle(claim: IssueClaim, now: Date): string {
   return `${claim.runner} is working this${claimedBySuffix(claim)}, last heard from ${agoPhrase(claim.heartbeatAt, now)}`;
 }
+
+/** Where the robot head on a claimed card points - that runner's own page. */
+export function runnerPath(runner: string): string {
+  return `/runners/${encodeURIComponent(runner)}`;
+}
+
+/**
+ * A press on the head, curried over the runner and the navigation it calls -
+ * the same shape as `lineClick` in BoardCard.tsx, so a test exercises it
+ * against a plain object with no DOM in the run at all.
+ *
+ * A modified click, or one from a button other than the primary one, is left
+ * untouched: no `preventDefault`, no `stopPropagation`, so it bubbles to the
+ * card's own `<Link>` and the browser does whatever it does for the rest of
+ * the card.
+ */
+export const headClick =
+  (runner: string, go: (path: string) => void) =>
+  (event: ClickIntent & { preventDefault: () => void; stopPropagation: () => void }): void => {
+    if (!isPlainClick(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    go(runnerPath(runner));
+  };
+
+/**
+ * A key pressed on the head. `stopPropagation` always, so dnd-kit's keyboard
+ * sensor on the card never sees it and never starts a drag from here; only
+ * Enter also navigates, the way a link's own default activation would.
+ */
+export const headKey =
+  (runner: string, go: (path: string) => void) =>
+  (event: { key: string; preventDefault: () => void; stopPropagation: () => void }): void => {
+    event.stopPropagation();
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    go(runnerPath(runner));
+  };
