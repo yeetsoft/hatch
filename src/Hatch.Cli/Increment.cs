@@ -1506,12 +1506,14 @@ public sealed class Increment(
     /// It speaks only while a call is open (a session thinking, writing, or
     /// between calls gets nothing), only until the call is past
     /// <paramref name="ceiling"/> (a call the agent itself should have ended is
-    /// hung, and the quiet window then runs as it always has), and only when
-    /// nothing else has been said for half a beat, so a real line - a sub-agent
-    /// talking - keeps the card. A runner that has died runs no loop and says
-    /// nothing, so its claim lapses on the server's rule unchanged. The line is
-    /// the call as the transcript already printed it and the minutes: never
-    /// its output.
+    /// hung, and the quiet window then runs as it always has) - unless the
+    /// claim carries a run cap, in which case it keeps talking past the
+    /// ceiling too, since <see cref="WatchRunTimeAsync"/> is what bounds the
+    /// call there, not this - and only when nothing else has been said for
+    /// half a beat, so a real line - a sub-agent talking - keeps the card. A
+    /// runner that has died runs no loop and says nothing, so its claim
+    /// lapses on the server's rule unchanged. The line is the call as the
+    /// transcript already printed it and the minutes: never its output.
     /// </remarks>
     private async Task KeepTalkingAsync(
         InFlight inFlight, Claim claim, TimeSpan every, TimeSpan ceiling, CancellationToken ct)
@@ -1531,7 +1533,8 @@ public sealed class Increment(
 
             var now = _clock.GetUtcNow();
             var age = now - open.Since;
-            if (age >= ceiling) continue;
+            var capped = claim.RunLimit is { } cap && cap > TimeSpan.Zero;
+            if (age >= ceiling && !capped) continue;
             if (now - (claim.Chatter.SaidAt ?? claim.TakenAt) < every / 2) continue;
 
             claim.Chatter.Line = $"still running: {open.Call.Line}, {(int)age.TotalMinutes}m";
