@@ -12,6 +12,8 @@ import {
   reviewEmptyWords,
   runnerCapacityEmptyWords,
   runnerCapacityWords,
+  stalledEmptyWords,
+  stalledWords,
   trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
@@ -153,6 +155,8 @@ export function AttentionHuman({
   const waitingOnARunner = attention?.waitingOnARunner ?? [];
   const runnerCapacity = attention?.runnerCapacity ?? [];
   const trainStalled = attention?.trainStalled ?? [];
+  const stalled = attention?.stalled ?? [];
+  const stallResumeSeconds = attention?.stallResumeSeconds ?? 0;
   const backup = attention?.backup ?? null;
 
   return (
@@ -262,6 +266,29 @@ export function AttentionHuman({
                     <span className="hatch-attention-waited">{waitedWords(q.askedAt, now)}</span>
                   </span>
                   <span className="hatch-attention-question">{q.body}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Stalled issues</h3>
+
+        {stalled.length === 0 ? (
+          <p className="hatch-attention-empty">{stalledEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {stalled.map((s) => (
+              <li key={s.key}>
+                <Link className="hatch-attention-row" to={`/issues/${s.key}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{s.key}</span>
+                    <span className="hatch-attention-title">{s.title}</span>
+                  </span>
+                  {s.stalledWhy && <span className="hatch-attention-files">{s.stalledWhy}</span>}
+                  <span className="hatch-attention-files">{stalledWords(s, stallResumeSeconds, now)}</span>
                 </Link>
               </li>
             ))}

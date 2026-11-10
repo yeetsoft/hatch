@@ -351,7 +351,8 @@ lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
 them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
-**Deadlocked**, **Questions to answer**, **Pull requests to review**,
+**Deadlocked**, **Questions to answer**, **Stalled issues**,
+**Pull requests to review**,
 **Approved, not merging**, **Landed, not done**, **Finished with no code**,
 **Runner capacity**, **Waiting on a runner**. **Waiting on a runner** lists
 every issue whose next move no live runner can take for want of a model or a
@@ -364,6 +365,18 @@ a project's train has passed a driver over; each row links to the issue at the
 head of the train and names the runner passed over and the one it went to. It
 clears when that runner next checks in, and it does not light the control, since
 a runner that died never will.
+
+Each row under **Stalled issues** is the issue's key, a link, its title, the
+reason the stall gave when it gave one, and then one line for who has it: `resumes
+in N minutes` while the loop will resume it on its own, `any moment now` once it
+is past its window, `held by a person` when somebody pressed **Hold for me**, or
+the board's own sentence when the board itself holds it, such as `stalled 3
+times in a row, at this board's limit of 3 - held for a person now, not resumed
+again`. Only a board-held row lights the control
+and is counted; a loop-owned row or a person-held one is listed and does
+neither, since one is already on its way and the other is somebody's choice. With
+nothing to list, the group reads *Nothing is stalled.* [One increment and the
+loop](one-increment-and-the-loop#stalls) covers what a stall is.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
 and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or
@@ -396,9 +409,9 @@ conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.
 
-Stalled and held issues are not in this panel: a card wears a lock or an
-hourglass for them instead, and the issue's own stall panel offers
-**Resume now** and **Hold for me**.
+A card still wears a lock or an hourglass for a stalled or held issue, and the
+issue's own stall panel is still where **Resume now** and **Hold for me** are
+reached.
 [Questions and decisions](questions-and-decisions) covers answering a
 question; [One increment and the loop](one-increment-and-the-loop#stalls)
 covers what a stall is and when the board resumes one on its own.
