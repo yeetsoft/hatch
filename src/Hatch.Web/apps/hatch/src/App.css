@@ -271,6 +271,31 @@
   margin: 0 auto;
 }
 
+/* The Runners page's two-pane grid. Same specificity as .hatch-page > *
+   above, so order decides: this comes after, and lifts the width cap and the
+   page's own scroll so the grid can fill the rest of the page and scroll its
+   panes on their own instead. */
+.hatch-page--split {
+  overflow-y: hidden;
+}
+
+.hatch-page--split > * {
+  max-width: none;
+}
+
+.hatch-page--split > .hatch-runners-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: var(--sp-5);
+}
+
+.hatch-runners-pane {
+  overflow-y: auto;
+  min-height: 0;
+}
+
 /* The board has no title row: its first line is the filter row, and it sits at
    --sp-6 because that is where every page's first line sits (.hatch-page,
    .hatch-issue-page) and where the header's top edge used to be, so moving
@@ -3249,19 +3274,23 @@ input.hatch-inline-title-input {
 /* Two columns on a window with room for them, so the notes share a left edge
    and the block can be read down rather than across. The command column is
    shrink-to-fit up to a cap: a reference whose widest line set the width for
-   every row would push every note off the right of a narrow card. */
-.hatch-runner-row {
+   every row would push every note off the right of a narrow card.
+
+   Named `-command-row`, not `-runner-row`: the Runners page's own list row
+   (below) took the shorter name first, and the two sharing it silently broke
+   this grid into the list row's column flex (HA-2147). */
+.hatch-runner-command-row {
   display: grid;
   grid-template-columns: minmax(0, max-content) minmax(12rem, 1fr);
   align-items: baseline;
   gap: var(--sp-2) var(--sp-3);
 }
 
-.hatch-runner-row > dt {
+.hatch-runner-command-row > dt {
   min-width: 0;
 }
 
-.hatch-runner-row > dd {
+.hatch-runner-command-row > dd {
   margin: 0;
   font-size: var(--t-label);
 }
@@ -3269,7 +3298,7 @@ input.hatch-inline-title-input {
 /* One column when there is not room for two. A command chip does not wrap - it
    scrolls - so the alternative is a note squeezed into three characters. */
 @media (max-width: 40rem) {
-  .hatch-runner-row {
+  .hatch-runner-command-row {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-1);
   }
@@ -4374,8 +4403,8 @@ input.hatch-inline-title-input {
    page exactly as it is (the tooltip is still there), and a coarse one - a
    phone or an iPad alike, whatever the window happens to measure - reads the
    same sentence the title attribute would have said, drawn rather than
-   hidden. Modelled on `.hatch-runner-rows`/`.hatch-runner-row`'s term/note
-   grid, one column below the breakpoint for the same reason theirs is.
+   hidden. Modelled on `.hatch-runner-rows`/`.hatch-runner-command-row`'s
+   term/note grid, one column below the breakpoint for the same reason theirs is.
 
    The card itself is what hides on a fine pointer, not only the list inside
    it - a `<dl>` set to `display: none` would still leave its card an empty

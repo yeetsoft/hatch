@@ -97,7 +97,7 @@ function Reference() {
           {group.blurb && <p className="text-muted">{group.blurb}</p>}
           <dl className="hatch-runner-rows">
             {group.rows.map((row) => (
-              <div key={row.command} className="hatch-runner-row">
+              <div key={row.command} className="hatch-runner-command-row">
                 <dt>
                   <Command command={row.command} />
                 </dt>

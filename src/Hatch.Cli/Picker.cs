@@ -294,8 +294,13 @@ public sealed class Picker(
                 {
                     if (!await claim.AttachPlaybookAsync(playbookId, ct))
                         say.Complain($"hatch: {key} - could not attach its playbook to the claim");
-                    else if (playbook.QuietLimitSeconds is { } limit)
-                        claim.UseQuietLimit(limit);
+                    else
+                    {
+                        if (playbook.QuietLimitSeconds is { } limit)
+                            claim.UseQuietLimit(limit);
+                        if (playbook.MaxRunSeconds is { } runLimit)
+                            claim.UseRunLimit(runLimit);
+                    }
                 }
 
                 var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
