@@ -39,6 +39,9 @@ namespace Hatch.Contracts;
 /// <param name="NoCodeCloses">Whether a no-code declaration on an issue closes it outright - see <see cref="EfHatchProject.NoCodeCloses"/>. Off by default.</param>
 /// <param name="NoCodeClosesBy">Who last changed <paramref name="NoCodeCloses"/>, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesBy"/>.</param>
 /// <param name="NoCodeClosesAt">When <paramref name="NoCodeCloses"/> was last changed, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesAt"/>.</param>
+/// <param name="OnePullRequestPolicy">Whether the project's one-PR default binds its stories - see <see cref="OnePullRequestPolicies"/> and <see cref="EfHatchProject.OnePullRequestPolicy"/>. Optional by default.</param>
+/// <param name="OnePullRequestPolicyBy">Who last changed <paramref name="OnePullRequestPolicy"/>, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyBy"/>.</param>
+/// <param name="OnePullRequestPolicyAt">When <paramref name="OnePullRequestPolicy"/> was last changed, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyAt"/>.</param>
 public record ProjectDto(
     int Id, string Key, string Name, int IssueCount, DateTimeOffset CreatedAt, string? Color, string? Icon,
     IReadOnlyList<ProjectRepositoryDto> Repositories, DateTimeOffset? LogoUpdatedAt,
@@ -52,7 +55,8 @@ public record ProjectDto(
     bool BindsTracker = false, string? BindsTrackerBy = null, DateTimeOffset? BindsTrackerAt = null,
     bool StoriesOnEpics = false,
     bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null,
-    bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null)
+    bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null,
+    string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -140,6 +144,9 @@ public record ProjectCheckApprovesMergeWriteRequest(bool CheckApprovesMerge);
 
 /// <summary>A write to whether a no-code declaration closes an issue outright - see <see cref="EfHatchProject.NoCodeCloses"/>.</summary>
 public record ProjectNoCodeClosesWriteRequest(bool NoCodeCloses);
+
+/// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
+public record ProjectOnePrPolicyWriteRequest(string Policy);
 
 /// <summary>The answer to a <see cref="ProjectBindsTrackerWriteRequest"/>: the project as written, and which project the flag was taken from.</summary>
 /// <param name="Project">The project written.</param>
@@ -649,6 +656,7 @@ public record IssueClaimDto(
 /// <param name="NoCodeAt">When <paramref name="NoCode"/> was declared; null exactly when it is.</param>
 /// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
+/// <param name="OnePrEnforced">Whether this issue's project enforces its one-PR default - <see cref="EfHatchProject.OnePullRequestPolicy"/> is <see cref="OnePullRequestPolicies.Enforced"/>. Filled wherever an <see cref="IssueDto"/> is built.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -707,7 +715,8 @@ public record IssueDto(
     string? NoCode = null,
     DateTimeOffset? NoCodeAt = null,
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
-    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!)
+    IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
+    bool OnePrEnforced = false)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -3444,6 +3453,18 @@ public static class MergeVerdicts
     public const string Ambiguous = "ambiguous";
 
     public static readonly IReadOnlyList<string> All = [Clean, Conflicted, None, Ambiguous];
+}
+
+/// <summary>Whether a project's one-PR default binds its stories (<see cref="EfHatchProject.OnePullRequestPolicy"/>) or only suggests.</summary>
+public static class OnePullRequestPolicies
+{
+    /// <summary>A story's one-PR choice is its own: the project default is only a default.</summary>
+    public const string Optional = "optional";
+
+    /// <summary>Every story under the project follows the project's one-PR default.</summary>
+    public const string Enforced = "enforced";
+
+    public static readonly IReadOnlyList<string> All = [Optional, Enforced];
 }
 
 /// <summary>

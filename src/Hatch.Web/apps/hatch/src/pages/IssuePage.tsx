@@ -15,7 +15,6 @@ import {
   getIssue,
   getIssuePlan,
   getNextWorkUnder,
-  getRunnerNames,
   getRunners,
   getWorkLog,
   liftRunnerOmission,
@@ -165,7 +164,8 @@ export function IssuePage() {
   /* Every live runner's name, null while unread - OmittedRunners uses this to
      flag a row naming a runner that is no longer on the board. */
   const [runnerNames, setRunnerNames] = useState<string[] | null>(null);
-  /* The person-scoped runner names, offered in the omit form's picker. */
+  /* The live runners' names, offered in the omit form's picker. The same list
+     as `runnerNames`: one live-runners read feeds both. */
   const [pickable, setPickable] = useState<string[]>([]);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
      single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
@@ -256,11 +256,18 @@ export function IssuePage() {
     return () => window.removeEventListener('focus', onFocus);
   }, [load]);
 
-  /* The two lists OmittedRunners' picker and "not a runner" badge draw from.
-     Read once on mount, not keyed on `key`: neither list is per issue. */
+  /* The one read OmittedRunners' picker and "not a runner" badge draw from.
+     They are the same list because a browser person reads every runner
+     (RunnersController.GetRunners scoping) - not true of a key, but this page
+     is a browser's. Read once on mount, not keyed on `key`: it is not per issue. */
   useEffect(() => {
-    getRunnerNames().then(setRunnerNames).catch(() => {});
-    getRunners().then((rows) => setPickable(rows.map((r) => r.name))).catch(() => {});
+    getRunners()
+      .then((rows) => {
+        const names = rows.map((r) => r.name);
+        setPickable(names);
+        setRunnerNames(names);
+      })
+      .catch(() => {});
   }, []);
 
   /* While a message to the agent is waiting under a live claim, and only then:
