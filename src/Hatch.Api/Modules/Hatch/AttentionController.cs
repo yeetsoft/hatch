@@ -108,6 +108,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.PullRequestClosedAt,
                 Landing = i.Project!.Landing,
                 i.Project.ChecksRequired,
+                i.Project.CheckApprovesMerge,
                 i.Project.NoCodeCloses,
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
@@ -215,55 +216,76 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // One held back by a conflict or a failed build is not a row here
         // either - it is the loop's to clear, not a person's - so it is
         // counted towards ReviewsHeldBack instead, never both.
-        var reviews = inReview
+        var reviewCandidates = inReview
             .Where(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
                 && !conflicted.ContainsKey(i.Id)
                 && !failed.ContainsKey(i.Id))
-            .Select(i =>
-            {
-                var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
-                var merges = mergesByIssue.TryGetValue(i.Id, out var m) ? (IReadOnlyList<EfHatchMergeCheck>)m : [];
-                var builds = buildsByIssue.TryGetValue(i.Id, out var b) ? (IReadOnlyList<EfHatchBuildCheck>)b : [];
-
-                // The same rules ReviewWork.Judge dispatches on: only the
-                // repositories the project still binds, and only builds about
-                // the branch as its own clean merge check reads it.
-                var counted = ReviewWork.Counted(repos, merges);
-                var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
-                var about = ReviewWork.AboutTheBranch(clean, builds);
-
-                var buildState = clean.Count == 0 ? ReviewBuildStates.Unknown
-                    : about.Any(x => x.Verdict == BuildVerdicts.Failed
-                        || (x.Verdict == BuildVerdicts.Pending && EfHatchBuildCheck.ReadFailing(x.Failing).Count > 0))
-                        ? ReviewBuildStates.Failure
-                    : about.Count == clean.Count && about.All(x => x.Verdict == BuildVerdicts.Passed)
-                        ? ReviewBuildStates.Success
-                    : ReviewBuildStates.Unknown;
-
-                bool? holdsTrunk = clean.Any(m => m.HoldsTrunk == false) ? false
-                    : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
-                    : null;
-                var playbookFilePath = clean.FirstOrDefault(m => m.PlaybookFilePath is not null)?.PlaybookFilePath;
-
-                // A pre-approved row the judge would carry on its own - merge
-                // it, update its branch, or is still waiting on a runner to
-                // check it - is not a person's business any more, so it is
-                // not a row here at all. One the judge still holds stays, with
-                // the same sentence the merge column would show for it.
-                string? heldSentence = null;
-                if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
-                {
-                    var judged = MergeWork.Judge(repos, merges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince);
-                    if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) return null;
-                    heldSentence = judged.Sentence;
-                }
-
-                return new ReviewDto(
-                    IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
-                    buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence, playbookFilePath);
-            })
-            .OfType<ReviewDto>()
             .ToList();
+
+        // Whether each candidate is a parent - the shape Dispatch.MatchAsync
+        // needs for its playbook lookup - scoped to just these rows, never a
+        // full FamilyGate.ForAsync: this endpoint already avoids loading more
+        // than a rule needs.
+        var candidateIds = reviewCandidates.Select(i => i.Id).ToList();
+        var hasChildren = candidateIds.Count == 0
+            ? new HashSet<long>()
+            : (await db.Issues.AsNoTracking()
+                .Where(c => c.ParentId != null && candidateIds.Contains(c.ParentId.Value))
+                .Select(c => c.ParentId!.Value).Distinct().ToListAsync(ct))
+                .ToHashSet();
+
+        var reviews = new List<ReviewDto>();
+        foreach (var i in reviewCandidates)
+        {
+            // A row a check is going to carry into the merge column under "A
+            // passing check approves the merge" is not a person's row here -
+            // the move itself speaks for it, the same question Dispatch.ScanAsync
+            // and WorkController.RouteAsync ask for the same row.
+            if (Columns.Approves(statuses, review, i.CheckApprovesMerge) is { } approved
+                && (await dispatch.MatchAsync(review.Id, approved.Id, i.Type, hasChildren.Contains(i.Id), i.ProjectId, ct))?.Playbook is { IsCheck: true })
+                continue;
+
+            var repos = bound.TryGetValue(i.ProjectId, out var r) ? r : [];
+            var issueMerges = mergesByIssue.TryGetValue(i.Id, out var m) ? (IReadOnlyList<EfHatchMergeCheck>)m : [];
+            var builds = buildsByIssue.TryGetValue(i.Id, out var b) ? (IReadOnlyList<EfHatchBuildCheck>)b : [];
+
+            // The same rules ReviewWork.Judge dispatches on: only the
+            // repositories the project still binds, and only builds about
+            // the branch as its own clean merge check reads it.
+            var counted = ReviewWork.Counted(repos, issueMerges);
+            var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
+            var about = ReviewWork.AboutTheBranch(clean, builds);
+
+            var buildState = clean.Count == 0 ? ReviewBuildStates.Unknown
+                : about.Any(x => x.Verdict == BuildVerdicts.Failed
+                    || (x.Verdict == BuildVerdicts.Pending && EfHatchBuildCheck.ReadFailing(x.Failing).Count > 0))
+                    ? ReviewBuildStates.Failure
+                : about.Count == clean.Count && about.All(x => x.Verdict == BuildVerdicts.Passed)
+                    ? ReviewBuildStates.Success
+                : ReviewBuildStates.Unknown;
+
+            bool? holdsTrunk = clean.Any(m => m.HoldsTrunk == false) ? false
+                : clean.Count > 0 && clean.All(m => m.HoldsTrunk == true) ? true
+                : null;
+            var playbookFilePath = clean.FirstOrDefault(m => m.PlaybookFilePath is not null)?.PlaybookFilePath;
+
+            // A pre-approved row the judge would carry on its own - merge
+            // it, update its branch, or is still waiting on a runner to
+            // check it - is not a person's business any more, so it is
+            // not a row here at all. One the judge still holds stays, with
+            // the same sentence the merge column would show for it.
+            string? heldSentence = null;
+            if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
+            {
+                var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince);
+                if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) continue;
+                heldSentence = judged.Sentence;
+            }
+
+            reviews.Add(new ReviewDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl!,
+                buildState, holdsTrunk, clean.FirstOrDefault()?.Trunk, heldSentence, playbookFilePath));
+        }
 
         var closesTo = Columns.Closes(statuses, review);
         var family = closesTo is not null ? await FamilyGate.ForAsync(db, statuses, ct) : null;
