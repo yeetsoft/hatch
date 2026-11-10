@@ -100,9 +100,7 @@ public class BoardController(
             .ToListAsync(ct);
 
         var statusDtos = statuses
-            .Select(s => new StatusDto(
-                s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-                IsImplementation: s.IsImplementation, RunnerTags: RunnerTagColumn.Read(s.RunnerTags)))
+            .Select(StatusesController.ToDto)
             .ToList();
 
         // One instant for the whole board, so two cards claimed a second apart

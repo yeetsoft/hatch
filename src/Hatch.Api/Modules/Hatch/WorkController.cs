@@ -386,8 +386,8 @@ public class WorkController(
 
         return scan.Rows.Select(r => new QueueEntryDto(
             issues[r.Issue.Id],
-            ToStatusDto(r.From),
-            r.To is null ? null : ToStatusDto(r.To),
+            StatusesController.ToDto(r.From),
+            r.To is null ? null : StatusesController.ToDto(r.To),
             r.Blocked,
             r.Kind,
             r.Hop,
@@ -1522,8 +1522,8 @@ public class WorkController(
 
         return new WorkDto(
             issueDto,
-            ToStatusDto(from),
-            rowTo is null ? null : ToStatusDto(rowTo),
+            StatusesController.ToDto(from),
+            rowTo is null ? null : StatusesController.ToDto(rowTo),
             playbookDto,
             childCards,
             repositories,
@@ -1539,7 +1539,7 @@ public class WorkController(
             inReview,
             sentBack is null || blocked is not null ? null : new SentBackDto(
                 sentBack.Value.Length, sentBack.Value.Limit, EfHatchIssue.LegalParentTypes["task"].Contains(issue.Type)),
-            statuses.Select(ToStatusDto).ToList(),
+            statuses.Select(StatusesController.ToDto).ToList(),
             blocked is null && hopKind == HopKinds.Approve
                 ? MergeWork.Judge(issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now, pullRequestHeadSince: issue.PullRequestHeadSince).Sentence
                 : null,
@@ -1630,10 +1630,6 @@ public class WorkController(
             : null;
 
     // ---- Loading ----
-
-    private static StatusDto ToStatusDto(EfHatchStatus s) =>
-        new(s.Id, s.Name, s.SortOrder, s.IsTerminal, s.IsDeferred, s.IsWip, s.Color, s.ExpressSkips, s.ParentPulls,
-            RunnerTags: RunnerTagColumn.Read(s.RunnerTags));
 
     /// <summary>
     /// The project keys a request named: trimmed, upper-cased (the normal
