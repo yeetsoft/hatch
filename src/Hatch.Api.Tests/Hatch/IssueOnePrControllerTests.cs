@@ -548,6 +548,148 @@ public class IssueOnePrControllerTests
         Assert.Contains("AER enforces its one-PR default", Sentence(refused.Result));
     }
 
+    // ---- Moving into an enforced project ----
+
+    private static IssuePatchRequest MoveTo(int projectId, bool? moveDescendants = null) =>
+        new(null, null, null, null, null, null, null, null, projectId, moveDescendants);
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task MovingIntoAnEnforcedProject_ReturnsAnUnstartedOverrideToInherit_AndSaysWhy(string type)
+    {
+        var h = await NewAsync(board: true);
+        var issue = await h.FileAsync(type, "the issue", onePr: "on");
+        var id = (await h.RowAsync(issue.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        Value(await h.Issues.PatchIssue(issue.Key, MoveTo(ops), default));
+
+        Assert.Null((await h.RowByIdAsync(id)).OnePullRequest);
+        var events = await h.OnePrEventsByIdAsync(id);
+        var e = Assert.Single(events);
+        Assert.Equal("on", e.GetProperty("from").GetString());
+        Assert.Equal("inherit", e.GetProperty("to").GetString());
+        Assert.Contains("moved into a project", e.GetProperty("fixedBecause").GetString());
+    }
+
+    [Fact]
+    public async Task MovingIntoAnEnforcedProject_AStartedStoryKeepsItsOverride_AndWritesNothing()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+        var id = (await h.RowAsync(story.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        Assert.True((await h.RowByIdAsync(id)).OnePullRequest);
+        Assert.Single(await h.OnePrEventsByIdAsync(id)); // the "on" it was given, and nothing from the move
+    }
+
+    [Fact]
+    public async Task MovingIntoAnOptionalProject_LeavesTheOverrideAlone_AndWritesNothing()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var id = (await h.RowAsync(story.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        Assert.True((await h.RowByIdAsync(id)).OnePullRequest);
+        Assert.Empty(await h.OnePrEventsByIdAsync(id));
+    }
+
+    [Fact]
+    public async Task MovingOutOfAnEnforcedProject_LeavesTheOverrideAlone_AndWritesNothing()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var id = (await h.RowAsync(story.Key)).Id;
+        await h.EnforceAsync();
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Optional);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        Assert.True((await h.RowByIdAsync(id)).OnePullRequest);
+        Assert.Empty(await h.OnePrEventsByIdAsync(id));
+    }
+
+    [Fact]
+    public async Task MovingAStoryWithItsUnstartedTask_ReconcilesTheStoryOnce()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        var id = (await h.RowAsync(story.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        Assert.Null((await h.RowByIdAsync(id)).OnePullRequest);
+        Assert.Equal(2, (await h.OnePrEventsByIdAsync(id)).Count); // the "on", then the return to inherit
+    }
+
+    [Fact]
+    public async Task MovingAnOverriddenStoryAndItsOverriddenChildStory_ReconcilesBoth()
+    {
+        var h = await NewAsync(board: true);
+        var epic = await h.FileAsync("epic", "the epic");
+        var story = await h.FileAsync("story", "the story", epic.Key, onePr: "on");
+        var bug = await h.FileAsync("bug", "the bug", story.Key, onePr: "off");
+        var ids = new[] { (await h.RowAsync(story.Key)).Id, (await h.RowAsync(bug.Key)).Id };
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops), default));
+
+        foreach (var id in ids)
+        {
+            Assert.Null((await h.RowByIdAsync(id)).OnePullRequest);
+            Assert.Single(await h.OnePrEventsByIdAsync(id));
+        }
+    }
+
+    [Fact]
+    public async Task BulkMovingIntoAnEnforcedProject_GivesTheSameResultAsThePatch()
+    {
+        var h = await NewAsync(board: true);
+        var story = await h.FileAsync("story", "the story", onePr: "on");
+        var started = await h.FileAsync("story", "the started story", onePr: "off");
+        var task = await h.FileAsync("task", "the task", started.Key);
+        await h.MoveAsync(task.Key, h.Doing);
+        var ids = (story: (await h.RowAsync(story.Key)).Id, started: (await h.RowAsync(started.Key)).Id);
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        var result = Value(await h.Issues.BulkEdit(new IssueBulkEditRequest([story.Key, started.Key], ProjectId: ops), default));
+
+        Assert.Empty(result.Failures);
+        Assert.Null((await h.RowByIdAsync(ids.story)).OnePullRequest);
+        var e = Assert.Single(await h.OnePrEventsByIdAsync(ids.story));
+        Assert.Equal("on", e.GetProperty("from").GetString());
+        Assert.Equal("inherit", e.GetProperty("to").GetString());
+        Assert.False((await h.RowByIdAsync(ids.started)).OnePullRequest);
+        Assert.Empty(await h.OnePrEventsByIdAsync(ids.started));
+    }
+
+    [Fact]
+    public async Task MovingWithoutDescendants_TheStartedTaskStaysBehind_SoTheStoryCountsAsUnstartedAndIsReconciled()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+        var id = (await h.RowAsync(story.Key)).Id;
+        var ops = await h.ProjectAsync(OnePullRequestPolicies.Enforced);
+
+        Value(await h.Issues.PatchIssue(story.Key, MoveTo(ops, moveDescendants: false), default));
+
+        Assert.Null((await h.RowByIdAsync(id)).OnePullRequest);
+        Assert.Equal(2, (await h.OnePrEventsByIdAsync(id)).Count);
+    }
+
     // ---- The trail ----
 
     [Fact]
@@ -824,6 +966,30 @@ public class IssueOnePrControllerTests
             var project = await Db.Projects.FirstAsync(p => p.Id == ProjectId);
             project.OnePullRequestPolicy = OnePullRequestPolicies.Enforced;
             await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A second project, OPS, with the policy asked for, written straight to the row. Returns its id.</summary>
+        public async Task<int> ProjectAsync(string policy)
+        {
+            var project = new EfHatchProject { Key = "OPS", Name = "Ops", CreatedAt = Now, OnePullRequestPolicy = policy };
+            Db.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        /// <summary>By id, since a move changes the key a test would otherwise look the issue up by.</summary>
+        public async Task<EfHatchIssue> RowByIdAsync(long id) =>
+            await Db.Issues.AsNoTracking().FirstAsync(i => i.Id == id);
+
+        /// <summary>The payloads of the issue's one_pr_changed events, oldest first.</summary>
+        public async Task<List<JsonElement>> OnePrEventsByIdAsync(long id)
+        {
+            var issue = await Db.Issues.AsNoTracking().Include(i => i.Events).FirstAsync(i => i.Id == id);
+            return issue.Events
+                .Where(e => e.Kind == EfHatchIssueEvent.OnePrChanged)
+                .OrderBy(e => e.Id)
+                .Select(e => JsonDocument.Parse(e.Payload!).RootElement.Clone())
+                .ToList();
         }
 
         /// <summary>The project's default, written straight to the row - who may write it is ProjectsControllerTests' business.</summary>
