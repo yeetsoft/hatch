@@ -290,8 +290,13 @@ public sealed class Picker(
                 // claim itself, so the walk claims the ticket either way
                 // rather than treating a failed attach as a reason to release
                 // and move on.
-                if (work.Playbook is { Id: var playbookId } && !await claim.AttachPlaybookAsync(playbookId, ct))
-                    say.Complain($"hatch: {key} - could not attach its playbook to the claim");
+                if (work.Playbook is { Id: var playbookId } playbook)
+                {
+                    if (!await claim.AttachPlaybookAsync(playbookId, ct))
+                        say.Complain($"hatch: {key} - could not attach its playbook to the claim");
+                    else if (playbook.QuietLimitSeconds is { } limit)
+                        claim.UseQuietLimit(limit);
+                }
 
                 var resolved = Clones.Resolve(work, checkouts, standingRoot, standingBaseBranch, workspace, clone);
                 checkouts = resolved.Checkouts;
