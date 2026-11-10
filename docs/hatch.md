@@ -7889,10 +7889,13 @@ counts as a failed increment or ends the night, and a line that says what the
 last poll's did is not said again until something changes.
 
 **The build on the tip, asked of `gh`.** After each checkout's merge half, and
-whatever it did, the poll reads the build on the tip of every branch it just
-looked at that has exactly one candidate on origin — at the sha `ls-remote`
-already printed, so it needs no fetch of its own — and puts a
-[build verdict](#build-check) to the board. It runs `gh` in the checkout, as
+whatever it did, the poll reads the build on the tip of the one branch origin
+has for each issue it just looked at — or, where origin has several, the one
+the stored `clean` or `conflicted` merge check names (that check fetched, and
+knows which is open; `ls-remote` does not). Where the merge check names none of
+them the poll says so in one line naming the branches and reads no build. It
+reads the tip at the sha `ls-remote` already printed, so it needs no fetch of
+its own, and puts a [build verdict](#build-check) to the board. It runs `gh` in the checkout, as
 whichever account the runner's `gh` is signed in as, and spends that account's
 API budget:
 

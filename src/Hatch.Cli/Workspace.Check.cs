@@ -36,6 +36,28 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
     /// <summary>The branches the key claims, trunk excluded, by name.</summary>
     public IReadOnlyList<string> Candidates(string key) =>
         Shas.Keys.Where(b => b != Trunk && Branches.Names(b, key)).Order(StringComparer.Ordinal).ToList();
+
+    /// <summary>
+    /// The branch a build is about: the one branch origin has for the key, or,
+    /// where it has several, the one the stored <c>clean</c> or <c>conflicted</c>
+    /// merge check names. Null for none, and for several with no usable stored
+    /// branch.
+    /// </summary>
+    /// <remarks>
+    /// The merge check fetched, so it knows which of the branches is open;
+    /// <c>ls-remote</c> does not, and counts a stale empty branch the same as
+    /// the live one.
+    /// </remarks>
+    public string? BranchFor(string key, MergeCheckDto? stored)
+    {
+        var candidates = Candidates(key);
+        if (candidates.Count == 1) return candidates[0];
+
+        return stored is { Verdict: MergeVerdicts.Clean or MergeVerdicts.Conflicted, Branch: { } b }
+            && candidates.Contains(b)
+            ? b
+            : null;
+    }
 }
 
 /// <summary>
