@@ -17,7 +17,7 @@ import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
-import type { Runner, RunnerPatchRequest } from '../types';
+import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
 
 /** The seven states a row can be in, in the order they are decided. */
 export type RunnerActivity = 'gone' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
@@ -49,33 +49,49 @@ export const MAX_SPEND_HINT =
  * watching wants to see.
  */
 export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
-  const beat = Date.parse(runner.lastSeenAt);
+  return factsActivity(runner, now);
+}
+
+/** The facts the rule above is decided from. A runner row and one of its
+    sessions both carry them, which is why the badge on each is decided by the
+    same function and cannot drift apart. */
+interface ActivityFacts {
+  lastSeenAt: string;
+  goneAfterSeconds: number;
+  exhaustedUntil: string | null;
+  throttledUntil: string | null;
+  state: Runner['state'];
+  claimKey: string | null;
+  maxTokensPerHour: number | null;
+}
+
+function factsActivity(facts: ActivityFacts, now: Date): RunnerActivity {
+  const beat = Date.parse(facts.lastSeenAt);
 
   // An unparseable heartbeat is the one case where "look at this" is the honest
   // answer: it is a row whose age cannot be told, not a row that is fine.
-  if (Number.isNaN(beat) || now.getTime() - beat > runner.goneAfterSeconds * 1000) return 'gone';
+  if (Number.isNaN(beat) || now.getTime() - beat > facts.goneAfterSeconds * 1000) return 'gone';
 
-  if (runner.exhaustedUntil !== null && Date.parse(runner.exhaustedUntil) > now.getTime()) return 'exhausted';
-  if (runner.throttledUntil !== null && Date.parse(runner.throttledUntil) > now.getTime()) return 'throttled';
-  if (runner.state === 'paused') return 'paused';
-  if (runner.state === 'stopping') return 'stopping';
+  if (facts.exhaustedUntil !== null && Date.parse(facts.exhaustedUntil) > now.getTime()) return 'exhausted';
+  if (facts.throttledUntil !== null && Date.parse(facts.throttledUntil) > now.getTime()) return 'throttled';
+  if (facts.state === 'paused') return 'paused';
+  if (facts.state === 'stopping') return 'stopping';
 
-  return runner.claimKey ? 'working' : 'idle';
+  return facts.claimKey ? 'working' : 'idle';
 }
 
-/** The same, as the words on the row. */
-export function activityWords(runner: Runner, now: Date): string {
-  const activity = runnerActivity(runner, now);
+function factsWords(facts: ActivityFacts, now: Date): string {
+  const activity = factsActivity(facts, now);
   switch (activity) {
     case 'gone':
       return 'Gone';
     case 'exhausted': {
-      const words = resetClockWords(new Date(runner.exhaustedUntil as string), now);
+      const words = resetClockWords(new Date(facts.exhaustedUntil as string), now);
       return `Out of usage until ${words ?? 'an unknown time'}`;
     }
     case 'throttled': {
-      const words = resetClockWords(new Date(runner.throttledUntil as string), now);
-      const over = runner.maxTokensPerHour === null ? 'its hourly token cap' : `${compactTokens(runner.maxTokensPerHour)} tokens/hour`;
+      const words = resetClockWords(new Date(facts.throttledUntil as string), now);
+      const over = facts.maxTokensPerHour === null ? 'its hourly token cap' : `${compactTokens(facts.maxTokensPerHour)} tokens/hour`;
       return `Over ${over} until ${words ?? 'an unknown time'}`;
     }
     case 'paused':
@@ -83,10 +99,21 @@ export function activityWords(runner: Runner, now: Date): string {
     case 'stopping':
       return 'Stopping';
     case 'working':
-      return `Working ${runner.claimKey}`;
+      return `Working ${facts.claimKey}`;
     default:
       return 'Idle';
   }
+}
+
+function factsParts(facts: ActivityFacts, now: Date): { words: string; claimKey: string | null } {
+  return factsActivity(facts, now) === 'working'
+    ? { words: 'Working', claimKey: facts.claimKey }
+    : { words: factsWords(facts, now), claimKey: null };
+}
+
+/** The same, as the words on the row. */
+export function activityWords(runner: Runner, now: Date): string {
+  return factsWords(runner, now);
 }
 
 /** `activityWords` split into the badge's words and the key beside it, for a
@@ -94,8 +121,44 @@ export function activityWords(runner: Runner, now: Date): string {
     only a working row carries one, the same split `runnerStrip` already
     makes. */
 export function activityParts(runner: Runner, now: Date): { words: string; claimKey: string | null } {
-  const activity = runnerActivity(runner, now);
-  return activity === 'working' ? { words: 'Working', claimKey: runner.claimKey } : { words: activityWords(runner, now), claimKey: null };
+  return factsParts(runner, now);
+}
+
+/** A session's facts judged against its runner's own horizon and cap: the
+    session carries its own heartbeat, claim and exhaustion, the runner carries
+    how long silence may last. */
+const sessionFacts = (session: RunnerSession, runner: Runner): ActivityFacts => ({
+  lastSeenAt: session.lastSeenAt,
+  goneAfterSeconds: runner.goneAfterSeconds,
+  exhaustedUntil: session.exhaustedUntil,
+  throttledUntil: session.throttledUntil,
+  state: session.state,
+  claimKey: session.claimKey,
+  maxTokensPerHour: runner.maxTokensPerHour,
+});
+
+/** What one session is doing, decided by the same rule as its runner's row. */
+export function sessionActivity(session: RunnerSession, runner: Runner, now: Date): RunnerActivity {
+  return factsActivity(sessionFacts(session, runner), now);
+}
+
+/** A session's badge words and the key beside it, as `activityParts` for a row. */
+export function sessionParts(session: RunnerSession, runner: Runner, now: Date): { words: string; claimKey: string | null } {
+  return factsParts(sessionFacts(session, runner), now);
+}
+
+/**
+ * The sessions worth a line under their runner, in the server's order.
+ *
+ * Live means no end and not past the runner's gone horizon - the same rule
+ * `hatch runners` indents by. The horizon is checked here as well as the end
+ * because the in-memory provider skips the lazy `endedAt` write the server
+ * makes on this very read.
+ */
+export function liveSessions(runner: Runner, now: Date): RunnerSession[] {
+  return (runner.sessions ?? []).filter(
+    (session) => session.endedAt === null && sessionActivity(session, runner, now) !== 'gone',
+  );
 }
 
 /** What each activity is worth saying loudly. Working is the one worth a colour

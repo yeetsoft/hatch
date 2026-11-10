@@ -2465,14 +2465,36 @@ export interface Runner {
   revokedAt?: string | null;
   /** Who the key belongs to, or null for a key owned by nobody or no key at all. */
   ownerPersonId?: string | null;
-  /** The sessions this key's runner has open. */
-  sessions?: { where: string; lastSeenAt: string }[];
+  /** The sessions this key's runner has open, newest first. Mirrors RunnerDto.Sessions; absent on a stub that predates the field. */
+  sessions?: RunnerSession[];
   /** When the key's secret was last replaced, or null while it never has been or there is no key. */
   rotatedAt?: string | null;
   /** When this row was retired, or null for one that is not. */
   retiredAt?: string | null;
   /** The name of the row that superseded this one, or null for a row that is not retired. */
   supersededBy?: string | null;
+}
+
+/** One session beneath a runner: one `go-to-work` loop, so two checkouts
+    reporting under one name are one runner with two of these. Only the fields
+    the page reads; mirrors RunnerSessionDto. */
+export interface RunnerSession {
+  id: number;
+  where: string | null;
+  kind: string;
+  host: string | null;
+  state: RunnerState;
+  startedAt: string;
+  lastSeenAt: string;
+  /** When the session ended, or null while it is open. */
+  endedAt: string | null;
+  claimKey: string | null;
+  claimStatus?: string | null;
+  line?: string | null;
+  agent: string | null;
+  os: string | null;
+  exhaustedUntil: string | null;
+  throttledUntil: string | null;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

@@ -18,7 +18,9 @@ import {
   MAX_SPEND_HINT,
   mineLabel,
   repositoriesLabel,
+  liveSessions,
   runnerActivity,
+  sessionActivity,
   runnerBuildLabel,
   runnerStrip,
   tagsLabel,
@@ -33,7 +35,7 @@ import {
   TOKEN_WARN_PERCENT,
   ACTIVITY_TONES,
 } from './runners';
-import type { Runner } from '../types';
+import type { Runner, RunnerSession } from '../types';
 import type { RunnerBounds } from './runners';
 import { TOKEN_FIELD_HINT } from './workLog';
 
@@ -783,5 +785,76 @@ describe('groupByHost', () => {
       [null, 1],
       [null, 1],
     ]);
+  });
+});
+
+const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
+  id: 1,
+  where: 'here:/checkouts/one',
+  kind: 'loop',
+  host: null,
+  state: 'running',
+  startedAt: at(-3_600_000),
+  lastSeenAt: at(0),
+  endedAt: null,
+  claimKey: null,
+  agent: 'claude',
+  os: 'Mac',
+  exhaustedUntil: null,
+  throttledUntil: null,
+  ...over,
+});
+
+describe('sessionActivity', () => {
+  it('is working with a claim and idle without one', () => {
+    expect(sessionActivity(session({ claimKey: 'AER-12' }), runner(), NOW)).toBe('working');
+    expect(sessionActivity(session(), runner(), NOW)).toBe('idle');
+  });
+
+  it('is exhausted while its own reset is ahead', () => {
+    expect(sessionActivity(session({ exhaustedUntil: at(3_600_000) }), runner(), NOW)).toBe('exhausted');
+    expect(sessionActivity(session({ exhaustedUntil: at(-1000) }), runner(), NOW)).toBe('idle');
+  });
+
+  it('judges silence against its runner\'s horizon, not the runner\'s own heartbeat', () => {
+    expect(sessionActivity(session({ lastSeenAt: at(-GONE_AFTER * 1000) }), runner(), NOW)).toBe('idle');
+    expect(sessionActivity(session({ lastSeenAt: at(-GONE_AFTER * 1000 - 1000) }), runner(), NOW)).toBe('gone');
+  });
+
+  it('agrees with the row\'s own rule on every state the row can be in', () => {
+    const cases: [Partial<Runner>, Partial<RunnerSession>][] = [
+      [{ claimKey: 'AER-1' }, { claimKey: 'AER-1' }],
+      [{ state: 'paused' }, { state: 'paused' }],
+      [{ state: 'stopping', claimKey: 'AER-1' }, { state: 'stopping', claimKey: 'AER-1' }],
+      [{ exhaustedUntil: at(1000), state: 'paused' }, { exhaustedUntil: at(1000), state: 'paused' }],
+      [{ throttledUntil: at(1000) }, { throttledUntil: at(1000) }],
+    ];
+    for (const [r, s] of cases) {
+      expect(sessionActivity(session(s), runner(), NOW)).toBe(runnerActivity(runner(r), NOW));
+    }
+  });
+});
+
+describe('liveSessions', () => {
+  it('keeps two live sessions in the server\'s order', () => {
+    const a = session({ id: 1, where: 'Mac:/one' });
+    const b = session({ id: 2, where: 'Mac:/two' });
+    expect(liveSessions(runner({ sessions: [a, b] }), NOW).map((s) => s.where)).toEqual(['Mac:/one', 'Mac:/two']);
+  });
+
+  it('drops an ended session', () => {
+    const ended = session({ id: 2, endedAt: at(-1000) });
+    expect(liveSessions(runner({ sessions: [session(), ended] }), NOW).map((s) => s.id)).toEqual([1]);
+  });
+
+  it('keeps a session exactly at the horizon and drops one a second past it', () => {
+    const edge = session({ id: 1, lastSeenAt: at(-GONE_AFTER * 1000) });
+    const past = session({ id: 2, lastSeenAt: at(-GONE_AFTER * 1000 - 1000) });
+    expect(liveSessions(runner({ sessions: [edge, past] }), NOW).map((s) => s.id)).toEqual([1]);
+  });
+
+  it('is empty for a runner that carries no sessions', () => {
+    expect(liveSessions(runner(), NOW)).toEqual([]);
+    expect(liveSessions(runner({ sessions: [] }), NOW)).toEqual([]);
   });
 });

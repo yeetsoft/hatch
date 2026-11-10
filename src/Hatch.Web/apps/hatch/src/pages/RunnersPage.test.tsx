@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { BoundsForm, BoundsSummary, HostTotal, Row, RunnerDetails, RunnersPage, TokenBudget } from './RunnersPage';
-import type { Runner, RunnerOrderRequest, RunnerPatchRequest } from '../types';
+import type { Runner, RunnerOrderRequest, RunnerPatchRequest, RunnerSession } from '../types';
 
 const listed = vi.hoisted(() => ({ runners: [] as unknown[] }));
 
@@ -79,6 +79,54 @@ const renderRow = (r: Runner) =>
       </table>
     </MemoryRouter>,
   );
+
+const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
+  id: 1,
+  where: 'Mac:/checkouts/one',
+  kind: 'loop',
+  host: null,
+  state: 'running',
+  startedAt: at(-3_600_000),
+  lastSeenAt: at(0),
+  endedAt: null,
+  claimKey: null,
+  agent: 'claude',
+  os: 'Mac',
+  exhaustedUntil: null,
+  throttledUntil: null,
+  ...over,
+});
+
+describe('RunnersPage Row sessions', () => {
+  it('draws one quieter line per live session, each with where, agent and OS', () => {
+    const html = renderRow(
+      runner({ sessions: [session({ id: 1, where: 'Mac:/checkouts/one' }), session({ id: 2, where: 'Mac:/checkouts/two', agent: null })] }),
+    );
+
+    expect(html.match(/hatch-runner-session/g)).toHaveLength(2);
+    expect(html).toContain('Mac:/checkouts/one · claude · Mac');
+    expect(html).toContain('Mac:/checkouts/two · - · Mac');
+  });
+
+  it('draws a session\'s held ticket as a link beside a Working badge', () => {
+    const html = renderRow(runner({ sessions: [session({ claimKey: 'HA-12' })] }));
+
+    expect(html).toContain('href="/issues/HA-12"');
+    expect(html).toContain('Working');
+  });
+
+  it('draws a runner with no sessions, or only ended or silent ones, exactly as one without the field', () => {
+    const bare = renderRow(runner());
+    expect(renderRow(runner({ sessions: [] }))).toBe(bare);
+    expect(
+      renderRow(runner({ sessions: [session({ endedAt: at(-1000) }), session({ id: 2, lastSeenAt: at(-GONE_AFTER * 1000 - 1000) })] })),
+    ).toBe(bare);
+  });
+
+  it('draws no session lines under a retired row', () => {
+    expect(renderRow(runner({ retiredAt: at(-1000), sessions: [session()] }))).not.toContain('hatch-runner-session');
+  });
+});
 
 describe('RunnersPage Row', () => {
   it('draws a working row\'s key as a link to the ticket, badged Working', () => {

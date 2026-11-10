@@ -199,20 +199,20 @@ public sealed class RunnerSessions(Runners runners)
     /// session rather than a bare beat.
     /// </summary>
     /// <remarks>
-    /// <see cref="RunnerInstructionDto.Drives"/> and
-    /// <see cref="RunnerInstructionDto.Order"/> are answered empty and null
-    /// here: neither has a session-level meaning yet.
+    /// <see cref="RunnerInstructionDto.Order"/> is answered null here: it has
+    /// no session-level meaning. <see cref="RunnerInstructionDto.Drives"/> is
+    /// the same election the row heartbeat reads, passed in by the caller.
     /// </remarks>
     public static RunnerInstructionDto Instruct(
         EfHatchRunnerSession session, EfHatchRunnerConfig? ceiling, string runnerName, string? forName,
-        long? siteMaxTokens = null, long? siteMaxTokensPerHour = null)
+        IReadOnlyList<string> drives, long? siteMaxTokens = null, long? siteMaxTokensPerHour = null)
     {
         var bounds = Effective(ceiling, session, siteMaxTokens, siteMaxTokensPerHour);
         var tags = ceiling is not null ? RunnerTagColumn.Read(ceiling.Tags).Order(StringComparer.Ordinal).ToArray() : [];
 
         return new RunnerInstructionDto(
             session.State, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
-            Drives: [],
+            Drives: drives,
             Tags: tags,
             Order: null,
             MaxTokens: bounds.MaxTokens.Value,
