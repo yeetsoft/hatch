@@ -1306,6 +1306,10 @@ public sealed record ConfigCommand(
         Say.Line($"{"has:".PadRight(19)}{DrawHas(detection.Merge(declaredHas))}");
         Say.Line($"{"missing:".PadRight(19)}{DrawHas(detection.Missing(declaredHas))}");
 
+        // Present results only: an absent one is already in missing:.
+        foreach (var result in detection.Results.Where(result => result.Present && result.Via is not null))
+            Say.Line($"{(result.Id + " via:").PadRight(19)}{(result.Why is null ? result.Via : $"{result.Via} - {result.Why}")}");
+
         return 0;
     }
 
