@@ -815,7 +815,7 @@ public sealed class ClaimTests
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0 };
         using var wire = new DeadAfterTake(Fixtures.Taken(Token));
-        using var client = new HatchClient(settings, "test:/checkout", wire, clock);
+        using var client = new HatchClient(settings, wire, clock);
 
         var (claim, _) = await Claim.TakeAsync(client, "AER-1", "test:/checkout", default, Harness.Beat);
         Assert.NotNull(claim);

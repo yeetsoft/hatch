@@ -500,7 +500,7 @@ public sealed class InboxCommandTests : IDisposable
     public async Task A_Hatch_that_never_answers_is_given_up_on()
     {
         using var slow = new HatchClient(
-            new Settings { Base = "https://hatch.example", Key = "k", HeartbeatSeconds = 0 }, "x", new Hangs());
+            new Settings { Base = "https://hatch.example", Key = "k", HeartbeatSeconds = 0 }, new Hangs());
         var command = new InboxCommand(new Board(slow), _h.Say, new StringReader(""), new FrozenClock(Now), new ClaudeHookOutputWriter())
         {
             Limit = TimeSpan.FromMilliseconds(50),
@@ -518,7 +518,7 @@ public sealed class InboxCommandTests : IDisposable
         // one, which HatchClientTests covers.
         using var down = new HatchClient(
             new Settings { Base = "https://hatch.example", Key = "k", HeartbeatSeconds = 0, RetrySeconds = 0 },
-            "x", new Refuses());
+            new Refuses());
         var command = new InboxCommand(new Board(down), _h.Say, new StringReader(""), new FrozenClock(Now), new ClaudeHookOutputWriter());
 
         Assert.Equal(0, await command.RunAsync(["AER-1", "--hook", "stop"], default));

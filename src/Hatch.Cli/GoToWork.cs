@@ -1045,15 +1045,10 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // them in the finally below.
             if (repoOverridden)
             {
-                var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), runtime.Root));
-                var runnerName = await Checkout.RunnerAsync(
-                    runtime.Settings.Runner, Checkout.Host(), runtime.Root, runtime.ProfileName, lookupBoard, ct, runtime.RunnersPath);
-
                 runtime = runtime with
                 {
-                    RunnerName = runnerName,
                     Where = Checkout.Where(Checkout.Host(), runtime.Root),
-                    Board = runtime.NewBoard(runnerName),
+                    Board = runtime.NewBoard(),
                 };
             }
 

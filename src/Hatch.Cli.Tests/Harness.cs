@@ -767,7 +767,7 @@ public sealed class Harness : IDisposable
 
         Clock = clock ?? TimeProvider.System;
         var settings = new Settings { Base = "https://hatch.example", Key = "hatch_ak_test", HeartbeatSeconds = 0, RefusesDangerous = refusesDangerous, Models = models, Has = has ?? [] };
-        _client = new HatchClient(settings, "test:/checkout", Wire, Clock);
+        _client = new HatchClient(settings, Wire, Clock);
 
         // The default checkout's trunk is already settled as passed, at the
         // sha PollTests' own Heads() helper gives "main" - so a test that
@@ -816,7 +816,7 @@ public sealed class Harness : IDisposable
             Forge = (path, canonical) => Forge.For(path, canonical),
             Self = () => Self,
             SourceRevision = () => SourceRevision,
-            NewBoard = runnerName => new Board(new HatchClient(settings, runnerName, Wire, Clock), refusesDangerous: settings.RefusesDangerous)
+            NewBoard = () => new Board(new HatchClient(settings, Wire, Clock), refusesDangerous: settings.RefusesDangerous)
             {
                 Has = settings.Has,
                 Tags = tags ?? [],
@@ -826,10 +826,6 @@ public sealed class Harness : IDisposable
             MakeClone = Clone.Factory,
             Clock = Clock,
             Machine = machine ?? MachineFacts.None,
-            // A temp file rather than the real Settings.UserConfigPath() -
-            // otherwise every test that takes --repo would read and write the
-            // machine actually running the suite.
-            RunnersPath = Path.Combine(Temp, "runners"),
         };
 
         Runtime.Board.Models = () => Runtime.AdvertisedModels() ?? [];

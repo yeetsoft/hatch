@@ -1,69 +1,18 @@
-using System.Security.Cryptography;
-using System.Text;
-
 namespace Hatch.Cli;
 
 /// <summary>
-/// The cast list a checkout's runner is named from, the choice a first run
-/// makes once, and the record that makes every later run repeat it.
+/// What an older Hatch recorded about runner names, read and never written.
 /// </summary>
 /// <remarks>
-/// A runner used to be named <c>host:/path/to/checkout</c> - unique by
-/// construction, and unreadable at a glance on a board shared with anybody
-/// else. A character is the opposite trade: readable, and not unique by
-/// construction, which is the whole reason <see cref="Choose"/> and
-/// <see cref="Record"/> exist.
+/// A runner's name is its key's now, so nothing here chooses or records one.
+/// What is left is the <see cref="Record"/> a checkout's earlier name was kept
+/// in, for the one bridge that reads it once on its way out.
 /// </remarks>
 public static class RunnerNames
 {
     /// <summary>
-    /// Every name in <c>runner-names.txt</c>, in file order - main and
-    /// recurring characters from three shows, plus the one-offs worth having.
-    /// See that file for the cast.
-    /// </summary>
-    public static IReadOnlyList<string> All => RunnerCast.All;
-
-    /// <summary>
-    /// The name this checkout gets: a deterministic starting slot, walked
-    /// forward past whatever <paramref name="taken"/> already holds.
-    /// </summary>
-    /// <remarks>
-    /// The slot is a hash of <paramref name="host"/> and
-    /// <paramref name="canonicalRoot"/> rather than the root alone, so two
-    /// checkouts of the same repository on two machines do not reach for the
-    /// same name first - though only <paramref name="taken"/> is what actually
-    /// keeps them apart when they do. Reordering, adding to or trimming the
-    /// cast list changes the slot a hash lands on, which is exactly why a
-    /// choice is <see cref="Record">recorded</see> rather than recomputed on
-    /// every run.
-    /// </remarks>
-    /// <param name="taken">
-    /// Every name already spoken for - case-insensitively, since a person
-    /// typing one by hand in <c>hatch config</c> should not land beside the
-    /// list's own spelling under a different case.
-    /// </param>
-    public static string Choose(string host, string canonicalRoot, IReadOnlySet<string> taken)
-    {
-        var digest = SHA256.HashData(Encoding.UTF8.GetBytes($"{host}\n{canonicalRoot}"));
-        var start = (int)(BitConverter.ToUInt32(digest, 0) % (uint)All.Count);
-
-        for (var i = 0; i < All.Count; i++)
-        {
-            var name = All[(start + i) % All.Count];
-            if (!taken.Contains(name)) return name;
-        }
-
-        // Every one of the cast list's names is somebody else's, on this
-        // machine or on the board - rare, and worth a numbered suffix on the
-        // name this checkout would have had rather than refusing to start.
-        var suffix = 2;
-        while (taken.Contains($"{All[start]} {suffix}")) suffix++;
-        return $"{All[start]} {suffix}";
-    }
-
-    /// <summary>
     /// The per-checkout record: which name each checkout on this machine
-    /// already chose, so a later run repeats it rather than choosing again.
+    /// once chose. Read-only.
     /// </summary>
     /// <remarks>
     /// A file beside <see cref="Settings.UserConfigPath"/> rather than a key
@@ -105,26 +54,6 @@ public static class RunnerNames
             }
 
             return entries;
-        }
-
-        /// <summary>
-        /// Records this checkout's name under a profile, keeping every other entry
-        /// untouched - a read, an update, and the same temp-file-then-rename
-        /// write <c>ConfigCommand.Write</c> uses, mode 600 the same way.
-        /// </summary>
-        public static void Set(string path, string? profile, string canonicalRoot, string name)
-        {
-            var entries = new Dictionary<string, string>(Read(path), StringComparer.Ordinal) { [Key(profile, canonicalRoot)] = name };
-
-            var directory = Path.GetDirectoryName(path);
-            if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
-
-            var temp = $"{path}.{Environment.ProcessId}";
-            File.WriteAllLines(temp, entries.Select(e => $"{e.Key}={e.Value}"));
-            if (!OperatingSystem.IsWindows())
-                File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-
-            File.Move(temp, path, overwrite: true);
         }
     }
 }

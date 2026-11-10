@@ -149,17 +149,12 @@ public sealed class WorkCommand(Runtime runtime)
                 runtime.Say.Line($"hatch: {stray} - not a checkout, and nothing under it is one either; left alone");
 
             var root = Checkouts.NamingRoot(repoCheckouts, servedWorkspace, runtime.Root);
-            var lookupBoard = runtime.NewBoard(Checkout.Where(Checkout.Host(), root));
-            var runnerName = await Checkout.RunnerAsync(
-                runtime.Settings.Runner, Checkout.Host(), root, runtime.ProfileName, lookupBoard, ct, runtime.RunnersPath);
-
             runtime = runtime with
             {
                 Checkouts = repoCheckouts,
                 Root = root,
-                RunnerName = runnerName,
                 Where = Checkout.Where(Checkout.Host(), root),
-                Board = runtime.NewBoard(runnerName),
+                Board = runtime.NewBoard(),
                 Settings = runtime.Settings.WithWorkspace(servedWorkspace, defaulted),
             };
         }
@@ -799,7 +794,7 @@ public sealed class WorkCommand(Runtime runtime)
 
         return await runtime.Sessions.AttachAsync(
             new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs,
-                DeniedTools: work.Playbook?.DeniedTools ?? [], RunnerName: runtime.RunnerName, Settings: runtime.Settings),
+                DeniedTools: work.Playbook?.DeniedTools ?? [], Settings: runtime.Settings),
             ct);
     }
 
