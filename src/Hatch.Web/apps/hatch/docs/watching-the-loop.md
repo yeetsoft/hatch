@@ -54,6 +54,17 @@ has:
   budget`. A cap inherited from the site default carries the same
   `(default)` marker here as it does in Bounds.
 
+Renaming a checkout's runner retires its old name. The moment a loop beats from
+a checkout under a new name, every older loop row from that same checkout, for
+the same owner, is marked retired: it reads **Retired** in place of **Doing**
+and `replaced by <new name>` in place of the controls, draws no Pause, Stop or
+Order, and is never counted as live or elected to drive a merge train. Only a
+loop beat retires a row, and only from the same checkout: a `once` pass beside
+a loop uses the loop's name and retires nothing, and a beat from another
+checkout retires nothing. A retired row that beats again under its own name
+is un-retired and counts as live again; otherwise it drops off with the rest,
+two hours after its last beat.
+
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
 dollars. A machine with one runner draws no such line, and a runner that never

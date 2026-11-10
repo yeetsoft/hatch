@@ -368,6 +368,7 @@ describe('isControllable', () => {
 
   it('is false for a loop this caller cannot control', () => {
     expect(isControllable(runner({ canControl: false }))).toBe(false);
+    expect(isControllable(runner({ retiredAt: '2026-09-08T12:00:00Z' }))).toBe(false);
   });
 
   it('is false for a once runner even where canControl is true', () => {

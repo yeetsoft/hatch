@@ -201,15 +201,19 @@ export function groupByHost(runners: readonly Runner[]): RunnerHostGroup[] {
   return groups;
 }
 
+/** Whether this row was replaced by another name from the same checkout. */
+export const isRetired = (runner: Runner) => Boolean(runner.retiredAt);
+
 /**
  * Whether this row has controls at all.
  *
  * A `once` runner is one increment that has already read whatever it was going
  * to read; a Pause on it would be a button nothing will ever look at, which is
  * worse than no button. A row somebody else owns has controls only for its
- * owner or an admin.
+ * owner or an admin. A retired row has been replaced by another name from the
+ * same checkout, and nothing answers to it any more: it has none either.
  */
-export const isControllable = (runner: Runner) => runner.kind === 'loop' && runner.canControl;
+export const isControllable = (runner: Runner) => runner.kind === 'loop' && runner.canControl && !isRetired(runner);
 
 /** The repositories a runner serves, as one phrase - or null when it has
     named none. */
