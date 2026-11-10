@@ -2238,7 +2238,10 @@ timeout keeps its claim live and no session needs to poll. It names the call
 and its minutes only, never its output. It stops the moment the call returns,
 is never sent between calls (thinking, writing, or no call at all), and ends
 once the call has been open past the agent's own tool timeout (ten minutes),
-so a hung call goes quiet one window after the last line it carried. A dead
+so a hung call goes quiet one window after the last line it carried - unless
+the claim carries a run cap (below), in which case it carries on past the
+timeout until the cap itself stops the run; with no cap, it is exactly as
+before. A dead
 runner sends nothing, and its claim lapses on this rule unchanged; a `--quiet`
 session has no stream to see a call open in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
