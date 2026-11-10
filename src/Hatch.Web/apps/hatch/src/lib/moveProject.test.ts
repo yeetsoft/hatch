@@ -11,6 +11,7 @@ const claim: IssueClaim = {
   chatter: null,
   chatterAt: null,
   ttlSeconds: 600,
+  stallLapseSeconds: 600,
 };
 
 const candidate = (key: string, overrides: Partial<MoveCandidate> = {}): MoveCandidate => ({

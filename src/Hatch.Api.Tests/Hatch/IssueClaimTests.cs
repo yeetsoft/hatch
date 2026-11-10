@@ -1439,6 +1439,61 @@ public class IssueClaimTests
         Assert.Equal(0, taken.StallLapseSeconds);
     }
 
+    /// <summary>HA-1632: the take says the claim's own window, not the board's.</summary>
+    [SkippableFact]
+    public async Task TheTakesResponse_CarriesThePlaybooksOwnWindow()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 10);
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+
+        var taken = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", playbook), default));
+        Assert.Equal(1500, taken.StallLapseSeconds);
+    }
+
+    [SkippableFact]
+    public async Task TheTakesResponse_CarriesTheGlobalWhereThePlaybookHasNoWindowOrThereIsNoPlaybook()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 10);
+        var plain = await h.FileAsync();
+        var other = await h.FileAsync();
+
+        Assert.Equal(600, Value(await h.Claims.TakeClaim(plain, new ClaimRequest("somewhere:/checkouts/one", h.PlaybookId), default)).StallLapseSeconds);
+        Assert.Equal(600, Value(await h.Claims.TakeClaim(other, new ClaimRequest("somewhere:/checkouts/two"), default)).StallLapseSeconds);
+    }
+
+    [SkippableFact]
+    public async Task TheTakesResponse_CarriesZeroWhereTheGlobalIsOffAndTheClaimHasNoWindow()
+    {
+        await using var h = await NewAsync();
+        h.Rule = TestClaims.With(stallLapseMinutes: 0);
+        var issue = await h.FileAsync();
+        var plain = await h.FileAsync();
+
+        Assert.Equal(0, Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", h.PlaybookId), default)).StallLapseSeconds);
+        Assert.Equal(0, Value(await h.Claims.TakeClaim(plain, new ClaimRequest("somewhere:/checkouts/two"), default)).StallLapseSeconds);
+    }
+
+    [SkippableTheory]
+    [InlineData(1500, "25 minutes")]
+    [InlineData(60, "1 minute")]
+    [InlineData(90, "90 seconds")]
+    public async Task AQuietClaim_IsRefusedWithItsOwnWindowInWords(int window, string said)
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: window);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        h.Time.Advance(TimeSpan.FromSeconds(window + 1));
+
+        var refused = await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        Assert.Equal($"this claim has gone quiet for {said}", Conflict(refused));
+        Assert.Equal(ClaimLostReasons.Quiet, ConflictReason(refused));
+    }
+
     // ---- Preemption ----
     //
     // The five rules a claim heartbeat decides against, lazily and from the

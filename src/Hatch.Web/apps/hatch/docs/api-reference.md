@@ -615,8 +615,11 @@ clock, not a dispatch of its own - `WorkController` is what decides whether
 to send anything at an issue, and a claim that second-guessed that would be
 the same rule in two places. The lease's length is the
 `Hatch__ClaimTtlSeconds` setting (default 300 seconds); taking a claim
-carries it back as `TtlSeconds` alongside `StallLapseSeconds`, so a caller
-never has to know the setting's name to honor it. A heartbeat renews the
+carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
+quiet window where its playbook set one, the board's otherwise, `0` when lapsing
+is off for it - so a caller never has to know the setting's name to honor it.
+The claim object on every read (the board card, the issue, the search) carries
+the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
 `playbookId` may be a repo-sourced file row's (negative) id, the same one
 `GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
