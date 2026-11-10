@@ -72,6 +72,9 @@ const ONE_PROJECT: Project[] = [
     checkApprovesMerge: false,
     checkApprovesMergeBy: null,
     checkApprovesMergeAt: null,
+    noCodeCloses: false,
+    noCodeClosesBy: null,
+    noCodeClosesAt: null,
   },
 ];
 

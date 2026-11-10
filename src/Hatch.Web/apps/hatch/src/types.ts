@@ -93,6 +93,12 @@ export interface Project {
   checkApprovesMergeBy: string | null;
   /** When checkApprovesMerge was last changed on this project, or null until the first write. */
   checkApprovesMergeAt: string | null;
+  /** Whether a ticket that declared it finished with no code is carried from review to Done with no person. See ProjectDto.NoCodeCloses. */
+  noCodeCloses: boolean;
+  /** Who last changed noCodeCloses, or null until the first write. */
+  noCodeClosesBy: string | null;
+  /** When noCodeCloses was last changed on this project, or null until the first write. */
+  noCodeClosesAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -1009,6 +1015,11 @@ export interface ProjectStoriesOnEpicsWriteRequest {
 /** A write to whether a green check approves a pull request's merge. See ProjectCheckApprovesMergeWriteRequest (Hatch.Contracts). */
 export interface ProjectCheckApprovesMergeWriteRequest {
   checkApprovesMerge: boolean;
+}
+
+/** A write to whether a no-code declaration closes the ticket. See ProjectNoCodeClosesWriteRequest (Hatch.Contracts). */
+export interface ProjectNoCodeClosesWriteRequest {
+  noCodeCloses: boolean;
 }
 
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and
