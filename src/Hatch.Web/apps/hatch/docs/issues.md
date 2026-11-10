@@ -126,14 +126,38 @@ ticket](the-lifecycle-of-a-ticket) calls the hop.
 
 ## Finished with no code
 
-A ticket whose session declared it finished with no code (`hatch pr --none`)
-wears the 😎 glyph on its board card and in the peek, in whatever column it
-stands in, with the reason in the glyph's title. It goes when the declaration
-is cleared or set aside. [The lifecycle of a
-ticket](the-lifecycle-of-a-ticket) has how the declaration is made and set
-aside. In review, it is carried to Done with no person when it is pre-approved
-or its project has **A no-code declaration closes the ticket** on; otherwise it
-waits for a person.
+A one-line reason, at most 200 characters and trimmed, saying that a ticket
+finished with no code: an investigation, say. `hatch show` prints it as
+`no code:`, and the issue page's facts panel shows a `No code` row reading
+`Finished with no code: <reason>`. The ticket wears the 😎 glyph on its board
+card and in the peek, in whatever column it stands in, with the reason in the
+glyph's title. It goes when the declaration is cleared or set aside.
+
+A session sets it with `hatch pr KEY --none "reason"`. A person sets it from
+the issue page: the edit view's **Finished with no code** field, with **Save**
+and **Clear**. Both call `PUT /api/hatch/issues/{key}/no-code`, and the
+history shows a `no_code_changed` event whose actor is whoever made the call.
+
+The route refuses while the ticket has a pull request recorded, or a branch on
+origin in a repository its project counts: it answers 409 with a sentence
+naming the ticket and what it has, and `hatch pr --none` exits `1` with the
+same sentence. A reason over 200 characters is a 400.
+
+Clear it on the issue page, or send `""` to the route; a whitespace-only
+reason also clears, and an absent reason is a 400, so clearing is always said.
+Moving the ticket into a column left of review clears it too, and writes a
+`no_code_changed` event naming the column. A terminal column or a deferred one
+does not clear it. A branch turning up on origin, or a pull request being
+recorded, sets it aside instead, and writes a `no_code_set_aside` event
+carrying the old reason.
+
+A declared ticket in review waits for a person to close it. It closes with no
+session when it is pre-approved or its project has **A no-code declaration
+closes the ticket** on, and only once any children are done. The project's *A
+passing check approves the merge* setting does not carry it, since it is not a
+person's word that nothing was built. [The lifecycle of a
+ticket](the-lifecycle-of-a-ticket) and [the board and its
+columns](the-board-and-its-columns#who-moves-work) already say this.
 
 ## Runner tags
 
