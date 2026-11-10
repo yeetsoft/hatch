@@ -279,7 +279,8 @@ public class PlaybookProposalsController(
             .Where(p => ids.Contains(p.Id))
             .ToListAsync(ct);
         var byId = rows.ToDictionary(p => p.Id);
-        var dtos = ids.Select(id => PlaybooksController.ToDto(byId[id])).ToList();
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        var dtos = ids.Select(id => PlaybooksController.ToDto(byId[id], statuses)).ToList();
 
         return new PlaybookProposalApproveResponse(pending.Count, dtos);
     }

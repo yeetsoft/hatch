@@ -1820,7 +1820,8 @@ public record PlaybookDto(
     string? ProjectKey,
     string? ProjectName,
     string Source = "board",
-    int? QuietLimitSeconds = null);
+    int? QuietLimitSeconds = null,
+    string? UnreachableReason = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always
