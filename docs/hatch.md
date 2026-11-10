@@ -2271,7 +2271,10 @@ holder's own token past the cap is refused `409` with `this claim ran past its
 reason `run-time`, and checked before "quiet" where a claim is both: no amount
 of chatter would have saved it. A release by the holder's own token is not
 refused for it - it clears, as it does a quiet claim - and may name `run-time`
-as its reason.
+as its reason. `hatch`'s own runner races this the same way it races the quiet
+window: it times the cap itself from the take, with no margin, and stops the
+session a beat before a heartbeat could ever be refused this way - see
+[The claim](../src/Hatch.Web/apps/hatch/docs/one-increment-and-the-loop.md#the-claim).
 
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from

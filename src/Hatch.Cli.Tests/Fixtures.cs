@@ -59,8 +59,9 @@ public static class Fixtures
     public static PlaybookDto Playbook(
         string model = "opus", string effort = "high", int? budget = null, int? briefLimit = null,
         IReadOnlyList<string>? deniedTools = null, bool isCheck = false,
-        int? projectId = null, string? projectKey = null, string? projectName = null, int? quietLimitSeconds = null) =>
-        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", null, model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName, Source: "board", QuietLimitSeconds: quietLimitSeconds);
+        int? projectId = null, string? projectKey = null, string? projectName = null, int? quietLimitSeconds = null,
+        int? maxRunSeconds = null) =>
+        new(1, 3, "In Progress", 4, "In Review", [], "any", "Do the thing.", null, model, effort, budget, briefLimit, deniedTools ?? [], isCheck, DateTimeOffset.UnixEpoch, projectId, projectKey, projectName, Source: "board", QuietLimitSeconds: quietLimitSeconds, MaxRunSeconds: maxRunSeconds);
 
     public static WorkDto Work(
         string key,
@@ -89,12 +90,13 @@ public static class Fixtures
         PlaybookFileReferenceDto? playbookFile = null,
         bool asksReleaseNote = false,
         int? nextBriefLimit = null,
-        int? quietLimitSeconds = null) =>
+        int? quietLimitSeconds = null,
+        int? maxRunSeconds = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
             ToStatus: to is null ? null : Status(kind is WorkKinds.Conflicts or WorkKinds.Build ? 3 : 4, to),
-            Playbook: hop ? null : Playbook(isCheck: isCheck, quietLimitSeconds: quietLimitSeconds),
+            Playbook: hop ? null : Playbook(isCheck: isCheck, quietLimitSeconds: quietLimitSeconds, maxRunSeconds: maxRunSeconds),
             Children: children ?? [],
             Repositories: repositories ?? [],
             Questions: questions ?? [],
@@ -314,9 +316,9 @@ public static class Fixtures
             Agent: null, PlaybookKey: null, PlaybookFromStatusId: null, PlaybookToStatusId: null,
             IssueType: null, PlaybookModel: null, PlaybookEffort: null, Reads: []);
 
-    public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0) =>
+    public static string Taken(Guid token, int ttlSeconds = 300, int stallLapseSeconds = 0, int maxRunSeconds = 0) =>
         JsonSerializer.Serialize(
-            new ClaimTakenDto(token, "hatch", DateTimeOffset.UnixEpoch, ttlSeconds, stallLapseSeconds), Json);
+            new ClaimTakenDto(token, "hatch", DateTimeOffset.UnixEpoch, ttlSeconds, stallLapseSeconds, maxRunSeconds), Json);
 
     /// <summary>What a heartbeat answers with when this runner is the one being preempted.</summary>
     public static string Preempted(string key, string title) =>
