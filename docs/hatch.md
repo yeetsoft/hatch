@@ -2648,6 +2648,9 @@ by a commit to the file. A row's optional keys are `model`, `effort`, `shape`,
 follow the same rule as `briefLimit` — a whole number of one or more, in
 seconds — and a value that is not one makes the file `invalid`, with the line
 the value is on. `maxRunSeconds` is stored and read back; nothing reads it yet.
+A parsed row's `unreachableReason` is computed on read from the live columns
+and never persisted, so reordering columns changes it with no new `PUT`;
+`Rows` JSON is unchanged.
 
 **One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
 reason a trunk build's own key is: two projects may bind one repository with

@@ -731,6 +731,12 @@ a file, not an edit to Hatch's own instructions - so both its `GET` and its
 `PUT` stay key-open. Check each verb against its own attribute rather than
 assume the group is uniform.
 
+Each row in a `PlaybookFileDto` carries the same read-only `UnreachableReason`
+a `PlaybookDto` does, derived from the live board on every `GET` and never
+stored, so a column reorder changes it with no new `PUT`. A file carrying such a
+row is still stored `parsed`, and the `PUT` response carries the sentence on
+that row.
+
 `PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
 `ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`

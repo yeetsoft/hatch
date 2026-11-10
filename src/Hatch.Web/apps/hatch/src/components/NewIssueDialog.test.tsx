@@ -86,6 +86,9 @@ const PROJECT: Project = {
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  onePullRequestPolicy: 'optional',
+  onePullRequestPolicyBy: null,
+  onePullRequestPolicyAt: null,
 };
 
 const OTHER: Project = {
@@ -124,6 +127,9 @@ const OTHER: Project = {
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  onePullRequestPolicy: 'optional',
+  onePullRequestPolicyBy: null,
+  onePullRequestPolicyAt: null,
 };
 
 const noop = () => undefined;

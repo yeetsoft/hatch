@@ -4,6 +4,9 @@
    that keeps that honest: a field added there and not here is invisible, so
    these records are the place to look first when a value arrives undefined. */
 
+/** Whether a ticket's work must land in one pull request. See OnePullRequestPolicies (Hatch.Contracts). */
+export type OnePullRequestPolicy = 'optional' | 'enforced';
+
 export type IssueType = 'epic' | 'reflection' | 'story' | 'task' | 'bug';
 
 /** The five types, in the order a picker offers them. Mirrors EfHatchIssue.Types. */
@@ -99,6 +102,12 @@ export interface Project {
   noCodeClosesBy: string | null;
   /** When noCodeCloses was last changed on this project, or null until the first write. */
   noCodeClosesAt: string | null;
+  /** Whether a ticket's work must land in one pull request, or may land in several. See ProjectDto.OnePullRequestPolicy. */
+  onePullRequestPolicy: OnePullRequestPolicy;
+  /** Who last changed onePullRequestPolicy, or null until the first write. See ProjectDto.OnePullRequestPolicyBy. */
+  onePullRequestPolicyBy: string | null;
+  /** When onePullRequestPolicy was last changed on this project, or null until the first write. See ProjectDto.OnePullRequestPolicyAt. */
+  onePullRequestPolicyAt: string | null;
 }
 
 /** One git remote bound to a project, as the server reads it back. */
@@ -1027,6 +1036,11 @@ export interface ProjectCheckApprovesMergeWriteRequest {
 /** A write to whether a no-code declaration closes the ticket. See ProjectNoCodeClosesWriteRequest (Hatch.Contracts). */
 export interface ProjectNoCodeClosesWriteRequest {
   noCodeCloses: boolean;
+}
+
+/** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */
+export interface ProjectOnePrPolicyWriteRequest {
+  policy: OnePullRequestPolicy;
 }
 
 /** The answer to a ProjectBindsTrackerWriteRequest: the project as written, and
@@ -2523,6 +2537,52 @@ export interface RunnerSession {
   os: string | null;
   exhaustedUntil: string | null;
   throttledUntil: string | null;
+  /** Everything below mirrors the rest of RunnerSessionDto; optional so a stub that predates it still compiles. */
+  lineAt?: string | null;
+  under?: string | null;
+  maxRuns?: number | null;
+  maxSpend?: number | null;
+  maxTokens?: number | null;
+  maxTokensPerHour?: number | null;
+  untilAt?: string | null;
+  runs?: number | null;
+  spent?: number | null;
+  tokensUsed?: number | null;
+  tokensLastHour?: number | null;
+  usage?: string | null;
+  usageReadAt?: string | null;
+  projects?: string[];
+  refusesDangerous?: boolean | null;
+  orderKind?: string | null;
+  orderKey?: string | null;
+  orderedBy?: string | null;
+  orderedAt?: string | null;
+  arch?: string | null;
+  agentVersion?: string | null;
+  container?: boolean | null;
+  username?: string | null;
+  ip?: string | null;
+  processStartedAt?: string | null;
+  revision?: string | null;
+  sequence?: number | null;
+  builtAt?: string | null;
+  sourceRevision?: string | null;
+  sourceSequence?: number | null;
+  remotes?: string[];
+  clones?: boolean | null;
+  mine?: boolean | null;
+  standing?: boolean | null;
+}
+
+/** Sent to `PATCH /runners/{name}/sessions/{id}`: the one session's state. Mirrors RunnerSessionPatchRequest. */
+export interface RunnerSessionPatchRequest {
+  state: RunnerState;
+}
+
+/** Sent to `POST /runners`. Omitted `ownerPersonId` defaults to the admin creating it. Mirrors CreateRunnerRequest. */
+export interface CreateRunnerRequest {
+  name: string;
+  ownerPersonId?: string;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent

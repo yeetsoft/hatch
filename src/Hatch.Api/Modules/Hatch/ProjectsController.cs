@@ -965,23 +965,9 @@ public class ProjectsController(
             // one cannot move - its work is already on one branch.
             if (request.Policy == OnePullRequestPolicies.Enforced)
             {
-                foreach (var story in await OnePrLock.OverriddenAndUnstartedAsync(db, id, ct))
-                {
-                    story.Events.Add(new EfHatchIssueEvent
-                    {
-                        Actor = actor,
-                        Kind = EfHatchIssueEvent.OnePrChanged,
-                        Payload = JsonSerializer.Serialize(new
-                        {
-                            from = IssueOnePrController.Name(story.OnePullRequest),
-                            to = IssueOnePrController.Name(null),
-                            fixedBecause = "the project began enforcing its default with nothing under this story started",
-                        }),
-                        At = now,
-                    });
-                    story.OnePullRequest = null;
-                    story.UpdatedAt = now;
-                }
+                OnePrLock.ReturnToInherit(
+                    await OnePrLock.OverriddenAndUnstartedAsync(db, id, ct), actor, now,
+                    "the project began enforcing its default with nothing under this story started");
             }
 
             project.OnePullRequestPolicy = request.Policy;

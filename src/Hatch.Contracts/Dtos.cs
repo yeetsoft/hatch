@@ -3918,7 +3918,7 @@ public record PlaybookFileRowDto(
     int FromStatusId, string FromStatusName, int ToStatusId, string ToStatusName,
     IReadOnlyList<string> Types, string Shape, string Prompt, string Model, string Effort,
     int? Budget, int? BriefLimit, IReadOnlyList<string> DeniedTools, bool IsCheck,
-    int? QuietLimitSeconds = null, int? MaxRunSeconds = null);
+    int? QuietLimitSeconds = null, string? UnreachableReason = null, int? MaxRunSeconds = null);
 
 public record PlaybookFileDto(
     long Id, string Remote, string Canonical, string Trunk, string Sha, string State, string? Hash,
