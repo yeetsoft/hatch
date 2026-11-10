@@ -131,6 +131,29 @@ public class EfHatchProject
     public bool OnePullRequest { get; set; }
 
     /// <summary>
+    /// Whether the one-PR default (<see cref="OnePullRequest"/>) binds the
+    /// project's stories - <see cref="OnePullRequestPolicies.Enforced"/> - or
+    /// is only a default a story may override -
+    /// <see cref="OnePullRequestPolicies.Optional"/>, today's behaviour.
+    /// Written only by <see cref="ProjectsController.PutOnePrPolicy"/>.
+    /// </summary>
+    public string OnePullRequestPolicy { get; set; } = OnePullRequestPolicies.Optional;
+
+    /// <summary>
+    /// Who last changed <see cref="OnePullRequestPolicy"/>, as a name rather
+    /// than a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null
+    /// until the first change. Written only by <see cref="ProjectsController.PutOnePrPolicy"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? OnePullRequestPolicyBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="OnePullRequestPolicy"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutOnePrPolicy"/>.
+    /// </summary>
+    public DateTimeOffset? OnePullRequestPolicyAt { get; set; }
+
+    /// <summary>
     /// Whether a trunk failure files a bug at all - off, which is today's
     /// behaviour, so a project nobody has touched this setting on keeps
     /// filing exactly as it always has. Written only by
