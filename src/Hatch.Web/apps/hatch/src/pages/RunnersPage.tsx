@@ -19,6 +19,7 @@ import {
   groupByHost,
   groupedTokens,
   isControllable,
+  isRetired,
   isIssueKeyShape,
   MAX_SPEND_HINT,
   mineLabel,
@@ -168,7 +169,8 @@ export function Row({
   const [key, setKey] = useState('');
   const activity = runnerActivity(runner, now);
   const controllable = isControllable(runner);
-  const ownedByAnother = runner.kind === 'loop' && !runner.canControl;
+  const retired = isRetired(runner);
+  const ownedByAnother = runner.kind === 'loop' && !runner.canControl && !retired;
   const { words, claimKey } = activityParts(runner, now);
 
   return (
@@ -187,8 +189,12 @@ export function Row({
           {runner.sourceDrift === 'Behind' && <Badge tone="danger">Rebuild</Badge>}
         </td>
         <td>
-          <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
-          {claimKey && (
+          {retired ? (
+            <Badge tone="muted">Retired</Badge>
+          ) : (
+            <Badge tone={ACTIVITY_TONES[activity]}>{words}</Badge>
+          )}
+          {!retired && claimKey && (
             <Link className="hatch-card-key" to={`/issues/${claimKey}`}>
               {claimKey}
             </Link>
@@ -256,6 +262,9 @@ export function Row({
                 </>
               )}
             </div>
+          )}
+          {retired && (
+            <Text tone="muted">{runner.supersededBy ? `replaced by ${runner.supersededBy}` : 'replaced by another name'}</Text>
           )}
           {ownedByAnother && <Text tone="muted">{`${runner.for ?? 'its owner'}'s to control`}</Text>}
         </td>

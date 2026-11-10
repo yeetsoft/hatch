@@ -168,6 +168,21 @@ describe('RunnersPage Row', () => {
     expect(html).toContain('Some Person');
   });
 
+  it('draws a retired row with no controls, a Retired badge and what replaced it', () => {
+    const html = renderRow(
+      runner({ canControl: true, retiredAt: at(-60_000), supersededBy: 'new-name', claimKey: 'HA-12', state: 'paused' }),
+    );
+    expect(html).toContain('Retired');
+    expect(html).toContain('replaced by new-name');
+    expect(html).not.toContain('Pause');
+    expect(html).not.toContain('Resume');
+    expect(html).not.toContain('Stop after this one');
+    expect(html).not.toContain('Details');
+    expect(html).not.toContain('Work this ticket');
+    expect(html).not.toContain('Working');
+    expect(html).not.toContain('to control');
+  });
+
   it('draws no controls and no owner sentence on a once row', () => {
     const html = renderRow(runner({ kind: 'once' }));
     expect(html).not.toContain('Pause');
