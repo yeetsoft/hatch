@@ -1185,6 +1185,17 @@
   flex: none;
 }
 
+/* Only the linked head on the board - QueueModal's own badge carries no
+   role="link" and stays inert. */
+.hatch-card-claim[role='link'] {
+  cursor: pointer;
+}
+
+.hatch-card-claim[role='link']:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* The card's type, as a shape in the card's own corner - a sibling of the
    head rather than part of it, so it never takes flex space there and never
    pushes the key. Sized to match .hatch-card-claim-glyph's own ornament. */

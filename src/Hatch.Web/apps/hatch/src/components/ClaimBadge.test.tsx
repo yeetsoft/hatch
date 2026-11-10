@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import { ClaimBadge } from './ClaimBadge';
 import type { IssueClaim } from '../types';
 
@@ -41,5 +42,24 @@ describe('ClaimBadge', () => {
 
     expect(html).toContain('title="Jeff Winger is working this, for Ada, last heard from just now"');
     expect(html).toContain('aria-label="Jeff Winger is working this, for Ada, last heard from just now"');
+  });
+
+  it('makes the head a press to the runner\'s page when linkRunner is set, without changing the sentence', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ClaimBadge claim={claim({ claimedBy: 'Ada', runner: 'Jeff Winger' })} linkRunner />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('role="link"');
+    expect(html).toContain('tabindex="0"');
+    expect(html).toContain('title="Jeff Winger is working this, for Ada, last heard from just now"');
+    expect(html).toContain('aria-label="Jeff Winger is working this, for Ada, last heard from just now"');
+  });
+
+  it('carries no role="link" without the prop, and still renders with no Router around it', () => {
+    const html = renderToStaticMarkup(<ClaimBadge claim={claim()} />);
+
+    expect(html).not.toContain('role="link"');
   });
 });
