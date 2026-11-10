@@ -1503,6 +1503,21 @@ export interface QueueEntry {
   /** True on a row no pass will clear on its own; its `blocked` sentence starts
       `deadlocked - `. `blockedKind` is unchanged. As on `QueueEntryDto`. */
   deadlocked?: boolean;
+  /** The names of the live runners that could take this row's step, sorted;
+      null or absent where the server did not judge (the read did not ask, or the
+      row is blocked), empty where nobody can. As on `QueueEntryDto`. */
+  takers?: string[] | null;
+  /** Every live runner that cannot take this row's step and why, filled only
+      where `takers` has fewer than two names; null or absent where not judged.
+      As on `QueueEntryDto`. */
+  untaken?: RunnerReason[] | null;
+}
+
+/** A live runner and the one reason it cannot take a step. Mirrors
+    `RunnerReasonDto`. */
+export interface RunnerReason {
+  runner: string;
+  reason: string;
 }
 
 /** One column's share of a subtree: how many of its leaves sit there. A status
