@@ -2,6 +2,7 @@ using System.Text.Json;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Tests.Auth;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1519,7 +1520,7 @@ public class IssueClaimTests
         await using var h = await NewAsync();
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
-        await h.AddRunnerAsync(Runner, Now.AddHours(-1), forPersonId: nathan.Id);
+        await h.AddRunnerAsync(Runner, Now, forPersonId: nathan.Id);
         var issue = await h.FileAsync();
         var token = await h.TakeAsync(issue, Runner);
         var readAt = Now.AddMinutes(-1);
@@ -1633,6 +1634,202 @@ public class IssueClaimTests
         await BeatAsync(h, issue, token, null, null);
 
         Assert.Equal(seenAt, (await h.RunnerAsync(Runner)).LastSeenAt);
+    }
+
+    // ---- A beat writes to exactly one place: the caller's own record ----
+
+    private static EfApiKey KeyOf(string name, Guid? owner = null) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = name,
+        Prefix = "hatch_ak_x",
+        Hash = [1],
+        CreatedAt = Now,
+        OwnerPersonId = owner,
+    };
+
+    [SkippableFact]
+    public async Task UnderAKey_ABeatMovesTheLiveSessionAndItsUsage_AndNoOldNameRow()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var oldSeenAt = Now.AddHours(-1);
+        var sessionId = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        await h.AddRunnerAsync("old", oldSeenAt, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        // Every fifty seconds for three minutes: well past the gone window.
+        var readAt = Now;
+        for (var i = 0; i < 4; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(50));
+            readAt = h.Time.GetUtcNow();
+            Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(10 + i), readAt)).Result);
+
+            var live = await h.SessionAsync(sessionId);
+            Assert.Equal(readAt, live.LastSeenAt);
+            Assert.True(live.LastSeenAt >= h.RunnersRule.Cutoff(readAt));
+        }
+
+        var session = await h.SessionAsync(sessionId);
+        Assert.Equal(readAt, session.UsageReadAt);
+        Assert.Equal(13, JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(session.Usage!)!.Single().Percent);
+
+        var old = await h.RunnerAsync("old");
+        Assert.Equal(oldSeenAt, old.LastSeenAt);
+        Assert.Null(old.Usage);
+        Assert.Null(old.UsageReadAt);
+    }
+
+    [SkippableFact]
+    public async Task UnderAKey_AnEndedSessionAtTheCheckout_IsLeftAlone()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var endedSeenAt = Now.AddHours(-2);
+        var ended = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, endedSeenAt, endedAt: endedSeenAt);
+        var live = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await BeatAsync(h, issue, token, Session(5), h.Time.GetUtcNow());
+
+        Assert.Equal(Now.AddSeconds(10), (await h.SessionAsync(live)).LastSeenAt);
+        var history = await h.SessionAsync(ended);
+        Assert.Equal(endedSeenAt, history.LastSeenAt);
+        Assert.Null(history.Usage);
+    }
+
+    [SkippableFact]
+    public async Task AnOlderCliUnderADifferentlyNamedKey_KeepsTheRowThatWasLiveAtTheClaim_AndNoOther()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var oldSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("current", Now, where: SharedWhere);
+        await h.AddRunnerAsync("old", oldSeenAt, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        var readAt = Now;
+        for (var i = 0; i < 4; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(50));
+            readAt = h.Time.GetUtcNow();
+            await BeatAsync(h, issue, token, Session(20), readAt);
+
+            Assert.True((await h.RunnerAsync("current")).LastSeenAt >= h.RunnersRule.Cutoff(readAt));
+        }
+
+        var current = await h.RunnerAsync("current");
+        Assert.Equal(readAt, current.UsageReadAt);
+        Assert.Equal(20, PercentOf(current));
+
+        var old = await h.RunnerAsync("old");
+        Assert.Equal(oldSeenAt, old.LastSeenAt);
+        Assert.Null(old.Usage);
+    }
+
+    [SkippableFact]
+    public async Task AnOlderCliWithNoRowLiveAtTheClaim_TouchesNothing_AndTheBeatStillSucceeds()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var oldSeenAt = Now.AddHours(-1);
+        await h.AddRunnerAsync("old", oldSeenAt, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        Assert.IsType<NoContentResult>((await BeatAsync(h, issue, token, Session(20), h.Time.GetUtcNow())).Result);
+
+        var old = await h.RunnerAsync("old");
+        Assert.Equal(oldSeenAt, old.LastSeenAt);
+        Assert.Null(old.Usage);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseWithTheToken_MovesTheLiveSession_AndNoOldNameRow()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key");
+        var oldSeenAt = Now.AddHours(-1);
+        var sessionId = await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        await h.AddRunnerAsync("old", oldSeenAt, where: SharedWhere);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        await h.Claims.ReleaseClaim(issue, token, default);
+
+        Assert.Equal(Now.AddSeconds(10), (await h.SessionAsync(sessionId)).LastSeenAt);
+        Assert.Equal(oldSeenAt, (await h.RunnerAsync("old")).LastSeenAt);
+    }
+
+    [SkippableFact]
+    public async Task ALoopThatOnlyHeartbeatsItsClaim_StaysTheMergeTrainsDriver()
+    {
+        await using var h = await NewAsync();
+        h.Caller.Person = null;
+        var first = KeyOf("first-loop");
+        var second = KeyOf("second-loop");
+        h.Keys.Keys.Add(first);
+        h.Keys.Keys.Add(second);
+        h.Caller.Key = first;
+
+        // The second loop is the elder, so it would win the moment the first
+        // dropped out; neither beats a session of its own again.
+        await h.AddSessionAsync(second.Id, "other:/checkout", Now, standing: true, startedAt: Now.AddHours(-2));
+        await h.AddSessionAsync(first.Id, SharedWhere, Now, standing: true, startedAt: Now.AddHours(-1));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+
+        for (var i = 0; i < 4; i++)
+        {
+            h.Time.Advance(TimeSpan.FromSeconds(50));
+            await BeatAsync(h, issue, token, null, null);
+        }
+
+        var drivers = await h.RunnersRule.DriversAsync(h.Connect(), h.Keys, h.Time.GetUtcNow(), default);
+
+        Assert.Equal(["AER"], drivers["first-loop"]);
+        Assert.False(drivers.ContainsKey("second-loop"));
+    }
+
+    [SkippableFact]
+    public async Task ASessionsReading_IsWhatUtilizationAnswersForTheKeysOwner_AndNobodyElse()
+    {
+        await using var h = await NewAsync();
+        var nathan = h.Actors.AddPerson("Nathan");
+        var alice = h.Actors.AddPerson("Alice");
+        h.Caller.Person = null;
+        h.Caller.Key = KeyOf("loop-key", owner: nathan.Id);
+        h.Keys.Keys.Add(h.Caller.Key);
+        var aliceKey = KeyOf("alice-key", owner: alice.Id);
+        h.Keys.Keys.Add(aliceKey);
+        await h.AddSessionAsync(h.Caller.Key.Id, SharedWhere, Now);
+        await h.AddSessionAsync(
+            aliceKey.Id, "elsewhere:/checkout", Now, usage: Session(7), usageReadAt: Now.AddMinutes(-2));
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue, SharedWhere);
+        var readAt = Now.AddMinutes(-1);
+
+        await BeatAsync(h, issue, token, Session(42), readAt);
+
+        h.Actors.Principal = nathan;
+        var mine = Value(await h.Utilization.Get(default));
+        Assert.Equal(readAt, mine.ReadAt);
+        Assert.Equal(42, Assert.Single(mine.Limits).Percent);
+
+        h.Actors.Principal = alice;
+        Assert.Equal(7, Assert.Single(Value(await h.Utilization.Get(default)).Limits).Percent);
     }
 
     [SkippableFact]
@@ -1832,13 +2029,16 @@ public class IssueClaimTests
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time);
-                return new IssueClaimController(db, Rule, Caller, Time, preemption);
+                return new IssueClaimController(db, Rule, Caller, Time, preemption, RunnersRule);
             }
         }
 
         public IssueThreadController Thread => new(Connect(), Caller, Time);
 
-        public UtilizationController Utilization => new(Connect(), Actors, Time);
+        /// <summary>The keys the account's reading is mapped to an owner through.</summary>
+        public StubAuthService Keys { get; } = new();
+
+        public UtilizationController Utilization => new(Connect(), Actors, Time, Keys);
 
         /// <summary>A connection of its own, disposed with the harness.</summary>
         public HatchContext Connect()
@@ -1928,6 +2128,38 @@ public class IssueClaimTests
             });
             await db.SaveChangesAsync();
         }
+
+        /// <summary>
+        /// A runner session, written straight to the table like
+        /// <see cref="AddRunnerAsync"/> - these tests are about what a claim
+        /// heartbeat does with one, not about how a loop opens it.
+        /// </summary>
+        public async Task<int> AddSessionAsync(
+            Guid apiKeyId, string where, DateTimeOffset lastSeenAt, DateTimeOffset? endedAt = null,
+            RunnerUsageWindowDto[]? usage = null, DateTimeOffset? usageReadAt = null,
+            bool standing = false, DateTimeOffset? startedAt = null)
+        {
+            var db = Connect();
+            var session = new EfHatchRunnerSession
+            {
+                ApiKeyId = apiKeyId,
+                Where = where,
+                Kind = EfHatchRunner.LoopKind,
+                State = EfHatchRunner.Running,
+                StartedAt = startedAt ?? lastSeenAt,
+                LastSeenAt = lastSeenAt,
+                EndedAt = endedAt,
+                Standing = standing ? true : null,
+                UsageReadAt = usageReadAt,
+                Usage = usage is null ? null : JsonSerializer.Serialize(usage),
+            };
+            db.RunnerSessions.Add(session);
+            await db.SaveChangesAsync();
+            return session.Id;
+        }
+
+        public Task<EfHatchRunnerSession> SessionAsync(int id) =>
+            Connect().RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == id);
 
         public Task<EfHatchRunner> RunnerAsync(string name) =>
             Connect().Runners.AsNoTracking().SingleAsync(r => r.Name == name);

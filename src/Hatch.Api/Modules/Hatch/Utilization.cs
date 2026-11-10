@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
+using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -113,23 +116,65 @@ public static class Utilization
     /// The caller's own reading, or null where none of <paramref name="runners"/>
     /// has ever reported one - the endpoint's <c>204</c>.
     /// </summary>
-    public static UtilizationReading? Of(IEnumerable<EfHatchRunner> runners, DateTimeOffset now)
+    public static UtilizationReading? Of(IEnumerable<EfHatchRunner> runners, DateTimeOffset now) =>
+        Of(runners.Select(r => (r.Usage, r.UsageReadAt)), now);
+
+    /// <summary>
+    /// The same judgement over bare <c>(usage, read time)</c> pairs, so a
+    /// runner row and a <see cref="EfHatchRunnerSession"/> - both of which carry
+    /// the account's last reading - are weighed together.
+    /// </summary>
+    public static UtilizationReading? Of(IEnumerable<(string? Usage, DateTimeOffset? ReadAt)> readings, DateTimeOffset now)
     {
-        EfHatchRunner? freshest = null;
-        foreach (var runner in runners)
+        (string Usage, DateTimeOffset ReadAt)? freshest = null;
+        foreach (var (usage, readAt) in readings)
         {
-            if (runner.Usage is null || runner.UsageReadAt is not { } at) continue;
-            if (freshest is null || at > freshest.UsageReadAt) freshest = runner;
+            if (usage is null || readAt is not { } at) continue;
+            if (freshest is null || at > freshest.Value.ReadAt) freshest = (usage, at);
         }
 
-        if (freshest is null) return null;
+        if (freshest is not { } best) return null;
 
-        var readAt = freshest.UsageReadAt!.Value;
-        var state = now - readAt < FreshFor ? UtilizationStates.Ok : UtilizationStates.Stale;
-        var windows = JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(freshest.Usage!) ?? [];
+        var state = now - best.ReadAt < FreshFor ? UtilizationStates.Ok : UtilizationStates.Stale;
+        var windows = JsonSerializer.Deserialize<List<RunnerUsageWindowDto>>(best.Usage) ?? [];
 
         return new UtilizationReading(
-            state, readAt, windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList());
+            state, best.ReadAt, windows.Select(w => new UtilizationLimit(w.Window, w.Label, w.Percent, w.ResetsAt)).ToList());
+    }
+
+    /// <summary>
+    /// A person's reading from everything that carries one: the runner rows
+    /// beating for them, and the sessions of the keys they own. A current CLI
+    /// beats a session and writes no runner row under its own name, so a read
+    /// of rows alone would leave its account with no reading at all. With no
+    /// <paramref name="keys"/> to say whose a session is, only rows are read.
+    /// </summary>
+    public static async Task<UtilizationReading?> ReadAsync(
+        HatchContext db, IAuthService? keys, Guid personId, DateTimeOffset now, CancellationToken ct)
+    {
+        var readings = (await db.Runners.AsNoTracking()
+                .Where(r => r.ForPersonId == personId && r.Usage != null)
+                .Select(r => new { r.Usage, r.UsageReadAt })
+                .ToListAsync(ct))
+            .Select(r => (r.Usage, r.UsageReadAt))
+            .ToList();
+
+        if (keys is not null)
+        {
+            var owned = (await keys.ListApiKeysAsync(ct))
+                .Where(k => k.OwnerPersonId == personId)
+                .Select(k => k.Id)
+                .ToList();
+
+            if (owned.Count > 0)
+                readings.AddRange((await db.RunnerSessions.AsNoTracking()
+                        .Where(s => owned.Contains(s.ApiKeyId) && s.Usage != null)
+                        .Select(s => new { s.Usage, s.UsageReadAt })
+                        .ToListAsync(ct))
+                    .Select(s => (s.Usage, s.UsageReadAt)));
+        }
+
+        return Of(readings, now);
     }
 
     /// <summary>
