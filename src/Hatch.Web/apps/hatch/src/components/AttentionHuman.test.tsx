@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, stalledEmptyWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -128,6 +128,19 @@ const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
   ...over,
 });
 
+const stalledIssue = (over: Partial<StalledIssue> = {}): StalledIssue => ({
+  key: 'AER-26',
+  title: 'A story nobody has touched',
+  type: 'story',
+  stalledAt: new Date(Date.now() - 60_000).toISOString(),
+  stalledWhy: 'Left where it was found.',
+  held: false,
+  letGo: 1,
+  sentence: 'The loop let it go once.',
+  kind: 'loop',
+  ...over,
+});
+
 beforeEach(() => {
   vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
   dialogProps = null;
@@ -135,7 +148,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws trunk builds first, then deadlocked, questions, pull requests, approved, landed, finished with no code, runner capacity, then waiting on a runner, each with the panel’s own empty wording', () => {
+  it('draws trunk builds first, then deadlocked, questions, stalled issues, pull requests, approved, landed, finished with no code, runner capacity, then waiting on a runner, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
@@ -143,6 +156,7 @@ describe('AttentionHuman', () => {
       'Trunk builds that fail',
       'Deadlocked',
       'Questions to answer',
+      'Stalled issues',
       'Pull requests to review',
       'Approved, not merging',
       'Landed, not done',
@@ -154,6 +168,7 @@ describe('AttentionHuman', () => {
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
     const deadlockedAt = html.indexOf(deadlockedEmptyWords());
     const questionAt = html.indexOf(questionEmptyWords());
+    const stalledAt = html.indexOf(stalledEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
     const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
     const landingHeldAt = html.indexOf(landingHeldEmptyWords());
@@ -165,7 +180,9 @@ describe('AttentionHuman', () => {
     expect(trunkAt).toBeLessThan(deadlockedAt);
     expect(deadlockedAt).toBeGreaterThan(-1);
     expect(deadlockedAt).toBeLessThan(questionAt);
-    expect(questionAt).toBeLessThan(reviewAt);
+    expect(questionAt).toBeLessThan(stalledAt);
+    expect(stalledAt).toBeGreaterThan(-1);
+    expect(stalledAt).toBeLessThan(reviewAt);
     expect(reviewAt).toBeLessThan(approvedHeldAt);
     expect(approvedHeldAt).toBeLessThan(landingHeldAt);
     expect(landingHeldAt).toBeLessThan(noCodeHeldAt);
@@ -173,6 +190,78 @@ describe('AttentionHuman', () => {
     expect(runnerCapacityAt).toBeGreaterThan(-1);
     expect(runnerCapacityAt).toBeLessThan(waitingAt);
     expect(waitingAt).toBeGreaterThan(-1);
+  });
+
+  it('draws a stalled row of each shape with its own lines, linking to the issue', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman
+          attention={attention({
+            stalled: [
+              stalledIssue({ key: 'AER-26', title: 'Loop row' }),
+              stalledIssue({ key: 'AER-27', title: 'Person row', kind: 'person', held: true, stalledAt: null, stalledWhy: null, sentence: null }),
+              stalledIssue({
+                key: 'AER-28',
+                title: 'Board row',
+                kind: 'person',
+                held: false,
+                stalledWhy: 'Let go three times.',
+                sentence: 'Held for a person: it has been let go three times.',
+              }),
+            ],
+            stallResumeSeconds: 600,
+          })}
+          now={new Date()}
+          reload={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('Left where it was found.');
+    expect(html).toContain('resumes in 9 minutes');
+    expect(html).toContain('held by a person');
+    expect(html).toContain('Held for a person: it has been let go three times.');
+    expect(html).not.toContain(stalledEmptyWords());
+
+    const rows = html.split('<li').slice(1);
+    const rowFor = (key: string) => rows.find((r) => r.includes(`href="/issues/${key}"`))!;
+    const files = (r: string) => r.split('hatch-attention-files').length - 1;
+    expect(rowFor('AER-26')).toContain('Loop row');
+    expect(rowFor('AER-27')).toContain('Person row');
+    expect(rowFor('AER-28')).toContain('Board row');
+    expect(files(rowFor('AER-26'))).toBe(2);
+    expect(files(rowFor('AER-27'))).toBe(1);
+    expect(files(rowFor('AER-28'))).toBe(2);
+  });
+
+  it('reads a loop row past its window as any moment now, not resumes any moment now', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman
+          attention={attention({
+            stalled: [stalledIssue({ stalledAt: new Date(Date.now() - 20 * 60_000).toISOString() })],
+            stallResumeSeconds: 600,
+          })}
+          now={new Date()}
+          reload={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('any moment now');
+    expect(html).not.toContain('resumes any moment now');
+  });
+
+  it('draws the empty wording and no list when the server sends no stalled rows', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ stalled: undefined })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    const section = html.slice(html.indexOf('>Stalled issues</h3>'), html.indexOf('>Pull requests to review</h3>'));
+    expect(section).toContain('Nothing is stalled.');
+    expect(section).not.toContain('<ul');
   });
 
   it('draws Backups above Deadlocked, with the sentence, the last success and a link to Settings', () => {
