@@ -55,7 +55,7 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     {
         var allKeys = await keys.ListApiKeysAsync(ct);
         var configs = await db.RunnerConfigs.AsNoTracking().ToListAsync(ct);
-        var beats = await db.Runners.AsNoTracking().ToListAsync(ct);
+        var beats = await db.LegacyRunners.AsNoTracking().ToListAsync(ct);
         var sessions = await db.RunnerSessions.AsNoTracking().ToListAsync(ct);
 
         var configsById = configs.ToDictionary(c => c.ApiKeyId);

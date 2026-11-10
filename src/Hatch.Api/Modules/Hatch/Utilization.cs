@@ -152,7 +152,7 @@ public static class Utilization
     public static async Task<UtilizationReading?> ReadAsync(
         HatchContext db, IAuthService? keys, Guid personId, DateTimeOffset now, CancellationToken ct)
     {
-        var readings = (await db.Runners.AsNoTracking()
+        var readings = (await db.LegacyRunners.AsNoTracking()
                 .Where(r => r.ForPersonId == personId && r.Usage != null)
                 .Select(r => new { r.Usage, r.UsageReadAt })
                 .ToListAsync(ct))

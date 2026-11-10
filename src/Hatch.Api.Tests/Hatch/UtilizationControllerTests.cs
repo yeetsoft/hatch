@@ -224,7 +224,7 @@ public class UtilizationControllerTests
             string name, Guid? forPersonId, DateTimeOffset readAt, params RunnerUsageWindowDto[] windows)
         {
             var db = Connect();
-            db.Runners.Add(new EfHatchRunner
+            db.LegacyRunners.Add(new EfHatchRunner
             {
                 Name = name,
                 Kind = EfHatchRunner.LoopKind,
