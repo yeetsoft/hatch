@@ -206,7 +206,7 @@ public class DependencyDeclarationTests
 
         Assert.StartsWith("entry 1: ", problem);
         Assert.Contains("`xcode` is not a dependency Hatch knows", problem);
-        Assert.Contains("dotnet, make, node, playwright-browsers, postgres, pwsh", problem);
+        Assert.Contains("docker, dotnet, make, node, playwright-browsers, postgres, pwsh", problem);
     }
 
     [Fact]

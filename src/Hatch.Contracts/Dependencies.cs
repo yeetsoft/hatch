@@ -16,6 +16,7 @@ public sealed class Dependencies(IReadOnlyList<Dependency> rows)
     public IReadOnlyList<Dependency> Rows { get; } = rows;
 
     public static Dependencies Default { get; } = new([
+        new Dependency("docker", "Docker"),
         new Dependency("dotnet", ".NET SDK"),
         new Dependency("make", "make"),
         new Dependency("node", "Node.js"),
