@@ -320,7 +320,13 @@ public class RunnersController(
             .FirstOrDefaultAsync(ct);
 
         if (request.Fresh == true && kind == EfHatchRunner.LoopKind && live is not null)
-            return Conflict($"{key.Name} is already the runner on {where ?? "an unnamed checkout"}");
+        {
+            var goneIn = (int)Math.Ceiling((live.LastSeenAt.AddSeconds(runners.GoneAfterSeconds) - now).TotalSeconds);
+            return Conflict(new RunnerSessionRefusalDto(
+                $"{key.Name} is already the runner on {where ?? "an unnamed checkout"}",
+                live.LastSeenAt,
+                Math.Max(1, goneIn)));
+        }
 
         EfHatchRunnerSession session;
         if (live is null)
@@ -346,6 +352,40 @@ public class RunnersController(
         var forName = (await ForAsync(ct))?.Name ?? key.Name;
 
         return RunnerSessions.Instruct(session, config, key.Name, forName, drives, site.RunnerDefaultMaxTokens, site.RunnerDefaultMaxTokensPerHour);
+    }
+
+    /// <summary>
+    /// Ends one of the calling key's own sessions - a <c>go-to-work</c> loop
+    /// saying it is leaving, so a fresh loop started straight afterwards in
+    /// the same checkout is not refused for a process that has already exited.
+    /// </summary>
+    /// <remarks>
+    /// <para>The bearer key's alone, like <see cref="SessionHeartbeat"/>. A
+    /// session that is not this key's, or does not exist, is <c>404</c>. An
+    /// ended session is <c>204</c> again and keeps its first <c>EndedAt</c>,
+    /// so the call is safe to repeat. A later fresh beat finds no live row and
+    /// seeds a new one.</para>
+    ///
+    /// <para>A plain read and write, not <c>ExecuteUpdateAsync</c>, for the
+    /// reason <c>FanOutAsync</c> gives.</para>
+    /// </remarks>
+    [HttpPost("sessions/{id:int}/end")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<IActionResult> EndSession(int id, CancellationToken ct)
+    {
+        if (await caller.ApiKeyAsync(ct) is not { } key)
+            return StatusCode(403, "ending a session is the bearer key's, not a name or a header");
+
+        var session = await SessionNamedAsync(key.Id, id, ct);
+        if (session is null) return NotFound();
+
+        if (session.EndedAt is null)
+        {
+            session.EndedAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+        }
+
+        return NoContent();
     }
 
     /// <summary>

@@ -786,6 +786,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for old CLIs |
+| POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, and tags |
@@ -915,7 +916,21 @@ stored on the session. The row matched is this key's own session at the body's
 `where` - `(ApiKeyId, Where)` is the pair a session is held by - touched if it
 is still live, seeded fresh if not; `409`s ("`<key> is already the runner on
 <where>`") only for `fresh: true`, `kind: loop`, and a live session already at
-that `where`. It answers a `RunnerInstructionDto`, now carrying `sessionId`.
+that `where`. The `409` body is `{ error, lastSeenAt, goneInSeconds }`: the
+sentence, when the held session last beat, and at most how many seconds (at
+least 1) until it is marked gone. A fresh loop that meets it waits that long,
+asking again every few seconds: a `lastSeenAt` that has moved is a live second
+loop and is refused for good; a session that has gone quiet is marked gone and
+the next beat is answered. It answers a `RunnerInstructionDto`, now carrying
+`sessionId`.
+
+`POST /runners/sessions/{id}/end` is how a loop says it is leaving. It is the
+bearer key alone, like the heartbeat (`403` with none), and `404`s a session
+that is not this key's or does not exist. It stamps `endedAt` if the session is
+still open and answers `204` either way, so it can be sent twice. A fresh beat
+afterwards finds no live session at that `where` and seeds a new one. The CLI
+sends it on every exit of `go-to-work` except the hand-over to a restarted
+incarnation, which joins the same session.
 
 The body also takes six machine fields - `os`, `arch`, `agentVersion`,
 `container`, `username`, `processStartedAt` - stored on the session; an

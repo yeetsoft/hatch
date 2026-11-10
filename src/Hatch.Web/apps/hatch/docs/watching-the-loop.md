@@ -71,6 +71,17 @@ have no controls, since Pause, Stop and orders are the runner's and not a
 session's, and a retired row draws none. It is the same list `hatch runners`
 indents under each runner.
 
+A `go-to-work` loop ends its own session when it exits, whichever way it
+exits - a bound, `--stop-file`, a stop from the board, Ctrl-C - so a loop
+started straight afterwards in the same checkout starts at once. The one
+exception is the hand-over to a restarted build, which keeps the session for
+its successor. A loop that crashed never ended its session, and it stays live
+until it has been quiet for the silence limit. A fresh start that finds it says
+so once - how long it will wait at most - and starts as soon as the session
+goes. If that session beats again while the new loop waits, it is a real second
+loop in the checkout, and the new one is refused with the usual "is already the
+runner" sentence and exits 1.
+
 Renaming a checkout's runner retires its old name. The moment a loop beats from
 a checkout under a new name, every older loop row from that same checkout, for
 the same owner, is marked retired: it reads **Retired** in place of **Doing**
