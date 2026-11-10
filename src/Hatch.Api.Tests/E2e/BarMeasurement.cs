@@ -182,3 +182,37 @@ internal sealed record RunnerBudgetsMeasurement(int ScrollWidth, int ClientWidth
         new[] { $"document scrollWidth: {ScrollWidth}", $"document clientWidth: {ClientWidth}" }
             .Concat(Rows.Select(r => r.ToString())));
 }
+
+/// <summary>
+/// One element of the Omitted runners section: what it is called, its box, and
+/// its own <c>scrollWidth</c> against its <c>clientWidth</c> (a clipped label
+/// overflows its element without moving the element's box).
+/// </summary>
+/// <param name="Name"><c>li.hatch-omission "Own Runner"</c> or <c>input "Reason"</c>, from the tag, class and text or <c>aria-label</c>.</param>
+/// <param name="Control">True for a <c>&lt;button&gt;</c> or <c>&lt;input&gt;</c>, the elements held to their own <c>scrollWidth</c>.</param>
+internal sealed record OmissionElement(string Name, bool Control, Box Box, int ScrollWidth, int ClientWidth)
+{
+    public override string ToString() => $"{Name}: {Box} scrollWidth={ScrollWidth} clientWidth={ClientWidth}";
+}
+
+/// <summary>
+/// The Details card's Omitted runners section as the page stands: the viewport,
+/// the document's width against it, the card's border box, and every
+/// <c>.hatch-omission</c> row with its descendants and every element of the
+/// <c>.hatch-omission-add</c> form.
+/// </summary>
+internal sealed record OmittedRunnersMeasurement(
+    int InnerWidth,
+    int ScrollWidth,
+    int ClientWidth,
+    Box Card,
+    IReadOnlyList<OmissionElement> Elements)
+{
+    public override string ToString() => string.Join(Environment.NewLine, new[]
+    {
+        $"innerWidth: {InnerWidth}",
+        $"document scrollWidth: {ScrollWidth}",
+        $"document clientWidth: {ClientWidth}",
+        $"card: {Card}",
+    }.Concat(Elements.Select(e => e.ToString())));
+}
