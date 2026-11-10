@@ -7233,6 +7233,98 @@ button.hatch-option.chosen {
 
 /* ---- Runners ---- */
 
+/* The list's glyph. Its box is an ornament dimension, like the robot's: a
+   shape drawn in a 24-unit viewBox, sized to sit beside a line of text rather
+   than to a token. The state picks the ink, and the shape says the same thing
+   without it. */
+.hatch-runner-glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--muted);
+}
+
+.hatch-runner-glyph--gone,
+.hatch-runner-glyph--exhausted {
+  color: var(--danger);
+}
+
+.hatch-runner-glyph--throttled {
+  color: var(--warn);
+}
+
+.hatch-runner-glyph--paused,
+.hatch-runner-glyph--stopping {
+  color: var(--primary);
+}
+
+.hatch-runner-glyph--working {
+  color: var(--success);
+}
+
+/* A row is a link to its runner, in three lines: who, what it is doing, and
+   whose it is. */
+.hatch-runner-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  color: inherit;
+  text-decoration: none;
+}
+
+.hatch-runner-row:hover {
+  background: var(--bg);
+}
+
+.hatch-runner-row[aria-current='page'] {
+  background: var(--primary-bg);
+}
+
+.hatch-runner-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* The name takes the line and shrinks to it, so the badges stay on the right
+   however long the path. */
+.hatch-runner-row__name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* One line each, cut with an ellipsis; the full text is in the title. */
+.hatch-runner-row__second,
+.hatch-runner-row__third {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hatch-runner-row__second {
+  font-size: var(--t-label);
+}
+
+.hatch-runner-row__third {
+  font-size: var(--t-micro);
+}
+
+.hatch-runner-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-runner-revoked {
+  color: var(--muted);
+}
+
+.hatch-runner-revoked > summary {
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
 /* The name is a path, and a long one: a checkout three directories deep on a
    host with a long name is most of a line on its own. Monospace because it is a
    path somebody may have to compare against one on a terminal, and broken
