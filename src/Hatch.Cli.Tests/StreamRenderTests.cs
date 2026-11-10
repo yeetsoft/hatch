@@ -458,4 +458,72 @@ public sealed class StreamRenderTests
 
         Assert.Equal(0.9, Assert.Single(render.Usage).Utilization);
     }
+
+    /// <summary>The call a session is inside of: the newest still open, back to the older one when it returns, none when all have.</summary>
+    [Fact]
+    public void Open_is_the_newest_call_that_has_not_returned()
+    {
+        var facts = new RunFacts();
+        var render = new StreamRender("/tmp/checkout", facts);
+        Assert.Null(render.Open);
+
+        render.Read(Fixtures.ToolUse("Bash", "make one", "t1")).ToList();
+        Assert.Equal(new OpenCall("t1", "Bash  make one"), render.Open);
+
+        // Parallel: the newer call is the one named, until it returns.
+        render.Read(Fixtures.ToolUse("Bash", "make two", "t2")).ToList();
+        Assert.Equal("t2", render.Open!.Id);
+
+        render.Read(Fixtures.ToolResult("t2")).ToList();
+        Assert.Equal("t1", render.Open!.Id);
+
+        render.Read(Fixtures.ToolResult("t1")).ToList();
+        Assert.Null(render.Open);
+    }
+
+    /// <summary>Not enumerating an event's lines must not leave a call open or closed wrongly.</summary>
+    [Fact]
+    public void Open_is_current_the_moment_Read_returns_whether_or_not_its_lines_are_enumerated()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        _ = render.Read(Fixtures.ToolUse("Bash", "make", "t1"));
+        Assert.NotNull(render.Open);
+
+        _ = render.Read(Fixtures.ToolResult("t1"));
+        Assert.Null(render.Open);
+    }
+
+    [Fact]
+    public void A_call_that_failed_is_closed_too()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.ToolUse("Bash", "make", "t1")).ToList();
+        render.Read(Fixtures.ToolResult("t1", "boom", isError: true)).ToList();
+
+        Assert.Null(render.Open);
+    }
+
+    [Fact]
+    public void The_end_of_the_session_clears_every_open_call()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.ToolUse("Bash", "make", "t1")).ToList();
+        render.Read(Fixtures.Result()).ToList();
+
+        Assert.Null(render.Open);
+    }
+
+    [Fact]
+    public void Open_names_the_call_and_never_its_output()
+    {
+        var render = new StreamRender("/tmp/checkout", new RunFacts());
+
+        render.Read(Fixtures.ToolUse("Bash", "make", "t1")).ToList();
+        render.Read(Fixtures.AssistantText("SECRET-PROSE")).ToList();
+
+        Assert.DoesNotContain("SECRET", render.Open!.Line, StringComparison.Ordinal);
+    }
 }

@@ -130,6 +130,10 @@ internal sealed class GrokStreamReader : IAgentStreamReader
 
     public DateTimeOffset? UsageReadAt => null;
 
+    private readonly OpenCalls _open = new();
+
+    public OpenCall? Open => _open.Current;
+
     /// <summary>
     /// Wraps <see cref="ReadEvent"/> with a one-time banner, printed off the
     /// very first call regardless of what that line parses to - the same way
@@ -169,6 +173,7 @@ internal sealed class GrokStreamReader : IAgentStreamReader
         if (type is null)
             return e.TryGetProperty("sessionId", out _) ? QuietJson(e) : [];
 
+        Track(type, e);
         return type switch
         {
             "tool_call" => ToolCall(e),
@@ -180,6 +185,25 @@ internal sealed class GrokStreamReader : IAgentStreamReader
             "error" => Error(e),
             _ => [],
         };
+    }
+
+    /// <summary>Which tool calls are in flight, kept eagerly because the lines are lazy.</summary>
+    private void Track(string type, JsonElement e)
+    {
+        switch (type)
+        {
+            case "tool_call":
+                _open.Begin(Text(e, "toolCallId"), $"{Text(e, "toolName")}  {ToolField(e)}");
+                break;
+
+            case "tool_call_update" when Text(e, "status") is "completed" or "failed":
+                _open.End(Text(e, "toolCallId"));
+                break;
+
+            case "end" or "error":
+                _open.Clear();
+                break;
+        }
     }
 
     private IEnumerable<string> ToolCall(JsonElement e)

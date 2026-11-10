@@ -367,4 +367,39 @@ public sealed class GrokStreamReaderTests
         Assert.Equal(51, reads[0].Count);
         Assert.DoesNotContain(reads, r => r.Path == "src/file00.rs");
     }
+
+    [Fact]
+    public void Open_is_the_newest_tool_call_not_yet_completed_or_failed()
+    {
+        var (_, reader) = New();
+        Assert.Null(reader.Open);
+
+        reader.Read(Fixtures.GrokToolCall("run_terminal_cmd", new { command = "make one" }, "c1")).ToList();
+        Assert.Equal(new OpenCall("c1", "run_terminal_cmd  make one"), reader.Open);
+
+        reader.Read(Fixtures.GrokToolCall("run_terminal_cmd", new { command = "make two" }, "c2")).ToList();
+        Assert.Equal("c2", reader.Open!.Id);
+
+        // Still running is not returned.
+        reader.Read(Fixtures.GrokToolUpdate("c2", "in_progress")).ToList();
+        Assert.Equal("c2", reader.Open!.Id);
+
+        reader.Read(Fixtures.GrokToolUpdate("c2", "completed")).ToList();
+        Assert.Equal("c1", reader.Open!.Id);
+
+        reader.Read(Fixtures.GrokToolUpdate("c1", "failed")).ToList();
+        Assert.Null(reader.Open);
+    }
+
+    [Fact]
+    public void The_end_of_the_session_clears_every_open_call()
+    {
+        var (_, reader) = New();
+
+        _ = reader.Read(Fixtures.GrokToolCall("c1"));
+        Assert.NotNull(reader.Open);
+
+        _ = reader.Read(Fixtures.GrokEnd());
+        Assert.Null(reader.Open);
+    }
 }

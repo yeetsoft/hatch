@@ -2157,7 +2157,18 @@ A `--quiet` session sends no chatter at all, so its claim is measured from when
 it was taken. A line the session prints counts as a word every time it is
 printed, even when its text is the same as the last one's - the CLI counts the
 prints, not the text, since a long line is clipped and a run that keeps making
-the same kind of call would otherwise read as silent. Every reader treats a quiet claim exactly as it treats an expired
+the same kind of call would otherwise read as silent. While a streamed session
+has a tool call open the stream is silent, so the runner itself carries the
+word for it: `still running: <the call as the transcript names it>, <n>m`, at
+least once a minute (and often enough to fit a window shorter than three
+minutes), so a single blocking call of any length within the agent's own tool
+timeout keeps its claim live and no session needs to poll. It names the call
+and its minutes only, never its output. It stops the moment the call returns,
+is never sent between calls (thinking, writing, or no call at all), and ends
+once the call has been open past the agent's own tool timeout (ten minutes),
+so a hung call goes quiet one window after the last line it carried. A dead
+runner sends nothing, and its claim lapses on this rule unchanged; a `--quiet`
+session has no stream to see a call open in, so it carries none of this. Every reader treats a quiet claim exactly as it treats an expired
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is

@@ -386,7 +386,7 @@ public sealed class Increment(
     IReadOnlyList<CheckoutEntry> checkouts,
     ReadoutState? readout = null, string? tempDirectory = null, Controls? controls = null,
     Func<string, string?, IWorkspace>? workspace = null, Board? quietBoard = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null, TimeSpan? toolCeiling = null)
 {
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ReadoutState _readout = readout ?? new();
@@ -1244,6 +1244,16 @@ public sealed class Increment(
 
         using var pulse = new Pulse(settings.HeartbeatSeconds, say);
 
+        // A tool call in flight says nothing on the stream, so the runner says
+        // it for the call - see KeepTalkingAsync. Streamed sessions only: a
+        // --quiet one has no stream to see a call open in, and returned above.
+        var inFlight = new InFlight();
+        var ceiling = toolCeiling ?? adapter.ToolCeiling;
+        var every = claim.StallLapse is { } lapsing && lapsing > TimeSpan.Zero
+            ? TimeSpan.FromTicks(Math.Min(TimeSpan.FromSeconds(60).Ticks, lapsing.Ticks / 3))
+            : TimeSpan.FromSeconds(60);
+        await using var talking = new Probing(ct2 => KeepTalkingAsync(inFlight, claim, every, ceiling, ct2), ct);
+
         var streamed = await sessions.RunAsync(request, raw =>
         {
             foreach (var line in render.Read(raw))
@@ -1257,6 +1267,10 @@ public sealed class Increment(
                 // "no change" rather than clearing a card mid-run.
                 if (line.Length > 0) claim.Chatter.Line = line.Trim();
             }
+
+            // Outside the loop above, for the same reason as the usage read
+            // below: a tool call opening or returning is not always a line.
+            inFlight.Note(render.Open, _clock.GetUtcNow());
 
             // Outside the loop above, and reading the property rather than
             // Read's own (always empty) result: a rate_limit_event draws no
@@ -1326,7 +1340,8 @@ public sealed class Increment(
     /// <remarks>
     /// The deadline is read fresh on every wake, since a word said while this
     /// was asleep moves it - <see cref="Chatter.Line"/> is the only thing that
-    /// counts as one; <see cref="Pulse"/>'s own lines are not carried onto it.
+    /// counts as one. <see cref="Pulse"/>'s own lines are still not carried onto
+    /// it; the runner's still-running line is, by <see cref="KeepTalkingAsync"/>.
     /// Margin is the smaller of ten seconds or a tenth of the lapse, so a test
     /// driving the lapse in milliseconds still gets a watcher that fires inside
     /// its own window rather than one that rounds the margin away to nothing.
@@ -1364,6 +1379,74 @@ public sealed class Increment(
             say.Line($"hatch: {key} - no word for {Format.Duration((long)after.TotalSeconds)}; stopping the session");
             stopping.Cancel();
             return;
+        }
+    }
+
+    /// <summary>The tool call a streamed session is inside of, and since when. Written by the stream's callback, read by the talker.</summary>
+    private sealed class InFlight
+    {
+        private readonly object _gate = new();
+        private OpenCall? _call;
+        private DateTimeOffset _since;
+
+        /// <summary>The reader's open call, as of now: a new one starts the clock, none clears it.</summary>
+        public void Note(OpenCall? open, DateTimeOffset now)
+        {
+            lock (_gate)
+            {
+                if (open is null) _call = null;
+                else if (_call?.Id != open.Id)
+                {
+                    _call = open;
+                    _since = now;
+                }
+            }
+        }
+
+        public (OpenCall Call, DateTimeOffset Since)? Get()
+        {
+            lock (_gate) return _call is { } call ? (call, _since) : null;
+        }
+    }
+
+    /// <summary>
+    /// Says on the claim, once a minute, that a tool call is still running -
+    /// because the stream is silent for the whole of one, and a silent claim
+    /// is a stopped one.
+    /// </summary>
+    /// <remarks>
+    /// It speaks only while a call is open (a session thinking, writing, or
+    /// between calls gets nothing), only until the call is past
+    /// <paramref name="ceiling"/> (a call the agent itself should have ended is
+    /// hung, and the quiet window then runs as it always has), and only when
+    /// nothing else has been said for half a beat, so a real line - a sub-agent
+    /// talking - keeps the card. A runner that has died runs no loop and says
+    /// nothing, so its claim lapses on the server's rule unchanged. The line is
+    /// the call as the transcript already printed it and the minutes: never
+    /// its output.
+    /// </remarks>
+    private async Task KeepTalkingAsync(
+        InFlight inFlight, Claim claim, TimeSpan every, TimeSpan ceiling, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(every, _clock, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (inFlight.Get() is not { } open) continue;
+
+            var now = _clock.GetUtcNow();
+            var age = now - open.Since;
+            if (age >= ceiling) continue;
+            if (now - (claim.Chatter.SaidAt ?? claim.TakenAt) < every / 2) continue;
+
+            claim.Chatter.Line = $"still running: {open.Call.Line}, {(int)age.TotalMinutes}m";
         }
     }
 

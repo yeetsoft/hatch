@@ -103,6 +103,15 @@ public interface IAgentAdapter
     /// </summary>
     IAgentStreamReader CreateReader(string root, RunFacts facts, string model);
 
+    /// <summary>
+    /// The longest one foreground tool call runs in this agent before the agent
+    /// itself ends it. A call still open past this is treated as hung, and the
+    /// runner stops saying it is still running - see <see cref="IAgentStreamReader.Open"/>.
+    /// Ten minutes is the upper bound used for every agent: one with a shorter
+    /// timeout closes the call sooner anyway.
+    /// </summary>
+    TimeSpan ToolCeiling => TimeSpan.FromMinutes(10);
+
     /// <summary>The prose a quiet run ended with, out of the one object it answers with.</summary>
     string? ReadClosing(string json);
 
@@ -152,6 +161,49 @@ public interface IAgentStreamReader
 
     /// <summary>When <see cref="Usage"/> was last taken.</summary>
     DateTimeOffset? UsageReadAt { get; }
+
+    /// <summary>
+    /// The most recently started tool call that has not returned yet, or null
+    /// when none is open. Updated before <see cref="Read"/> returns, whether or
+    /// not the caller enumerates its lines.
+    /// </summary>
+    OpenCall? Open { get; }
+}
+
+/// <summary>
+/// A tool call in flight. <paramref name="Line"/> is the call as the transcript
+/// names it, without the leading marker (<c>Bash  make test-api</c>) - never
+/// its output.
+/// </summary>
+public sealed record OpenCall(string Id, string Line);
+
+/// <summary>
+/// The calls a reader has seen start and not yet seen return, in the order they
+/// started. Parallel calls are normal, so this is a list and not a slot.
+/// </summary>
+internal sealed class OpenCalls
+{
+    private readonly List<OpenCall> _calls = [];
+
+    /// <summary>The newest call still open, or null.</summary>
+    public OpenCall? Current => _calls.Count > 0 ? _calls[^1] : null;
+
+    /// <summary>A call started. One already open under the same id is left as it is.</summary>
+    public void Begin(string? id, string line)
+    {
+        if (string.IsNullOrEmpty(id) || _calls.Any(c => c.Id == id)) return;
+        _calls.Add(new OpenCall(id, line));
+    }
+
+    /// <summary>A call returned, whether or not it failed.</summary>
+    public void End(string? id)
+    {
+        if (id is null) return;
+        _calls.RemoveAll(c => c.Id == id);
+    }
+
+    /// <summary>The session's end: nothing is in flight any more.</summary>
+    public void Clear() => _calls.Clear();
 }
 
 /// <summary>The hooks a session was handed, and the directory outside every checkout that they live in.</summary>
