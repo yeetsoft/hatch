@@ -279,4 +279,39 @@ public sealed class CodexStreamReaderTests
         Assert.Empty(reader.Usage);
         Assert.Null(reader.UsageReadAt);
     }
+
+    [Fact]
+    public void Open_is_the_newest_tool_item_that_has_not_completed()
+    {
+        var reader = new CodexStreamReader("/tmp/checkout", new RunFacts(), "gpt-5-codex");
+        Assert.Null(reader.Open);
+
+        reader.Read(Fixtures.CodexItemStarted("command_execution", command: "make one", id: "i1")).ToList();
+        Assert.Equal(new OpenCall("i1", "command_execution  make one"), reader.Open);
+
+        reader.Read(Fixtures.CodexItemStarted("mcp_tool_call", tool: "search", id: "i2")).ToList();
+        Assert.Equal("i2", reader.Open!.Id);
+
+        reader.Read(Fixtures.CodexItemCompleted("mcp_tool_call", id: "i2")).ToList();
+        Assert.Equal("i1", reader.Open!.Id);
+
+        // A failed item has returned too.
+        reader.Read(Fixtures.CodexItemCompleted("command_execution", status: "failed", id: "i1")).ToList();
+        Assert.Null(reader.Open);
+    }
+
+    [Fact]
+    public void An_item_that_runs_no_tool_opens_nothing_and_the_end_of_the_turn_clears_the_rest()
+    {
+        var reader = new CodexStreamReader("/tmp/checkout", new RunFacts(), "gpt-5-codex");
+
+        reader.Read(Fixtures.CodexItemStarted("reasoning", id: "r1")).ToList();
+        Assert.Null(reader.Open);
+
+        _ = reader.Read(Fixtures.CodexItemStarted("web_search", query: "docs", id: "w1"));
+        Assert.Equal("w1", reader.Open!.Id);
+
+        reader.Read(Fixtures.CodexTurnCompleted()).ToList();
+        Assert.Null(reader.Open);
+    }
 }

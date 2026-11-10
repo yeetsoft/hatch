@@ -71,6 +71,17 @@ have no controls, since Pause, Stop and orders are the runner's and not a
 session's, and a retired row draws none. It is the same list `hatch runners`
 indents under each runner.
 
+A `go-to-work` loop ends its own session when it exits, whichever way it
+exits - a bound, `--stop-file`, a stop from the board, Ctrl-C - so a loop
+started straight afterwards in the same checkout starts at once. The one
+exception is the hand-over to a restarted build, which keeps the session for
+its successor. A loop that crashed never ended its session, and it stays live
+until it has been quiet for the silence limit. A fresh start that finds it says
+so once - how long it will wait at most - and starts as soon as the session
+goes. If that session beats again while the new loop waits, it is a real second
+loop in the checkout, and the new one is refused with the usual "is already the
+runner" sentence and exits 1.
+
 Renaming a checkout's runner retires its old name. The moment a loop beats from
 a checkout under a new name, every older loop row from that same checkout, for
 the same owner, is marked retired: it reads **Retired** in place of **Doing**
@@ -331,7 +342,7 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Waiting on a runner**, **Backups**, **Stalled merge trains**, **Deadlocked**, **Trunk builds
+them: **Waiting on a runner**, **Runner capacity**, **Backups**, **Stalled merge trains**, **Deadlocked**, **Trunk builds
 that fail**, **Pull requests to review**, **Approved, not merging**,
 **Landed, not done**, **Questions to answer**. **Waiting on a runner** lists
 every issue whose next move no live runner can take for want of a model or a
@@ -355,6 +366,21 @@ fleet, one runner lacking the model and another the tool, since no single
 sentence is true of all of them. With nothing to list, the group says
 *Nothing is waiting on a runner.* [hatch queue](cli-reference#queue) prints
 the same list at the terminal.
+
+**Runner capacity** lists every project whose clear implementation steps no
+live runner, or only one, can take - a narrower question than **Waiting on a
+runner**'s: a runner capable of the move can still fold a step on a claim, a
+full WIP slice, a question, a person or a dependency edge, and those are a
+runner's own business, not a capacity gap. Each row names the project, how
+many clear steps it has, links to the first ten, and reads either `N clear
+steps: only <runner> can take them` or `no live runner can take them:
+<runner>: <reason>; ...`. A project two or more live runners can take is not
+listed at all. With nothing to list, the group reads *Every project's next
+steps have two or more live runners.* Unlike **Waiting on a runner**, only a
+no-taker row lights the control - a one-taker row is information, not
+breakage, and is not counted. The web's work queue - the button beside Go to
+Work, next to the battery - shows the same two sentences next to a row's own
+words, the way [hatch queue](cli-reference#queue) does at the terminal.
 
 **Agent** - things the loop is already on: **Branches that
 conflict**, **Branch builds that fail**. A separate **Out of usage** section

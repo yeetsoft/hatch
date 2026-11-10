@@ -560,9 +560,25 @@ public sealed class Lifecycle(Runtime runtime)
 
             // The merge check that made this build work said one branch, and
             // origin may have changed since.
-            if (heads is null || heads.Candidates(key) is not [var branch])
+            if (heads is null)
             {
                 runtime.Say.Complain($"hatch: {key} - origin's branch for it could not be read in {name}, so its build was not checked");
+                unknown = true;
+                continue;
+            }
+
+            // Several branches on origin: the stored merge check fetched, and
+            // names the open one.
+            var merges = work.Issue.MergeChecks ?? [];
+            var stored = merges.FirstOrDefault(c => canonical is not null ? c.Canonical == canonical : c.Remote == remote)
+                ?? (work.Repositories.Count == 0 ? merges.FirstOrDefault() : null);
+
+            if (heads.BranchFor(key, stored) is not { } branch)
+            {
+                var candidates = heads.Candidates(key);
+                runtime.Say.Complain(candidates.Count > 1
+                    ? $"hatch: {key} has {candidates.Count} branches on origin in {name} ({string.Join(", ", candidates)}) and its merge check names none of them, so its build was not read"
+                    : $"hatch: {key} - origin's branch for it could not be read in {name}, so its build was not checked");
                 unknown = true;
                 continue;
             }

@@ -279,8 +279,12 @@ detections instead: every beat overwrites the row, and no page or `PATCH`
 edits them, so a value can never say a machine has a tool it does not. Each
 of the three is judged on every dispatch read (`hatch queue`, `next`, `work
 KEY`, the loop's own pass) and never on a hop, and each is opt-in on the
-wire: a caller sending no `tag=`, `model=`/`agent=` or `has=` is folded by
-nothing for it, which is why an older CLI and the issue page are unaffected.
+wire: a caller sending no `model=`/`agent=` or `has=` is folded by nothing for
+it, which is why an older CLI and the issue page are unaffected. Tags are the
+exception: a caller sending no `tag=` is judged on the tags of the API key it
+called with, so `hatch queue` and `hatch work` run by hand see what a loop
+under the same key sees (a `tag=` sent replaces them, never joins them; with
+no key, or a key with none set, the caller advertises none).
 [Models](#models) and [Has](#has) below have each detection in full.
 
 A tag is a word a project's, a ticket's, or one of its ancestors' runner tags
@@ -302,7 +306,7 @@ is refused by the Runners page with the rule's sentence.
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
 worked only by a runner advertising macos and xcode - this runner
-advertises linux"* (*"... advertises none"* for a runner with no tags at all).
+advertises linux"* (*"... advertises none"* for a runner with no tags at all, or for a call made with no key).
 
 ### Models
 

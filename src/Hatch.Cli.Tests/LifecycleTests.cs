@@ -1091,6 +1091,35 @@ public sealed class LifecycleTests
         Assert.True(found.Unknown);
         Assert.Empty(h.Forge.Reads);
         Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check"));
+
+        var line = Assert.Single(h.Say.Complained);
+        Assert.Contains("aer-1-other", line);
+        Assert.Contains("aer-1-thing", line);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_of_two_branches_reads_the_one_its_merge_check_names()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Workspace.HeadsFor["/checkouts/one"] = new RemoteHeads("main", new Dictionary<string, string>
+        {
+            ["main"] = TrunkSha, ["aer-1-old"] = PushedTip, ["aer-1-thing"] = BuildTip,
+        });
+        work = work with
+        {
+            Issue = work.Issue with
+            {
+                MergeChecks = [Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/one") with { Branch = "aer-1-thing" }],
+            },
+        };
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+
+        var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
+
+        Assert.Equal(["/checkouts/one " + BuildTip], h.Forge.Reads.ToList());
+        Assert.False(found.Unknown);
+        Assert.Equal("aer-1-thing", Assert.Single(found.StillFailing).Branch);
     }
 
     [Fact]

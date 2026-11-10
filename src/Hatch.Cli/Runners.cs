@@ -23,6 +23,37 @@ public sealed class Runners(HatchClient client)
 {
     private const string Path = "/api/hatch/runners/sessions";
 
+    private static RunnerSessionRefusalDto? HeldBy(string body)
+    {
+        try
+        {
+            var held = System.Text.Json.JsonSerializer.Deserialize(body, HatchJson.Default.RunnerSessionRefusalDto);
+            return held is { Error: not null } ? held : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// This process is leaving: ends its own session so a fresh loop started
+    /// straight afterwards in the same checkout is not refused for it. Never
+    /// throws and never ends anything - a session that could not be ended is
+    /// marked gone by the server once it has been quiet long enough, which is
+    /// what happened before this existed.
+    /// </summary>
+    public async Task EndAsync(int sessionId, CancellationToken ct)
+    {
+        try
+        {
+            await client.Send(HttpMethod.Post, $"{Path}/{sessionId}/end", null, ct);
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException or HatchException)
+        {
+        }
+    }
+
     /// <summary>
     /// Still here. Answers what the board would like, or the one refusal that
     /// is not weather.
@@ -34,7 +65,7 @@ public sealed class Runners(HatchClient client)
         // The one answer this is not: a live loop is already at this `where`,
         // and going on would be two live runners heartbeating one row - which is
         // exactly the merge the board's own refusal exists to prevent.
-        if (answer.Conflict) return new RunnerBeat(null, answer.Sentence);
+        if (answer.Conflict) return new RunnerBeat(null, answer.Sentence, HeldBy(answer.Body));
 
         if (!answer.Ok || answer.Body.Trim().Length == 0) return new RunnerBeat(null, null);
 
@@ -56,6 +87,10 @@ public sealed class Runners(HatchClient client)
 /// <summary>
 /// What a heartbeat came back with: an instruction to fold in, or the sentence
 /// that ends a run - never both, since a refused beat never reached the row
-/// this process would have read an instruction off.
+/// this process would have read an instruction off. <paramref name="Held"/> is
+/// the refusal's structured body - when the held session last beat and how long
+/// until it is marked gone - or null for an older Hatch whose <c>409</c> is a
+/// bare sentence, which is refused at once as it always was.
 /// </summary>
-public readonly record struct RunnerBeat(RunnerInstructionDto? Instruction, string? Refusal);
+public readonly record struct RunnerBeat(
+    RunnerInstructionDto? Instruction, string? Refusal, RunnerSessionRefusalDto? Held = null);

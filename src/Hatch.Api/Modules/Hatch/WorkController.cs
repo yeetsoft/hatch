@@ -103,8 +103,11 @@ public class WorkController(
     /// </param>
     /// <param name="tag">
     /// What the caller's runner advertises, repeatable - see
-    /// <see cref="TagDeclaration"/>. Absent is a caller that declared no tags
-    /// at all, which still folds a project that requires some; a scan asking
+    /// <see cref="TagDeclaration"/>. Absent on a call made with an API key is
+    /// that key's own runner config tags (what the session heartbeat answers
+    /// with); sent, it replaces them and never joins them. Absent with no key,
+    /// or on a key with no config tags, is a caller that declared none, which
+    /// still folds a project that requires some; a scan asking
     /// for no runner in particular is <see cref="TagDeclaration.Unjudged"/>
     /// and never reaches this route.
     /// </param>
@@ -173,7 +176,8 @@ public class WorkController(
 
         if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
 
-        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
+        var (refusal, tags) = await CallerTagsAsync(tag, dangerous, ct);
+        if (refusal is not null) return BadRequest(refusal);
 
         var repos = RepositoryDeclaration.From(remote, standing, clones);
         var scan = await _dispatch.ScanAsync(
@@ -319,7 +323,8 @@ public class WorkController(
 
         if (ModelDeclaration.From(model, agent, out var models) is { } modelRefusal) return BadRequest(modelRefusal);
 
-        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
+        var (refusal, tags) = await CallerTagsAsync(tag, dangerous, ct);
+        if (refusal is not null) return BadRequest(refusal);
 
         var projects = ProjectKeys(project);
 
@@ -543,7 +548,8 @@ public class WorkController(
     /// </param>
     /// <param name="tag">
     /// What the caller's runner advertises, repeatable - see
-    /// <see cref="TagDeclaration"/> and <see cref="GetNextWork"/>.
+    /// <see cref="TagDeclaration"/> and <see cref="GetNextWork"/>, including
+    /// what an absent one reads off the calling key.
     /// </param>
     /// <param name="dangerous">
     /// False is a runner that refuses dangerous work - see
@@ -593,7 +599,8 @@ public class WorkController(
 
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
-        if (TagDeclaration.From(tag, out var tags, dangerous) is { } refusal) return BadRequest(refusal);
+        var (refusal, tags) = await CallerTagsAsync(tag, dangerous, ct);
+        if (refusal is not null) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
@@ -657,7 +664,8 @@ public class WorkController(
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
-        if (TagDeclaration.From(tag, out var tags) is { } refusal) return BadRequest(refusal);
+        var (refusal, tags) = await CallerTagsAsync(tag, null, ct);
+        if (refusal is not null) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
@@ -1633,6 +1641,34 @@ public class WorkController(
     /// duplicates folded, in the order given - the same normalisation
     /// <see cref="RunnersController"/> applies on its own write.
     /// </summary>
+    /// <summary>
+    /// What the caller's runner advertises. A <paramref name="tag"/> sent is
+    /// the declaration, exactly as <see cref="TagDeclaration.From"/> reads it,
+    /// and replaces whatever the key is configured with - never a union. With
+    /// none sent, a call made with an API key is judged on that key's own
+    /// runner config tags, the list the session heartbeat answers with, so a
+    /// queue or a single increment run by hand agrees with a loop under the
+    /// same key. A call with no key, or a key with no config, advertises none.
+    /// </summary>
+    private async Task<(string? Refusal, TagDeclaration Tags)> CallerTagsAsync(
+        List<string>? tag, bool? dangerous, CancellationToken ct)
+    {
+        if (tag is { Count: > 0 })
+        {
+            var refusal = TagDeclaration.From(tag, out var declared, dangerous);
+            return (refusal, declared);
+        }
+
+        IReadOnlyList<string> configured = [];
+        if (await caller.ApiKeyAsync(ct) is { } key)
+        {
+            var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+            if (config is not null) configured = RunnerTagColumn.Read(config.Tags);
+        }
+
+        return (null, TagDeclaration.Of(configured, dangerous == false));
+    }
+
     /// <summary>
     /// Who a scan is answering for, from the name the caller gave: null for
     /// none, otherwise the name with the instant before which a runner counts

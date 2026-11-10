@@ -170,15 +170,33 @@ WORKDIR /App
 # behind - so the PGDG apt repo is added first, the same shape this repository
 # already uses for the GitHub CLI repo in containers/hatch-runner/Dockerfile.
 # PGDG's key is ASCII-armored, unlike GitHub's, hence the `gpg --dearmor` step.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+#
+# Each apt phase is retried as a whole, update and install together, for about
+# five minutes (six attempts, 50s apart), and the PGDG key fetch carries the
+# house curl flags; containers/hatch-runner/Dockerfile says why. The key goes
+# to a file and then through `gpg --dearmor` rather than down a pipe, for the
+# reason its grok step gives: `sh` has no pipefail.
+RUN ok= ; for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && apt-get install -y --no-install-recommends ca-certificates curl gnupg; then ok=1; break; fi; \
+      echo "apt: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok" ] \
  && mkdir -p -m 755 /etc/apt/keyrings \
- && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-      | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 \
+      https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
+ && gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg /tmp/pgdg.asc \
+ && rm /tmp/pgdg.asc \
  && echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list \
- && apt-get update \
- && apt-get install -y --no-install-recommends libgssapi-krb5-2 postgresql-client-18 \
+ && for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && apt-get install -y --no-install-recommends libgssapi-krb5-2 postgresql-client-18; then ok2=1; break; fi; \
+      echo "apt: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok2" ] \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build-env /App/out .

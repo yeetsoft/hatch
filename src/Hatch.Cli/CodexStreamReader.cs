@@ -52,6 +52,10 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
 
     public DateTimeOffset? UsageReadAt => null;
 
+    private readonly OpenCalls _open = new();
+
+    public OpenCall? Open => _open.Current;
+
     public IEnumerable<string> Read(string raw)
     {
         var line = raw.TrimStart();
@@ -67,7 +71,9 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
             return [];
         }
 
-        return Text(e, "type") switch
+        var type = Text(e, "type");
+        Track(type, e);
+        return type switch
         {
             "thread.started" => ThreadStarted(e),
             "item.started" => ItemStarted(e),
@@ -77,6 +83,45 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
             "error" => Error(e),
             _ => [],
         };
+    }
+
+    /// <summary>
+    /// Which tool calls are in flight, kept eagerly because the lines are lazy.
+    /// Only the item types that run a tool open one: an <c>agent_message</c> or
+    /// a reasoning item is the model talking, not a call to wait on.
+    /// </summary>
+    private void Track(string? type, JsonElement e)
+    {
+        switch (type)
+        {
+            case "item.started" when e.TryGetProperty("item", out var started):
+                var kind = Text(started, "type");
+                if (kind is "command_execution" or "mcp_tool_call" or "collab_tool_call" or "web_search")
+                    _open.Begin(Text(started, "id"), CallLine(started, kind));
+                break;
+
+            case "item.completed" when e.TryGetProperty("item", out var done):
+                _open.End(Text(done, "id"));
+                break;
+
+            case "turn.completed" or "turn.failed":
+                _open.Clear();
+                break;
+        }
+    }
+
+    private string CallLine(JsonElement item, string type)
+    {
+        var field = type switch
+        {
+            "command_execution" => Text(item, "command"),
+            "mcp_tool_call" or "collab_tool_call" => Text(item, "tool"),
+            _ => Text(item, "query"),
+        };
+
+        return field is { Length: > 0 }
+            ? $"{type}  {StreamRender.Clip(StreamRender.Flat(StreamRender.Here(root, field)))}"
+            : type;
     }
 
     private IEnumerable<string> ThreadStarted(JsonElement e)

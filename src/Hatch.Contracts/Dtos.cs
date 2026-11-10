@@ -1109,6 +1109,19 @@ public record IssueBulkRekeyedDto(string From, string To);
 public record WipRefusalDto(string Error, int Load, int Limit);
 
 /// <summary>
+/// The <c>409</c> body a fresh <c>loop</c> session beat is refused with when
+/// the key already has a live session at the same <c>Where</c> -
+/// <c>{ error, lastSeenAt, goneInSeconds }</c>, the <c>{ error }</c> shape
+/// <see cref="WipRefusalDto"/> follows, so an older CLI still prints the
+/// sentence. <see cref="LastSeenAt"/> is when the held session last beat, and
+/// <see cref="GoneInSeconds"/> is at most how long until the server marks it
+/// gone (at least 1): a fresh loop waits that long, and is refused for good
+/// the moment <see cref="LastSeenAt"/> moves, because then a live loop is
+/// beating it.
+/// </summary>
+public record RunnerSessionRefusalDto(string Error, DateTimeOffset LastSeenAt, int GoneInSeconds);
+
+/// <summary>
 /// One edit applied to many issues. The fields are
 /// <see cref="IssuePatchRequest"/>'s, minus the three - title, description and
 /// pull request URL - that describe a single issue and could only be applied to

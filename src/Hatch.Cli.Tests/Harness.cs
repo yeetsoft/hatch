@@ -252,6 +252,8 @@ internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resu
 
     public DateTimeOffset? UsageReadAt => null;
 
+    public OpenCall? Open => null;
+
     public IEnumerable<string> Read(string raw)
     {
         if (!raw.StartsWith(Prefix, StringComparison.Ordinal)) yield break;

@@ -1,4 +1,5 @@
 using Hatch.Api.Ef;
+using Hatch.Api.Services.Auth;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hatch.Api.Modules.Hatch;
@@ -16,7 +17,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// scoped <see cref="HatchContext"/>, taken through DI here rather than
 /// constructed, via <see cref="Dispatch"/> itself.
 /// </remarks>
-public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims claims, Runners runners, TimeProvider time)
+public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims claims, Runners runners, TimeProvider time,
+    IAuthService? keys = null)
 {
     /// <summary>
     /// The emergency issue this heartbeating issue should be told it was
@@ -78,10 +80,11 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         // unclaimed actionable emergency issues.
         if (told.Count >= emergencyRows.Count) return null;
 
-        // Rule 5: no live runner is free. A free runner takes the emergency
-        // ticket on its own next pass, because emergency is the top of the
-        // walk, so preempting while one exists spends a session to gain
-        // nothing.
+        // Rule 5: no live runner is free - a runner row or a live loop
+        // session, whichever record the loop's heartbeat touches. A free one
+        // takes the emergency ticket on its own next pass, because emergency
+        // is the top of the walk, so preempting while one exists spends a
+        // session to gain nothing.
         if (await AnyRunnerFreeAsync(now, ct)) return null;
 
         return emergencyRows[0].Issue;
@@ -117,18 +120,42 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
     /// Whether some live runner holds no claim at all - rule 5, read off the
     /// same pool <see cref="Runners.HeldAsync"/> already gives the runners
     /// page, so there is no second copy of "what is this runner working" to
-    /// keep in step.
+    /// keep in step. Both records a loop can heartbeat are read: a runner row
+    /// is busy when a live claim is held under its name or at its
+    /// <c>where</c> (the beat is bumped by either), and a live loop session
+    /// is busy exactly when a live claim is held by its key's name at its
+    /// <c>where</c> - the pair the runners page draws a session's claim by.
     /// </summary>
     private async Task<bool> AnyRunnerFreeAsync(DateTimeOffset now, CancellationToken ct)
     {
         var held = await runners.HeldAsync(db, claims, now, ct);
-        var holding = held.Keys.Select(k => k.Runner).ToHashSet(StringComparer.Ordinal);
+        var holdingNames = held.Keys.Select(k => k.Runner).ToHashSet(StringComparer.Ordinal);
+        var holdingWheres = held.Keys.Select(k => k.Where).ToHashSet(StringComparer.Ordinal);
+        var cutoff = runners.Cutoff(now);
 
         var live = await db.Runners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= runners.Cutoff(now))
-            .Select(r => r.Name)
+            .Where(r => r.LastSeenAt >= cutoff)
+            .Select(r => new { r.Name, r.Where })
             .ToListAsync(ct);
 
-        return live.Any(name => !holding.Contains(name));
+        if (live.Any(r => !holdingNames.Contains(r.Name) && !holdingWheres.Contains(r.Where ?? "")))
+            return true;
+
+        if (keys is null) return false;
+
+        // A session whose key no longer exists is skipped rather than thrown
+        // on, as Runners.LiveCandidatesAsync does.
+        var liveSessions = await db.RunnerSessions.AsNoTracking()
+            .Where(s => s.EndedAt == null && s.LastSeenAt >= cutoff && s.Kind == EfHatchRunner.LoopKind)
+            .Select(s => new { s.ApiKeyId, s.Where })
+            .ToListAsync(ct);
+
+        if (liveSessions.Count == 0) return false;
+
+        var keysById = (await keys.ListApiKeysAsync(ct)).ToDictionary(k => k.Id);
+
+        return liveSessions
+            .Where(s => keysById.ContainsKey(s.ApiKeyId))
+            .Any(s => !held.ContainsKey((keysById[s.ApiKeyId].Name, s.Where ?? "")));
     }
 }

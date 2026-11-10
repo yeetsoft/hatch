@@ -4715,6 +4715,73 @@ public class WorkControllerTests
         Assert.Null(Only(await h.Work.GetQueue(0, null, default, tag: ["macos", "xcode", "linux"])).Blocked);
     }
 
+    // ---- Tags off the calling key's config (AR-78) ----
+
+    private static async Task ConfigureKeyTagsAsync(Harness h, params string[] tags)
+    {
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = h.Caller.Key!.Id,
+            Tags = RunnerTagColumn.Write(tags),
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithAKeyAndNoTag_IsJudgedOnTheKeysConfigTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        await ConfigureKeyTagsAsync(h, "macos", "xcode");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Queue_AKeyWithNoConfigTags_StillFoldsAsAdvertisingNone()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        await ConfigureKeyTagsAsync(h);
+
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithNoKey_IgnoresEveryKeysConfigTags()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        await ConfigureKeyTagsAsync(h, "macos", "xcode");
+        h.Caller.Key = null;
+
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
+            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AnExplicitTag_ReplacesTheKeysConfigTagsAndNeverJoinsThem()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        await ConfigureKeyTagsAsync(h, "macos", "xcode");
+
+        Assert.Equal(
+            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
+            Only(await h.Work.GetQueue(0, null, default, tag: ["linux"])).Blocked);
+        Assert.NotNull(Value(await h.Work.GetWork(Key(issue), null, default, tag: ["linux"])).Blocked);
+    }
+
     [Fact]
     public async Task Queue_AProjectRequiringNoTags_IsClearWhateverTheCallerSends()
     {

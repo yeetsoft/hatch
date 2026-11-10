@@ -543,7 +543,7 @@ the second half of this page, after the board's own.
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
 | GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
@@ -571,7 +571,11 @@ caller's checkouts (any one opts into the repository fold), plus
 the caller's own tickets; `next` and `queue` also take `project`, the project
 keys it is bound to - repeatable, one value per occurrence
 (`?project=FIL&project=AER`). `next`, `queue` and `hop` also take `tag`, what
-the caller's runner advertises, repeatable the same way. An
+the caller's runner advertises, repeatable the same way (`{key}` takes it
+too). A call made with an API key that sends no `tag` is judged on that key's
+own runner tags, the list set on the Runners page and answered back on a
+heartbeat; a `tag` sent replaces them, never joins them, and a call with no key
+advertises none. An
 absent or empty `project` folds nothing, so a caller that never declared a
 binding sees every project as before; a key no project has is refused with a
 400 naming it on `next`. `{key}` and `next` also take `heldToken`, a claim
@@ -793,6 +797,7 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for old CLIs |
+| POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
 | PATCH | `/runners/{name}` | **person** | Sets its state, under, max-runs, max-spend, max-tokens, max-tokens-per-hour, until, and tags |
@@ -922,7 +927,21 @@ stored on the session. The row matched is this key's own session at the body's
 `where` - `(ApiKeyId, Where)` is the pair a session is held by - touched if it
 is still live, seeded fresh if not; `409`s ("`<key> is already the runner on
 <where>`") only for `fresh: true`, `kind: loop`, and a live session already at
-that `where`. It answers a `RunnerInstructionDto`, now carrying `sessionId`.
+that `where`. The `409` body is `{ error, lastSeenAt, goneInSeconds }`: the
+sentence, when the held session last beat, and at most how many seconds (at
+least 1) until it is marked gone. A fresh loop that meets it waits that long,
+asking again every few seconds: a `lastSeenAt` that has moved is a live second
+loop and is refused for good; a session that has gone quiet is marked gone and
+the next beat is answered. It answers a `RunnerInstructionDto`, now carrying
+`sessionId`.
+
+`POST /runners/sessions/{id}/end` is how a loop says it is leaving. It is the
+bearer key alone, like the heartbeat (`403` with none), and `404`s a session
+that is not this key's or does not exist. It stamps `endedAt` if the session is
+still open and answers `204` either way, so it can be sent twice. A fresh beat
+afterwards finds no live session at that `where` and seeds a new one. The CLI
+sends it on every exit of `go-to-work` except the hand-over to a restarted
+incarnation, which joins the same session.
 
 The body also takes six machine fields - `os`, `arch`, `agentVersion`,
 `container`, `username`, `processStartedAt` - stored on the session; an
@@ -1200,7 +1219,16 @@ entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
 (null when no other runner was eligible), `headKey` (the issue at the head of
 the train) and `at`. It is empty, not null, when no train is stalled, and the
 panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
-counted, since a runner that died never checks in to clear it.
+counted, since a runner that died never checks in to clear it. `runnerCapacity`
+lists the projects whose clear implementation steps no live runner, or only
+one, can take - always computed, with no query flag - ordered by project key;
+each entry carries `projectKey`, `steps` (how many clear implementation steps
+the project has), `keys` (the first ten, in rank order), `takers` (the union
+of runners able to take at least one of them - zero or one name, never more,
+since a project with two or more is not listed at all) and `reasons` (one
+`{runner, reason}` per live runner outside `takers`, from the project's
+highest-ranked step that runner cannot take). Empty, not null, when nothing
+qualifies or no runner is live.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.
