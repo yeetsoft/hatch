@@ -31,10 +31,15 @@ const namesBySource = new Map<string, string[]>(
   }),
 );
 
+/** Names the code still spells only to drop them (`Reach.ToHatch` removes an
+    inherited one; `Settings` skips the line in an old file). Nothing reads their
+    value, so the page does not document them: a runner's name is its key's. */
+const retired = new Set(['HATCH_RUNNER']);
+
 /** Each distinct HATCH_* name, and the first source that reads it. */
 const readers = new Map<string, string>();
 for (const [path, names] of namesBySource) {
-  for (const name of names) if (!readers.has(name)) readers.set(name, path);
+  for (const name of names) if (!retired.has(name) && !readers.has(name)) readers.set(name, path);
 }
 
 const countIn = (paths: string[]) => paths.reduce((sum, path) => sum + (namesBySource.get(path)?.length ?? 0), 0);

@@ -66,17 +66,23 @@ irm https://x.ai/cli/install.ps1 | iex                  # grok, Windows
 ## Pointing it at a board
 
 Bare `hatch config` asks, in order, for the origin, the key (read without
-echo), the agent, the path of that agent's CLI, and, inside a checkout, the
-name the board should call this runner. Enter keeps what is shown in brackets.
-It writes the answers to a per-user file, so it follows you between checkouts
-and you do it once. The asking needs a terminal: redirected or scripted, bare
-`hatch config` refuses and exits 1 rather than hang on a prompt nobody can
-answer.
+echo), the agent, and the path of that agent's CLI. Enter keeps what is shown
+in brackets. It writes the answers to a per-user file, so it follows you
+between checkouts and you do it once. The asking needs a terminal: redirected
+or scripted, bare `hatch config` refuses and exits 1 rather than hang on a
+prompt nobody can answer.
 
 An empty origin is refused, and so is one without `http(s)://` in front of it.
-Leaving the key blank prints a warning, and so does a key that does not start
-`hatch_ak_` — both are carried on anyway, since the call that follows is the
-one that actually knows whether the board accepts it.
+Leaving the key blank probes that origin with no key. Against a wall-off
+board it offers `Create a runner on this board? [Y/n]`, then a suggested
+`Runner name`, and mints a fresh key under that name - written here as this
+checkout's key, with no owner until an admin sets one; a name already taken
+refuses and writes nothing. Against a wall that is on, the probe is refused
+outright and `hatch config` says there is no key - an admin creates the
+runner on the Runners page, then `hatch config --key <key>` picks it up. A
+key that does not start `hatch_ak_` prints a warning but is carried on
+anyway, since the call that follows is the one that actually knows whether
+the board accepts it.
 
 Each flag writes one thing and asks nothing:
 
@@ -85,8 +91,6 @@ Each flag writes one thing and asks nothing:
 - `--key <key>` writes the key alone, and needs an origin already set. A key on
   a command line stays in shell history; the prompt does not, so prefer the
   prompt on a machine other people can read.
-- `--runner <name>` sets what this checkout calls itself on the board; see
-  *The runner's name* below.
 - `--repo <path>` also serves that checkout, for a loop with no checkout of its
   own. It is repeatable; each path must exist and carry a `.git`, or nothing is
   written. Bare `--repo` clears them.
@@ -97,8 +101,7 @@ Each flag writes one thing and asks nothing:
   two owners of one path.
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
-  Refused outside a checkout, combined with `--runner` (a runner's name is
-  already the checkout's own), or combined with `--show`.
+  Refused outside a checkout, or combined with `--show`.
 
 An origin or key write is then tried against the board. If that call does not
 go through, the file is still written, so there is something to fix, and the
@@ -150,15 +153,13 @@ that names an origin and no key is keyless on purpose, and `hatch config --here
 same call, or none. *Several runners on one machine* has this in a recipe.
 
 **Board-bound names.** While a profile is active, the per-user file is not
-consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_RUNNER`,
-`HATCH_WORKSPACE` and `HATCH_REPOS`: they belong to one board, so the profile
-answers for them or nothing does, and `--show` marks each of them
+consulted for `HATCH_BASE`, `HATCH_KEY`, `HATCH_WORKSPACE` and `HATCH_REPOS`:
+they belong to one board, so the profile answers for them or nothing does,
+and `--show` marks each of them
 `(profile active: the per-user file was not consulted)`. The machine-bound
 names - `HATCH_AGENT`, the three CLI paths, `HATCH_OLLAMA_*` and
 `HATCH_BASE_BRANCH` - still fall through to the per-user file, since they
-describe the machine rather than the board. `HATCH_RUNNER` is stricter than the
-rest: it is never read from a profile or the per-user file, active profile or
-not (the **Warn** below).
+describe the machine rather than the board.
 
 Both files are parsed, not sourced: a `KEY=value` line, blanks and `#`
 comments skipped, one layer of matching quotes stripped off the value. An
@@ -171,12 +172,6 @@ Six settings are read from the environment only: `HATCH_HEARTBEAT`,
 that says so.
 `HATCH_BASE_BRANCH` has no `config` flag: export it, or put it in
 `scripts/.env`.
-
-**Warn:** `HATCH_RUNNER` is read only from the first two layers - an exported
-variable, or this checkout's own `scripts/.env` - never the profile file or
-the per-user file, whether or not a profile is active. A name belongs to a
-checkout, not to a person carried between them; a value found in the profile
-or the per-user file is ignored, with a line saying which held it.
 
 A profile with no `HATCH_WORKSPACE` of its own does not share the no-profile
 default: it gets its own `hatch/workspaces/<profile>` directory, beside -
@@ -195,8 +190,6 @@ HATCH_CODEX_BIN      the codex CLI, if it is not on PATH
 HATCH_GROK_BIN       the grok CLI, if it is not on PATH
 HATCH_AGENT          claude, codex, grok or ollama (default: claude)
 HATCH_BASE_BRANCH    the trunk go-to-work resets to between increments
-HATCH_RUNNER         what the board calls this runner (default: a cast-list
-                     character, chosen once per checkout)
 HATCH_ROOT           the checkout to work in (default: upwards from here)
 HATCH_REPOS          checkouts a loop with no checkout of its own serves,
                      joined on : (Unix) or ; (Windows)
@@ -232,10 +225,10 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 - the active profile, and where it came from - an explicit `--profile`, the
   resolved active one, or `<none>`; the `runner:` line below and an unset
   `HATCH_WORKSPACE:` line name it in turn;
-- the runner's name, and where it came from;
-- who `/api/hatch/me` says the caller is - the key and its owner,
-  or that calls go out as a named runner - or `<unreachable>` when there is
-  no origin to ask or the call fails;
+- the runner's name, from the key (`<none - no key>` with no key,
+  `<unreachable>` when `/api/hatch/me` cannot be reached);
+- who `/api/hatch/me` says the caller is - the key and its owner - or
+  `<unreachable>` when there is no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
 - each setting that can live in a file, with the layer it came from: exported,
   the `.env` path, the profile file `<per-user config>/profiles/<profile-a>`,
@@ -264,10 +257,9 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
 
   ```
   HATCH_KEY: …  (ignored: <layer> holds a key, but HATCH_BASE comes from <layer> - set both there, or neither)
-  HATCH_RUNNER: …  (ignored: <layer> holds a name, but a runner's name belongs to a checkout - export it, or put it in scripts/.env)
   ```
 
-  The first is the pairing rule, the second the **Warn** on `HATCH_RUNNER`.
+  That is the pairing rule.
 
 ## What a runner advertises
 
@@ -511,24 +503,15 @@ and the increment ends with `hatch: AER-12 - <runner> recused itself
 
 ## The runner's name
 
-The board shows each runner by name, under **Agents → Runners** (*Watching the
-loop*). The name is `HATCH_RUNNER` if that is set; otherwise the name recorded
-for this checkout; otherwise a cast-list character, picked once from the host
-and the path, skipping names already recorded here or live on the board (read
-from `GET /api/hatch/runners/names`, names alone), and kept from then on. An explicit `HATCH_RUNNER` over 240 characters is clipped
-from the front, since the server refuses one any longer and the end of a name
-is the part that still identifies the checkout.
+A runner's name is its key's. The board reads it from `GET /api/hatch/me`
+and shows it under **Agents → Runners** (*Watching the loop*); `hatch config
+--show` marks its own `runner:` line `(from the key)`. Nothing on this side
+chooses, records or sends another name - a key and a profile each carry one
+name, so two profiles are two runners, and a checkout with no key has none.
 
-`hatch config --runner <name>` refuses a name that is empty, too long, not
-plain ASCII, or already a live runner's - apart from this checkout's own
-current name - and writes nothing. It also needs a checkout: a name belongs to a checkout, not to a person.
-
-The record is keyed on `RunnerNames.Record.Key(profile, canonicalRoot)`
-(`RunnerNames.cs:114`): the bare canonical path with no profile, or
-`<profile>|<canonical path>` under one - so the same checkout under two
-profiles gets two names, each chosen and kept on its own. `HATCH_RUNNER` set
-in a profile file or the per-user file is ignored here too, same as *Four
-layers*' Warn above.
+A loop with no key refuses before it takes a lock, a claim or makes a request
+([`work`, `go-to-work`, `do-my-work`](cli-reference)); a read command still
+works, keyless, as the local person.
 
 ## Where the key never goes
 
@@ -707,16 +690,15 @@ A pinned run ignores the pointer, and so is not moved by a later `hatch use`.
 
 #### What is already per checkout
 
-Two things already belong to one checkout and no other, with nothing to set:
+One thing already belongs to one checkout and no other, with nothing to set:
 
-- **The runner's name.** Recorded in the `runners` file beside the per-user
-  config file, keyed on the (profile, checkout) pair, so `<checkout-a>` and
-  `<checkout-b>` each get a name of their own the first time either speaks to
-  a board - and one checkout gets a different name under each profile - see
-  [the runner's name](#the-runners-name).
 - **The loop lock.** One `go-to-work` or `work` at a time per checkout; a
   second naming the same checkout is refused, with the pid of the one already
   holding it ([one loop per served checkout](one-increment-and-the-loop#one-loop-per-served-checkout)).
+
+The runner's name is not one of these - it is the key's, wherever that key is
+read from ([the runner's name](#the-runners-name)), so `<checkout-a>` and
+`<checkout-b>` on the same key are the same runner.
 
 What is **not** per checkout is everything else. The per-user file - its
 directory is the OS application-data folder, `%APPDATA%\hatch` on Windows,
@@ -781,7 +763,7 @@ the per-user file:
 file:             <per-user config>/config
 checkout:         <checkout-a>/scripts/.env  (written by --here)
 profile:          <none>
-runner:           <checkout-a>  (<per-user config>/runners)  (profile: <none>)
+runner:           <name>  (from the key)
 identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/config)
@@ -794,7 +776,6 @@ HATCH_OLLAMA_HOST: <unset>
 HATCH_OLLAMA_TIERS:  <unset>
 HATCH_AGENT:       claude  (<per-user config>/config)
 HATCH_BASE_BRANCH: <unset>
-HATCH_RUNNER:      <unset>
 HATCH_REPOS:       <unset>
 HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspace>  (profile: <none>)
 ```
@@ -809,7 +790,7 @@ so it still folds through from the per-user file:
 file:             <per-user config>/config
 checkout:         <checkout-b>/scripts/.env  (written by --here)
 profile:          <profile-b>  (<per-user config>/profiles/<profile-b>)
-runner:           <checkout-b>  (<per-user config>/runners)  (profile: <profile-b>)
+runner:           <name>  (from the key)
 identity:         key "<name>", owned by <owner>
 HATCH_RETRY_SECONDS:  90  (default)
 HATCH_BASE:        <origin>  (<per-user config>/profiles/<profile-b>)  (profile active: the per-user file was not consulted)
@@ -822,7 +803,6 @@ HATCH_OLLAMA_HOST: <unset>
 HATCH_OLLAMA_TIERS:  <unset>
 HATCH_AGENT:       claude  (<per-user config>/config)
 HATCH_BASE_BRANCH: <unset>
-HATCH_RUNNER:      <unset>  (profile active: the per-user file was not consulted)
 HATCH_REPOS:       <unset>  (profile active: the per-user file was not consulted)
 HATCH_WORKSPACE:   <unset - clones go to <per-user config>/workspaces/<profile-b>>  (profile: <profile-b>)  (profile active: the per-user file was not consulted)
 ```
@@ -839,10 +819,9 @@ carries no layer. The key prints as its first twelve and last four
 characters, or `(set)` when it is short, never in full.
 
 The `identity:` line calls `/api/hatch/me` with whatever origin and key are
-folded above, and names the key and its owner, or - for a runner
-header instead of a key - that calls go out as its name. It prints
-`<unreachable>` without calling out at all when no origin is set, and the
-same when the call itself fails, so `--show` keeps working fully offline.
+folded above, and names the key and its owner. It prints `<unreachable>`
+without calling out at all when no origin is set, and the same when the call
+itself fails, so `--show` keeps working fully offline.
 
 #### The workspace lock
 
@@ -930,9 +909,10 @@ hatch go-to-work --runners 3
 Runner 1 is this checkout, served as a lone `go-to-work` would. Each of the
 others gets:
 
-- **A name of its own.** It is taken from the same `runners` record as any
-  runner's, keyed on the member's workspace rather than a checkout (see [the
-  runner's name](#the-runners-name)).
+- **No name of its own.** It calls `/api/hatch/me` with the same key as
+  runner 1, so it reports under the same name (see [the runner's
+  name](#the-runners-name)); **Agents → Runners** tells the members of a set
+  apart by workspace, not by name.
 - **A workspace of its own.** That is `<workspace>.n` - a sibling of the one
   being served, never a directory inside it - where it clones the repositories
   the project binds.

@@ -241,9 +241,8 @@ what it was dispatched with. Writing one — creating a row, changing one,
 deleting one, or setting an issue's own override — is a person's, at a
 browser, and a key that tries gets a `403`.
 
-The guard refuses a program outright: a key, or a keyless runner naming
-itself with `X-Hatch-Runner`. With no branch on whether the wall is on or
-off, it also refuses any call carrying neither of those but no
+The guard refuses a program outright: a key. With no branch on whether the
+wall is on or off, it also refuses any keyless call carrying no
 `Sec-Fetch-Mode` header either — the mark a real browser sets on every
 request it makes, navigation or `fetch()`, and that a bare `curl` or a
 script never sends. The refusal holds the same whichever way the wall is

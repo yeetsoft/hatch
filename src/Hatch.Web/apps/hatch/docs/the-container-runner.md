@@ -78,10 +78,10 @@ To see what it is saying while it works:
 docker compose --profile runner logs -f runner
 ```
 
-It appears on **Agents → Runners** within a minute, under `HATCH_RUNNER_NAME`
-(`hatch-runner` unless you set it), and takes its controls there (pause, stop
-after this one, a spend cap, an hour to stop at) exactly as a runner you
-started in a terminal does; see *Watching the loop*. Anything after `up -d` on
+It appears on **Agents → Runners** within a minute, under its key's name, and
+takes its controls there (pause, stop after this one, a spend cap, an hour to
+stop at) exactly as a runner you started in a terminal does; see *Watching the
+loop*. Anything after `up -d` on
 the command line is not passed through to the loop. To hand it bounds such as
 `--max-runs` or `--under`, add a `command:` to the `runner:` service in
 `compose.yaml`; the controls on the page are usually the easier route.
@@ -269,16 +269,14 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_GIT_EMAIL` | The email on the commits it makes (`GIT_AUTHOR_EMAIL`) | Required |
 | `HATCH_GIT_TOKEN` | An HTTPS token, answered to git through `GIT_ASKPASS` | Empty |
 | `HATCH_GH_TOKEN` | The token `gh` reads, as `GH_TOKEN`, to check builds and merge | Empty |
-| `HATCH_RUNNER_NAME` | What **Agents → Runners** calls it | `hatch-runner` |
 | `HATCH_AGENT` | `claude`, `codex`, `grok` or `ollama` | `claude` |
 | `HATCH_OLLAMA_HOST` | Where the Ollama server is, for an `ollama` agent (see *Reaching an Ollama outside the container*) | Empty; required under `ollama` |
 | `HATCH_OLLAMA_TIERS` | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent | Empty: the CLI's own default model |
-| `HATCH_KEY` | An API key, for a Hatch with its wall on | Empty. Not required, and not useful here: against a wall the container cannot fetch its credential |
+| `HATCH_KEY` | The API key the container calls with; the runner's name is the key's | Required: the runner is the key |
 
-Five more are set for the container, and are not for changing: `HATCH_BASE`
+Four more are set for the container, and are not for changing: `HATCH_BASE`
 (`http://api:8080`, the API over Compose's own network), `HATCH_ROOT`
-(`/checkout`), `HATCH_WORKSPACE` (`/workspace`), `HATCH_RUNNER` (the name
-above, as it arrives inside) and `IS_SANDBOX` (set to `1` by the image, because
+(`/checkout`), `HATCH_WORKSPACE` (`/workspace`) and `IS_SANDBOX` (set to `1` by the image, because
 the `claude` CLI refuses to bypass permission prompts as root unless it is told
 it is in a sandbox, and an unattended increment has nobody to answer one).
 `IS_SANDBOX` is `claude`'s alone. `codex` needs nothing like it: its sandbox

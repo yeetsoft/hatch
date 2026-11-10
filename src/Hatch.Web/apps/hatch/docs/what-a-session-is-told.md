@@ -251,9 +251,8 @@ The prompt is one half of it; the other is how the agent CLI is started. For
   unused tool definitions were most of it; `HATCH_CLAUDE_TOOLS` widens it. A
   `claude` CLI too old to know the flag is spawned without it, with one warning.
 - `hatch` is first on its `PATH`, is the same binary that spawned it, and
-  inherits `HATCH_BASE`, `HATCH_KEY` and `HATCH_RUNNER` from it - already
-  pointed at the same board, with the key it holds, and named as the runner
-  that dispatched it.
+  inherits `HATCH_BASE` and `HATCH_KEY` from it - already
+  pointed at the same board, with the key it holds.
 
 The playbook's **budget** is never in the prompt. A session that crosses it is
 told once, mid-run, to wrap up.
