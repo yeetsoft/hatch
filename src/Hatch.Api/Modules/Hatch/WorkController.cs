@@ -29,7 +29,7 @@ public class WorkController(
     IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners,
     IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
 {
-    private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions);
+    private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
 
     /// <summary>
     /// The issue an unattended run should pick up: the top of the rightmost
@@ -696,6 +696,10 @@ public class WorkController(
             : hopKind == HopKinds.Close ? Columns.Closes(statuses, from)
             : to;
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
+        var drivers = keys is not null
+            ? await runners.ProjectDriversAsync(db, keys, now, ct)
+            : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak,
             null, // a hop takes no ready-date fold of its own, and no economy or low fold either - see Dispatch.Blocked's loop parameter
@@ -708,6 +712,7 @@ public class WorkController(
             repos, merged, built, hopKind, statuses,
             wip,
             await Wip.EpicsAsync(db, [issue.ParentId], ct),
+            driver: driver,
             landing: landing,
             tags: tags,
             asking: Asking(runner));
@@ -1462,10 +1467,14 @@ public class WorkController(
         var letGo = await LetGo.ForIssueAsync(db, issue.Id, ct);
         var sentBack = await SentBack.ForIssueAsync(db, issue.Id, ct);
         var requirement = has.Judged ? await _dispatch.DependencyRequirementAsync(issue.Project!, ct) : null;
+        var drivers = keys is not null
+            ? await runners.ProjectDriversAsync(db, keys, claimed.Now, ct)
+            : (IReadOnlyDictionary<int, (string Name, DateTimeOffset LastSeenAt)>)new Dictionary<int, (string Name, DateTimeOffset LastSeenAt)>();
+        var driver = drivers.TryGetValue(issue.ProjectId, out var d) ? d : ((string Name, DateTimeOffset LastSeenAt)?)null;
         var blocked = Dispatch.Blocked(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
-            repos, merged, built, hopKind, statuses, wip, epics, landing: landing, tags: tags, asking: asking, models: models,
+            repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
             has: has, requirement: requirement);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
