@@ -34,7 +34,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
     HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
-    Runners runners) : ControllerBase
+    Runners runners, Dispatch dispatch) : ControllerBase
 {
     /// <summary>
     /// Takes the lease, or says who already has it.
@@ -55,8 +55,15 @@ public class IssueClaimController(
         if (runner.Length > EfHatchIssue.MaxClaimRunnerLength)
             return BadRequest($"a runner is at most {EfHatchIssue.MaxClaimRunnerLength} characters");
 
-        if (request.PlaybookId is { } playbookId && !await db.Playbooks.AnyAsync(p => p.Id == playbookId, ct))
-            return BadRequest($"there is no playbook {playbookId}");
+        // The id to store (a file row has none) and the quiet window, both
+        // read off the row the request names - see Dispatch.ClaimPlaybookAsync.
+        (int? Id, int? Limit)? playbook = null;
+        if (request.PlaybookId is { } playbookId)
+        {
+            if (await dispatch.ClaimPlaybookAsync(issue.ProjectId, playbookId, ct) is not { } row)
+                return BadRequest($"there is no playbook {playbookId}");
+            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds);
+        }
 
         var now = time.GetUtcNow();
 
@@ -79,7 +86,7 @@ public class IssueClaimController(
         var token = Guid.NewGuid();
         var actor = await caller.ActorNameAsync(ct);
 
-        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, request.PlaybookId, now, ct))
+        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, playbook?.Id, playbook?.Limit, now, ct))
         {
             // Somebody won the race between that read and this write. Say who,
             // from the row as it stands now - and where the re-read finds it
@@ -136,8 +143,15 @@ public class IssueClaimController(
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
-        if (request.PlaybookId is { } playbookId && !await db.Playbooks.AnyAsync(p => p.Id == playbookId, ct))
-            return BadRequest($"there is no playbook {playbookId}");
+        // The id to store (a file row has none) and the quiet window, both
+        // read off the row the request names - see Dispatch.ClaimPlaybookAsync.
+        (int? Id, int? Limit)? playbook = null;
+        if (request.PlaybookId is { } playbookId)
+        {
+            if (await dispatch.ClaimPlaybookAsync(issue.ProjectId, playbookId, ct) is not { } row)
+                return BadRequest($"there is no playbook {playbookId}");
+            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds);
+        }
 
         var now = time.GetUtcNow();
         var claim = ClaimSnapshot.Of(issue);
@@ -153,7 +167,7 @@ public class IssueClaimController(
         // The predicate can still refuse - the lease may have expired or been
         // retaken between that read and this write - and it is what actually
         // fences the write, so its answer is the one that decides.
-        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, request.PlaybookId, now, ct))
+        if (!await claims.TryRefreshAsync(db, issue.Id, request.Token, chatter, playbook, now, ct))
             return Conflict(Refused(await SnapshotAsync(issue.Id, ct), request.Token, now));
 
         // Only a lease that actually renewed touches the row - see "One column
