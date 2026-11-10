@@ -97,10 +97,12 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// Whether something holds this issue right now. Exactly at the cutoff is
     /// alive; one tick past it is not. A claim that has gone quiet is not
     /// live either, however recently it was heartbeat - see
-    /// <see cref="IsQuiet"/>.
+    /// <see cref="IsQuiet"/> - and neither is one past its cap, however
+    /// recently it spoke - see <see cref="IsOverRun"/>.
     /// </summary>
     public bool IsLive(ClaimSnapshot? claim, DateTimeOffset now) =>
-        claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now) && !IsQuiet(claim, now);
+        claim is { Token: not null, HeartbeatAt: { } beat } && beat >= Cutoff(now)
+            && !IsQuiet(claim, now) && !IsOverRun(claim, now);
 
     /// <summary>
     /// The quiet window this claim is judged against, in seconds: its own
@@ -130,6 +132,21 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     }
 
     /// <summary>
+    /// Whether a claim has outlived its own cap: <see cref="ClaimSnapshot.ClaimedAt"/>
+    /// is older than <see cref="ClaimSnapshot.MaxRunSeconds"/>. Runs from the
+    /// take, and neither a heartbeat nor a line of chatter moves it - it is the
+    /// ceiling on a run that keeps looking alive. A null or non-positive cap, or
+    /// a claim with no <c>ClaimedAt</c>, is never over-run. Exactly at the cap
+    /// is still within it; one tick past is not.
+    /// </summary>
+    public bool IsOverRun(ClaimSnapshot claim, DateTimeOffset now)
+    {
+        if (claim.MaxRunSeconds is not { } cap || cap <= 0 || claim.ClaimedAt is not { } claimedAt) return false;
+
+        return claimedAt < now.AddSeconds(-cap);
+    }
+
+    /// <summary>
     /// A row holding a live claim at <paramref name="now"/> - the SQL shape of
     /// <see cref="IsLive"/>, for a query EF can translate. EF will not
     /// translate <c>Expression.Invoke</c> or a <c>!</c> over an
@@ -145,7 +162,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         return i => i.ClaimToken != null && i.ClaimHeartbeatAt >= cutoff
             && (i.ClaimQuietLimitSeconds > 0
                 ? (i.ClaimChatterAt ?? i.ClaimedAt) >= now.AddSeconds(-i.ClaimQuietLimitSeconds.Value)
-                : (globalCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= globalCutoff));
+                : (globalCutoff == null || (i.ClaimChatterAt ?? i.ClaimedAt) >= globalCutoff))
+            && (i.ClaimMaxRunSeconds > 0 ? i.ClaimedAt >= now.AddSeconds(-i.ClaimMaxRunSeconds.Value) : true);
     }
 
     /// <summary>
@@ -162,7 +180,11 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         return i => i.ClaimToken == null || i.ClaimHeartbeatAt == null || i.ClaimHeartbeatAt < cutoff
             || (i.ClaimQuietLimitSeconds > 0
                 ? (i.ClaimChatterAt ?? i.ClaimedAt) < now.AddSeconds(-i.ClaimQuietLimitSeconds.Value)
-                : (globalCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < globalCutoff));
+                : (globalCutoff != null && (i.ClaimChatterAt ?? i.ClaimedAt) < globalCutoff))
+            // A CASE, not an AND: Postgres does not promise AND short-circuits, and
+            // the interval is built from a column that is null on every claim
+            // with no cap - the same reason the quiet window above is a ternary.
+            || (i.ClaimMaxRunSeconds > 0 ? i.ClaimedAt < now.AddSeconds(-i.ClaimMaxRunSeconds.Value) : false);
     }
 
     /// <summary>
@@ -243,7 +265,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
             })
             .ToListAsync(ct);
 
@@ -419,7 +441,7 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
         HatchContext db, long issueId, CancellationToken ct) =>
         await Clear(db.Issues.Where(i => i.Id == issueId && i.ClaimToken != null), ct) == 1;
 
-    /// <summary>The nine columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
+    /// <summary>The ten columns back to unclaimed, written once so the two release lanes cannot clear different things.</summary>
     private static Task<int> Clear(IQueryable<EfHatchIssue> rows, CancellationToken ct) =>
         rows.ExecuteUpdateAsync(s => s
             .SetProperty(i => i.ClaimToken, (Guid?)null)
@@ -430,11 +452,12 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             .SetProperty(i => i.ClaimChatter, (string?)null)
             .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
             .SetProperty(i => i.ClaimPlaybookId, (int?)null)
-            .SetProperty(i => i.ClaimQuietLimitSeconds, (int?)null), ct);
+            .SetProperty(i => i.ClaimQuietLimitSeconds, (int?)null)
+            .SetProperty(i => i.ClaimMaxRunSeconds, (int?)null), ct);
 }
 
 /// <summary>
-/// An issue's eight claim columns, lifted off the row so that everything
+/// An issue's nine claim columns, lifted off the row so that everything
 /// judging a claim - a controller with an entity in hand, a scan with a
 /// projection, a board read that never materialised an entity at all - asks the
 /// same question of the same shape.
@@ -447,7 +470,8 @@ public sealed record ClaimSnapshot(
     DateTimeOffset? HeartbeatAt,
     string? Chatter,
     DateTimeOffset? ChatterAt,
-    int? QuietLimitSeconds = null)
+    int? QuietLimitSeconds = null,
+    int? MaxRunSeconds = null)
 {
     public static ClaimSnapshot Of(EfHatchIssue issue) => new(
         issue.ClaimToken,
@@ -457,7 +481,8 @@ public sealed record ClaimSnapshot(
         issue.ClaimHeartbeatAt,
         issue.ClaimChatter,
         issue.ClaimChatterAt,
-        issue.ClaimQuietLimitSeconds);
+        issue.ClaimQuietLimitSeconds,
+        issue.ClaimMaxRunSeconds);
 }
 
 

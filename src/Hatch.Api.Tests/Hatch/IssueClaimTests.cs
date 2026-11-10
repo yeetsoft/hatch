@@ -1363,6 +1363,84 @@ public class IssueClaimTests
             .ExecuteUpdateAsync(s => s.SetProperty(i => i.ClaimQuietLimitSeconds, quietLimitSeconds));
     }
 
+    // ---- A claim's own run cap ----
+
+    /// <summary>
+    /// A cap of 20 minutes, kept alive by a heartbeat and a line of chatter every
+    /// four: exactly at the cap a second runner is refused, one microsecond past it
+    /// the take succeeds - the SQL <c>Takeable</c> predicate, not the in-memory one.
+    /// </summary>
+    [SkippableFact]
+    public async Task ACappedClaim_IsTakeableByAnotherRunnerOneMicrosecondPastTheCapHoweverFreshItsHeartbeat()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetMaxRunAsync(h, issue, 1200);
+
+        for (var minutes = 4; minutes <= 20; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default)).Result);
+        }
+
+        // Exactly at ClaimedAt + 1200 seconds the claim is still live.
+        Assert.Equal(h.Time.GetUtcNow(), (await h.RowAsync(issue)).ClaimedAt!.Value.AddSeconds(1200));
+        Assert.NotNull(Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default)));
+
+        // Postgres keeps microseconds: a tick (100ns) would round away in the SQL.
+        h.Time.Advance(TimeSpan.FromTicks(10));
+        var second = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        Assert.Equal("elsewhere:/checkouts/two", (await h.RowAsync(issue)).ClaimRunner);
+        Assert.NotEqual(Guid.Empty, second.Token);
+    }
+
+    /// <summary>The snapshot path every reader builds, and the scan's own SQL <c>Live</c> predicate, agree with it.</summary>
+    [SkippableFact]
+    public async Task ACappedClaim_IsDrawnAtTheCapAndNotOneMicrosecondPast_InTheProjectionAndTheLineage()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var child = await h.FileAsync(parent: issue);
+        var token = await h.TakeAsync(issue);
+        await SetMaxRunAsync(h, issue, 1200);
+
+        for (var minutes = 4; minutes <= 20; minutes += 4)
+        {
+            h.Time.Advance(TimeSpan.FromMinutes(4));
+            Assert.IsType<NoContentResult>((await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still going"), default)).Result);
+        }
+
+        var childId = (await h.RowAsync(child)).Id;
+        Assert.NotNull(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+        Assert.NotNull((await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default)).Holder(childId, null));
+
+        // Postgres keeps microseconds: a tick (100ns) would round away in the SQL.
+        h.Time.Advance(TimeSpan.FromTicks(10));
+        Assert.Null(h.Rule.Project(ClaimSnapshot.Of(await h.RowAsync(issue)), h.Time.GetUtcNow()));
+        Assert.Null((await h.Rule.LineageAsync(h.Connect(), h.Time.GetUtcNow(), default)).Holder(childId, null));
+    }
+
+    [SkippableFact]
+    public async Task AReleaseOfACappedClaim_ClearsTheCap()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await SetMaxRunAsync(h, issue, 1200);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimMaxRunSeconds);
+    }
+
+    private static async Task SetMaxRunAsync(Harness h, string key, int maxRunSeconds)
+    {
+        var id = (await h.RowAsync(key)).Id;
+        await h.Connect().Issues.Where(i => i.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.ClaimMaxRunSeconds, maxRunSeconds));
+    }
+
     // ---- Taking a claim answers no question ----
 
     [SkippableFact]
