@@ -361,4 +361,89 @@ public class ColumnsTests
         Assert.False(Columns.AtOrPastImplementation(board, review.Id));
         Assert.False(Columns.AtOrPastImplementation(board, done.Id));
     }
+
+    const string Never = " - this row can never run";
+
+    [Fact]
+    public void UnreachableReason_PlainBoard_NamesTheRealTarget()
+    {
+        var board = new List<EfHatchStatus> { S(1, "To Do", 10), S(2, "Doing", 20), S(3, "Review", 30), S(4, "Done", 40, terminal: true) };
+
+        Assert.Null(Columns.UnreachableReason(board, 1, 2, false));
+        Assert.Null(Columns.UnreachableReason(board, 2, 3, false));
+        Assert.Null(Columns.UnreachableReason(board, 3, 3, false));
+        Assert.Equal(
+            "a dispatch from \"To Do\" goes to \"Doing\", not \"Review\"" + Never,
+            Columns.UnreachableReason(board, 1, 3, false));
+        Assert.Equal(
+            "a dispatch from \"Review\" is the review playbook, back to \"Review\" itself" + Never,
+            Columns.UnreachableReason(board, 3, 4, false));
+        // A check widens a review row only where a protected merge column follows.
+        Assert.Equal(
+            "a dispatch from \"Review\" is the review playbook, back to \"Review\" itself" + Never,
+            Columns.UnreachableReason(board, 3, 4, true));
+        Assert.Equal(
+            "nothing is dispatched from \"Done\" - it is a terminal column, so this row can never run",
+            Columns.UnreachableReason(board, 4, 1, false));
+        Assert.Null(Columns.UnreachableReason(board, 99, 1, false));
+        Assert.Equal(
+            "a dispatch from \"To Do\" goes to \"Doing\", not \"column 99\"" + Never,
+            Columns.UnreachableReason(board, 1, 99, false));
+    }
+
+    [Fact]
+    public void UnreachableReason_ProtectedColumnBeforeDone_ReviewReachesMergesOnlyAsACheck()
+    {
+        var board = new List<EfHatchStatus>
+        {
+            S(1, "To Do", 10), S(2, "Doing", 20), S(3, "Review", 30),
+            S(4, "Merges", 40, isProtected: true, mergesPullRequest: true), S(5, "Done", 50, terminal: true),
+        };
+
+        Assert.Null(Columns.UnreachableReason(board, 3, 3, false));
+        Assert.Equal(
+            "a dispatch from \"Review\" is the review playbook, back to \"Review\" itself" + Never,
+            Columns.UnreachableReason(board, 3, 4, false));
+        Assert.Null(Columns.UnreachableReason(board, 3, 4, true));
+        var notMerges = "a dispatch from \"Doing\" goes to \"Review\", not \"Merges\"" + Never;
+        Assert.Equal(notMerges, Columns.UnreachableReason(board, 2, 4, false));
+        Assert.Equal(notMerges, Columns.UnreachableReason(board, 2, 4, true));
+        Assert.Equal(
+            "nothing is dispatched from \"Done\" - it is a terminal column, so this row can never run",
+            Columns.UnreachableReason(board, 5, 3, false));
+    }
+
+    [Fact]
+    public void UnreachableReason_ReviewIsRightmostWithNoTerminalColumn_SaysRightmost()
+    {
+        var board = new List<EfHatchStatus> { S(1, "To Do", 10), S(2, "Doing", 20), S(3, "Review", 30) };
+
+        Assert.Null(Columns.UnreachableReason(board, 2, 3, false));
+        Assert.Equal(
+            "nothing is dispatched from \"Review\" - it is the rightmost column on the board, so this row can never run",
+            Columns.UnreachableReason(board, 3, 1, false));
+        Assert.Equal(
+            "nothing is dispatched from \"Review\" - it is the rightmost column on the board, so this row can never run",
+            Columns.UnreachableReason(board, 3, 3, true));
+    }
+
+    [Fact]
+    public void UnreachableReason_DeferredColumnMidBoard_IsSkippedAndHasNoDispatch()
+    {
+        var board = new List<EfHatchStatus>
+        {
+            S(1, "To Do", 10), S(2, "Doing", 20), S(3, "Parked", 30, deferred: true), S(4, "Review", 40), S(5, "Done", 50, terminal: true),
+        };
+
+        Assert.Null(Columns.UnreachableReason(board, 2, 4, false));
+        Assert.Equal(
+            "a dispatch from \"To Do\" goes to \"Doing\", not \"Review\"" + Never,
+            Columns.UnreachableReason(board, 1, 4, false));
+        Assert.Equal(
+            "a dispatch from \"Doing\" goes to \"Review\", not \"Parked\"" + Never,
+            Columns.UnreachableReason(board, 2, 3, false));
+        Assert.Equal(
+            "nothing is dispatched from \"Parked\" - it is a deferred column, so this row can never run",
+            Columns.UnreachableReason(board, 3, 4, false));
+    }
 }

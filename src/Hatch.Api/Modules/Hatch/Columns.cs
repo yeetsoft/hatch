@@ -155,6 +155,45 @@ public static class Columns
             : null;
 
     /// <summary>
+    /// Why a playbook row from <paramref name="fromStatusId"/> to
+    /// <paramref name="toStatusId"/> can never be picked by the dispatcher, as
+    /// one sentence - or null when it can, or when
+    /// <paramref name="fromStatusId"/> is not a column in the list.
+    ///
+    /// <para>The one definition every reader of the playbooks calls: a row is
+    /// reachable when <see cref="Target"/> of its from column is its to column,
+    /// or, for a check, when <see cref="Approves"/> names it. Columns are
+    /// compared by id and never by name; the names appear only in the
+    /// sentence. A tick on <paramref name="isCheck"/> only widens a review row,
+    /// so a row from any other column stays unreachable with it.</para>
+    ///
+    /// <para>It reads the list it is handed, with no database call.</para>
+    /// </summary>
+    public static string? UnreachableReason(List<EfHatchStatus> statuses, int fromStatusId, int toStatusId, bool isCheck)
+    {
+        var from = statuses.FirstOrDefault(s => s.Id == fromStatusId);
+        if (from is null) return null;
+
+        var target = Target(statuses, from);
+        if (target?.Id == toStatusId) return null;
+        if (isCheck && Approves(statuses, from, true)?.Id == toStatusId) return null;
+
+        if (target is null)
+        {
+            var why = from.IsTerminal ? "a terminal column"
+                : from.IsDeferred ? "a deferred column"
+                : "the rightmost column on the board";
+            return $"nothing is dispatched from \"{from.Name}\" - it is {why}, so this row can never run";
+        }
+
+        if (target.Id == from.Id)
+            return $"a dispatch from \"{from.Name}\" is the review playbook, back to \"{from.Name}\" itself - this row can never run";
+
+        var to = statuses.FirstOrDefault(s => s.Id == toStatusId)?.Name ?? $"column {toStatusId}";
+        return $"a dispatch from \"{from.Name}\" goes to \"{target.Name}\", not \"{to}\" - this row can never run";
+    }
+
+    /// <summary>
     /// The column where an agent writes the code: the one a person ticked
     /// <em>Code written here</em> on. Where none is ticked, the one whose own
     /// next move is into the awaiting-review column. Null only on an unticked
