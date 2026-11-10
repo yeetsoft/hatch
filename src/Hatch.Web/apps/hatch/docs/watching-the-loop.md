@@ -16,8 +16,14 @@ a row appears within a minute of it starting and drops off two hours after it
 stops. This page lists every runner, because a person is looking; a key
 reading the same list gets its owner's runners, an admin's key gets every one,
 and a key with no owner gets only the runners that belong to nobody. `hatch
-runners` is the same read at a terminal, one line per row. Each row
-has:
+runners` is the same read at a terminal, one line per row. Renaming a runner,
+or restarting it under a new name, used to leave the old row sitting as *Gone*
+until it aged off. Now the new one's first beat retires the old row, and it
+leaves this page and `hatch runners` at once, though its history is kept. A
+beat from the old name brings it back by itself. A row is retired only
+once it has been quiet past `Hatch:RunnerGoneAfterSeconds`, or when a loop
+in the same checkout reports in under a new name.
+Each row has:
 
 - **Runner** - its name, and `one increment` where it is not a `loop` (a loop
   says nothing here, since that is the default); a **Behind** badge when its
