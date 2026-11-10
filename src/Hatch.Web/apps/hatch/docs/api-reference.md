@@ -319,7 +319,8 @@ may carry no setting of its own - `inherit` is never refused by the policy, and 
 value the story already holds is not refused and writes nothing), ahead of the
 next refusal, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
-task begun on one branch cannot be moved onto the other. `runner-tags` 400s
+task begun on one branch cannot be moved onto the other. A move into an `enforced`
+project (`PATCH` or `POST /issues/bulk` with `projectId`) returns an un-started override to inherit. `runner-tags` 400s
 a blank tag, one with a space or comma inside, one over 32 characters, or a
 list over 8; `404` for no such key; re-sending the list it already holds
 writes nothing. `dangerous` 400s an absent reason (send `""` to clear) and one

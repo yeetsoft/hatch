@@ -113,7 +113,8 @@ override it — on, off, or back to inherit — through `hatch one-pr`. The
 setting locks once any task under the story has started, since work begun on
 one branch cannot be moved onto the other. A project that enforces its default
 takes no override at all: `on` and `off` are refused there, and only `inherit`
-is accepted.
+is accepted. Moving a story or bug into such a project returns an override with
+nothing started under it to inherit; one with started work keeps its override.
 
 The project's own policy is set on **Manage → Projects**, **Edit**, **Landing**
 — an owner's alone, beside the project's one-pull-request default — between
