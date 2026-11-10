@@ -1287,6 +1287,13 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(240)
                         .HasColumnType("character varying(240)");
 
+                    b.Property<DateTimeOffset?>("AdoptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AdoptedInto")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<string>("Agent")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
@@ -1438,7 +1445,7 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasKey("Name");
 
-                    b.ToTable("Runners", "hatch");
+                    b.ToTable("LegacyRunners", "hatch");
                 });
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchRunnerConfig", b =>

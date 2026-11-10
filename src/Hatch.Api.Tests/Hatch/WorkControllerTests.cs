@@ -2107,7 +2107,7 @@ public class WorkControllerTests
             State = EfHatchRunner.Running,
         };
         tweak?.Invoke(row);
-        h.Db.Runners.Add(row);
+        h.Db.LegacyRunners.Add(row);
         await h.Db.SaveChangesAsync();
         return row;
     }
@@ -3668,7 +3668,7 @@ public class WorkControllerTests
         var otherKey = IssueKey.Format("OTH", 1);
 
         const string runnerName = "host:/checkout";
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = runnerName,
             Kind = EfHatchRunner.LoopKind,
@@ -3720,7 +3720,7 @@ public class WorkControllerTests
         {
             // Outside Runners.DropBefore's horizon (two hours): the row
             // exists, and reads exactly as if it did not.
-            h.Db.Runners.Add(new EfHatchRunner
+            h.Db.LegacyRunners.Add(new EfHatchRunner
             {
                 Name = "host:/checkout",
                 Kind = EfHatchRunner.LoopKind,
@@ -3749,7 +3749,7 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "clear", h.Todo);
 
         const string runnerName = "host:/checkout";
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = runnerName,
             Kind = EfHatchRunner.LoopKind,
@@ -3794,7 +3794,7 @@ public class WorkControllerTests
         await h.AssignAsync(adas, personId: ada.Id);
 
         const string runnerName = "host:/checkout";
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = runnerName,
             Kind = EfHatchRunner.LoopKind,
@@ -3819,7 +3819,7 @@ public class WorkControllerTests
         await h.FileAsync("story", "clear", h.Todo);
 
         const string runnerName = "host:/checkout";
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = runnerName,
             Kind = EfHatchRunner.LoopKind,
@@ -5026,7 +5026,7 @@ public class WorkControllerTests
         await h.RequireTagsAsync("macos", "xcode");
         var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
 
-        h.Db.Runners.AddRange(
+        h.Db.LegacyRunners.AddRange(
             new EfHatchRunner
             {
                 Name = "linux-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
@@ -5063,7 +5063,7 @@ public class WorkControllerTests
         var h = await NewAsync();
         var issue = await FileFlaggedAsync(h);
 
-        h.Db.Runners.AddRange(
+        h.Db.LegacyRunners.AddRange(
             new EfHatchRunner
             {
                 Name = "careful-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
@@ -5799,7 +5799,7 @@ public class WorkControllerTests
         await h.AddProjectAsync("FIL");
         var issue = await h.FileAsync("story", "in AER", h.InProgress);
 
-        h.Db.Runners.AddRange(
+        h.Db.LegacyRunners.AddRange(
             new EfHatchRunner
             {
                 Name = "fil-box", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
@@ -5888,7 +5888,7 @@ public class WorkControllerTests
         var issue = await h.FileAsync("story", "in AER", h.InProgress);
 
         var key = await h.AddKeyAsync("mixed");
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = key.Name, Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Projects = "FIL",
@@ -14204,7 +14204,7 @@ public class WorkControllerTests
 
         public async Task SeedUsageAsync(Guid forPersonId, DateTimeOffset readAt, params RunnerUsageWindowDto[] windows)
         {
-            Db.Runners.Add(new EfHatchRunner
+            Db.LegacyRunners.Add(new EfHatchRunner
             {
                 Name = $"economy-test:/checkouts/{nextRunner++}",
                 Kind = EfHatchRunner.LoopKind,
