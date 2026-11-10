@@ -5900,7 +5900,13 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). Ties go to
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A row's
+`LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
+release of the claim it holds, found by the claim's `ClaimedBy` matching
+the row's `Name`; that is what keeps a driver live and elected through a
+long increment. It is not moved by another row's claim, even at the same
+`Where`, so a ghost row left by a loop that came back under a new name
+ages out. Ties go to
 the oldest `FirstSeenAt`, then `Name` ordinally (`:239`) — deliberately
 stable, so a project's driver only moves once it actually drops out of live.
 The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
