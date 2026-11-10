@@ -311,7 +311,7 @@ public class RunnersControllerTests
         var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Models: ["nonsense"]), default);
 
         Assert.Equal(ModelFamilies.Default.Refusal("nonsense"), Reason(refusal.Result));
-        Assert.Empty(await h.Db.Runners.ToListAsync());
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
     }
 
     // ---- Has ----
@@ -401,7 +401,7 @@ public class RunnersControllerTests
         var refusal = await h.Runners.Heartbeat(Runner, new RunnerHeartbeatRequest(Has: ["cobol"]), default);
 
         Assert.Equal(DependencySet.Normalise(["cobol"], out _), Reason(refusal.Result));
-        Assert.Empty(await h.Db.Runners.ToListAsync());
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
     }
 
     // ---- Tags ----
@@ -1358,12 +1358,12 @@ public class RunnersControllerTests
 
         // Written directly, bypassing the heartbeat's own insert ordering, so
         // both rows carry exactly the same FirstSeenAt.
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r",
         });
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r",
@@ -1384,12 +1384,12 @@ public class RunnersControllerTests
         var h = await NewAsync();
         await h.BindRepositoryAsync("https://example.com/o/r");
 
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now.AddHours(-1), LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r", RetiredAt = Now,
         });
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r",
@@ -1410,7 +1410,7 @@ public class RunnersControllerTests
         FirstSeenAt = first ?? Now.AddHours(-1), LastSeenAt = last ?? Now.AddMinutes(-30),
     };
 
-    private static EfHatchRunner Stored(Harness h, string name) => h.Db.Runners.AsNoTracking().Single(r => r.Name == name);
+    private static EfHatchRunner Stored(Harness h, string name) => h.Db.LegacyRunners.AsNoTracking().Single(r => r.Name == name);
 
     [Fact]
     public async Task ANewRowBeating_RetiresAnOlderQuietRow_AndSoDoesAnExistingRow()
@@ -1418,8 +1418,8 @@ public class RunnersControllerTests
         var h = await NewAsync(wall: true);
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
-        h.Db.Runners.Add(Quiet("old:/one", nathan.Id));
-        h.Db.Runners.Add(Quiet("old:/two", nathan.Id));
+        h.Db.LegacyRunners.Add(Quiet("old:/one", nathan.Id));
+        h.Db.LegacyRunners.Add(Quiet("old:/two", nathan.Id));
         await h.Db.SaveChangesAsync();
 
         await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1431,7 +1431,7 @@ public class RunnersControllerTests
 
         // An existing row that beats retires one too: the second old row is
         // put back to quiet-and-unretired, and the next beat finds it.
-        var two = await h.Db.Runners.SingleAsync(r => r.Name == "old:/two");
+        var two = await h.Db.LegacyRunners.SingleAsync(r => r.Name == "old:/two");
         two.RetiredAt = null;
         two.RetiredBy = null;
         await h.Db.SaveChangesAsync();
@@ -1449,7 +1449,7 @@ public class RunnersControllerTests
         var h = await NewAsync(wall: true);
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
-        h.Db.Runners.Add(Quiet("old:/one", nathan.Id, last: Now));
+        h.Db.LegacyRunners.Add(Quiet("old:/one", nathan.Id, last: Now));
         await h.Db.SaveChangesAsync();
 
         await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1466,11 +1466,11 @@ public class RunnersControllerTests
         var nathan = h.Actors.AddPerson("Nathan");
         var other = h.Actors.AddPerson("Other");
         h.Actors.Principal = nathan;
-        h.Db.Runners.Add(Quiet("other-owner", other.Id));
-        h.Db.Runners.Add(Quiet("other-where", nathan.Id, where: "elsewhere"));
-        h.Db.Runners.Add(Quiet("other-kind", nathan.Id, kind: EfHatchRunner.OnceKind));
-        h.Db.Runners.Add(Quiet("later", nathan.Id, first: Now.AddMinutes(1)));
-        h.Db.Runners.Add(Quiet("same-first", nathan.Id, first: Now));
+        h.Db.LegacyRunners.Add(Quiet("other-owner", other.Id));
+        h.Db.LegacyRunners.Add(Quiet("other-where", nathan.Id, where: "elsewhere"));
+        h.Db.LegacyRunners.Add(Quiet("other-kind", nathan.Id, kind: EfHatchRunner.OnceKind));
+        h.Db.LegacyRunners.Add(Quiet("later", nathan.Id, first: Now.AddMinutes(1)));
+        h.Db.LegacyRunners.Add(Quiet("same-first", nathan.Id, first: Now));
         await h.Db.SaveChangesAsync();
 
         await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1487,7 +1487,7 @@ public class RunnersControllerTests
     public async Task WithNoOwner_TheWallUpRetiresNothing_AndTheWallOffMatchesNullToNull()
     {
         var up = await NewAsync(wall: true);
-        up.Db.Runners.Add(Quiet("old:/one", null));
+        up.Db.LegacyRunners.Add(Quiet("old:/one", null));
         await up.Db.SaveChangesAsync();
 
         await up.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1495,7 +1495,7 @@ public class RunnersControllerTests
         Assert.Null(Stored(up, "old:/one").RetiredAt);
 
         var off = await NewAsync();
-        off.Db.Runners.Add(Quiet("old:/one", null));
+        off.Db.LegacyRunners.Add(Quiet("old:/one", null));
         await off.Db.SaveChangesAsync();
 
         await off.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1513,7 +1513,7 @@ public class RunnersControllerTests
         var old = Quiet("old:/one", nathan.Id);
         old.RetiredAt = Now.AddMinutes(-5);
         old.RetiredBy = "new:/tree";
-        h.Db.Runners.Add(old);
+        h.Db.LegacyRunners.Add(old);
         await h.Db.SaveChangesAsync();
 
         await h.BeatAsync("old:/one", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1529,7 +1529,7 @@ public class RunnersControllerTests
         var h = await NewAsync(wall: true);
         var nathan = h.Actors.AddPerson("Nathan");
         h.Actors.Principal = nathan;
-        h.Db.Runners.Add(Quiet("old:/one", nathan.Id));
+        h.Db.LegacyRunners.Add(Quiet("old:/one", nathan.Id));
         await h.Db.SaveChangesAsync();
 
         await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest(Kind: "loop", Where: "w"));
@@ -1545,12 +1545,12 @@ public class RunnersControllerTests
         var h = await NewAsync();
         await h.BindRepositoryAsync("https://example.com/o/r");
 
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now.AddHours(-1), LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r", RetiredAt = Now, RetiredBy = "b:/tree",
         });
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "b:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r",
@@ -1579,7 +1579,7 @@ public class RunnersControllerTests
             Name = "a:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, Remotes = "example.com/o/r",
         };
-        h.Db.Runners.Add(row);
+        h.Db.LegacyRunners.Add(row);
         await h.Db.SaveChangesAsync();
 
         var listed = Assert.Single(await h.ListAsync());
@@ -1596,7 +1596,7 @@ public class RunnersControllerTests
     {
         var h = await NewAsync();
         var key = await h.AddKeyAsync("here:/tree");
-        h.Db.Runners.Add(new EfHatchRunner
+        h.Db.LegacyRunners.Add(new EfHatchRunner
         {
             Name = "here:/tree", Kind = EfHatchRunner.LoopKind, FirstSeenAt = Now, LastSeenAt = Now,
             State = EfHatchRunner.Running, RetiredAt = Now,
@@ -3459,7 +3459,7 @@ public class RunnersControllerTests
         var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
         Assert.Equal(key.Id, config.ApiKeyId);
         Assert.Equal(7, config.MaxRuns);
-        Assert.Empty(await h.Db.Runners.ToListAsync());
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
         Assert.Equal(7, patched.MaxRuns);
         Assert.Equal(["gpu"], patched.Tags);
         Assert.Equivalent(await h.GetAsync(Runner), patched);
@@ -3916,7 +3916,7 @@ public class RunnersControllerTests
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
         await h.BindRepositoryAsync("https://example.com/o/r");
-        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        h.Db.LegacyRunners.Add(Renamed("old:/one", h.PersonId));
         await h.Db.SaveChangesAsync();
 
         // Before the beat the old row is live and drives the project.
@@ -3926,7 +3926,7 @@ public class RunnersControllerTests
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
-        var old = await h.Db.Runners.AsNoTracking().SingleAsync(r => r.Name == "old:/one");
+        var old = await h.Db.LegacyRunners.AsNoTracking().SingleAsync(r => r.Name == "old:/one");
         Assert.Equal(Now, old.RetiredAt);
         Assert.Equal("hatch", old.RetiredBy);
         var after = await StandingAsync(h, "old:/one", wall: true);
@@ -3939,16 +3939,16 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Renamed("elsewhere", h.PersonId, where: "host:/checkouts/two"));
-        h.Db.Runners.Add(Renamed("nowhere", h.PersonId, where: null));
-        h.Db.Runners.Add(Renamed("someone-elses", Guid.NewGuid()));
-        h.Db.Runners.Add(Renamed("unowned", null));
-        h.Db.Runners.Add(Renamed("a-pass", h.PersonId, kind: EfHatchRunner.OnceKind));
+        h.Db.LegacyRunners.Add(Renamed("elsewhere", h.PersonId, where: "host:/checkouts/two"));
+        h.Db.LegacyRunners.Add(Renamed("nowhere", h.PersonId, where: null));
+        h.Db.LegacyRunners.Add(Renamed("someone-elses", Guid.NewGuid()));
+        h.Db.LegacyRunners.Add(Renamed("unowned", null));
+        h.Db.LegacyRunners.Add(Renamed("a-pass", h.PersonId, kind: EfHatchRunner.OnceKind));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
-        foreach (var row in await h.Db.Runners.AsNoTracking().ToListAsync())
+        foreach (var row in await h.Db.LegacyRunners.AsNoTracking().ToListAsync())
         {
             Assert.Null(row.RetiredAt);
             Assert.Null(row.RetiredBy);
@@ -3960,13 +3960,13 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
-        h.Db.Runners.Add(Renamed("nowhere", h.PersonId, where: null));
+        h.Db.LegacyRunners.Add(Renamed("old:/one", h.PersonId));
+        h.Db.LegacyRunners.Add(Renamed("nowhere", h.PersonId, where: null));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
 
-        Assert.All(await h.Db.Runners.AsNoTracking().ToListAsync(), r => Assert.Null(r.RetiredAt));
+        Assert.All(await h.Db.LegacyRunners.AsNoTracking().ToListAsync(), r => Assert.Null(r.RetiredAt));
     }
 
     [SkippableFact]
@@ -3977,12 +3977,12 @@ public class RunnersControllerTests
         var back = Renamed("hatch", h.PersonId);
         back.RetiredAt = Now.AddMinutes(-5);
         back.RetiredBy = "other:/one";
-        h.Db.Runners.Add(back);
+        h.Db.LegacyRunners.Add(back);
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
-        var row = await h.Db.Runners.AsNoTracking().SingleAsync();
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
         Assert.Null(row.RetiredAt);
         Assert.Null(row.RetiredBy);
         Assert.True((await StandingAsync(h, "hatch", wall: true)).Live);
@@ -3993,20 +3993,20 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        h.Db.LegacyRunners.Add(Renamed("old:/one", h.PersonId));
         await h.Db.SaveChangesAsync();
 
         // The pass shares the loop's name and its (key, where): it speaks for
         // no rename, so the old row is left exactly as it was.
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
-        Assert.Null((await h.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+        Assert.Null((await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).RetiredAt);
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: RenamedWhere));
         h.Time.Advance(TimeSpan.FromMinutes(1));
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: RenamedWhere));
 
-        Assert.Equal(Now, (await h.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+        Assert.Equal(Now, (await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).RetiredAt);
     }
 
     private static EfHatchRunner Tagged(string name, Guid? owner, string tags, int minutesAgo = 0, string? retiredBy = null, string? where = RenamedWhere)
@@ -4026,7 +4026,7 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu\nbackend"));
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu\nbackend"));
         await h.Db.SaveChangesAsync();
 
         var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4044,7 +4044,7 @@ public class RunnersControllerTests
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
         var earlier = Now.AddDays(-3);
         h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, Tags = "[]", UpdatedAt = earlier });
-        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu"));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4060,7 +4060,7 @@ public class RunnersControllerTests
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
         h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, Tags = RunnerTagColumn.Write(["mine"]), UpdatedAt = Now });
-        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu"));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4073,9 +4073,9 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Tagged("earlier:/two", h.PersonId, "gpu\nshared", minutesAgo: 30, retiredBy: "hatch", where: "host:/checkouts/two"));
-        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "shared\nbackend", minutesAgo: 1));
-        h.Db.Runners.Add(Tagged("other-key:/three", h.PersonId, "not-mine", minutesAgo: 30, retiredBy: "someone-else", where: "host:/checkouts/three"));
+        h.Db.LegacyRunners.Add(Tagged("earlier:/two", h.PersonId, "gpu\nshared", minutesAgo: 30, retiredBy: "hatch", where: "host:/checkouts/two"));
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "shared\nbackend", minutesAgo: 1));
+        h.Db.LegacyRunners.Add(Tagged("other-key:/three", h.PersonId, "not-mine", minutesAgo: 30, retiredBy: "someone-else", where: "host:/checkouts/three"));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4088,7 +4088,7 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        h.Db.LegacyRunners.Add(Renamed("old:/one", h.PersonId));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4101,8 +4101,8 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Tagged("older:/one", h.PersonId, "a1\na2\na3\na4\na5", minutesAgo: 10));
-        h.Db.Runners.Add(Tagged("newer:/two", h.PersonId, "b1\nb2\nb3\nb4\nb5", minutesAgo: 1));
+        h.Db.LegacyRunners.Add(Tagged("older:/one", h.PersonId, "a1\na2\na3\na4\na5", minutesAgo: 10));
+        h.Db.LegacyRunners.Add(Tagged("newer:/two", h.PersonId, "b1\nb2\nb3\nb4\nb5", minutesAgo: 1));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
@@ -4117,7 +4117,7 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
-        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu"));
         await h.Db.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
@@ -4130,21 +4130,21 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var up = await NewAsync(program: true, wall: true, connectionString: connectionString);
-        up.Db.Runners.Add(Renamed("old:/one", null));
+        up.Db.LegacyRunners.Add(Renamed("old:/one", null));
         await up.Db.SaveChangesAsync();
 
         await up.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
-        Assert.Null((await up.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
+        Assert.Null((await up.Db.LegacyRunners.AsNoTracking().SingleAsync()).RetiredAt);
 
         var connectionString2 = await ConnectAsync();
         var off = await NewAsync(program: true, connectionString: connectionString2);
-        off.Db.Runners.Add(Renamed("old:/one", null));
+        off.Db.LegacyRunners.Add(Renamed("old:/one", null));
         await off.Db.SaveChangesAsync();
 
         await off.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
 
-        Assert.Equal("hatch", (await off.Db.Runners.AsNoTracking().SingleAsync()).RetiredBy);
+        Assert.Equal("hatch", (await off.Db.LegacyRunners.AsNoTracking().SingleAsync()).RetiredBy);
     }
 
     [SkippableFact]
@@ -5122,7 +5122,7 @@ public class RunnersControllerTests
         /// and <see cref="EfHatchRunner.UsageReadAt"/> - none of which
         /// <see cref="RunnerDto"/> answers; see HA-134's "out of scope".
         /// </summary>
-        public async Task<EfHatchRunner> RowAsync() => await Db.Runners.AsNoTracking().SingleAsync();
+        public async Task<EfHatchRunner> RowAsync() => await Db.LegacyRunners.AsNoTracking().SingleAsync();
 
         /// <summary>
         /// A lease, written straight onto the row. The endpoint that normally

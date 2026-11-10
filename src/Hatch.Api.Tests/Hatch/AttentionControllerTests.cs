@@ -2229,7 +2229,7 @@ public class AttentionControllerTests : IDisposable
             string name, DateTimeOffset? exhaustedUntil, DateTimeOffset? lastSeenAt = null, string[]? models = null,
             string[]? has = null, string? agent = null, string state = "running")
         {
-            Db.Runners.Add(new EfHatchRunner
+            Db.LegacyRunners.Add(new EfHatchRunner
             {
                 Name = name,
                 Kind = "loop",

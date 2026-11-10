@@ -133,7 +133,7 @@ public sealed class Preemption(HatchContext db, Dispatch dispatch, IssueClaims c
         var holdingWheres = held.Keys.Select(k => k.Where).ToHashSet(StringComparer.Ordinal);
         var cutoff = runners.Cutoff(now);
 
-        var live = await db.Runners.AsNoTracking()
+        var live = await db.LegacyRunners.AsNoTracking()
             .Where(r => r.LastSeenAt >= cutoff)
             .Select(r => new { r.Name, r.Where })
             .ToListAsync(ct);

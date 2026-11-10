@@ -397,7 +397,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
     {
         var now = time.GetUtcNow();
 
-        var candidates = await db.Runners.AsNoTracking()
+        var candidates = await db.LegacyRunners.AsNoTracking()
             .Where(r => r.ExhaustedUntil != null)
             .Select(r => new { r.Name, r.Where, r.LastSeenAt, r.ExhaustedUntil })
             .ToListAsync(ct);
