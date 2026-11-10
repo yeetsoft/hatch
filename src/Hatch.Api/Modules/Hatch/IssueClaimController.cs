@@ -519,7 +519,7 @@ public class IssueClaimController(
             .Select(i => new ClaimSnapshot(
                 i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                 i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                i.ClaimQuietLimitSeconds))
+                i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds))
             .FirstOrDefaultAsync(ct)
         ?? new ClaimSnapshot(null, null, null, null, null, null, null, null);
 

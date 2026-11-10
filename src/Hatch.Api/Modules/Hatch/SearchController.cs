@@ -161,7 +161,7 @@ public class SearchController(
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
                 i.CreatedAt,
                 TitleMatched = false,
                 DescriptionMatched = false,
@@ -198,7 +198,7 @@ public class SearchController(
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
                 i.CreatedAt,
                 TitleMatched = EF.Functions.ToTsVector(SearchQuery.Config, i.Title)
                     .Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)),

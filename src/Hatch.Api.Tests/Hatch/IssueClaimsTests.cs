@@ -130,6 +130,50 @@ public class IssueClaimsTests
         Assert.Equal(600, TestClaims.With(stallLapseMinutes: 10).StallLapseSeconds);
     }
 
+    // ---- A claim's own run cap ----
+
+    [Fact]
+    public void AClaimOverItsRunCap_IsLiveAtTheCapAndNotOneTickPast_HoweverFreshItsHeartbeatAndChatter()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 5);
+
+        ClaimSnapshot Held(DateTimeOffset now) =>
+            new(Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, now, "working", now, MaxRunSeconds: 240);
+
+        var atCap = Now.AddSeconds(240);
+        Assert.True(claims.IsLive(Held(atCap), atCap));
+        Assert.False(claims.IsOverRun(Held(atCap), atCap));
+
+        var past = atCap.AddTicks(1);
+        Assert.False(claims.IsLive(Held(past), past));
+        Assert.True(claims.IsOverRun(Held(past), past));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void ANullZeroOrNegativeRunCap_IsNoCap(int? cap)
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 0);
+        var later = Now.AddDays(1);
+        var claim = new ClaimSnapshot(
+            Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", Now, later, null, null, MaxRunSeconds: cap);
+
+        Assert.False(claims.IsOverRun(claim, later));
+        Assert.True(claims.IsLive(claim, later));
+    }
+
+    [Fact]
+    public void AClaimWithNoClaimedAt_IsNeverOverRun()
+    {
+        var claims = TestClaims.With(stallLapseMinutes: 0);
+        var claim = new ClaimSnapshot(
+            Guid.NewGuid(), "hatch", "somewhere:/checkouts/one", null, Now, null, null, MaxRunSeconds: 60);
+
+        Assert.False(claims.IsOverRun(claim, Now.AddDays(1)));
+    }
+
     // ---- A claim's own quiet window ----
 
     [Fact]
