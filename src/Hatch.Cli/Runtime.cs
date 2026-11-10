@@ -25,6 +25,13 @@ public sealed record Runtime(
     /// <summary>The clock, so a test can put the loop at a particular hour.</summary>
     public TimeProvider Clock { get; init; } = TimeProvider.System;
 
+    /// <summary>
+    /// How long a tool call may stay open before the runner stops saying it is
+    /// still running, so a test can drive it in short spans. Null is the
+    /// agent's own <see cref="IAgentAdapter.ToolCeiling"/>.
+    /// </summary>
+    public TimeSpan? ToolCeiling { get; init; }
+
     /// <summary>The model families a pinned id is judged against, so a test can run a second agent.</summary>
     public ModelFamilies Families { get; init; } = ModelFamilies.Default;
 
@@ -101,7 +108,7 @@ public sealed record Runtime(
 
     public Idle Idle(bool mine = false) => new(Board, Say, Checkouts, Settings.Workspace is not null, mine, RunnerName);
 
-    public Increment Increment() => new(Board, Sessions, Adapter, Settings, Say, Checkouts, Readout, TempDirectory, Controls, Workspace, QuietBoard, Clock);
+    public Increment Increment() => new(Board, Sessions, Adapter, Settings, Say, Checkouts, Readout, TempDirectory, Controls, Workspace, QuietBoard, Clock, ToolCeiling);
 
     /// <summary>
     /// This process, on the board: where it says it is alive and reads back

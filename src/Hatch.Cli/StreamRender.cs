@@ -137,6 +137,10 @@ public sealed partial class StreamRender : IAgentStreamReader
     private readonly HashSet<string> _counted = [];
     private long _peakContext;
     private readonly ReadsLedger _reads = new();
+    private readonly OpenCalls _open = new();
+
+    /// <summary>The tool call that has started and not returned, newest first - see <see cref="IAgentStreamReader.Open"/>.</summary>
+    public OpenCall? Open => _open.Current;
 
     /// <summary>
     /// The four counts added up, over every assistant message seen so far in
@@ -186,6 +190,7 @@ public sealed partial class StreamRender : IAgentStreamReader
         }
 
         var type = Text(e, "type");
+        Track(type, e);
         return type switch
         {
             "system" when Text(e, "subtype") == "init" => Init(e),
@@ -196,6 +201,34 @@ public sealed partial class StreamRender : IAgentStreamReader
             "rate_limit_event" => RateLimit(e),
             _ => [],
         };
+    }
+
+    /// <summary>
+    /// Which tool calls are in flight. Eager, like <see cref="RateLimit"/>: the
+    /// lines are lazy iterators, and a caller that never enumerates an event's
+    /// lines must still see its calls open and close. A sub-agent's calls count
+    /// as any other, and the call that spawned it stays open until its own result.
+    /// </summary>
+    private void Track(string? type, JsonElement e)
+    {
+        switch (type)
+        {
+            case "assistant":
+                foreach (var part in Content(e))
+                    if (Text(part, "type") == "tool_use")
+                        _open.Begin(Text(part, "id"), $"{Text(part, "name")}  {Summarise(part)}");
+                break;
+
+            case "user":
+                foreach (var part in Content(e))
+                    if (Text(part, "type") == "tool_result")
+                        _open.End(Text(part, "tool_use_id"));
+                break;
+
+            case "result":
+                _open.Clear();
+                break;
+        }
     }
 
     /// <summary>
