@@ -15,7 +15,7 @@ const controls = new Set(['button', 'a', 'Link', 'NavLink', 'Button']);
 /** Elements whose own title is the hint for their own box, wherever they sit. */
 const ownHint = new Set([...controls, 'option', 'label', 'select']);
 /** A truncation reveal for one ellipsised line, not a hint for the link around it. */
-const allowed = ['hatch-attention-files'];
+const allowed = ['hatch-attention-files', 'hatch-runner-row__second'];
 
 const root = new URL('./../', import.meta.url);
 
