@@ -1472,6 +1472,13 @@ public record ReviewDto(
 /// not null, when there is none or no runner is live, on every board shape.
 /// Defaults to null so an older client still reads.
 /// </param>
+/// <param name="TrainStalled">
+/// Every project whose merge train passed its driver over and has not yet heard
+/// from that runner again, ordered by project key. Listed beside the rest but
+/// not counted: the row stays until the passed-over runner next checks in, and
+/// a runner that died never does. Empty, not null, when there is none, on every
+/// board shape. Defaults to null so an older client still reads.
+/// </param>
 /// <param name="RunnerCapacity">
 /// One row per project whose clear implementation steps no live runner, or only
 /// one, can take, each with the reasons the rest cannot. Ordered by project key.
@@ -1494,6 +1501,7 @@ public record AttentionDto(
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null,
     IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null,
+    IReadOnlyList<TrainStalledDto>? TrainStalled = null,
     IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null);
 
 /// <summary>
@@ -1610,6 +1618,18 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
+
+/// <summary>
+/// A project whose merge train passed its driver over - see
+/// <see cref="AttentionDto.TrainStalled"/>.
+/// </summary>
+/// <param name="ProjectKey">The project's key.</param>
+/// <param name="ProjectName">The project's name.</param>
+/// <param name="PassedOverRunner">The runner the train stopped waiting on.</param>
+/// <param name="ElectedRunner">The runner elected in its place, or null when no other runner was eligible.</param>
+/// <param name="HeadKey">The issue at the head of the train when it stalled.</param>
+/// <param name="At">When the train was passed over.</param>
+public record TrainStalledDto(string ProjectKey, string ProjectName, string PassedOverRunner, string? ElectedRunner, string HeadKey, DateTimeOffset At);
 
 /// <summary>
 /// A project whose clear implementation steps no live runner, or only one, can

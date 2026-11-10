@@ -177,7 +177,7 @@ public class RunnerSessionsTests
     [Fact]
     public void Instruct_TheNarrowerConfigValue_Wins()
     {
-        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), Config(maxRuns: 5), "here:/checkouts/one", "Nathan");
+        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), Config(maxRuns: 5), "here:/checkouts/one", "Nathan", []);
 
         Assert.Equal(5, dto.MaxRuns);
     }
@@ -185,7 +185,7 @@ public class RunnerSessionsTests
     [Fact]
     public void Instruct_WithNoConfig_TakesTheSessionsOwn()
     {
-        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), null, "here:/checkouts/one", "Nathan");
+        var dto = RunnerSessions.Instruct(Session(maxRuns: 10), null, "here:/checkouts/one", "Nathan", []);
 
         Assert.Equal(10, dto.MaxRuns);
     }
@@ -194,7 +194,7 @@ public class RunnerSessionsTests
     public void Instruct_AnUnsetTokenCap_FallsBackToTheSiteDefault()
     {
         var dto = RunnerSessions.Instruct(
-            Session(maxTokens: null), Config(maxTokens: null), "here:/checkouts/one", "Nathan", siteMaxTokens: 1_000);
+            Session(maxTokens: null), Config(maxTokens: null), "here:/checkouts/one", "Nathan", [], siteMaxTokens: 1_000);
 
         Assert.Equal(1_000, dto.MaxTokens);
     }
@@ -205,7 +205,7 @@ public class RunnerSessionsTests
         var config = Config();
         config.Tags = RunnerTagColumn.Write(["gpu", "fast"]);
 
-        var dto = RunnerSessions.Instruct(Session(), config, "here:/checkouts/one", "Nathan");
+        var dto = RunnerSessions.Instruct(Session(), config, "here:/checkouts/one", "Nathan", []);
 
         Assert.Equal(["fast", "gpu"], dto.Tags);
     }
@@ -213,7 +213,7 @@ public class RunnerSessionsTests
     [Fact]
     public void Instruct_WithNoConfig_TagsAreEmpty()
     {
-        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan");
+        var dto = RunnerSessions.Instruct(Session(), null, "here:/checkouts/one", "Nathan", []);
 
         Assert.Empty(dto.Tags!);
     }
@@ -224,7 +224,7 @@ public class RunnerSessionsTests
         var session = Session();
         session.Id = 42;
 
-        var dto = RunnerSessions.Instruct(session, null, "here:/checkouts/one", "Nathan");
+        var dto = RunnerSessions.Instruct(session, null, "here:/checkouts/one", "Nathan", []);
 
         Assert.Equal("here:/checkouts/one", dto.RunnerName);
         Assert.Equal(42, dto.SessionId);
