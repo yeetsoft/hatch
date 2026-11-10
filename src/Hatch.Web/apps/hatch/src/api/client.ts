@@ -313,8 +313,6 @@ export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatc
 // that could ever post one is the loop itself.
 
 export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners?live=true');
-/** Every live runner's name, unscoped. */
-export const getRunnerNames = () => fetchJson<string[]>('/api/hatch/runners/names');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
 export const orderRunner = (name: string, request: RunnerOrderRequest) =>

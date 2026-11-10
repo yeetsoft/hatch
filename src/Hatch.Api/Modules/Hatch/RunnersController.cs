@@ -123,9 +123,9 @@ public class RunnersController(
     /// <remarks>
     /// Every refusal comes before anything is written: the gate, the name, the
     /// owner and the tags are all judged first, so a refused request leaves no
-    /// key and no row. <c>names</c> and <c>suggest-name</c> are refused as
-    /// names because they are the literal routes beside <c>{name}</c>, and a
-    /// runner called either could not be reached by its own URL.
+    /// key and no row. <c>suggest-name</c> is refused as a name because it is
+    /// the literal route beside <c>{name}</c>, and a runner called that could
+    /// not be reached by its own URL.
     ///
     /// <para>The key's uniqueness is <see cref="IAuthService"/>'s to judge, and
     /// it logs the mint too - so there is no logger here. The config row is
@@ -141,7 +141,7 @@ public class RunnersController(
         if (string.IsNullOrEmpty(name)) return BadRequest("a runner needs a name");
         if (name.Length > EfApiKey.MaxNameLength)
             return BadRequest($"a runner name is at most {EfApiKey.MaxNameLength} characters");
-        if (name.Equals("names", StringComparison.OrdinalIgnoreCase) || name.Equals("suggest-name", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("suggest-name", StringComparison.OrdinalIgnoreCase))
             return BadRequest($"\"{name}\" is a route word");
 
         // No owner named defaults to whoever is minting it, or to nobody where
@@ -191,8 +191,7 @@ public class RunnersController(
     /// </summary>
     /// <remarks>
     /// The set is case-insensitive itself, since <see cref="RunnerCast.Suggest"/>
-    /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>
-    /// the way <see cref="GetRunnerNames"/> does.
+    /// only asks it <c>Contains</c>. A literal route, so it beats <c>{name}</c>.
     /// </remarks>
     [HttpGet("suggest-name")]
     [RequireRole(PersonRole.Admin)]
@@ -242,31 +241,6 @@ public class RunnersController(
                 })
                 .ToList(),
         };
-    }
-
-    /// <summary>
-    /// The name of every runner heard from lately, most recently heard from
-    /// first, and nothing else.
-    /// </summary>
-    /// <remarks>
-    /// Open to every key, and the same list
-    /// whoever asks: a name is already public - every <c>claim_taken</c> event
-    /// carries it - while where a runner is, whom it is for, what it holds and
-    /// what its line says are what stays inside <see cref="GetRunners"/>'s
-    /// scope. So there is deliberately nothing here to scope, and nothing of
-    /// the caller is read.
-    /// </remarks>
-    [HttpGet("names")]
-    [RequireRole(PersonRole.User, AcceptKey = true)]
-    public async Task<ActionResult<IReadOnlyList<string>>> GetRunnerNames(CancellationToken ct)
-    {
-        var dropBefore = runners.DropBefore(time.GetUtcNow());
-
-        return await db.Runners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= dropBefore)
-            .OrderByDescending(r => r.LastSeenAt)
-            .Select(r => r.Name)
-            .ToListAsync(ct);
     }
 
     /// <summary>
