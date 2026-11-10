@@ -3020,6 +3020,14 @@ written and cleared the way `Budget` and `BriefLimit` are. `IsCheck` is false by
 default and a person's write only — a key's `POST` or `PATCH` of it is refused
 with the rest of the playbook write — and what it means is in [Check](#check).
 
+**A row can be one the dispatcher never picks.** The wire carries
+`UnreachableReason` beside the row: null where [the dispatcher](#the-dispatcher)
+could pick it, otherwise one sentence saying that a dispatch from the row's
+from-column goes to another column, or nowhere. It is derived from the live
+board on every read and stored nowhere, so a column reorder changes it with no
+write to the row, and saving such a row is not refused. A check row from review
+into the protected merge column is reachable.
+
 **`Prompt` is the operator's own wording, `DefaultPrompt` the prescribed
 text.** `Prompt` is null until somebody writes their own; `DefaultPrompt` is
 null on a row a person created and always null on a row built from
