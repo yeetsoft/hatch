@@ -168,11 +168,11 @@ internal sealed record BudgetBar(double FillWidth, double TrackWidth, string Sty
         $"fill {FillWidth:0.##}px of {TrackWidth:0.##}px (style width {StyleWidth}, --usage-color {UsageColor}, drawn {Color})");
 }
 
-/// <summary>One Runners row's Token budget cell: its text, each line's words, each bar, and the activity badge beside the name.</summary>
-internal sealed record RunnerBudgetRow(string Name, string CellText, IReadOnlyList<string> Lines, IReadOnlyList<BudgetBar> Bars, string Badge)
+/// <summary>One Runners row's Token budget cell: its text, each line's words, each bar, and the activity badge beside the name, with the words in its Bounds cell.</summary>
+internal sealed record RunnerBudgetRow(string Name, string CellText, string BoundsText, IReadOnlyList<string> Lines, IReadOnlyList<BudgetBar> Bars, string Badge)
 {
     public override string ToString() =>
-        $"{Name}: badge \"{Badge}\"; cell \"{CellText}\"; lines [{string.Join(" | ", Lines)}]; bars [{string.Join("; ", Bars)}]";
+        $"{Name}: badge \"{Badge}\"; bounds \"{BoundsText}\"; cell \"{CellText}\"; lines [{string.Join(" | ", Lines)}]; bars [{string.Join("; ", Bars)}]";
 }
 
 /// <summary>The Runners page's token budget cells, row by row, and the document's width against its viewport.</summary>
