@@ -1192,7 +1192,8 @@ an empty list. It answers an `AttentionDto`: open questions waiting on
 somebody, pull requests in review split into plain reviews, conflicts, and
 failing builds, how many sit in review with no pull request at all, the
 issues in review that declared they were finished with no code and wait for a
-person to close them (`noCodeHeld`), the
+person to close them (`noCodeHeld`) - not one that is pre-approved or in a
+project with the no-code setting on, which the close hop carries - the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
