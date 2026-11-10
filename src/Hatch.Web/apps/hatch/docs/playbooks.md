@@ -127,7 +127,13 @@ whole number of one or more makes the file invalid, at the line it is on.
 cut off. Left blank, a row has no limit; a value is a whole number of one or
 more, in seconds, and clearing it removes the limit. In a repository's
 `.hatch/playbooks.yaml` it is the `maxRunSeconds` key, held to the same rule.
-It is stored and read back on every row; nothing reads it yet.
+A claim taken under the row copies the limit, so editing the row later does
+not move a claim already running. A claim older than the limit is no longer
+live however often it prints: the limit is judged from when the claim was
+taken, and no heartbeat or line of chatter moves it. The runner stops the
+session at the limit and counts it on the stall ladder, let go and then
+flagged, with the reason run time rather than quiet. A row with no limit, or a
+claim with no playbook, runs as long as it keeps talking.
 
 **Denied tools** is a list of Claude Code permission rules in deny position on
 a row — a bare tool name such as `Edit`, or a scoped pattern such as
