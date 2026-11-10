@@ -370,7 +370,7 @@ describe('attentionTone', () => {
 describe('attentionLabel', () => {
   it('names both halves', () => {
     expect(attentionLabel(attention({ reviews: [review(), review()], questions: [question()] }))).toBe(
-      '2 pull requests to review, 1 question to answer',
+      '1 question to answer, 2 pull requests to review',
     );
   });
 
@@ -381,7 +381,7 @@ describe('attentionLabel', () => {
 
   it('pluralises each half on its own count', () => {
     expect(attentionLabel(attention({ reviews: [review()], questions: [question(), question()] }))).toBe(
-      '1 pull request to review, 2 questions to answer',
+      '2 questions to answer, 1 pull request to review',
     );
   });
 
@@ -405,7 +405,7 @@ describe('attentionLabel', () => {
     );
   });
 
-  it('names a deadlocked issue first, pluralised on its own count', () => {
+  it('names a deadlocked issue, pluralised on its own count', () => {
     expect(attentionLabel(attention({ deadlocked: [deadlocked()] }))).toBe('1 issue deadlocked');
     expect(attentionLabel(attention({ deadlocked: [deadlocked(), deadlocked({ key: 'AER-23' })] }))).toBe(
       '2 issues deadlocked',
@@ -422,16 +422,16 @@ describe('attentionLabel', () => {
     );
   });
 
-  it('puts deadlocked ahead of trunk builds, pull requests and questions', () => {
+  it('puts trunk builds ahead of deadlocked, pull requests and questions', () => {
     expect(
       attentionLabel(attention({ deadlocked: [deadlocked()], trunkBuilds: [trunkBuild()], reviews: [review()] })),
-    ).toBe('1 issue deadlocked, 1 trunk build failing, 1 pull request to review');
+    ).toBe('1 trunk build failing, 1 issue deadlocked, 1 pull request to review');
   });
 
   it('combines all three parts, trunk builds first', () => {
     expect(
       attentionLabel(attention({ trunkBuilds: [trunkBuild()], reviews: [review()], questions: [question()] })),
-    ).toBe('1 trunk build failing, 1 pull request to review, 1 question to answer');
+    ).toBe('1 trunk build failing, 1 question to answer, 1 pull request to review');
   });
 
   it('adds a runner out of usage as its own phrase, singular and plural', () => {
