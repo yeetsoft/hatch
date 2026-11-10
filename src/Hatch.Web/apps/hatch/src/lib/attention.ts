@@ -168,6 +168,16 @@ export function reviewEmptyWords(attention: Attention | null): string {
   return parts.length > 0 ? parts.join(' ') : 'Nothing is up for review.';
 }
 
+/**
+ * Whether `reviewEmptyWords` says anything other than its plain "nothing
+ * here" sentence - the same fact as a boolean, for a row count rather than
+ * words. The two must agree: this is true exactly when `reviewEmptyWords`
+ * would print something other than `'Nothing is up for review.'`.
+ */
+export function reviewWordsCarryAFact(attention: Attention | null): boolean {
+  return (attention?.inReviewWithoutPullRequest ?? 0) > 0 || (attention?.reviewsHeldBack ?? 0) > 0;
+}
+
 /** The other section's empty state. One wording: a question either exists or it
     does not, and there is no second kind of nothing to tell apart. */
 export const questionEmptyWords = (): string => 'Nothing is waiting on an answer.';
@@ -392,4 +402,60 @@ export function closesOnPress(
   if (link.target === '_blank') return false;
   if (press.button !== 0) return false;
   return !(press.metaKey || press.ctrlKey || press.shiftKey || press.altKey);
+}
+
+/**
+ * Whether a section collapses to its empty-state sentence alone, with no row
+ * beneath it. True only when there are no rows to draw and the empty state
+ * itself carries no fact worth keeping open for - a section whose empty
+ * state still says something, such as `reviewEmptyWords`'s "waiting on the
+ * loop", stays open to say it.
+ */
+export function sectionCollapsed(rowCount: number, emptyWordsCarryAFact = false): boolean {
+  return rowCount === 0 && !emptyWordsCarryAFact;
+}
+
+/**
+ * Whether a whole group - Human or Agent - collapses: every section inside
+ * it has nothing to draw. True for an empty list too, since a group with no
+ * sections has nothing open either.
+ */
+export function groupCollapsed(sectionRowCounts: number[]): boolean {
+  return sectionRowCounts.every((rowCount) => rowCount === 0);
+}
+
+/**
+ * One row count per Human section, in the panel's own order, for
+ * `groupCollapsed` to fold over: trunk builds, backup, stalled merge trains,
+ * deadlocked, questions, stalled, reviews, approved-held, landing-held,
+ * no-code-held, runner capacity, waiting on a runner.
+ *
+ * `backup` is a single fact rather than a list - one row when it is not
+ * null, none when it is. `reviews` counts at least one row whenever
+ * `reviewWordsCarryAFact` is true, even with an empty `reviews` list, so a
+ * nonempty empty-state sentence keeps that section open the same way a row
+ * would.
+ */
+export function humanSectionRowCounts(attention: Attention | null): number[] {
+  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  return [
+    (attention.trunkBuilds ?? []).length,
+    attention.backup ? 1 : 0,
+    (attention.trainStalled ?? []).length,
+    (attention.deadlocked ?? []).length,
+    (attention.questions ?? []).length,
+    (attention.stalled ?? []).length,
+    Math.max((attention.reviews ?? []).length, reviewWordsCarryAFact(attention) ? 1 : 0),
+    (attention.approvedHeld ?? []).length,
+    (attention.landingHeld ?? []).length,
+    (attention.noCodeHeld ?? []).length,
+    (attention.runnerCapacity ?? []).length,
+    (attention.waitingOnARunner ?? []).length,
+  ];
+}
+
+/** One row count per Agent section, in the panel's own order: conflicts, then failing builds. */
+export function agentSectionRowCounts(attention: Attention | null): number[] {
+  if (attention === null) return [0, 0];
+  return [(attention.conflicts ?? []).length, (attention.failingBuilds ?? []).length];
 }

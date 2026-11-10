@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agentSectionRowCounts,
   approvedHeldEmptyWords,
   attentionCount,
   attentionLabel,
@@ -10,6 +11,8 @@ import {
   conflictEmptyWords,
   deadlockedEmptyWords,
   failingBuildEmptyWords,
+  groupCollapsed,
+  humanSectionRowCounts,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
   pillCount,
@@ -17,8 +20,10 @@ import {
   resetWords,
   resumeWords,
   reviewEmptyWords,
+  reviewWordsCarryAFact,
   runnerCapacityEmptyWords,
   runnerCapacityWords,
+  sectionCollapsed,
   stalledEmptyWords,
   stalledWords,
   trainStalledWords,
@@ -29,7 +34,7 @@ import {
   waitedWords,
   waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -878,5 +883,115 @@ describe('closesOnPress', () => {
     expect(closesOnPress(link, { ...plain, shiftKey: true })).toBe(false);
     expect(closesOnPress(link, { ...plain, altKey: true })).toBe(false);
     expect(closesOnPress(link, { ...plain, button: 1 })).toBe(false);
+  });
+});
+
+const backupAttention: BackupAttention = { sentence: 'Backup failed last night.', lastSuccessfulAt: null };
+
+describe('reviewWordsCarryAFact', () => {
+  it('is false when neither emptiness has a count', () => {
+    expect(reviewWordsCarryAFact(attention())).toBe(false);
+  });
+
+  it('is true when issues are in review with no pull request recorded', () => {
+    expect(reviewWordsCarryAFact(attention({ inReviewWithoutPullRequest: 3 }))).toBe(true);
+  });
+
+  it('is true when pull requests are held back from review', () => {
+    expect(reviewWordsCarryAFact(attention({ reviewsHeldBack: 2 }))).toBe(true);
+  });
+
+  it('is null-safe', () => {
+    expect(reviewWordsCarryAFact(null)).toBe(false);
+  });
+
+  it('agrees with reviewEmptyWords: true exactly when it says more than "Nothing is up for review."', () => {
+    for (const a of [attention(), attention({ inReviewWithoutPullRequest: 3 }), attention({ reviewsHeldBack: 2 }), null]) {
+      expect(reviewWordsCarryAFact(a)).toBe(reviewEmptyWords(a) !== 'Nothing is up for review.');
+    }
+  });
+});
+
+describe('sectionCollapsed', () => {
+  it('is false when there are rows', () => {
+    expect(sectionCollapsed(3)).toBe(false);
+  });
+
+  it('is true when there are no rows and no fact', () => {
+    expect(sectionCollapsed(0)).toBe(true);
+    expect(sectionCollapsed(0, false)).toBe(true);
+  });
+
+  it('is false when there are no rows but the empty state carries a fact', () => {
+    expect(sectionCollapsed(0, true)).toBe(false);
+  });
+});
+
+describe('groupCollapsed', () => {
+  it('is true when every section is empty', () => {
+    expect(groupCollapsed([0, 0, 0])).toBe(true);
+  });
+
+  it('is true for an empty list of sections', () => {
+    expect(groupCollapsed([])).toBe(true);
+  });
+
+  it('is false when one section has a row', () => {
+    expect(groupCollapsed([0, 1, 0])).toBe(false);
+  });
+});
+
+describe('humanSectionRowCounts', () => {
+  it('is all zeros, one per section, when there is no attention at all', () => {
+    const counts = humanSectionRowCounts(null);
+    expect(counts).toHaveLength(12);
+    expect(counts).toEqual(new Array(12).fill(0));
+  });
+
+  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, runner capacity, waiting on a runner', () => {
+    expect(
+      humanSectionRowCounts(
+        attention({
+          trunkBuilds: Array(2).fill(trunkBuild()),
+          backup: backupAttention,
+          trainStalled: Array(3).fill(trainStalled()),
+          deadlocked: Array(4).fill(deadlocked()),
+          questions: Array(5).fill(question()),
+          stalled: Array(6).fill(stalledIssue()),
+          reviews: Array(7).fill(review()),
+          approvedHeld: Array(8).fill(approvedHeld()),
+          landingHeld: Array(9).fill(landingHeld()),
+          noCodeHeld: Array(10).fill(noCodeHeld()),
+          runnerCapacity: Array(11).fill(runnerCapacity()),
+          waitingOnARunner: Array(12).fill(waitingOnARunner()),
+        }),
+      ),
+    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('counts backup as one row when present, none when null', () => {
+    expect(humanSectionRowCounts(attention({ backup: null }))[1]).toBe(0);
+    expect(humanSectionRowCounts(attention({ backup: backupAttention }))[1]).toBe(1);
+  });
+
+  it('raises the review row to 1 when reviewWordsCarryAFact is true, even with no reviews', () => {
+    expect(humanSectionRowCounts(attention({ reviews: [] }))[6]).toBe(0);
+    expect(humanSectionRowCounts(attention({ reviews: [], inReviewWithoutPullRequest: 1 }))[6]).toBe(1);
+    expect(humanSectionRowCounts(attention({ reviews: [], reviewsHeldBack: 1 }))[6]).toBe(1);
+  });
+});
+
+describe('agentSectionRowCounts', () => {
+  it('counts conflicts then failing builds', () => {
+    expect(agentSectionRowCounts(attention({ conflicts: [conflict(), conflict()], failingBuilds: [] }))).toEqual([2, 0]);
+    expect(
+      agentSectionRowCounts(
+        attention({ conflicts: [], failingBuilds: [{ key: 'AER-1', title: 'A build that failed', type: 'story', pullRequestUrl: null, checks: [] }] }),
+      ),
+    ).toEqual([0, 1]);
+  });
+
+  it('is null-safe', () => {
+    expect(agentSectionRowCounts(null)).toEqual([0, 0]);
   });
 });
