@@ -135,43 +135,44 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
-  it('draws waiting on a runner first, then runner capacity, deadlocked, trunk builds, pull requests, then questions, each with the panel’s own empty wording', () => {
+  it('draws trunk builds first, then deadlocked, questions, pull requests, approved, landed, finished with no code, runner capacity, then waiting on a runner, each with the panel’s own empty wording', () => {
     const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual([
-      'Waiting on a runner',
-      'Runner capacity',
-      'Deadlocked',
       'Trunk builds that fail',
+      'Deadlocked',
+      'Questions to answer',
       'Pull requests to review',
       'Approved, not merging',
       'Landed, not done',
       'Finished with no code',
-      'Questions to answer',
+      'Runner capacity',
+      'Waiting on a runner',
     ]);
 
-    const waitingAt = html.indexOf(waitingOnARunnerEmptyWords());
-    const runnerCapacityAt = html.indexOf(htmlEscaped(runnerCapacityEmptyWords()));
-    const deadlockedAt = html.indexOf(deadlockedEmptyWords());
     const trunkAt = html.indexOf(trunkBuildEmptyWords());
+    const deadlockedAt = html.indexOf(deadlockedEmptyWords());
+    const questionAt = html.indexOf(questionEmptyWords());
     const reviewAt = html.indexOf(reviewEmptyWords(null));
     const approvedHeldAt = html.indexOf(approvedHeldEmptyWords());
     const landingHeldAt = html.indexOf(landingHeldEmptyWords());
     const noCodeHeldAt = html.indexOf(noCodeHeldEmptyWords());
-    const questionAt = html.indexOf(questionEmptyWords());
+    const runnerCapacityAt = html.indexOf(htmlEscaped(runnerCapacityEmptyWords()));
+    const waitingAt = html.indexOf(waitingOnARunnerEmptyWords());
 
-    expect(waitingAt).toBeGreaterThan(-1);
-    expect(waitingAt).toBeLessThan(runnerCapacityAt);
-    expect(runnerCapacityAt).toBeGreaterThan(-1);
-    expect(runnerCapacityAt).toBeLessThan(deadlockedAt);
+    expect(trunkAt).toBeGreaterThan(-1);
+    expect(trunkAt).toBeLessThan(deadlockedAt);
     expect(deadlockedAt).toBeGreaterThan(-1);
-    expect(deadlockedAt).toBeLessThan(trunkAt);
-    expect(trunkAt).toBeLessThan(reviewAt);
+    expect(deadlockedAt).toBeLessThan(questionAt);
+    expect(questionAt).toBeLessThan(reviewAt);
     expect(reviewAt).toBeLessThan(approvedHeldAt);
     expect(approvedHeldAt).toBeLessThan(landingHeldAt);
     expect(landingHeldAt).toBeLessThan(noCodeHeldAt);
-    expect(noCodeHeldAt).toBeLessThan(questionAt);
+    expect(noCodeHeldAt).toBeLessThan(runnerCapacityAt);
+    expect(runnerCapacityAt).toBeGreaterThan(-1);
+    expect(runnerCapacityAt).toBeLessThan(waitingAt);
+    expect(waitingAt).toBeGreaterThan(-1);
   });
 
   it('draws Backups above Deadlocked, with the sentence, the last success and a link to Settings', () => {
@@ -186,10 +187,9 @@ describe('AttentionHuman', () => {
     );
 
     const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
-    expect(headings[0]).toBe('Waiting on a runner');
-    expect(headings[1]).toBe('Runner capacity');
-    expect(headings[2]).toBe('Backups');
-    expect(headings[3]).toBe('Deadlocked');
+    expect(headings[0]).toBe('Trunk builds that fail');
+    expect(headings[1]).toBe('Backups');
+    expect(headings[2]).toBe('Deadlocked');
     expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
     expect(html).toContain('The last backup failed.');
     expect(html).toContain('Last successful backup:');

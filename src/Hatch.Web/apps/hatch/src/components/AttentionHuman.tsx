@@ -118,11 +118,13 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
 }
 
 /**
- * The Human half of what the loop is waiting on a person for: issues waiting
- * on a runner, projects short on runner capacity, a backup that needs attention, stalled merge trains, deadlocked issues, trunk builds that fail, pull requests
- * to review, pull requests approved but not merging, issues landed but not
- * done, questions to answer - in that order, the order somebody would work
- * through them.
+ * The Human half of what the loop is waiting on a person for: trunk builds
+ * that fail, a backup that needs attention, stalled merge trains, deadlocked
+ * issues, questions to answer, pull requests to review, pull requests
+ * approved but not merging, issues landed but not done, issues finished with
+ * no code, projects short on runner capacity, issues waiting on a runner -
+ * in that order. A failing trunk leads because it blocks every merge; the
+ * rest follow in the order somebody would work through them.
  *
  * Exported alone, no outer heading and no `.hatch-attention-group` wrapper, so
  * its caller - the bar's `AttentionPanel`, beside the Agent group it draws
@@ -155,60 +157,16 @@ export function AttentionHuman({
 
   return (
     <>
-      {/* First, since it is the only one a person fixes by changing a runner,
-          not the panel. Always drawn, with an empty state. */}
       <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Waiting on a runner</h3>
+        <h3 className="hatch-attention-heading">Trunk builds that fail</h3>
 
-        {waitingOnARunner.length === 0 ? (
-          <p className="hatch-attention-empty">{waitingOnARunnerEmptyWords()}</p>
-        ) : (
-          <>
-            <ul className="hatch-attention-rows">
-              {waitingOnARunner.map((w) => (
-                <li key={w.key}>
-                  <Link className="hatch-attention-row" to={`/issues/${w.key}`}>
-                    <span className="hatch-attention-row-head">
-                      <span className="hatch-attention-key">{w.key}</span>
-                      <span className="hatch-attention-title">{w.title}</span>
-                    </span>
-                    <span className="hatch-attention-files">{`in ${w.move} - ${w.missing}`}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            {/* Once, and outside every row: each row is already a link, and an
-                anchor inside an anchor is invalid. */}
-            <Link className="hatch-attention-row" to="/runners">
-              <span className="hatch-attention-files">See the Runners page</span>
-            </Link>
-          </>
-        )}
-      </section>
-
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Runner capacity</h3>
-
-        {runnerCapacity.length === 0 ? (
-          <p className="hatch-attention-empty">{runnerCapacityEmptyWords()}</p>
+        {trunkBuilds.length === 0 ? (
+          <p className="hatch-attention-empty">{trunkBuildEmptyWords()}</p>
         ) : (
           <ul className="hatch-attention-rows">
-            {runnerCapacity.map((row) => (
-              <li key={row.projectKey}>
-                <div className="hatch-attention-row hatch-attention-row-plain">
-                  <span className="hatch-attention-row-head">
-                    <span className="hatch-attention-key">{row.projectKey}</span>
-                  </span>
-                  <span className="hatch-attention-files">{runnerCapacityWords(row)}</span>
-                  <span className="hatch-attention-checks">
-                    {row.keys.map((key, i) => (
-                      <span key={key}>
-                        {i > 0 && ', '}
-                        <Link to={`/issues/${key}`}>{key}</Link>
-                      </span>
-                    ))}
-                  </span>
-                </div>
+            {trunkBuilds.map((t) => (
+              <li key={t.id}>
+                <TrunkBuildRow build={t} onFiled={() => void reload()} />
               </li>
             ))}
           </ul>
@@ -286,15 +244,25 @@ export function AttentionHuman({
       </section>
 
       <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Trunk builds that fail</h3>
+        <h3 className="hatch-attention-heading">Questions to answer</h3>
 
-        {trunkBuilds.length === 0 ? (
-          <p className="hatch-attention-empty">{trunkBuildEmptyWords()}</p>
+        {questions.length === 0 ? (
+          <p className="hatch-attention-empty">{questionEmptyWords()}</p>
         ) : (
           <ul className="hatch-attention-rows">
-            {trunkBuilds.map((t) => (
-              <li key={t.id}>
-                <TrunkBuildRow build={t} onFiled={() => void reload()} />
+            {questions.map((q) => (
+              <li key={q.id}>
+                {/* This tab, and to the issue rather than to anything here: a
+                    question is answered on the issue page, with the options it
+                    was asked with. Answering from here is out of scope on
+                    purpose. */}
+                <Link className="hatch-attention-row" to={`/issues/${q.issueKey}`}>
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{q.issueKey}</span>
+                    <span className="hatch-attention-waited">{waitedWords(q.askedAt, now)}</span>
+                  </span>
+                  <span className="hatch-attention-question">{q.body}</span>
+                </Link>
               </li>
             ))}
           </ul>
@@ -412,28 +380,62 @@ export function AttentionHuman({
       </section>
 
       <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Questions to answer</h3>
+        <h3 className="hatch-attention-heading">Runner capacity</h3>
 
-        {questions.length === 0 ? (
-          <p className="hatch-attention-empty">{questionEmptyWords()}</p>
+        {runnerCapacity.length === 0 ? (
+          <p className="hatch-attention-empty">{runnerCapacityEmptyWords()}</p>
         ) : (
           <ul className="hatch-attention-rows">
-            {questions.map((q) => (
-              <li key={q.id}>
-                {/* This tab, and to the issue rather than to anything here: a
-                    question is answered on the issue page, with the options it
-                    was asked with. Answering from here is out of scope on
-                    purpose. */}
-                <Link className="hatch-attention-row" to={`/issues/${q.issueKey}`}>
+            {runnerCapacity.map((row) => (
+              <li key={row.projectKey}>
+                <div className="hatch-attention-row hatch-attention-row-plain">
                   <span className="hatch-attention-row-head">
-                    <span className="hatch-attention-key">{q.issueKey}</span>
-                    <span className="hatch-attention-waited">{waitedWords(q.askedAt, now)}</span>
+                    <span className="hatch-attention-key">{row.projectKey}</span>
                   </span>
-                  <span className="hatch-attention-question">{q.body}</span>
-                </Link>
+                  <span className="hatch-attention-files">{runnerCapacityWords(row)}</span>
+                  <span className="hatch-attention-checks">
+                    {row.keys.map((key, i) => (
+                      <span key={key}>
+                        {i > 0 && ', '}
+                        <Link to={`/issues/${key}`}>{key}</Link>
+                      </span>
+                    ))}
+                  </span>
+                </div>
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      {/* The only one a person fixes by changing a runner, not the panel.
+          Always drawn, with an empty state. */}
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Waiting on a runner</h3>
+
+        {waitingOnARunner.length === 0 ? (
+          <p className="hatch-attention-empty">{waitingOnARunnerEmptyWords()}</p>
+        ) : (
+          <>
+            <ul className="hatch-attention-rows">
+              {waitingOnARunner.map((w) => (
+                <li key={w.key}>
+                  <Link className="hatch-attention-row" to={`/issues/${w.key}`}>
+                    <span className="hatch-attention-row-head">
+                      <span className="hatch-attention-key">{w.key}</span>
+                      <span className="hatch-attention-title">{w.title}</span>
+                    </span>
+                    <span className="hatch-attention-files">{`in ${w.move} - ${w.missing}`}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {/* Once, and outside every row: each row is already a link, and an
+                anchor inside an anchor is invalid. */}
+            <Link className="hatch-attention-row" to="/runners">
+              <span className="hatch-attention-files">See the Runners page</span>
+            </Link>
+          </>
         )}
       </section>
     </>

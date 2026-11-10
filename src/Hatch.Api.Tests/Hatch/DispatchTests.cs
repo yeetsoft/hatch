@@ -1472,6 +1472,70 @@ public class DispatchTests
         Assert.Equal(5, Dispatch.MatchWeave(rows, 1)!.Id);
     }
 
+    // ---- StalledFold: SL-418's one shared held/stall rule ----
+
+    [Fact]
+    public void StalledFold_Held_IsFoldedOnItsOwnSentence()
+    {
+        var fold = Dispatch.StalledFold(held: true, stalledAt: null, stalledWhy: null, letGo: 0, resumeSeconds: 900, resumeLimit: 3, now: Now);
+
+        Assert.NotNull(fold);
+        Assert.StartsWith("held -", fold.Sentence);
+        Assert.Equal(BlockedKinds.Person, fold.Kind);
+    }
+
+    [Fact]
+    public void StalledFold_HeldAndStalled_StillReadsAsHeld()
+    {
+        var fold = Dispatch.StalledFold(held: true, stalledAt: Now, stalledWhy: "left a half-finished merge", letGo: 0, resumeSeconds: 900, resumeLimit: 3, now: Now);
+
+        Assert.NotNull(fold);
+        Assert.StartsWith("held -", fold.Sentence);
+        Assert.Equal(BlockedKinds.Person, fold.Kind);
+    }
+
+    [Fact]
+    public void StalledFold_AResumeSecondsOfZero_NeverResumesUnattended()
+    {
+        var fold = Dispatch.StalledFold(held: false, stalledAt: Now, stalledWhy: null, letGo: 0, resumeSeconds: 0, resumeLimit: 3, now: Now.AddDays(1));
+
+        Assert.NotNull(fold);
+        Assert.Contains("never resumes a marked ticket unattended", fold.Sentence);
+        Assert.Equal(BlockedKinds.Person, fold.Kind);
+    }
+
+    [Fact]
+    public void StalledFold_InsideTheResumeWindow_IsFoldedAsOther()
+    {
+        var fold = Dispatch.StalledFold(held: false, stalledAt: Now, stalledWhy: null, letGo: 0, resumeSeconds: 900, resumeLimit: 3, now: Now.AddMinutes(5));
+
+        Assert.NotNull(fold);
+        Assert.Contains("resumes itself after", fold.Sentence);
+        Assert.Equal(BlockedKinds.Other, fold.Kind);
+    }
+
+    [Fact]
+    public void StalledFold_PastTheWindowAtTheResumeLimit_IsHeldForAPerson()
+    {
+        var fold = Dispatch.StalledFold(held: false, stalledAt: Now, stalledWhy: null, letGo: 3, resumeSeconds: 900, resumeLimit: 3, now: Now.AddMinutes(20));
+
+        Assert.NotNull(fold);
+        Assert.Contains("held for a person now", fold.Sentence);
+        Assert.Equal(BlockedKinds.Person, fold.Kind);
+    }
+
+    [Fact]
+    public void StalledFold_PastTheWindowUnderTheResumeLimit_IsNull()
+    {
+        Assert.Null(Dispatch.StalledFold(held: false, stalledAt: Now, stalledWhy: null, letGo: 2, resumeSeconds: 900, resumeLimit: 3, now: Now.AddMinutes(20)));
+    }
+
+    [Fact]
+    public void StalledFold_NeitherHeldNorStalled_IsNull()
+    {
+        Assert.Null(Dispatch.StalledFold(held: false, stalledAt: null, stalledWhy: null, letGo: 0, resumeSeconds: 900, resumeLimit: 3, now: Now));
+    }
+
     // ---- Helpers ----
 
     private static PlaybookFileRow FileRow(
