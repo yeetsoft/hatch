@@ -4009,6 +4009,122 @@ public class RunnersControllerTests
         Assert.Equal(Now, (await h.Db.Runners.AsNoTracking().SingleAsync()).RetiredAt);
     }
 
+    private static EfHatchRunner Tagged(string name, Guid? owner, string tags, int minutesAgo = 0, string? retiredBy = null, string? where = RenamedWhere)
+    {
+        var row = Renamed(name, owner, where);
+        row.Tags = tags;
+        row.LastSeenAt = Now.AddMinutes(-minutesAgo);
+        if (retiredBy is not null) { row.RetiredAt = Now.AddMinutes(-5); row.RetiredBy = retiredBy; }
+        return row;
+    }
+
+    private static async Task<EfHatchRunnerConfig?> ConfigOfAsync(Harness h) =>
+        await h.Db.RunnerConfigs.AsNoTracking().SingleOrDefaultAsync(c => c.ApiKeyId == h.Caller.Key!.Id);
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_TaggedRowsItRetires_AndNoConfig_CarryTheirTagsOntoANewConfig()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu\nbackend"));
+        await h.Db.SaveChangesAsync();
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        var config = await ConfigOfAsync(h);
+        Assert.NotNull(config);
+        Assert.Equal(["gpu", "backend"], RunnerTagColumn.Read(config.Tags));
+        Assert.Equal(["backend", "gpu"], Value(result).Tags!.Order());
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnExistingConfigWithNoTags_IsLeftAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        var earlier = Now.AddDays(-3);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, Tags = "[]", UpdatedAt = earlier });
+        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        var config = await ConfigOfAsync(h);
+        Assert.Equal("[]", config!.Tags);
+        Assert.Equal(earlier, config.UpdatedAt);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnExistingTaggedConfig_IsLeftAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig { ApiKeyId = h.Caller.Key!.Id, Tags = RunnerTagColumn.Write(["mine"]), UpdatedAt = Now });
+        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        Assert.Equal(["mine"], RunnerTagColumn.Read((await ConfigOfAsync(h))!.Tags));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnAlreadyRetiredRowAndOneRetiredNow_GiveTheirUnion()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Tagged("earlier:/two", h.PersonId, "gpu\nshared", minutesAgo: 30, retiredBy: "hatch", where: "host:/checkouts/two"));
+        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "shared\nbackend", minutesAgo: 1));
+        h.Db.Runners.Add(Tagged("other-key:/three", h.PersonId, "not-mine", minutesAgo: 30, retiredBy: "someone-else", where: "host:/checkouts/three"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        Assert.Equal(["shared", "backend", "gpu"], RunnerTagColumn.Read((await ConfigOfAsync(h))!.Tags));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_RowsWithNoTags_CreateNoConfig()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Renamed("old:/one", h.PersonId));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        Assert.Null(await ConfigOfAsync(h));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_MoreTagsThanTheLimit_CarryTheMostRecentlyHeardUpToTheLimit()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Tagged("older:/one", h.PersonId, "a1\na2\na3\na4\na5", minutesAgo: 10));
+        h.Db.Runners.Add(Tagged("newer:/two", h.PersonId, "b1\nb2\nb3\nb4\nb5", minutesAgo: 1));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: RenamedWhere));
+
+        var tags = RunnerTagColumn.Read((await ConfigOfAsync(h))!.Tags);
+        Assert.Equal(RunnerTags.MaxCount, tags.Count);
+        Assert.Equal(["b1", "b2", "b3", "b4", "b5", "a1", "a2", "a3"], tags);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AOnceBeat_CarriesNothing()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: connectionString);
+        h.Db.Runners.Add(Tagged("old:/one", h.PersonId, "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "once", Where: RenamedWhere));
+
+        Assert.Null(await ConfigOfAsync(h));
+    }
+
     [SkippableFact]
     public async Task SessionHeartbeat_WithNoOwnerAndTheWallUp_RetiresNothing_AndWithTheWallOffMatchesNullToNull()
     {
@@ -5100,7 +5216,7 @@ public class RunnersControllerTests
         {
             Runners = new RunnersController(db, runners, claims, caller, actors, time, Options.Create(new AuthOptions { Enabled = wall }),
                 siteSettings ?? new StubSiteSettings(runnerDefaultMaxTokens: defaultMaxTokens, runnerDefaultMaxTokensPerHour: defaultMaxTokensPerHour), keys,
-                sessions, dispatch),
+                sessions, dispatch, NullLogger<RunnersController>.Instance),
             Issues = new IssuesController(db, new RankService(db), new StubActorDirectory(), claims, caller, time, new ProjectAccess(db, new StubActorDirectory())),
             Db = db,
             Time = time,

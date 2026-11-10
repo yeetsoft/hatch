@@ -43,7 +43,7 @@ namespace Hatch.Api.Modules.Hatch;
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,
-    RunnerSessions sessions, Dispatch dispatch) : ControllerBase
+    RunnerSessions sessions, Dispatch dispatch, ILogger<RunnersController> logger) : ControllerBase
 {
     /// <summary>
     /// Every runner this Hatch knows of: one entry per visible key - revoked
@@ -325,7 +325,14 @@ public class RunnersController(
             await db.SaveChangesAsync(ct);
         }
 
-        if (kind == EfHatchRunner.LoopKind) await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
+        if (kind == EfHatchRunner.LoopKind)
+        {
+            await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
+
+            // Before the config read below, so this beat's instruction already
+            // carries what was carried.
+            await CarryTagsAsync(key.Id, key.Name, now, ct);
+        }
 
         var drives = (await TrainDriversAsync(key.Name, now, ct)).GetValueOrDefault(key.Name, []);
 
@@ -574,6 +581,71 @@ public class RunnersController(
         }
 
         if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Carries the tags older runner rows held onto a key that has never had a
+    /// config row - the upgrade cliff HA-2042 left. A runner's tags live on its
+    /// key's config now, and the migration that made the table left it empty,
+    /// so a key whose rows were tagged would otherwise come up untagged the
+    /// moment those rows retired. Once only: a config row that exists, even
+    /// one with no tags, is the operator's and is never touched, which is how
+    /// a deliberate "none" is told apart from "never set". A union with no
+    /// tags in it creates nothing, for the same reason - an empty row would
+    /// turn "never set" into "none". Reads the key's own-named row and every
+    /// row the key's name retired, whether this beat retired it or an earlier
+    /// one did; the most recently heard rows win when the union passes
+    /// <see cref="RunnerTags.MaxCount"/>.
+    /// </summary>
+    private async Task CarryTagsAsync(Guid keyId, string keyName, DateTimeOffset now, CancellationToken ct)
+    {
+        if (await db.RunnerConfigs.AnyAsync(c => c.ApiKeyId == keyId, ct)) return;
+
+        var rows = await db.Runners.AsNoTracking()
+            .Where(r => (r.RetiredBy == keyName || r.Name == keyName) && r.Tags != null && r.Tags != "")
+            .OrderByDescending(r => r.LastSeenAt)
+            .Select(r => new { r.Name, r.Tags })
+            .ToListAsync(ct);
+
+        var union = new List<string>();
+        var from = new List<string>();
+        foreach (var row in rows)
+        {
+            var carried = false;
+            foreach (var raw in row.Tags!.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                // One at a time, so a tag the rule refuses is skipped rather
+                // than costing the rest.
+                if (RunnerTags.Normalise([raw], out var one) is not null || one.Count == 0) continue;
+                if (union.Count >= RunnerTags.MaxCount || union.Contains(one[0])) continue;
+
+                union.Add(one[0]);
+                carried = true;
+            }
+
+            if (carried) from.Add(row.Name);
+        }
+
+        if (union.Count == 0) return;
+
+        var config = new EfHatchRunnerConfig { ApiKeyId = keyId, Tags = RunnerTagColumn.Write(union), UpdatedAt = now };
+        db.RunnerConfigs.Add(config);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Two checkouts on one key can both find no config and both insert
+            // one. The loser stands down: the winner's row is what the
+            // instruction read finds next.
+            db.Entry(config).State = EntityState.Detached;
+            return;
+        }
+
+        logger.LogInformation("Carried runner tags {Tags} onto key {Key}'s config from {Rows}",
+            string.Join(',', union), keyName, string.Join(',', from));
     }
 
     /// <summary>
