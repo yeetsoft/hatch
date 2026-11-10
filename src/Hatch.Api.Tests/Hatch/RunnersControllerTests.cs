@@ -58,14 +58,15 @@ public class RunnersControllerTests
         Assert.Equal("Nathan", instruction.For);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AKeyWithNoOwner_FallsBackToTheKeysOwnName()
     {
-        var h = await NewAsync(program: true);
+        var h = await NewAsync(program: true, connectionString: await ConnectAsync());
 
         // The stub key is called "hatch", and nobody has set it an owner - the
         // directory's principal is null, the same as an admin never having
-        // visited the API Keys page.
+        // visited the API Keys page. A key-bearing beat lands as a session now
+        // (HA-2166), which is why this needs a real Postgres.
         var instruction = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
 
         Assert.Equal("hatch", instruction.For);
@@ -734,19 +735,22 @@ public class RunnersControllerTests
         Assert.Contains("63", row.Usage);
     }
 
-    [Fact]
-    public async Task ABeatFromAKeyThatBelongsToNobody_StoresTheReadingWithNoOwner_AndIsNotRefused()
+    [SkippableFact]
+    public async Task ABeatFromAKeyThatBelongsToNobody_LandsAsASessionWithNoOwner_AndIsNotRefused()
     {
-        var h = await NewAsync(program: true);
+        var h = await NewAsync(program: true, connectionString: await ConnectAsync());
 
         // Not refused: BeatAsync throws on anything but a value, so a heartbeat
-        // from an ownerless key reaching this line at all is the assertion.
+        // from an ownerless key reaching this line at all is the assertion. A
+        // key-bearing beat lands as a session and never writes LegacyRunners
+        // (HA-2166).
         await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
             Usage: [new RunnerUsageWindowDto("session", "Session", 10, null)], UsageReadAt: Now));
 
-        var row = await h.RowAsync();
-        Assert.Null(row.ForPersonId);
-        Assert.Contains("10", row.Usage);
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
+        var session = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(h.Caller.Key!.Id, session.ApiKeyId);
+        Assert.Contains("10", session.Usage);
     }
 
     [Fact]
@@ -2844,8 +2848,13 @@ public class RunnersControllerTests
     {
         var h = await NewAsync(wall: true, program: true, keyOwner: PersonRole.User);
         var alice = h.Actors.AddPerson("Alice");
-        await h.LoopBeatAsync(Runner, alice);
-        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+
+        // Seeded directly rather than beaten: a key-bearing beat now lands as
+        // a session of the caller's own key (HA-2166), not a LegacyRunners row
+        // under either of these names.
+        h.Db.LegacyRunners.Add(Renamed(Runner, alice.Id, where: Runner));
+        h.Db.LegacyRunners.Add(Renamed("here:/checkouts/nobody", null, where: "here:/checkouts/nobody"));
+        await h.Db.SaveChangesAsync();
 
         var rows = await h.ListAsync();
 
@@ -2877,17 +2886,28 @@ public class RunnersControllerTests
 
     // ---- Who sees which runner ----
 
-    /// <summary>Three rows: Alice's, Bob's, and nobody's - ending with the caller's own <c>Principal</c> left at null, the last beat's.</summary>
+    /// <summary>
+    /// Three rows: Alice's, Bob's, and nobody's, seeded directly rather than
+    /// beaten - a key-bearing beat now lands as a session rather than a
+    /// LegacyRunners row under the name it was given (HA-2166), so a caller
+    /// that is a key can no longer produce three differently-named rows this
+    /// way. <c>LastSeenAt</c> still steps 10 seconds apart, the order
+    /// <see cref="WithTheWallOff_EveryRunnerIsVisible"/> and its siblings read.
+    /// </summary>
     private static async Task SeedThreeAsync(Harness h)
     {
         var alice = h.Actors.AddPerson("Alice");
         var bob = h.Actors.AddPerson("Bob");
 
-        await h.LoopBeatAsync("here:/checkouts/alice", alice);
-        h.Time.Advance(TimeSpan.FromSeconds(10));
-        await h.LoopBeatAsync("here:/checkouts/bob", bob);
-        h.Time.Advance(TimeSpan.FromSeconds(10));
-        await h.LoopBeatAsync("here:/checkouts/nobody", null);
+        var aliceRow = Renamed("here:/checkouts/alice", alice.Id, where: "here:/checkouts/alice");
+        aliceRow.LastSeenAt = Now;
+        var bobRow = Renamed("here:/checkouts/bob", bob.Id, where: "here:/checkouts/bob");
+        bobRow.LastSeenAt = Now.AddSeconds(10);
+        var nobodyRow = Renamed("here:/checkouts/nobody", null, where: "here:/checkouts/nobody");
+        nobodyRow.LastSeenAt = Now.AddSeconds(20);
+
+        h.Db.LegacyRunners.AddRange(aliceRow, bobRow, nobodyRow);
+        await h.Db.SaveChangesAsync();
     }
 
     [Fact]
@@ -2930,7 +2950,8 @@ public class RunnersControllerTests
         await SeedThreeAsync(h);
 
         h.Actors.AddPerson("Owner", h.PersonId);
-        await h.LoopBeatAsync("here:/checkouts/owner", new Actor(ActorKind.Person, h.PersonId, "Owner"));
+        h.Db.LegacyRunners.Add(Renamed("here:/checkouts/owner", h.PersonId, where: "here:/checkouts/owner"));
+        await h.Db.SaveChangesAsync();
         h.Actors.Principal = new Actor(ActorKind.Person, h.PersonId, "Owner");
 
         var rows = await h.ListAsync();
@@ -2969,7 +2990,13 @@ public class RunnersControllerTests
     public async Task SettingWhatARunnerMaySpend_IsClosedToAKey()
     {
         var h = await NewAsync(program: true);
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        // Seeded directly rather than beaten: a key-bearing beat now lands as
+        // a session, not a LegacyRunners row under this name (HA-2166) - the
+        // refusal under test is NotAPerson's, read before any row lookup, so
+        // the row just needs to exist for OneAsync to find.
+        h.Db.LegacyRunners.Add(Renamed(Runner, null));
+        await h.Db.SaveChangesAsync();
 
         var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxSpend: "1000"), default);
 
@@ -2981,7 +3008,8 @@ public class RunnersControllerTests
     public async Task SettingWhatARunnerMayTokenSpend_IsClosedToAKey()
     {
         var h = await NewAsync(program: true);
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        h.Db.LegacyRunners.Add(Renamed(Runner, null));
+        await h.Db.SaveChangesAsync();
 
         var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(MaxTokens: "2M"), default);
 
@@ -2993,7 +3021,8 @@ public class RunnersControllerTests
     public async Task SettingARunnersTags_IsClosedToAKey()
     {
         var h = await NewAsync(program: true);
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        h.Db.LegacyRunners.Add(Renamed(Runner, null));
+        await h.Db.SaveChangesAsync();
 
         var refusal = await h.Runners.PatchRunner(Runner, new RunnerPatchRequest(Tags: ["gpu"]), default);
 
@@ -4353,6 +4382,100 @@ public class RunnersControllerTests
         Assert.Equal(Now, (await h.Db.LegacyRunners.AsNoTracking().SingleAsync()).AdoptedAt);
     }
 
+    // ---- Adopting by name, on a key-bearing beat (HA-2166) ----
+
+    [SkippableFact]
+    public async Task Heartbeat_WithAKey_LandsAsASession()
+    {
+        var h = await NewAsync(program: true, connectionString: await ConnectAsync());
+
+        var result = await h.BeatAsKeyAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Tags: ["fast"]));
+
+        var instruction = Value(result);
+        Assert.NotNull(instruction.SessionId);
+        Assert.Equal(1, await h.Db.RunnerSessions.CountAsync());
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task Heartbeat_WithAKey_AdoptsTheRowOfThatName()
+    {
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: await ConnectAsync());
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu\nbackend"));
+        await h.Db.SaveChangesAsync();
+
+        await h.BeatAsync("old:/one", new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now, row.AdoptedAt);
+        Assert.Equal("hatch", row.AdoptedInto);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync(c => c.ApiKeyId == h.Caller.Key!.Id);
+        Assert.Equal(["gpu", "backend"], RunnerTagColumn.Read(config.Tags));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_LegacyName_AdoptsTheRow()
+    {
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: await ConnectAsync());
+        h.Db.LegacyRunners.Add(Tagged("old:/one", h.PersonId, "gpu\nbackend"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LegacyName: "old:/one"));
+
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now, row.AdoptedAt);
+        Assert.Equal("hatch", row.AdoptedInto);
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync(c => c.ApiKeyId == h.Caller.Key!.Id);
+        Assert.Equal(["gpu", "backend"], RunnerTagColumn.Read(config.Tags));
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_LegacyName_ARowOfAnotherOwner_IsNotAdopted()
+    {
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: await ConnectAsync());
+        h.Db.LegacyRunners.Add(Tagged("old:/one", Guid.NewGuid(), "gpu"));
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LegacyName: "old:/one"));
+
+        var row = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Null(row.AdoptedAt);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_LegacyName_AnAlreadyAdoptedRow_IsLeftAlone()
+    {
+        var h = await NewAsync(program: true, wall: true, keyOwner: PersonRole.User, connectionString: await ConnectAsync());
+        var row = Tagged("old:/one", h.PersonId, "gpu");
+        row.AdoptedAt = Now.AddMinutes(-5);
+        row.AdoptedInto = "somebody-else";
+        h.Db.LegacyRunners.Add(row);
+        await h.Db.SaveChangesAsync();
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LegacyName: "old:/one"));
+
+        var stored = await h.Db.LegacyRunners.AsNoTracking().SingleAsync();
+        Assert.Equal(Now.AddMinutes(-5), stored.AdoptedAt);
+        Assert.Equal("somebody-else", stored.AdoptedInto);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_LegacyName_NoSuchRow_ChangesNothing()
+    {
+        var h = await NewAsync(program: true, connectionString: await ConnectAsync());
+
+        var result = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, LegacyName: "old:/one"));
+
+        Assert.NotNull(Value(result).SessionId);
+        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
     [SkippableFact]
     public async Task SessionHeartbeat_AFreshBeatAtAFreeWhere_InsertsOneRowAndNarrowsItsBounds()
     {
@@ -5162,6 +5285,14 @@ public class RunnersControllerTests
 
         public async Task<RunnerInstructionDto> BeatAsync(string name, RunnerHeartbeatRequest request) =>
             Value(await Runners.Heartbeat(name, request, default));
+
+        /// <summary>
+        /// The raw result of a <c>{name}</c> beat, for a caller whose key may
+        /// route it as a session rather than answer a value - unlike
+        /// <see cref="BeatAsync"/>, which throws on anything else.
+        /// </summary>
+        public Task<ActionResult<RunnerInstructionDto>> BeatAsKeyAsync(string name, RunnerHeartbeatRequest request) =>
+            Runners.Heartbeat(name, request, default);
 
         public async Task<ActionResult<RunnerInstructionDto>> SessionBeatAsync(RunnerHeartbeatRequest request, string? ip = null)
         {

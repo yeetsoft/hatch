@@ -346,52 +346,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             if (group.Count() != 1) continue;
             if (!keysByOwner.TryGetValue(group.Key, out var ownerKeys) || ownerKeys.Count != 1) continue;
 
-            var row = group.Single();
-            var key = ownerKeys[0];
-
-            if (!await db.RunnerConfigs.AnyAsync(c => c.ApiKeyId == key.Id, ct))
-            {
-                db.RunnerConfigs.Add(new EfHatchRunnerConfig
-                {
-                    ApiKeyId = key.Id,
-                    Under = row.Under,
-                    MaxRuns = row.MaxRuns,
-                    MaxSpend = row.MaxSpend,
-                    MaxTokens = row.MaxTokens,
-                    MaxTokensPerHour = row.MaxTokensPerHour,
-                    UntilAt = row.UntilAt,
-                    Tags = RunnerTagColumn.Write(AdoptedTags(row.Tags)),
-                    UpdatedAt = now,
-                });
-            }
-
-            if (!string.Equals(row.Name, key.Name, StringComparison.Ordinal))
-            {
-                var toRekey = await db.RunnerOmissions.Where(o => o.RunnerName == row.Name).ToListAsync(ct);
-                foreach (var omission in toRekey)
-                {
-                    var exists = addedOmissions.Contains((omission.IssueId, key.Name))
-                        || await db.RunnerOmissions.AnyAsync(o => o.IssueId == omission.IssueId && o.RunnerName == key.Name, ct);
-
-                    db.RunnerOmissions.Remove(omission);
-
-                    if (!exists)
-                    {
-                        db.RunnerOmissions.Add(new EfHatchIssueRunnerOmission
-                        {
-                            IssueId = omission.IssueId,
-                            RunnerName = key.Name,
-                            Reason = omission.Reason,
-                            By = omission.By,
-                            At = omission.At,
-                        });
-                        addedOmissions.Add((omission.IssueId, key.Name));
-                    }
-                }
-            }
-
-            row.AdoptedAt = now;
-            row.AdoptedInto = key.Name;
+            await AdoptRowAsync(db, group.Single(), ownerKeys[0], now, addedOmissions, ct);
         }
 
         if (!db.ChangeTracker.HasChanges()) return;
@@ -404,6 +359,64 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         {
             db.ChangeTracker.Clear();
         }
+    }
+
+    /// <summary>
+    /// The per-row half of <see cref="AdoptByOwnerAsync"/>'s loop, shared with
+    /// a key-bearing beat that names an unadopted row by name
+    /// (<see cref="RunnersController"/>'s <c>AdoptByNameAsync</c>) - both land
+    /// a row onto a key through the same config-if-none, omission re-key and
+    /// mark. Does not save; the caller's own save (and its
+    /// <see cref="DbUpdateException"/> handling for a concurrent beat) is
+    /// unchanged by this call.
+    /// </summary>
+    public async Task AdoptRowAsync(HatchContext db, EfHatchRunner row, EfApiKey key, DateTimeOffset now, ISet<(long IssueId, string RunnerName)>? addedOmissions, CancellationToken ct)
+    {
+        addedOmissions ??= new HashSet<(long IssueId, string RunnerName)>();
+
+        if (!await db.RunnerConfigs.AnyAsync(c => c.ApiKeyId == key.Id, ct))
+        {
+            db.RunnerConfigs.Add(new EfHatchRunnerConfig
+            {
+                ApiKeyId = key.Id,
+                Under = row.Under,
+                MaxRuns = row.MaxRuns,
+                MaxSpend = row.MaxSpend,
+                MaxTokens = row.MaxTokens,
+                MaxTokensPerHour = row.MaxTokensPerHour,
+                UntilAt = row.UntilAt,
+                Tags = RunnerTagColumn.Write(AdoptedTags(row.Tags)),
+                UpdatedAt = now,
+            });
+        }
+
+        if (!string.Equals(row.Name, key.Name, StringComparison.Ordinal))
+        {
+            var toRekey = await db.RunnerOmissions.Where(o => o.RunnerName == row.Name).ToListAsync(ct);
+            foreach (var omission in toRekey)
+            {
+                var exists = addedOmissions.Contains((omission.IssueId, key.Name))
+                    || await db.RunnerOmissions.AnyAsync(o => o.IssueId == omission.IssueId && o.RunnerName == key.Name, ct);
+
+                db.RunnerOmissions.Remove(omission);
+
+                if (!exists)
+                {
+                    db.RunnerOmissions.Add(new EfHatchIssueRunnerOmission
+                    {
+                        IssueId = omission.IssueId,
+                        RunnerName = key.Name,
+                        Reason = omission.Reason,
+                        By = omission.By,
+                        At = omission.At,
+                    });
+                    addedOmissions.Add((omission.IssueId, key.Name));
+                }
+            }
+        }
+
+        row.AdoptedAt = now;
+        row.AdoptedInto = key.Name;
     }
 
     /// <summary>
