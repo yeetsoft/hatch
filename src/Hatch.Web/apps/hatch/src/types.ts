@@ -710,6 +710,8 @@ export interface Issue {
   onePrOwn: boolean | null;
   /** See IssueCard.onePrFrom and IssueDto.OnePrFrom. */
   onePrFrom: string | null;
+  /** See IssueDto.OnePrEnforced. */
+  onePrEnforced: boolean;
   /** See IssueDto.ReleaseNote. */
   releaseNote: string | null;
   /** When an increment last left this ticket where it found it, or null.

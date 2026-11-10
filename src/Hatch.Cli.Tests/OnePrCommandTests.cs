@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace Hatch.Cli.Tests;
 
 /// <summary>
@@ -108,6 +110,72 @@ public sealed class OnePrCommandTests
     }
 
     // ---- show ----
+
+    [Fact]
+    public void An_enforced_project_says_so_and_says_when_an_override_is_locked()
+    {
+        Assert.Equal(
+            "one-pr:   off (the project's default, enforced)",
+            OnePrCommand.Draw(AStory() with { OnePrEnforced = true }));
+        Assert.Equal(
+            "one-pr:   on (the project's default, enforced)",
+            OnePrCommand.Draw(AStory(onePr: true) with { OnePrEnforced = true }));
+        Assert.Equal(
+            "one-pr:   off (set on this story before the project enforced it; locked)",
+            OnePrCommand.Draw(AStory(onePr: false, own: false) with { OnePrEnforced = true }));
+        Assert.Equal(
+            "one-pr:   on (set on this bug before the project enforced it; locked)",
+            OnePrCommand.Draw(Fixtures.Issue("AER-8", type: "bug") with { OnePr = true, OnePrOwn = true, OnePrEnforced = true }));
+    }
+
+    [Fact]
+    public void A_task_reads_the_same_under_an_enforced_project()
+    {
+        Assert.Equal(
+            "one-pr:   on (inherited from AER-5)",
+            OnePrCommand.Draw(Fixtures.Issue("AER-6") with { OnePr = true, OnePrFrom = "AER-5", OnePrEnforced = true }));
+        Assert.Equal(
+            "one-pr:   off (not under a story or bug)",
+            OnePrCommand.Draw(Fixtures.Issue("AER-7") with { OnePrEnforced = true }));
+    }
+
+    [Fact]
+    public async Task An_enforced_projects_refusal_is_printed_in_the_servers_words_and_not_retried()
+    {
+        using var h = new CliHarness();
+        const string sentence = "AER-5 enforces its project's one-PR default; only inherit is accepted";
+        h.Wire.Reply("PUT", "/api/hatch/issues/AER-5/one-pr", HttpStatusCode.Conflict, sentence);
+
+        var thrown = await Assert.ThrowsAsync<HatchException>(
+            () => new OnePrCommand(h.Cli).RunAsync(["AER-5", "on"], default));
+
+        Assert.Equal($"hatch: 409 - {sentence}", thrown.Message);
+        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-5/one-pr"));
+    }
+
+    [Fact]
+    public async Task Usage_says_a_project_may_enforce_its_default()
+    {
+        using var h = new CliHarness();
+
+        Assert.Equal(0, await new OnePrCommand(h.Cli).RunAsync(["-h"], default));
+
+        Assert.Contains("enforce", h.Said);
+        Assert.Contains("only inherit", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_the_line_for_an_inheriting_story_of_an_enforced_project()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-5", AStory() with { OnePrEnforced = true });
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-5/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-5"], default);
+
+        Assert.Contains("one-pr:   off (the project's default, enforced)", h.Said);
+    }
 
     [Fact]
     public async Task Show_prints_the_line_where_it_is_on()
