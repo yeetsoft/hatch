@@ -18,13 +18,12 @@ is up with `HATCH_AUTH`. It is off until they turn it on.
 - **Off.** Nothing asks who you are, and everyone is the one local person. That
   person is named from **Settings → Your name**, shown only where the wall is
   off. Until it is set, Hatch uses the account name of whoever started it, and
-  failing that, `friend`. A runner with no key names itself with a header, so
-  the trail still says which runner did what, but a name is all that header is:
-  it proves nothing. A program is still refused the writes only a person may
-  make. **Users** and **API keys** are not in the nav, because with no wall
-  nobody holds a role.
-- **On.** People sign in with Google. The runner header is ignored, and a
-  request that carries no credential is refused.
+  failing that, `friend`. A caller with no key is that local person, never a
+  program - a runner is named by its key or not at all. A program is still
+  refused the writes only a person may make. **Users** and **API keys** are
+  not in the nav, because with no wall nobody holds a role.
+- **On.** People sign in with Google. A request that carries no credential is
+  refused.
 
 [The wall, off, on and required](the-wall-off-on-and-required) says what
 each state changes, and how to turn it on.
@@ -120,8 +119,8 @@ name, that HA-1937 retires.
   `key_not_accepted`, and with the wall off they refuse any program the same
   way. Among them: a ticket's assignee, priority, hold and pre-approval; its
   WIP limit and the WIP section; playbooks, per project and per ticket — the
-  one entry here that also refuses a call with no key, no runner header and
-  no browser's `Sec-Fetch-Mode` mark, so "person" means a person at the
+  one entry here that also refuses a call with no key and no browser's
+  `Sec-Fetch-Mode` mark, so "person" means a person at the
   browser specifically, not merely a signed-in session with no UI; a
   column's settings; a project's repositories, logo, landing and auto-heal
   settings, playbook source and members; Hatch's own settings; a runner's

@@ -28,19 +28,19 @@ started Hatch; failing that, `friend` (`Services/Auth/LocalCaller.cs`).
 Every request is allowed — there is no gate to pass
 (`Services/Auth/AuthGate.cs:268`).
 
-A program fares the same way. A runner with no key names itself with a
-header, so the trail still says which runner did what, though a name is all
-that header proves; it is dropped only once the wall goes up
-(`Common/AuthMiddleware.cs:51`). No key is needed here, and `hatch config`
-takes a blank. [The container runner](the-container-runner) works only in
-this posture: it fetches its credential by asking Hatch for it, and a Hatch
-with its wall up refuses that ask outright.
+A caller with no key is that local person here, never a program - a runner
+is named by its key, whatever the wall is set to, and a loop with no key
+refuses before it takes a lock, a claim or makes a request. A read command
+still works with no key; `hatch config` takes a blank one.
+[The container runner](the-container-runner) works only in this posture: it
+fetches its agent credential by asking Hatch for it, and a Hatch with its
+wall up refuses that ask outright.
 
 ## On
 
 A request carrying no cookie and no key is refused, and a page load with
-neither is sent to sign in at `/apps/auth/`. The runner header means
-nothing here — On listens only to a cookie or a key. **Manage → Users** and
+neither is sent to sign in at `/apps/auth/` — On listens only to a cookie or
+a key. **Manage → Users** and
 **Manage → API keys** appear in the nav, because there is now a role to
 hold and a key to mint. `migrate` and `api` have to be given the same
 `Auth__*` lines, which Compose already does (`compose.yaml:56-61`).

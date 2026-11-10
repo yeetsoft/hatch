@@ -90,13 +90,11 @@ That is not ordinary secret hygiene: Hatch ships to other operators, and a
 credential in the artifact is one operator's credential inherited by everyone
 who clones it (`ethos.md`, on your Hatch's own Docs page).
 
-The key is optional. Against a Hatch started with its wall off
-(`auth-architecture.md` on your Hatch's own Docs page, "Local mode") there is no
-credential to present, and every call names itself with an `X-Hatch-Runner`
-header instead — which is a name and not a proof, and only that Hatch reads one.
-So a `401` is two different sentences, and says which happened: a key that was
-sent and refused is a key to go and look at, and no key at all is a Hatch with
-its wall on and nothing to look at yet.
+A loop needs a key, whether the wall is on or off; a keyless call reads as
+the local person, never a program. So a `401` is two different sentences,
+and says which happened: a key that was sent and refused is a key to go and
+look at, and no key at all is a Hatch with its wall on and nothing to look
+at yet.
 
 `hatch work` reads `work/next`, then spawns a headless session with the
 playbook's prompt, model and effort. It prints the session id first and last
