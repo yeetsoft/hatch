@@ -41,6 +41,30 @@ its own `.hatch/playbooks.yaml` stands in for its project rows here, matched
 by the same rules above, and a move the file has no row for falls through to
 the board-wide table.
 
+## A row the dispatcher can never pick
+
+A row runs only when its to column is the column the board would send the
+issue to from the row's from column: the next column along, the review column
+to itself (a review playbook), or, for a check row, the merge column after
+review. A row aimed anywhere else still saves, but the dispatcher never picks
+it, and the issue takes the next matching row instead. Hatch does not let a
+playbook skip columns, so a row that tries to is dead weight rather than a
+shortcut.
+
+The Playbooks page marks such a row with a red badge carrying the column a
+dispatch actually goes to — or saying that nothing is dispatched from the
+row's from column, when that is the case. The badge appears on board rows, on
+a repo-sourced project's file rows merged into the table under its project
+filter, and on the rows in each "Files on the trunk" card.
+
+The mark is worked out on every read from the board's columns as they stand,
+never stored. So reordering the columns can create or clear it on a row
+nobody touched, and after a save it appears on the next read of the page, not
+inside the edit dialog.
+
+To fix a marked row, re-aim it at the column the badge names, or delete it.
+For a file row, either one is a commit to the file on the trunk.
+
 ## Model and effort
 
 `Model` is one of four aliases — `haiku`, `sonnet`, `opus`, `fable` — rather
