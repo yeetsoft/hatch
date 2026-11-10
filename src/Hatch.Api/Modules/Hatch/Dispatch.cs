@@ -18,6 +18,12 @@ public sealed class Dispatch(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
     IAuthService? keys = null, RunnerSessions? sessions = null, Runners? runners = null)
 {
+    /// <summary>The seconds a stalled issue resumes itself after, as <see cref="IssueClaims"/> reads it.</summary>
+    public int StallResumeSeconds => claims.StallResumeSeconds;
+
+    /// <summary>How many times in a row a stalled issue resumes before the board holds it for a person, as <see cref="IssueClaims"/> reads it.</summary>
+    public int StallResumeLimit => claims.StallResumeLimit;
+
     // ---- The walk ----
 
     /// <summary>
@@ -1392,6 +1398,39 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// Why this issue is held or stalled, read the same way by every caller:
+    /// <see cref="BlockedWithKind"/>'s own <c>issue.Held</c> and
+    /// <c>issue.StalledAt</c> checks, and nowhere else. Null for an issue that
+    /// is neither held nor stalled, for one stalled but past the window and
+    /// under the board's resume limit, and for one whose resume window has not
+    /// yet closed (<paramref name="letGo"/> below <paramref name="resumeLimit"/>) -
+    /// the caller resumes it rather than folding it.
+    /// </summary>
+    internal static Blocking? StalledFold(
+        bool held, DateTimeOffset? stalledAt, string? stalledWhy,
+        int letGo, int resumeSeconds, int resumeLimit, DateTimeOffset now)
+    {
+        if (held)
+            return new Blocking("held - a person told the loop to leave this alone until they say otherwise", BlockedKinds.Person);
+
+        if (stalledAt is { } at)
+        {
+            var why = stalledWhy is { Length: > 0 } w ? $" ({w})" : "";
+
+            if (resumeSeconds <= 0)
+                return new Blocking($"stalled{why} - this board never resumes a marked ticket unattended; a person moves it", BlockedKinds.Person);
+
+            if (now - at < TimeSpan.FromSeconds(resumeSeconds))
+                return new Blocking($"stalled {Minutes((int)(now - at).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}", BlockedKinds.Other);
+
+            if (letGo >= resumeLimit)
+                return new Blocking($"stalled {letGo} times in a row, at this board's limit of {resumeLimit} - held for a person now, not resumed again", BlockedKinds.Person);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The verdicts on these issues, grouped by issue - one query for however
     /// many, and ordered by repository so the sentence a fold prints is stable.
     /// </summary>
@@ -1883,23 +1922,9 @@ public sealed class Dispatch(
         if (held.Sentence is { } holder)
             return new Blocking(holder, held.Kind);
 
-        if (issue.Held)
-            return new Blocking("held - a person told the loop to leave this alone until they say otherwise", BlockedKinds.Person);
-
-        if (issue.StalledAt is { } stalledAt)
-        {
-            var resumeSeconds = claimed.Claims!.StallResumeSeconds;
-            var why = issue.StalledWhy is { Length: > 0 } w ? $" ({w})" : "";
-
-            if (resumeSeconds <= 0)
-                return new Blocking($"stalled{why} - this board never resumes a marked ticket unattended; a person moves it", BlockedKinds.Person);
-
-            if (claimed.Now - stalledAt < TimeSpan.FromSeconds(resumeSeconds))
-                return new Blocking($"stalled {Minutes((int)(claimed.Now - stalledAt).TotalSeconds)} ago{why} and resumes itself after {Minutes(resumeSeconds)}", BlockedKinds.Other);
-
-            if (letGo >= claimed.Claims!.StallResumeLimit)
-                return new Blocking($"stalled {letGo} times in a row, at this board's limit of {claimed.Claims!.StallResumeLimit} - held for a person now, not resumed again", BlockedKinds.Person);
-        }
+        if (StalledFold(issue.Held, issue.StalledAt, issue.StalledWhy, letGo,
+                claimed.Claims!.StallResumeSeconds, claimed.Claims!.StallResumeLimit, claimed.Now) is { } stalled)
+            return stalled;
 
         var (pausedLevel, pausedFrom) = gate.Effective(issue.Id);
         if (pausedLevel == PriorityLevels.Paused)
