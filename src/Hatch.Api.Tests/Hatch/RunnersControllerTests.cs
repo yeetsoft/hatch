@@ -3773,6 +3773,66 @@ public class RunnersControllerTests
         Assert.Equal(403, refusal.StatusCode);
     }
 
+    // ---- The election, answered on the beat itself (HA-2129) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_FromTheElectedKey_AnswersDrivesOnItsOwnResponse()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+
+        var elected = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], elected.Value!.Drives);
+    }
+
+    [SkippableFact]
+    public async Task ASessionBeat_FromAKeyTheElectionPassesOver_AnswersNoDrives()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        var notElected = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Empty(notElected.Value!.Drives!);
+    }
+
+    // ---- The stall watch, run off a session beat (HA-2129) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_PastTheStallWindow_PassesTheDriverOverAndWritesOneDriverStalledEvent()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600, connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        var passedOver = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], passedOver.Value!.Drives);
+        Assert.Equal("here:/one-session", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+
+        var key = IssueKey.Format("AER", head.Number);
+        var @event = Assert.Single(await h.EventsAsync(key), e => e.Kind == EfHatchIssueEvent.DriverStalled);
+        Assert.Equal("here:/one-session", JsonDocument.Parse(@event.Payload!).RootElement.GetProperty("passedOver").GetString());
+        Assert.Equal("here:/two-session", JsonDocument.Parse(@event.Payload!).RootElement.GetProperty("elected").GetString());
+    }
+
     // ---- A session beat retires the rows its checkout has renamed away from ----
 
     private const string RenamedWhere = "host:/checkouts/one";
@@ -4945,7 +5005,7 @@ public class RunnersControllerTests
     {
         public EfPerson? Person { get; init; }
 
-        public EfApiKey? Key { get; init; }
+        public EfApiKey? Key { get; set; }
 
         public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
 

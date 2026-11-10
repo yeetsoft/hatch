@@ -3502,7 +3502,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/work/next` | GET | See [the dispatcher](#the-dispatcher). `?heldToken=` names a [claim](#claim) of one's own, so it is not folded past as somebody else's. `?remote=` (repeatable), `?standing=` and `?clones=` declare what the runner has; absent is undeclared and folds nothing. `?tag=` (repeatable) declares which [runner tags](#project) it advertises; absent is advertising none, and a tag that breaks `RunnerTags`'s own rule is a `400` naming it. `?dangerous=false` declares that it refuses dangerous work, folding an issue [flagged dangerous](#the-dispatcher); absent or `true` folds nothing. `?model=` (repeatable) and `?agent=` declare which models and which agent the runner offers, folding a move whose model it cannot spawn — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?has=` (repeatable, `id` or `id@version`) declares the development dependencies the runner has, folding a move that runs the issue's code whose project's bound repositories declare a dependency none of these satisfies, or whose `.hatch/dependencies.json` is invalid — see [the dispatcher](#the-dispatcher); absent folds nothing, and a bad entry is a `400`. `?mine=true` narrows the pass to the caller's own tickets — see [one more, on `next` alone](#one-more-on-next-alone); `400` when the calling key belongs to nobody. `?runner=<name>` names the caller's own runner, so a ticket that runner let go of last is folded for it while another live runner could take it — see [what a pass skipped](#what-a-pass-skipped); absent folds nothing. The same `?runner=` also folds a ticket that runner is [omitted](#omitted-runners) from, its own or an ancestor's — see [the dispatcher](#the-dispatcher). Carries `letGo`, the count of this issue's trailing dropped releases — `0` on a client too old to read it. Also carries `nextBriefLimit`, the next row's brief limit — see the paragraph below `WorkDto.FailStatusName`'s for what it is and when it is null |
 | `/work/{key}` | GET | See [the dispatcher](#the-dispatcher). Same `?heldToken=`, `?remote=`, `?standing=`, `?clones=`, `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` as `/work/next`. `?mine=` is ignored — somebody who names a ticket has already chosen it. `?runner=<name>` folds an issue that runner is [omitted](#omitted-runners) from, and nothing else: this route runs no let-go fold. Carries `letGo` the same way. Also carries `failStatusName` — the implementation column's name, the column a failed [check](#check) sends the issue back to, set on every dispatch and null where the board has none — `lastCheckFindings`, the newest check's findings, set only for an issue standing in that column whose most recent `status_changed` event carries `verdict: fail`, null otherwise — and `nextBriefLimit`, the next row's brief limit, same as `/work/next` |
 | `/work/queue` | GET | The same walk `next` takes, reported rather than acted on, the same three repository flags and the same `?tag=`, `?dangerous=`, `?model=`, `?agent=` and `?has=` — see [what a pass skipped](#what-a-pass-skipped). Same `?mine=true`, folding every ticket that is not the caller's own with a sentence naming whose it is. `?asRunner=<name>` answers off that runner's own row instead of the query string — `remote`, `standing`, `clones`, `mine` and `ancestorKey` come from it and may not be given alongside it; the runner's row tags are read the same way, and a `?tag=` or `?dangerous=` beside it is ignored rather than refused; the row's `Models`, `Agent` and `Has` fold a move whose model it cannot spawn or whose dependency it lacks, and a row that never reported them folds nothing; a name no live row answers to is a `400` naming it. Where that key holds live loop sessions, both `asRunner` and the let-go peer check below judge it off its beat row, its config and those sessions together — a key with no sessions answers exactly as it always has. `?runner=<name>` names the caller's own runner as on `/work/next` (`asRunner` wins where both are given), folding a ticket that runner let go of while another live runner could take it, and one it is [omitted](#omitted-runners) from. `blockedKind` names which of seven kinds folded the row, null wherever `blocked` is. `deadlocked` is true on a row no pass will clear on its own, and its `blocked` sentence starts `deadlocked - ` (see [deadlocked](#deadlocked)). `clearNote` names a row that is clear only because a stall mark's resume window passed, e.g. `"it stalled 18 minutes ago and resumes itself after 15 minutes"` — null on every ordinary clear row |
-| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or a pre-approved issue that declared itself finished with no code, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
+| `/work/{key}/hop` | POST | Carries one of seven kinds one column right with no session — see [the hop](#the-hop): an issue [pre-approved](#pre-approval) at `express` or above standing in a column marked `ExpressSkips`; an epic still short of the implementation column, on each move right while it stays short of it; a story or bug under a running epic; a child its parent pulls; a childless issue over its playbook's `BriefLimit`, sent back; a pre-approved issue in review whose branch merges cleanly or needs only bringing current; or a pre-approved parent, or a parent in a project whose *A passing check approves the merge* setting is on, in review with no pull request and every child done, or an issue that declared itself finished with no code and is pre-approved or in a project whose *A no-code declaration closes the ticket* setting is on, carried past review into the first terminal column. Takes the same query parameters as `GET /work/{key}` and no `heldToken`: a hop takes no claim. It reads `?tag=` the same way `GET /work/{key}` does, folded by `Dispatch.Blocked` the same way every other move is - [runner tags](#project) gate a hop of any kind, not only the scan's own candidate selection. It reads `?runner=<name>` for the omission fold alone, folding an issue that runner is [omitted](#omitted-runners) from, and not the let-go one. It reads no `?dangerous=`, because a hop runs no code: the endpoint is the loop's own write and judges no dangerous flag. `409` carrying the fold's sentence where the issue is blocked, and `409` where it is clear but not a hop |
 | `/work/{key}/merged` | POST | Advances an issue in the review column whose pull request has merged, one column right, with no claim and no session, the same whether the merge was clicked on the forge or made from the terminal with gh pr merge in any mode. `{ url, runner }` — `runner` rides the body unused, for shape parity with the requests that do read it. `409` for a column other than review, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for no column after review, and for a claimed issue; `404` on an unknown key. See [the five paths past the terminal guard](#the-five-paths-past-the-terminal-guard) |
 | `/work/{key}/closed` | POST | Records that an issue's pull request was closed without merging (`PullRequestClosedAt`) — a runner's poll calls it once, on the first read, and does nothing further; `MergeWork.Judge` holds an approval on this until a person acts. `{ url, runner }`, the same shape parity as `/merged`. `409` for a column that does not merge the pull request, for no pull request recorded, and for a `url` that does not match the one recorded; `404` on an unknown key |
 | `/work/{key}/pushback` | POST | Carries an issue in the merge column back to the review column, with no claim and no session — judged by `MergeWork` itself, off the issue's own stored merge and build checks, not by the caller. `{ url, runner }` — `runner` rides the body unused, for shape parity. `409` for a column that does not merge the pull request, for no pull request recorded, for a `url` that does not match the one recorded (trimmed, ordinal), for a judged kind other than `pushback` (carrying the judge's own sentence), for no review column on the board or one that is the merge column itself, and for a claimed issue; `404` on an unknown key |
@@ -3893,14 +3893,16 @@ there is `LandingWork`'s to say, in `landingHeld` above or in the loop's
 hands.
 
 `noCodeHeld` is every issue in review that declared it was finished with no
-code (`PUT /issues/{key}/no-code`) and is not [pre-approved](#pre-approval):
-no pull request will ever be recorded for it and the loop will not close it, so
-it stands in review, folded with *finished with no code - a person closes it*,
-for a person to close. `reason` is the declaration's own. It is not counted in
+code (`PUT /issues/{key}/no-code`) and is neither [pre-approved](#pre-approval)
+nor in a project whose `NoCodeCloses` is on: no pull request will ever be
+recorded for it and the loop will not close it then, so it stands in review,
+folded with *finished with no code - a person closes it*, for a person to
+close. `reason` is the declaration's own. It is not counted in
 `inReviewWithoutPullRequest` and is not a row in `reviews`. A pre-approved
-declared issue is closed by the board with no person and no session - the close
-hop, with a comment saying *finished with no code* and the reason - and what
-`depends` on it is dispatched on the next pass; it is not listed. A declared
+declared issue, or one under the setting, is closed by the board with no person
+and no session - the close hop, with a comment saying *finished with no code*
+and the reason - and what `depends` on it is dispatched on the next pass; it is
+not listed. A declared
 task under a story that shares one pull request is not waiting on the story's:
 it has nothing on that branch.
 
@@ -5900,7 +5902,10 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A row's
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A retired row
+(`r.RetiredAt == null` in the same filter) is not a candidate either, however
+recent its `LastSeenAt`; its own next beat clears the retirement and makes it
+one again — see [Runners on the board](#runners-on-the-board). A row's
 `LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
 release of the claim it holds, found by the claim's `ClaimedBy` matching
 the row's `Name`; that is what keeps a driver live and elected through a
@@ -5913,8 +5918,11 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
-370, 470, 520`): a runner acts only on a project it was elected to drive.
+which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
+370, 470, 520`): a runner acts only on a project it was elected to drive. The
+one exception is the pull request half's `merged` read: reporting a merge
+somebody already made needs read access alone, so any runner holding a
+checkout reports it for a merge-column row, driver or not.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
 TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
@@ -5952,6 +5960,53 @@ a hold nor a pushback, and it has not changed column since the mark; of
 several marked rows the latest mark wins. A mark outside those terms simply
 stops counting, and the head is the first eligible row in order as before. The
 route gives a `409` to a row outside the merges column.
+
+**A head nobody acts on is passed over.** Every heartbeat judges the stall
+(`RunnersController.TrainDriversAsync`, `RunnersController.cs:578-640`,
+the `TrainWatch.Observe` call at `:600`). A head is judged only when its
+`MergeWork.Judge` kind is `merge` or `update` and some live eligible runner
+drives the project; any other state - no head, `hold`, `pushback`, `pending`,
+or no driver - clears both watch columns on the project
+(`TrainWatch.cs:36-41`). The clock, `TrainWatchedSince`, is when this head
+was first *seen* acting, not when it entered the column; a different head,
+or a null `since`, restarts it (`:43-48`). The bound is measured from that
+`since`, raised to `BroughtCurrentAt` when that is later (`:50-53`): a
+`brought_current` mark restarts the count, a pushback clears it, and a
+completed merge changes the head and so restarts it. The bound is
+`Hatch:TrainStallMinutes`, default 10 (`HatchOptions.cs:102`), read through
+`Runners.TrainStallSeconds`, where zero or a negative falls back to the
+default (`Runners.cs:59-62`; the reason is at `HatchOptions.cs:96-100`).
+Past it, the beat sets `EfHatchProject.TrainStalledDriver` to the runner
+and gives the project a fresh window (`Entities.cs:211`, written at
+`RunnersController.cs:612-613`). `Runners.EligibleCandidates` then filters
+out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
+election skips that runner on this project only; it stays eligible on every
+other (comment at `:521-524`). The runner's own next heartbeat clears the
+mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
+called from the beat at `:342`). Each window writes one `driver_stalled`
+event on the head issue, actor `Hatch` (`RunnersController.cs:510, 630`),
+with payload `{ passedOver, elected }`, and `elected` null when nobody else
+was eligible (`:628-634`; `Entities.cs:2360-2367`).
+
+**The queue says who is driving.** A merges-column row that reads as
+actionable - kind `merge`, `update` or `pending` - and is not waiting behind
+a head gets a clause naming the driver, in `Dispatch.BlockedWithKind`
+(`Dispatch.cs:1831`, driver branch `:1851-1856`):
+`"{judgement} - for the driver, last heard from {n} ago"` (`:1854`, with
+`Minutes` at `:916`). When no runner is elected the whole sentence is
+replaced by `no live runner is eligible to drive this project's merges`
+(`:1855`). A `hold` or `pushback` row gets neither, since it already
+explains itself (`:1858`). A row behind the head keeps `waiting its turn
+behind {headKey}, position {n} in the train` unchanged, because that clause
+is tested first (`:1842-1845`). The driver comes from
+`Runners.ProjectDriversAsync` (`Runners.cs:421-433`, read at
+`Dispatch.cs:270`), the same election the heartbeat uses, so the queue and
+`Drives` agree; a runner just passed over stops being named the moment it
+is passed over, through `EligibleCandidates`. It is a pure read: a driver
+past `Hatch:RunnerGoneAfterSeconds` turns the head's sentence into the
+no-driver one on the next scan, with no beat needed. The sentence reaches
+`hatch queue` and `GET /api/hatch/work/queue` as the row's ordinary blocked
+sentence, with no new field.
 
 #### Landing on the trunk
 
@@ -6041,8 +6096,8 @@ this step.
 commit to land, and waiting for one would hold it in review for good. It
 declares that instead - [finished with no code](#finished-with-no-code) - and
 the declaration stands in for a landing: the attention panel lists it for a
-person to close, and a pre-approved one is carried to the terminal column by
-the close hop, neither reading a landing. `hatch landed` records nothing for it.
+person to close, and a pre-approved one, or one under `NoCodeCloses`, is carried to the terminal
+column by the close hop, neither reading a landing. `hatch landed` records nothing for it.
 
 **The queue row.** `Dispatch.KindOf` takes `LandingWork`'s kind for a
 trunk-landing review row, where a pull-request row would have `conflicts`,
@@ -6093,10 +6148,11 @@ parent in review with no pull request recorded, and every child done, is
 carried straight into the first terminal column right of review, with nobody
 pressing anything on the board, for either of two reasons: it is
 pre-approved, or its project's *A passing check approves the merge* setting is
-on. (A pre-approved issue that declared itself [finished with no
-code](#finished-with-no-code) is carried the same way with no children at all;
-the setting does not carry that one.) The reason is the same
-as the approve hop's: the move is a decision an owner or approver already
+on. (A third route is a declared one: an issue that declared itself [finished
+with no code](#finished-with-no-code) is carried the same way with no children
+at all, when it is pre-approved or its project's *A no-code declaration closes
+the ticket* setting is on; the merge setting does not carry it.) The reason is
+the same as the approve hop's: the move is a decision an owner or approver already
 made in advance, whether on the issue or on the project's setting, carried out
 the moment the board can see it is true, rather than the operator's own press
 on a forge or a card.
@@ -7932,9 +7988,13 @@ having moved, and is silent; any other refusal is one line. `merged` and
 null) is left alone too, the same as `open`: a closed-without-merging pull
 request there is a real stuck state and is not this half's to surface. A
 merge-column row
-(`MergeWork` not null) is the one exception, and only where this runner is the
-one this project's merge train is elected to - see the note after the two
-halves below: there, `closed` calls `/work/{key}/closed` once, which records
+(`MergeWork` not null) is the one exception. A `merged` read there advances
+the issue on every runner that holds the checkout, with no driver and whether
+or not the branch is still on origin - the same `/work/{key}/merged` call and
+the same terminal line as a review row, and a second runner's `409` is walked
+past silently. `closed` and `open` there stay the driver's: only where this
+runner is the one this project's merge train is elected to - see the note after
+the two halves below - `closed` calls `/work/{key}/closed` once, which records
 `PullRequestClosedAt` the first time and moves nothing, and comments once -
 "Its pull request was closed without merging." - deduplicated by issue key, so
 a quiet interval after says nothing again. A pull request state of `unknown`
@@ -8013,7 +8073,8 @@ next tick tries again. A landing that goes through prints `hatch: HA-12 landed
 on main -> Done`. It is the one half here that acts on a *review* row rather
 than a merge-column row, and the election below gates it all the same.
 
-The merge-column exception just above, and every half after it, run only
+The merge-column exception just above (its `closed` record and `open` put;
+its `merged` read is every runner's), and every half after it, run only
 where this runner is the one a heartbeat answer elected to drive this
 project's merge train: a choice made for a runner, never by it, and not this
 section's to explain further. The landing confirmation above is not among
@@ -8744,6 +8805,39 @@ moment somebody asks, the same lazy expiry the claim uses, so there is no
 timeout to tune and no background job to notice has stopped. The row itself is
 never deleted — a checkout that runs again next week is the same row, with
 whatever bounds are on it.
+
+**Retired is a third state, and a fact rather than a clock.** A row that has
+been superseded is stamped `RetiredAt` (now) and `RetiredBy` (the `Name` of the
+row that superseded it), and two things stamp it, both in
+`RunnersController` and both on a beat:
+
+- **A row beat** (`RetireSuperseded`). Every *other* row with the same `Where`,
+  `Kind` and owner (`ForPersonId`), an earlier `FirstSeenAt`, and a `LastSeenAt`
+  older than the gone horizon (`Runners.Cutoff`, `Hatch:RunnerGoneAfterSeconds`)
+  is retired. A row that is still being heard from is never retired by this
+  path, so two live runners in one checkout are left alone.
+- **A session beat** (`RetireRenamedAsync`, from `POST
+  /api/hatch/runners/sessions`, `loop` kind only). Every other `loop` row of the
+  same `Where` and owner is retired, with no quiet test: renaming a checkout's
+  runner leaves the old row behind, and the new name's first beat is the
+  evidence it is gone. A `once` beat never retires anything.
+
+In both, a row with no `Where` retires nothing, and an owner must match: with
+the wall up a null owner retires nothing, with the wall off null matches null.
+An already-retired row is not stamped again.
+
+A retired row keeps every fact it had and is never deleted, but it is not live
+(`Runner.IsLive` is false) and never elected driver (see
+*The driver, and how the heartbeat elects one*, above). `?live=true` leaves
+it out, and the Runners page and `hatch runners` both read `?live=true`, so it
+leaves both at once, not two hours later; the page treats it as not
+controllable. Only the row's own beat clears it — `Touch`, or
+`RetireRenamedAsync`'s own-row branch, sets `RetiredAt` and `RetiredBy` back to
+null — so nothing acting from outside can resurrect a row, and a runner started
+again under the old name reappears by itself. Retirement is written by a beat,
+not by a sweep: the "nothing sweeps" above stays true. `RunnerDto.RetiredAt`
+and `RunnerDto.SupersededBy` carry it, both null for a row that is not retired;
+a read without `live` still returns the retired row with both set.
 
 **One key can hold several sessions, one per checkout.** Beside the beat row
 above, `POST /api/hatch/runners/sessions` answers through `RunnerSessions`

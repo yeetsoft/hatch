@@ -1002,7 +1002,8 @@ public class ProjectsController(
             project.BindsTracker, project.BindsTrackerBy, project.BindsTrackerAt,
             project.StoriesOnEpics,
             project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt,
-            project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt);
+            project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt,
+            project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)
     {

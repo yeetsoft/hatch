@@ -1173,7 +1173,8 @@ an empty list. It answers an `AttentionDto`: open questions waiting on
 somebody, pull requests in review split into plain reviews, conflicts, and
 failing builds, how many sit in review with no pull request at all, the
 issues in review that declared they were finished with no code and wait for a
-person to close them (`noCodeHeld`), the
+person to close them (`noCodeHeld`) - not one that is pre-approved or in a
+project with the no-code setting on, which the close hop carries - the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
@@ -1185,7 +1186,13 @@ declaration folds it on the model it runs on or on a development dependency
 its project's repository asks for; each entry carries `key`, `title`, `type`,
 `move` (the column the move starts from) and `missing` (what no live runner
 has), ordered by tier and then rank, and the list is empty when no runner is
-live.
+live. `trainStalled` lists the projects whose merge train passed its driver
+over and has not heard from that runner since, ordered by project key; each
+entry carries `projectKey`, `projectName`, `passedOverRunner`, `electedRunner`
+(null when no other runner was eligible), `headKey` (the issue at the head of
+the train) and `at`. It is empty, not null, when no train is stalled, and the
+panel draws nothing for an empty list; unlike `waitingOnARunner` it is not
+counted, since a runner that died never checks in to clear it.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.

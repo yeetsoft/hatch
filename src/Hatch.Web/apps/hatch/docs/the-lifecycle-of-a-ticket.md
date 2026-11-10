@@ -33,7 +33,8 @@ In order, left to right:
 - **Done** — shipped, and terminal. Only a person moves work into it, or the
   board itself, carrying a parent through once its children are done: a
   pre-approved one, or one in a project whose **A passing check approves the
-  merge** setting is on.
+  merge** setting is on; a declared no-code ticket is carried under its own
+  rule below.
 
 **Approved is not a stock column.** It is the optional eighth that a board adds
 between review and Done, ticking **Protected** on it and then **Merges PR**. A
@@ -112,10 +113,10 @@ are seven kinds, and each is a condition and a landing column:
   the column ticked **Merges PR**.
 - **close** — a parent in review with no pull request recorded and every child
   done, when the parent is pre-approved or its project has **A passing check
-  approves the merge** on; or a pre-approved ticket that declared it was
-  finished with no code. The setting does not carry the declared ticket, since
-  it is not a person's word that nothing was built. It is carried into the
-  first terminal column to review's right.
+  approves the merge** on; or a ticket that declared it was finished with no
+  code, when it is pre-approved or its project has **A no-code declaration
+  closes the ticket** on. The merge setting alone does not carry a declared
+  ticket. It is carried into the first terminal column to review's right.
 
 They are asked in that order, and the order matters: nothing that already
 qualifies for an earlier kind changes meaning by qualifying for a later one.
