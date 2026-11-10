@@ -478,7 +478,6 @@ public class AdminSurfaceTests
         // agent that could raise its own --max-spend could raise its own
         // budget. See RunnersController.
         "RunnersController.GetRunner",
-        "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.SessionHeartbeat",
@@ -902,7 +901,6 @@ public class AdminSurfaceTests
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",
         "RunnersController.GetRunner",
-        "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.SessionHeartbeat",
