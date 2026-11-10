@@ -150,7 +150,7 @@ The column names below are the stock ones.
 | Breakdown → Backlog | tasks and bugs | Formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
 | Breakdown → Backlog | reflections | Reads the board's own history for a window, writes the report and files each recommendation | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
-| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket and files tasks | Judges |
+| To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam | Judges |
 | In Progress → In Review | any type, leaf | Writes the code, gets it green, pushes it and puts it up for review | **Edits** |
 | In Progress → In Review | any type, parent | Closeout: verifies the ticket against the trunk once its children are done | Judges |
 | In Progress → In Review | epics | Verifies the epic's own criteria against the trunk and files what is missing | Judges |
