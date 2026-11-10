@@ -2253,6 +2253,15 @@ card, the issue, the search - as that claim's own window rather than the
 board's. The server is what honours it, so the server is what says what it is,
 the same argument `TtlSeconds` makes for itself.
 
+**A claim past its own cap is not live either, however recently it spoke.** A
+claim carries `ClaimMaxRunSeconds`, a hard ceiling on a run judged from
+`ClaimedAt` alone: neither a heartbeat nor a line of chatter moves it. Exactly at
+`ClaimedAt` plus the cap the claim is live; one tick past, it is not, and
+`IssueClaims.IsLive`, the live and takeable predicates every query shares, and a
+take all agree - a take over it succeeds. A null or non-positive column is no
+cap. Nothing writes the column yet (HA-2142 does), so every claim is judged as it
+was before.
+
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from
 the claim-quiet one above on purpose (see `HatchOptions.StallResumeMinutes`'s

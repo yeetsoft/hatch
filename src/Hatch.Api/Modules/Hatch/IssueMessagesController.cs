@@ -52,7 +52,7 @@ public class IssueMessagesController(
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
             })
             .FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();

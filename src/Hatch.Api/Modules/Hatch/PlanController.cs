@@ -75,7 +75,7 @@ public class PlanController(
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
             })
             .ToListAsync(ct);
 
@@ -175,7 +175,7 @@ public class PlanController(
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-                    i.ClaimQuietLimitSeconds),
+                    i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
             })
             .ToListAsync(ct);
 
