@@ -38,3 +38,17 @@
   align-items: center;
   gap: var(--sp-2);
 }
+
+/* Below the phone breakpoint (lib/viewport.ts's PHONE_QUERY, restated here
+   because a media query can't read a custom property - see
+   docs/design-system-architecture.md, "The phone") the actions drop under the
+   title instead of squeezing onto its line. */
+@media (max-width: 40rem) {
+  .hatch-page-header {
+    flex-wrap: wrap;
+  }
+
+  .hatch-page-header__titles {
+    flex: 1 1 100%;
+  }
+}

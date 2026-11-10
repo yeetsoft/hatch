@@ -27,7 +27,8 @@ import { IssueRoute } from './pages/IssueRoute';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { StatusesPage } from './pages/StatusesPage';
 import { PlaybooksPage } from './pages/PlaybooksPage';
-import { RunnersPage } from './pages/RunnersPage';
+import { RunnersLayout, RunnersIndex } from './components/RunnersLayout';
+import { RunnerDetail } from './components/RunnerDetail';
 import { BulkPage } from './pages/BulkPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
@@ -192,7 +193,10 @@ function AppShell() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/statuses" element={<StatusesPage />} />
             <Route path="/playbooks" element={<PlaybooksPage />} />
-            <Route path="/runners" element={<RunnersPage />} />
+            <Route path="/runners" element={<RunnersLayout />}>
+              <Route index element={<RunnersIndex />} />
+              <Route path=":name" element={<RunnerDetail />} />
+            </Route>
             <Route path="/overnight" element={<OvernightPage />} />
             <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
             <Route path="/history" element={<HistoryPage />} />

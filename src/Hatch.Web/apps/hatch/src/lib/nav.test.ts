@@ -8,7 +8,9 @@ import type { NavEntry } from './nav';
 // Reports index, and /changelog from the docs Reference section, never the nav;
 // /docs/* is the same page as /docs, for any path under it; / is the logo's and /docs the
 // settings menu's and the phone list's (below), neither a bar entry; /settings and * (the
-// unknown-route fallback) are not pages a menu lists.
+// unknown-route fallback) are not pages a menu lists. :name is /runners'
+// nested detail route - the regex below captures a nested <Route>'s path
+// literally, with no parent prefix - reached from a RunnerRow, never the nav.
 const EXCLUDED_ROUTES = new Set([
   '/',
   '/docs',
@@ -19,6 +21,7 @@ const EXCLUDED_ROUTES = new Set([
   '/changelog',
   '/docs/*',
   '/settings',
+  ':name',
   '*',
 ]);
 
