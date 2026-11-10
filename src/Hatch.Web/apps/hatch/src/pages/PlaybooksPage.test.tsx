@@ -82,6 +82,9 @@ const TABLE_PROJECT: Project = {
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  onePullRequestPolicy: 'optional',
+  onePullRequestPolicyBy: null,
+  onePullRequestPolicyAt: null,
 };
 
 const REPO_PROJECT: Project = { ...TABLE_PROJECT, repoSourced: true };

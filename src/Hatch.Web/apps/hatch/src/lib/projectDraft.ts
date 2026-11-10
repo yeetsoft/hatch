@@ -13,7 +13,9 @@ import type {
   ProjectBindsTrackerWriteRequest,
   ProjectStoriesOnEpicsWriteRequest,
   ProjectCheckApprovesMergeWriteRequest,
+  OnePullRequestPolicy,
   ProjectNoCodeClosesWriteRequest,
+  ProjectOnePrPolicyWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
   ProjectReflectionWriteRequest,
@@ -41,6 +43,7 @@ export interface ProjectDraft {
     storiesOnEpics: boolean;
     checkApprovesMerge: boolean;
     noCodeCloses: boolean;
+    onePullRequestPolicy: OnePullRequestPolicy;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
   };
@@ -61,6 +64,7 @@ export interface ProjectDraft {
   storiesOnEpics: boolean;
   checkApprovesMerge: boolean;
   noCodeCloses: boolean;
+  onePullRequestPolicy: OnePullRequestPolicy;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
   reflectionCadenceDays: string;
@@ -98,6 +102,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       storiesOnEpics: project.storiesOnEpics,
       checkApprovesMerge: project.checkApprovesMerge,
       noCodeCloses: project.noCodeCloses,
+      onePullRequestPolicy: project.onePullRequestPolicy,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
     },
@@ -118,6 +123,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     storiesOnEpics: project.storiesOnEpics,
     checkApprovesMerge: project.checkApprovesMerge,
     noCodeCloses: project.noCodeCloses,
+    onePullRequestPolicy: project.onePullRequestPolicy,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
   };
@@ -187,6 +193,12 @@ export function projectCheckApprovesMergeDiff(draft: ProjectDraft): ProjectCheck
 /** The no-code-closes flag, or null when it was not changed. */
 export function projectNoCodeClosesDiff(draft: ProjectDraft): ProjectNoCodeClosesWriteRequest | null {
   return draft.noCodeCloses !== draft.known.noCodeCloses ? { noCodeCloses: draft.noCodeCloses } : null;
+}
+
+/** The one-pull-request policy, or null when it was not changed. Its own route
+    and request shape, never folded into projectLandingDiff. */
+export function projectOnePrPolicyDiff(draft: ProjectDraft): ProjectOnePrPolicyWriteRequest | null {
+  return draft.onePullRequestPolicy !== draft.known.onePullRequestPolicy ? { policy: draft.onePullRequestPolicy } : null;
 }
 
 /** Its own route and its own request shape, like projectRepoSourcedDiff - an
