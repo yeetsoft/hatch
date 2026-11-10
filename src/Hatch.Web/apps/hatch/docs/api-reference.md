@@ -111,7 +111,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`.
 
 ## Columns
 
@@ -733,7 +733,14 @@ assume the group is uniform.
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
 (millions of tokens), `BriefLimit` (characters) and `QuietLimitSeconds` (seconds a
 claim may go without a word; null inherits the server's quiet lapse), `DeniedTools`, `IsCheck`,
-and `Source` - `"board"` or `"project"`, by whether `ProjectId` names one.
+`Source` - `"board"` or `"project"`, by whether `ProjectId` names one - and
+`UnreachableReason`.
+`UnreachableReason` is read-only and null wherever the dispatcher could pick
+the row; otherwise it is one sentence saying that a dispatch from the row's
+from-column goes to another column, or nowhere. It is derived from the live
+board on every read and never stored, so a column reorder changes it with no
+write to the row, and a proposal's `after` carries it too, judged against the
+row as the proposal would leave it. Saving such a row is not refused.
 The create and patch bodies share that shape with the three-state convention
 every optional field in Hatch takes: absent leaves a field alone (patch) or
 takes its default (create), `""` clears it, a value sets it.
