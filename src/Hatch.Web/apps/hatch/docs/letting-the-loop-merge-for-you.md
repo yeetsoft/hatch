@@ -81,6 +81,13 @@ trust.
 Hatch asks for its own approval in every shape that opens pull requests,
 whatever the forge requires.
 
+A ticket that finishes with no code has no pull request to merge. Beside **A
+passing check approves the merge**, an owner can turn on **A no-code
+declaration closes the ticket** on **Manage → Projects**, edit - it carries a
+ticket that declared (`hatch pr --none`) from review to Done on the next pass,
+with no person and no session. Off, only a pre-approved declared ticket is
+carried, and the rest wait for a person. The merge setting does not do this.
+
 **4. `HATCH_GH_TOKEN`.** The same `.env` beside `compose.yaml` as *Putting a
 front door on it*, above it on this page. Compose turns it into `GH_TOKEN`
 for `gh`, and without it the runner's own entrypoint already says so once:
