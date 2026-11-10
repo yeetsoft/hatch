@@ -2643,10 +2643,11 @@ trunk and nobody's issue, so it is not keyed on one. A row's `prompt` is the
 whole of its wording and its `defaultPrompt` is always null: nothing marks it
 as the operator's own, there is nothing to hand it back to, and it changes only
 by a commit to the file. A row's optional keys are `model`, `effort`, `shape`,
-`types`, `budget`, `briefLimit`, `quietLimitSeconds`, `deniedTools` and
-`isCheck`; `quietLimitSeconds` follows the same rule as `briefLimit` — a whole
-number of one or more, in seconds — and a value that is not one makes the file
-`invalid`, with the line the value is on.
+`types`, `budget`, `briefLimit`, `quietLimitSeconds`, `maxRunSeconds`,
+`deniedTools` and `isCheck`; `quietLimitSeconds` and `maxRunSeconds` each
+follow the same rule as `briefLimit` — a whole number of one or more, in
+seconds — and a value that is not one makes the file `invalid`, with the line
+the value is on. `maxRunSeconds` is stored and read back; nothing reads it yet.
 
 **One row per repository per trunk**, unique on `(Canonical, Trunk)`, the same
 reason a trunk build's own key is: two projects may bind one repository with
@@ -3041,7 +3042,7 @@ matter under a hundred lines of tidying.
 
 `EfHatchPlaybook` — `FromStatusId`, `ToStatusId`, `Types`, `Shape`, `Prompt`,
 `DefaultPrompt`, `Model`, `Effort`, `Budget`, `BriefLimit`, `QuietLimitSeconds`,
-`DeniedTools`, `IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
+`MaxRunSeconds`, `DeniedTools`, `IsCheck`, `ProjectId`. Unique on `(from, to, types, shape, project)`.
 
 What an agent is told, and how much thought to spend, when it moves an issue of
 some type and shape from one column to the next. `Shape` is one of `any`
@@ -3055,9 +3056,11 @@ project alone. See [the dispatcher](#the-dispatcher). `QuietLimitSeconds` is
 the seconds a claim under the row may go without a word before it counts as
 quiet (see [a claim that has gone quiet](#claim)): null, the default, inherits
 `Hatch:StallLapseMinutes`, and a value is a whole number of one or more,
-written and cleared the way `Budget` and `BriefLimit` are. `IsCheck` is false by
-default and a person's write only — a key's `POST` or `PATCH` of it is refused
-with the rest of the playbook write — and what it means is in [Check](#check).
+written and cleared the way `Budget` and `BriefLimit` are. `MaxRunSeconds` is
+stored and read back the same way, under the same three-state rule; nothing
+reads it yet. `IsCheck` is false by default and a person's write only — a
+key's `POST` or `PATCH` of it is refused with the rest of the playbook write —
+and what it means is in [Check](#check).
 
 **A row can be one the dispatcher never picks.** The wire carries
 `UnreachableReason` beside the row: null where [the dispatcher](#the-dispatcher)
@@ -3586,7 +3589,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/dependency-files` | GET | Every stored [dependency file](#dependency-file), ordered by canonical then trunk, with the path itself alongside them, each entry's id resolved to its current label |
 | `/dependency-files` | PUT | Keeps a runner's [dependency file](#dependency-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict via `DependencyDeclaration.Parse`. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck` and `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - stored, not yet read); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
 | `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
 | `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |

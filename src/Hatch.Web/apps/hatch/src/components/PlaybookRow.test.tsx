@@ -27,6 +27,7 @@ const BASE: Playbook = {
   deniedTools: [],
   isCheck: false,
   quietLimitSeconds: null,
+  maxRunSeconds: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -104,6 +105,7 @@ const FILE_ROW: PlaybookFileRowDto = {
   deniedTools: [],
   isCheck: false,
   quietLimitSeconds: null,
+  maxRunSeconds: null,
 };
 
 describe('PlaybookRow', () => {

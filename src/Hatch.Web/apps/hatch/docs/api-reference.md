@@ -734,8 +734,10 @@ assume the group is uniform.
 `PlaybookDto` carries the transition (`FromStatusId`/`FromStatusName`,
 `ToStatusId`/`ToStatusName`), `Types`, `Shape`, the effective `Prompt`
 beside the row's own `DefaultPrompt`, `Model`, `Effort`, an optional `Budget`
-(millions of tokens), `BriefLimit` (characters) and `QuietLimitSeconds` (seconds a
-claim may go without a word; null inherits the server's quiet lapse), `DeniedTools`, `IsCheck`,
+(millions of tokens), `BriefLimit` (characters), `QuietLimitSeconds` (seconds a
+claim may go without a word; null inherits the server's quiet lapse) and
+`MaxRunSeconds` (seconds a session may run before it is cut off; null means no
+limit - stored, not yet read), `DeniedTools`, `IsCheck`,
 `Source` - `"board"` or `"project"`, by whether `ProjectId` names one - and
 `UnreachableReason`.
 `UnreachableReason` is read-only and null wherever the dispatcher could pick
@@ -797,7 +799,7 @@ reaches the stored row as `state: invalid`, not a 400.
 | POST | `/playbook-proposals/reject-all` | **person, at the browser** | Marks every row named in `{ proposalIds }` rejected, naming an issue's events; `409` naming the reload where that set is not exactly what is pending |
 | POST | `/playbook-proposals/approve-all` | **person, at the browser** | Applies every row named in `{ proposalIds }` in one transaction; `409` naming the reload, the out-of-date change, or the live-board refusal, applying nothing |
 
-A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the body is `{ reason, issueKey?, changes: [{ playbookId, ...PATCH's fields }] }`, each change naming a playbook and at least one field `PATCH /playbooks/{id}` takes - and the change sits for a person to decide on the Playbooks page, not anything live. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` is not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` 400s a blank reason, an empty `changes` list, a change naming no field, the same sentences `PATCH /playbooks/{id}` gives against the live board, and a change naming a project that reads its playbooks from its own repository rather than from rows here at all; a playbook already named by a pending proposal refuses a second, naming it - one pending change per row at a time. An `issueKey` naming no issue is `404`. A named issue gets a `playbook_proposed` event.
+A session that found a playbook's prompt, model, effort or shape wrong can propose a fix without being handed the write a key is refused on `/playbooks` - the body is `{ reason, issueKey?, changes: [{ playbookId, ...PATCH's fields }] }`, each change naming a playbook and at least one field `PATCH /playbooks/{id}` takes - and the change sits for a person to decide on the Playbooks page, not anything live. Each `PlaybookProposalChangeDto` carries `before` and `after` as full `PlaybookDto`s, `changedFields` (the fixed vocabulary `fromStatusId, toStatusId, types, shape, prompt, model, effort, budget, briefLimit, deniedTools, isCheck, projectId` - `quietLimitSeconds` and `maxRunSeconds` are not in it), and `outOfDate`/`outOfDateReason` for whether the playbook has since been edited or deleted. `POST` 400s a blank reason, an empty `changes` list, a change naming no field, the same sentences `PATCH /playbooks/{id}` gives against the live board, and a change naming a project that reads its playbooks from its own repository rather than from rows here at all; a playbook already named by a pending proposal refuses a second, naming it - one pending change per row at a time. An `issueKey` naming no issue is `404`. A named issue gets a `playbook_proposed` event.
 
 ### Runners and settings
 

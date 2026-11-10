@@ -2600,6 +2600,12 @@ public class EfHatchPlaybook
     public int? QuietLimitSeconds { get; set; }
 
     /// <summary>
+    /// The seconds a session under this row may run before it is cut off,
+    /// blank (no limit) unless a person has set one.
+    /// </summary>
+    public int? MaxRunSeconds { get; set; }
+
+    /// <summary>
     /// The tool rules this row denies, as a jsonb array - read and written
     /// through <see cref="ReadDeniedTools"/> and <see cref="WriteDeniedTools"/>
     /// rather than directly, the way <see cref="EfHatchComment.Options"/> is.

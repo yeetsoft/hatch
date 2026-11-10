@@ -113,6 +113,14 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             quietLimitSeconds = value;
         }
 
+        int? maxRunSeconds = null;
+        if (request.MaxRunSeconds is not null)
+        {
+            var (value, maxRunError) = PlaybookFile.ParseMaxRun(request.MaxRunSeconds);
+            if (maxRunError is not null) return BadRequest(maxRunError);
+            maxRunSeconds = value;
+        }
+
         var deniedTools = EfHatchPlaybook.NormalizeDeniedTools(request.DeniedTools);
         if (PlaybookFile.InvalidDeniedTools(deniedTools) is { } deniedToolsError) return BadRequest(deniedToolsError);
 
@@ -129,6 +137,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             Budget = budget,
             BriefLimit = briefLimit,
             QuietLimitSeconds = quietLimitSeconds,
+            MaxRunSeconds = maxRunSeconds,
             DeniedTools = EfHatchPlaybook.WriteDeniedTools(deniedTools),
             IsCheck = request.IsCheck ?? false,
             ProjectId = projectId,
@@ -166,6 +175,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         playbook.Budget = next.Budget;
         playbook.BriefLimit = next.BriefLimit;
         playbook.QuietLimitSeconds = next.QuietLimitSeconds;
+        playbook.MaxRunSeconds = next.MaxRunSeconds;
         playbook.DeniedTools = next.DeniedTools;
         playbook.IsCheck = next.IsCheck;
         playbook.ProjectId = next.ProjectId;
@@ -245,5 +255,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         projectName,
         state.ProjectId is not null ? "project" : "board",
         state.QuietLimitSeconds,
-        unreachableReason);
+        unreachableReason,
+        state.MaxRunSeconds);
 }
