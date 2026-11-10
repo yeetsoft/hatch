@@ -1377,6 +1377,128 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
     }
 
+    // ---- Runner capacity: projects whose clear steps one runner, or none, can take ----
+
+    private static string NeedsSentence(EfHatchIssue issue, string needs, string canonicals, string has) =>
+        $"{Key(issue)} needs {needs} ({canonicals}'s {DependencyDeclaration.Path}) - this runner has {has}";
+
+    private static async Task<EfHatchProjectRepository> NeedingDotnetTenAsync(Harness h)
+    {
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("dotnet", "10"));
+        return repo;
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_ListsAProjectOneRunnerCanTake_WithTheOtherRunnersReason()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingDotnetTenAsync(h);
+        var first = await h.FileAsync("task", "one", h.InProgress, rank: 3000);
+        var third = await h.FileAsync("task", "two", h.InProgress, rank: 1000);
+        var second = await h.FileAsync("task", "three", h.InProgress, rank: 2000);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@8"]);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@10"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Equal("AER", row.ProjectKey);
+        Assert.Equal(3, row.Steps);
+        Assert.Equal([Key(third), Key(second), Key(first)], row.Keys);
+        Assert.Equal(["host:/b"], row.Takers);
+        Assert.Equal(
+            [new RunnerReasonDto("host:/a", NeedsSentence(third, "dotnet 10", repo.Canonical, "dotnet 8"))],
+            row.Reasons);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_ListsAProjectNoRunnerCanTake_NamingBoth()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingDotnetTenAsync(h);
+        var issue = await h.FileAsync("task", "one", h.InProgress);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@8"]);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@8"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Empty(row.Takers);
+        var sentence = NeedsSentence(issue, "dotnet 10", repo.Canonical, "dotnet 8");
+        Assert.Equal([new RunnerReasonDto("host:/a", sentence), new RunnerReasonDto("host:/b", sentence)], row.Reasons);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_IsEmptyNotNull_WhenTwoRunnersCanTakeIt()
+    {
+        var h = await NewAsync();
+        await NeedingDotnetTenAsync(h);
+        await h.FileAsync("task", "one", h.InProgress);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@10"]);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@10"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_ListsOnlyTheProjectTheRunnersCannotServe()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var aer = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(aer, "main");
+        var other = await h.AddProjectAsync("OTH");
+        var oth = await h.BindRepositoryAsync("https://example.com/o/other", "main", other);
+        await h.DependencyFileAsync(oth, "main", new DeclaredDependency("dotnet", "10"));
+        await h.FileAsync("task", "fine anywhere", h.InProgress);
+        await h.FileAsync("task", "needs dotnet 10", h.InProgress, projectId: other);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@8"]);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@8"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Equal("OTH", row.ProjectKey);
+        Assert.Equal(1, row.Steps);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_IsEmpty_WhereNoRunnerIsLive()
+    {
+        var h = await NewAsync();
+        await NeedingDotnetTenAsync(h);
+        await h.FileAsync("task", "one", h.InProgress);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_DoesNotCountAStepStillInTodo()
+    {
+        var h = await NewAsync();
+        await NeedingDotnetTenAsync(h);
+        await h.FileAsync("task", "not started", h.Todo);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@8"]);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@8"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_NamesTheFirstTenSteps_AndCountsAll()
+    {
+        var h = await NewAsync();
+        await NeedingDotnetTenAsync(h);
+        for (var i = 0; i < 12; i++)
+            await h.FileAsync("task", $"step {i}", h.InProgress, rank: 1000 + i);
+        await h.RunnerAsync("host:/a", null, has: ["dotnet@8"]);
+        await h.RunnerAsync("host:/b", null, has: ["dotnet@10"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Equal(12, row.Steps);
+        Assert.Equal(10, row.Keys.Count);
+    }
+
     // ---- The trunk half (HA-95) ----
 
     [Fact]
@@ -1870,6 +1992,14 @@ public class AttentionControllerTests : IDisposable
             await Db.SaveChangesAsync();
         }
 
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            Db.Projects.Add(project);
+            await Db.SaveChangesAsync();
+            return project.Id;
+        }
+
         /// <summary>A live key with no beat of its own, minted through <see cref="Keys"/> - the identity a session is held against.</summary>
         public async Task<EfApiKey> AddKeyAsync(string name)
         {
@@ -1934,11 +2064,11 @@ public class AttentionControllerTests : IDisposable
         /// </summary>
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int statusId, long rank = 1024, string? pullRequestUrl = null,
-            long? parentId = null)
+            long? parentId = null, int? projectId = null)
         {
             var issue = new EfHatchIssue
             {
-                ProjectId = ProjectId,
+                ProjectId = projectId ?? ProjectId,
                 Number = next++,
                 Type = type,
                 Title = title,
@@ -2091,12 +2221,12 @@ public class AttentionControllerTests : IDisposable
         /// list. What the route that writes these accepts and refuses is
         /// <c>ProjectsControllerTests</c>'s business.
         /// </summary>
-        public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote, string? baseBranch = null)
+        public async Task<EfHatchProjectRepository> BindRepositoryAsync(string remote, string? baseBranch = null, int? projectId = null)
         {
             var (canonical, _) = RemoteIdentity.Canonical(remote);
             var repo = new EfHatchProjectRepository
             {
-                ProjectId = ProjectId,
+                ProjectId = projectId ?? ProjectId,
                 Remote = remote,
                 Canonical = canonical!,
                 BaseBranch = baseBranch,

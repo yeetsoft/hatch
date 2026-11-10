@@ -1472,6 +1472,12 @@ public record ReviewDto(
 /// not null, when there is none or no runner is live, on every board shape.
 /// Defaults to null so an older client still reads.
 /// </param>
+/// <param name="RunnerCapacity">
+/// One row per project whose clear implementation steps no live runner, or only
+/// one, can take, each with the reasons the rest cannot. Ordered by project key.
+/// Empty, not null, when nothing qualifies or no runner is live. Defaults to
+/// null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1487,7 +1493,8 @@ public record AttentionDto(
     IReadOnlyList<NoCodeHeldDto>? NoCodeHeld = null,
     IReadOnlyList<DeadlockedDto>? Deadlocked = null,
     BackupAttentionDto? Backup = null,
-    IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null);
+    IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null,
+    IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1603,6 +1610,22 @@ public record DeadlockedDto(string Key, string Title, string Type, string Senten
 /// or <c>no live runner has pwsh 7 or newer and playwright-browsers</c>.
 /// </param>
 public record WaitingOnARunnerDto(string Key, string Title, string Type, string Move, string Missing);
+
+/// <summary>
+/// A project whose clear implementation steps no live runner, or only one, can
+/// take - see <see cref="AttentionDto.RunnerCapacity"/>.
+/// </summary>
+/// <param name="ProjectKey">The project's key.</param>
+/// <param name="Steps">How many clear implementation steps the project has.</param>
+/// <param name="Keys">The first ten of those steps, in rank order.</param>
+/// <param name="Takers">
+/// The live runners that can take at least one of the steps; at most one name.
+/// </param>
+/// <param name="Reasons">
+/// Why each live runner outside <paramref name="Takers"/> cannot, in the
+/// queue's own words, by runner name.
+/// </param>
+public record RunnerCapacityDto(string ProjectKey, int Steps, IReadOnlyList<string> Keys, IReadOnlyList<string> Takers, IReadOnlyList<RunnerReasonDto> Reasons);
 
 // ---- The board ----
 
