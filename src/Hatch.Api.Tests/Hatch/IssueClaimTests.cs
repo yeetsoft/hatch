@@ -1435,6 +1435,100 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task ALiveSessionHoldingNothing_BlocksPreemptionUntilItAges()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "checkouts/victim");
+        var other = KeyOf("other-loop");
+        h.Keys.Keys.Add(other);
+        await h.AddSessionAsync(other.Id, "checkouts/free", Now);
+
+        // A loop on the current CLI beats a session, not a runner row, and is
+        // as free as a row holding nothing would be.
+        Assert.IsType<NoContentResult>(
+            (await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default)).Result);
+
+        h.Time.Advance(TimeSpan.FromSeconds(Harness.RunnerGoneAfterSeconds + 1));
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task ALiveSessionHoldingAClaimAtItsWhere_IsNotFree()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var victimToken = await h.TakeAsync(victim, "checkouts/victim");
+
+        var other = KeyOf("other-loop");
+        h.Keys.Keys.Add(other);
+        await h.AddSessionAsync(other.Id, "checkouts/second", Now);
+        h.Caller.Person = null;
+        h.Caller.Key = other;
+        var second = await h.FileAsync();
+        var secondToken = await h.TakeAsync(second, "checkouts/second");
+
+        // Both loops are working, so nothing is free; rule 3 tells whichever
+        // claim is last, and rule 4 stops at one - which of the two is not
+        // assumed here.
+        var results = new[]
+        {
+            await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(victimToken, null), default),
+            await h.Claims.Heartbeat(second, new ClaimHeartbeatRequest(secondToken, null), default),
+        };
+
+        var told = results.Where(r => r.Value is not null).ToList();
+        Assert.Single(told);
+        Assert.Equal(emergency, told[0].Value!.Key);
+    }
+
+    [SkippableFact]
+    public async Task AnEndedSession_DoesNotBlockPreemption()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "checkouts/victim");
+        var other = KeyOf("other-loop");
+        h.Keys.Keys.Add(other);
+        await h.AddSessionAsync(other.Id, "checkouts/free", Now, endedAt: Now);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task ASessionWhoseKeyIsGone_DoesNotBlockPreemption_AndDoesNotThrow()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "checkouts/victim");
+        await h.AddSessionAsync(Guid.NewGuid(), "checkouts/free", Now);
+
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
+    public async Task ABeatRowAtTheHoldersCheckout_UnderAnotherName_IsWorking_NotFree()
+    {
+        await using var h = await NewAsync();
+        var emergency = await h.FileAsync(priority: PriorityLevels.Emergency);
+        var victim = await h.FileAsync();
+        var token = await h.TakeAsync(victim, "checkouts/victim");
+        await h.AddRunnerAsync("old-name", Now, where: "checkouts/victim");
+
+        // The claim's own heartbeat bumps the row at its checkout whatever the
+        // row is named, so that row is the victim's loop and not a free one.
+        var told = Value(await h.Claims.Heartbeat(victim, new ClaimHeartbeatRequest(token, null), default));
+        Assert.Equal(emergency, told.Key);
+    }
+
+    [SkippableFact]
     public async Task TheSameRunnerHeartbeatingTwice_IsToldOnce()
     {
         await using var h = await NewAsync();
@@ -2091,7 +2185,7 @@ public class IssueClaimTests
             {
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
-                var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time);
+                var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time, Keys);
                 return new IssueClaimController(db, Rule, Caller, Time, preemption, RunnersRule);
             }
         }

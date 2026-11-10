@@ -5575,7 +5575,8 @@ has been, and it is also what makes the same runner's second heartbeat, before
 it releases, find nobody left to tell it — its own event is already on the
 row, so it answers a plain `204` the second time, having already reacted once.
 
-**One column for liveness.** Rule 5 reads `EfHatchRunner.LastSeenAt`, so the
+**One column for liveness.** Rule 5 reads both `EfHatchRunner.LastSeenAt` and
+`EfHatchRunnerSession.LastSeenAt` (a live, not ended, loop session), so the
 claim heartbeat and the claim release (the runner's own lane, not the
 operator's tokenless clobber) both mark the holding loop as heard from, the
 moment either happens, in exactly one place — the caller's own record, by an
@@ -5588,8 +5589,10 @@ row at the checkout that was live when the claim was taken; a row under a
 superseded name was already gone by then and is never revived, and a checkout
 with a live session never reaches this step. A heartbeat that races the
 runner's own first beat matches nothing, harmlessly. The beat's usage reading
-goes to that same record and no other. (Rule 5 itself still reads runner rows
-alone; sessions are a separate gap.) Without this, a runner that has just
+goes to that same record and no other. A record is free when no live claim
+belongs to it: a session is busy when a live claim is held by its key's name at
+its `where`, a beat row when one is held under its name or at its `where`.
+Without this, a runner that has just
 released would read as *gone* rather than *free* for as long as its last beat
 was stale, which is exactly the moment rule 5 needs to answer correctly.
 
