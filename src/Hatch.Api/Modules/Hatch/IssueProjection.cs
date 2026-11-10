@@ -57,7 +57,7 @@ public static class IssueProjection
         var projectIds = issues.Select(i => i.ProjectId).Distinct().ToList();
         var projects = await db.Projects.AsNoTracking()
             .Where(p => projectIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, p => (p.Key, p.ChecksRequired), ct);
+            .ToDictionaryAsync(p => p.Id, p => (p.Key, p.ChecksRequired, p.OnePullRequestPolicy), ct);
 
         // What the merges column is, so the judgement below is only asked of a
         // row actually sitting there - the same column AttentionController
@@ -256,7 +256,8 @@ public static class IssueProjection
                 issue.NoCode,
                 issue.NoCodeAt,
                 omittedRunnersOwn,
-                omittedRunners);
+                omittedRunners,
+                (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced);
         });
     }
 

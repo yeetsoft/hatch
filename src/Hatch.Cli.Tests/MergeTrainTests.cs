@@ -1192,16 +1192,71 @@ public sealed class MergeTrainTests
     // ---- The driven gate ----
 
     [Fact]
-    public async Task A_merges_column_row_whose_project_is_not_driven_is_never_read()
+    public async Task An_open_merges_column_row_whose_project_is_not_driven_is_read_but_never_acted_on()
     {
         using var rig = new Rig().Board(
             MergeRow("AER-1", "aer-1-thing", PrUrl), MergeRow("AER-2", "aer-2-other", PrUrl2, judgedSha: Tip2));
         rig.Runtime.Readout.SetDrives([]);
         rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: [("aer-1-thing", Tip), ("aer-2-other", Tip2)]);
+        rig.H.Forge.PullRequestAnswer = Forged();
 
         await rig.RunAsync();
 
-        Assert.Empty(rig.H.Forge.PullRequestReads);
+        Assert.NotEmpty(rig.H.Forge.PullRequestReads);
+        Assert.Empty(rig.H.Forge.MergeCalls);
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("AER-2")));
+        Assert.Empty(rig.H.Wire.To("POST", Merged("AER-1")));
+        Assert.Empty(rig.H.Wire.To("POST", Closed("AER-1")));
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+    }
+
+    [Theory]
+    [InlineData(WorkKinds.Merge)]
+    [InlineData(WorkKinds.Hold)]
+    public async Task A_merged_pull_request_on_a_merges_column_row_closes_it_with_no_driver_and_no_branch(string kind)
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl, kind: kind));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: []);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+        rig.H.Wire.Json("POST", Merged("AER-1"), Fixtures.Issue("AER-1") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+
+        await rig.RunAsync();
+
+        Assert.Equal(PrUrl, Assert.Single(rig.H.Wire.To("POST", Merged("AER-1"))).Read<PullRequestMergedRequest>().Url);
+        Assert.Contains("hatch: AER-1 pull request merged -> Done", rig.H.Say.Said);
+        Assert.Empty(rig.H.Forge.MergeCalls);
+    }
+
+    [Fact]
+    public async Task A_409_from_the_merged_route_on_a_non_driven_merges_column_row_is_a_silent_walk_on()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Merged, null);
+        rig.H.Wire.Reply("POST", Merged("AER-1"), HttpStatusCode.Conflict, "\"AER-1 moved\"");
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Say.Complained);
+        Assert.DoesNotContain(rig.H.Say.Said, l => l.Contains("pull request merged", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_closed_pull_request_on_a_merges_column_row_is_left_alone_with_no_driver()
+    {
+        using var rig = new Rig().Board(MergeRow("AER-1", "aer-1-thing", PrUrl));
+        rig.Runtime.Readout.SetDrives([]);
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Closed, null);
+
+        await rig.RunAsync();
+
+        Assert.Empty(rig.H.Wire.To("POST", Closed("AER-1")));
+        Assert.Empty(rig.H.Wire.To("POST", Comments("AER-1")));
+        Assert.Empty(rig.H.Forge.MergeCalls);
     }
 
     [Fact]
@@ -1240,7 +1295,8 @@ public sealed class MergeTrainTests
         await rig.RunAsync();
 
         Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
-        Assert.DoesNotContain(rig.H.Forge.PullRequestReads, l => l.Contains(PrUrl2, StringComparison.Ordinal));
+        Assert.Empty(rig.H.Wire.To("POST", Merged("ZEN-1")));
+        Assert.Empty(rig.H.Wire.To("PUT", StatePath("ZEN-1")));
     }
 
     [Fact]

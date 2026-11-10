@@ -5902,7 +5902,10 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A row's
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A retired row
+(`r.RetiredAt == null` in the same filter) is not a candidate either, however
+recent its `LastSeenAt`; its own next beat clears the retirement and makes it
+one again — see [Runners on the board](#runners-on-the-board). A row's
 `LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
 release of the claim it holds, found by the claim's `ClaimedBy` matching
 the row's `Name`; that is what keeps a driver live and elected through a
@@ -5915,8 +5918,11 @@ The election rides the heartbeat: `Drives` on `RunnerDto`/`RunnerInstructionDto`
 (`Dtos.cs:2318-2343, 2452-2463`) carries the elected project keys back, and
 the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 (`Readout.cs:95-104`, folded on every real heartbeat at `GoToWork.cs:889`),
-which gates every one of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
-370, 470, 520`): a runner acts only on a project it was elected to drive.
+which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:161, 258,
+370, 470, 520`): a runner acts only on a project it was elected to drive. The
+one exception is the pull request half's `merged` read: reporting a merge
+somebody already made needs read access alone, so any runner holding a
+checkout reports it for a merge-column row, driver or not.
 
 **Its own interval, beside the poll's.** `MergeTrain.Start(runtime,
 TimeSpan.FromSeconds(mergeInterval))` (`GoToWork.cs:812`) runs `TickAsync`
@@ -5954,6 +5960,53 @@ a hold nor a pushback, and it has not changed column since the mark; of
 several marked rows the latest mark wins. A mark outside those terms simply
 stops counting, and the head is the first eligible row in order as before. The
 route gives a `409` to a row outside the merges column.
+
+**A head nobody acts on is passed over.** Every heartbeat judges the stall
+(`RunnersController.TrainDriversAsync`, `RunnersController.cs:578-640`,
+the `TrainWatch.Observe` call at `:600`). A head is judged only when its
+`MergeWork.Judge` kind is `merge` or `update` and some live eligible runner
+drives the project; any other state - no head, `hold`, `pushback`, `pending`,
+or no driver - clears both watch columns on the project
+(`TrainWatch.cs:36-41`). The clock, `TrainWatchedSince`, is when this head
+was first *seen* acting, not when it entered the column; a different head,
+or a null `since`, restarts it (`:43-48`). The bound is measured from that
+`since`, raised to `BroughtCurrentAt` when that is later (`:50-53`): a
+`brought_current` mark restarts the count, a pushback clears it, and a
+completed merge changes the head and so restarts it. The bound is
+`Hatch:TrainStallMinutes`, default 10 (`HatchOptions.cs:102`), read through
+`Runners.TrainStallSeconds`, where zero or a negative falls back to the
+default (`Runners.cs:59-62`; the reason is at `HatchOptions.cs:96-100`).
+Past it, the beat sets `EfHatchProject.TrainStalledDriver` to the runner
+and gives the project a fresh window (`Entities.cs:211`, written at
+`RunnersController.cs:612-613`). `Runners.EligibleCandidates` then filters
+out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
+election skips that runner on this project only; it stays eligible on every
+other (comment at `:521-524`). The runner's own next heartbeat clears the
+mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
+called from the beat at `:342`). Each window writes one `driver_stalled`
+event on the head issue, actor `Hatch` (`RunnersController.cs:510, 630`),
+with payload `{ passedOver, elected }`, and `elected` null when nobody else
+was eligible (`:628-634`; `Entities.cs:2360-2367`).
+
+**The queue says who is driving.** A merges-column row that reads as
+actionable - kind `merge`, `update` or `pending` - and is not waiting behind
+a head gets a clause naming the driver, in `Dispatch.BlockedWithKind`
+(`Dispatch.cs:1831`, driver branch `:1851-1856`):
+`"{judgement} - for the driver, last heard from {n} ago"` (`:1854`, with
+`Minutes` at `:916`). When no runner is elected the whole sentence is
+replaced by `no live runner is eligible to drive this project's merges`
+(`:1855`). A `hold` or `pushback` row gets neither, since it already
+explains itself (`:1858`). A row behind the head keeps `waiting its turn
+behind {headKey}, position {n} in the train` unchanged, because that clause
+is tested first (`:1842-1845`). The driver comes from
+`Runners.ProjectDriversAsync` (`Runners.cs:421-433`, read at
+`Dispatch.cs:270`), the same election the heartbeat uses, so the queue and
+`Drives` agree; a runner just passed over stops being named the moment it
+is passed over, through `EligibleCandidates`. It is a pure read: a driver
+past `Hatch:RunnerGoneAfterSeconds` turns the head's sentence into the
+no-driver one on the next scan, with no beat needed. The sentence reaches
+`hatch queue` and `GET /api/hatch/work/queue` as the row's ordinary blocked
+sentence, with no new field.
 
 #### Landing on the trunk
 
@@ -7935,9 +7988,13 @@ having moved, and is silent; any other refusal is one line. `merged` and
 null) is left alone too, the same as `open`: a closed-without-merging pull
 request there is a real stuck state and is not this half's to surface. A
 merge-column row
-(`MergeWork` not null) is the one exception, and only where this runner is the
-one this project's merge train is elected to - see the note after the two
-halves below: there, `closed` calls `/work/{key}/closed` once, which records
+(`MergeWork` not null) is the one exception. A `merged` read there advances
+the issue on every runner that holds the checkout, with no driver and whether
+or not the branch is still on origin - the same `/work/{key}/merged` call and
+the same terminal line as a review row, and a second runner's `409` is walked
+past silently. `closed` and `open` there stay the driver's: only where this
+runner is the one this project's merge train is elected to - see the note after
+the two halves below - `closed` calls `/work/{key}/closed` once, which records
 `PullRequestClosedAt` the first time and moves nothing, and comments once -
 "Its pull request was closed without merging." - deduplicated by issue key, so
 a quiet interval after says nothing again. A pull request state of `unknown`
@@ -8016,7 +8073,8 @@ next tick tries again. A landing that goes through prints `hatch: HA-12 landed
 on main -> Done`. It is the one half here that acts on a *review* row rather
 than a merge-column row, and the election below gates it all the same.
 
-The merge-column exception just above, and every half after it, run only
+The merge-column exception just above (its `closed` record and `open` put;
+its `merged` read is every runner's), and every half after it, run only
 where this runner is the one a heartbeat answer elected to drive this
 project's merge train: a choice made for a runner, never by it, and not this
 section's to explain further. The landing confirmation above is not among
@@ -8747,6 +8805,39 @@ moment somebody asks, the same lazy expiry the claim uses, so there is no
 timeout to tune and no background job to notice has stopped. The row itself is
 never deleted — a checkout that runs again next week is the same row, with
 whatever bounds are on it.
+
+**Retired is a third state, and a fact rather than a clock.** A row that has
+been superseded is stamped `RetiredAt` (now) and `RetiredBy` (the `Name` of the
+row that superseded it), and two things stamp it, both in
+`RunnersController` and both on a beat:
+
+- **A row beat** (`RetireSuperseded`). Every *other* row with the same `Where`,
+  `Kind` and owner (`ForPersonId`), an earlier `FirstSeenAt`, and a `LastSeenAt`
+  older than the gone horizon (`Runners.Cutoff`, `Hatch:RunnerGoneAfterSeconds`)
+  is retired. A row that is still being heard from is never retired by this
+  path, so two live runners in one checkout are left alone.
+- **A session beat** (`RetireRenamedAsync`, from `POST
+  /api/hatch/runners/sessions`, `loop` kind only). Every other `loop` row of the
+  same `Where` and owner is retired, with no quiet test: renaming a checkout's
+  runner leaves the old row behind, and the new name's first beat is the
+  evidence it is gone. A `once` beat never retires anything.
+
+In both, a row with no `Where` retires nothing, and an owner must match: with
+the wall up a null owner retires nothing, with the wall off null matches null.
+An already-retired row is not stamped again.
+
+A retired row keeps every fact it had and is never deleted, but it is not live
+(`Runner.IsLive` is false) and never elected driver (see
+*The driver, and how the heartbeat elects one*, above). `?live=true` leaves
+it out, and the Runners page and `hatch runners` both read `?live=true`, so it
+leaves both at once, not two hours later; the page treats it as not
+controllable. Only the row's own beat clears it — `Touch`, or
+`RetireRenamedAsync`'s own-row branch, sets `RetiredAt` and `RetiredBy` back to
+null — so nothing acting from outside can resurrect a row, and a runner started
+again under the old name reappears by itself. Retirement is written by a beat,
+not by a sweep: the "nothing sweeps" above stays true. `RunnerDto.RetiredAt`
+and `RunnerDto.SupersededBy` carry it, both null for a row that is not retired;
+a read without `live` still returns the retired row with both set.
 
 **One key can hold several sessions, one per checkout.** Beside the beat row
 above, `POST /api/hatch/runners/sessions` answers through `RunnerSessions`

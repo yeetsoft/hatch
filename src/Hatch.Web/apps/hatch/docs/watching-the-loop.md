@@ -16,8 +16,14 @@ a row appears within a minute of it starting and drops off two hours after it
 stops. This page lists every runner, because a person is looking; a key
 reading the same list gets its owner's runners, an admin's key gets every one,
 and a key with no owner gets only the runners that belong to nobody. `hatch
-runners` is the same read at a terminal, one line per row. Each row
-has:
+runners` is the same read at a terminal, one line per row. Renaming a runner,
+or restarting it under a new name, used to leave the old row sitting as *Gone*
+until it aged off. Now the new one's first beat retires the old row, and it
+leaves this page and `hatch runners` at once, though its history is kept. A
+beat from the old name brings it back by itself. A row is retired only
+once it has been quiet past `Hatch:RunnerGoneAfterSeconds`, or when a loop
+in the same checkout reports in under a new name.
+Each row has:
 
 - **Runner** - its name, and `one increment` where it is not a `loop` (a loop
   says nothing here, since that is the default); a **Behind** badge when its
@@ -325,7 +331,7 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Waiting on a runner**, **Backups**, **Deadlocked**, **Trunk builds
+them: **Waiting on a runner**, **Backups**, **Stalled merge trains**, **Deadlocked**, **Trunk builds
 that fail**, **Pull requests to review**, **Approved, not merging**,
 **Landed, not done**, **Questions to answer**. **Waiting on a runner** lists
 every issue whose next move no live runner can take for want of a model or a
@@ -333,7 +339,11 @@ tool, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar. **Backups**
 appears only when the configured backup is failing or stale, and links to
-Settings, where the folder is fixed.
+Settings, where the folder is fixed. **Stalled merge trains** appears only when
+a project's train has passed a driver over; each row links to the issue at the
+head of the train and names the runner passed over and the one it went to. It
+clears when that runner next checks in, and it does not light the control, since
+a runner that died never will.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
 and `in <column> - <the gap>`. The gap reads `no live runner offers fable`, or

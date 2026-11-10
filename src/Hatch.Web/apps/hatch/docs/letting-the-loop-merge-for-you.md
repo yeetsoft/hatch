@@ -132,6 +132,9 @@ however long it has run. When none of a project's owners' or approvers' runners
 is up, the project reads `driving nothing` on the **Agents → Runners** page
 and the work queue says "no runner is driving it", and its approved pull
 requests wait for one rather than pass to a runner that cannot merge them.
+Only the train's own acting waits, though: a pull request somebody merged by
+hand closes its ticket with no driver, on any runner holding a checkout of the
+repository, whether or not the branch is still on origin.
 Make somebody an owner or approver, or give a runner's key a different owner,
 and the change takes effect on the runners' next heartbeat; nothing restarts.
 A project with no owner, or a Hatch with sign-in off, lets any runner holding
