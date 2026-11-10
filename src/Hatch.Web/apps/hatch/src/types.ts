@@ -495,6 +495,8 @@ export interface PlaybookFileRowDto {
   deniedTools: string[];
   isCheck: boolean;
   quietLimitSeconds: number | null;
+  /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
+  unreachableReason: string | null;
   maxRunSeconds: number | null;
 }
 
@@ -1378,6 +1380,8 @@ export interface Playbook {
   isCheck: boolean;
   /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
   quietLimitSeconds: number | null;
+  /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
+  unreachableReason: string | null;
   /** Seconds a session under this row may run before it is cut off, or null for no limit. */
   maxRunSeconds: number | null;
   updatedAt: string;
