@@ -55,6 +55,11 @@ Docker is ready; then run the command that failed again. If the installer asked
 for a sign-out or a reboot and did not get one, that is the other half of this:
 the group membership it added is not in effect until then.
 
+A runner started while the daemon was down prints
+`hatch: docker not detected - the Docker daemon did not answer ...` and
+takes no work that needs Docker: start Docker, then restart the loop, since
+detection runs once.
+
 There is no service log to read here. The stack never started, so there is
 nothing yet for `docker compose logs` to show.
 
