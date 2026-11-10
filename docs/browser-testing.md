@@ -57,6 +57,12 @@ a row's `.hatch-reorder--wrap` is clipped: outside the card at desktop, outside
 the table or under 44px on the phone profile, outside its own cell, or squeezed
 past its own `scrollWidth`.
 
+`OmittedRunnersTests.cs` drives the issue page's Omitted runners section against
+the real host: an own, a recused and an inherited row, Lift, Omit, the refusal
+sentences, and the fit of every row and add control inside the Details card. The
+phone case is skipped, naming HA-2172, until the section stops overflowing the
+card at that width.
+
 ## Render any page with no code written
 
 The screenshot CLI renders one URL to one image. It is `playwright.ps1`, built
