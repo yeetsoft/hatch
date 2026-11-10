@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Issue, Runner, Status } from '../types';
 import {
+  createRunner,
   getActivity,
+  getAllRunners,
   getApiKeys,
   getAttachments,
   getChangelogReport,
@@ -14,12 +16,21 @@ import {
   mintApiKey,
   omitRunner,
   orderRunner,
+  orderRunnerSession,
+  patchRunnerSession,
+  pauseAllSessions,
+  rotateRunner,
   revokeApiKey,
+  revokeRunner,
   searchIssues,
   setApiKeyOwner,
+  setRunnerOwner,
+  stopAllSessions,
+  suggestRunnerName,
   setStatusRunnerTags,
   uploadAttachment,
   withdrawOrder,
+  withdrawSessionOrder,
 } from './client';
 
 const status: Status = {
@@ -145,6 +156,143 @@ describe('API keys', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/hatch/runners/Claude/owner',
       expect.objectContaining({ method: 'PUT', body: '{"personId":null}' }),
+    );
+  });
+});
+
+describe('runners page calls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answering = (body: unknown) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+  const empty = () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('getAllRunners GETs /api/hatch/runners with no live flag', async () => {
+    const rows = [{ name: 'Gone' }] as Runner[];
+    const fetchMock = answering(rows);
+
+    await expect(getAllRunners()).resolves.toEqual(rows);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/hatch/runners', expect.objectContaining({}));
+  });
+
+  it('suggestRunnerName GETs suggest-name and reads the bare string', async () => {
+    const fetchMock = answering('Data');
+
+    await expect(suggestRunnerName()).resolves.toBe('Data');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/hatch/runners/suggest-name', expect.objectContaining({}));
+  });
+
+  it('createRunner POSTs the request and returns the minted runner', async () => {
+    const minted = { runner: { name: 'Data' }, secret: 'hatch_ak_x' };
+    const fetchMock = answering(minted);
+
+    await expect(createRunner({ name: 'Data', ownerPersonId: 'p1' })).resolves.toEqual(minted);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners',
+      expect.objectContaining({ method: 'POST', body: '{"name":"Data","ownerPersonId":"p1"}' }),
+    );
+  });
+
+  it('rotateRunner POSTs to the named runner, escaped, and returns the minted runner', async () => {
+    const minted = { runner: { name: 'here:/x' }, secret: 'hatch_ak_new' };
+    const fetchMock = answering(minted);
+
+    await expect(rotateRunner('here:/x')).resolves.toEqual(minted);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/rotate',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('revokeRunner POSTs to the named runner, escaped', async () => {
+    const fetchMock = empty();
+
+    await revokeRunner('here:/x');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/revoke',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('setRunnerOwner PUTs the owner, null clearing it', async () => {
+    const fetchMock = empty();
+
+    await setRunnerOwner('here:/x', null);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/owner',
+      expect.objectContaining({ method: 'PUT', body: '{"personId":null}' }),
+    );
+  });
+
+  it('patchRunnerSession PATCHes the one session and returns the runner', async () => {
+    const runner = { name: 'here:/x' } as Runner;
+    const fetchMock = answering(runner);
+
+    await expect(patchRunnerSession('here:/x', 7, { state: 'paused' })).resolves.toEqual(runner);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/sessions/7',
+      expect.objectContaining({ method: 'PATCH', body: '{"state":"paused"}' }),
+    );
+  });
+
+  it('orderRunnerSession POSTs the order to the one session and returns the runner', async () => {
+    const runner = { name: 'here:/x' } as Runner;
+    const fetchMock = answering(runner);
+
+    await expect(orderRunnerSession('here:/x', 7, { kind: 'work', key: 'HA-12' })).resolves.toEqual(runner);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/sessions/7/order',
+      expect.objectContaining({ method: 'POST', body: '{"kind":"work","key":"HA-12"}' }),
+    );
+  });
+
+  it('withdrawSessionOrder DELETEs the session order and tolerates the empty answer', async () => {
+    const fetchMock = empty();
+
+    await expect(withdrawSessionOrder('here:/x', 7)).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/sessions/7/order',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('pauseAllSessions POSTs to pause-all', async () => {
+    const fetchMock = empty();
+
+    await expect(pauseAllSessions('here:/x')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/pause-all',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('stopAllSessions POSTs to stop-all', async () => {
+    const fetchMock = empty();
+
+    await expect(stopAllSessions('here:/x')).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/stop-all',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 });

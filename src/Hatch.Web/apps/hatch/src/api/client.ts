@@ -4,6 +4,7 @@ import { handledRefusal } from '../lib/signIn';
 import type {
   ActivityPage,
   ApiKeyCreateRequest,
+  CreateRunnerRequest,
   AssigneeDirectory,
   AssigneeRequest,
   Attachment,
@@ -80,6 +81,7 @@ import type {
   RunnerMinted,
   RunnerOrderRequest,
   RunnerPatchRequest,
+  RunnerSessionPatchRequest,
   SearchResult,
   SessionSort,
   Status,
@@ -323,6 +325,35 @@ export const orderRunner = (name: string, request: RunnerOrderRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/order`, { method: 'POST', ...asJson(request) });
 export const withdrawOrder = (name: string) =>
   fetchJson<void>(`/api/hatch/runners/${seg(name)}/order`, { method: 'DELETE' });
+
+// The runners page's own calls. Admin only, except the reads and the per-session
+// writes a person owns - the controller decides, and a 403 is its answer.
+
+/** Every runner, revoked and gone ones too: no `live` flag, unlike `getRunners`. */
+export const getAllRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+/** A name nobody has taken, answered as a bare string. */
+export const suggestRunnerName = () => fetchJson<string>('/api/hatch/runners/suggest-name');
+/** The response carries the secret, once. */
+export const createRunner = (request: CreateRunnerRequest) =>
+  fetchJson<RunnerMinted>('/api/hatch/runners', { method: 'POST', ...asJson(request) });
+/** Replaces the runner's secret; the new one is in the response, once. */
+export const rotateRunner = (name: string) =>
+  fetchJson<RunnerMinted>(`/api/hatch/runners/${seg(name)}/rotate`, { method: 'POST' });
+export const revokeRunner = (name: string) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/revoke`, { method: 'POST' });
+/** Changes or clears whose tickets a runner's `--mine` reaches. */
+export const setRunnerOwner = (name: string, personId: string | null) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/owner`, { method: 'PUT', ...asJson({ personId }) });
+export const patchRunnerSession = (name: string, id: number, request: RunnerSessionPatchRequest) =>
+  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/sessions/${id}`, { method: 'PATCH', ...asJson(request) });
+export const orderRunnerSession = (name: string, id: number, request: RunnerOrderRequest) =>
+  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/sessions/${id}/order`, { method: 'POST', ...asJson(request) });
+export const withdrawSessionOrder = (name: string, id: number) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/sessions/${id}/order`, { method: 'DELETE' });
+export const pauseAllSessions = (name: string) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/pause-all`, { method: 'POST' });
+export const stopAllSessions = (name: string) =>
+  fetchJson<void>(`/api/hatch/runners/${seg(name)}/stop-all`, { method: 'POST' });
 
 export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`);
 

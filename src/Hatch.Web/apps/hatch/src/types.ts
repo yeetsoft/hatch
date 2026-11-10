@@ -2531,6 +2531,52 @@ export interface RunnerSession {
   os: string | null;
   exhaustedUntil: string | null;
   throttledUntil: string | null;
+  /** Everything below mirrors the rest of RunnerSessionDto; optional so a stub that predates it still compiles. */
+  lineAt?: string | null;
+  under?: string | null;
+  maxRuns?: number | null;
+  maxSpend?: number | null;
+  maxTokens?: number | null;
+  maxTokensPerHour?: number | null;
+  untilAt?: string | null;
+  runs?: number | null;
+  spent?: number | null;
+  tokensUsed?: number | null;
+  tokensLastHour?: number | null;
+  usage?: string | null;
+  usageReadAt?: string | null;
+  projects?: string[];
+  refusesDangerous?: boolean | null;
+  orderKind?: string | null;
+  orderKey?: string | null;
+  orderedBy?: string | null;
+  orderedAt?: string | null;
+  arch?: string | null;
+  agentVersion?: string | null;
+  container?: boolean | null;
+  username?: string | null;
+  ip?: string | null;
+  processStartedAt?: string | null;
+  revision?: string | null;
+  sequence?: number | null;
+  builtAt?: string | null;
+  sourceRevision?: string | null;
+  sourceSequence?: number | null;
+  remotes?: string[];
+  clones?: boolean | null;
+  mine?: boolean | null;
+  standing?: boolean | null;
+}
+
+/** Sent to `PATCH /runners/{name}/sessions/{id}`: the one session's state. Mirrors RunnerSessionPatchRequest. */
+export interface RunnerSessionPatchRequest {
+  state: RunnerState;
+}
+
+/** Sent to `POST /runners`. Omitted `ownerPersonId` defaults to the admin creating it. Mirrors CreateRunnerRequest. */
+export interface CreateRunnerRequest {
+  name: string;
+  ownerPersonId?: string;
 }
 
 /** What a person asks a runner to do next. Every field is a string, and absent
