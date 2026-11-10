@@ -648,6 +648,9 @@ internal sealed class Printed
 /// </remarks>
 public sealed class GoToWorkCommand(Runtime runtime)
 {
+    /// <summary>The session this loop's own beats are answered from, once one has been; see <see cref="EndSessionAsync"/>.</summary>
+    private int? _sessionId;
+
     /// <summary>How long to wait between reminders that nothing has changed.</summary>
     private static readonly TimeSpan StillNothing = TimeSpan.FromMinutes(10);
 
@@ -1145,6 +1148,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // printed once, by whichever incarnation is the last.
                 if (!restarting)
                 {
+                    await EndSessionAsync();
                     NightState.Forget(runtime.NightStatePath);
                     tally.Print(runtime.Say);
                 }
@@ -1754,8 +1758,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
             ? runtime.SourceRevision().Newest(["src/Hatch.Cli", "src/Hatch.Contracts"])
             : null;
 
-        var beat = await runtime.Runners().BeatAsync(
-            runtime.Machine.Stamp(new RunnerHeartbeatRequest(
+        var request = runtime.Machine.Stamp(new RunnerHeartbeatRequest(
                 Kind: once ? RunnerKinds.Once : RunnerKinds.Loop,
                 Fresh: !once && tally.Fresh ? true : null,
                 Standby: tally.Standby && tally.Fresh && !once ? true : null,
@@ -1799,8 +1802,15 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 // mid-night sends nothing rather than blanking what the server
                 // already holds for this account. See RunnerHeartbeatRequest.Usage.
                 Usage: usage.UsageReadAt is null ? null : usage.UsageWindows.ToDtos(),
-                UsageReadAt: usage.UsageReadAt)),
-            ct);
+                UsageReadAt: usage.UsageReadAt));
+
+        var beat = await runtime.Runners().BeatAsync(request, ct);
+
+        // A fresh start that finds the checkout's session still live may be
+        // looking at a loop that died without ending it, so it waits to see
+        // whether that session beats again before calling it a second loop.
+        if (beat.Held is not null && !once && tally.Fresh)
+            beat = await WaitOutHeldAsync(request, beat, ct);
 
         // The one heartbeat answer that ends a run: this name is already the
         // live runner somewhere else, so nothing here is claimed.
@@ -1809,10 +1819,60 @@ public sealed class GoToWorkCommand(Runtime runtime)
         // Answered, so the server has the bounds this start was typed with.
         if (beat.Instruction is not null) tally.Fresh = false;
 
+        // The row this loop beats, kept so the way out can end it. Never from a
+        // `--once` beat, which may have joined a loop's session that is not its own.
+        if (!once && beat.Instruction?.SessionId is { } sessionId) _sessionId = sessionId;
+
         // `--once` says hello and reads nothing back. There is no second pass
         // to apply an instruction to, and a single increment that acknowledged
         // a `stopping` it could not act on would be a lie on the row.
         return once ? null : beat.Instruction;
+    }
+
+    /// <summary>How often a fresh loop asks again while it waits out a session it found live.</summary>
+    private static readonly TimeSpan HeldRetry = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// A fresh loop was refused because the checkout's session is live. If that
+    /// session was left by a loop that crashed, it goes quiet and the server
+    /// marks it gone within <c>GoneInSeconds</c>; if it is a real second loop it
+    /// beats again. So ask again every few seconds: a <c>LastSeenAt</c> that has
+    /// moved is a loop beating, and is refused with the first sentence; a session
+    /// that is gone lets the next beat through.
+    /// </summary>
+    private async Task<RunnerBeat> WaitOutHeldAsync(RunnerHeartbeatRequest request, RunnerBeat first, CancellationToken ct)
+    {
+        var held = first.Held!;
+        var heardAgo = Math.Max(0, (int)(runtime.Clock.GetUtcNow() - held.LastSeenAt).TotalSeconds);
+        runtime.Say.Line(
+            $"hatch: {runtime.Where}'s last loop has not ended its session (heard {heardAgo}s ago) - " +
+            $"waiting up to {held.GoneInSeconds}s for it to go quiet before starting");
+
+        var give = runtime.Clock.GetUtcNow().AddSeconds(held.GoneInSeconds).Add(HeldRetry);
+        while (true)
+        {
+            await Task.Delay(HeldRetry, runtime.Clock, ct);
+            var again = await runtime.Runners().BeatAsync(request, ct);
+            if (again.Held is not { } now) return again;
+
+            // It beat while we watched: a live loop, not a dead one's leftovers.
+            if (now.LastSeenAt > held.LastSeenAt || runtime.Clock.GetUtcNow() >= give) return again;
+        }
+    }
+
+    /// <summary>
+    /// Ends this loop's own session on the server, on the way out of every exit
+    /// but a hand-over to a restarted incarnation - which joins the same session
+    /// and must find it live. Its own budget, since on Ctrl-C the loop's token is
+    /// already cancelled; a session that could not be ended is marked gone by
+    /// the server after it has been quiet long enough, as it always was.
+    /// </summary>
+    private async Task EndSessionAsync()
+    {
+        if (_sessionId is not { } id) return;
+        _sessionId = null;
+        using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(10), runtime.Clock);
+        await runtime.Runners().EndAsync(id, budget.Token);
     }
 
     /// <summary>

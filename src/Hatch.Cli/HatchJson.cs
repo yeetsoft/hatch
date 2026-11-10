@@ -38,6 +38,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ClaimTakenDto))]
 [JsonSerializable(typeof(ClaimPreemptedDto))]
 [JsonSerializable(typeof(RunnerInstructionDto))]
+[JsonSerializable(typeof(RunnerSessionRefusalDto))]
 [JsonSerializable(typeof(List<RunnerDto>))]
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(CredentialDto))]
