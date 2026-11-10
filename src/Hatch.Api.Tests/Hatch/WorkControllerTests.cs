@@ -10728,6 +10728,90 @@ public class WorkControllerTests
             Assert.IsType<ConflictObjectResult>(result.Result).Value);
     }
 
+    // ---- Why the train is not acting on a merge-column row (AR-80) ----
+
+    private const string TrainPr = "https://example.com/o/r/pull/1";
+
+    private static async Task<EfHatchIssue> MergingRowAsync(Harness h)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var issue = await h.FileAsync("task", "waiting for a merge", approved.Id);
+        await h.SetPullRequestAsync(issue, TrainPr);
+        return issue;
+    }
+
+    [Fact]
+    public async Task Queue_ATrainNote_SaysARunnerWithNoCheckoutHoldsNoneOfTheRepository()
+    {
+        var h = await NewAsync();
+        await MergingRowAsync(h);
+
+        var entry = Only(await h.Work.GetQueue(0, null, remote: ["https://example.com/other.git"], standing: false, ct: default));
+
+        Assert.Equal(
+            "this runner holds no checkout of its repository, so the merge train here does not read its pull request",
+            entry.TrainNote);
+    }
+
+    [Fact]
+    public async Task Queue_ATrainNote_SaysARunnerToldItDrivesNothingOnlyReportsAHandMadeMerge()
+    {
+        var h = await NewAsync();
+        await MergingRowAsync(h);
+        var key = await h.AddKeyAsync("told-nothing");
+        await h.AddSessionAsync(key, "here:/one", remotes: "git@example.com:o/r.git", drivesTold: "");
+
+        var entry = Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], runner: key.Name, ct: default));
+
+        Assert.Equal("this runner does not drive AER's merge train, so it only reports a merge made by hand", entry.TrainNote);
+    }
+
+    [Fact]
+    public async Task Queue_ATrainNote_JudgesDrivingByWhatTheHeartbeatToldNotByTheElection()
+    {
+        var h = await NewAsync();
+        await MergingRowAsync(h);
+        var key = await h.AddKeyAsync("told-it-drives");
+        await h.AddSessionAsync(key, "here:/one", remotes: "git@example.com:o/r.git", drivesTold: "AER");
+
+        var entry = Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], runner: key.Name, ct: default));
+
+        Assert.Null(entry.TrainNote);
+    }
+
+    [Fact]
+    public async Task Queue_ATrainNote_SaysTheMergedRoutesOwnRefusalSentence()
+    {
+        var h = await NewAsync();
+        var issue = await MergingRowAsync(h);
+        await h.ClaimAsync(issue, by: "Ada");
+
+        // What the route itself says to the same write, so the two cannot drift.
+        var refused = await h.Work.MergedWork(Key(issue), new PullRequestMergedRequest(TrainPr, "somewhere:/checkouts/one"), default);
+        var sentence = Assert.IsType<string>(Assert.IsType<ConflictObjectResult>(refused.Result).Value);
+
+        var entry = Only(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], ct: default));
+
+        Assert.Equal($"the board would refuse its merge - {sentence}", entry.TrainNote);
+    }
+
+    [Fact]
+    public async Task Queue_ATrainNote_IsNullOnARowOutsideTheMergesColumn_AndOnAMergeableOne()
+    {
+        var h = await NewAsync();
+        var merging = await MergingRowAsync(h);
+        var inReview = await h.FileAsync("story", "up for review", h.Review);
+        await h.SetPullRequestAsync(inReview, "https://example.com/o/r/pull/2");
+
+        var rows = Value(await h.Work.GetQueue(0, null, remote: ["git@example.com:o/r.git"], ct: default));
+
+        Assert.Null(rows.Single(r => r.Issue.Key == Key(inReview)).TrainNote);
+        Assert.Null(rows.Single(r => r.Issue.Key == Key(merging)).TrainNote);
+    }
+
     [Fact]
     public async Task MergedWork_RefusesAnIssueNotInTheReviewColumn()
     {
@@ -14556,7 +14640,7 @@ public class WorkControllerTests
         public async Task<EfHatchRunnerSession> AddSessionAsync(
             EfApiKey key, string? where = null, IReadOnlyList<string>? projects = null, bool? refusesDangerous = null,
             string? remotes = null, bool? mine = null, string? under = null, string? agent = null, DateTimeOffset? at = null,
-            bool? standing = null, string? models = null, string? has = null)
+            bool? standing = null, string? models = null, string? has = null, string? drivesTold = null)
         {
             var session = new EfHatchRunnerSession
             {
@@ -14575,6 +14659,7 @@ public class WorkControllerTests
                 Standing = standing,
                 Models = models,
                 Has = has,
+                DrivesTold = drivesTold,
             };
             Db.RunnerSessions.Add(session);
             await Db.SaveChangesAsync();

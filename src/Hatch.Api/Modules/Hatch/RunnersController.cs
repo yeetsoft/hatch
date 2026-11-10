@@ -226,6 +226,14 @@ public class RunnersController(
         if (dto.Models.Count == 0) dto = dto with { Models = RunnerDeclaration.Declared(null, loop.Select(s => s.Models)) };
         if (dto.Has.Count == 0) dto = dto with { Has = RunnerDeclaration.Declared(null, loop.Select(s => s.Has)) };
 
+        // What the newest live loop's last heartbeat was answered with, kept
+        // beside the election the page runs again: where the two differ, the
+        // loop was told something the page would not say.
+        if (loop.Where(s => s.DrivesTold is not null).OrderByDescending(s => s.LastSeenAt).ThenByDescending(s => s.Id).FirstOrDefault() is { } told)
+        {
+            dto = dto with { DrivesTold = told.DrivesTold!.Split('\n', StringSplitOptions.RemoveEmptyEntries) };
+        }
+
         if (runner.Sessions is not { Count: > 0 } own) return dto;
 
         return dto with
@@ -314,6 +322,12 @@ public class RunnersController(
         if (kind == EfHatchRunner.LoopKind) await RetireRenamedAsync(key.Name, key.OwnerPersonId, where, now, ct);
 
         var drives = (await TrainDriversAsync(key.Name, now, ct)).GetValueOrDefault(key.Name, []);
+
+        // What this loop is being told, kept: the Runners page runs the
+        // election again on every read, and the two differing is how a loop
+        // told it drives nothing is found out. "" is told nothing.
+        session.DrivesTold = string.Join('\n', drives);
+        await db.SaveChangesAsync(ct);
 
         var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
         var site = await siteSettings.GetAsync(ct);

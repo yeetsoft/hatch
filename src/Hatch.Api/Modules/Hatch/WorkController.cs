@@ -379,6 +379,8 @@ public class WorkController(
         var issues = await IssueProjection.ToDtosAsync(
             db, actors, scan.Rows.Select(r => r.Issue).ToList(), claims, scan.Claims.Now, ct);
 
+        var notes = await TrainNotesAsync(scan, string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner, ct);
+
         return scan.Rows.Select(r => new QueueEntryDto(
             issues[r.Issue.Id],
             ToStatusDto(r.From),
@@ -394,7 +396,51 @@ public class WorkController(
             r.BlockedKind,
             r.Deadlocked,
             taken?.GetValueOrDefault(r.Issue.Id)?.Takers,
-            taken?.GetValueOrDefault(r.Issue.Id)?.Untaken)).ToList();
+            taken?.GetValueOrDefault(r.Issue.Id)?.Untaken,
+            notes.GetValueOrDefault(r.Issue.Id))).ToList();
+    }
+
+    /// <summary>
+    /// For each merges-column row, why the merge train is not acting on it from
+    /// the runner that asked - the first of: no checkout of its repository
+    /// there, that runner's last heartbeat having told it it does not drive the
+    /// project, or the merged route's own refusal. A row none of those applies
+    /// to has no entry, and nor does any row outside the merges column. These
+    /// are the quiet ways the loop's train passes a row over, said where a
+    /// person is already looking for why a row is not moving.
+    /// </summary>
+    private async Task<Dictionary<long, string>> TrainNotesAsync(Scan scan, string? asking, CancellationToken ct)
+    {
+        var notes = new Dictionary<long, string>();
+        if (Columns.Merges(scan.Statuses) is not { } merges) return notes;
+
+        var now = time.GetUtcNow();
+        foreach (var row in scan.Rows.Where(r => r.From.Id == merges.Id))
+        {
+            var issue = row.Issue;
+            var project = issue.Project!;
+
+            if (scan.Repos.IsDeclared && !Dispatch.HoldsCheckout(project.Repositories, scan.Repos))
+            {
+                notes[issue.Id] = "this runner holds no checkout of its repository, so the merge train here does not read its pull request";
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(asking) && keys is not null
+                && !await runners.DrivesAsync(db, keys, asking, project.Key, now, ct))
+            {
+                notes[issue.Id] = $"this runner does not drive {project.Key}'s merge train, so it only reports a merge made by hand";
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(issue.PullRequestUrl)
+                && MergedGate.Refusal(scan.Statuses, row.From, issue.PullRequestUrl, issue.PullRequestUrl, () => scan.Claims.Held(issue)) is { } refusal)
+            {
+                notes[issue.Id] = $"the board would refuse its merge - {refusal}";
+            }
+        }
+
+        return notes;
     }
 
     /// <summary>
@@ -975,26 +1021,15 @@ public class WorkController(
         var statuses = await _dispatch.OrderedStatusesAsync(ct);
         var from = statuses.First(s => s.Id == issue.StatusId);
 
-        if (Columns.AwaitingReview(statuses)?.Id != from.Id && !from.MergesPullRequest)
-            return Conflict(
-                $"\"{from.Name}\" is not the review column and does not merge the pull request - " +
-                "a merge only advances a ticket waiting there");
-
-        var recorded = issue.PullRequestUrl?.Trim();
-        if (string.IsNullOrEmpty(recorded))
-            return Conflict("no pull request is recorded on this issue, so there is nothing for a merge to confirm");
-
-        var url = request.Url?.Trim() ?? "";
-        if (!string.Equals(url, recorded, StringComparison.Ordinal))
-            return Conflict($"\"{url}\" is not the pull request recorded on this issue");
-
-        var to = Columns.Closes(statuses, from);
-        if (to is null)
-            return Conflict($"there is no column after \"{from.Name}\", so there is nowhere for this to go");
-
         var now = time.GetUtcNow();
         var claimed = new ClaimGate(claims, now, null, await claims.LineageAsync(db, now, ct));
-        if (claimed.Held(issue) is { } holder) return Conflict(holder);
+
+        // The same guards the queue's train note runs on a read: one function,
+        // so the sentence the route answers is the sentence a person was shown.
+        if (MergedGate.Refusal(statuses, from, issue.PullRequestUrl, request.Url, () => claimed.Held(issue)) is { } refusal)
+            return Conflict(refusal);
+
+        var to = Columns.Closes(statuses, from)!;
 
         var actor = await caller.ActorNameAsync(ct);
         issue.Events.Add(new EfHatchIssueEvent

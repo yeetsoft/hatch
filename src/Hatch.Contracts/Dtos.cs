@@ -2582,7 +2582,8 @@ public record QueueEntryDto(
     string? BlockedKind = null,
     bool Deadlocked = false,
     IReadOnlyList<string>? Takers = null,
-    IReadOnlyList<RunnerReasonDto>? Untaken = null);
+    IReadOnlyList<RunnerReasonDto>? Untaken = null,
+    string? TrainNote = null);
 
 /// <summary>
 /// One live runner that cannot take a queue row right now, and why - see
@@ -4010,6 +4011,12 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// live loop's own heartbeat - see <see cref="Hatch.Api.Modules.Hatch.Runners.DriversAsync"/>.
 /// Empty for a runner driving nothing, including every <c>once</c> runner.
 /// </param>
+/// <param name="DrivesTold">
+/// The project keys the newest live session's last heartbeat was answered with
+/// - what that loop was told, drawn beside <paramref name="Drives"/>, which is
+/// the election run again on the page's read. Empty for a loop told it drives
+/// nothing; null where no live session has been answered yet.
+/// </param>
 /// <param name="Tags">
 /// This runner's own tags, normalised per <see cref="RunnerTags.Normalise"/>.
 /// Empty for a runner carrying none, rather than null, so a client built
@@ -4148,7 +4155,8 @@ public record RunnerDto(
     IReadOnlyList<RunnerSessionDto> Sessions = null!,
     DateTimeOffset? RotatedAt = null,
     DateTimeOffset? RetiredAt = null,
-    string? SupersededBy = null)
+    string? SupersededBy = null,
+    IReadOnlyList<string>? DrivesTold = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
