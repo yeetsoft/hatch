@@ -227,7 +227,9 @@ Every issue a dispatch pass would look at, in the order it looks, each with the
 reason it would be folded past or the transition it is clear for. It is the
 dry run for the loop and the answer to "why did it not pick up the ticket I
 meant". It spawns nothing and writes nothing, and a board with nothing to look
-at says so in a sentence.
+at says so in a sentence. Runner tags are judged on the calling key's own tags
+from the Runners page, the same ones its loop carries, so a tagged project is
+not reported as "advertises none" to a key that has them.
 It reads as this checkout's runner, so a row can say a ticket is left for another
 runner.
 

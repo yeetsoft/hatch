@@ -567,7 +567,11 @@ caller's checkouts (any one opts into the repository fold), plus
 the caller's own tickets; `next` and `queue` also take `project`, the project
 keys it is bound to - repeatable, one value per occurrence
 (`?project=FIL&project=AER`). `next`, `queue` and `hop` also take `tag`, what
-the caller's runner advertises, repeatable the same way. An
+the caller's runner advertises, repeatable the same way (`{key}` takes it
+too). A call made with an API key that sends no `tag` is judged on that key's
+own runner tags, the list set on the Runners page and answered back on a
+heartbeat; a `tag` sent replaces them, never joins them, and a call with no key
+advertises none. An
 absent or empty `project` folds nothing, so a caller that never declared a
 binding sees every project as before; a key no project has is refused with a
 400 naming it on `next`. `{key}` and `next` also take `heldToken`, a claim
