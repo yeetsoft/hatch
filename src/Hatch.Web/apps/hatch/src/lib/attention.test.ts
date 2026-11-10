@@ -19,6 +19,8 @@ import {
   reviewEmptyWords,
   runnerCapacityEmptyWords,
   runnerCapacityWords,
+  stalledEmptyWords,
+  stalledWords,
   trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
@@ -27,7 +29,7 @@ import {
   waitedWords,
   waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -160,6 +162,19 @@ const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
   ...over,
 });
 
+const stalledIssue = (over: Partial<StalledIssue> = {}): StalledIssue => ({
+  key: 'AER-26',
+  title: 'A story nobody has touched',
+  type: 'story',
+  stalledAt: ago(60_000),
+  stalledWhy: 'Left where it was found.',
+  held: false,
+  letGo: 1,
+  sentence: 'The loop let it go once.',
+  kind: 'loop',
+  ...over,
+});
+
 const attention = (over: Partial<Attention> = {}): Attention => ({
   reviews: [],
   inReviewWithoutPullRequest: 0,
@@ -287,6 +302,34 @@ describe('attentionCount', () => {
   it('reads an absent trunkBuilds as none, for a board that predates it', () => {
     expect(attentionCount(attention({ trunkBuilds: undefined }))).toBe(0);
   });
+
+  it('counts a board-held stalled row, but not a loop-kind row or a person-held row', () => {
+    // Nothing dispatches into a board-held row, so every one is a person's to
+    // break - the same reasoning as `deadlocked`.
+    expect(attentionCount(attention({ stalled: [stalledIssue({ kind: 'person', held: false })] }))).toBe(1);
+    expect(attentionCount(attention({ stalled: [stalledIssue({ kind: 'loop' })] }))).toBe(0);
+    expect(attentionCount(attention({ stalled: [stalledIssue({ kind: 'person', held: true })] }))).toBe(0);
+  });
+
+  it('counts only the board-held rows in a mixed list, alongside reviews and questions', () => {
+    expect(
+      attentionCount(
+        attention({
+          reviews: [review()],
+          questions: [question()],
+          stalled: [
+            stalledIssue({ key: 'AER-26', kind: 'person', held: false }),
+            stalledIssue({ key: 'AER-27', kind: 'loop' }),
+            stalledIssue({ key: 'AER-28', kind: 'person', held: true }),
+          ],
+        }),
+      ),
+    ).toBe(3);
+  });
+
+  it('reads an absent stalled as none, for a board that predates it', () => {
+    expect(attentionCount(attention({ stalled: undefined }))).toBe(0);
+  });
 });
 
 describe('pillCount', () => {
@@ -336,6 +379,11 @@ describe('pillCount', () => {
 
   it('is zero before the first answer', () => {
     expect(pillCount(null)).toBe(0);
+  });
+
+  it('does not count a stalled row, board-held or otherwise, which lights the control but draws no pill', () => {
+    expect(pillCount(attention({ stalled: [stalledIssue({ kind: 'person', held: false })] }))).toBe(0);
+    expect(attentionCount(attention({ stalled: [stalledIssue({ kind: 'person', held: false })] }))).toBe(1);
   });
 });
 
@@ -410,6 +458,46 @@ describe('attentionLabel', () => {
     expect(attentionLabel(attention({ deadlocked: [deadlocked(), deadlocked({ key: 'AER-23' })] }))).toBe(
       '2 issues deadlocked',
     );
+  });
+
+  it('names a stalled issue, pluralised on its own count, counting only board-held rows', () => {
+    expect(attentionLabel(attention({ stalled: [stalledIssue({ kind: 'person', held: false })] }))).toBe(
+      '1 issue stalled',
+    );
+    expect(
+      attentionLabel(
+        attention({
+          stalled: [
+            stalledIssue({ key: 'AER-26', kind: 'person', held: false }),
+            stalledIssue({ key: 'AER-27', kind: 'person', held: false }),
+          ],
+        }),
+      ),
+    ).toBe('2 issues stalled');
+  });
+
+  it('says nothing is waiting when stalled is empty or absent', () => {
+    expect(attentionLabel(attention({ stalled: [] }))).toBe('Nothing is waiting on you');
+    expect(attentionLabel(attention({ stalled: undefined }))).toBe('Nothing is waiting on you');
+  });
+
+  it('says nothing is waiting when stalled has only a loop-kind row or a person-held row', () => {
+    expect(attentionLabel(attention({ stalled: [stalledIssue({ kind: 'loop' })] }))).toBe('Nothing is waiting on you');
+    expect(attentionLabel(attention({ stalled: [stalledIssue({ kind: 'person', held: true })] }))).toBe(
+      'Nothing is waiting on you',
+    );
+  });
+
+  it('puts a stalled issue after questions and before pull requests', () => {
+    expect(
+      attentionLabel(
+        attention({
+          questions: [question()],
+          stalled: [stalledIssue({ kind: 'person', held: false })],
+          reviews: [review()],
+        }),
+      ),
+    ).toBe('1 question to answer, 1 issue stalled, 1 pull request to review');
   });
 
   it('says a backup needs attention, after the trunk builds and before the pull requests', () => {
@@ -601,6 +689,12 @@ describe('questionEmptyWords', () => {
   });
 });
 
+describe('stalledEmptyWords', () => {
+  it('says nothing is stalled', () => {
+    expect(stalledEmptyWords()).toBe('Nothing is stalled.');
+  });
+});
+
 describe('waitedWords', () => {
   it('says just asked under a minute', () => {
     expect(waitedWords(ago(30_000), NOW)).toBe('just asked');
@@ -648,6 +742,40 @@ describe('resumeWords', () => {
 
   it('falls back to a word rather than NaN on an unparseable instant', () => {
     expect(resumeWords('not a date', STALL_RESUME_SECONDS, NOW)).toBe('resumes on its own');
+  });
+});
+
+describe('stalledWords', () => {
+  const STALL_RESUME_SECONDS = 900;
+
+  it('prefixes "resumes" for a loop-kind row within its window', () => {
+    expect(stalledWords(stalledIssue({ kind: 'loop', stalledAt: ago(12 * 60_000) }), STALL_RESUME_SECONDS, NOW)).toBe(
+      'resumes in 3 minutes',
+    );
+  });
+
+  it('reads bare "any moment now" for a loop-kind row past its window', () => {
+    // The one exception: that string already reads as a complete sentence on
+    // its own, where "in 12 minutes" does not without the "resumes" prefix.
+    expect(stalledWords(stalledIssue({ kind: 'loop', stalledAt: ago(16 * 60_000) }), STALL_RESUME_SECONDS, NOW)).toBe(
+      'any moment now',
+    );
+  });
+
+  it('says held by a person for a held row', () => {
+    expect(stalledWords(stalledIssue({ kind: 'person', held: true }), STALL_RESUME_SECONDS, NOW)).toBe(
+      'held by a person',
+    );
+  });
+
+  it('says the queue\'s own sentence for a board-held row', () => {
+    expect(
+      stalledWords(
+        stalledIssue({ kind: 'person', held: false, sentence: 'Let go 3 times in a row.' }),
+        STALL_RESUME_SECONDS,
+        NOW,
+      ),
+    ).toBe('Let go 3 times in a row.');
   });
 });
 

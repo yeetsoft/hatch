@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention, RunnerCapacity, TrainStalled, TrunkBuild } from '../types';
+import type { Attention, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -64,6 +64,11 @@ export type AttentionTone = 'rest' | 'asking';
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
+ *
+ * `stalled` counts only its board-held rows (`kind: 'person'`, `held: false`):
+ * nothing dispatches into a board-held row, so every one is a person's to
+ * break, the same as `deadlocked`. A `loop`-kind row and a person-held row are
+ * both still the loop's or a person's own choice to sit on, and neither counts.
  */
 export function attentionCount(attention: Attention | null): number {
   if (attention === null) return 0;
@@ -77,7 +82,8 @@ export function attentionCount(attention: Attention | null): number {
     (attention.deadlocked?.length ?? 0) +
     (attention.waitingOnARunner?.length ?? 0) +
     (attention.runnerCapacity?.filter((r) => r.takers.length === 0).length ?? 0) +
-    (attention.backup ? 1 : 0)
+    (attention.backup ? 1 : 0) +
+    (attention.stalled?.filter((s) => s.kind === 'person' && !s.held).length ?? 0)
   );
 }
 
@@ -119,12 +125,14 @@ export function attentionLabel(attention: Attention | null): string {
 
   const trunkBuilds = attention.trunkBuilds?.length ?? 0;
   const deadlocked = attention.deadlocked?.length ?? 0;
+  const stalledCount = attention.stalled?.filter((s) => s.kind === 'person' && !s.held).length ?? 0;
 
   const parts: string[] = [];
   if (trunkBuilds > 0) parts.push(`${count(trunkBuilds, 'trunk build')} failing`);
   if (attention.backup) parts.push('backup needs attention');
   if (deadlocked > 0) parts.push(`${count(deadlocked, 'issue')} deadlocked`);
   if (attention.questions.length > 0) parts.push(`${count(attention.questions.length, 'question')} to answer`);
+  if (stalledCount > 0) parts.push(`${count(stalledCount, 'issue')} stalled`);
   if (attention.reviews.length > 0) parts.push(`${count(attention.reviews.length, 'pull request')} to review`);
 
   const exhausted = attention.exhaustedRunners?.length ?? 0;
@@ -163,6 +171,9 @@ export function reviewEmptyWords(attention: Attention | null): string {
 /** The other section's empty state. One wording: a question either exists or it
     does not, and there is no second kind of nothing to tell apart. */
 export const questionEmptyWords = (): string => 'Nothing is waiting on an answer.';
+
+/** The stalled section's empty state - one wording, like the questions'. */
+export const stalledEmptyWords = (): string => 'Nothing is stalled.';
 
 /**
  * How long a question has been waiting: `just asked`, `4 minutes`, `2 hours`,
@@ -209,6 +220,24 @@ export function resumeWords(stalledAt: string, stallResumeSeconds: number, now: 
 
   const minutes = Math.ceil(remainingMs / 60_000);
   return `in ${count(minutes, 'minute')}`;
+}
+
+/**
+ * One stalled row's own sentence: `resumes in 12 minutes` or `any moment now`
+ * for a loop-kind row, `held by a person` for one a person has held, or the
+ * queue's own sentence for a board-held row.
+ *
+ * The `'any moment now'` exception is deliberate: that string already reads
+ * as a complete sentence on its own, where `'in 12 minutes'` does not without
+ * the `resumes` prefix.
+ */
+export function stalledWords(row: StalledIssue, stallResumeSeconds: number, now: Date): string {
+  if (row.kind === 'loop') {
+    const w = resumeWords(row.stalledAt!, stallResumeSeconds, now);
+    return w === 'any moment now' ? w : `resumes ${w}`;
+  }
+  if (row.held) return 'held by a person';
+  return row.sentence ?? '';
 }
 
 /** `1 question`, `2 questions`. Every noun here takes a plain -s. */
