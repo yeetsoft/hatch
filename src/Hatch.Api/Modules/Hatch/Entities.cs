@@ -1298,6 +1298,17 @@ public class EfHatchIssue
     public int? ClaimQuietLimitSeconds { get; set; }
 
     /// <summary>
+    /// The hard cap on this claim's run, in seconds from
+    /// <see cref="ClaimedAt"/>, or null for none - see
+    /// <see cref="IssueClaims.IsOverRun"/>. A null or non-positive value is no
+    /// cap. Copied from the playbook the take names and not joined back to it,
+    /// like <see cref="ClaimQuietLimitSeconds"/>, so editing that playbook later
+    /// does not move a running claim's cap. Cleared at release exactly like the
+    /// other claim columns.
+    /// </summary>
+    public int? ClaimMaxRunSeconds { get; set; }
+
+    /// <summary>
     /// The person this issue belongs to, or null. At most one of this and
     /// <see cref="AssigneeApiKeyId"/> is ever set - the controller clears the
     /// other on every write, and a check constraint refuses a row wearing both.

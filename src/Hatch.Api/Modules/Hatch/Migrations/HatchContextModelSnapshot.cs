@@ -362,6 +362,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<DateTimeOffset?>("ClaimHeartbeatAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("ClaimMaxRunSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("ClaimPlaybookId")
                         .HasColumnType("integer");
 
