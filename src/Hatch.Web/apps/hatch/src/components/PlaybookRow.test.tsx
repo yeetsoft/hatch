@@ -27,6 +27,7 @@ const BASE: Playbook = {
   deniedTools: [],
   isCheck: false,
   quietLimitSeconds: null,
+  unreachableReason: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,
@@ -107,6 +108,7 @@ const FILE_ROW: PlaybookFileRowDto = {
   deniedTools: [],
   isCheck: false,
   quietLimitSeconds: null,
+  unreachableReason: null,
 };
 
 describe('PlaybookRow', () => {
@@ -203,6 +205,50 @@ describe('PlaybookRow', () => {
     expect(html).not.toContain('4000');
     expect(html).not.toContain('Bash');
     expect(html).not.toContain('WebFetch');
+  });
+
+  it('draws the server\'s unreachableReason, escaped, as a danger badge - and nothing when it is null', () => {
+    const reason = 'it never "runs"';
+    const html = renderToStaticMarkup(
+      <PlaybookRow
+        playbook={{ ...BASE, unreachableReason: reason }}
+        projects={ONE_PROJECT}
+        statuses={STATUSES}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(html).toContain('it never &quot;runs&quot;');
+    expect(html).toContain('hatch-badge--danger');
+
+    const reachable = renderToStaticMarkup(
+      <PlaybookRow
+        playbook={{ ...BASE, unreachableReason: null }}
+        projects={ONE_PROJECT}
+        statuses={STATUSES}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(reachable).not.toContain('hatch-badge--danger');
+  });
+
+  it.each([
+    ['a trunk-card row (no label)', undefined],
+    ['a merged main-table row (labelled)', "HA's own"],
+  ])('draws the server\'s unreachableReason on %s of PlaybookFileRowLine', (_name, label) => {
+    const render = (unreachableReason: string | null) =>
+      renderToStaticMarkup(
+        <table>
+          <tbody>
+            <PlaybookFileRowLine row={{ ...FILE_ROW, unreachableReason }} statuses={STATUSES} label={label} />
+          </tbody>
+        </table>,
+      );
+    const html = render('it never "runs"');
+    expect(html).toContain('it never &quot;runs&quot;');
+    expect(html).toContain('hatch-badge--danger');
+    expect(render(null)).not.toContain('hatch-badge--danger');
   });
 
   it('has an ungated Delete button, outside the open button', () => {

@@ -494,6 +494,8 @@ export interface PlaybookFileRowDto {
   deniedTools: string[];
   isCheck: boolean;
   quietLimitSeconds: number | null;
+  /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
+  unreachableReason: string | null;
 }
 
 /** Mirrors PlaybookFileDto. */
@@ -1376,6 +1378,8 @@ export interface Playbook {
   isCheck: boolean;
   /** Seconds a claim under this row may go without a word, or null to inherit the server's lapse. */
   quietLimitSeconds: number | null;
+  /** The server's sentence for a row the dispatcher can never pick; null when reachable. */
+  unreachableReason: string | null;
   updatedAt: string;
   /** The one project this row speaks for, or null to speak for every project. */
   projectId: number | null;
