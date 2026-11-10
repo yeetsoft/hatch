@@ -329,6 +329,106 @@ public class PlaybooksControllerTests
             Reason(refusal.Result));
     }
 
+    // ---- MaxRunSeconds: setting, changing, clearing ----
+
+    [Fact]
+    public async Task AMaxRun_IsNullByDefault_OnTheWire()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        Assert.Null(row.MaxRunSeconds);
+        Assert.Null((await h.ReadAsync(row.Id)).MaxRunSeconds);
+    }
+
+    [Fact]
+    public async Task AMaxRun_IsSetAndReadBack()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var patched = await h.SetAsync(row.Id, maxRunSeconds: "3600");
+
+        Assert.Equal(3600, patched.MaxRunSeconds);
+        Assert.Equal(3600, (await h.ReadAsync(row.Id)).MaxRunSeconds);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task AMaxRun_ABlankValue_ClearsIt(string blank)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, maxRunSeconds: "3600");
+
+        var cleared = await h.SetAsync(row.Id, maxRunSeconds: blank);
+
+        Assert.Null(cleared.MaxRunSeconds);
+    }
+
+    [Fact]
+    public async Task PatchingSomethingElse_WithMaxRunOmitted_LeavesItUnchanged()
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+        await h.SetAsync(row.Id, maxRunSeconds: "3600");
+
+        var patched = Value(await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, "a new prompt", null, null), default));
+
+        Assert.Equal("a new prompt", patched.Prompt);
+        Assert.Equal(3600, patched.MaxRunSeconds);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("1.5")]
+    public async Task AMaxRun_ABadValue_IsRefused_AndWritesNothing(string bad)
+    {
+        var h = await NewAsync();
+        var row = await h.CreateAsync();
+
+        var refusal = await h.Playbooks.PatchPlaybook(
+            row.Id, new PlaybookPatchRequest(null, null, null, null, null, null, MaxRunSeconds: bad), default);
+
+        Assert.Equal(
+            $"a run limit is a whole number of one or more, in seconds - not \"{bad}\"",
+            Reason(refusal.Result));
+        Assert.Null((await h.ReadAsync(row.Id)).MaxRunSeconds);
+    }
+
+    // ---- MaxRunSeconds: create ----
+
+    [Fact]
+    public async Task AMaxRun_CanBeSetOnCreate()
+    {
+        var h = await NewAsync();
+
+        var created = await h.CreateAsync(maxRunSeconds: "3600");
+
+        Assert.Equal(3600, created.MaxRunSeconds);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("1.5")]
+    public async Task ABadMaxRunOnCreate_IsRefused(string bad)
+    {
+        var h = await NewAsync();
+
+        var refusal = await h.Playbooks.CreatePlaybook(
+            new PlaybookCreateRequest(h.Todo, h.InProgress, [], "do it", "sonnet", "high", MaxRunSeconds: bad), default);
+
+        Assert.Equal(
+            $"a run limit is a whole number of one or more, in seconds - not \"{bad}\"",
+            Reason(refusal.Result));
+    }
+
     // ---- The one edge that is cut ----
 
     [Fact]
@@ -997,17 +1097,19 @@ public class PlaybooksControllerTests
 
         public async Task<PlaybookDto> CreateAsync(
             string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? quietLimitSeconds = null) =>
+            bool? isCheck = null, string? quietLimitSeconds = null, string? maxRunSeconds = null) =>
             Created(await Playbooks.CreatePlaybook(
                 new PlaybookCreateRequest(Todo, InProgress, [], "do it", "sonnet", "high", budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
+                    MaxRunSeconds: maxRunSeconds), default));
 
         public async Task<PlaybookDto> SetAsync(
             int id, string? budget = null, string? briefLimit = null, string? projectId = null, IReadOnlyList<string>? deniedTools = null,
-            bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null) =>
+            bool? isCheck = null, string? prompt = null, string? quietLimitSeconds = null, string? maxRunSeconds = null) =>
             Value(await Playbooks.PatchPlaybook(
                 id, new PlaybookPatchRequest(null, null, null, prompt, null, null, budget, briefLimit,
-                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds), default));
+                    ProjectId: projectId, DeniedTools: deniedTools, IsCheck: isCheck, QuietLimitSeconds: quietLimitSeconds,
+                    MaxRunSeconds: maxRunSeconds), default));
 
         /// <summary>There is no API to set a prescribed text, so a test sets it on the row.</summary>
         public async Task SetDefaultPromptAsync(int id)

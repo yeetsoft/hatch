@@ -818,6 +818,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
+                    b.Property<int?>("MaxRunSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Model")
                         .IsRequired()
                         .HasMaxLength(60)

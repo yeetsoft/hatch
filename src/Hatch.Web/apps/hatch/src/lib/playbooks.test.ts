@@ -312,6 +312,7 @@ describe('coverage', () => {
       isCheck: false,
       quietLimitSeconds: null,
       unreachableReason: null,
+      maxRunSeconds: null,
     });
     const playbook = (r: CoverageRow): Playbook => ({
       ...fileRow(r),

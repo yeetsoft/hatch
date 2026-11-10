@@ -25,6 +25,7 @@ const BEFORE: Playbook = {
   isCheck: false,
   quietLimitSeconds: null,
   unreachableReason: null,
+  maxRunSeconds: null,
   updatedAt: '2026-01-01T00:00:00Z',
   projectId: null,
   projectKey: null,

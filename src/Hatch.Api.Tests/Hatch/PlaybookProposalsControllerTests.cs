@@ -617,6 +617,22 @@ public class PlaybookProposalsControllerTests
     }
 
     [Fact]
+    public async Task ApproveAll_OnAModelChange_LeavesAnExistingMaxRunSecondsIntact()
+    {
+        var h = await NewAsync();
+        h.Playbook.MaxRunSeconds = 3600;
+        await h.Db.SaveChangesAsync();
+        var proposal = await h.ProposeAsync(patch: new PlaybookPatchRequest(null, null, null, null, "opus", null));
+        var proposals = h.Writing(h.Db, h.Caller, browser: true);
+
+        await proposals.ApproveAll(new PlaybookProposalDecisionRequest([proposal.Id]), default);
+
+        var row = await h.Db.Playbooks.SingleAsync(p => p.Id == h.Playbook.Id);
+        Assert.Equal("opus", row.Model);
+        Assert.Equal(3600, row.MaxRunSeconds);
+    }
+
+    [Fact]
     public async Task ApproveAll_WithOneRowEditedSince_Is409NamingTheSecondProposal_AndChangesNeither()
     {
         var h = await NewAsync();

@@ -70,7 +70,8 @@ internal static class PlaybookProposalProjection
             beforeDto.FromStatusId, beforeDto.ToStatusId, EfHatchPlaybook.NormalizeTypes(beforeDto.Types), beforeDto.Shape,
             beforeDto.Prompt == beforeDto.DefaultPrompt ? null : beforeDto.Prompt, beforeDto.DefaultPrompt,
             beforeDto.Model, beforeDto.Effort, beforeDto.Budget, beforeDto.BriefLimit, beforeDto.QuietLimitSeconds,
-            EfHatchPlaybook.WriteDeniedTools(beforeDto.DeniedTools), beforeDto.IsCheck, beforeDto.ProjectId);
+            EfHatchPlaybook.WriteDeniedTools(beforeDto.DeniedTools), beforeDto.IsCheck, beforeDto.ProjectId,
+            beforeDto.MaxRunSeconds);
 
         var after = PlaybookPatches.Apply(before, patch);
 
@@ -121,7 +122,7 @@ internal static class PlaybookProposalProjection
         return projectId == before.ProjectId ? (before.ProjectKey, before.ProjectName) : (null, null);
     }
 
-    /// <summary>The fixed vocabulary, in the order the wire always lists it, that <c>quietLimitSeconds</c> is deliberately not part of.</summary>
+    /// <summary>The fixed vocabulary, in the order the wire always lists it, that <c>quietLimitSeconds</c> and <c>maxRunSeconds</c> are deliberately not part of.</summary>
     private static IReadOnlyList<string> ChangedFields(PlaybookState before, PlaybookState after)
     {
         var fields = new List<string>();

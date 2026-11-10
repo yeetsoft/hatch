@@ -68,6 +68,34 @@ public class DispatchTests
     }
 
     [Fact]
+    public async Task MatchAsync_AFileRowsMaxRunSeconds_IsOnTheMatchedPlaybook()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress, maxRunSeconds: 3600)]);
+
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
+
+        Assert.NotNull(playbook);
+        Assert.Equal(3600, playbook.MaxRunSeconds);
+    }
+
+    [Fact]
+    public async Task MatchAsync_AFileRowWithNoMaxRunSeconds_LeavesItNullOnTheMatchedPlaybook()
+    {
+        var h = await NewAsync();
+        await h.SetRepoSourcedAsync();
+        var repo = await h.AddRepositoryAsync(baseBranch: "main");
+        await h.PlaybookFileAsync(repo, "main", EfHatchPlaybookFile.ParsedState, rows: [FileRow(h.Todo, h.InProgress)]);
+
+        var playbook = (await h.Dispatch.MatchAsync(h.Todo, h.InProgress, "story", false, h.ProjectId, default))?.Playbook;
+
+        Assert.NotNull(playbook);
+        Assert.Null(playbook.MaxRunSeconds);
+    }
+
+    [Fact]
     public async Task MatchAsync_AFileRowAndAMoreSpecificBoardWideRow_TheFileRowWinsRegardless()
     {
         var h = await NewAsync();
@@ -1448,8 +1476,8 @@ public class DispatchTests
 
     private static PlaybookFileRow FileRow(
         int from, int to, IReadOnlyList<string>? types = null, string shape = "any", string model = "sonnet",
-        int? quietLimitSeconds = null) =>
-        new(from, to, types ?? [], shape, "do the thing", model, "high", null, null, [], false, quietLimitSeconds);
+        int? quietLimitSeconds = null, int? maxRunSeconds = null) =>
+        new(from, to, types ?? [], shape, "do the thing", model, "high", null, null, [], false, quietLimitSeconds, maxRunSeconds);
 
     private static ScanRow RowFor(Scan scan, EfHatchIssue issue) =>
         scan.Rows.Single(r => r.Issue.Id == issue.Id);
