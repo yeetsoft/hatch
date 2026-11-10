@@ -1304,6 +1304,256 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.CheckApprovesMergeAt);
     }
 
+    // ---- One-PR policy ----
+
+    private static async Task<ProjectDto> PutPolicy(Harness h, int id, string policy) =>
+        Value(await h.Projects.PutOnePrPolicy(id, new ProjectOnePrPolicyWriteRequest(policy), default));
+
+    [Fact]
+    public async Task AFreshProject_StartsOptionalWithNoByOrAt()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.Equal(OnePullRequestPolicies.Optional, created.OnePullRequestPolicy);
+        Assert.Null(created.OnePullRequestPolicyBy);
+        Assert.Null(created.OnePullRequestPolicyAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.Equal(OnePullRequestPolicies.Optional, fresh.OnePullRequestPolicy);
+        Assert.Null(fresh.OnePullRequestPolicyBy);
+        Assert.Null(fresh.OnePullRequestPolicyAt);
+    }
+
+    [Fact]
+    public async Task AnOwner_RoundTripsOptionalToEnforcedToOptional()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        h.Time.SetUtcNow(Now.AddMinutes(1));
+        var enforced = await PutPolicy(h, created.Id, OnePullRequestPolicies.Enforced);
+        Assert.Equal(OnePullRequestPolicies.Enforced, enforced.OnePullRequestPolicy);
+        Assert.Equal(h.Nathan.Name, enforced.OnePullRequestPolicyBy);
+        Assert.Equal(Now.AddMinutes(1), enforced.OnePullRequestPolicyAt);
+
+        h.Time.SetUtcNow(Now.AddMinutes(2));
+        var optional = await PutPolicy(h, created.Id, OnePullRequestPolicies.Optional);
+        Assert.Equal(OnePullRequestPolicies.Optional, optional.OnePullRequestPolicy);
+        Assert.Equal(h.Nathan.Name, optional.OnePullRequestPolicyBy);
+        Assert.Equal(Now.AddMinutes(2), optional.OnePullRequestPolicyAt);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutOnePrPolicyNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutOnePrPolicy(created.Id, new ProjectOnePrPolicyWriteRequest(OnePullRequestPolicies.Enforced), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change its one-pull-request policy", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.Equal(OnePullRequestPolicies.Optional, row.OnePullRequestPolicy);
+        Assert.Null(row.OnePullRequestPolicyBy);
+        Assert.Null(row.OnePullRequestPolicyAt);
+    }
+
+    [Fact]
+    public async Task AKey_Is403OnPutOnePrPolicy()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutOnePrPolicy(h.ProjectId, new ProjectOnePrPolicyWriteRequest(OnePullRequestPolicies.Enforced), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.Equal(OnePullRequestPolicies.Optional, (await h.Db.Projects.FindAsync(h.ProjectId))!.OnePullRequestPolicy);
+    }
+
+    [Fact]
+    public async Task ANonsensePolicy_Is400NamingBothValuesAndWritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var result = await h.Projects.PutOnePrPolicy(created.Id, new ProjectOnePrPolicyWriteRequest("nonsense"), default);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        var reason = Reason(result.Result);
+        Assert.Contains("nonsense", reason);
+        Assert.Contains(OnePullRequestPolicies.Optional, reason);
+        Assert.Contains(OnePullRequestPolicies.Enforced, reason);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.Equal(OnePullRequestPolicies.Optional, row.OnePullRequestPolicy);
+    }
+
+    [Fact]
+    public async Task PutOnePrPolicy_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutOnePrPolicy(h.ProjectId + 1000, new ProjectOnePrPolicyWriteRequest(OnePullRequestPolicies.Enforced), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task ResendingTheEnforcedPolicyAlreadyHeld_KeepsByAndAt_AndSkipsReconciliation()
+    {
+        var h = await NewAsync();
+        var (todo, doing) = await BoardAsync(h);
+        var row = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        row.OnePullRequestPolicy = OnePullRequestPolicies.Enforced;
+        row.OnePullRequestPolicyBy = "someone earlier";
+        row.OnePullRequestPolicyAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+        var story = await IssueAsync(h, "story", todo.Id, onePr: true);
+
+        var result = await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        Assert.Equal(OnePullRequestPolicies.Enforced, result.OnePullRequestPolicy);
+        Assert.Equal("someone earlier", result.OnePullRequestPolicyBy);
+        Assert.Equal(Now.AddDays(-1), result.OnePullRequestPolicyAt);
+        h.Db.ChangeTracker.Clear();
+        var storyRow = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.True(storyRow.OnePullRequest);
+        Assert.Empty(storyRow.Events);
+    }
+
+    [Fact]
+    public async Task Tightening_ReturnsAnUnstartedOverrideOfAStoryAndABugToInherit()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id, onePr: true);
+        await IssueAsync(h, "task", todo.Id, story.Id);
+        var bug = await IssueAsync(h, "bug", todo.Id, onePr: false);
+        await IssueAsync(h, "task", todo.Id, bug.Id);
+        story.UpdatedAt = Now.AddDays(-1);
+        bug.UpdatedAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+        h.Time.SetUtcNow(Now.AddMinutes(1));
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        h.Db.ChangeTracker.Clear();
+        var storyRow = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.Null(storyRow.OnePullRequest);
+        Assert.Equal(h.Time.GetUtcNow(), storyRow.UpdatedAt);
+        var storyEvent = Assert.Single(storyRow.Events);
+        Assert.Equal(EfHatchIssueEvent.OnePrChanged, storyEvent.Kind);
+        Assert.Equal("Nathan", storyEvent.Actor);
+        var storyPayload = System.Text.Json.JsonDocument.Parse(storyEvent.Payload!).RootElement;
+        Assert.Equal("on", storyPayload.GetProperty("from").GetString());
+        Assert.Equal("inherit", storyPayload.GetProperty("to").GetString());
+        Assert.Contains("nothing under this story started", storyPayload.GetProperty("fixedBecause").GetString());
+
+        var bugRow = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == bug.Id);
+        Assert.Null(bugRow.OnePullRequest);
+        Assert.Equal(h.Time.GetUtcNow(), bugRow.UpdatedAt);
+        var bugEvent = Assert.Single(bugRow.Events);
+        Assert.Equal(EfHatchIssueEvent.OnePrChanged, bugEvent.Kind);
+        var bugPayload = System.Text.Json.JsonDocument.Parse(bugEvent.Payload!).RootElement;
+        Assert.Equal("off", bugPayload.GetProperty("from").GetString());
+        Assert.Equal("inherit", bugPayload.GetProperty("to").GetString());
+        Assert.Contains("nothing under this story started", bugPayload.GetProperty("fixedBecause").GetString());
+    }
+
+    [Fact]
+    public async Task Tightening_LeavesAStartedStorysOverrideAlone()
+    {
+        var h = await NewAsync();
+        var (_, doing) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", doing.Id, onePr: true);
+        await IssueAsync(h, "task", doing.Id, story.Id);
+        var updatedAt = story.UpdatedAt;
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.True(row.OnePullRequest);
+        Assert.Empty(row.Events);
+        Assert.Equal(updatedAt, row.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task Tightening_LeavesATerminalStorysOverrideAloneWhenATaskSitsInDone()
+    {
+        var h = await NewAsync();
+        await BoardAsync(h);
+        var done = await h.Db.Statuses.SingleAsync(s => s.IsTerminal);
+        var story = await IssueAsync(h, "story", done.Id, onePr: true);
+        await IssueAsync(h, "task", done.Id, story.Id);
+        var updatedAt = story.UpdatedAt;
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+
+        h.Db.ChangeTracker.Clear();
+        var row = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.True(row.OnePullRequest);
+        Assert.Empty(row.Events);
+        Assert.Equal(updatedAt, row.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task Loosening_WritesOnlyTheProjectRowAndLeavesEveryIssueAlone()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var row = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        row.OnePullRequestPolicy = OnePullRequestPolicies.Enforced;
+        await h.Db.SaveChangesAsync();
+        var story = await IssueAsync(h, "story", todo.Id, onePr: false);
+        var bug = await IssueAsync(h, "bug", todo.Id, onePr: true);
+        var storyUpdatedAt = story.UpdatedAt;
+        var bugUpdatedAt = bug.UpdatedAt;
+
+        var result = await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Optional);
+
+        Assert.Equal(OnePullRequestPolicies.Optional, result.OnePullRequestPolicy);
+        Assert.Equal(h.Nathan.Name, result.OnePullRequestPolicyBy);
+        Assert.Equal(Now, result.OnePullRequestPolicyAt);
+        h.Db.ChangeTracker.Clear();
+        var storyRow = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == story.Id);
+        Assert.False(storyRow.OnePullRequest);
+        Assert.Empty(storyRow.Events);
+        Assert.Equal(storyUpdatedAt, storyRow.UpdatedAt);
+        var bugRow = await h.Db.Issues.Include(i => i.Events).SingleAsync(i => i.Id == bug.Id);
+        Assert.True(bugRow.OnePullRequest);
+        Assert.Empty(bugRow.Events);
+        Assert.Equal(bugUpdatedAt, bugRow.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task OnePrEnforced_FollowsTheProjectLive()
+    {
+        var h = await NewAsync();
+        var (todo, _) = await BoardAsync(h);
+        var story = await IssueAsync(h, "story", todo.Id);
+
+        var before = await IssueProjection.ToDtoAsync(h.Db, h.Actors, story, TestClaims.With(), Now, default);
+        Assert.False(before.OnePrEnforced);
+        var updatedAtBefore = before.UpdatedAt;
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Enforced);
+        h.Db.ChangeTracker.Clear();
+        var afterEnforcedRow = await h.Db.Issues.SingleAsync(i => i.Id == story.Id);
+        var afterEnforced = await IssueProjection.ToDtoAsync(h.Db, h.Actors, afterEnforcedRow, TestClaims.With(), Now, default);
+        Assert.True(afterEnforced.OnePrEnforced);
+        Assert.Equal(updatedAtBefore, afterEnforced.UpdatedAt);
+
+        await PutPolicy(h, h.ProjectId, OnePullRequestPolicies.Optional);
+        h.Db.ChangeTracker.Clear();
+        var afterOptionalRow = await h.Db.Issues.SingleAsync(i => i.Id == story.Id);
+        var afterOptional = await IssueProjection.ToDtoAsync(h.Db, h.Actors, afterOptionalRow, TestClaims.With(), Now, default);
+        Assert.False(afterOptional.OnePrEnforced);
+        Assert.Equal(updatedAtBefore, afterOptional.UpdatedAt);
+    }
+
     // ---- No-code closes ----
 
     [Fact]
