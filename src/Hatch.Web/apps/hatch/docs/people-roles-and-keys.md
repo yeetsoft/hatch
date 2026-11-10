@@ -79,9 +79,9 @@ project rather than globally.
   *pre-approved*. Every other change to pre-approval follows whichever rule
   governs moving into the board's send-back column — the same owner-or-
   approver test, but only where that column is itself Protected.
-- **Owner alone.** A project's landing and auto-heal settings, and whether
-  its playbooks come from its repository or the board, are an owner's call;
-  an approver has no say in either.
+- **Owner alone.** A project's landing and auto-heal settings, whether its
+  playbooks come from its repository or the board, and its one-pull-request
+  policy, are an owner's call; an approver has no say in either.
 - **Keys and runners never count.** A program — an API key, or a runner
   naming itself with a header — is refused a Protected move regardless of
   membership. With the wall off, the one local person is a real person

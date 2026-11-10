@@ -14,6 +14,7 @@ import {
   putProjectBindsTracker,
   putProjectCheckApprovesMerge,
   putProjectNoCodeCloses,
+  putProjectOnePrPolicy,
   putProjectStoriesOnEpics,
   putProjectLanding,
   putProjectLogo,
@@ -32,6 +33,7 @@ import {
   projectBindsTrackerDiff,
   projectCheckApprovesMergeDiff,
   projectNoCodeClosesDiff,
+  projectOnePrPolicyDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
   projectDraftKeyObjection,
@@ -98,6 +100,7 @@ export function ProjectEditDialog({
   const [reflectError, setReflectError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const landingName = useId();
+  const policyName = useId();
   const navigate = useNavigate();
 
   const { data: people } = useLoaded(getPeople);
@@ -187,6 +190,7 @@ export function ProjectEditDialog({
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
     const checkApprovesMergeDiff = projectCheckApprovesMergeDiff(draft!);
     const noCodeClosesDiff = projectNoCodeClosesDiff(draft!);
+    const onePrPolicyDiff = projectOnePrPolicyDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
     const runnerTagsDiff = projectRunnerTagsDiff(draft!);
@@ -199,6 +203,7 @@ export function ProjectEditDialog({
       bindsTrackerDiff === null &&
       checkApprovesMergeDiff === null &&
       noCodeClosesDiff === null &&
+      onePrPolicyDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
       runnerTagsDiff === null &&
@@ -215,6 +220,7 @@ export function ProjectEditDialog({
       if (diff.patch !== null) await patchProject(project!.id, diff.patch);
       if (diff.repositories !== null) await putProjectRepositories(project!.id, diff.repositories);
       if (landingDiff !== null) await putProjectLanding(project!.id, landingDiff);
+      if (onePrPolicyDiff !== null) await putProjectOnePrPolicy(project!.id, onePrPolicyDiff);
       if (repoSourcedDiff !== null) await putProjectPlaybooksSource(project!.id, repoSourcedDiff);
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
       if (checkApprovesMergeDiff !== null) await putProjectCheckApprovesMerge(project!.id, checkApprovesMergeDiff);
@@ -423,9 +429,40 @@ export function ProjectEditDialog({
               A story's tasks share one branch and one pull request
             </label>
             <p className="hatch-section-hint text-muted">
-              The default for every story in this project; a story can override it either way.
-              Off, each task gets its own branch and pull request, merged one after another.
+              The default for every story in this project; unless every story follows the project (below), a story
+              can override it either way. Off, each task gets its own branch and pull request, merged one after
+              another.
             </p>
+            <fieldset className="hatch-landing-choice">
+              <label>
+                <input
+                  type="radio"
+                  name={policyName}
+                  checked={draft.onePullRequestPolicy === 'optional'}
+                  onChange={() => setDraft((d) => d && { ...d, onePullRequestPolicy: 'optional' })}
+                />
+                Stories may set their own, either way
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={policyName}
+                  checked={draft.onePullRequestPolicy === 'enforced'}
+                  onChange={() => setDraft((d) => d && { ...d, onePullRequestPolicy: 'enforced' })}
+                />
+                Every story follows the project
+              </label>
+            </fieldset>
+            <p className="hatch-section-hint text-muted">
+              Enforcing it means no story or bug may be given a setting of its own; a setting already on a story
+              with nothing started under it is returned to the project's default when this is turned on.
+            </p>
+            {(project.onePullRequestPolicyBy || project.onePullRequestPolicyAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.onePullRequestPolicyBy} on{' '}
+                {project.onePullRequestPolicyAt ? new Date(project.onePullRequestPolicyAt).toLocaleDateString() : ''}
+              </p>
+            )}
             <label>
               <input
                 type="checkbox"
@@ -579,7 +616,9 @@ export function ProjectEditDialog({
           </>
         ) : (
           <>
-            <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}, auto-heal ${
+            <p>{`${draft.landing === 'trunk' ? 'On the trunk' : 'By pull request'}, checks ${draft.checksRequired ? 'required' : 'not required'}, ${draft.onePullRequest ? 'one pull request per story' : 'one pull request per task'}${
+              draft.onePullRequestPolicy === 'enforced' ? ', which every story follows' : ', which a story may override'
+            }, auto-heal ${
               draft.autoHealBugEnabled
                 ? `files a ${draft.autoHealBugPriority} bug at ${draft.autoHealBugPreApproval} pre-approval in ${statuses?.find((s) => s.id === draft.autoHealBugStatusId)?.name ?? 'the automatic column'}`
                 : 'off'
@@ -596,6 +635,13 @@ export function ProjectEditDialog({
                 : ''}
               .
             </p>
+            {(project.onePullRequestPolicyBy || project.onePullRequestPolicyAt) && (
+              <p>
+                {`The one-pull-request policy was set by ${project.onePullRequestPolicyBy ?? 'unknown'} on ${
+                  project.onePullRequestPolicyAt ? new Date(project.onePullRequestPolicyAt).toLocaleDateString() : 'an unknown date'
+                }.`}
+              </p>
+            )}
             <p>
               {project.noCodeCloses ? 'A no-code declaration closes the ticket' : 'A no-code declaration does not close the ticket'}
               {project.noCodeClosesBy || project.noCodeClosesAt
