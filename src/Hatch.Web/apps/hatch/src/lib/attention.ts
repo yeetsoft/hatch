@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention, TrunkBuild } from '../types';
+import type { Attention, RunnerCapacity, TrunkBuild } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -57,6 +57,10 @@ export type AttentionTone = 'rest' | 'asking';
  * it, a move no live runner can take sits until a person fixes the runner (a
  * model or a tool), so every row is a person's.
  *
+ * `runnerCapacity` counts only its rows with no taker: a one-taker row is
+ * information, not breakage (HA-2079's decision), while a no-taker row is a
+ * person's to fix, the same as `waitingOnARunner`.
+ *
  * `approvedWaiting` is deliberately left out: the loop is still progressing
  * those on its own, and a row it cannot clear becomes `approvedHeld`, already
  * counted above.
@@ -72,6 +76,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.noCodeHeld?.length ?? 0) +
     (attention.deadlocked?.length ?? 0) +
     (attention.waitingOnARunner?.length ?? 0) +
+    (attention.runnerCapacity?.filter((r) => r.takers.length === 0).length ?? 0) +
     (attention.backup ? 1 : 0)
   );
 }
@@ -80,7 +85,7 @@ export function attentionCount(attention: Attention | null): number {
  * What the bar's attention pills add up to at phone width, where they fold
  * into one count: exactly the four sections that draw a pill - deadlocked,
  * trunk, review and question. Deliberately not `attentionCount`, which also
- * counts `approvedHeld`, `landingHeld`, `noCodeHeld`, `waitingOnARunner` and `backup`: those light the control and have
+ * counts `approvedHeld`, `landingHeld`, `noCodeHeld`, `waitingOnARunner`, `runnerCapacity` and `backup`: those light the control and have
  * a row in the panel, but no pill, so a total that included them would not
  * be the sum of the pills it stands in for.
  */
@@ -229,6 +234,22 @@ export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
 
 /** The empty state of the "Waiting on a runner" section. */
 export const waitingOnARunnerEmptyWords = (): string => 'Nothing is waiting on a runner.';
+
+/**
+ * A runner capacity row's second line: `3 clear steps: only Nathan-PC can take
+ * them` when one runner can, or `no live runner can take them: Nathan-PC:
+ * out of usage; Nathan-MBP: wrong model` when none can. The project key is
+ * left out - the row head already carries it, and no sibling section's
+ * second line repeats its own key either. `takers.length` is never 2+ here:
+ * the server only lists a project when it has at most one taker.
+ */
+export function runnerCapacityWords(row: RunnerCapacity): string {
+  if (row.takers.length === 1) return `${count(row.steps, 'clear step')}: only ${row.takers[0]} can take them`;
+  return `no live runner can take them: ${row.reasons.map((r) => `${r.runner}: ${r.reason}`).join('; ')}`;
+}
+
+/** The empty state of the "Runner capacity" section. */
+export const runnerCapacityEmptyWords = (): string => "Every project's next steps have two or more live runners.";
 
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';

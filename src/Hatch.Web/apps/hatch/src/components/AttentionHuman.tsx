@@ -10,6 +10,8 @@ import {
   noCodeHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
+  runnerCapacityEmptyWords,
+  runnerCapacityWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
   trunkIconTone,
@@ -146,6 +148,7 @@ export function AttentionHuman({
   const noCodeHeld = attention?.noCodeHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
   const waitingOnARunner = attention?.waitingOnARunner ?? [];
+  const runnerCapacity = attention?.runnerCapacity ?? [];
   const backup = attention?.backup ?? null;
 
   return (
@@ -178,6 +181,35 @@ export function AttentionHuman({
               <span className="hatch-attention-files">See the Runners page</span>
             </Link>
           </>
+        )}
+      </section>
+
+      <section className="hatch-attention-section">
+        <h3 className="hatch-attention-heading">Runner capacity</h3>
+
+        {runnerCapacity.length === 0 ? (
+          <p className="hatch-attention-empty">{runnerCapacityEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {runnerCapacity.map((row) => (
+              <li key={row.projectKey}>
+                <div className="hatch-attention-row hatch-attention-row-plain">
+                  <span className="hatch-attention-row-head">
+                    <span className="hatch-attention-key">{row.projectKey}</span>
+                  </span>
+                  <span className="hatch-attention-files">{runnerCapacityWords(row)}</span>
+                  <span className="hatch-attention-checks">
+                    {row.keys.map((key, i) => (
+                      <span key={key}>
+                        {i > 0 && ', '}
+                        <Link to={`/issues/${key}`}>{key}</Link>
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

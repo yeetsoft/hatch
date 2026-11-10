@@ -17,6 +17,8 @@ import {
   resetWords,
   resumeWords,
   reviewEmptyWords,
+  runnerCapacityEmptyWords,
+  runnerCapacityWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
   trunkIconTone,
@@ -24,7 +26,7 @@ import {
   waitedWords,
   waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -102,6 +104,15 @@ const waitingOnARunner = (over: Partial<WaitingOnARunner> = {}): WaitingOnARunne
   type: 'story',
   move: 'todo',
   missing: 'no live runner offers fable',
+  ...over,
+});
+
+const runnerCapacity = (over: Partial<RunnerCapacity> = {}): RunnerCapacity => ({
+  projectKey: 'AER',
+  steps: 2,
+  keys: ['AER-30', 'AER-31'],
+  takers: [],
+  reasons: [{ runner: 'Nathan-PC', reason: 'out of usage' }],
   ...over,
 });
 
@@ -222,6 +233,21 @@ describe('attentionCount', () => {
     expect(attentionCount(attention())).toBe(0);
   });
 
+  it('counts a no-taker runner capacity row, but not a one-taker row, and adds exactly one for one of each', () => {
+    // A one-taker row is information, not breakage (HA-2079's decision); only
+    // a no-taker row is a person's to fix.
+    expect(attentionCount(attention({ runnerCapacity: [runnerCapacity({ takers: ['Nathan-PC'] })] }))).toBe(0);
+    expect(attentionCount(attention({ runnerCapacity: [runnerCapacity({ takers: [] })] }))).toBe(1);
+    expect(
+      attentionCount(
+        attention({
+          runnerCapacity: [runnerCapacity({ projectKey: 'AER', takers: ['Nathan-PC'] }), runnerCapacity({ projectKey: 'HA', takers: [] })],
+        }),
+      ),
+    ).toBe(1);
+    expect(attentionCount(attention())).toBe(0);
+  });
+
   it('counts a backup as one row, adds it to the other sources, and counts null or absent as zero', () => {
     // Nothing in the loop will fix a folder, so it is a person's, every time.
     const backup = { sentence: 'The last backup failed.', lastSuccessfulAt: null };
@@ -290,6 +316,11 @@ describe('pillCount', () => {
   it('does not count a waiting-on-a-runner row, which lights the control but draws no pill', () => {
     expect(pillCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(0);
     expect(attentionCount(attention({ waitingOnARunner: [waitingOnARunner()] }))).toBe(1);
+  });
+
+  it('does not count a runner capacity row, which lights the control but draws no pill', () => {
+    expect(pillCount(attention({ runnerCapacity: [runnerCapacity({ takers: [] })] }))).toBe(0);
+    expect(attentionCount(attention({ runnerCapacity: [runnerCapacity({ takers: [] })] }))).toBe(1);
   });
 
   it('is zero before the first answer', () => {
@@ -488,6 +519,39 @@ describe('deadlockedEmptyWords', () => {
 describe('waitingOnARunnerEmptyWords', () => {
   it('says nothing is waiting on a runner', () => {
     expect(waitingOnARunnerEmptyWords()).toBe('Nothing is waiting on a runner.');
+  });
+});
+
+describe('runnerCapacityWords', () => {
+  it('names the one taker, pluralising the step count', () => {
+    expect(runnerCapacityWords(runnerCapacity({ steps: 3, takers: ['Nathan-PC'] }))).toBe('3 clear steps: only Nathan-PC can take them');
+    expect(runnerCapacityWords(runnerCapacity({ steps: 1, takers: ['Nathan-PC'] }))).toBe('1 clear step: only Nathan-PC can take them');
+  });
+
+  it('joins one reason with no taker', () => {
+    expect(
+      runnerCapacityWords(runnerCapacity({ takers: [], reasons: [{ runner: 'Nathan-PC', reason: 'out of usage' }] })),
+    ).toBe('no live runner can take them: Nathan-PC: out of usage');
+  });
+
+  it('joins two or more reasons with no taker, separated by "; "', () => {
+    expect(
+      runnerCapacityWords(
+        runnerCapacity({
+          takers: [],
+          reasons: [
+            { runner: 'Nathan-PC', reason: 'out of usage' },
+            { runner: 'Nathan-MBP', reason: 'wrong model' },
+          ],
+        }),
+      ),
+    ).toBe('no live runner can take them: Nathan-PC: out of usage; Nathan-MBP: wrong model');
+  });
+});
+
+describe('runnerCapacityEmptyWords', () => {
+  it("says every project's next steps have two or more live runners", () => {
+    expect(runnerCapacityEmptyWords()).toBe("Every project's next steps have two or more live runners.");
   });
 });
 
