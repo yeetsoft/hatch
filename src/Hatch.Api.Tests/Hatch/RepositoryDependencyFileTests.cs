@@ -27,6 +27,7 @@ public class RepositoryDependencyFileTests
                 new DeclaredDependency("node", "22"),
                 new DeclaredDependency("pwsh", "7"),
                 new DeclaredDependency("playwright-browsers", null),
+                new DeclaredDependency("docker", null),
             ],
             dependencies);
     }

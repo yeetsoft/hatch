@@ -848,7 +848,7 @@ public sealed class ConfigCommandTests : IDisposable
         await Command(new Replies()).RunAsync(["--show"], default);
 
         Assert.Contains($"{"has:".PadRight(19)}none", Said);
-        Assert.Contains($"{"missing:".PadRight(19)}dotnet, make, node, playwright-browsers, postgres, pwsh", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}docker, dotnet, make, node, playwright-browsers, postgres, pwsh", Said);
     }
 
     [Fact]
@@ -860,7 +860,7 @@ public sealed class ConfigCommandTests : IDisposable
             .RunAsync(["--show"], default);
 
         Assert.Contains($"{"has:".PadRight(19)}make", Said);
-        Assert.Contains($"{"missing:".PadRight(19)}dotnet, node, playwright-browsers, postgres, pwsh", Said);
+        Assert.Contains($"{"missing:".PadRight(19)}docker, dotnet, node, playwright-browsers, postgres, pwsh", Said);
     }
 
     /// <summary>A <c>SHELL</c> that exists as a file, and a <c>PATH</c> directory that may hold a <c>node</c>.</summary>
@@ -1931,7 +1931,7 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Equal(1, await Command(new Replies()).RunAsync(["--has", "cobol"], default));
 
         Assert.Contains(
-            "the list is dotnet, make, node, playwright-browsers, postgres, pwsh", Complained, StringComparison.Ordinal);
+            "the list is docker, dotnet, make, node, playwright-browsers, postgres, pwsh", Complained, StringComparison.Ordinal);
         Assert.False(File.Exists(ConfigPath));
     }
 
