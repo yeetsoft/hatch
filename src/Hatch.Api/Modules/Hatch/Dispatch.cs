@@ -850,7 +850,7 @@ public sealed class Dispatch(
                              .ThenBy(n => n.Version, StringComparer.Ordinal))
                 {
                     if (withHas.Any(d => d.Has.VersionsOf(need.Id).Any(v => DependencyVersion.Satisfies(need.Version, v)))) continue;
-                    needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+                    needed.Add(NeedPhrase(need));
                 }
 
                 if (needed.Count > 0) parts.Add($"no live runner has {Listed(needed)}");
@@ -1199,13 +1199,18 @@ public sealed class Dispatch(
             ? $"{IssueKey.Format(issue.Project!.Key, issue.Number)} is flagged dangerous ({reason}) - this runner refuses dangerous work"
             : null;
 
+    /// <summary>A declared need as a sentence: a version is a minimum, so it reads <c>or newer</c>.</summary>
+    private static string NeedPhrase(DependencyNeed need) =>
+        need.Version is null ? need.Id : $"{need.Id} {need.Version} or newer";
+
     /// <summary>
     /// Why this caller's runner cannot run the issue's code: a bound
     /// repository declares a development dependency the runner's
     /// <c>?has=</c> does not satisfy, or one of the declaring files is invalid.
     /// Null for a scan that is <see cref="HasDeclaration.Unjudged"/>, and when
     /// every need is met. A need is met when any version the runner lists for
-    /// its id satisfies it; a bare need is met by the id at any version.
+    /// its id is at least the declared one; a declared version is a minimum,
+    /// and a bare need is met by the id at any version.
     /// </summary>
     private static string? DependencyFold(EfHatchIssue issue, HasDeclaration has, DependencyRequirement requirement)
     {
@@ -1222,7 +1227,7 @@ public sealed class Dispatch(
             var versions = has.VersionsOf(need.Id);
             if (versions.Any(v => DependencyVersion.Satisfies(need.Version, v))) continue;
 
-            needed.Add(need.Version is null ? need.Id : $"{need.Id} {need.Version}");
+            needed.Add(NeedPhrase(need));
             offered.Add(versions.Count == 0
                 ? $"no {need.Id}"
                 : Listed(versions.Select(v => v is null ? need.Id : $"{need.Id} {v}").ToList()));
