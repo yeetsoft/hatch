@@ -267,6 +267,141 @@ export function groupByHost(runners: readonly Runner[]): RunnerHostGroup[] {
 /** Whether this row was replaced by another name from the same checkout. */
 export const isRetired = (runner: Runner) => Boolean(runner.retiredAt);
 
+/** The states the list's glyph can draw - `RunnerActivity` plus `none`, for a
+    runner that has never had a session at all. */
+export type RunnerGlyphState = RunnerActivity | 'none';
+
+/** How the glyph states rank against each other, highest first: gone beats
+    everything, and a runner with no session at all outranks nothing. */
+const RANK: Record<RunnerGlyphState, number> = {
+  gone: 6,
+  exhausted: 5,
+  throttled: 4,
+  paused: 3,
+  stopping: 3,
+  working: 2,
+  idle: 1,
+  none: 0,
+};
+
+/**
+ * The glyph a runner's row draws: the highest-ranked state among its live
+ * sessions, or `gone`/`none` where it has none live - `gone` when it has ever
+ * had a session at all, `none` when it never has.
+ */
+export function runnerGlyphState(runner: Runner, now: Date): RunnerGlyphState {
+  const live = liveSessions(runner, now);
+  if (live.length === 0) return (runner.sessions ?? []).length > 0 ? 'gone' : 'none';
+
+  return live
+    .map((session) => sessionActivity(session, runner, now))
+    .reduce((best, activity) => (RANK[activity] > RANK[best] ? activity : best));
+}
+
+/**
+ * Which live session the row's second line speaks for: among the sessions at
+ * the winning rank (paused and stopping tie), the one most recently heard
+ * from - the earlier in server order on a tie. Null where no session is live.
+ */
+export function speakingSession(runner: Runner, now: Date): RunnerSession | null {
+  const live = liveSessions(runner, now);
+  if (live.length === 0) return null;
+
+  const winningRank = Math.max(...live.map((session) => RANK[sessionActivity(session, runner, now)]));
+  const contenders = live.filter((session) => RANK[sessionActivity(session, runner, now)] === winningRank);
+  return contenders.reduce((best, session) => (Date.parse(session.lastSeenAt) > Date.parse(best.lastSeenAt) ? session : best));
+}
+
+/** The newest `lastSeenAt` over every session a runner has ever carried -
+    live, ended or history - or null with none at all. */
+export function runnerLastSeen(runner: Runner): string | null {
+  const sessions = runner.sessions ?? [];
+  if (sessions.length === 0) return null;
+
+  return sessions.reduce((latest, session) => (Date.parse(session.lastSeenAt) > Date.parse(latest.lastSeenAt) ? session : latest))
+    .lastSeenAt;
+}
+
+/** The row's second line, worded by its glyph state. */
+export function rowSecondLine(runner: Runner, now: Date): string {
+  const state = runnerGlyphState(runner, now);
+  switch (state) {
+    case 'working': {
+      const speaking = speakingSession(runner, now) as RunnerSession;
+      const others = liveSessions(runner, now).filter(
+        (session) => session !== speaking && sessionActivity(session, runner, now) === 'working',
+      ).length;
+      const base = speaking.line ? `${speaking.claimKey} - ${speaking.line}` : (speaking.claimKey as string);
+      return others > 0 ? `${base} +${others} more` : base;
+    }
+    case 'idle':
+      return `Idle - seen ${agoPhrase(runnerLastSeen(runner), now)}`;
+    case 'paused':
+    case 'stopping':
+    case 'throttled':
+    case 'exhausted':
+      return sessionParts(speakingSession(runner, now) as RunnerSession, runner, now).words;
+    case 'gone':
+      return `Gone - last seen ${agoPhrase(runnerLastSeen(runner), now)}`;
+    default:
+      return 'Not started';
+  }
+}
+
+/** The row's third line: the owner, then the one distinct host among its
+    live sessions - omitted with none, named with one, counted with more. */
+export function rowThirdLine(runner: Runner, now: Date): string {
+  const owner = runner.for ?? 'no owner';
+  const hosts = Array.from(
+    new Set(
+      liveSessions(runner, now)
+        .map((session) => session.host)
+        .filter((host): host is string => host !== null),
+    ),
+  );
+
+  if (hosts.length === 0) return owner;
+  if (hosts.length === 1) return `${owner} · ${hosts[0]}`;
+  return `${owner} · ${hosts.length} machines`;
+}
+
+/**
+ * The list's rows, split and ordered: retired and keyless rows dropped, the
+ * rest split on whether they are revoked, and each half ordered the same
+ * way - a live session first, then most recently seen, then name. Revoked
+ * rows keep the same live-first rule rather than a special case.
+ */
+export function sortRunners(runners: readonly Runner[], now: Date): { shown: Runner[]; revoked: Runner[] } {
+  const eligible = runners.filter((runner) => !isRetired(runner) && runner.apiKeyId !== null && runner.apiKeyId !== undefined);
+  const revoked = eligible.filter((runner) => Boolean(runner.revokedAt));
+  const rest = eligible.filter((runner) => !Boolean(runner.revokedAt));
+
+  const order = (a: Runner, b: Runner): number => {
+    const aLive = liveSessions(a, now).length > 0;
+    const bLive = liveSessions(b, now).length > 0;
+    if (aLive !== bLive) return aLive ? -1 : 1;
+
+    const aTime = runnerLastSeen(a);
+    const bTime = runnerLastSeen(b);
+    const aMs = aTime === null ? null : Date.parse(aTime);
+    const bMs = bTime === null ? null : Date.parse(bTime);
+    if (aMs !== bMs) {
+      if (aMs === null) return 1;
+      if (bMs === null) return -1;
+      return bMs - aMs;
+    }
+
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  };
+
+  return { shown: rest.sort(order), revoked: revoked.sort(order) };
+}
+
+/** Mirrors EfApiKey.MaxNameLength. */
+export const MAX_NAME_LENGTH = 120;
+
+export const lastUsedLabel = (iso: string | null): string => (iso === null ? 'never' : new Date(iso).toLocaleString());
+
 /**
  * Whether this row has controls at all.
  *

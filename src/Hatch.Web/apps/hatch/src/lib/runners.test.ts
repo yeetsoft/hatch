@@ -27,6 +27,12 @@ import {
   projectsLabel,
   modelsLabel,
   hasLabel,
+  rowSecondLine,
+  rowThirdLine,
+  runnerGlyphState,
+  runnerLastSeen,
+  sortRunners,
+  speakingSession,
   topRefusal,
   tokenBudget,
   tokenFieldHint,
@@ -37,6 +43,7 @@ import {
 } from './runners';
 import type { Runner, RunnerSession } from '../types';
 import type { RunnerBounds } from './runners';
+import { agoPhrase } from './claim';
 import { TOKEN_FIELD_HINT } from './workLog';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
@@ -856,5 +863,279 @@ describe('liveSessions', () => {
   it('is empty for a runner that carries no sessions', () => {
     expect(liveSessions(runner(), NOW)).toEqual([]);
     expect(liveSessions(runner({ sessions: [] }), NOW)).toEqual([]);
+  });
+});
+
+describe('runnerGlyphState', () => {
+  it('is gone when no session is live, even if their facts would otherwise rank lower', () => {
+    const quiet = at(-GONE_AFTER * 1000 - 1000);
+    const r = runner({
+      sessions: [
+        session({ id: 1, lastSeenAt: quiet, exhaustedUntil: at(1000) }),
+        session({ id: 2, lastSeenAt: quiet, throttledUntil: at(1000) }),
+        session({ id: 3, lastSeenAt: quiet, state: 'paused' }),
+        session({ id: 4, lastSeenAt: quiet, state: 'stopping' }),
+        session({ id: 5, lastSeenAt: quiet, claimKey: 'AER-1' }),
+        session({ id: 6, lastSeenAt: quiet }),
+      ],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('gone');
+  });
+
+  it('is exhausted when its highest-ranked live session is exhausted', () => {
+    const r = runner({
+      sessions: [
+        session({ id: 1, exhaustedUntil: at(1000) }),
+        session({ id: 2, throttledUntil: at(1000) }),
+        session({ id: 3, state: 'paused' }),
+        session({ id: 4, state: 'stopping' }),
+        session({ id: 5, claimKey: 'AER-1' }),
+        session({ id: 6 }),
+      ],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('exhausted');
+  });
+
+  it('is throttled when its highest-ranked live session is throttled', () => {
+    const r = runner({
+      sessions: [
+        session({ id: 1, throttledUntil: at(1000) }),
+        session({ id: 2, state: 'paused' }),
+        session({ id: 3, state: 'stopping' }),
+        session({ id: 4, claimKey: 'AER-1' }),
+        session({ id: 5 }),
+      ],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('throttled');
+  });
+
+  it('is paused when its highest-ranked live session is paused', () => {
+    const r = runner({
+      sessions: [session({ id: 1, state: 'paused' }), session({ id: 2, claimKey: 'AER-1' }), session({ id: 3 })],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('paused');
+  });
+
+  it('is stopping when its highest-ranked live session is stopping', () => {
+    const r = runner({
+      sessions: [session({ id: 1, state: 'stopping' }), session({ id: 2, claimKey: 'AER-1' }), session({ id: 3 })],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('stopping');
+  });
+
+  it('paused and stopping tie - either alone reads as itself', () => {
+    expect(runnerGlyphState(runner({ sessions: [session({ id: 1, state: 'paused' })] }), NOW)).toBe('paused');
+    expect(runnerGlyphState(runner({ sessions: [session({ id: 1, state: 'stopping' })] }), NOW)).toBe('stopping');
+  });
+
+  it('is working when its highest-ranked live session is working', () => {
+    const r = runner({ sessions: [session({ id: 1, claimKey: 'AER-1' }), session({ id: 2 })] });
+    expect(runnerGlyphState(r, NOW)).toBe('working');
+  });
+
+  it('is idle when its only live session is idle', () => {
+    expect(runnerGlyphState(runner({ sessions: [session({ id: 1 })] }), NOW)).toBe('idle');
+  });
+
+  it('is none with no sessions field, and with an empty sessions array - never gone', () => {
+    expect(runnerGlyphState(runner(), NOW)).toBe('none');
+    expect(runnerGlyphState(runner({ sessions: [] }), NOW)).toBe('none');
+  });
+
+  it('reads silence over usage: a live idle session beats an exhausted one that has gone quiet', () => {
+    const r = runner({
+      sessions: [
+        session({ id: 1 }),
+        session({ id: 2, exhaustedUntil: at(1000), lastSeenAt: at(-GONE_AFTER * 1000 - 1000) }),
+      ],
+    });
+    expect(runnerGlyphState(r, NOW)).toBe('idle');
+  });
+
+  it('is gone when every session has ended or gone quiet', () => {
+    const ended = session({ id: 1, endedAt: at(-1000) });
+    const quiet = session({ id: 2, lastSeenAt: at(-GONE_AFTER * 1000 - 1000) });
+    expect(runnerGlyphState(runner({ sessions: [ended, quiet] }), NOW)).toBe('gone');
+  });
+});
+
+describe('speakingSession', () => {
+  it('is null with no live session', () => {
+    expect(speakingSession(runner(), NOW)).toBeNull();
+  });
+
+  it('picks the newest among the winning rank, not the newest overall', () => {
+    const working = session({ id: 1, claimKey: 'AER-1', lastSeenAt: at(-60_000) });
+    const idle = session({ id: 2, lastSeenAt: at(0) });
+    expect(speakingSession(runner({ sessions: [working, idle] }), NOW)).toBe(working);
+  });
+
+  it('breaks a tie within the winning rank by lastSeenAt, earlier server order on an exact tie', () => {
+    const older = session({ id: 1, claimKey: 'AER-1', lastSeenAt: at(-60_000) });
+    const newer = session({ id: 2, claimKey: 'AER-2', lastSeenAt: at(0) });
+    expect(speakingSession(runner({ sessions: [older, newer] }), NOW)).toBe(newer);
+
+    const tie1 = session({ id: 3, claimKey: 'AER-3', lastSeenAt: at(0) });
+    const tie2 = session({ id: 4, claimKey: 'AER-4', lastSeenAt: at(0) });
+    expect(speakingSession(runner({ sessions: [tie1, tie2] }), NOW)).toBe(tie1);
+  });
+});
+
+describe('rowSecondLine', () => {
+  it('working with a line names the key and the line', () => {
+    const r = runner({ sessions: [session({ id: 1, claimKey: 'AER-1', line: 'Reading the ticket' })] });
+    expect(rowSecondLine(r, NOW)).toBe('AER-1 - Reading the ticket');
+  });
+
+  it('working with no line names the key alone', () => {
+    const r = runner({ sessions: [session({ id: 1, claimKey: 'AER-1', line: null })] });
+    expect(rowSecondLine(r, NOW)).toBe('AER-1');
+  });
+
+  it('working with another working session counts it', () => {
+    const r = runner({
+      sessions: [
+        session({ id: 1, claimKey: 'AER-1', line: 'Reading the ticket' }),
+        session({ id: 2, claimKey: 'AER-2' }),
+      ],
+    });
+    expect(rowSecondLine(r, NOW)).toBe('AER-1 - Reading the ticket +1 more');
+  });
+
+  it('idle names when it was last seen', () => {
+    const r = runner({ sessions: [session({ id: 1, lastSeenAt: at(-60_000) })] });
+    expect(rowSecondLine(r, NOW)).toBe(`Idle - seen ${agoPhrase(at(-60_000), NOW)}`);
+    expect(rowSecondLine(r, NOW)).toBe('Idle - seen 1 minute ago');
+  });
+
+  it('paused draws its words', () => {
+    expect(rowSecondLine(runner({ sessions: [session({ id: 1, state: 'paused' })] }), NOW)).toBe('Paused');
+  });
+
+  it('stopping draws its words', () => {
+    expect(rowSecondLine(runner({ sessions: [session({ id: 1, state: 'stopping' })] }), NOW)).toBe('Stopping');
+  });
+
+  it('throttled names the cap and reset', () => {
+    const r = runner({ sessions: [session({ id: 1, throttledUntil: at(3_600_000) })] });
+    expect(rowSecondLine(r, NOW)).toMatch(/^Over /);
+  });
+
+  it('exhausted names the reset', () => {
+    const r = runner({ sessions: [session({ id: 1, exhaustedUntil: at(3_600_000) })] });
+    expect(rowSecondLine(r, NOW)).toMatch(/^Out of usage until /);
+  });
+
+  it('gone names when it was last seen', () => {
+    const quiet = at(-GONE_AFTER * 1000 - 1000);
+    const r = runner({ sessions: [session({ id: 1, lastSeenAt: quiet })] });
+    expect(rowSecondLine(r, NOW)).toBe(`Gone - last seen ${agoPhrase(quiet, NOW)}`);
+  });
+
+  it('none says it has not started', () => {
+    expect(rowSecondLine(runner(), NOW)).toBe('Not started');
+  });
+});
+
+describe('rowThirdLine', () => {
+  it('names the owner and the one live host', () => {
+    const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac' })] });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · Mac');
+  });
+
+  it('names no owner when none is set', () => {
+    const r = runner({ for: null, sessions: [session({ id: 1, host: 'Mac' })] });
+    expect(rowThirdLine(r, NOW)).toBe('no owner · Mac');
+  });
+
+  it('counts machines when live sessions span more than one host', () => {
+    const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac' }), session({ id: 2, host: 'Linux' })] });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · 2 machines');
+  });
+
+  it('names the host once when every live session shares it', () => {
+    const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac' }), session({ id: 2, host: 'Mac' })] });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · Mac');
+  });
+
+  it('is the owner alone with no sessions', () => {
+    expect(rowThirdLine(runner({ for: 'Ada' }), NOW)).toBe('Ada');
+  });
+});
+
+describe('runnerLastSeen', () => {
+  it('is the newest lastSeenAt across live and ended sessions', () => {
+    const r = runner({
+      sessions: [
+        session({ id: 1, lastSeenAt: at(-3_600_000) }),
+        session({ id: 2, lastSeenAt: at(-60_000), endedAt: at(-60_000) }),
+      ],
+    });
+    expect(runnerLastSeen(r)).toBe(at(-60_000));
+  });
+
+  it('is null with no sessions', () => {
+    expect(runnerLastSeen(runner())).toBeNull();
+    expect(runnerLastSeen(runner({ sessions: [] }))).toBeNull();
+  });
+});
+
+describe('sortRunners', () => {
+  it('puts a live runner before one seen more recently but not live', () => {
+    const live = runner({ name: 'b', apiKeyId: 'k1', sessions: [session({ id: 1, lastSeenAt: at(-30_000) })] });
+    const notLive = runner({
+      name: 'a',
+      apiKeyId: 'k2',
+      sessions: [session({ id: 2, lastSeenAt: at(0), endedAt: at(0) })],
+    });
+    expect(sortRunners([notLive, live], NOW).shown.map((r) => r.name)).toEqual(['b', 'a']);
+  });
+
+  it('orders by lastSeenAt descending, with null last', () => {
+    const newer = runner({
+      name: 'a',
+      apiKeyId: 'k1',
+      sessions: [session({ id: 1, lastSeenAt: at(-60_000), endedAt: at(-60_000) })],
+    });
+    const older = runner({
+      name: 'b',
+      apiKeyId: 'k2',
+      sessions: [session({ id: 2, lastSeenAt: at(-3_600_000), endedAt: at(-3_600_000) })],
+    });
+    const never = runner({ name: 'c', apiKeyId: 'k3' });
+    expect(sortRunners([older, never, newer], NOW).shown.map((r) => r.name)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('breaks a tie by name', () => {
+    const b = runner({ name: 'b', apiKeyId: 'k1' });
+    const a = runner({ name: 'a', apiKeyId: 'k2' });
+    expect(sortRunners([b, a], NOW).shown.map((r) => r.name)).toEqual(['a', 'b']);
+  });
+
+  it('splits out revoked runners and orders them the same way', () => {
+    const revokedLive = runner({ name: 'b', apiKeyId: 'k1', revokedAt: at(-1000), sessions: [session({ id: 1 })] });
+    const revokedQuiet = runner({ name: 'a', apiKeyId: 'k2', revokedAt: at(-1000) });
+    const live = runner({ name: 'c', apiKeyId: 'k3', sessions: [session({ id: 2 })] });
+    const result = sortRunners([revokedQuiet, live, revokedLive], NOW);
+    expect(result.shown.map((r) => r.name)).toEqual(['c']);
+    expect(result.revoked.map((r) => r.name)).toEqual(['b', 'a']);
+  });
+
+  it('drops retired and keyless rows from both lists', () => {
+    const retired = runner({ name: 'a', apiKeyId: 'k1', retiredAt: at(-1000) });
+    const keyless = runner({ name: 'b', apiKeyId: null });
+    const revokedKeyless = runner({ name: 'c', apiKeyId: undefined, revokedAt: at(-1000) });
+    const kept = runner({ name: 'd', apiKeyId: 'k2' });
+    const result = sortRunners([retired, keyless, revokedKeyless, kept], NOW);
+    expect(result.shown.map((r) => r.name)).toEqual(['d']);
+    expect(result.revoked).toEqual([]);
+  });
+
+  it('does not mutate the input array', () => {
+    const b = runner({ name: 'b', apiKeyId: 'k1' });
+    const a = runner({ name: 'a', apiKeyId: 'k2' });
+    const input = [b, a];
+    sortRunners(input, NOW);
+    expect(input).toEqual([b, a]);
   });
 });
