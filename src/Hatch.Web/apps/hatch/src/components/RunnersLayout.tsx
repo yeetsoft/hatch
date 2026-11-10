@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Outlet, useMatch, useOutletContext } from 'react-router-dom';
 import { EmptyState, PageHeader } from '@hatch/ui';
 import { RunnerList } from './RunnerList';
@@ -6,9 +7,21 @@ import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
 import type { Runner } from '../types';
 
+/** A newly-minted or rotated secret, shown once - "The secret panel" in
+    docs/runners-page-design.md. Held only in this `useState`, never storage,
+    URL or router state, so it is gone the moment the page is left. Nothing
+    renders it yet; a later task draws `SecretPanel` from it. */
+export interface RunnerSecret {
+  name: string;
+  secret: string;
+  rotated: boolean;
+}
+
 /** What the layout hands its detail route through the `<Outlet/>` context. */
 export interface RunnersOutlet {
   runners: Runner[] | null;
+  secret: RunnerSecret | null;
+  setSecret: (secret: RunnerSecret | null) => void;
 }
 
 export const useRunnersOutlet = () => useOutletContext<RunnersOutlet>();
@@ -29,6 +42,8 @@ export function RunnersLayout() {
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
   const now = new Date();
   const phone = usePhone();
+  const [secret, setSecret] = useState<RunnerSecret | null>(null);
+  const outlet = { runners, secret, setSecret };
 
   const match = useMatch('/runners/:name');
   const selected = match?.params.name;
@@ -41,7 +56,7 @@ export function RunnersLayout() {
     if (match) {
       return (
         <div className="hatch-page">
-          <Outlet context={{ runners }} />
+          <Outlet context={outlet} />
         </div>
       );
     }
@@ -62,7 +77,7 @@ export function RunnersLayout() {
       <div className="hatch-runners-split">
         <section className="hatch-runners-pane">{list}</section>
         <section className="hatch-runners-pane">
-          <Outlet context={{ runners }} />
+          <Outlet context={outlet} />
         </section>
       </div>
     </div>
