@@ -86,7 +86,7 @@ public sealed record Detection(IReadOnlyList<DetectorResult> Results)
 /// Whether <c>make</c>, <c>dotnet</c>, <c>node</c> and <c>pwsh</c> are on
 /// <c>PATH</c>, and which version, within a probe that cannot outlast
 /// <see cref="ProbeTimeout"/>; whether a Playwright browsers cache exists; and
-/// whether Postgres is reachable, as a binary or as a Docker daemon.
+/// whether a Postgres server's binaries answer.
 /// </summary>
 /// <remarks>
 /// A detector writes nothing to stderr; the caller does, with the sentence it
@@ -116,8 +116,8 @@ public static class Detect
     /// shell (<see cref="ShellFor"/>) before the direct PATH probe, so one of them
     /// can now take <see cref="ShellTimeout"/> plus <see cref="ProbeTimeout"/> (15
     /// seconds) rather than <see cref="ProbeTimeout"/> alone; <see cref="Postgres"/>
-    /// can take up to four <see cref="ProbeTimeout"/>s, since it tries three
-    /// binaries and a Docker daemon in turn before giving up. A probe that throws
+    /// can take up to three <see cref="ProbeTimeout"/>s, since it tries three
+    /// binaries in turn before giving up. A probe that throws
     /// is not caught here - the five detectors above already convert a failure
     /// into <c>Present=false</c> rather than throwing, so only
     /// <see cref="OperationCanceledException"/> from <paramref name="ct"/> is ever
@@ -283,9 +283,10 @@ public static class Detect
     }
 
     /// <summary>
-    /// A Postgres server tool on <c>PATH</c> that answers <c>--version</c>, else
-    /// a Docker daemon that answers <c>info</c>. A tool that hangs or fails
-    /// leaves the next to be asked, so this can wait up to four probe timeouts.
+    /// A Postgres server tool on <c>PATH</c> (<c>postgres</c>, <c>pg_ctl</c>,
+    /// <c>pg_isready</c>) that answers <c>--version</c>; a tool that hangs or
+    /// fails leaves the next to be asked, so this can wait up to three probe
+    /// timeouts.
     /// </summary>
     public static async Task<DetectorResult> Postgres(string? path, Probe probe, CancellationToken ct)
     {
@@ -300,15 +301,8 @@ public static class Detect
                 return new DetectorResult(id, true, ParsePostgres(probed.Output), null);
         }
 
-        if (Reach.Find("docker", path) is { } docker)
-        {
-            var probed = await probe(docker, ["info"], ProbeTimeout, ct);
-            if (probed.Completed && probed.ExitCode == 0)
-                return new DetectorResult(id, true, null, null);
-        }
-
         return new DetectorResult(id, false, null,
-            "no `postgres`, `pg_ctl` or `pg_isready` on PATH, and no Docker daemon answered `docker info`");
+            "no `postgres`, `pg_ctl` or `pg_isready` on PATH answered `--version`");
     }
 
     /// <summary><c>postgres (PostgreSQL) 17.2 (Debian 17.2-1)</c> is <c>17.2</c>; output without the marker is null.</summary>

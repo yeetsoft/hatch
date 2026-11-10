@@ -41,11 +41,13 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             .Include(p => p.Project)
             .ToListAsync(ct);
 
+        var statuses = await OrderedStatusesAsync(ct);
+
         return rows
             .OrderBy(p => p.FromStatus!.SortOrder)
             .ThenBy(p => p.ToStatus!.SortOrder)
             .ThenBy(p => p.Types, StringComparer.Ordinal)
-            .Select(ToDto)
+            .Select(p => ToDto(p, statuses))
             .ToList();
     }
 
@@ -197,11 +199,22 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
             .Include(p => p.Project)
             .FirstAsync(p => p.Id == id, ct);
 
-        return ToDto(row);
+        var statuses = await OrderedStatusesAsync(ct);
+        return ToDto(row, statuses);
     }
 
-    internal static PlaybookDto ToDto(EfHatchPlaybook p) =>
-        From(p.Id, PlaybookState.Of(p), p.FromStatus?.Name ?? "", p.ToStatus?.Name ?? "", p.UpdatedAt, p.Project?.Key, p.Project?.Name);
+    private Task<List<EfHatchStatus>> OrderedStatusesAsync(CancellationToken ct) =>
+        db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+
+    internal static PlaybookDto ToDto(EfHatchPlaybook p, List<EfHatchStatus>? statuses = null)
+    {
+        var unreachableReason = statuses is not null
+            ? Columns.UnreachableReason(statuses, p.FromStatusId, p.ToStatusId, p.IsCheck)
+            : null;
+        return From(
+            p.Id, PlaybookState.Of(p), p.FromStatus?.Name ?? "", p.ToStatus?.Name ?? "", p.UpdatedAt,
+            p.Project?.Key, p.Project?.Name, unreachableReason);
+    }
 
     /// <summary>
     /// A <see cref="PlaybookDto"/> from a <see cref="PlaybookState"/> rather than a tracked
@@ -210,7 +223,7 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
     /// </summary>
     internal static PlaybookDto From(
         int id, PlaybookState state, string fromStatusName, string toStatusName,
-        DateTimeOffset updatedAt, string? projectKey, string? projectName) => new(
+        DateTimeOffset updatedAt, string? projectKey, string? projectName, string? unreachableReason = null) => new(
         id,
         state.FromStatusId,
         fromStatusName,
@@ -231,5 +244,6 @@ public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIden
         projectKey,
         projectName,
         state.ProjectId is not null ? "project" : "board",
-        state.QuietLimitSeconds);
+        state.QuietLimitSeconds,
+        unreachableReason);
 }

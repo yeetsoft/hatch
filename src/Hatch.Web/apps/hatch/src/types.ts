@@ -1844,6 +1844,9 @@ export interface WaitingOnARunner {
   missing: string;
 }
 
+/** One project whose clear implementation steps no live runner, or only one, can take, with the reasons the rest cannot. Mirrors RunnerCapacityDto. */
+export interface RunnerCapacity { projectKey: string; steps: number; keys: string[]; takers: string[]; reasons: RunnerReason[] }
+
 /** A project whose merge train passed its driver over, with the head issue it
     stalled on and the runner elected in its place, or null when none was
     eligible. Mirrors TrainStalledDto. */
@@ -1929,6 +1932,10 @@ export interface Attention {
       a person's to fix, every time. Lights the control and draws no pill.
       Absent from a board that predates it. */
   waitingOnARunner?: WaitingOnARunner[];
+  /** The projects whose clear implementation steps no live runner, or only
+      one, can take, and why the rest cannot: a person's to fix, every time.
+      Absent from a board that predates it. */
+  runnerCapacity?: RunnerCapacity[];
   /** The projects whose merge train passed a driver over and has not heard
       from it since. Listed, not counted: the row stays until that runner next
       checks in, and one that died never does. Absent from a board that

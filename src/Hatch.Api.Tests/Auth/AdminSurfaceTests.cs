@@ -478,7 +478,6 @@ public class AdminSurfaceTests
         // agent that could raise its own --max-spend could raise its own
         // budget. See RunnersController.
         "RunnersController.GetRunner",
-        "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.SessionHeartbeat",
@@ -634,6 +633,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
+        "ProjectsController.PutOnePrPolicy",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
@@ -808,6 +808,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
+        "ProjectsController.PutOnePrPolicy",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
@@ -902,7 +903,6 @@ public class AdminSurfaceTests
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",
         "RunnersController.GetRunner",
-        "RunnersController.GetRunnerNames",
         "RunnersController.GetRunners",
         "RunnersController.Heartbeat",
         "RunnersController.SessionHeartbeat",

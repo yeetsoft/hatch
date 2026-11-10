@@ -731,8 +731,10 @@ public record IssueDto(
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
 /// <param name="Runner">The checkout holding it - <c>host:/path/to/checkout</c>, as the runner names itself.</param>
 /// <param name="PlaybookId">
-/// Which playbook this take is under, or null where none is named. Informational
-/// only - the server validates it names a real row and never re-derives it.
+/// Which playbook this take is under, or null where none is named. A table
+/// row's id, or a repo-sourced file row's (negative) one - the id
+/// <c>GET work/{key}</c> hands back on <c>Playbook.Id</c>. The server validates
+/// it names a real row and resolves the claim's quiet window from it.
 /// </param>
 public record ClaimRequest(string Runner, int? PlaybookId = null)
 {
@@ -950,8 +952,10 @@ public static class PreApprovalLevels
 /// terminal.
 /// </param>
 /// <param name="PlaybookId">
-/// Absent leaves the claim's <c>ClaimPlaybookId</c> alone; a value overwrites
-/// it. There is no third state to clear it back to null from a heartbeat.
+/// Absent leaves the claim's playbook and quiet window alone; a value
+/// overwrites both, from the row it names - a table row, or a repo-sourced
+/// file row by its (negative) id. There is no third state to clear them back
+/// to null from a heartbeat.
 /// </param>
 /// <param name="Usage">
 /// Same meaning as <see cref="RunnerHeartbeatRequest.Usage"/>; absent or empty
@@ -1829,7 +1833,8 @@ public record PlaybookDto(
     string? ProjectKey,
     string? ProjectName,
     string Source = "board",
-    int? QuietLimitSeconds = null);
+    int? QuietLimitSeconds = null,
+    string? UnreachableReason = null);
 
 /// <summary>
 /// The repo copy a dispatch was judged against - <see cref="Path"/> is always

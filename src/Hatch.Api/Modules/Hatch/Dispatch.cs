@@ -2476,6 +2476,31 @@ public sealed class Dispatch(
     }
 
     /// <summary>
+    /// The playbook a claim names: a table row by its id, or a repo-sourced
+    /// project's file row by the transient id <see cref="ResolveRepoSourcedAsync"/>
+    /// gave it - always negative. Null for an id that is neither.
+    /// </summary>
+    /// <remarks>
+    /// A table row is looked up by id alone, with no project filter - the same
+    /// as the claim's check has always been. A file row is resolved under the
+    /// issue's own project, so a negative id is null for a project that is not
+    /// repo-sourced, and for a position that project's own file does not have.
+    /// </remarks>
+    public async Task<EfHatchPlaybook?> ClaimPlaybookAsync(int projectId, int id, CancellationToken ct)
+    {
+        if (id > 0) return await db.Playbooks.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (id == 0) return null;
+
+        var project = await db.Projects.AsNoTracking()
+            .Include(p => p.Repositories)
+            .FirstOrDefaultAsync(p => p.Id == projectId, ct);
+        if (project is null) return null;
+
+        var (_, rows, _) = await ResolveRepoSourcedAsync(project, ct);
+        return rows.FirstOrDefault(r => r.Id == id);
+    }
+
+    /// <summary>
     /// <see cref="ImplementationPlaybook"/> for one issue, read the way
     /// <see cref="MatchAsync"/> reads a playbook, and only asked where a parent
     /// pull could ever consult it: out of a ParentPulls column.

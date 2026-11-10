@@ -59,6 +59,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
 | PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
+| PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
 `ProjectPatchRequest` is the same four fields, all optional - null leaves a
@@ -86,7 +87,10 @@ value a project already holds writes nothing. The check-approves-merge PUT body 
 `ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
 already holds writes nothing, the audit fields included. The no-code-closes PUT body is
 `ProjectNoCodeClosesWriteRequest(NoCodeCloses)`, and resending the value a project
-already holds writes nothing, the audit fields included. Every other answer is a `ProjectDto`
+already holds writes nothing, the audit fields included. The one-pr-policy PUT body is
+`ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
+the bad value), owner only, and resending the value a project already holds writes nothing, the audit
+fields included. Every other answer is a `ProjectDto`
 throughout, and a list of `ProjectMemberDto` from the member and claim
 routes.
 
@@ -609,7 +613,11 @@ the same rule in two places. The lease's length is the
 `Hatch__ClaimTtlSeconds` setting (default 300 seconds); taking a claim
 carries it back as `TtlSeconds` alongside `StallLapseSeconds`, so a caller
 never has to know the setting's name to honor it. A heartbeat renews the
-lease and may replace the playbook it is running under; it writes no event on
+lease and may replace the playbook it is running under. A take's or heartbeat's
+`playbookId` may be a repo-sourced file row's (negative) id, the same one
+`GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
+copied from the playbook named, and a heartbeat naming none leaves it alone. It
+writes no event on
 an ordinary beat, only on a preemption, which is the board's own decision to
 make room for an emergency ticket and is the one case a heartbeat answers a
 `ClaimPreemptedDto` instead of `204`.
@@ -782,7 +790,6 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
-| GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for old CLIs |
@@ -988,9 +995,6 @@ on `/settings` writes no row - it takes the cap off every runner that was
 inheriting it, read at each runner's next beat. `/settings` is cached for up to
 30 seconds, a backstop for another replica, so a changed default can take that
 long to reach a beat answered there.
-
-`/runners/names` is the same list whoever asks, and carries no `where`, owner
-or claim, which is why a new runner can read it to pick a free name.
 
 `/runner` and `/runner/download/{rid}` take no key, unlike every
 other read on this page - the audience is a person at a browser
@@ -1228,6 +1232,7 @@ PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
 PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
+PUT    /projects/{id}/one-pr-policy
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect
 PUT    /statuses/{id}/express-skips

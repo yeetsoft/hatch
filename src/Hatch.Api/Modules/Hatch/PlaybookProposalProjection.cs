@@ -28,12 +28,10 @@ internal static class PlaybookProposalProjection
         var changes = proposals.SelectMany(p => p.Changes).ToList();
         var prepared = changes.Select(Prepare).ToList();
 
-        var statusIds = prepared
-            .SelectMany(c => new[] { c.Before.FromStatusId, c.Before.ToStatusId, c.After.FromStatusId, c.After.ToStatusId })
-            .Distinct().ToList();
-        var statusNames = await db.Statuses.AsNoTracking()
-            .Where(s => statusIds.Contains(s.Id))
-            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var statuses = await db.Statuses.AsNoTracking()
+            .OrderBy(s => s.SortOrder).ThenBy(s => s.Id)
+            .ToListAsync(ct);
+        var statusNames = statuses.ToDictionary(s => s.Id, s => s.Name);
 
         var projectIds = prepared
             .SelectMany(c => new[] { c.Before.ProjectId, c.After.ProjectId })
@@ -47,7 +45,7 @@ internal static class PlaybookProposalProjection
             .Where(p => playbookIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.UpdatedAt, ct);
 
-        var byChangeId = prepared.ToDictionary(c => c.Change.Id, c => ToChangeDto(c, statusNames, projects, liveUpdatedAt));
+        var byChangeId = prepared.ToDictionary(c => c.Change.Id, c => ToChangeDto(c, statuses, statusNames, projects, liveUpdatedAt));
 
         return proposals.Select(p => new PlaybookProposalDto(
             p.Id,
@@ -80,15 +78,17 @@ internal static class PlaybookProposalProjection
     }
 
     private static PlaybookProposalChangeDto ToChangeDto(
-        Prepared p, Dictionary<int, string> statusNames, Dictionary<int, (string Key, string Name)> projects,
-        Dictionary<int, DateTimeOffset> liveUpdatedAt)
+        Prepared p, List<EfHatchStatus> statuses, Dictionary<int, string> statusNames,
+        Dictionary<int, (string Key, string Name)> projects, Dictionary<int, DateTimeOffset> liveUpdatedAt)
     {
         var afterFromName = statusNames.TryGetValue(p.After.FromStatusId, out var fromName) ? fromName : p.BeforeDto.FromStatusName;
         var afterToName = statusNames.TryGetValue(p.After.ToStatusId, out var toName) ? toName : p.BeforeDto.ToStatusName;
         var (afterProjectKey, afterProjectName) = ProjectOf(p.After.ProjectId, p.BeforeDto, projects);
+        var afterUnreachableReason = Columns.UnreachableReason(statuses, p.After.FromStatusId, p.After.ToStatusId, p.After.IsCheck);
 
         var after = PlaybooksController.From(
-            p.BeforeDto.Id, p.After, afterFromName, afterToName, p.BeforeDto.UpdatedAt, afterProjectKey, afterProjectName);
+            p.BeforeDto.Id, p.After, afterFromName, afterToName, p.BeforeDto.UpdatedAt, afterProjectKey, afterProjectName,
+            afterUnreachableReason);
 
         bool outOfDate;
         string? outOfDateReason;

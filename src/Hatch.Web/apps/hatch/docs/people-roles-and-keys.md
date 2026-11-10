@@ -131,7 +131,7 @@ name, that HA-1937 retires.
 - **Which runners a key sees.** A key reads the runners of its owner, an
   admin's key reads every runner, and a key with no owner reads only the
   runners that belong to nobody. A person at a browser, and a Hatch with its
-  wall off, read every runner; `/runners/names` is the same list whoever asks.
+  wall off, read every runner.
   See [`api-reference`](api-reference).
 - **Whose name an event carries.** The signed-in person's, if there is one;
   else the key's **Name**; else, with the wall off, the local name. A key's

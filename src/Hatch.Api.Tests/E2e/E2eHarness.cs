@@ -175,8 +175,9 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
     /// <summary>
     /// Runs in the page and reads each Runners row's Token budget cell and
     /// activity badge, found by the runner's name rather than by position. The
-    /// cell is the one under the <c>Token budget</c> heading, so a column added
-    /// before it does not move the read. A fill's track is measured by
+    /// cell is the one under the <c>Token budget</c> heading, and the bounds
+    /// text the one under <c>Bounds</c>, so a column added before either does
+    /// not move the read. A fill's track is measured by
     /// <c>clientWidth</c>: the track has a 1px border, and the fill is a percent
     /// of its content box.
     /// </summary>
@@ -184,7 +185,8 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         () => {
           const headings = [...document.querySelectorAll('.hatch-table thead th')];
           const column = headings.findIndex((th) => th.textContent.trim() === 'Token budget');
-          if (column < 0) return null;
+          const boundsColumn = headings.findIndex((th) => th.textContent.trim() === 'Bounds');
+          if (column < 0 || boundsColumn < 0) return null;
           const root = document.scrollingElement;
           const rows = [...document.querySelectorAll('.hatch-table tbody tr')]
             .filter((tr) => tr.querySelector('.hatch-runner-name') !== null)
@@ -193,6 +195,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
               return {
                 name: tr.querySelector('.hatch-runner-name').textContent.trim(),
                 cellText: cell.textContent.trim(),
+                boundsText: tr.children[boundsColumn].textContent.trim(),
                 lines: [...cell.querySelectorAll('.hatch-token-budget-line > span')].map((span) => span.textContent.trim()),
                 bars: [...cell.querySelectorAll('.hatch-usage-bar-fill')].map((fill) => ({
                   fillWidth: fill.getBoundingClientRect().width,
@@ -470,6 +473,9 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         deadline.BoundAsync("reading the column's hidden note", () =>
             page!.Locator(Column).Nth(index).Locator(".hatch-column-hidden").IsVisibleAsync());
 
+    /// <summary>The open page, for a case that fills, clicks or reads it directly; null until <see cref="OpenAsync"/> has run. Wrap each call in the case's own <c>deadline.BoundAsync</c>.</summary>
+    public IPage? Page => page;
+
     /// <summary>Saves the page as <c>{label}.png</c> in the case's artifact directory, whether or not the case fails, and returns the path.</summary>
     public async Task<string> ScreenshotAsync(Deadline deadline, string label)
     {
@@ -582,7 +588,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         var read = await deadline.BoundAsync("measuring the Runners token budgets", () =>
             page!.EvaluateAsync<JsonElement>(MeasureRunnerBudgetsScript));
 
-        Assert.True(read.ValueKind != JsonValueKind.Null, "the Runners table has no Token budget column");
+        Assert.True(read.ValueKind != JsonValueKind.Null, "the Runners table has no Token budget or Bounds column");
 
         return new RunnerBudgetsMeasurement(
             read.GetProperty("scrollWidth").GetInt32(),
@@ -590,6 +596,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             read.GetProperty("rows").EnumerateArray().Select(r => new RunnerBudgetRow(
                 r.GetProperty("name").GetString()!,
                 r.GetProperty("cellText").GetString()!,
+                r.GetProperty("boundsText").GetString()!,
                 r.GetProperty("lines").EnumerateArray().Select(l => l.GetString()!).ToList(),
                 r.GetProperty("bars").EnumerateArray().Select(b => new BudgetBar(
                     b.GetProperty("fillWidth").GetDouble(),
