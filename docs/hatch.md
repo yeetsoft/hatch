@@ -5900,7 +5900,10 @@ wall off, or on a project with no owner, a role means nothing and every
 holder of a checkout is eligible. Being a site admin is not being an owner.
 Live means `LastSeenAt` within `Hatch:RunnerGoneAfterSeconds`
 (default 90) of now, and a `once` runner is never a candidate, since its own
-`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A row's
+`BeatAsync` throws the instruction away (`Runners.cs:201-203`). A retired row
+(`r.RetiredAt == null` in the same filter) is not a candidate either, however
+recent its `LastSeenAt`; its own next beat clears the retirement and makes it
+one again — see [Runners on the board](#runners-on-the-board). A row's
 `LastSeenAt` is moved by its own heartbeat and by the heartbeat or token
 release of the claim it holds, found by the claim's `ClaimedBy` matching
 the row's `Name`; that is what keeps a driver live and elected through a
@@ -8744,6 +8747,39 @@ moment somebody asks, the same lazy expiry the claim uses, so there is no
 timeout to tune and no background job to notice has stopped. The row itself is
 never deleted — a checkout that runs again next week is the same row, with
 whatever bounds are on it.
+
+**Retired is a third state, and a fact rather than a clock.** A row that has
+been superseded is stamped `RetiredAt` (now) and `RetiredBy` (the `Name` of the
+row that superseded it), and two things stamp it, both in
+`RunnersController` and both on a beat:
+
+- **A row beat** (`RetireSuperseded`). Every *other* row with the same `Where`,
+  `Kind` and owner (`ForPersonId`), an earlier `FirstSeenAt`, and a `LastSeenAt`
+  older than the gone horizon (`Runners.Cutoff`, `Hatch:RunnerGoneAfterSeconds`)
+  is retired. A row that is still being heard from is never retired by this
+  path, so two live runners in one checkout are left alone.
+- **A session beat** (`RetireRenamedAsync`, from `POST
+  /api/hatch/runners/sessions`, `loop` kind only). Every other `loop` row of the
+  same `Where` and owner is retired, with no quiet test: renaming a checkout's
+  runner leaves the old row behind, and the new name's first beat is the
+  evidence it is gone. A `once` beat never retires anything.
+
+In both, a row with no `Where` retires nothing, and an owner must match: with
+the wall up a null owner retires nothing, with the wall off null matches null.
+An already-retired row is not stamped again.
+
+A retired row keeps every fact it had and is never deleted, but it is not live
+(`Runner.IsLive` is false) and never elected driver (see
+*The driver, and how the heartbeat elects one*, above). `?live=true` leaves
+it out, and the Runners page and `hatch runners` both read `?live=true`, so it
+leaves both at once, not two hours later; the page treats it as not
+controllable. Only the row's own beat clears it — `Touch`, or
+`RetireRenamedAsync`'s own-row branch, sets `RetiredAt` and `RetiredBy` back to
+null — so nothing acting from outside can resurrect a row, and a runner started
+again under the old name reappears by itself. Retirement is written by a beat,
+not by a sweep: the "nothing sweeps" above stays true. `RunnerDto.RetiredAt`
+and `RunnerDto.SupersededBy` carry it, both null for a row that is not retired;
+a read without `live` still returns the retired row with both set.
 
 **One key can hold several sessions, one per checkout.** Beside the beat row
 above, `POST /api/hatch/runners/sessions` answers through `RunnerSessions`
