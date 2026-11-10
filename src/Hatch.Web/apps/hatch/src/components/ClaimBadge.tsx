@@ -1,4 +1,5 @@
-import { claimHealth, claimTitle } from '../lib/claim';
+import { useNavigate } from 'react-router-dom';
+import { claimHealth, claimTitle, headClick, headKey } from '../lib/claim';
 import { Robot } from './Robot';
 import type { IssueClaim } from '../types';
 
@@ -22,10 +23,22 @@ import type { IssueClaim } from '../types';
  * per board scan - so this draws whatever it is handed. What it does judge is
  * narrower: a holder that has gone quiet on a lease it still holds, which is
  * worth seeing before the lease runs out rather than after.
+ *
+ * `linkRunner` makes the head itself a press to that runner's own page
+ * (`/runners/<name>`) rather than inert ornament on the card. It is a `span`
+ * carrying `role="link"` rather than a real `<a>` because the badge sits
+ * inside the card's own `<Link to="/issues/...">`, which is also dnd-kit's
+ * drag handle - a nested `<a>` is never valid markup, and `useNavigate` does
+ * the rest. Without the prop, nothing here calls the hook at all, so a badge
+ * drawn with no Router around it - QueueModal's - is unaffected.
  */
-export function ClaimBadge({ claim }: { claim: IssueClaim | null }) {
+export function ClaimBadge({ claim, linkRunner = false }: { claim: IssueClaim | null; linkRunner?: boolean }) {
   if (!claim) return null;
 
+  return linkRunner ? <LinkedHead claim={claim} /> : <Head claim={claim} />;
+}
+
+function Head({ claim }: { claim: IssueClaim }) {
   // Once per render, exactly as MomentChip does. Nothing here ticks: the card
   // goes stale with the board it was drawn from and comes back current on the
   // next read.
@@ -36,6 +49,27 @@ export function ClaimBadge({ claim }: { claim: IssueClaim | null }) {
       className={`hatch-card-claim hatch-card-claim-${claimHealth(claim, now)}`}
       title={claimTitle(claim, now)}
       aria-label={claimTitle(claim, now)}
+    >
+      <Robot lit className="hatch-card-claim-glyph" />
+    </span>
+  );
+}
+
+function LinkedHead({ claim }: { claim: IssueClaim }) {
+  const navigate = useNavigate();
+  const now = new Date();
+
+  return (
+    <span
+      className={`hatch-card-claim hatch-card-claim-${claimHealth(claim, now)}`}
+      title={claimTitle(claim, now)}
+      aria-label={claimTitle(claim, now)}
+      role="link"
+      tabIndex={0}
+      onClick={headClick(claim.runner, navigate)}
+      onKeyDown={headKey(claim.runner, navigate)}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
     >
       <Robot lit className="hatch-card-claim-glyph" />
     </span>

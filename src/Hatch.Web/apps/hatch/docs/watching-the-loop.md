@@ -210,7 +210,9 @@ claim as `<runner> at <where>` - who holds it, and from which checkout - since
 when, and the last line that checkout printed. Clearing a claim by hand makes
 the ticket claimable again at once; the runner notices and stops at its next
 heartbeat, within a minute by default, so until then its session may still
-push or move the ticket.
+push or move the ticket. Clicking the robot head itself, rather than the rest
+of the card, opens that runner's own page at `/runners/<name>` instead of the
+issue.
 
 A session's heartbeat carries six machine fields - `os`, `arch`,
 `agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`,
