@@ -155,3 +155,66 @@ not one of these — the loop already pushes it straight back to review on
 its own, and it never reaches this panel at all. For everything that does
 land here, the fix happens on the ticket or the branch, never by anything
 typed into GitHub's own UI.
+
+## A passing check approves the merge
+
+Step 1 above already has a person drag a ticket into the merge column to
+approve it. This is the same approval, given by a playbook instead of a
+hand, once a project turns a setting on. A check row judges the branch — the
+same thing a person reads before dragging it — and its own pass carries the
+ticket into the merge column with nobody reading the diff first. The trade
+is the same column's: ticking **Protected** on the merge column moves every
+project's review landmark one column left — the dispatcher steps back over
+any protected column it meets walking left from the first terminal one — so
+a project that leaves this setting off still waits in review for a person's
+drag, exactly as it always has.
+
+**1. The merge column.** Reuse the column from step 1 above — Protected,
+then Merges PR. Nothing further is added here; the check lands a ticket in
+the same column a person's drag would.
+
+**2. Two rows on the Playbooks page.** **Agents → Playbooks**, not
+**Manage**. Both rows name the review column — call it `In Review`, or
+anything else; nothing hangs on it being this one — as `From`:
+
+- The stock row, `In Review → In Review`, still has to cover the type being
+  checked. It is the seeded fixup that only fixes a conflict or a failing
+  build on the branch, and nothing else — leave it alone.
+- A second, new row, `In Review → Approved` — `Approved` standing for the
+  merge column from step 1 — with **Is check** ticked. `Is check` is what
+  tells the apply to land a pass in the merge column rather than back in
+  review.
+
+**3. The project's own setting.** **Manage → Projects**, edit the project,
+**Landing** section — the same one the by-pull-request/on-the-trunk choice
+and the repo-sourced-playbooks checkbox sit under. Tick *A passing check
+approves the merge*. Its own hint, verbatim:
+
+> A check playbook's pass out of the review column lands the ticket in the
+> protected Merges PR column, and the runner merges it from there. Off, a
+> person drags it there.
+
+While no column on the board is yet both Protected and Merges PR, a warning
+sits beneath it, verbatim:
+
+> No column on the board is both Protected and Merges PR, so this does
+> nothing until one is.
+
+**What a ticket's trail shows afterwards.** The History tab's line for the
+move:
+
+```
+In Review → Approved, approved by a passing check
+```
+
+and, beside the findings comment every check apply posts, the approval
+comment:
+
+```
+Approved by In Review → Approved's passing verdict.
+```
+
+**Turning it off.** Nothing above fires: a clean branch waits in review
+exactly as it does today, for a person's drag; the check row stops matching
+the move, and the review column's own self-move — the conflict-and-build
+row — is all that is left to match.

@@ -112,9 +112,10 @@ describe('docIndex over DOC_PAGES', () => {
     expect(docIndex()).toBe(entries);
   });
 
-  it("keeps the nested list in letting-the-loop-merge-for-you.md's one entry", () => {
+  it("keeps the nested list in letting-the-loop-merge-for-you.md's opening entry", () => {
     const own = entries.filter((e) => e.slug === 'letting-the-loop-merge-for-you');
-    expect(own).toHaveLength(1);
+    expect(own).toHaveLength(2);
+    expect(own[0].heading).toBeNull();
     expect(own[0].text).toContain('bypass list');
   });
 });
