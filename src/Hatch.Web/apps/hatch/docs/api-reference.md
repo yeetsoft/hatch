@@ -211,7 +211,8 @@ none of that is re-derived here.
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
 `Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority` and
 `PreApproval` - `OnePr` only on a `story` or a `bug`, refused on anything else,
-`inherit`/`on`/`off`; `Priority` and `PreApproval` take the level names the two
+`inherit`/`on`/`off` (`on` and `off` 409 under a project whose one-PR policy is
+`enforced`, before anything is written); `Priority` and `PreApproval` take the level names the two
 `PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
 born at a level in the one save, with no second event. `IssuePatchRequest`
 is `Title?`, `Description?`, `Type?`, `StatusId?`, `ParentKey?`, `ReadyAt?`,
@@ -262,7 +263,7 @@ not mint an issue number - try again".
 | expedite | PUT | `/issues/{key}/expedite` | **person** | Legacy two-level alias for priority (`expedited`/`normal`) |
 | pre-approval | PUT | `/issues/{key}/pre-approval` | **person** | One of three named levels |
 | express | PUT | `/issues/{key}/express` | **person** | Legacy two-level alias for pre-approval (`express`/`none`) |
-| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs |
+| one-pr | PUT | `/issues/{key}/one-pr` | key | `on`/`off`/`inherit`, stories and bugs; `on`/`off` 409 under an `enforced` project |
 | runner-tags | PUT | `/issues/{key}/runner-tags` | key | Replaces the ticket's own runner tags whole |
 | dangerous | PUT | `/issues/{key}/dangerous` | key | Why running this ticket and its subtree is dangerous; `""` clears |
 | omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
@@ -312,7 +313,11 @@ on `""`. `LandingWriteRequest` is `Remote`, `Sha`, an optional `Trunk`,
 **Refusals worth naming.** `assignee` 400s on a kind with no id, or an
 unknown actor. `priority`/`expedite` 400 an unparseable level name - the
 alias is just a two-level write of the same field and the same trail.
-`one-pr` 400s on anything but a story or a bug, and 409s once any descendant has
+`one-pr` 400s on anything but a story or a bug, 409s `on` or `off` under a project
+whose one-PR policy is `enforced` (the project enforces its default, so the story
+may carry no setting of its own - `inherit` is never refused by the policy, and a
+value the story already holds is not refused and writes nothing), ahead of the
+next refusal, and 409s once any descendant has
 started - standing in the implementation column or to its right, since a
 task begun on one branch cannot be moved onto the other. `runner-tags` 400s
 a blank tag, one with a space or comma inside, one over 32 characters, or a

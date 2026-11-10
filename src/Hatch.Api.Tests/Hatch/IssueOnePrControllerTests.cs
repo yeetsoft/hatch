@@ -395,6 +395,159 @@ public class IssueOnePrControllerTests
         Assert.True((await h.SetAsync(story.Key, "on")).OnePr);
     }
 
+    // ---- Enforced ----
+
+    private static string Sentence(IActionResult? result) =>
+        Assert.IsType<ConflictObjectResult>(result).Value!.ToString()!;
+
+    [Theory]
+    [InlineData("story", "on")]
+    [InlineData("story", "off")]
+    [InlineData("bug", "on")]
+    [InlineData("bug", "off")]
+    public async Task UnderAnEnforcedProject_OnAndOffAreRefused_AndNothingIsWritten(string type, string value)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync(type, "the issue");
+        await h.EnforceAsync();
+        var was = (await h.RowAsync(issue.Key)).UpdatedAt;
+        h.Time.Advance(TimeSpan.FromHours(1));
+
+        var refused = await h.OnePr.PutIssueOnePr(issue.Key, new OnePrRequest(value), default);
+
+        var message = Sentence(refused.Result);
+        Assert.Contains("AER enforces its one-PR default", message);
+        Assert.Contains(issue.Key, message);
+        var row = await h.RowAsync(issue.Key);
+        Assert.Null(row.OnePullRequest);
+        Assert.Equal(was, row.UpdatedAt);
+        Assert.Empty(await h.EventsAsync(issue.Key));
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_InheritIsAccepted_AndClearsAnUnstartedOverride()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story");
+        await h.SetAsync(story.Key, "on");
+        await h.EnforceAsync();
+
+        var cleared = await h.SetAsync(story.Key, "inherit");
+
+        Assert.Null(cleared.OnePrOwn);
+        Assert.Null((await h.RowAsync(story.Key)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_AStartedStoryHearsThePolicy_NotTheLock_ForOnAndOff()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+        await h.EnforceAsync();
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("off"), default);
+
+        var message = Sentence(refused.Result);
+        Assert.Contains("AER enforces its one-PR default", message);
+        Assert.DoesNotContain("already started", message);
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_InheritOnAStartedOverriddenStory_GetsTheLock()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.SetAsync(story.Key, "on");
+        await h.MoveAsync(task.Key, h.Doing);
+        await h.EnforceAsync();
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("inherit"), default);
+
+        Assert.Contains("has work under it that has already started", Sentence(refused.Result));
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_TheValueAlreadyHeld_IsNotRefused_AndWritesNothing()
+    {
+        var h = await NewAsync(board: true);
+        var (story, task) = await StoryWithTaskAsync(h);
+        await h.MoveAsync(task.Key, h.Doing);
+        IssueKey.TryParse(story.Key, out var projectKey, out var number);
+        var row = await h.Db.Issues.WithKey(projectKey, number).FirstAsync();
+        row.OnePullRequest = true;
+        await h.Db.SaveChangesAsync();
+        await h.EnforceAsync();
+        var was = (await h.RowAsync(story.Key)).UpdatedAt;
+        h.Time.Advance(TimeSpan.FromHours(1));
+
+        var again = await h.SetAsync(story.Key, "on");
+
+        Assert.True(again.OnePrOwn);
+        Assert.Equal(was, (await h.RowAsync(story.Key)).UpdatedAt);
+        Assert.Empty(await h.EventsAsync(story.Key));
+    }
+
+    [Theory]
+    [InlineData("story")]
+    [InlineData("bug")]
+    public async Task UnderAnEnforcedProject_BornWithOn_IsRefused_AndNothingIsWritten(string type)
+    {
+        var h = await NewAsync();
+        await h.EnforceAsync();
+        var before = await h.Db.Issues.CountAsync();
+        var next = (await h.Db.Projects.AsNoTracking().FirstAsync()).NextIssueNumber;
+
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, type, "the issue", null, null, null, null, "on"), default);
+
+        var message = Sentence(refused.Result);
+        Assert.Contains("AER enforces its one-PR default", message);
+        Assert.Contains($"this {type}", message);
+        Assert.Equal(before, await h.Db.Issues.CountAsync());
+        Assert.Equal(next, (await h.Db.Projects.AsNoTracking().FirstAsync()).NextIssueNumber);
+    }
+
+    [Theory]
+    [InlineData("inherit")]
+    [InlineData(null)]
+    public async Task UnderAnEnforcedProject_BornWithInheritOrNothing_IsAccepted(string? value)
+    {
+        var h = await NewAsync();
+        await h.EnforceAsync();
+
+        var story = await h.FileAsync("story", "the story", onePr: value);
+
+        Assert.Null((await h.RowAsync(story.Key)).OnePullRequest);
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_BornWithOnAsATask_StillGetsTheBadRequest()
+    {
+        var h = await NewAsync();
+        await h.EnforceAsync();
+
+        var refused = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "task", "not a story", null, null, null, null, "on"), default);
+
+        Assert.IsType<BadRequestObjectResult>(refused.Result);
+    }
+
+    [Fact]
+    public async Task UnderAnEnforcedProject_AKeyGetsTheSameRefusal()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "the story");
+        await h.EnforceAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = new EfApiKey { Name = "a key", Hash = [1], Prefix = "hatch_ak_x", CreatedAt = Now };
+
+        var refused = await h.OnePr.PutIssueOnePr(story.Key, new OnePrRequest("on"), default);
+
+        Assert.Contains("AER enforces its one-PR default", Sentence(refused.Result));
+    }
+
     // ---- The trail ----
 
     [Fact]
@@ -664,6 +817,14 @@ public class IssueOnePrControllerTests
                 .Where(e => e.Kind == EfHatchIssueEvent.OnePrChanged)
                 .Reverse()
                 .ToList();
+
+        /// <summary>The project's policy set to enforced, written straight to the row - who may do that is ProjectsControllerTests' business.</summary>
+        public async Task EnforceAsync()
+        {
+            var project = await Db.Projects.FirstAsync(p => p.Id == ProjectId);
+            project.OnePullRequestPolicy = OnePullRequestPolicies.Enforced;
+            await Db.SaveChangesAsync();
+        }
 
         /// <summary>The project's default, written straight to the row - who may write it is ProjectsControllerTests' business.</summary>
         public async Task ProjectDefaultAsync(bool on)

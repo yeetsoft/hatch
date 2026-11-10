@@ -6,10 +6,10 @@
    page remembers to clear - is what makes "the list never carries it" a thing
    a test can pin. */
 
+import { MAX_NAME_LENGTH } from './runners';
 import type { ApiKey, ApiKeyMinted, Runner, RunnerMinted } from '../types';
 
-/** Mirrors EfApiKey.MaxNameLength. */
-export const MAX_NAME_LENGTH = 120;
+export { MAX_NAME_LENGTH, lastUsedLabel } from './runners';
 
 /** A runner row as the keys page shows it, or null for a heartbeat no key
     claims - this page only lists keys, so that row is dropped rather than
@@ -68,6 +68,3 @@ export const showSecret = (minted: ApiKeyMinted): SecretPanel => ({ key: minted.
 export const dismissSecret = (): SecretPanel => null;
 
 export const ownerLabel = (owner: ApiKey['owner']): string => owner?.name ?? 'nobody';
-
-export const lastUsedLabel = (iso: string | null): string =>
-  iso === null ? 'never' : new Date(iso).toLocaleString();
