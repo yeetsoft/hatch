@@ -1793,8 +1793,13 @@ either way, as above) or `enforced` (no story or bug may carry a setting of its
 own). Under `enforced`, every override that exists is locked: it either
 predates the policy, on a story that had already started when the policy
 tightened, or was written by that tightening's own reconciliation. This field
-decides what happens to the overrides that already exist; refusing a new one
-under `enforced` is separate work. Tightening (`optional` to `enforced`)
+decides what happens to the overrides that already exist; a new one is refused
+at both doors, with a `409` and one sentence - *\<project> enforces its one-PR
+default on every story - \<the issue> may not carry a setting of its own; an
+owner can make it optional on the Projects page*: `PUT /issues/{key}/one-pr`
+with `on` or `off` (ahead of the lock's `409`; `inherit` and a value already
+held pass), and `POST /issues` with `onePr` `on` or `off` for a story or bug.
+Tightening (`optional` to `enforced`)
 reconciles in the same save: every story or bug with an override and no started
 work returns to inherit, one `one_pr_changed` event each, `from` the
 override's `on` or `off`, `to` `inherit`, with `fixedBecause` saying *the

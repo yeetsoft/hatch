@@ -504,7 +504,9 @@ only the key it reads. With a second argument it writes:
 - `inherit` follows the project's default.
 
 A story or a bug only, and it is locked once any task under it has started:
-set it when it is filed, before its tasks are worked.
+set it when it is filed, before its tasks are worked. Under a project that
+enforces its one-PR default, `on` and `off` are refused with a `409`; `inherit`
+is still accepted.
 
 ### dangerous
 
