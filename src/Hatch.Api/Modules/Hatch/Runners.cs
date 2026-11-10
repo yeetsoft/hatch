@@ -411,6 +411,37 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
     }
 
     /// <summary>
+    /// Whether the runner named <paramref name="name"/> drives <paramref name="projectKey"/>,
+    /// judged by what its newest live session's last heartbeat was told - the
+    /// answer the loop acts on - and by the election only where no live
+    /// session has been answered yet. The queue's reason for a merge-column
+    /// row the train is not acting on.
+    /// </summary>
+    public async Task<bool> DrivesAsync(
+        HatchContext db, IAuthService keys, string name, string projectKey, DateTimeOffset now, CancellationToken ct)
+    {
+        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
+        if (key is not null)
+        {
+            var told = (await db.RunnerSessions.AsNoTracking()
+                    .Where(s => s.ApiKeyId == key.Id && s.EndedAt == null && s.Kind == EfHatchRunner.LoopKind && s.DrivesTold != null)
+                    .OrderByDescending(s => s.LastSeenAt)
+                    .ThenByDescending(s => s.Id)
+                    .Select(s => new { s.LastSeenAt, s.DrivesTold })
+                    .FirstOrDefaultAsync(ct));
+
+            if (told is not null && IsHere(told.LastSeenAt, now))
+            {
+                return told.DrivesTold!
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(projectKey, StringComparer.Ordinal);
+            }
+        }
+
+        return (await DriversAsync(db, keys, now, ct)).GetValueOrDefault(name, []).Contains(projectKey, StringComparer.Ordinal);
+    }
+
+    /// <summary>
     /// The same election as <see cref="DriversAsync"/>, keyed by the
     /// project's id rather than the driver's name, and keeping the elected
     /// candidate's own <c>LastSeenAt</c> rather than throwing it away - what

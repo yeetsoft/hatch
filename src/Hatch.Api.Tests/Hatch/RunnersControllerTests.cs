@@ -3804,6 +3804,59 @@ public class RunnersControllerTests
         Assert.Empty(notElected.Value!.Drives!);
     }
 
+    // ---- What the loop was told, kept beside the election (AR-80) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_StoresWhatItWasTold_AndEmptyWhenItWasToldNothing()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var stored = await h.Db.RunnerSessions.AsNoTracking().ToListAsync();
+        Assert.Equal("AER", stored.Single(s => s.ApiKeyId == one.Id).DrivesTold);
+        Assert.Equal("", stored.Single(s => s.ApiKeyId == two.Id).DrivesTold);
+    }
+
+    [SkippableFact]
+    public async Task TheRunnersList_CarriesWhatTheLiveSessionWasTold_NotWhatTheElectionSaysNow()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        // The loop was told it drives the project; blank what it was told, as a
+        // server answering every beat with nothing would have, and the election
+        // run again on the read still elects it.
+        var session = await h.Db.RunnerSessions.SingleAsync();
+        session.DrivesTold = "";
+        await h.Db.SaveChangesAsync();
+
+        var row = await h.OneAsync();
+        Assert.Equal(["AER"], row.Drives);
+        Assert.NotNull(row.DrivesTold);
+        Assert.Empty(row.DrivesTold!);
+    }
+
+    [Fact]
+    public async Task TheRunnersList_HasNoDrivesTold_ForASessionNeverAnswered()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync("session-only");
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, Runner));
+        await h.Db.SaveChangesAsync();
+
+        Assert.Null((await h.OneAsync()).DrivesTold);
+    }
+
     // ---- The stall watch, run off a session beat (HA-2129) ----
 
     [SkippableFact]

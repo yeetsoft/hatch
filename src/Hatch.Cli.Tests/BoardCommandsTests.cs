@@ -1234,6 +1234,23 @@ public sealed class BoardCommandsTests
     }
 
     [Fact]
+    public void A_merge_column_row_the_train_is_not_acting_on_says_why()
+    {
+        var row = Fixtures.Row(
+            "AER-3", trainNote: "this runner does not drive AER's merge train, so it only reports a merge made by hand");
+
+        Assert.Equal(
+            "AER-3  [task]  In Progress  -> In Review  (merge train: this runner does not drive AER's merge train, so it only reports a merge made by hand)",
+            BoardCommands.Draw([row]).Single());
+    }
+
+    [Fact]
+    public void A_row_with_no_train_note_prints_exactly_what_it_did_before()
+    {
+        Assert.Equal("AER-4  [task]  In Progress  -> In Review", BoardCommands.Draw([Fixtures.Row("AER-4")]).Single());
+    }
+
+    [Fact]
     public void A_row_no_runner_can_take_names_each_runner_and_its_reason()
     {
         var row = Fixtures.Row(
