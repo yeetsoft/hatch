@@ -8769,7 +8769,11 @@ altogether — whether every beat in that stretch failed outright, or each spent
 its own retry budget and still failed — gives up on its own, sets `Lost` and
 stops the session exactly as a `409` does, on the understanding that a lease
 gone quiet that long is one the board's own rule may already have let
-somebody else take. And **a busy board** is a wait, not an ending: every
+somebody else take. That window is the claim's own, and follows the playbook
+the dispatch matched: a playbook's longer `quietLimitSeconds` also stretches how
+long the CLI waits out an unreachable server before assuming it lost the lease,
+once the playbook is attached (a limit of zero or none leaves what the take
+said), so one number answers "how long may this session be out of touch". And **a busy board** is a wait, not an ending: every
 candidate being worked elsewhere is a report, and it is deliberately not the
 sentence an empty board gets.
 
