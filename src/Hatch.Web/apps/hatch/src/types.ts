@@ -1902,6 +1902,30 @@ export interface ApprovedWaiting {
   sentence: string;
 }
 
+/** Who a stalled issue waits on: a person for a held row or one the board has
+    given up resuming, `loop` when the board still resumes it by itself.
+    Mirrors StalledKinds. */
+export type StalledKind = 'person' | 'loop';
+
+/** One non-terminal, non-deferred issue that is held or marked stalled.
+    Mirrors StalledIssueDto (Hatch.Contracts). */
+export interface StalledIssue {
+  key: string;
+  title: string;
+  type: string;
+  /** When the board marked it stalled; null when it is only held. */
+  stalledAt: string | null;
+  /** The reason the stall gave, when it gave one. */
+  stalledWhy: string | null;
+  /** Whether a person has held it. */
+  held: boolean;
+  /** How many times in a row the loop let it go; 0 when it is not marked stalled. */
+  letGo: number;
+  /** The queue's own words for the fold; null when nothing folds it now. */
+  sentence: string | null;
+  kind: StalledKind;
+}
+
 /** The two things that stop a night, read at one instant. Mirrors AttentionDto.
 
     One shape rather than two reads because the control's loudness is a single
@@ -1975,6 +1999,14 @@ export interface Attention {
   /** The merge column's issues the loop is still progressing on its own.
       Absent from a board that predates them. */
   approvedWaiting?: ApprovedWaiting[];
+  /** Every non-terminal, non-deferred issue that is held or marked stalled, in
+      board order - column, then rank, then id - each with who it waits on:
+      `person` when only a person can move it on, `loop` when the board
+      resumes it by itself. Absent from a board that predates it. */
+  stalled?: StalledIssue[];
+  /** The board's resume window in seconds, 0 when the board does not resume a
+      stalled issue on its own. Absent from a board that predates it. */
+  stallResumeSeconds?: number;
 }
 
 /** One runner out of usage, for the top of the attention panel. */
