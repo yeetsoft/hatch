@@ -18,7 +18,7 @@ public class DependencyDeclarationTests
             { "id": "node", "version": "22" },
             { "id": "pwsh", "version": "7" },
             "playwright-browsers",
-            "postgres"
+            "docker"
           ]
         }
         """;
@@ -46,7 +46,7 @@ public class DependencyDeclarationTests
                 new DeclaredDependency("node", "22"),
                 new DeclaredDependency("pwsh", "7"),
                 new DeclaredDependency("playwright-browsers", null),
-                new DeclaredDependency("postgres", null),
+                new DeclaredDependency("docker", null),
             ],
             dependencies);
     }
@@ -206,7 +206,7 @@ public class DependencyDeclarationTests
 
         Assert.StartsWith("entry 1: ", problem);
         Assert.Contains("`xcode` is not a dependency Hatch knows", problem);
-        Assert.Contains("dotnet, make, node, playwright-browsers, postgres, pwsh", problem);
+        Assert.Contains("docker, dotnet, make, node, playwright-browsers, postgres, pwsh", problem);
     }
 
     [Fact]
