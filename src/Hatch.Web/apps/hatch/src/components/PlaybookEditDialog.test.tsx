@@ -146,3 +146,39 @@ describe('PlaybookEditDialog own-wording panel', () => {
     expect(render(null)).not.toContain(PRESCRIBED);
   });
 });
+
+describe('PlaybookEditDialog quiet limit and run limit fields', () => {
+  const QUIET_HINT = 'Seconds a claim may go without a word before the board lets go of it.';
+  const RUN_HINT = 'Seconds a session may run before it is cut off. Leave blank for no limit.';
+
+  it('opens a row with both limits holding their seconds', () => {
+    const html = render({ ...BASE, quietLimitSeconds: 1500, maxRunSeconds: 3600 });
+    expect(html).toContain('Quiet limit (seconds)');
+    expect(html).toContain('Run limit (seconds)');
+    expect(html).toContain('value="1500"');
+    expect(html).toContain('value="3600"');
+  });
+
+  it('opens a row with null for both with the labels and no seconds', () => {
+    const html = render(BASE);
+    expect(html).toContain('Quiet limit (seconds)');
+    expect(html).toContain('Run limit (seconds)');
+    expect(html).not.toContain('value="1500"');
+    expect(html).not.toContain('value="3600"');
+  });
+
+  it('says what each blank means', () => {
+    const html = render(BASE);
+    expect(html).toContain(QUIET_HINT);
+    expect(html).toContain('Leave blank to use the board&#x27;s own quiet window.');
+    expect(html).toContain(RUN_HINT);
+  });
+
+  it('opens a new playbook with both blank', () => {
+    const html = render(null);
+    expect(html).toContain('Quiet limit (seconds)');
+    expect(html).toContain('Run limit (seconds)');
+    expect(html).not.toContain('value="1500"');
+    expect(html).not.toContain('value="3600"');
+  });
+});

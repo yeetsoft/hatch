@@ -94,7 +94,9 @@ itself allows (ten minutes for a shell call) without being stopped for quiet.
 The line names the call and its minutes, never its output. It stops when the
 call returns, is not sent while the session thinks or writes between calls,
 and ends once a call has stayed open past the agent's own timeout, so a hung
-call is still caught. A `--quiet` session prints nothing and carries none of
+call is still caught - unless the claim carries a run-time cap, in which case
+it carries on past that timeout until the cap itself stops the run; with no
+cap, as before. A `--quiet` session prints nothing and carries none of
 it. Any other heartbeat
 failure is weather and is retried, but one that keeps failing past the
 ticket's stall lapse (`Hatch__StallLapseMinutes`, five by default) or its

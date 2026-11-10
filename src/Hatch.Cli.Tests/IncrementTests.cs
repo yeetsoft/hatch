@@ -2282,6 +2282,64 @@ public sealed class IncrementTests
     }
 
     /// <summary>
+    /// A call still open past the agent's tool timeout, on a claim carrying a
+    /// run cap, keeps the chatter going past the ceiling - it is the run cap
+    /// that bounds the call here, not the ceiling - so the session is stopped
+    /// for run time, never for quiet.
+    /// </summary>
+    [Fact]
+    public async Task A_tool_call_open_past_the_ceiling_on_a_capped_claim_keeps_talking_until_the_run_cap_stops_it()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var clock = new FakeTimeProvider(start);
+        using var h = new Harness(clock: clock);
+        var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 12, stallLapseSeconds: 2);
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        h.Sessions.Behaviour = async (_, onLine, ct) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            onLine?.Invoke(Fixtures.ToolUse("Bash", "make test-ui", "t1"));
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(60), clock, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+
+            return new SessionResult(143, "");
+        };
+
+        var running = h.Runtime with { ToolCeiling = TimeSpan.FromSeconds(4) };
+        var task = running.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: 0), h.Root, "opus", "high", quiet: false, claim, default);
+
+        for (var i = 0; i < 400 && !task.IsCompleted; i++)
+        {
+            await Task.Delay(5);
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+        }
+
+        var report = await task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(report.RunTimeStopped);
+        Assert.False(report.QuietStopped);
+
+        // The clock passed the ceiling while the call was still being
+        // carried as still-running, not dropped the moment it reached it.
+        Assert.True(clock.GetUtcNow() - start > TimeSpan.FromSeconds(4));
+        Assert.StartsWith("still running: Bash  make test-ui", claim.Chatter.Line!, StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    /// <summary>
     /// A heartbeat refused with <c>reason: "quiet"</c> is read the same way a
     /// locally fired watcher is - here with no local watcher at all
     /// (<c>stallLapseSeconds</c> defaults to 0, so none is even started), which

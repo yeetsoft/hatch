@@ -21,9 +21,13 @@ import {
   isUncheckedEdit,
   leftNote,
   matchesProjectFilter,
+  maxRunDraft,
+  maxRunRequest,
   notReadNote,
   playbookLabel,
   projectLabel,
+  quietLimitDraft,
+  quietLimitRequest,
   transitionLabel,
 } from './playbooks';
 import type { CoverageRow } from './playbooks';
@@ -85,6 +89,42 @@ describe('the brief limit field', () => {
 
   it('a blank field clears the brief limit', () => {
     expect(briefLimitRequest('  ')).toBe('');
+  });
+});
+
+describe('the quiet limit field', () => {
+  it('shows the board\'s own window as a blank box', () => {
+    expect(quietLimitDraft(null)).toBe('');
+  });
+
+  it('shows a held quiet limit as its number', () => {
+    expect(quietLimitDraft(1500)).toBe('1500');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(quietLimitRequest(' 1500 ')).toBe('1500');
+  });
+
+  it('a blank field clears the quiet limit', () => {
+    expect(quietLimitRequest('  ')).toBe('');
+  });
+});
+
+describe('the run limit field', () => {
+  it('shows no limit as a blank box', () => {
+    expect(maxRunDraft(null)).toBe('');
+  });
+
+  it('shows a held run limit as its number', () => {
+    expect(maxRunDraft(3600)).toBe('3600');
+  });
+
+  it('trims the field for the wire', () => {
+    expect(maxRunRequest(' 3600 ')).toBe('3600');
+  });
+
+  it('a blank field clears the run limit', () => {
+    expect(maxRunRequest('  ')).toBe('');
   });
 });
 
