@@ -173,6 +173,43 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         """;
 
     /// <summary>
+    /// Runs in the page and reads the card holding the Omitted runners section
+    /// and every element inside its rows and its add form. Null when the
+    /// section is not drawn.
+    /// </summary>
+    private const string MeasureOmittedRunnersScript = """
+        () => {
+          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
+          const anchor = document.querySelector('.hatch-omission-add');
+          const card = anchor === null ? null : anchor.closest('.hatch-card');
+          if (card === null) return null;
+          const root = document.scrollingElement;
+          const named = (element) => {
+            const tag = element.tagName.toLowerCase();
+            const cls = [...element.classList].filter((c) => c.startsWith('hatch-omission')).map((c) => '.' + c).join('');
+            const label = element.getAttribute('aria-label') || element.textContent.trim().slice(0, 40);
+            return tag + cls + ' "' + label + '"';
+          };
+          const elements = [...document.querySelectorAll('.hatch-omission, .hatch-omission *, .hatch-omission-add, .hatch-omission-add *')]
+            .filter((element) => element.tagName !== 'DATALIST' && element.tagName !== 'OPTION')
+            .map((element) => ({
+              name: named(element),
+              control: element.tagName === 'BUTTON' || element.tagName === 'INPUT',
+              box: plain(element.getBoundingClientRect()),
+              scrollWidth: element.scrollWidth,
+              clientWidth: element.clientWidth,
+            }));
+          return {
+            innerWidth: window.innerWidth,
+            scrollWidth: root.scrollWidth,
+            clientWidth: root.clientWidth,
+            card: plain(card.getBoundingClientRect()),
+            elements,
+          };
+        }
+        """;
+
+    /// <summary>
     /// Runs in the page and reads each Runners row's Token budget cell and
     /// activity badge, found by the runner's name rather than by position. The
     /// cell is the one under the <c>Token budget</c> heading, and the bounds
@@ -379,6 +416,21 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             return Task.CompletedTask;
         });
 
+    /// <summary>
+    /// Sets the first input matching <paramref name="selector"/> to <paramref name="value"/> through the DOM's own
+    /// <c>value</c> setter and fires <c>input</c>, which a <c>maxlength</c> does not hold back - unlike <c>FillAsync</c>,
+    /// which stops at it - so a case can send the server more than the box lets a person type.
+    /// </summary>
+    public Task SetValuePastMaxLengthAsync(Deadline deadline, string selector, string value) =>
+        deadline.BoundAsync($"setting {selector} past its maxlength", () => page!.Locator(selector).First.EvaluateAsync(
+            """
+            (input, value) => {
+              Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            """,
+            value));
+
     /// <summary>Runs <paramref name="script"/> in the page, a function taking <paramref name="arg"/>.</summary>
     public Task<T> EvaluateAsync<T>(Deadline deadline, string phase, string script, object? arg = null) =>
         deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
@@ -580,6 +632,27 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
                 ReadBox(c.GetProperty("cell")),
                 c.GetProperty("scrollWidth").GetInt32(),
                 c.GetProperty("clientWidth").GetInt32())).ToList());
+    }
+
+    /// <summary>The Details card, every Omitted runners row and the add form's elements as the page stands; the card is its border box.</summary>
+    public async Task<OmittedRunnersMeasurement> MeasureOmittedRunnersAsync(Deadline deadline)
+    {
+        var read = await deadline.BoundAsync("measuring the Omitted runners section", () =>
+            page!.EvaluateAsync<JsonElement>(MeasureOmittedRunnersScript));
+
+        Assert.True(read.ValueKind != JsonValueKind.Null, "the Omitted runners add form is not inside a card on the page");
+
+        return new OmittedRunnersMeasurement(
+            read.GetProperty("innerWidth").GetInt32(),
+            read.GetProperty("scrollWidth").GetInt32(),
+            read.GetProperty("clientWidth").GetInt32(),
+            ReadBox(read.GetProperty("card")),
+            read.GetProperty("elements").EnumerateArray().Select(e => new OmissionElement(
+                e.GetProperty("name").GetString()!,
+                e.GetProperty("control").GetBoolean(),
+                ReadBox(e.GetProperty("box")),
+                e.GetProperty("scrollWidth").GetInt32(),
+                e.GetProperty("clientWidth").GetInt32())).ToList());
     }
 
     /// <summary>Each Runners row's Token budget cell and activity badge as the page stands.</summary>
