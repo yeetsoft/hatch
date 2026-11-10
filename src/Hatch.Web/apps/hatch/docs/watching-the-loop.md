@@ -93,6 +93,14 @@ checkout retires nothing. A retired row that beats again under its own name
 is un-retired and counts as live again; otherwise it drops off with the rest,
 two hours after its last beat.
 
+A retired row's tags are carried once. A runner's tags live on its key's config,
+so the first loop beat from a key that has no config at all writes one holding
+the union of the tags on the key's own-named row and on every row that key's
+name retired (at most eight, the most recently heard first). A union with no
+tags creates nothing. A key whose config already exists, tagged or empty, keeps
+it untouched: a config with no tags is the operator's deliberate "none", never
+"not yet set".
+
 Runners that report the same machine are listed together, and a line under them
 totals what that machine has run and spent between them - its increments and its
 dollars. A machine with one runner draws no such line, and a runner that never
@@ -162,8 +170,8 @@ than locking that figure in as the runner's own. Its hint names the figure it
 is inheriting instead of the usual token-count wording, so the empty box is
 never mistaken for an unset cap.
 
-**Tags** are set only here - or by a `PATCH` on the row - the CLI never sends
-them. The loop adopts a changed list on its very next heartbeat, saying so
+**Tags** are set only here - or by a `PATCH` on the row, or carried once from
+retired rows (see above) - the CLI never sends them. The loop adopts a changed list on its very next heartbeat, saying so
 once - `hatch: the board set --tag ...`, or `--tag off` for none.
 
 Each fresh start of a loop -

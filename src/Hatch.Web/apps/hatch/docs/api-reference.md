@@ -943,7 +943,9 @@ least 1) until it is marked gone. A fresh loop that meets it waits that long,
 asking again every few seconds: a `lastSeenAt` that has moved is a live second
 loop and is refused for good; a session that has gone quiet is marked gone and
 the next beat is answered. It answers a `RunnerInstructionDto`, now carrying
-`sessionId`.
+`sessionId`, and `drives`: the project keys this key is elected to drive, from the
+same election `POST /runners/{name}` answers. `go-to-work` gates its merge train
+on it, so a session beat that answered none would leave no loop driving.
 
 `POST /runners/sessions/{id}/end` is how a loop says it is leaving. It is the
 bearer key alone, like the heartbeat (`403` with none), and `404`s a session
