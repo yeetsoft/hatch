@@ -21,8 +21,12 @@ import {
   mineLabel,
   repositoriesLabel,
   liveSessions,
+  recentSessions,
   runnerActivity,
   sessionActivity,
+  sessionRepositoriesLabel,
+  sessionsByStart,
+  sessionTokenBudget,
   runnerBuildLabel,
   runnerStrip,
   tagsLabel,
@@ -791,6 +795,13 @@ describe('runnerBuildLabel', () => {
   it('says nothing for a runner that has never reported a build', () => {
     expect(runnerBuildLabel(runner({ revision: null }), NOW)).toBeNull();
   });
+
+  it('takes a session-shaped object the same way, undefined read as null', () => {
+    expect(runnerBuildLabel(session({ revision: SHA, builtAt: at(-3 * 60 * 60_000) }), NOW)).toBe(
+      `${SHA.slice(0, 7)} · 3 hours ago`,
+    );
+    expect(runnerBuildLabel(session({ revision: undefined }), NOW)).toBeNull();
+  });
 });
 
 describe('groupByHost', () => {
@@ -1158,5 +1169,94 @@ describe('sortRunners', () => {
     const input = [b, a];
     sortRunners(input, NOW);
     expect(input).toEqual([b, a]);
+  });
+});
+
+describe('sessionTokenBudget', () => {
+  it('is empty when neither cap is set, even where a total was reported', () => {
+    expect(sessionTokenBudget(session())).toEqual([]);
+    expect(sessionTokenBudget(session({ tokensUsed: 300_000, tokensLastHour: 100_000 }))).toEqual([]);
+  });
+
+  it('says the night against its cap, with a percent and a tone, never (default)', () => {
+    const lines = sessionTokenBudget(session({ maxTokens: 1_000_000, tokensUsed: 800_000 }));
+    expect(lines).toEqual([{ text: '800k / 1M tokens', percent: 80, tone: 'warn' }]);
+  });
+
+  it('says the hour alone when only the hourly cap is set', () => {
+    const lines = sessionTokenBudget(session({ maxTokensPerHour: 500_000, tokensLastHour: 50_000 }));
+    expect(lines).toEqual([{ text: '50k / 500k per hour', percent: 10, tone: 'success' }]);
+  });
+});
+
+describe('sessionsByStart', () => {
+  it('orders live sessions by startedAt ascending', () => {
+    const earlier = session({ id: 1, startedAt: at(-7_200_000) });
+    const later = session({ id: 2, startedAt: at(-3_600_000) });
+    expect(sessionsByStart([later, earlier]).map((s) => s.id)).toEqual([1, 2]);
+  });
+
+  it('breaks a tie on startedAt by where, null last', () => {
+    const b = session({ id: 1, where: 'Mac:/b' });
+    const a = session({ id: 2, where: 'Mac:/a' });
+    const none = session({ id: 3, where: null });
+    expect(sessionsByStart([b, none, a]).map((s) => s.id)).toEqual([2, 1, 3]);
+  });
+
+  it('does not mutate the input array', () => {
+    const b = session({ id: 1, startedAt: at(-3_600_000) });
+    const a = session({ id: 2, startedAt: at(-7_200_000) });
+    const input = [b, a];
+    sessionsByStart(input);
+    expect(input).toEqual([b, a]);
+  });
+});
+
+describe('recentSessions', () => {
+  it('excludes a live session', () => {
+    const live = session({ id: 1 });
+    expect(recentSessions(runner({ sessions: [live] }), NOW)).toEqual([]);
+  });
+
+  it('includes an open session that has gone quiet, which liveSessions drops', () => {
+    const quiet = session({ id: 1, lastSeenAt: at(-GONE_AFTER * 1000 - 1000) });
+    expect(recentSessions(runner({ sessions: [quiet] }), NOW).map((s) => s.id)).toEqual([1]);
+  });
+
+  it('includes an ended session, newest startedAt first', () => {
+    const older = session({ id: 1, endedAt: at(-7_200_000), startedAt: at(-7_200_000) });
+    const newer = session({ id: 2, endedAt: at(-3_600_000), startedAt: at(-3_600_000) });
+    expect(recentSessions(runner({ sessions: [older, newer] }), NOW).map((s) => s.id)).toEqual([2, 1]);
+  });
+
+  it('caps at 20', () => {
+    const sessions = Array.from({ length: 25 }, (_, i) =>
+      session({ id: i, endedAt: at(-i * 1000), startedAt: at(-i * 1000) }),
+    );
+    expect(recentSessions(runner({ sessions }), NOW)).toHaveLength(20);
+  });
+});
+
+describe('sessionRepositoriesLabel', () => {
+  it('is null for a session that has named none', () => {
+    expect(sessionRepositoriesLabel(session())).toBeNull();
+  });
+
+  it('joins one or more remotes', () => {
+    expect(sessionRepositoriesLabel(session({ remotes: ['example.com/owner/repo'] }))).toBe(
+      'example.com/owner/repo',
+    );
+    expect(sessionRepositoriesLabel(session({ remotes: ['example.com/owner/one', 'example.com/owner/two'] }))).toBe(
+      'example.com/owner/one, example.com/owner/two',
+    );
+  });
+
+  it('names clones what it lacks only when the session says it does', () => {
+    expect(sessionRepositoriesLabel(session({ remotes: ['example.com/owner/repo'], clones: true }))).toBe(
+      'example.com/owner/repo, clones what it lacks',
+    );
+    expect(sessionRepositoriesLabel(session({ remotes: ['example.com/owner/repo'], clones: false }))).toBe(
+      'example.com/owner/repo',
+    );
   });
 });
