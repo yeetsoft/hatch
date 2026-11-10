@@ -24,6 +24,17 @@ public static class NoCode
     public static bool Declared(string? noCode) => !string.IsNullOrEmpty(noCode);
 
     /// <summary>
+    /// What a card draws for the declaration: null on an issue with a child,
+    /// since its children carry the code and a declaration there says
+    /// nothing, else <paramref name="noCode"/> unchanged. The declaration
+    /// itself - the issue page's No code row, <c>hatch show</c>, the
+    /// attention panel and the close hop - is untouched by this; only the
+    /// card is asked to look past it.
+    /// </summary>
+    public static string? OnCard(string? noCode, long issueId, PriorityTree priorities) =>
+        priorities.HasChildren(issueId) ? null : noCode;
+
+    /// <summary>
     /// Clears the declaration when the issue is moved into a column left of the
     /// review column, and returns the event to add; null when there was nothing
     /// to clear or the column is review or to its right. A terminal column and a
