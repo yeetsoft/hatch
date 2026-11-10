@@ -274,7 +274,11 @@ There are nine, and a column carries whichever of them it needs.
   work into this column by hand: never a key, never a hop, never a dispatch.
   No stock column ships with it. Only a person may tick it, never a key. A
   Deferred or Done column is refused, and it cannot be unticked while **Merges
-  PR** is ticked.
+  PR** is ticked. Ticking it moves `Columns.AwaitingReview` one column left
+  for every project on the board, not only the one adding the column, since
+  that landmark steps back over any protected column it meets walking left
+  from the first terminal one — see
+  [a passing check approves the merge](letting-the-loop-merge-for-you#a-passing-check-approves-the-merge).
 - **Merges PR** — the runner merges an issue's pull request once it stands in
   this column, current and green, with no session. No stock column ships with
   it. Only a person may tick it, never a key. It needs **Protected** ticked
