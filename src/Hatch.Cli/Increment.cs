@@ -71,8 +71,9 @@ public sealed class IncrementReport
 
     /// <summary>
     /// One of <see cref="ClaimLostReasons"/>, carried onto <see cref="ReleaseOutcome"/> -
-    /// <see cref="ClaimLostReasons.Quiet"/> for a quiet stop, dropped or flagged alike, and
-    /// null for every other release this increment can give.
+    /// <see cref="ClaimLostReasons.Quiet"/> for a quiet stop, <see cref="ClaimLostReasons.RunTime"/>
+    /// for a run-time stop, dropped or flagged alike, and null for every other release this
+    /// increment can give.
     /// </summary>
     public string? ReleaseReason { get; set; }
 
@@ -101,6 +102,30 @@ public sealed class IncrementReport
         QuietLimit is { } limit
             ? $"stopped after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)} without a word; the quiet limit is {(long)limit.TotalSeconds}s"
             : $"stopped after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)} without a word";
+
+    /// <summary>
+    /// The runner stopped the session itself at the playbook's run-time cap,
+    /// a beat before the server's own heartbeat refusal would have, or the
+    /// heartbeat answered run-time first. Not <see cref="LostLease"/>, for the
+    /// same reason <see cref="QuietStopped"/> is not - the stall guard below
+    /// counts it exactly like any other stall, through the same <c>LetGo</c>/flag
+    /// ladder.
+    /// </summary>
+    public bool RunTimeStopped { get; set; }
+
+    /// <summary>How long the claim had run from its take when it stopped, for <see cref="RunTimeWhy"/>.</summary>
+    public TimeSpan? RunAfter { get; set; }
+
+    /// <summary>The playbook's run limit itself, for the same sentence.</summary>
+    public TimeSpan? RunLimit { get; set; }
+
+    /// <summary>
+    /// The sentence a run-time stop is reported in - the stall comment, the
+    /// <c>FlagStallAsync</c> body, and <see cref="Outcome"/> all read it rather
+    /// than composing their own.
+    /// </summary>
+    public string RunTimeWhy =>
+        $"stopped after {Format.Duration((long)(RunAfter ?? TimeSpan.Zero).TotalSeconds)}; this playbook's run limit is {(long)(RunLimit ?? TimeSpan.Zero).TotalSeconds}s";
 
     /// <summary>
     /// A conflict increment, and origin's branch merges with the trunk now. Not a
@@ -339,6 +364,7 @@ public sealed class IncrementReport
         : HardLimited ? $"the hard limit was hit at {Format.Compact(HardLimitedAtTokens!.Value)} tokens"
             + (Filed.Count > 0 ? $", filed {Filed.Count} under it" : ", its continuation could not be filed")
         : QuietStopped ? $"stopped for quiet after {Format.Duration((long)(QuietAfter ?? TimeSpan.Zero).TotalSeconds)}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : RunTimeStopped ? $"stopped for run time after {Format.Duration((long)(RunAfter ?? TimeSpan.Zero).TotalSeconds)}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : CheckReason is { Length: > 0 } cr ? $"{cr}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : (NoWorkLog || ResultErrored) && Done.Length > 0 ? $"the session {Cause}, and it {Done}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Filed.Count > 0 ? (Clamped ? $"clamped at {Format.Compact(ClampedAtTokens!.Value)} tokens, filed {Filed.Count} under it" : $"filed {Filed.Count} under it")
@@ -565,6 +591,16 @@ public sealed class Increment(
                     say.Complain($"hatch: {report.Key} - {gone}");
                     say.Complain("hatch:   the session was stopped; nothing further was written there");
                 }
+                else if (claim.LostReason == ClaimLostReasons.RunTime)
+                {
+                    // LostReason is RunTime: the heartbeat answered run-time before,
+                    // or instead of, the watcher below getting to fire. Either way
+                    // the token is still this runner's - nothing here is somebody
+                    // else's increment.
+                    report.RunTimeStopped = true;
+                    report.RunAfter = facts.RunStoppedAfter ?? _clock.GetUtcNow() - claim.TakenAt;
+                    report.RunLimit = facts.RunLimit ?? claim.RunLimit;
+                }
                 else
                 {
                     // LostReason is Quiet: the heartbeat answered quiet before, or
@@ -581,6 +617,12 @@ public sealed class Increment(
                 report.QuietStopped = true;
                 report.QuietAfter = quietAfter;
                 report.QuietLimit = facts.QuietLimit;
+            }
+            else if (facts.RunStoppedAfter is { } runAfter)
+            {
+                report.RunTimeStopped = true;
+                report.RunAfter = runAfter;
+                report.RunLimit = facts.RunLimit;
             }
 
             if (report.Clamped && !claim.LostToOthers)
@@ -859,6 +901,8 @@ public sealed class Increment(
                         // why, and what to resume, and nothing that blocks it.
                         var why = report.QuietStopped
                             ? report.QuietWhy
+                            : report.RunTimeStopped
+                            ? report.RunTimeWhy
                             : said is { Length: > 0 }
                             ? $"the session ended with an error - \"{said}\""
                             : "the session ended without moving it";
@@ -868,6 +912,7 @@ public sealed class Increment(
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
+                        else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
                         say.Line("");
                         say.Line($"hatch: {report.Key} moved nothing - let go, and going on to the next");
                     }
@@ -880,6 +925,7 @@ public sealed class Increment(
                         await FlagStallAsync(report, open, work.LetGo, ct);
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
                         if (report.QuietStopped) report.ReleaseReason = ClaimLostReasons.Quiet;
+                        else if (report.RunTimeStopped) report.ReleaseReason = ClaimLostReasons.RunTime;
                     }
                 }
 
@@ -1116,6 +1162,12 @@ public sealed class Increment(
         // never sends at all.
         await using var quietWatch = claim.StallLapse is { } lapse && lapse > TimeSpan.Zero
             ? new Probing(ct2 => WatchQuietAsync(work.Issue.Key, facts, claim, lapse, stopping, ct2), ct)
+            : null;
+
+        // Covers both the streamed and --quiet path alike, same as the quiet
+        // watch above - a cap the playbook names, timed from the take.
+        await using var runWatch = claim.RunLimit is { } cap && cap > TimeSpan.Zero
+            ? new Probing(ct2 => WatchRunTimeAsync(work.Issue.Key, facts, claim, cap, stopping, ct2), ct)
             : null;
 
         // The hooks a message sent while this runs reaches the session by. Made
@@ -1380,6 +1432,42 @@ public sealed class Increment(
             stopping.Cancel();
             return;
         }
+    }
+
+    /// <summary>
+    /// Stops the session itself the moment the claim has run for the
+    /// playbook's own cap, timed from <see cref="Claim.TakenAt"/> - a beat
+    /// before the server's own heartbeat refusal would, so the runner that is
+    /// actually watching the process is the one that stops it. Simpler than
+    /// <see cref="WatchQuietAsync"/>: one deadline, fixed at the take, with no
+    /// margin - the server's own cap runs from that same instant, so this
+    /// fires first or ties with it, and a lost race there reads the same way,
+    /// through the heartbeat refusal below.
+    /// </summary>
+    private async Task WatchRunTimeAsync(
+        string key, RunFacts facts, Claim claim, TimeSpan limit, CancellationTokenSource stopping, CancellationToken ct)
+    {
+        var remaining = claim.TakenAt + limit - _clock.GetUtcNow();
+        if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+
+        try
+        {
+            await Task.Delay(remaining, _clock, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        // The quiet watcher already won - never set both.
+        if (stopping.IsCancellationRequested) return;
+
+        var after = _clock.GetUtcNow() - claim.TakenAt;
+        facts.RunStoppedAfter = after;
+        facts.RunLimit = limit;
+        say.Line("");
+        say.Line($"hatch: {key} - ran for {Format.Duration((long)after.TotalSeconds)}, past its limit; stopping the session");
+        stopping.Cancel();
     }
 
     /// <summary>The tool call a streamed session is inside of, and since when. Written by the stream's callback, read by the talker.</summary>
@@ -1677,6 +1765,11 @@ public sealed class Increment(
               An unattended increment ran here, and the runner stopped the session itself rather
               than wait for the board to: {report.QuietWhy}.
               """
+            : report.RunTimeStopped
+            ? $"""
+              An unattended increment ran here, and the runner stopped the session itself rather
+              than wait for the board to: {report.RunTimeWhy}.
+              """
             : report.StillFailing.Count > 0
             ? $"""
               An unattended increment ran here to fix this branch's failing build, and the branch
@@ -1742,6 +1835,8 @@ public sealed class Increment(
             {
                 var why = report.QuietStopped
                     ? report.QuietWhy
+                    : report.RunTimeStopped
+                    ? report.RunTimeWhy
                     : report.StillFailing.Count > 0
                     ? $"the build on {report.BuildBranch} still fails"
                     : report.StillConflicting.Count > 0

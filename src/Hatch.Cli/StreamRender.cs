@@ -62,6 +62,16 @@ public sealed class RunFacts
     public TimeSpan? QuietLimit { get; set; }
 
     /// <summary>
+    /// How long the claim had run from its take when the run-time watcher in
+    /// <see cref="Increment.SpawnAsync"/> stopped the session - null for a run
+    /// the watcher never had cause to stop.
+    /// </summary>
+    public TimeSpan? RunStoppedAfter { get; set; }
+
+    /// <summary>The playbook's run limit the watcher was timing against, alongside <see cref="RunStoppedAfter"/>.</summary>
+    public TimeSpan? RunLimit { get; set; }
+
+    /// <summary>
     /// The latest <c>rate_limit_event</c>'s windows, out of the session's own
     /// stream - null on a run that never saw one, or a quiet run, where
     /// <see cref="Increment.SpawnAsync"/> never sets this. Read by the usage-limit

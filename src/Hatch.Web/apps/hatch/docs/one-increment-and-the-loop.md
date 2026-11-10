@@ -74,12 +74,15 @@ all mean the lease really is gone, and the runner kills the session and its
 whole process tree at once, writing nothing further for it - the same as a
 legacy bare-string refusal, which names no reason at all.
 
-`quiet` is the one reason that is not a lost lease: the holder's own token,
-refused for going quiet rather than for being gone. The runner races this one
-rather than wait on it - it times the ticket's own quiet window itself, a
-few seconds early, and stops the session on its own before a heartbeat could
-ever be refused this way. Either way the token is still this runner's, and
-the increment reports it as a stall rather than a lost lease, so the usual
+`quiet` and `run-time` are the two reasons that are not a lost lease: the
+holder's own token, refused for going quiet or for running past its
+playbook's own cap rather than for being gone. The runner races both rather
+than wait on either - it times the ticket's own quiet window itself, a few
+seconds early, and stops the session on its own before a heartbeat could
+ever be refused that way; the run-time cap it times from the claim's own
+take, with no margin, since the server's own cap runs from that same
+instant. Either way the token is still this runner's, and the increment
+reports it as a stall rather than a lost lease, so the usual
 let-go-then-flag ladder ([Stalls](#stalls)) applies to it the same as a
 session that simply ended without moving the ticket.
 
@@ -99,9 +102,13 @@ playbook's quiet limit stops the
 session itself rather than let it keep working a ticket the board may already
 have handed to somebody else.
 
-There is no wall-clock cap on an increment beyond that: a session runs as
-long as it has a lease to renew. Ctrl-C waits up to ten seconds for the
-session's own output to drain before it lets go.
+A playbook naming its own run-time cap is the one wall-clock limit on an
+increment: the runner stops the session once the claim has run that long from
+its take, whatever it is doing and however recently it last spoke, and reports
+it the same way a quiet stop is reported. A playbook naming none, or a cap of
+zero, starts no such watcher, and a session otherwise runs as long as it has a
+lease to renew. Ctrl-C waits up to ten seconds for the session's own output to
+drain before it lets go.
 
 ### What it prints
 
@@ -344,13 +351,13 @@ limit published what it left.
 
 Losing the lease is the one exception that cuts the other way: a takeover or
 a clear is somebody else's increment now, so it is exempt from the ladder
-above entirely - no comment, no stall, no outcome written. A claim gone quiet
-is not this: the runner stopped its own session, the lease is still held, and
-the stall ladder runs exactly as it would for a session that simply went
-quiet and ended on its own - see [The claim](#the-claim). It is exempt from
-the three failed increments below the same way a hard limit is, though: the
-runner stopped the session on purpose, which says nothing about whether the
-increment itself was going well.
+above entirely - no comment, no stall, no outcome written. A claim gone quiet,
+or run past its playbook's own cap, is not this: the runner stopped its own
+session, the lease is still held, and the stall ladder runs exactly as it
+would for a session that simply ended on its own - see [The claim](#the-claim).
+Both are exempt from the three failed increments below the same way a hard
+limit is, though: the runner stopped the session on purpose, which says
+nothing about whether the increment itself was going well.
 
 Running out of usage commits and pushes whatever the session left onto the
 issue's own branch, and the runner writes one comment: that it ran out, when

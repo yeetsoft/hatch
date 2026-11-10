@@ -191,6 +191,24 @@ run](the-runner#when-it-will-not-run).
   checkout its own with `hatch config --here --workspace <dir>`, or stop
   that loop. See [several runners on one machine](the-runner#several-runners-on-one-machine).
 
+## After upgrading, my runner's tags are gone
+
+- **The runner's tags or bounds read empty after an upgrade.** A runner's
+  settings (tags, bounds, omissions) used to live on a row per checkout and
+  now live on its key; the old rows are kept, marked adopted once carried
+  over. Two things carry them. Reading the Runners page adopts an old row
+  onto a key where its owner has exactly one live key and exactly one
+  unadopted old row. And a loop's first heartbeat after the upgrade sends
+  its old name, which adopts the old row of that name onto that key, unless
+  the row belongs to a different person - so two old rows for one person are
+  each carried by name once their loops upgrade.
+- **Nothing was carried.** A person with two old rows and no loop sending
+  its name, no row, no key or two keys is left alone, now and later, until
+  the count on both sides is one. Set the tags and bounds by hand on the
+  Runners page - tags are set only there: [the
+  runner](the-runner#what-a-runner-advertises). A key that already carries
+  settings keeps them; adoption fills only a key that has none.
+
 ## A ticket sits in Breakdown and no runner picks it up
 
 - **The column runs on a model no live runner offers.** `fable` is the

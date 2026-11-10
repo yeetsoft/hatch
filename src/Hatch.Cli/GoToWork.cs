@@ -470,13 +470,14 @@ public sealed class Tally
         // this says nothing about whether the last increment actually worked.
         if (report.HardLimited) return;
 
-        // Nor is a quiet stop. The runner stopped the session itself, on
-        // purpose, a beat before the server would have refused its heartbeat
-        // for the same reason - this is the ladder holding the ticket for a
-        // slow or absent session, working exactly as designed, and three of
-        // them in a row on different tickets must not read as systemic
-        // breakage the way three broken increments should.
-        if (report.QuietStopped) return;
+        // Nor is a quiet stop, or a run-time stop. The runner stopped the
+        // session itself, on purpose, a beat before the server would have
+        // refused its heartbeat for the same reason - this is the ladder
+        // holding the ticket for a slow, absent, or simply long-running
+        // session, working exactly as designed, and three of them in a row
+        // on different tickets must not read as systemic breakage the way
+        // three broken increments should.
+        if (report.QuietStopped || report.RunTimeStopped) return;
 
         // A failed increment on its own is not a reason to stop - a ticket can
         // be wrong, or a test can be flaky, and the next ticket is a different
