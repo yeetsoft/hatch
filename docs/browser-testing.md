@@ -59,10 +59,12 @@ past its own `scrollWidth`.
 
 `OmittedRunnersTests.cs` drives the issue page's Omitted runners section against
 the real host: an own, a recused and an inherited row, Lift, Omit, the refusal
-sentences, and the fit of every row and add control inside the Details card. The
-phone case runs whole rather than skipping - the CI e2e gate fails on any skip -
-and asserts the section's known overflow at that width (HA-2172) reproduces,
-rather than failing on it, until the section stops overflowing the card.
+sentences, and the fit of every row and add control inside the Details card, on
+both profiles. A card overflow at the iPhone 14 Pro width (HA-2172) was seen on
+a Windows dev machine but does not reproduce under the Linux WebKit this case's
+own CI job runs, most likely a font-fallback difference between the two rather
+than a bug every browser hits - the phone case runs whole and holds the same
+bar the desktop case does, since the CI e2e gate fails on any skip.
 
 ## Render any page with no code written
 

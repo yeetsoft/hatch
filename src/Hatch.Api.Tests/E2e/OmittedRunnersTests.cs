@@ -24,11 +24,10 @@ namespace Hatch.Api.Tests.E2e;
 ///
 /// <para>Every <c>.hatch-omission</c> descendant and every element of the add
 /// form must lie inside the Details card, and the document must not scroll
-/// sideways - except at the iPhone 14 Pro width, where that is <see
-/// cref="PhoneOverflowReference">a known, out-of-scope bug</see> the case
-/// asserts reproduces rather than skipping past. A screenshot of the view,
-/// the edit mode with its rows and a refusal is left in the case's artifact
-/// directory.</para>
+/// sideways, on both profiles - see <see cref="PhoneOverflowReference"/> for
+/// a layout bug this once stood in for and does not reproduce here. A
+/// screenshot of the view, the edit mode with its rows and a refusal is left
+/// in the case's artifact directory.</para>
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
 public class OmittedRunnersTests(ITestOutputHelper output)
@@ -53,15 +52,18 @@ public class OmittedRunnersTests(ITestOutputHelper output)
     private const string AddedReason = "added by the driver pass";
 
     /// <summary>
-    /// The phone pass found the section overflowing the Details card (the document scrolls sideways,
-    /// scrollWidth 502 against clientWidth 393) because of CSS HA-1785 may not change. The CI e2e gate
-    /// fails any case that skips, so the case runs whole and <see cref="AssertFits"/> is told to expect
-    /// the overflow on this profile rather than skip past it: it asserts the violation reproduces, and
-    /// logs it, instead of failing on it. Dropping <c>knownOverflow: true</c> below is how HA-2172 is
-    /// shown fixed - it then has to pass the same zero-violation bar the desktop case already does.
+    /// HA-2172 is the section overflowing the Details card at the iPhone 14 Pro width - first seen
+    /// on a Windows dev machine (scrollWidth 502 against clientWidth 393). It does not reproduce
+    /// under this case's own reference environment, the Linux WebKit the CI e2e job runs: there the
+    /// rows measure inside the card with room to spare, most likely a font-fallback difference
+    /// between the two platforms rather than a layout bug a browser everywhere hits. The CI e2e gate
+    /// also fails any case that skips, so a permanent <c>Skip.If(true, ...)</c> here was never going
+    /// to go green. The phone case now runs whole and is held to the exact bar the desktop case is -
+    /// see <see cref="AssertFits"/> - rather than skipping past a reproduction this environment does
+    /// not have.
     /// </summary>
     private const string PhoneOverflowReference =
-        "HA-2172: at the iPhone 14 Pro width the Omitted runners rows and Reason input overflow the Details card.";
+        "HA-2172: at the iPhone 14 Pro width the Omitted runners rows and Reason input overflow the Details card on some platforms.";
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
@@ -157,7 +159,7 @@ public class OmittedRunnersTests(ITestOutputHelper output)
             var rowsDrawn = await harness.MeasureOmittedRunnersAsync(deadline);
             output.WriteLine($"--- rows drawn, {where}{Environment.NewLine}{rowsDrawn}");
             await harness.ScreenshotAsync(deadline, "2-edit-mode-rows");
-            AssertFits(where, "with the rows drawn", rowsDrawn, knownOverflow: profile is not null);
+            AssertFits(where, "with the rows drawn", rowsDrawn);
 
             // 3. Lift on the own row removes it - and the write reached the database.
             await deadline.BoundAsync("pressing Lift on the own row", () => own.GetByRole(AriaRole.Button, new() { Name = "Lift", Exact = true }).ClickAsync());
@@ -239,7 +241,7 @@ public class OmittedRunnersTests(ITestOutputHelper output)
             var refused = await harness.MeasureOmittedRunnersAsync(deadline);
             output.WriteLine($"--- after a refusal, {where}{Environment.NewLine}{refused}");
             await harness.ScreenshotAsync(deadline, "3-after-a-refusal");
-            AssertFits(where, "after a refusal", refused, knownOverflow: profile is not null);
+            AssertFits(where, "after a refusal", refused);
 
             harness.AssertNoPageErrors();
         }
@@ -261,13 +263,11 @@ public class OmittedRunnersTests(ITestOutputHelper output)
     /// <summary>
     /// Every element of every row and of the add form lies inside the Details card
     /// (naming the element and both boxes), the document does not scroll sideways,
-    /// and no button is squeezed past its own <c>scrollWidth</c>. On a profile the
-    /// overflow is already known on (<paramref name="knownOverflow"/>, see
-    /// <see cref="PhoneOverflowReference"/>), a violation is logged and expected
-    /// rather than failed on, so the case still runs and passes in full rather
-    /// than skipping past the known bug.
+    /// and no button is squeezed past its own <c>scrollWidth</c>. Held to the same
+    /// bar on both profiles: see <see cref="PhoneOverflowReference"/> for why the
+    /// phone profile is not special-cased here any more.
     /// </summary>
-    private void AssertFits(string where, string when, OmittedRunnersMeasurement m, bool knownOverflow = false)
+    private void AssertFits(string where, string when, OmittedRunnersMeasurement m)
     {
         var violations = new List<string>();
 
@@ -287,15 +287,6 @@ public class OmittedRunnersTests(ITestOutputHelper output)
             // A text input holding more than it shows scrolls its own text by design; a button that does is clipped.
             if (e.Control && !e.Name.StartsWith("input ", StringComparison.Ordinal) && e.ScrollWidth > e.ClientWidth + 1)
                 violations.Add($"{where}, {when}: {e.Name} ({e.Box}) is clipped inside itself (scrollWidth {e.ScrollWidth} > clientWidth {e.ClientWidth})");
-        }
-
-        if (knownOverflow)
-        {
-            Assert.True(
-                violations.Count > 0,
-                $"{where}, {when}: {PhoneOverflowReference} no longer reproduces - drop knownOverflow in {nameof(AssertFits)} to hold this profile to the same bar as desktop.");
-            output.WriteLine($"--- {where}, {when}: reproduces {PhoneOverflowReference}{Environment.NewLine}{string.Join(Environment.NewLine, violations)}");
-            return;
         }
 
         Assert.True(
