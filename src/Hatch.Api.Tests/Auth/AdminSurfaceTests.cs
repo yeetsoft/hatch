@@ -634,6 +634,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
+        "ProjectsController.PutOnePrPolicy",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
@@ -808,6 +809,7 @@ public class AdminSurfaceTests
         "ProjectsController.PutStoriesOnEpics",
         "ProjectsController.PutCheckApprovesMerge",
         "ProjectsController.PutNoCodeCloses",
+        "ProjectsController.PutOnePrPolicy",
 
         // A weave press spends a breakdown session at the largest model -
         // a person's to press, not an agent's. See DreamWeaveController.
