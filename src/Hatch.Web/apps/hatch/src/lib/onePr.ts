@@ -3,8 +3,15 @@ import type { Issue, IssueType } from '../types';
 
 /** What the story or bug is doing right now and why, in a sentence - the answer to
     "is this one PR" that the control gives without anybody pressing anything. */
-export function onePrSaid(issue: Pick<Issue, 'type' | 'onePr' | 'onePrOwn' | 'onePrFrom'>): string {
+export function onePrSaid(
+  issue: Pick<Issue, 'type' | 'onePr' | 'onePrOwn' | 'onePrFrom'> & { onePrEnforced?: boolean },
+): string {
   const value = issue.onePr ? 'On' : 'Off';
+  if (issue.onePrEnforced && (issue.type === 'story' || issue.type === 'bug')) {
+    return issue.onePrOwn === null
+      ? `${value} · the project's default, enforced`
+      : `${value} · set on this ${issue.type} before the project enforced its default; locked`;
+  }
   if (issue.onePrOwn !== null) return `${value} · set on this ${issue.type}`;
   if (issue.onePrFrom) return `${value} · inherited from ${issue.onePrFrom}`;
   return issue.type === 'story' || issue.type === 'bug'

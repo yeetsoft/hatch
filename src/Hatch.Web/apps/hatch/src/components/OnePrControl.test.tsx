@@ -10,6 +10,7 @@ const story = (over: Partial<Parameters<typeof OnePrControl>[0]['issue']> = {}) 
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  onePrEnforced: false,
   ...over,
 });
 
@@ -68,6 +69,56 @@ describe('OnePrControl', () => {
     const html = renderToStaticMarkup(<OnePrControl issue={story()} onChange={() => {}} />);
 
     expect(html).toContain('<button');
+  });
+});
+
+describe('an enforced project', () => {
+  const REASON = 'The project enforces its one-PR default on every story';
+
+  it('locks every step with the reason and says the default is enforced', () => {
+    for (const type of ['story', 'bug'] as const) {
+      for (const onePr of [true, false]) {
+        const html = renderToStaticMarkup(
+          <OnePrControl issue={story({ type, onePr, onePrEnforced: true })} onChange={() => {}} />,
+        );
+
+        expect(html.match(/disabled=""/g)).toHaveLength(3);
+        expect(html).toContain(REASON);
+        expect(html).toContain(`${onePr ? 'On' : 'Off'} · the project&#x27;s default, enforced`);
+        expect(html).toMatch(/aria-pressed="true"[^>]*>Project default</);
+      }
+    }
+  });
+
+  it('says an override from before enforcement is locked', () => {
+    for (const type of ['story', 'bug'] as const) {
+      for (const own of [true, false]) {
+        const issue = story({ type, onePr: own, onePrOwn: own, onePrEnforced: true });
+        const html = renderToStaticMarkup(<OnePrControl issue={issue} onChange={() => {}} />);
+
+        const said = `${own ? 'On' : 'Off'} · set on this ${type} before the project enforced its default; locked`;
+        expect(onePrSaid(issue)).toBe(said);
+        expect(html).toContain(said);
+        expect(html.match(/disabled=""/g)).toHaveLength(3);
+        expect(html).toContain(REASON);
+      }
+    }
+  });
+
+  it('leaves a task as it was', () => {
+    expect(onePrSaid({ type: 'task', onePr: true, onePrOwn: null, onePrFrom: 'HA-5', onePrEnforced: true })).toBe(
+      'On · inherited from HA-5',
+    );
+    expect(onePrSaid({ type: 'task', onePr: false, onePrOwn: null, onePrFrom: null, onePrEnforced: true })).toBe(
+      'Off · not under a story or bug',
+    );
+  });
+
+  it('draws an optional project with live buttons', () => {
+    const html = renderToStaticMarkup(<OnePrControl issue={story({ onePrEnforced: false })} onChange={() => {}} />);
+
+    expect(html.match(/disabled=""/g)).toHaveLength(1);
+    expect(html).not.toContain('enforces');
   });
 });
 
