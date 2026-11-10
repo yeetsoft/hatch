@@ -377,7 +377,7 @@ times in a row, at this board's limit of 3 - held for a person now, not resumed
 again`. Only a board-held row lights the control
 and is counted; a loop-owned row or a person-held one is listed and does
 neither, since one is already on its way and the other is somebody's choice. With
-nothing to list, the group reads *Nothing is stalled.* [One increment and the
+nothing to list, the section opens to *Nothing is stalled.* [One increment and the
 loop](one-increment-and-the-loop#stalls) covers what a stall is.
 
 Each row under **Waiting on a runner** is the issue's key, a link, its title,
@@ -387,7 +387,7 @@ needs both joins them with `; `. A pinned id reads `pinned to <id> - no live
 runner's agent is <agent>`. A board with no live runner at all lists nothing -
 that is the *no runner* condition, not this one - and neither does a split
 fleet, one runner lacking the model and another the tool, since no single
-sentence is true of all of them. With nothing to list, the group says
+sentence is true of all of them. With nothing to list, the section opens to
 *Nothing is waiting on a runner.* [hatch queue](cli-reference#queue) prints
 the same list at the terminal.
 
@@ -399,7 +399,7 @@ runner's own business, not a capacity gap. Each row names the project, how
 many clear steps it has, links to the first ten, and reads either `N clear
 steps: only <runner> can take them` or `no live runner can take them:
 <runner>: <reason>; ...`. A project two or more live runners can take is not
-listed at all. With nothing to list, the group reads *Every project's next
+listed at all. With nothing to list, the section opens to *Every project's next
 steps have two or more live runners.* Unlike **Waiting on a runner**, only a
 no-taker row lights the control - a one-taker row is information, not
 breakage, and is not counted. The web's work queue - the button beside Go to
@@ -410,6 +410,18 @@ words, the way [hatch queue](cli-reference#queue) does at the terminal.
 conflict**, **Branch builds that fail**. A separate **Out of usage** section
 sits above both, for any of your own runners that have run out, and clears
 itself once the usage comes back.
+
+A section with nothing in it shows only its heading, which is a button:
+pressing it opens the section to its empty sentence, and pressing it again folds
+it. A group with nothing in any of its sections folds the same way, to its group
+heading alone, and opens to its section headings. A section or group with
+anything in it is open and has no button, since there is nothing to hide.
+**Backups**, **Stalled merge trains** and **Out of usage** are not folded but
+simply absent when empty. **Pull requests to review** stays open while it has a
+count to say - issues in review with no pull request recorded, or held back by
+the loop - because that is the only place it is said. The panel opens folded
+every time, and nothing is remembered between openings. Pressing a heading never
+closes the panel; Tab reaches every heading, and Escape closes it.
 
 A card still wears a lock or an hourglass for a stalled or held issue, and the
 issue's own stall panel is still where **Resume now** and **Hold for me** are
