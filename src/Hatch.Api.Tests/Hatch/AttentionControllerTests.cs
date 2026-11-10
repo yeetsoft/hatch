@@ -1045,6 +1045,116 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(attention.ApprovedWaiting!);
     }
 
+    // ---- A check row carrying the move into the merge column (HA-2106) ----
+
+    [Fact]
+    public async Task Attention_LeavesOutAReviewRowACheckRowWouldCarryIntoTheMergeColumn()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, and a check covers the merge", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.InReviewWithoutPullRequest);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAReviewRow_WhenNoCheckRowCoversTheMove()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        var issue = await h.FileAsync("story", "clean, green, but no check covers the merge", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("clean, green, but no check covers the merge", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        Assert.Equal(ReviewBuildStates.Success, row.BuildState);
+    }
+
+    [Fact]
+    public async Task Attention_StillHoldsBackAConflictedRow_WithTheSettingOnAndACheckRow()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "stopped merging, with a check row waiting", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        var row = Assert.Single(attention.Conflicts);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_StillHoldsBackAFailingBuildRow_WithTheSettingOnAndACheckRow()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        await h.SetCheckApprovesMergeAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "red, with a check row waiting", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.Reviews);
+        var row = Assert.Single(attention.FailingBuilds);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAReviewRow_WhenTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        var merges = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(merges);
+        await h.Db.SaveChangesAsync();
+        h.Db.Playbooks.Add(Playbook(h.Review, merges.Id, "story", "sonnet", isCheck: true));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("story", "clean, green, a check row exists but the setting is off", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(issue, BuildVerdicts.Passed);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.Reviews);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("clean, green, a check row exists but the setting is off", row.Title);
+        Assert.Equal("story", row.Type);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+    }
+
     // ---- Which column review is ----
 
     [Fact]
@@ -1769,7 +1879,7 @@ public class AttentionControllerTests : IDisposable
         return (a, b, b1);
     }
 
-    private static EfHatchPlaybook Playbook(int from, int to, string types, string model) => new()
+    private static EfHatchPlaybook Playbook(int from, int to, string types, string model, bool isCheck = false) => new()
     {
         FromStatusId = from,
         ToStatusId = to,
@@ -1778,6 +1888,7 @@ public class AttentionControllerTests : IDisposable
         Prompt = "do the thing",
         Model = model,
         Effort = "high",
+        IsCheck = isCheck,
         CreatedAt = Now,
         UpdatedAt = Now,
     };
@@ -1820,6 +1931,115 @@ public class AttentionControllerTests : IDisposable
 
         Assert.NotNull(deadlocked);
         Assert.Empty(deadlocked);
+    }
+
+    // ---- The stalled merge train (HA-2094) ----
+
+    private const string StalledPayload = """{"passedOver":"here:/one","elected":"here:/two"}""";
+
+    private static async Task StallAsync(Harness h, EfHatchIssue head, string payload, DateTimeOffset at, string? driver = "here:/one")
+    {
+        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = driver;
+        h.Db.IssueEvents.Add(new EfHatchIssueEvent
+        {
+            IssueId = head.Id,
+            Actor = "Hatch",
+            Kind = EfHatchIssueEvent.DriverStalled,
+            Payload = payload,
+            At = at,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task Attention_ListsAStalledTrainWithItsHeadAndBothRunners()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.Equal([new TrainStalledDto("AER", "Hatch", "here:/one", "here:/two", Key(head), Now)], stalled);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAStalledTrainWithNoElectedRunnerAsNull()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, """{"passedOver":"here:/one","elected":null}""", Now);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal("here:/one", row.PassedOverRunner);
+        Assert.Null(row.ElectedRunner);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAProjectWhoseDriverWasReinstated()
+    {
+        var h = await NewAsync();
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now, driver: null);
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_NamesTheHeadOfTheLaterStall()
+    {
+        var h = await NewAsync();
+        var earlier = await h.FileAsync("story", "earlier head", h.Todo);
+        var later = await h.FileAsync("story", "later head", h.Todo);
+        await StallAsync(h, later, StalledPayload, Now);
+        await StallAsync(h, earlier, StalledPayload, Now.AddHours(-1));
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal(Key(later), row.HeadKey);
+        Assert.Equal(Now, row.At);
+    }
+
+    [Fact]
+    public async Task Attention_PassesOverAStallEventNamingAnotherDriver()
+    {
+        var h = await NewAsync();
+        var old = await h.FileAsync("story", "old head", h.Todo);
+        var head = await h.FileAsync("story", "head", h.Todo);
+        await StallAsync(h, head, StalledPayload, Now.AddHours(-1));
+        await StallAsync(h, old, """{"passedOver":"here:/three","elected":null}""", Now);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).TrainStalled!);
+
+        Assert.Equal(Key(head), row.HeadKey);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesOutAStalledProjectWithNoEventToNameAHead()
+    {
+        var h = await NewAsync();
+        (await h.Db.Projects.SingleAsync()).TrainStalledDriver = "here:/one";
+        await h.Db.SaveChangesAsync();
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
+    }
+
+    [Fact]
+    public async Task Attention_AnswersAnEmptyTrainStalledListOnABoardWithNoRoomForAReviewColumn()
+    {
+        var h = await OneColumnAsync();
+
+        var stalled = Value(await h.Attention.GetAttention(default)).TrainStalled;
+
+        Assert.NotNull(stalled);
+        Assert.Empty(stalled);
     }
 
     // ---- The merges column half (HA-466) ----
@@ -2218,6 +2438,14 @@ public class AttentionControllerTests : IDisposable
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             if (landing is not null) project.Landing = landing;
             if (checksRequired is not null) project.ChecksRequired = checksRequired.Value;
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>The project's check-approves-merge flag, written straight onto the row.</summary>
+        public async Task SetCheckApprovesMergeAsync(bool on = true)
+        {
+            var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
+            project.CheckApprovesMerge = on;
             await Db.SaveChangesAsync();
         }
 

@@ -179,6 +179,11 @@ public sealed class MergeTrain : IAsyncDisposable
     /// path is skipped silently for the rest of this tick. The outer try/catch
     /// keeps anything unanticipated here from propagating into
     /// <see cref="TickAsync"/> and aborting the halves that run after it.
+    /// A merge-column row (<c>MergeWork</c> not null) is read on every runner
+    /// but acted on, past a <c>merged</c> read, only where this runner drives
+    /// its project: a merge somebody already made needs read access alone, so
+    /// any runner reports it - branch on origin or not - while the closed
+    /// record and the open put stay the driver's.
     /// </remarks>
     private async Task ReadPullRequestsAsync(
         Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
@@ -189,8 +194,8 @@ public sealed class MergeTrain : IAsyncDisposable
         {
             foreach (var issue in review)
             {
-                if (issue.MergeWork is not null && !runtime.Readout.Drives(issue.ProjectKey)) continue;
                 if (issue.PullRequestUrl is not { Length: > 0 } url) continue;
+                var driven = issue.MergeWork is null || runtime.Readout.Drives(issue.ProjectKey);
                 ct.ThrowIfCancellationRequested();
 
                 var where = Checkouts.ToPoll(issue.Repositories, runtime.Checkouts, runtime.Settings.BaseBranch)
@@ -222,6 +227,10 @@ public sealed class MergeTrain : IAsyncDisposable
                     if (answer.Why is { } why) complain($"hatch: could not read pull requests in {name} - {why}");
                     continue;
                 }
+
+                // Reporting a merge somebody already made is every runner's; the closed record and
+                // the open put are the elected driver's alone.
+                if (!driven && state != PullRequestStates.Merged) continue;
 
                 if (issue.MergeWork is not null && state == PullRequestStates.Closed)
                 {
