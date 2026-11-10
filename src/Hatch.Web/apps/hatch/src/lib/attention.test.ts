@@ -19,6 +19,7 @@ import {
   reviewEmptyWords,
   runnerCapacityEmptyWords,
   runnerCapacityWords,
+  trainStalledWords,
   trunkBuildEmptyWords,
   trunkBuildHead,
   trunkIconTone,
@@ -26,7 +27,7 @@ import {
   waitedWords,
   waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -146,6 +147,16 @@ const trunkBuild = (over: Partial<TrunkBuild> = {}): TrunkBuild => ({
   runner: 'box:/work/repo',
   checkedBy: 'runner',
   bugIssueKey: null,
+  ...over,
+});
+
+const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
+  projectKey: 'AER',
+  projectName: 'Aerie',
+  passedOverRunner: 'laptop:/work/aerie',
+  electedRunner: 'desk:/work/aerie',
+  headKey: 'AER-31',
+  at: '2026-09-09T12:00:00Z',
   ...over,
 });
 
@@ -552,6 +563,23 @@ describe('runnerCapacityWords', () => {
 describe('runnerCapacityEmptyWords', () => {
   it("says every project's next steps have two or more live runners", () => {
     expect(runnerCapacityEmptyWords()).toBe("Every project's next steps have two or more live runners.");
+  });
+});
+
+describe('trainStalledWords', () => {
+  it('names the runner passed over and the one the train was handed to', () => {
+    expect(trainStalledWords(trainStalled())).toBe("laptop:/work/aerie was passed over on Aerie's train - handed to desk:/work/aerie");
+  });
+
+  it('says no other runner is eligible when none was elected', () => {
+    expect(trainStalledWords(trainStalled({ electedRunner: null }))).toBe(
+      "laptop:/work/aerie was passed over on Aerie's train - no other runner is eligible",
+    );
+  });
+
+  it('is not counted: the row waits on a runner that may never beat again', () => {
+    expect(attentionCount(attention({ trainStalled: [trainStalled()] }))).toBe(0);
+    expect(pillCount(attention({ trainStalled: [trainStalled()] }))).toBe(0);
   });
 });
 

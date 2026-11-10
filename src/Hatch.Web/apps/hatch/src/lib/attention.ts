@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention, RunnerCapacity, TrunkBuild } from '../types';
+import type { Attention, RunnerCapacity, TrainStalled, TrunkBuild } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -250,6 +250,12 @@ export function runnerCapacityWords(row: RunnerCapacity): string {
 
 /** The empty state of the "Runner capacity" section. */
 export const runnerCapacityEmptyWords = (): string => "Every project's next steps have two or more live runners.";
+
+/** What a "Stalled merge trains" row says: who was passed over, and who has the train now. */
+export function trainStalledWords(t: TrainStalled): string {
+  const passedOver = `${t.passedOverRunner} was passed over on ${t.projectName}'s train`;
+  return t.electedRunner === null ? `${passedOver} - no other runner is eligible` : `${passedOver} - handed to ${t.electedRunner}`;
+}
 
 /** The trunk builds section's empty state - the Human half's own, since a trunk is nobody's issue. */
 export const trunkBuildEmptyWords = (): string => 'No trunk build is failing.';

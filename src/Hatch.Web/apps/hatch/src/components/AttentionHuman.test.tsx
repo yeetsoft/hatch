@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { AttentionHuman } from './AttentionHuman';
-import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
-import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, TrunkBuild, WaitingOnARunner } from '../types';
+import { approvedHeldEmptyWords, deadlockedEmptyWords, landingHeldEmptyWords, noCodeHeldEmptyWords, questionEmptyWords, reviewEmptyWords, runnerCapacityEmptyWords, runnerCapacityWords, trainStalledWords, trunkBuildEmptyWords, waitingOnARunnerEmptyWords } from '../lib/attention';
+import type { Attention, ApprovedHeld, Deadlocked, LandingHeld, NoCodeHeld, Review, RunnerCapacity, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /* No DOM here, so this is structural - react-dom/server, the way
    Confirmations.test.tsx reads. What it pins is AC1's "same order, same
@@ -115,6 +115,16 @@ const runnerCapacity = (over: Partial<RunnerCapacity> = {}): RunnerCapacity => (
   keys: ['AER-30', 'AER-31'],
   takers: [],
   reasons: [{ runner: 'Nathan-PC', reason: 'out of usage' }],
+  ...over,
+});
+
+const trainStalled = (over: Partial<TrainStalled> = {}): TrainStalled => ({
+  projectKey: 'AER',
+  projectName: 'Aerie',
+  passedOverRunner: 'laptop:/work/aerie',
+  electedRunner: 'desk:/work/aerie',
+  headKey: 'AER-31',
+  at: '2026-09-09T12:00:00Z',
   ...over,
 });
 
@@ -283,6 +293,35 @@ describe('AttentionHuman', () => {
     );
 
     expect(html).toContain(deadlockedEmptyWords());
+  });
+
+  it('draws no Stalled merge trains section when the list is absent or empty', () => {
+    for (const a of [null, attention(), attention({ trainStalled: [] })]) {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <AttentionHuman attention={a} now={new Date()} reload={noop} />
+        </MemoryRouter>,
+      );
+
+      expect(html).not.toContain('Stalled merge trains');
+    }
+  });
+
+  it('lists a stalled train’s head key, project and words under Stalled merge trains, linked to the head issue', () => {
+    const row = trainStalled();
+
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ trainStalled: [row] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('>Stalled merge trains</h3>');
+    expect(html).toContain(row.headKey);
+    expect(html).toContain(row.projectName);
+    expect(html).toContain(trainStalledWords(row).replace("'", '&#x27;'));
+    expect(html).toContain(`href="/issues/${row.headKey}"`);
+    expect(html.indexOf('>Stalled merge trains</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
   });
 
   it('lists a deadlocked row’s key, title and sentence under Deadlocked, linked to the issue', () => {
