@@ -7,6 +7,15 @@ import {
   boundsProblem,
   boundsRequest,
   budgetTone,
+  ceilingsChanged,
+  ceilingsOf,
+  ceilingsRequest,
+  declaredDangerous,
+  declaredProjects,
+  sessionTotals,
+  settingsChanged,
+  settingsOf,
+  settingsRequest,
   dangerousLabel,
   detailVariant,
   drivesLabel,
@@ -1258,5 +1267,104 @@ describe('sessionRepositoriesLabel', () => {
     expect(sessionRepositoriesLabel(session({ remotes: ['example.com/owner/repo'], clones: false }))).toBe(
       'example.com/owner/repo',
     );
+  });
+});
+
+describe('the runner detail\'s two forms', () => {
+  const held = () =>
+    runner({
+      under: 'AER-930',
+      tags: ['gpu', 'fast'],
+      maxRuns: 12,
+      maxSpend: 40,
+      maxTokens: 2_000_000,
+      maxTokensPerHour: 500_000,
+      maxTokensSource: 'runner',
+      maxTokensPerHourSource: 'runner',
+      untilAt: '2026-09-09T06:00:00Z',
+    });
+
+  it('seeds the settings from tags and under alone', () => {
+    expect(settingsOf(held())).toEqual({ tags: 'gpu\nfast', under: 'AER-930' });
+    expect(settingsOf(runner())).toEqual({ tags: '', under: '' });
+  });
+
+  it('seeds the ceilings from the five fields alone', () => {
+    expect(ceilingsOf(held())).toEqual({
+      maxRuns: '12',
+      maxSpend: '40',
+      maxTokens: '2,000,000',
+      maxTokensPerHour: '500,000',
+      untilAt: '2026-09-09T06:00:00Z',
+    });
+  });
+
+  it('sends exactly tags and under from the settings form', () => {
+    const req = settingsRequest({ tags: 'gpu\n\nfast ', under: ' AER-930 ' });
+    expect(Object.keys(req).sort()).toEqual(['tags', 'under']);
+    expect(req).toEqual({ tags: ['gpu', 'fast'], under: 'AER-930' });
+    expect(settingsRequest({ tags: '', under: '' })).toEqual({ tags: [], under: '' });
+  });
+
+  it('sends exactly the five ceilings from the bounds form, the empty ones too', () => {
+    const req = ceilingsRequest({ ...ceilingsOf(runner()), maxSpend: ' 40 ', maxTokens: '2,000,000' });
+    expect(Object.keys(req).sort()).toEqual(['maxRuns', 'maxSpend', 'maxTokens', 'maxTokensPerHour', 'untilAt']);
+    expect(req).toEqual({ maxRuns: '', maxSpend: '40', maxTokens: '2000000', maxTokensPerHour: '', untilAt: '' });
+  });
+
+  it('notices a ceiling changing, and a tags or under change is not one', () => {
+    const r = held();
+    expect(ceilingsChanged(ceilingsOf(r), r)).toBe(false);
+    expect(ceilingsChanged({ ...ceilingsOf(r), maxRuns: '' }, r)).toBe(true);
+    expect(ceilingsChanged({ ...ceilingsOf(r), maxTokens: '2M' }, r)).toBe(false);
+  });
+
+  it('notices tags or under changing, and a ceiling is not one', () => {
+    const r = held();
+    expect(settingsChanged(settingsOf(r), r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), under: 'AER-1' }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(r), under: ' AER-930 ' }, r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), tags: 'fast\ngpu' }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(r), tags: 'gpu\nfast\n' }, r)).toBe(false);
+    expect(settingsChanged(settingsOf(runner()), runner())).toBe(false);
+  });
+
+  it('judges a bounds problem from the three fields it reads', () => {
+    expect(boundsProblem({ untilAt: '2026-09-09', maxTokens: '', maxTokensPerHour: '' })).toMatch(/hour/);
+    expect(boundsProblem({ untilAt: '', maxTokens: '', maxTokensPerHour: '' })).toBeNull();
+  });
+});
+
+describe('what a runner\'s live sessions add up to and declare', () => {
+  it('sums runs, spend and tokens, counting an unreported figure as none', () => {
+    expect(sessionTotals([])).toEqual({ runs: 0, spent: 0, tokens: 0, tokensLastHour: 0 });
+    expect(
+      sessionTotals([
+        session({ runs: 2, spent: 1.5, tokensUsed: 1000, tokensLastHour: 400 }),
+        session({ runs: 3, spent: null, tokensUsed: undefined, tokensLastHour: 100 }),
+        session({}),
+      ]),
+    ).toEqual({ runs: 5, spent: 1.5, tokens: 1000, tokensLastHour: 500 });
+  });
+
+  it('unions the declared projects, sorted and once each', () => {
+    expect(declaredProjects([])).toEqual([]);
+    expect(
+      declaredProjects([session({ projects: ['b', 'a'] }), session({ projects: ['a', 'c'] }), session({})]),
+    ).toEqual(['a', 'b', 'c']);
+  });
+
+  it('reads --dangerous as a Yes where the session does not refuse it, and skips one that never said', () => {
+    expect(
+      declaredDangerous([
+        session({ where: 'Mac:/one', refusesDangerous: false }),
+        session({ where: 'Mac:/two', refusesDangerous: true }),
+        session({ where: 'Mac:/three', refusesDangerous: null }),
+        session({ where: 'Mac:/four' }),
+      ]),
+    ).toEqual([
+      { where: 'Mac:/one', dangerous: true },
+      { where: 'Mac:/two', dangerous: false },
+    ]);
   });
 });

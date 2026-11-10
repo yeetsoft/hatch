@@ -661,7 +661,7 @@ export function boundsChanged(draft: RunnerBounds, runner: Runner): boolean {
  * only what stops somebody typing a date, pressing Save and being told off for
  * a control that offered them the empty time box in the first place.
  */
-export function boundsProblem(draft: RunnerBounds): string | null {
+export function boundsProblem(draft: Pick<RunnerBounds, 'untilAt' | 'maxTokens' | 'maxTokensPerHour'>): string | null {
   if (draft.untilAt.trim() !== '' && !draft.untilAt.includes('T')) {
     return 'An until is an hour, not just a day - set a time beside the date.';
   }
@@ -693,6 +693,92 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
     untilAt: draft.untilAt.trim(),
     tags: runnerTagsRequest(draft.tags),
   };
+}
+
+/** The runner-level settings card's fields: what the runner may work. Strings,
+    as `RunnerBounds` is. */
+export interface RunnerSettings {
+  tags: string;
+  under: string;
+}
+
+/** What a row's tags and under look like in the form that edits them. */
+export function settingsOf(runner: Runner): RunnerSettings {
+  return { tags: runnerTagsDraft(runner.tags), under: runner.under ?? '' };
+}
+
+/** Whether the settings form is holding anything the row is not. */
+export function settingsChanged(draft: RunnerSettings, runner: Runner): boolean {
+  return (
+    draft.under.trim() !== (runner.under ?? '').trim() || !sameTags(runnerTagsRequest(draft.tags), runner.tags)
+  );
+}
+
+/** The settings form as a request: exactly `tags` and `under`, so saving it
+    leaves every ceiling alone. */
+export function settingsRequest(draft: RunnerSettings): RunnerPatchRequest {
+  return { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() };
+}
+
+/** The bounds card's five ceilings, as `RunnerBounds` holds them. */
+export type RunnerCeilings = Omit<RunnerBounds, 'under' | 'tags'>;
+
+/** What a row's ceilings look like in the form that edits them. */
+export function ceilingsOf(runner: Runner): RunnerCeilings {
+  const { maxRuns, maxSpend, maxTokens, maxTokensPerHour, untilAt } = boundsOf(runner);
+  return { maxRuns, maxSpend, maxTokens, maxTokensPerHour, untilAt };
+}
+
+/** Whether the bounds form is holding anything the row is not - its own five
+    fields only, so tags and under never make it dirty. */
+export function ceilingsChanged(draft: RunnerCeilings, runner: Runner): boolean {
+  return boundsChanged({ ...boundsOf(runner), ...draft }, runner);
+}
+
+/** The bounds form as a request: exactly the five ceilings, every one sent
+    for the reason `boundsRequest` gives, and never `tags` or `under`. */
+export function ceilingsRequest(draft: RunnerCeilings): RunnerPatchRequest {
+  const { maxRuns, maxSpend, maxTokens, maxTokensPerHour, untilAt } = boundsRequest({
+    ...draft,
+    under: '',
+    tags: '',
+  });
+  return { maxRuns, maxSpend, maxTokens, maxTokensPerHour, untilAt };
+}
+
+/** What a runner's live sessions have spent between them. A session that has
+    not reported a figure (an older CLI) counts as none. */
+export function sessionTotals(sessions: RunnerSession[]): {
+  runs: number;
+  spent: number;
+  tokens: number;
+  tokensLastHour: number;
+} {
+  const sum = (pick: (session: RunnerSession) => number | null | undefined) =>
+    sessions.reduce((total, session) => total + (pick(session) ?? 0), 0);
+
+  return {
+    runs: sum((s) => s.runs),
+    spent: sum((s) => s.spent),
+    tokens: sum((s) => s.tokensUsed),
+    tokensLastHour: sum((s) => s.tokensLastHour),
+  };
+}
+
+/** The projects its sessions declare with `--project`, once each, sorted. */
+export function declaredProjects(sessions: RunnerSession[]): string[] {
+  return [...new Set(sessions.flatMap((session) => session.projects ?? []))].sort();
+}
+
+/** Whether each session runs dangerous tickets, as its loop declared with
+    `--dangerous`. A session that does not say (an older CLI) is left out
+    rather than drawn as a No it never gave. */
+export function declaredDangerous(sessions: RunnerSession[]): { where: string | null; dangerous: boolean }[] {
+  return sessions.flatMap((session) =>
+    session.refusesDangerous === null || session.refusesDangerous === undefined
+      ? []
+      : [{ where: session.where, dangerous: session.refusesDangerous === false }],
+  );
 }
 
 /** A token field's hint: the shared wording, unless the field is inheriting

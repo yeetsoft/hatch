@@ -204,6 +204,55 @@ describe('RunnerDetail: Live sessions', () => {
   });
 });
 
+describe('RunnerDetail: What it may work and Bounds', () => {
+  const draws = (html: string) => ({
+    settings: html.includes('Save settings'),
+    bounds: html.includes('Save bounds'),
+  });
+
+  it('draws both editable cards for an owner, between Identity and Live sessions', () => {
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(draws(html)).toEqual({ settings: true, bounds: true });
+    expect(html.indexOf('Identity and key')).toBeLessThan(html.indexOf('What it may work'));
+    expect(html.indexOf('What it may work')).toBeLessThan(html.indexOf('Bounds</h2>'));
+    expect(html.indexOf('Bounds</h2>')).toBeLessThan(html.indexOf('Live sessions'));
+  });
+
+  it('draws both on the phone too', () => {
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    expect(draws(renderAt('/runners/Quill', true))).toEqual({ settings: true, bounds: true });
+  });
+
+  it('draws neither Save for a viewer, but still the values', () => {
+    state.read = { runners: [runner({ name: 'Quill', canControl: false, tags: ['gpu'] })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(draws(html)).toEqual({ settings: false, bounds: false });
+    expect(html).toContain('What it may work');
+    expect(html).toContain('Tags: gpu');
+    expect(html).not.toContain('<textarea');
+  });
+
+  it('draws neither Save on a revoked runner, even for an owner', () => {
+    state.read = { runners: [runner({ name: 'Quill', revokedAt: at(-1000) })], error: null };
+    expect(draws(renderAt('/runners/Quill'))).toEqual({ settings: false, bounds: false });
+  });
+
+  it('draws neither Save on a retired runner', () => {
+    state.read = { runners: [runner({ name: 'Quill', retiredAt: at(-1000), supersededBy: 'Other' })], error: null };
+    expect(draws(renderAt('/runners/Quill'))).toEqual({ settings: false, bounds: false });
+  });
+
+  it('draws Under as an input in What it may work and only the echo in Bounds', () => {
+    state.read = { runners: [runner({ name: 'Quill', under: 'AER-930' })], error: null };
+    const html = renderAt('/runners/Quill');
+    const bounds = html.indexOf('Bounds</h2>');
+    expect(html.slice(0, bounds)).toMatch(/<input[^>]*value="AER-930"/);
+    expect(html.slice(bounds)).not.toMatch(/<input[^>]*value="AER-930"/);
+    expect(html.slice(bounds)).toContain('Also held under');
+  });
+});
+
 describe('IdentityCard', () => {
   it('draws a refusal inside the card', () => {
     const html = renderToStaticMarkup(<IdentityCard runner={runner({ name: 'Quill' })} refusal="could not save" />);
