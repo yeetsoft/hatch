@@ -354,7 +354,8 @@ the ancestor issue each tag beyond its own came from. A ticket with omitted runn
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it
 is doing - drawn from the ticket itself, so it shows for any holder and is
-absent once the lease has lapsed. Reads only. `--brief`, which may come before or after the key,
+absent once the lease has lapsed. A story or bug of a project that enforces its
+one-PR default gets the `one-pr:` line too, as `hatch one-pr` reads it. Reads only. `--brief`, which may come before or after the key,
 prints the header alone - everything above the blank line that precedes the
 description - and leaves out the description and every comment, with no
 request made for the comments at all.
@@ -506,7 +507,9 @@ only the key it reads. With a second argument it writes:
 A story or a bug only, and it is locked once any task under it has started:
 set it when it is filed, before its tasks are worked. Under a project that
 enforces its one-PR default, `on` and `off` are refused with a `409`; `inherit`
-is still accepted.
+is still accepted. The read under such a project says `(the project's default,
+enforced)`, or `(set on this story before the project enforced it; locked)` for
+a story or bug that carries an override from before.
 
 ### dangerous
 
