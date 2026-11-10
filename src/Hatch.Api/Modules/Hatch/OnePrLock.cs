@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hatch.Api.Ef;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +15,8 @@ namespace Hatch.Api.Modules.Hatch;
 /// started, and nothing has on a board with no implementation column. Measured
 /// off the board, the way every landmark is (<see cref="Columns"/>). Work begun
 /// on one branch cannot be moved onto the other, so a story's or bug's setting - its own,
-/// or the project's it reads - must not change under it.
+/// or the project's it reads - must not change under it. <see cref="ReturnToInherit"/>
+/// is the one place an override goes back to inheriting, with its trail.
 /// </remarks>
 public static class OnePrLock
 {
@@ -90,6 +92,33 @@ public static class OnePrLock
         if (ids.Count == 0) return [];
 
         return await db.Issues.Include(i => i.Events).Where(i => ids.Contains(i.Id)).OrderBy(i => i.Id).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Returns each story's override to inherit, writing a <c>one_pr_changed</c> event
+    /// (<c>from</c>, <c>to: inherit</c>, <paramref name="fixedBecause"/>) on its trail
+    /// and stamping <see cref="EfHatchIssue.UpdatedAt"/>. The stories must be tracked,
+    /// with their events, as <see cref="OverriddenAndUnstartedAsync"/> returns them.
+    /// </summary>
+    public static void ReturnToInherit(IEnumerable<EfHatchIssue> stories, string actor, DateTimeOffset now, string fixedBecause)
+    {
+        foreach (var story in stories)
+        {
+            story.Events.Add(new EfHatchIssueEvent
+            {
+                Actor = actor,
+                Kind = EfHatchIssueEvent.OnePrChanged,
+                Payload = JsonSerializer.Serialize(new
+                {
+                    from = IssueOnePrController.Name(story.OnePullRequest),
+                    to = IssueOnePrController.Name(null),
+                    fixedBecause,
+                }),
+                At = now,
+            });
+            story.OnePullRequest = null;
+            story.UpdatedAt = now;
+        }
     }
 
     /// <summary>

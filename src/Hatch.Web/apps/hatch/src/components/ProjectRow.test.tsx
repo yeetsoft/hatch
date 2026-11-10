@@ -39,6 +39,9 @@ const BASE: Project = {
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  onePullRequestPolicy: 'optional',
+  onePullRequestPolicyBy: null,
+  onePullRequestPolicyAt: null,
 };
 
 const noop = () => undefined;

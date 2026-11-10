@@ -38,6 +38,9 @@ const project = (over: Partial<Project>): Project => ({
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  onePullRequestPolicy: 'optional',
+  onePullRequestPolicyBy: null,
+  onePullRequestPolicyAt: null,
   ...over,
 });
 
