@@ -337,15 +337,16 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// </summary>
     /// <remarks>
     /// The chatter is cleared with the take. A new lease does not inherit the
-    /// last one's last words. Both playbook columns are written whatever the
-    /// take named, so a takeover never inherits the lapsed lease's window:
-    /// <paramref name="playbookId"/> is the table row to store (null for a file
-    /// row, which has none) and <paramref name="quietLimitSeconds"/> the
-    /// window the named playbook carries (null for the board's own).
+    /// last one's last words. All three playbook columns are written whatever
+    /// the take named, so a takeover never inherits the lapsed lease's window
+    /// or cap: <paramref name="playbookId"/> is the table row to store (null
+    /// for a file row, which has none), <paramref name="quietLimitSeconds"/> the
+    /// window the named playbook carries (null for the board's own) and
+    /// <paramref name="maxRunSeconds"/> its run cap (null for none).
     /// </remarks>
     public async Task<bool> TryTakeAsync(
         HatchContext db, long issueId, Guid token, string actor, string runner, int? playbookId,
-        int? quietLimitSeconds, DateTimeOffset now, CancellationToken ct)
+        int? quietLimitSeconds, int? maxRunSeconds, DateTimeOffset now, CancellationToken ct)
     {
         return await db.Issues
             .Where(i => i.Id == issueId)
@@ -359,7 +360,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
                 .SetProperty(i => i.ClaimPlaybookId, playbookId)
-                .SetProperty(i => i.ClaimQuietLimitSeconds, quietLimitSeconds), ct) == 1;
+                .SetProperty(i => i.ClaimQuietLimitSeconds, quietLimitSeconds)
+                .SetProperty(i => i.ClaimMaxRunSeconds, maxRunSeconds), ct) == 1;
     }
 
     /// <summary>
@@ -375,15 +377,16 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
     /// <see cref="IssueClaimController"/>.
     /// </param>
     /// <param name="playbook">
-    /// Null - no playbook named - leaves both <c>ClaimPlaybookId</c> and
-    /// <c>ClaimQuietLimitSeconds</c> alone. A value overwrites both: its
-    /// <c>Id</c> is the table row to store, null for a repo-sourced file row
-    /// (which has none), and its <c>Limit</c> the window the playbook carries,
-    /// null for the board's own. A tuple rather than a bare id, because
+    /// Null - no playbook named - leaves <c>ClaimPlaybookId</c>,
+    /// <c>ClaimQuietLimitSeconds</c> and <c>ClaimMaxRunSeconds</c> alone. A
+    /// value overwrites all three: its <c>Id</c> is the table row to store,
+    /// null for a repo-sourced file row (which has none), its <c>Limit</c> the
+    /// window the playbook carries, null for the board's own, and its
+    /// <c>MaxRun</c> the run cap it carries, null for none. A tuple rather than a bare id, because
     /// "a file row was named" and "nothing was named" are different writes.
     /// </param>
     public async Task<bool> TryRefreshAsync(
-        HatchContext db, long issueId, Guid token, string? chatter, (int? Id, int? Limit)? playbook, DateTimeOffset now,
+        HatchContext db, long issueId, Guid token, string? chatter, (int? Id, int? Limit, int? MaxRun)? playbook, DateTimeOffset now,
         CancellationToken ct)
     {
         var live = db.Issues.Where(i => i.Id == issueId && i.ClaimToken == token).Where(Live(now));
@@ -395,7 +398,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
             (null, { } p) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimPlaybookId, p.Id)
-                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit), ct),
+                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit)
+                .SetProperty(i => i.ClaimMaxRunSeconds, p.MaxRun), ct),
             ("", null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
@@ -405,7 +409,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimChatter, (string?)null)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)null)
                 .SetProperty(i => i.ClaimPlaybookId, p.Id)
-                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit), ct),
+                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit)
+                .SetProperty(i => i.ClaimMaxRunSeconds, p.MaxRun), ct),
             (_, null) => await live.ExecuteUpdateAsync(s => s
                 .SetProperty(i => i.ClaimHeartbeatAt, now)
                 .SetProperty(i => i.ClaimChatter, chatter)
@@ -415,7 +420,8 @@ public sealed class IssueClaims(IOptions<HatchOptions> options)
                 .SetProperty(i => i.ClaimChatter, chatter)
                 .SetProperty(i => i.ClaimChatterAt, (DateTimeOffset?)now)
                 .SetProperty(i => i.ClaimPlaybookId, p.Id)
-                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit), ct),
+                .SetProperty(i => i.ClaimQuietLimitSeconds, p.Limit)
+                .SetProperty(i => i.ClaimMaxRunSeconds, p.MaxRun), ct),
         };
 
         return written == 1;

@@ -624,12 +624,15 @@ the same rule in two places. The lease's length is the
 carries it back as `TtlSeconds` alongside `StallLapseSeconds` - the claim's own
 quiet window where its playbook set one, the board's otherwise, `0` when lapsing
 is off for it - so a caller never has to know the setting's name to honor it.
+The take also answers `MaxRunSeconds`, the run cap its playbook set in seconds
+(`0` for none).
 The claim object on every read (the board card, the issue, the search) carries
 the same `StallLapseSeconds` beside `TtlSeconds`. A heartbeat renews the
 lease and may replace the playbook it is running under. A take's or heartbeat's
 `playbookId` may be a repo-sourced file row's (negative) id, the same one
 `GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
-copied from the playbook named, and a heartbeat naming none leaves it alone. It
+copied from the playbook named, as is its run cap, and a heartbeat naming none
+leaves both alone. It
 writes no event on
 an ordinary beat, only on a preemption, which is the board's own decision to
 make room for an emergency ticket and is the one case a heartbeat answers a
@@ -640,12 +643,13 @@ re-claiming is not a thing a runner does, it heartbeats - and a claim on an
 ancestor or descendant issue refuses it too: one runner per line of the tree.
 A heartbeat or release refused for its token answers `409` with `{ error,
 reason }` - `error` the sentence a person reads, `reason` one of `quiet`
-(the holder's own token, gone quiet), `expired` (its own token, simply
+(the holder's own token, gone quiet), `run-time` (its own token, past the run
+cap its playbook set - `this claim ran past its 60-minute limit`), `expired` (its own token, simply
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
 `outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable` - and an optional
-`reason` - only `quiet` - both read only alongside a token, and `reason`
+`reason` - `quiet` or `run-time` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
 way.
