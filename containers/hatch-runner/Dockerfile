@@ -70,14 +70,27 @@ FROM mcr.microsoft.com/dotnet/runtime-deps:10.0
 # bundles, with one warning line and no error. Installed anyway so that
 # fallback, which the vendor does not document as permanent, is never the only
 # copy this image has.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      bubblewrap \
-      ca-certificates \
-      curl \
-      git \
-      libstdc++6 \
-      openssh-client \
+#
+# Retried as a whole, update and install together, for about five minutes (six
+# attempts, 50s apart): on 2026-11-10 Ubuntu's mirror was mid-sync, with a
+# `Packages.gz` of the wrong size and a 404 on a package the index named but
+# the pool did not have yet. apt's own Acquire::Retries re-requests the same
+# URL, which does not help against a stale index; only a fresh `apt-get
+# update` does. `[ -n "$ok" ]` turns a failure that outlasts every attempt
+# back into a failed build, and there is no sleep after the last attempt.
+RUN ok= ; for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && apt-get install -y --no-install-recommends \
+              bubblewrap \
+              ca-certificates \
+              curl \
+              git \
+              libstdc++6 \
+              openssh-client; then ok=1; break; fi; \
+      echo "apt: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok" ] \
  && rm -rf /var/lib/apt/lists/*
 
 # gh (src/Hatch.Cli/Forge.cs) from GitHub's own apt repo, not Debian's: Debian
@@ -96,15 +109,23 @@ RUN apt-get update \
 # number, also currently a `2.*`, so the filter below is relying on GitHub's
 # own releases staying numerically ahead of Ubuntu's backport, not on telling
 # the two repos apart by identity.
+#
+# update and install are retried together, for the reason given on the first
+# apt step above; the keyring fetch and the .list write stay outside the loop.
 RUN mkdir -p -m 755 /etc/apt/keyrings \
  && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
       > /etc/apt/sources.list.d/github-cli.list \
- && apt-get update \
- && gh_version=$(apt-cache madison gh | awk '{print $3}' | grep '^2\.' | sort -V | tail -1) \
- && apt-get install -y --no-install-recommends gh=$gh_version \
+ && for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && gh_version=$(apt-cache madison gh | awk '{print $3}' | grep '^2\.' | sort -V | tail -1) \
+         && apt-get install -y --no-install-recommends gh=$gh_version; then ok=1; break; fi; \
+      echo "apt: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok" ] \
  && rm -rf /var/lib/apt/lists/*
 
 # The native standalone installer rather than the npm one: there is no Node in
