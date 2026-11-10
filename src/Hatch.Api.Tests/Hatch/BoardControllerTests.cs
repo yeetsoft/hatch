@@ -271,6 +271,54 @@ public class BoardControllerTests
     }
 
     [Fact]
+    public async Task NoCode_DeclaredStoryWithATaskInProgress_CarriesNull()
+    {
+        var h = await NewAsync();
+        var story = await h.IssueAsync("story", h.InProgress, closedAt: null);
+        story.NoCode = "delivered by the child tasks' PRs";
+        story.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+        await h.IssueAsync("task", h.InProgress, closedAt: null, parentId: story.Id);
+        var storyKey = IssueKey.Format(h.ProjectKey, story.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Null(Assert.Single(board.Issues, i => i.Key == storyKey).NoCode);
+    }
+
+    [Fact]
+    public async Task NoCode_DeclaredStoryWhoseOnlyTaskIsDone_CarriesNull()
+    {
+        var h = await NewAsync();
+        var story = await h.IssueAsync("story", h.InProgress, closedAt: null);
+        story.NoCode = "delivered by the child tasks' PRs";
+        story.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+        await h.IssueAsync("task", h.Done, closedAt: Now.AddHours(-1), parentId: story.Id);
+        var storyKey = IssueKey.Format(h.ProjectKey, story.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Null(Assert.Single(board.Issues, i => i.Key == storyKey).NoCode);
+    }
+
+    [Fact]
+    public async Task NoCode_DeclaredTaskUnderAStory_KeepsItsReason()
+    {
+        var h = await NewAsync();
+        var story = await h.IssueAsync("story", h.InProgress, closedAt: null);
+        var task = await h.IssueAsync("task", h.Done, closedAt: Now.AddHours(-1), parentId: story.Id);
+        task.NoCode = "the setting was already right";
+        task.NoCodeAt = Now;
+        await h.Db.SaveChangesAsync();
+        var taskKey = IssueKey.Format(h.ProjectKey, task.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal("the setting was already right", Assert.Single(board.Issues, i => i.Key == taskKey).NoCode);
+    }
+
+    [Fact]
     public async Task NoCode_DeclaredCardInADeferredColumn_StillCarriesTheReason()
     {
         var h = await NewAsync();

@@ -114,7 +114,7 @@ public class PlanController(
                     OnePrOwn: onePrOwn,
                     OnePrFrom: onePrFrom,
                     ClosedAt: c.ClosedAt,
-                    NoCode: c.NoCode),
+                    NoCode: NoCode.OnCard(c.NoCode, c.Id, priorities)),
                 tree.IsLeaf(c.Id),
                 tree.Of(c.Id)));
         }
@@ -267,7 +267,7 @@ public class PlanController(
                         OnePrOwn: onePrOwn,
                         OnePrFrom: onePrFrom,
                         ClosedAt: row.ClosedAt,
-                        NoCode: row.NoCode),
+                        NoCode: NoCode.OnCard(row.NoCode, id, priorities)),
                     tree.IsLeaf(id),
                     // The whole subtree, not the epics below it: an epic's
                     // meter is its stories and their tasks, and the nested
