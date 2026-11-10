@@ -8,7 +8,10 @@ namespace Hatch.Api.Modules.Hatch;
 /// The rules every site shares about an issue's no-code declaration - see
 /// <see cref="EfHatchIssue.NoCode"/>. The declaration is a claim that the work
 /// needed no branch; anything that shows otherwise, or that sends the ticket
-/// back to be worked, sets it aside, and the trail says so.
+/// back to be worked, sets it aside, and the trail says so. A declared issue is
+/// carried through the close hop when it is pre-approved or when its project's
+/// NoCodeCloses is on; the merge setting (CheckApprovesMerge) alone never
+/// carries a childless one.
 /// </summary>
 public static class NoCode
 {
