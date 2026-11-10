@@ -29,6 +29,12 @@ namespace Hatch.Api.Modules.Hatch;
 /// "Started" is a descendant standing in the implementation column or any
 /// column to its right, a terminal one included; a shelved descendant has not
 /// started. Setting the value the story already holds is never refused.</para>
+///
+/// <para>Refused outright under a project that enforces its one-PR default
+/// (<see cref="OnePullRequestPolicies.Enforced"/>): <c>on</c> and <c>off</c> are
+/// a story's own say, and an enforced project takes none. That refusal comes
+/// before the lock's, so a started story hears the policy's sentence.
+/// <c>inherit</c> is never refused by the policy.</para>
 /// </remarks>
 [ApiController]
 [Route("api/hatch/issues")]
@@ -66,6 +72,9 @@ public class IssueOnePrController(
 
         if (value != issue.OnePullRequest)
         {
+            if (value is not null && issue.Project!.OnePullRequestPolicy == OnePullRequestPolicies.Enforced)
+                return Conflict(EnforcedRefusal(issue.Project.Key, key));
+
             if (await OnePrLock.FirstStartedAsync(db, issue, ct) is { } started)
                 return Conflict(
                     $"{key} has work under it that has already started ({started}), so whether its tasks share one " +
@@ -116,4 +125,14 @@ public class IssueOnePrController(
     /// </summary>
     internal static string NotAStoryOrBug(string what) =>
         $"only a story or a bug carries an override for sharing one pull request across its tasks - {what}";
+
+    /// <summary>
+    /// The refusal for an override under a project that enforces its one-PR
+    /// default, shared with the create endpoint; <paramref name="what"/> names
+    /// the issue - by key where one exists, "this story" where it is still
+    /// being filed.
+    /// </summary>
+    internal static string EnforcedRefusal(string projectKey, string what) =>
+        $"{projectKey} enforces its one-PR default on every story - {what} may not carry a setting of its own; " +
+        "an owner can make it optional on the Projects page";
 }

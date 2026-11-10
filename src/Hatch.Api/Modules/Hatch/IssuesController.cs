@@ -301,6 +301,10 @@ public class IssuesController(
             return BadRequest(IssueOnePrController.UnknownValue(onePrText));
         if (request.OnePr is not null && request.Type is not ("story" or "bug"))
             return BadRequest(IssueOnePrController.NotAStoryOrBug($"this is a {request.Type}"));
+        if (onePr is not null
+            && await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.ProjectId, ct)
+                is { OnePullRequestPolicy: OnePullRequestPolicies.Enforced } enforced)
+            return Conflict(IssueOnePrController.EnforcedRefusal(enforced.Key, $"this {request.Type}"));
 
         EfHatchStatus? status;
         if (statusId is { } chosen)

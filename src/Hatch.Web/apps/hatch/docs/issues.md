@@ -111,7 +111,9 @@ instead of a branch and pull request each, merged one after another. A
 project holds a default, off unless an owner turns it on, and a story may
 override it — on, off, or back to inherit — through `hatch one-pr`. The
 setting locks once any task under the story has started, since work begun on
-one branch cannot be moved onto the other.
+one branch cannot be moved onto the other. A project that enforces its default
+takes no override at all: `on` and `off` are refused there, and only `inherit`
+is accepted.
 
 ## Pre-approval
 

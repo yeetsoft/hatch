@@ -137,8 +137,10 @@ nothing but the prompt keeps a session to that. Two things go further:
   fail in a row moves nothing and asks a person. No seeded row is a check.
   Only a person marks a playbook as a check, on the Playbooks page; a check left
   with no denied tools carries a badge reading "a check with no denied tools can
-  edit" - a warning, and the save is not refused. When a verdict is applied, pass
-  or fail, its findings are written on the ticket as a comment (`(no findings)`
+  edit" - a warning, and the save is not refused. A row the dispatcher can never
+  pick carries a red badge with the server's own sentence for why, on the row in
+  the main table and in the "Files on the trunk" card alike. When a verdict is
+  applied, pass or fail, its findings are written on the ticket as a comment (`(no findings)`
   if the session wrote none), and the build session that follows a fail is handed
   the last check's findings.
 

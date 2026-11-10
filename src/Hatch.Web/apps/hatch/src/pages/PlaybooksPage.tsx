@@ -485,6 +485,7 @@ export function PlaybookFileRowLine({
           </>
         )}
         {isUncheckedEdit(row) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
+        {row.unreachableReason && <Badge tone="danger">{row.unreachableReason}</Badge>}
       </td>
       {label !== undefined && (
         <td>
