@@ -145,7 +145,7 @@ public class ReportsController(
                     OnePrOwn: onePrOwn,
                     OnePrFrom: onePrFrom,
                     ClosedAt: i.ClosedAt,
-                    NoCode: i.NoCode);
+                    NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
             }
         }
 
@@ -648,7 +648,7 @@ public class ReportsController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt,
-                NoCode: i.NoCode);
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
         }
 
         return (cards, tree);
