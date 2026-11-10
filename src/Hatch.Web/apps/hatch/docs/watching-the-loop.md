@@ -350,9 +350,10 @@ reads **Clear**; the moment anything needs a person or the loop is stuck, it
 lights and opens a panel in two groups.
 
 **Human** - things only a person can clear, in the order to work through
-them: **Waiting on a runner**, **Runner capacity**, **Backups**, **Stalled merge trains**, **Deadlocked**, **Trunk builds
-that fail**, **Pull requests to review**, **Approved, not merging**,
-**Landed, not done**, **Questions to answer**. **Waiting on a runner** lists
+them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
+**Deadlocked**, **Questions to answer**, **Pull requests to review**,
+**Approved, not merging**, **Landed, not done**, **Finished with no code**,
+**Runner capacity**, **Waiting on a runner**. **Waiting on a runner** lists
 every issue whose next move no live runner can take for want of a model or a
 tool, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like

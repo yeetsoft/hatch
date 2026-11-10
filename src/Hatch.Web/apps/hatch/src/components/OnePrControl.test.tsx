@@ -157,4 +157,18 @@ describe('onePrToFile', () => {
       }
     }
   });
+
+  it('files nothing for a story or a bug under a project that enforces its own default', () => {
+    expect(onePrToFile('story', 'on', true)).toBeUndefined();
+    expect(onePrToFile('bug', 'off', true)).toBeUndefined();
+  });
+
+  it('still files the setting for a story or a bug left optional', () => {
+    expect(onePrToFile('story', 'on')).toBe('on');
+  });
+
+  it('files nothing for a task whether or not the project enforces its default', () => {
+    expect(onePrToFile('task', 'on')).toBeUndefined();
+    expect(onePrToFile('task', 'on', true)).toBeUndefined();
+  });
 });

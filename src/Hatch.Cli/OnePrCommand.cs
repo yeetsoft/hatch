@@ -28,6 +28,9 @@ public sealed class OnePrCommand(Cli cli)
         "",
         "  A story or a bug only, and locked once any task under it has started - set it",
         "  when it is filed, before its tasks are worked.",
+        "",
+        "  A project may enforce its default on every story and bug. Then only inherit is",
+        "  accepted - on and off are refused.",
     ];
 
     public async Task<int> RunAsync(string[] args, CancellationToken ct)
@@ -72,7 +75,10 @@ public sealed class OnePrCommand(Cli cli)
     public static string Draw(IssueDto issue)
     {
         var value = issue.OnePr ? "on" : "off";
-        var source = issue.OnePrOwn is not null ? $"set on this {issue.Type}"
+        var enforced = issue.OnePrEnforced && (issue.Type is "story" or "bug");
+        var source = enforced && issue.OnePrOwn is not null ? $"set on this {issue.Type} before the project enforced it; locked"
+            : enforced ? "the project's default, enforced"
+            : issue.OnePrOwn is not null ? $"set on this {issue.Type}"
             : issue.OnePrFrom is { Length: > 0 } from ? $"inherited from {from}"
             : issue.Type is "story" or "bug" ? "the project's default"
             : "not under a story or bug";
