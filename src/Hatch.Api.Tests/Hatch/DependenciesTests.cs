@@ -9,10 +9,10 @@ namespace Hatch.Api.Tests.Hatch;
 public class DependenciesTests
 {
     [Fact]
-    public void DefaultHoldsTheSixIdsInOrder()
+    public void DefaultHoldsTheSevenIdsInOrder()
     {
         Assert.Equal(
-            ["dotnet", "make", "node", "playwright-browsers", "postgres", "pwsh"],
+            ["docker", "dotnet", "make", "node", "playwright-browsers", "postgres", "pwsh"],
             Dependencies.Default.Rows.Select(row => row.Id));
     }
 
@@ -95,7 +95,7 @@ public class DependenciesTests
     public void IdProblemNamesTheListForAnUnknownId()
     {
         Assert.Equal(
-            "`xcode` is not a dependency Hatch knows - the list is dotnet, make, node, playwright-browsers, postgres, pwsh",
+            "`xcode` is not a dependency Hatch knows - the list is docker, dotnet, make, node, playwright-browsers, postgres, pwsh",
             Dependencies.Default.IdProblem("xcode"));
     }
 

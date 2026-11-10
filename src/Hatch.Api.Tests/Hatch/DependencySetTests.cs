@@ -71,7 +71,7 @@ public class DependencySetTests
 
         Assert.Equal(Dependencies.Default.IdProblem("xcode"), refusal);
         Assert.Equal(
-            "`xcode` is not a dependency Hatch knows - the list is dotnet, make, node, playwright-browsers, postgres, pwsh",
+            "`xcode` is not a dependency Hatch knows - the list is docker, dotnet, make, node, playwright-browsers, postgres, pwsh",
             refusal);
         Assert.Empty(normalised);
     }
