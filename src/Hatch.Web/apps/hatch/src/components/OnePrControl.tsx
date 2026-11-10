@@ -36,12 +36,15 @@ export function OnePrSteps({
   value,
   label,
   busy = false,
+  lockedBecause,
   onChange,
 }: {
   value: OnePrSetting;
   /** The group's accessible name. */
   label: string;
   busy?: boolean;
+  /** Why no step can be pressed, or absent: every button is disabled and says this as its title. */
+  lockedBecause?: string;
   onChange: (setting: OnePrSetting) => void;
 }) {
   return (
@@ -53,9 +56,9 @@ export function OnePrSteps({
             key={choice.name}
             type="button"
             className={`hatch-one-pr-step${here ? ' here' : ''}`}
-            title={choice.title}
+            title={lockedBecause ?? choice.title}
             aria-pressed={here}
-            disabled={here || busy}
+            disabled={here || busy || lockedBecause !== undefined}
             onClick={() => onChange(choice.name)}
           >
             {choice.word}
@@ -87,7 +90,7 @@ export function OnePrControl({
   busy = false,
   onChange,
 }: {
-  issue: Pick<Issue, 'key' | 'type' | 'onePr' | 'onePrOwn' | 'onePrFrom'>;
+  issue: Pick<Issue, 'key' | 'type' | 'onePr' | 'onePrOwn' | 'onePrFrom' | 'onePrEnforced'>;
   /** A press is in flight: the group stays where it is and stops answering. */
   busy?: boolean;
   onChange: (setting: OnePrSetting) => void;
@@ -98,6 +101,11 @@ export function OnePrControl({
         value={settingOf(issue.onePrOwn)}
         label={`Set ${issue.key}'s one pull request setting`}
         busy={busy}
+        lockedBecause={
+          issue.onePrEnforced
+            ? 'The project enforces its one-PR default on every story; an owner can make it optional on the Projects page.'
+            : undefined
+        }
         onChange={onChange}
       />
       <span className={`hatch-one-pr-said${issue.onePr ? ' on' : ''}`}>{onePrSaid(issue)}</span>
