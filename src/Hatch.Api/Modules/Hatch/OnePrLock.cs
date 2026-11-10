@@ -122,6 +122,40 @@ public static class OnePrLock
     }
 
     /// <summary>
+    /// The stories and bugs among <paramref name="moving"/> that carry an override
+    /// and have no started work under them - the ones a move into an
+    /// <see cref="OnePullRequestPolicies.Enforced"/> project returns to inherit.
+    /// Worked out in memory, off the statuses the same edit has already staged, and
+    /// over the moving set alone: a descendant left behind
+    /// (<c>moveDescendants: false</c>) is no longer under the story, so it does not
+    /// hold the override. Started is the lock's own test
+    /// (<see cref="Columns.AtOrPastImplementation"/>), as in
+    /// <see cref="OverriddenAndUnstartedAsync"/>.
+    /// </summary>
+    public static List<EfHatchIssue> OverriddenAndUnstartedAmong(IReadOnlyList<EfHatchIssue> moving, List<EfHatchStatus> statuses)
+    {
+        var children = moving.Where(m => m.ParentId != null).GroupBy(m => m.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        bool Started(EfHatchIssue story)
+        {
+            var seen = new HashSet<long> { story.Id };
+            var stack = new Stack<long>([story.Id]);
+            while (stack.Count > 0)
+                foreach (var child in children.GetValueOrDefault(stack.Pop(), []))
+                {
+                    if (!seen.Add(child.Id)) continue;
+                    if (Columns.AtOrPastImplementation(statuses, child.StatusId)) return true;
+                    stack.Push(child.Id);
+                }
+
+            return false;
+        }
+
+        return moving.Where(m => m.Type is "story" or "bug" && m.OnePullRequest is not null && !Started(m)).ToList();
+    }
+
+    /// <summary>
     /// The stories and bugs of a project that carry an override
     /// (<see cref="EfHatchIssue.OnePullRequest"/> is not null) and have no started
     /// work - the ones a tightening to <see cref="OnePullRequestPolicies.Enforced"/>

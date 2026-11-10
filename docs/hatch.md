@@ -1443,6 +1443,10 @@ Every issue that moves, the one named and each descendant carried with it,
 gets a `project_changed` event, `{ from, to }` as display keys; the named
 issue's also carries `descendants`, the count of what moved alongside it.
 
+A move into a project whose one-PR policy is `enforced` also returns an
+override with nothing started under it to inherit - see
+"The project's policy", under one pull request.
+
 #### Ordering
 
 `Rank` is a `long` with 1024-sized gaps. Bottom of a column is last rank + 1024
@@ -1810,6 +1814,21 @@ it is the test `OnePrLock.OverriddenAndUnstartedAsync` applies - any descendant
 in the implementation column or to its right, terminal included - the same one
 `PutLanding` uses to fix started stories that inherit. A board with no
 implementation column returns nothing, so nothing is reconciled.
+
+A move into an `enforced` project is the third door, and reconciles the same
+way - by `PATCH /issues/{key}` with `projectId` or `POST /issues/bulk` with
+`projectId`, one rule for both since the bulk route stages each issue through
+the patch's own path. A story or bug in the moving set (the one named and every
+descendant carried with it) that carries an override and has no started work
+under it returns to inherit, one `one_pr_changed` event each, `from` `on` or
+`off`, `to` `inherit`, with `fixedBecause` naming the move. One with started
+work keeps its override. The started test is the same
+`Columns.AtOrPastImplementation`, applied in memory (`OnePrLock.OverriddenAndUnstartedAmong`)
+to the statuses the edit has just staged and to the moving set alone: with
+`moveDescendants: false` the started tasks stay behind, so the story that moved
+counts as unstarted and is reconciled - which keeps every override under an
+enforced project locked. A move out of an enforced project, or into an
+`optional` one, writes no `one_pr_changed` event.
 
 A bug was refused an override until it could carry one, so its tasks were always
 begun on branches of their own. The migration `FreezeBugOnePr` gives every bug
