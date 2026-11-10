@@ -480,7 +480,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         // Only a loop ever starts a MergeTrain; a `once` runner's own BeatAsync
         // throws its instruction away (GoToWork.cs), so electing one would
         // strand a project with a driver that can never answer.
-        var live = await db.Runners.AsNoTracking()
+        var live = await db.LegacyRunners.AsNoTracking()
             .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind && r.RetiredAt == null)
             .Select(r => new { r.Name, r.FirstSeenAt, r.LastSeenAt, r.Remotes, r.Standing, r.ForPersonId })
             .ToListAsync(ct);

@@ -199,7 +199,7 @@ public class RunnersController(
     {
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var key in await keys.ListApiKeysAsync(ct)) taken.Add(key.Name);
-        foreach (var beat in await db.Runners.AsNoTracking().Select(r => r.Name).ToListAsync(ct)) taken.Add(beat);
+        foreach (var beat in await db.LegacyRunners.AsNoTracking().Select(r => r.Name).ToListAsync(ct)) taken.Add(beat);
 
         return RunnerCast.Suggest(taken);
     }
@@ -431,7 +431,7 @@ public class RunnersController(
         var now = time.GetUtcNow();
         var line = Runners.Normalise(request.Line);
 
-        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        var row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
 
         if (row is not null && request.Where is { Length: > 0 } where && row.Where is { Length: > 0 } existing &&
             !string.Equals(existing, where, StringComparison.Ordinal) && runners.IsHere(row.LastSeenAt, now))
@@ -450,7 +450,7 @@ public class RunnersController(
 
         if (row is null)
         {
-            db.Runners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas)));
+            db.LegacyRunners.Add(row = Seed(runner, kind, line, request, now, forActor?.Id, Joined(normalisedModels), Joined(normalisedHas)));
 
             try
             {
@@ -472,7 +472,7 @@ public class RunnersController(
                 // bounds on the row are the ones that got there first, unless
                 // it is a fresh beat.
                 db.Entry(row).State = EntityState.Detached;
-                row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+                row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
                 if (row is null) throw;
             }
         }
@@ -519,7 +519,7 @@ public class RunnersController(
         var first = row.FirstSeenAt;
         var cutoff = runners.Cutoff(now);
 
-        var older = await db.Runners.Where(r => r.Name != name && r.Where == where && r.Kind == kind
+        var older = await db.LegacyRunners.Where(r => r.Name != name && r.Where == where && r.Kind == kind
             && r.ForPersonId == owner && r.FirstSeenAt < first && r.LastSeenAt < cutoff
             && r.RetiredAt == null).ToListAsync(ct);
 
@@ -561,7 +561,7 @@ public class RunnersController(
     {
         if (where is not { Length: > 0 }) return;
 
-        var own = await db.Runners.FirstOrDefaultAsync(r => r.Name == name && r.RetiredAt != null, ct);
+        var own = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == name && r.RetiredAt != null, ct);
         if (own is not null)
         {
             own.RetiredAt = null;
@@ -570,7 +570,7 @@ public class RunnersController(
 
         if (owner is not null || !auth.Value.Enabled)
         {
-            var older = await db.Runners.Where(r => r.Name != name && r.Where == where
+            var older = await db.LegacyRunners.Where(r => r.Name != name && r.Where == where
                 && r.Kind == EfHatchRunner.LoopKind && r.ForPersonId == owner && r.RetiredAt == null).ToListAsync(ct);
 
             foreach (var r in older)
@@ -601,7 +601,7 @@ public class RunnersController(
     {
         if (await db.RunnerConfigs.AnyAsync(c => c.ApiKeyId == keyId, ct)) return;
 
-        var rows = await db.Runners.AsNoTracking()
+        var rows = await db.LegacyRunners.AsNoTracking()
             .Where(r => (r.RetiredBy == keyName || r.Name == keyName) && r.Tags != null && r.Tags != "")
             .OrderByDescending(r => r.LastSeenAt)
             .Select(r => new { r.Name, r.Tags })
@@ -846,7 +846,7 @@ public class RunnersController(
         // The heartbeat row is tracked and may be absent: a key that has never
         // run has none. State lives only there, so with none it is skipped
         // rather than refused.
-        var beatRow = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        var beatRow = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
         if (beatRow is not null && state is not null) beatRow.State = state;
 
         // "" clears the board, never null - the whole of how PATCH's clear is
@@ -990,7 +990,7 @@ public class RunnersController(
         if (await NotAPerson(ct) is { } refusal) return refusal;
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
 
-        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        var row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
         if (row is null) return NotFound();
 
         var wallEnabled = auth.Value.Enabled;
@@ -1074,7 +1074,7 @@ public class RunnersController(
         if (await NotAPerson(ct) is { } refusal) return refusal;
         if (Named(name) is not { } runner) return BadRequest(NameRefusal);
 
-        var row = await db.Runners.FirstOrDefaultAsync(r => r.Name == runner, ct);
+        var row = await db.LegacyRunners.FirstOrDefaultAsync(r => r.Name == runner, ct);
         if (row is null) return NotFound();
 
         var wallEnabled = auth.Value.Enabled;

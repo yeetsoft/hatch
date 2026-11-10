@@ -2339,7 +2339,7 @@ public class IssueClaimTests
         {
             h.Time.Advance(TimeSpan.FromSeconds(30));
             await BeatAsync(h, issue, token, null, null);
-            await h.Connect().Runners.Where(r => r.Name == "younger")
+            await h.Connect().LegacyRunners.Where(r => r.Name == "younger")
                 .ExecuteUpdateAsync(s => s.SetProperty(r => r.LastSeenAt, h.Time.GetUtcNow()), default);
 
             var drivers = await h.RunnersRule.DriversAsync(
@@ -2563,7 +2563,7 @@ public class IssueClaimTests
             string? where = null, DateTimeOffset? firstSeenAt = null, string? remotes = null)
         {
             var db = Connect();
-            db.Runners.Add(new EfHatchRunner
+            db.LegacyRunners.Add(new EfHatchRunner
             {
                 Name = name,
                 Where = where ?? name,
@@ -2630,7 +2630,7 @@ public class IssueClaimTests
             Connect().RunnerSessions.AsNoTracking().SingleAsync(s => s.Id == id);
 
         public Task<EfHatchRunner> RunnerAsync(string name) =>
-            Connect().Runners.AsNoTracking().SingleAsync(r => r.Name == name);
+            Connect().LegacyRunners.AsNoTracking().SingleAsync(r => r.Name == name);
 
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one", int? playbookId = null) =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner, playbookId), default)).Token;
