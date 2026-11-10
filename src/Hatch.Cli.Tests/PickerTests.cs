@@ -581,6 +581,33 @@ public sealed class PickerTests
         await picked.Claim!.ReleaseAsync();
     }
 
+    /// <summary>HA-1633: once the playbook is attached, the claim's quiet window is the playbook's, not the take's.</summary>
+    [Theory]
+    [InlineData(1500, HttpStatusCode.NoContent, 1500)]
+    [InlineData(1500, HttpStatusCode.InternalServerError, 300)]
+    [InlineData(null, HttpStatusCode.NoContent, 300)]
+    [InlineData(0, HttpStatusCode.NoContent, 300)]
+    public async Task A_playbook_quiet_limit_reaches_the_claim_only_when_the_attach_lands(
+        int? quietLimit, HttpStatusCode heartbeat, int expectedSeconds)
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+
+        h.Wire.Replace("GET", Queue, HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-2") }, Fixtures.Json));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim", HttpStatusCode.OK, Fixtures.Taken(token, stallLapseSeconds: 300));
+        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", quietLimitSeconds: quietLimit));
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-2/claim/heartbeat", heartbeat, heartbeat == HttpStatusCode.NoContent ? "" : "boom");
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-2/claim", HttpStatusCode.NoContent);
+
+        var picked = await MakePicker(h)
+            .PickAsync(null, 0, default, Harness.Beat);
+
+        Assert.Equal(Pick.Claimed, picked.Outcome);
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), picked.Claim!.StallLapse);
+
+        await picked.Claim.ReleaseAsync();
+    }
+
     /// <summary>A failed attach is weather, not a reason to let the claim go - the walk keeps the ticket either way.</summary>
     [Fact]
     public async Task A_failed_playbook_attach_does_not_cost_the_dispatch()

@@ -4153,6 +4153,7 @@ public class IssuesControllerTests
         // judged against: four minutes into a five-minute lease is a runner
         // about to go, and four minutes into an hour is one that is fine.
         Assert.Equal(TestClaims.Ttl, read.Claim.TtlSeconds);
+        Assert.Equal(TestClaims.With().StallLapseSeconds, read.Claim.StallLapseSeconds);
 
         // The board and the search hand out cards rather than issues, and a
         // claim a client cannot see on the screen it lives on is a claim it
@@ -4160,9 +4161,24 @@ public class IssuesControllerTests
         var card = Value(await h.Board.GetBoard(default)).Issues.Single(c => c.Key == issue.Key);
         Assert.NotNull(card.Claim);
         Assert.Equal(TestClaims.Ttl, card.Claim.TtlSeconds);
+        Assert.Equal(TestClaims.With().StallLapseSeconds, card.Claim.StallLapseSeconds);
 
         var found = Value(await h.Issues.SearchIssues(null, null, null, null, null, "somebody is on it", default));
         Assert.NotNull(Assert.Single(found).Claim);
+    }
+
+    /// <summary>HA-1632: the window a claim rides is its own, on the issue and on the card.</summary>
+    [Fact]
+    public async Task AClaimWithItsOwnWindow_CarriesThatWindowOnTheIssueAndTheCard()
+    {
+        var h = await NewAsync();
+        var issue = await h.CreateAsync("story", "a long one");
+        await h.ClaimAsync(issue.Key, quietLimitSeconds: 1500);
+
+        Assert.Equal(1500, Value(await h.Issues.GetIssue(issue.Key, default)).Claim!.StallLapseSeconds);
+
+        var card = Value(await h.Board.GetBoard(default)).Issues.Single(c => c.Key == issue.Key);
+        Assert.Equal(1500, card.Claim!.StallLapseSeconds);
     }
 
     [Fact]
@@ -4229,7 +4245,7 @@ public class IssuesControllerTests
         /// </summary>
         public async Task<Guid> ClaimAsync(
             string key, string by = "hatch", string runner = "somewhere:/checkouts/one",
-            string? chatter = null, int? playbookId = null)
+            string? chatter = null, int? playbookId = null, int? quietLimitSeconds = null)
         {
             var token = Guid.NewGuid();
             var now = Time.GetUtcNow();
@@ -4244,6 +4260,7 @@ public class IssuesControllerTests
             issue.ClaimChatter = chatter;
             issue.ClaimChatterAt = chatter is null ? null : now;
             issue.ClaimPlaybookId = playbookId;
+            issue.ClaimQuietLimitSeconds = quietLimitSeconds;
             await Db.SaveChangesAsync();
 
             return token;

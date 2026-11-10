@@ -390,7 +390,12 @@ last and when, a name and an instant, null until the first change, and
 `NoCodeCloses` (`bool`, default `false` - whether a no-code declaration on an
 issue closes it outright), with `NoCodeClosesBy` and `NoCodeClosesAt` beside
 it - who changed it last and when, a name and an instant, null until the
-first change.
+first change, and
+`OnePullRequestPolicy` (`"optional"` by default, or `"enforced"` - whether a
+story or bug may carry a one-pull-request setting of its own, see [One pull
+request](#one-pull-request)), with `OnePullRequestPolicyBy` and
+`OnePullRequestPolicyAt` beside it - who changed it last and when, a name and
+an instant, null until the first change.
 A project may
 also carry an uploaded logo, in its own table — see [Logo](#logo).
 
@@ -462,6 +467,18 @@ nothing, the stamp included. The close hop reads the flag, carrying a
 declared childless issue through pre-approved or not once it is on, see [the
 hop](#the-hop); a declared row it carries this way also stops being one of
 [what is waiting on you](#what-is-waiting-on-you)'s `noCodeHeld`.
+
+`OnePullRequestPolicy` is written through its own route too, `PUT
+/projects/{id}/one-pr-policy` (`ProjectsController.PutOnePrPolicy`), guarded
+the same way - `[RequireRole(User)]`, `NotAPerson` checked again in the
+action, then an owner check answering `403` naming the project's key (*"only
+an owner of `<KEY>` may change its one-pull-request policy"*) to anyone else,
+and `404` on an unknown project. Anything but `optional` or `enforced` is
+`400`, naming the bad value and the two good ones. A change stamps
+`OnePullRequestPolicyBy` and `OnePullRequestPolicyAt`; re-sending the value the
+project already holds writes nothing, the stamp included. `PATCH` and `POST`
+do not reach it. Tightening it reconciles the overrides that already exist, see
+[One pull request](#one-pull-request).
 The dispatcher reads the list on every move a runner is handed - in every
 column, hops included - except a review self-move its own verdict already
 folds, folding a caller whose runner does not advertise every tag it holds - see
@@ -1770,6 +1787,25 @@ one `one_pr_changed` event on each, `inherit` to that value. Stories with
 nothing started keep following the default. "Started" is the same test the lock
 uses, so a story fixed this way is locked from then on like any other.
 
+**The project's policy.** A project also carries `OnePullRequestPolicy`:
+`optional` (the default - a story or bug may override the project's default
+either way, as above) or `enforced` (no story or bug may carry a setting of its
+own). Under `enforced`, every override that exists is locked: it either
+predates the policy, on a story that had already started when the policy
+tightened, or was written by that tightening's own reconciliation. This field
+decides what happens to the overrides that already exist; refusing a new one
+under `enforced` is separate work. Tightening (`optional` to `enforced`)
+reconciles in the same save: every story or bug with an override and no started
+work returns to inherit, one `one_pr_changed` event each, `from` the
+override's `on` or `off`, `to` `inherit`, with `fixedBecause` saying *the
+project began enforcing its default with nothing under this story started*. One
+with started work keeps its override untouched. Loosening (`enforced` to
+`optional`) writes nothing to any issue. "Started" is not a second definition:
+it is the test `OnePrLock.OverriddenAndUnstartedAsync` applies - any descendant
+in the implementation column or to its right, terminal included - the same one
+`PutLanding` uses to fix started stories that inherit. A board with no
+implementation column returns nothing, so nothing is reconciled.
+
 A bug was refused an override until it could carry one, so its tasks were always
 begun on branches of their own. The migration `FreezeBugOnePr` gives every bug
 that already has children an explicit `off`, so a project whose default is on does
@@ -2172,7 +2208,9 @@ session has no stream to see a call open in, so it carries none of this. Every r
 one — the dispatcher, the board, the issue page, the Runners page, and a take —
 because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
-refused `409` with `this claim has gone quiet for 5 minutes`, beside the three
+refused `409` with `this claim has gone quiet for 5 minutes` - the claim's own
+window, in whole minutes, so `25 minutes` for 1500 seconds, `1 minute` for 60,
+and `90 seconds` where it is not a whole number of them - beside the three
 reasons a heartbeat could already be refused, and checked before "expired"
 where a claim happens to qualify as both. The `409` answers `{ error,
 reason }` - `error` the sentence it always printed, `reason` one of
@@ -2186,9 +2224,10 @@ this off entirely for a claim with no window of its own — such a claim is then
 judged on its TTL alone — and a
 negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
 already has. The window rides back with the take as `stallLapseSeconds`, in
-seconds, `0` when lapsing is off — the server is what honours it, so the
-server is what says what it is, the same argument `TtlSeconds` makes for
-itself.
+seconds, `0` when lapsing is off, and on every claim a read carries - the board
+card, the issue, the search - as that claim's own window rather than the
+board's. The server is what honours it, so the server is what says what it is,
+the same argument `TtlSeconds` makes for itself.
 
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from
@@ -3019,6 +3058,14 @@ quiet (see [a claim that has gone quiet](#claim)): null, the default, inherits
 written and cleared the way `Budget` and `BriefLimit` are. `IsCheck` is false by
 default and a person's write only — a key's `POST` or `PATCH` of it is refused
 with the rest of the playbook write — and what it means is in [Check](#check).
+
+**A row can be one the dispatcher never picks.** The wire carries
+`UnreachableReason` beside the row: null where [the dispatcher](#the-dispatcher)
+could pick it, otherwise one sentence saying that a dispatch from the row's
+from-column goes to another column, or nowhere. It is derived from the live
+board on every read and stored nowhere, so a column reorder changes it with no
+write to the row, and saving such a row is not refused. A check row from review
+into the protected merge column is reachable.
 
 **`Prompt` is the operator's own wording, `DefaultPrompt` the prescribed
 text.** `Prompt` is null until somebody writes their own; `DefaultPrompt` is
@@ -8731,7 +8778,11 @@ altogether — whether every beat in that stretch failed outright, or each spent
 its own retry budget and still failed — gives up on its own, sets `Lost` and
 stops the session exactly as a `409` does, on the understanding that a lease
 gone quiet that long is one the board's own rule may already have let
-somebody else take. And **a busy board** is a wait, not an ending: every
+somebody else take. That window is the claim's own, and follows the playbook
+the dispatch matched: a playbook's longer `quietLimitSeconds` also stretches how
+long the CLI waits out an unreachable server before assuming it lost the lease,
+once the playbook is attached (a limit of zero or none leaves what the take
+said), so one number answers "how long may this session be out of touch". And **a busy board** is a wait, not an ending: every
 candidate being worked elsewhere is a report, and it is deliberately not the
 sentence an empty board gets.
 

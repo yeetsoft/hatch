@@ -27,9 +27,13 @@ In order, left to right:
 - **In Progress** — a session writes the code, gets it green, pushes it and
   puts it up for review.
 - **In Review** — the pull request is read, goes green and is merged. A person
-  moves it on. A session steps in only for a pull request that has stopped
-  merging cleanly or whose build has failed, and that increment starts and ends
-  in the same column.
+  moves it on, or, under a project's **A passing check approves the merge**
+  setting, a passing check moves it the same way with nobody pressing
+  anything — see
+  [letting the loop merge for you](letting-the-loop-merge-for-you#a-passing-check-approves-the-merge).
+  A session steps in only for a pull request that has stopped merging cleanly
+  or whose build has failed, and that increment starts and ends in the same
+  column.
 - **Done** — shipped, and terminal. Only a person moves work into it, or the
   board itself, carrying a parent through once its children are done: a
   pre-approved one, or one in a project whose **A passing check approves the

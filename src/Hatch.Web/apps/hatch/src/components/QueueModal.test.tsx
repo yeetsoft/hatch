@@ -101,6 +101,7 @@ const claim = (over: Partial<IssueClaim> = {}): IssueClaim => ({
   chatter: null,
   chatterAt: null,
   ttlSeconds: 300,
+  stallLapseSeconds: 600,
   ...over,
 });
 
