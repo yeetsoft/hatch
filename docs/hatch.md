@@ -5956,6 +5956,53 @@ several marked rows the latest mark wins. A mark outside those terms simply
 stops counting, and the head is the first eligible row in order as before. The
 route gives a `409` to a row outside the merges column.
 
+**A head nobody acts on is passed over.** Every heartbeat judges the stall
+(`RunnersController.TrainDriversAsync`, `RunnersController.cs:578-640`,
+the `TrainWatch.Observe` call at `:600`). A head is judged only when its
+`MergeWork.Judge` kind is `merge` or `update` and some live eligible runner
+drives the project; any other state - no head, `hold`, `pushback`, `pending`,
+or no driver - clears both watch columns on the project
+(`TrainWatch.cs:36-41`). The clock, `TrainWatchedSince`, is when this head
+was first *seen* acting, not when it entered the column; a different head,
+or a null `since`, restarts it (`:43-48`). The bound is measured from that
+`since`, raised to `BroughtCurrentAt` when that is later (`:50-53`): a
+`brought_current` mark restarts the count, a pushback clears it, and a
+completed merge changes the head and so restarts it. The bound is
+`Hatch:TrainStallMinutes`, default 10 (`HatchOptions.cs:102`), read through
+`Runners.TrainStallSeconds`, where zero or a negative falls back to the
+default (`Runners.cs:59-62`; the reason is at `HatchOptions.cs:96-100`).
+Past it, the beat sets `EfHatchProject.TrainStalledDriver` to the runner
+and gives the project a fresh window (`Entities.cs:211`, written at
+`RunnersController.cs:612-613`). `Runners.EligibleCandidates` then filters
+out `c.Name != project.TrainStalledDriver` (`Runners.cs:525`), so the next
+election skips that runner on this project only; it stays eligible on every
+other (comment at `:521-524`). The runner's own next heartbeat clears the
+mark, with a fresh window (`ReinstateAsync`, `RunnersController.cs:558-571`,
+called from the beat at `:342`). Each window writes one `driver_stalled`
+event on the head issue, actor `Hatch` (`RunnersController.cs:510, 630`),
+with payload `{ passedOver, elected }`, and `elected` null when nobody else
+was eligible (`:628-634`; `Entities.cs:2360-2367`).
+
+**The queue says who is driving.** A merges-column row that reads as
+actionable - kind `merge`, `update` or `pending` - and is not waiting behind
+a head gets a clause naming the driver, in `Dispatch.BlockedWithKind`
+(`Dispatch.cs:1831`, driver branch `:1851-1856`):
+`"{judgement} - for the driver, last heard from {n} ago"` (`:1854`, with
+`Minutes` at `:916`). When no runner is elected the whole sentence is
+replaced by `no live runner is eligible to drive this project's merges`
+(`:1855`). A `hold` or `pushback` row gets neither, since it already
+explains itself (`:1858`). A row behind the head keeps `waiting its turn
+behind {headKey}, position {n} in the train` unchanged, because that clause
+is tested first (`:1842-1845`). The driver comes from
+`Runners.ProjectDriversAsync` (`Runners.cs:421-433`, read at
+`Dispatch.cs:270`), the same election the heartbeat uses, so the queue and
+`Drives` agree; a runner just passed over stops being named the moment it
+is passed over, through `EligibleCandidates`. It is a pure read: a driver
+past `Hatch:RunnerGoneAfterSeconds` turns the head's sentence into the
+no-driver one on the next scan, with no beat needed. The sentence reaches
+`hatch queue` and `GET /api/hatch/work/queue` as the row's ordinary blocked
+sentence, with no new field.
+
 #### Landing on the trunk
 
 A project whose `Landing` is `trunk` (see [Project](#project)) has no pull
