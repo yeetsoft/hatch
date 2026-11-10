@@ -15,7 +15,7 @@ import type { RunnerOmission } from '../types';
 interface OmittedRunnersProps {
   /** issue.omittedRunners: the issue's own rows and every ancestor's. */
   omissions: RunnerOmission[];
-  /** GET /runners/names; null while unread. */
+  /** GET /runners?live=true; null while unread. */
   runnerNames: string[] | null;
   /** Names of the person-scoped GET /runners rows, offered while typing. */
   pickable: string[];

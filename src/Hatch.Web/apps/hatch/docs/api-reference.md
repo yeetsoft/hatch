@@ -782,7 +782,6 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
-| GET | `/runners/names` | key | The name of every runner heard from lately, most recent first, and nothing else |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
 | POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next |
 | POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for old CLIs |
@@ -989,9 +988,6 @@ inheriting it, read at each runner's next beat. `/settings` is cached for up to
 30 seconds, a backstop for another replica, so a changed default can take that
 long to reach a beat answered there.
 
-`/runners/names` is the same list whoever asks, and carries no `where`, owner
-or claim, which is why a new runner can read it to pick a free name.
-
 `/runner` and `/runner/download/{rid}` take no key, unlike every
 other read on this page - the audience is a person at a browser
 setting up a machine, and nobody's dispatcher needs to download the program
@@ -1177,7 +1173,8 @@ an empty list. It answers an `AttentionDto`: open questions waiting on
 somebody, pull requests in review split into plain reviews, conflicts, and
 failing builds, how many sit in review with no pull request at all, the
 issues in review that declared they were finished with no code and wait for a
-person to close them (`noCodeHeld`), the
+person to close them (`noCodeHeld`) - not one that is pre-approved or in a
+project with the no-code setting on, which the close hop carries - the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly

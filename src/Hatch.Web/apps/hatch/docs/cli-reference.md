@@ -416,8 +416,9 @@ A declaration is for work that produced nothing to review, such as an
 investigation. It is refused, with the server's sentence and exit `1`, once the
 ticket has a pull request recorded or a branch on origin. A branch that later
 appears on origin sets the declaration aside, and so does moving the ticket
-left of review. A pre-approved ticket that declared no code closes with no
-person reading anything; one that is not waits in review for a person.
+left of review. A ticket that declared no code closes with no person reading
+anything when it is pre-approved, or when its project's *A no-code declaration
+closes the ticket* setting is on; otherwise it waits in review for a person.
 
 ### landed
 

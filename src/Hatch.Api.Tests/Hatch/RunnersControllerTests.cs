@@ -1296,54 +1296,6 @@ public class RunnersControllerTests
         Remotes = remotes,
     };
 
-    // ---- Names ----
-
-    [Fact]
-    public async Task Names_AreMostRecentlyHeardFromFirst()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync("first:/tree", new RunnerHeartbeatRequest());
-
-        h.Time.Advance(TimeSpan.FromSeconds(10));
-        await h.BeatAsync("second:/tree", new RunnerHeartbeatRequest());
-
-        Assert.Equal(["second:/tree", "first:/tree"], await h.NamesAsync());
-    }
-
-    [Fact]
-    public async Task Names_LeaveOutARunnerOlderThanTheDropHorizon()
-    {
-        var h = await NewAsync();
-        await h.BeatAsync("old:/tree", new RunnerHeartbeatRequest());
-
-        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
-        await h.BeatAsync("new:/tree", new RunnerHeartbeatRequest());
-
-        Assert.Equal(["new:/tree"], await h.NamesAsync());
-
-        h.Time.Advance(TimeSpan.FromHours(2) + TimeSpan.FromSeconds(1));
-        Assert.Empty(await h.NamesAsync());
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Names_AreTheSameListWhoeverAsksAndWithTheWallOnOrOff(bool wall)
-    {
-        var h = await NewAsync(wall: wall);
-        var alice = h.Actors.AddPerson("Alice");
-        await h.LoopBeatAsync(Runner, alice);
-        h.Time.Advance(TimeSpan.FromSeconds(10));
-        await h.LoopBeatAsync("here:/checkouts/two", null);
-
-        // The caller now is nobody, who may not control the owned runner;
-        // its name is still in the list.
-        Assert.Equal(["here:/checkouts/two", Runner], await h.NamesAsync());
-
-        h.Actors.Principal = alice;
-        Assert.Equal(["here:/checkouts/two", Runner], await h.NamesAsync());
-    }
-
     // ---- Driving a project ----
 
     [Fact]
@@ -3057,7 +3009,6 @@ public class RunnersControllerTests
         // write is a person's, because it is the budget.
         Assert.True(Guard(nameof(RunnersController.Heartbeat))!.AcceptKey);
         Assert.True(Guard(nameof(RunnersController.GetRunners))!.AcceptKey);
-        Assert.True(Guard(nameof(RunnersController.GetRunnerNames))!.AcceptKey);
         Assert.True(Guard(nameof(RunnersController.GetRunner))!.AcceptKey);
 
         var patch = Guard(nameof(RunnersController.PatchRunner));
@@ -3360,8 +3311,6 @@ public class RunnersControllerTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("names")]
-    [InlineData("Names")]
     [InlineData("SUGGEST-NAME")]
     [InlineData("TOO-LONG")]
     public async Task Create_ANameThatCannotBeUsed_IsRefusedAndNothingIsWritten(string? name)
@@ -3374,6 +3323,20 @@ public class RunnersControllerTests
         Assert.IsType<BadRequestObjectResult>(refused.Result);
         Assert.Empty(await h.Keys.ListApiKeysAsync(default));
         Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_ANameOfNames_IsAcceptedAndReachableByItsOwnUrl()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        // What GET /runners/names reaches now is GetRunner: no such runner.
+        Assert.Null(await h.GetAsync("names"));
+
+        var minted = Value(await h.CreateAsync(new CreateRunnerRequest("names")));
+
+        Assert.Equal("names", minted.Runner.Name);
+        Assert.NotNull(await h.GetAsync("names"));
     }
 
     [Fact]
@@ -3808,6 +3771,66 @@ public class RunnersControllerTests
 
         var refusal = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(403, refusal.StatusCode);
+    }
+
+    // ---- The election, answered on the beat itself (HA-2129) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_FromTheElectedKey_AnswersDrivesOnItsOwnResponse()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+
+        var elected = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], elected.Value!.Drives);
+    }
+
+    [SkippableFact]
+    public async Task ASessionBeat_FromAKeyTheElectionPassesOver_AnswersNoDrives()
+    {
+        var h = await NewAsync(connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        var notElected = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Empty(notElected.Value!.Drives!);
+    }
+
+    // ---- The stall watch, run off a session beat (HA-2129) ----
+
+    [SkippableFact]
+    public async Task ASessionBeat_PastTheStallWindow_PassesTheDriverOverAndWritesOneDriverStalledEvent()
+    {
+        var h = await NewAsync(runnerGoneAfterSeconds: 3600, connectionString: await ConnectAsync());
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var head = await h.SeedMergingHeadAsync();
+
+        var one = await h.AddKeyAsync("here:/one-session");
+        h.Caller.Key = one;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        var two = await h.AddKeyAsync("here:/two-session");
+        h.Caller.Key = two;
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        h.Time.Advance(TimeSpan.FromMinutes(10));
+        var passedOver = await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Remotes: ["git@example.com:o/r.git"]));
+
+        Assert.Equal(["AER"], passedOver.Value!.Drives);
+        Assert.Equal("here:/one-session", (await h.Db.Projects.AsNoTracking().SingleAsync()).TrainStalledDriver);
+
+        var key = IssueKey.Format("AER", head.Number);
+        var @event = Assert.Single(await h.EventsAsync(key), e => e.Kind == EfHatchIssueEvent.DriverStalled);
+        Assert.Equal("here:/one-session", JsonDocument.Parse(@event.Payload!).RootElement.GetProperty("passedOver").GetString());
+        Assert.Equal("here:/two-session", JsonDocument.Parse(@event.Payload!).RootElement.GetProperty("elected").GetString());
     }
 
     // ---- A session beat retires the rows its checkout has renamed away from ----
@@ -4829,8 +4852,6 @@ public class RunnersControllerTests
             return result.Result is NotFoundResult or NotFoundObjectResult ? null : Value(result);
         }
 
-        public async Task<IReadOnlyList<string>> NamesAsync() => Value(await Runners.GetRunnerNames(default));
-
         /// <summary>Mints a runner as the harness's caller, with the response the controller writes its headers to.</summary>
         public async Task<ActionResult<RunnerMintedDto>> CreateAsync(CreateRunnerRequest request)
         {
@@ -4984,7 +5005,7 @@ public class RunnersControllerTests
     {
         public EfPerson? Person { get; init; }
 
-        public EfApiKey? Key { get; init; }
+        public EfApiKey? Key { get; set; }
 
         public Task<EfAuthGrant?> GrantAsync(CancellationToken ct) => Task.FromResult<EfAuthGrant?>(null);
 
