@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import type { RunnerGlyphState } from '../lib/runners';
 
 /** The glyph's own units. A 24-unit box, matching `Robot`. */
@@ -8,7 +9,7 @@ const RING = <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" str
 
 /** What each state looks like. Shape carries the state - colour only agrees
     with it, so the row stays legible to a reader who cannot tell the inks apart. */
-const SHAPES: Record<RunnerGlyphState, JSX.Element> = {
+const SHAPES: Record<RunnerGlyphState, ReactElement> = {
   // A ring struck through: a runner that went missing.
   gone: (
     <>
