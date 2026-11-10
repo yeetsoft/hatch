@@ -29,6 +29,12 @@ public class IssueClaimTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 7, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>The transient id <see cref="Dispatch"/> gives a repo-sourced project's first file row - never on the table.</summary>
+    private const int FileRowId = -1_000_000_000;
+
+    private static PlaybookFileRow FileRow(int from, int to, int? quietLimitSeconds = null) =>
+        new(from, to, [], "any", "do the thing", "sonnet", "high", null, null, [], false, quietLimitSeconds);
+
     // ---- Taking one ----
 
     [SkippableFact]
@@ -87,6 +93,237 @@ public class IssueClaimTests
                 issue, new ClaimRequest("somewhere:/checkouts/one", noSuchPlaybook), default)));
 
         Assert.Null((await h.RowAsync(issue)).ClaimToken);
+    }
+
+    /// <summary>HA-1631: a repo-sourced file row's transient id is never on the table, so naming it is refused until the server resolves it.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingAFileRowOfAProjectThatIsNotRepoSourced_IsRefused()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        Assert.Equal(
+            $"there is no playbook {FileRowId}",
+            BadRequest(await h.Claims.TakeClaim(
+                issue, new ClaimRequest("somewhere:/checkouts/one", FileRowId), default)));
+
+        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+    }
+
+    /// <summary>HA-1631: the window a take writes is the named playbook's own.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybookWithAWindow_StoresItAndIsJudgedAtIt()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+
+        await h.TakeAsync(issue, playbookId: playbook);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(playbook, row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+        Assert.False(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(20)));
+        Assert.True(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(26)));
+    }
+
+    [SkippableFact]
+    public async Task ATakeNamingAPlaybookWithNoWindow_StoresNullSoTheGlobalApplies()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        await h.TakeAsync(issue, playbookId: h.PlaybookId);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(h.PlaybookId, row.ClaimPlaybookId);
+        Assert.Null(row.ClaimQuietLimitSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatAttachingAPlaybookWithAWindow_MovesTheWindowFromThatBeat()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietLimitSeconds);
+
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, playbook), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(playbook, row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+        Assert.False(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(20)));
+        Assert.True(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(26)));
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingNoPlaybook_LeavesTheWindowAlone()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here"), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(playbook, row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingAPlaybookWithNoWindow_ResetsALongerOneToTheGlobal()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, "still here", h.PlaybookId), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(h.PlaybookId, row.ClaimPlaybookId);
+        Assert.Null(row.ClaimQuietLimitSeconds);
+    }
+
+    /// <summary>The same three arms of the write keyed on chatter: absent, cleared, and a line.</summary>
+    [SkippableTheory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("a line")]
+    public async Task AHeartbeatAttachingAPlaybookWithAWindow_WritesItWhateverTheChatterDoes(string? chatter)
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, chatter, playbook), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Equal(playbook, row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+    }
+
+    /// <summary>The column is copied at take time, not joined: the playbook going away does not move the window.</summary>
+    [SkippableFact]
+    public async Task DeletingThePlaybookMidClaim_DoesNotMoveTheWindow()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        await h.Connect().Playbooks.Where(p => p.Id == playbook).ExecuteDeleteAsync();
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null), default);
+
+        Assert.Equal(1500, (await h.RowAsync(issue)).ClaimQuietLimitSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AReleaseOfAClaimTakenUnderAWindow_ClearsIt()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var playbook = await h.AddPlaybookAsync(quietLimitSeconds: 1500);
+        var token = await h.TakeAsync(issue, playbookId: playbook);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, default));
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Null(row.ClaimQuietLimitSeconds);
+    }
+
+    /// <summary>A file row has no table id to store, so its window rides alone.</summary>
+    [SkippableFact]
+    public async Task ATakeNamingARepoSourcedFileRow_SetsTheWindowAndStoresNoId()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId, quietLimitSeconds: 1500));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", FileRowId), default));
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+        Assert.False(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(20)));
+        Assert.True(h.Rule.IsQuiet(ClaimSnapshot.Of(row), Now.AddMinutes(26)));
+    }
+
+    [SkippableFact]
+    public async Task ATakeNamingARepoSourcedFileRowWithNoWindow_StoresNothing()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId));
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", FileRowId), default));
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Null(row.ClaimQuietLimitSeconds);
+    }
+
+    [SkippableFact]
+    public async Task AHeartbeatNamingARepoSourcedFileRow_SetsTheWindowAndClearsTheStoredId()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId, quietLimitSeconds: 1500));
+        var token = await h.TakeAsync(issue, playbookId: h.PlaybookId);
+
+        await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, FileRowId), default);
+
+        var row = await h.RowAsync(issue);
+        Assert.Null(row.ClaimPlaybookId);
+        Assert.Equal(1500, row.ClaimQuietLimitSeconds);
+    }
+
+    [SkippableFact]
+    public async Task ANegativeIdBeyondTheFile_IsRefusedOnTakeAndHeartbeat()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.RepoSourceWithRowsAsync(FileRow(h.StatusId, h.DoingStatusId));
+        var beyond = FileRowId + 1;
+
+        Assert.Equal(
+            $"there is no playbook {beyond}",
+            BadRequest(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", beyond), default)));
+
+        var token = await h.TakeAsync(issue);
+        Assert.Equal(
+            $"there is no playbook {beyond}",
+            BadRequest(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, beyond), default)));
+    }
+
+    /// <summary>Each project resolves its own file: a row that exists under another project's repository is not this issue's to name.</summary>
+    [SkippableFact]
+    public async Task AFileRowOfAnotherProjectsRepository_IsRefusedOnTakeAndHeartbeat()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        // This project's own file names no rows; the second project's names one.
+        await h.RepoSourceWithRowsAsync();
+        await h.RepoSourceWithRowsAsync(
+            await h.AddProjectAsync("OTH"), "https://example.com/o/other", FileRow(h.StatusId, h.DoingStatusId, quietLimitSeconds: 1500));
+
+        Assert.Equal(
+            $"there is no playbook {FileRowId}",
+            BadRequest(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one", FileRowId), default)));
+
+        var token = await h.TakeAsync(issue);
+        Assert.Equal(
+            $"there is no playbook {FileRowId}",
+            BadRequest(await h.Claims.Heartbeat(issue, new ClaimHeartbeatRequest(token, null, FileRowId), default)));
+        Assert.Null((await h.RowAsync(issue)).ClaimQuietLimitSeconds);
     }
 
     [SkippableFact]
@@ -198,8 +435,8 @@ public class IssueClaimTests
         Assert.False(claims.IsLive(ClaimSnapshot.Of(await two.Issues.FirstAsync(i => i.Id == id)), Now));
 
         var mine = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", null, Now, default));
-        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", null, Now, default));
+        Assert.True(await claims.TryTakeAsync(one, id, mine, "Nathan", "somewhere:/checkouts/one", null, null, Now, default));
+        Assert.False(await claims.TryTakeAsync(two, id, Guid.NewGuid(), "Nathan", "elsewhere:/checkouts/two", null, null, Now, default));
 
         // Exactly one claim, and it is the first one's - the loser wrote
         // nothing at all rather than overwriting a lease it lost.
@@ -327,8 +564,8 @@ public class IssueClaimTests
 
         var mine = Guid.NewGuid();
         var theirs = Guid.NewGuid();
-        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", null, Now, default));
-        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", null, Now, default));
+        Assert.True(await claims.TryTakeAsync(one, parentId, mine, "Nathan", "somewhere:/checkouts/one", null, null, Now, default));
+        Assert.True(await claims.TryTakeAsync(two, childId, theirs, "Nathan", "elsewhere:/checkouts/two", null, null, Now, default));
 
         // One thread cannot make both look before either lets go, so this
         // ordering ends with exactly one claim: the first check sees the
@@ -2092,7 +2329,7 @@ public class IssueClaimTests
                 var db = Connect();
                 var dispatch = new Dispatch(db, Actors, Rule, Time);
                 var preemption = new Preemption(db, dispatch, Rule, RunnersRule, Time);
-                return new IssueClaimController(db, Rule, Caller, Time, preemption, RunnersRule);
+                return new IssueClaimController(db, Rule, Caller, Time, preemption, RunnersRule, dispatch);
             }
         }
 
@@ -2249,8 +2486,57 @@ public class IssueClaimTests
         public async Task<Guid> TakeAsync(string key, string runner = "somewhere:/checkouts/one", int? playbookId = null) =>
             Value(await Claims.TakeClaim(key, new ClaimRequest(runner, playbookId), default)).Token;
 
+        public async Task<int> AddProjectAsync(string key)
+        {
+            var db = Connect();
+            var project = new EfHatchProject { Key = key, Name = key, CreatedAt = Now };
+            db.Add(project);
+            await db.SaveChangesAsync();
+            return project.Id;
+        }
+
+        /// <summary>
+        /// Makes a project repo-sourced, binds one repository to it, and has a
+        /// runner report that repository's <c>.hatch/playbooks.yaml</c> as
+        /// carrying <paramref name="rows"/> - the shape <see cref="DispatchTests"/>
+        /// builds, so a row's transient id is the one <c>GET work/{key}</c> hands out.
+        /// </summary>
+        public async Task RepoSourceWithRowsAsync(params PlaybookFileRow[] rows) =>
+            await RepoSourceWithRowsAsync(ProjectId, "https://example.com/o/r", rows);
+
+        public async Task RepoSourceWithRowsAsync(int projectId, string remote, params PlaybookFileRow[] rows)
+        {
+            var db = Connect();
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+
+            var project = await db.Projects.SingleAsync(p => p.Id == projectId);
+            project.RepoSourced = true;
+            db.Add(new EfHatchProjectRepository
+            {
+                ProjectId = projectId,
+                Remote = remote,
+                Canonical = canonical!,
+                BaseBranch = "main",
+                SortOrder = 0,
+                CreatedAt = Now,
+            });
+            db.PlaybookFiles.Add(new EfHatchPlaybookFile
+            {
+                Remote = remote,
+                Canonical = canonical!,
+                Trunk = "main",
+                Sha = new string('a', 40),
+                State = EfHatchPlaybookFile.ParsedState,
+                Rows = EfHatchPlaybookFile.WriteRows(rows),
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+            await db.SaveChangesAsync();
+        }
+
         /// <summary>A second playbook, distinct from <see cref="PlaybookId"/> - for a test about one overwriting the other.</summary>
-        public async Task<int> AddPlaybookAsync()
+        public async Task<int> AddPlaybookAsync(int? quietLimitSeconds = null)
         {
             var db = Connect();
             var playbook = new EfHatchPlaybook
@@ -2262,6 +2548,7 @@ public class IssueClaimTests
                 Prompt = "do the other thing",
                 Model = "sonnet",
                 Effort = "medium",
+                QuietLimitSeconds = quietLimitSeconds,
                 CreatedAt = Time.GetUtcNow(),
                 UpdatedAt = Time.GetUtcNow(),
             };

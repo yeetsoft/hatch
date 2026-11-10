@@ -1278,16 +1278,22 @@ public class EfHatchIssue
 
     /// <summary>
     /// Which playbook this claim was taken under, or null where none was
-    /// named. Set once at take time and cleared at release exactly like the
-    /// other claim columns - a bare id, with no navigation property, matching
-    /// the shape of the rest of this row.
+    /// named. Set at take time, replaced by a heartbeat that names another, and
+    /// cleared at release exactly like the other claim columns - a bare id,
+    /// with no navigation property, matching the shape of the rest of this row.
+    /// A table row only: a repo-sourced file row's id is transient and never
+    /// stored here, so its window is carried by <see cref="ClaimQuietLimitSeconds"/>
+    /// alone.
     /// </summary>
     public int? ClaimPlaybookId { get; set; }
 
     /// <summary>
     /// The quiet window this claim was taken under, in seconds, or null to use
-    /// the board's own - see <see cref="IssueClaims.WindowFor"/>. Set once at
-    /// take time and cleared at release exactly like the other claim columns.
+    /// the board's own - see <see cref="IssueClaims.WindowFor"/>. Copied from the
+    /// playbook the take, or a heartbeat that attaches one, names - a table row
+    /// or a repo-sourced file row - and not joined back to it, so editing or
+    /// deleting that playbook later does not move a running claim's window.
+    /// Cleared at release exactly like the other claim columns.
     /// </summary>
     public int? ClaimQuietLimitSeconds { get; set; }
 

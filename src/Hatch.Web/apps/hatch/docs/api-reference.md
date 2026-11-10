@@ -609,7 +609,11 @@ the same rule in two places. The lease's length is the
 `Hatch__ClaimTtlSeconds` setting (default 300 seconds); taking a claim
 carries it back as `TtlSeconds` alongside `StallLapseSeconds`, so a caller
 never has to know the setting's name to honor it. A heartbeat renews the
-lease and may replace the playbook it is running under; it writes no event on
+lease and may replace the playbook it is running under. A take's or heartbeat's
+`playbookId` may be a repo-sourced file row's (negative) id, the same one
+`GET work/{key}` hands back on `Playbook.Id`; the claim's quiet window is
+copied from the playbook named, and a heartbeat naming none leaves it alone. It
+writes no event on
 an ordinary beat, only on a preemption, which is the board's own decision to
 make room for an emergency ticket and is the one case a heartbeat answers a
 `ClaimPreemptedDto` instead of `204`.
