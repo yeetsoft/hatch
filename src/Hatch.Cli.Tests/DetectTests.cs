@@ -529,7 +529,7 @@ public sealed class DetectTests
     private const string PgIsReady = "pg_isready (PostgreSQL) 16.4\n";
 
     private const string NoPostgres =
-        "no `postgres`, `pg_ctl` or `pg_isready` on PATH, and no Docker daemon answered `docker info`";
+        "no `postgres`, `pg_ctl` or `pg_isready` on PATH answered `--version`";
 
     private static string Root()
     {
@@ -774,21 +774,6 @@ public sealed class DetectTests
     }
 
     [Fact]
-    public async Task A_binary_beats_docker_and_docker_is_never_asked()
-    {
-        using var binary = new FakePath(FileNames("pg_isready")[0]);
-        using var docker = new FakePath(FileNames("docker")[0]);
-        var asked = new List<string>();
-        var answers = new Dictionary<string, ProbeResult> { ["pg_isready"] = Said(PgIsReady), ["docker"] = Said("") };
-
-        var result = await Detect.Postgres(
-            string.Join(System.IO.Path.PathSeparator, binary.Directory, docker.Directory), ByTool(answers, asked), CancellationToken.None);
-
-        Assert.True(result.Present);
-        Assert.DoesNotContain("docker", asked);
-    }
-
-    [Fact]
     public async Task A_binary_that_prints_no_version_is_present_with_none()
     {
         using var fake = new FakePath(FileNames("postgres")[0]);
@@ -799,25 +784,11 @@ public sealed class DetectTests
     }
 
     [Fact]
-    public async Task With_no_binary_a_docker_daemon_that_answers_is_present_with_no_version()
-    {
-        using var fake = new FakePath(FileNames("docker")[0]);
-        var args = new List<string[]>();
-
-        var result = await Detect.Postgres(fake.Directory, ByTool(new() { ["docker"] = Said("Client: Docker Engine 27.3.1\n") }, args: args), CancellationToken.None);
-
-        Assert.Equal(new DetectorResult("postgres", true, null, null), result);
-        Assert.Equal(["info"], Assert.Single(args));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task A_docker_that_fails_or_hangs_is_absent_with_both_routes_named(bool hangs)
+    public async Task Docker_alone_does_not_make_postgres_present()
     {
         using var fake = new FakePath(FileNames("docker")[0]);
 
-        var result = await Detect.Postgres(fake.Directory, ByTool(new() { ["docker"] = hangs ? Hung : Said("", exit: 1) }), CancellationToken.None);
+        var result = await Detect.Postgres(fake.Directory, NeverAsked, CancellationToken.None);
 
         Assert.Equal(new DetectorResult("postgres", false, null, NoPostgres), result);
     }
@@ -853,19 +824,6 @@ public sealed class DetectTests
 
         Assert.Equal(new DetectorResult("postgres", true, "16.4", null), result);
         Assert.Equal(["postgres", "pg_ctl"], asked);
-    }
-
-    [Fact]
-    public async Task A_binary_that_hangs_leaves_docker_to_answer()
-    {
-        using var binary = new FakePath(FileNames("postgres")[0]);
-        using var docker = new FakePath(FileNames("docker")[0]);
-        var answers = new Dictionary<string, ProbeResult> { ["postgres"] = Hung, ["docker"] = Said("") };
-
-        var result = await Detect.Postgres(
-            string.Join(System.IO.Path.PathSeparator, binary.Directory, docker.Directory), ByTool(answers), CancellationToken.None);
-
-        Assert.Equal(new DetectorResult("postgres", true, null, null), result);
     }
 
     [Fact]
