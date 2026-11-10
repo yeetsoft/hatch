@@ -75,6 +75,9 @@ const ONE_PROJECT: Project[] = [
     noCodeCloses: false,
     noCodeClosesBy: null,
     noCodeClosesAt: null,
+    onePullRequestPolicy: 'optional',
+    onePullRequestPolicyBy: null,
+    onePullRequestPolicyAt: null,
   },
 ];
 
