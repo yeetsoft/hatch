@@ -55,14 +55,14 @@ public class IssueClaimController(
         if (runner.Length > EfHatchIssue.MaxClaimRunnerLength)
             return BadRequest($"a runner is at most {EfHatchIssue.MaxClaimRunnerLength} characters");
 
-        // The id to store (a file row has none) and the quiet window, both
-        // read off the row the request names - see Dispatch.ClaimPlaybookAsync.
-        (int? Id, int? Limit)? playbook = null;
+        // The id to store (a file row has none), the quiet window and the run
+        // cap, all read off the row the request names - see Dispatch.ClaimPlaybookAsync.
+        (int? Id, int? Limit, int? MaxRun)? playbook = null;
         if (request.PlaybookId is { } playbookId)
         {
             if (await dispatch.ClaimPlaybookAsync(issue.ProjectId, playbookId, ct) is not { } row)
                 return BadRequest($"there is no playbook {playbookId}");
-            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds);
+            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds, row.MaxRunSeconds);
         }
 
         var now = time.GetUtcNow();
@@ -86,7 +86,7 @@ public class IssueClaimController(
         var token = Guid.NewGuid();
         var actor = await caller.ActorNameAsync(ct);
 
-        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, playbook?.Id, playbook?.Limit, now, ct))
+        if (!await claims.TryTakeAsync(db, issue.Id, token, actor, runner, playbook?.Id, playbook?.Limit, playbook?.MaxRun, now, ct))
         {
             // Somebody won the race between that read and this write. Say who,
             // from the row as it stands now - and where the re-read finds it
@@ -114,8 +114,8 @@ public class IssueClaimController(
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
-        var window = claims.WindowFor(new ClaimSnapshot(null, null, null, null, null, null, null, playbook?.Limit));
-        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window);
+        var window = claims.WindowFor(new ClaimSnapshot(null, null, null, null, null, null, null, playbook?.Limit, playbook?.MaxRun));
+        return new ClaimTakenDto(token, actor, now, claims.TtlSeconds, window, playbook?.MaxRun ?? 0);
     }
 
     /// <summary>The name an answer nobody pressed is written under.</summary>
@@ -144,14 +144,14 @@ public class IssueClaimController(
     {
         if (await LoadAsync(key, ct) is not { } issue) return NotFound();
 
-        // The id to store (a file row has none) and the quiet window, both
-        // read off the row the request names - see Dispatch.ClaimPlaybookAsync.
-        (int? Id, int? Limit)? playbook = null;
+        // The id to store (a file row has none), the quiet window and the run
+        // cap, all read off the row the request names - see Dispatch.ClaimPlaybookAsync.
+        (int? Id, int? Limit, int? MaxRun)? playbook = null;
         if (request.PlaybookId is { } playbookId)
         {
             if (await dispatch.ClaimPlaybookAsync(issue.ProjectId, playbookId, ct) is not { } row)
                 return BadRequest($"there is no playbook {playbookId}");
-            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds);
+            playbook = (row.Id > 0 ? row.Id : null, row.QuietLimitSeconds, row.MaxRunSeconds);
         }
 
         var now = time.GetUtcNow();
@@ -229,8 +229,8 @@ public class IssueClaimController(
     /// older CLI.
     /// </param>
     /// <param name="reason">
-    /// Why the runner let go - only <see cref="ClaimLostReasons.Quiet"/> for
-    /// now, written beside the outcome on the event. Read only where
+    /// Why the runner let go - <see cref="ClaimLostReasons.Quiet"/> or
+    /// <see cref="ClaimLostReasons.RunTime"/>, written beside the outcome on the event. Read only where
     /// <paramref name="token"/> is given, and written only where
     /// <paramref name="outcome"/> is too: a reason with no outcome is accepted
     /// and not written. Absent is accepted as it always has been.
@@ -258,9 +258,10 @@ public class IssueClaimController(
         string? why = null;
         if (token is not null && !string.IsNullOrEmpty(reason))
         {
-            if (reason != ClaimLostReasons.Quiet)
+            if (reason is not (ClaimLostReasons.Quiet or ClaimLostReasons.RunTime))
                 return BadRequest(
-                    $"\"{reason}\" is not a reason - it is \"{ClaimLostReasons.Quiet}\", or nothing at all");
+                    $"\"{reason}\" is not a reason - it is \"{ClaimLostReasons.Quiet}\", " +
+                    $"\"{ClaimLostReasons.RunTime}\", or nothing at all");
             why = reason;
         }
 
@@ -339,22 +340,31 @@ public class IssueClaimController(
     // ---- Saying why ----
 
     /// <summary>
-    /// Why a token was refused, in the four shapes a runner can be refused in:
-    /// the row carries nothing, the row carries this one but has gone quiet,
-    /// the row carries this one and the lease is simply over, or the row
+    /// Why a token was refused, in the five shapes a runner can be refused in:
+    /// the row carries nothing, the row carries this one but has run past its
+    /// cap, the row carries this one but has gone quiet, the row carries this
+    /// one and the lease is simply over, or the row
     /// carries somebody else's - each with the sentence a person reads and the
     /// <see cref="ClaimLostReasons"/> a client asks.
     /// </summary>
     private ClaimRefusedDto Refused(ClaimSnapshot claim, Guid presented, DateTimeOffset now) => claim.Token switch
     {
         null => new ClaimRefusedDto("this claim was cleared", ClaimLostReasons.Cleared),
-        var held when held == presented => claims.IsQuiet(claim, now)
-            ? new ClaimRefusedDto($"this claim has gone quiet for {Minutes(claims.WindowFor(claim))}", ClaimLostReasons.Quiet)
-            : new ClaimRefusedDto("this claim has expired", ClaimLostReasons.Expired),
+        // Over the cap is asked before quiet: a claim that is both is told the
+        // one that no amount of chatter would have saved it from.
+        var held when held == presented => claims.IsOverRun(claim, now)
+            ? new ClaimRefusedDto(
+                $"this claim ran past its {Limit(claim.MaxRunSeconds!.Value)} limit", ClaimLostReasons.RunTime)
+            : claims.IsQuiet(claim, now)
+                ? new ClaimRefusedDto($"this claim has gone quiet for {Minutes(claims.WindowFor(claim))}", ClaimLostReasons.Quiet)
+                : new ClaimRefusedDto("this claim has expired", ClaimLostReasons.Expired),
         _ => new ClaimRefusedDto(
             claims.IsLive(claim, now) ? claims.Sentence(claim, now) : "this claim was taken over",
             ClaimLostReasons.Taken),
     };
+
+    /// <summary><see cref="Minutes"/> as an adjective, for a limit: <c>60-minute</c>, <c>90-second</c>.</summary>
+    private static string Limit(int seconds) => Minutes(seconds).Replace(' ', '-').TrimEnd('s');
 
     /// <summary>A window in the unit a person says it in: whole minutes where it is one, seconds otherwise.</summary>
     private static string Minutes(int seconds) => seconds % 60 == 0

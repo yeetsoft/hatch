@@ -2234,16 +2234,17 @@ because `IssueClaims.IsLive` is the one place both conditions are asked, and
 nothing downstream repeats the arithmetic. A heartbeat against a quiet claim is
 refused `409` with `this claim has gone quiet for 5 minutes` - the claim's own
 window, in whole minutes, so `25 minutes` for 1500 seconds, `1 minute` for 60,
-and `90 seconds` where it is not a whole number of them - beside the three
-reasons a heartbeat could already be refused, and checked before "expired"
-where a claim happens to qualify as both. The `409` answers `{ error,
+and `90 seconds` where it is not a whole number of them - beside the reasons a
+heartbeat could already be refused, and checked before "expired" where a claim
+happens to qualify as both. The `409` answers `{ error,
 reason }` - `error` the sentence it always printed, `reason` one of
-`quiet`, `expired`, `cleared` (no token on the claim) or `taken` (somebody
-else's) - so a client can act on which without parsing prose; a take's own
-`409`s are unchanged, bare strings. A release may say the same: `DELETE
+`quiet`, `run-time` (past its cap, below), `expired`, `cleared` (no token on the
+claim) or `taken` (somebody else's) - so a client can act on which without
+parsing prose; a take's own `409`s are unchanged, bare strings. A release may
+say `quiet` or `run-time` the same way: `DELETE
 …/claim?token=…&outcome=…&reason=quiet` is read only alongside both a
 token and an outcome, and rides into the `claim_released` payload beside
-them. `Hatch:StallLapseMinutes = 0` turns
+them; any other reason is `400`, naming both. `Hatch:StallLapseMinutes = 0` turns
 this off entirely for a claim with no window of its own — such a claim is then
 judged on its TTL alone — and a
 negative value falls back to the default, the guard `Hatch:ClaimTtlSeconds`
@@ -2259,8 +2260,18 @@ claim carries `ClaimMaxRunSeconds`, a hard ceiling on a run judged from
 `ClaimedAt` plus the cap the claim is live; one tick past, it is not, and
 `IssueClaims.IsLive`, the live and takeable predicates every query shares, and a
 take all agree - a take over it succeeds. A null or non-positive column is no
-cap. Nothing writes the column yet (HA-2142 does), so every claim is judged as it
-was before.
+cap. The column is written the way the quiet window is: a take, or a heartbeat
+that attaches a playbook, copies that playbook's `MaxRunSeconds` onto the claim
+- a table row by id, a repo-sourced file row by its transient id with no id
+stored - so a playbook with no cap writes null, a heartbeat naming none leaves
+the cap alone, and a takeover never inherits the lapsed lease's. The take
+answers it as `maxRunSeconds`, in seconds, `0` for none. A heartbeat from the
+holder's own token past the cap is refused `409` with `this claim ran past its
+60-minute limit` (`90-second` where the cap is not a whole number of minutes),
+reason `run-time`, and checked before "quiet" where a claim is both: no amount
+of chatter would have saved it. A release by the holder's own token is not
+refused for it - it clears, as it does a quiet claim - and may name `run-time`
+as its reason.
 
 **A marked issue resumes itself after `Hatch:StallResumeMinutes`**, fifteen
 minutes by default — judged against `StalledAt`, and a separate window from
@@ -2680,7 +2691,7 @@ by a commit to the file. A row's optional keys are `model`, `effort`, `shape`,
 `deniedTools` and `isCheck`; `quietLimitSeconds` and `maxRunSeconds` each
 follow the same rule as `briefLimit` — a whole number of one or more, in
 seconds — and a value that is not one makes the file `invalid`, with the line
-the value is on. `maxRunSeconds` is stored and read back; nothing reads it yet.
+the value is on. `maxRunSeconds` is stored and read back, and a [claim](#claim) copies it as its run cap.
 A parsed row's `unreachableReason` is computed on read from the live columns
 and never persisted, so reordering columns changes it with no new `PUT`;
 `Rows` JSON is unchanged.
@@ -3597,7 +3608,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
-| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId` and giving the lease its quiet window (a repo-sourced file row's negative id works too, and sets the window without being stored), `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, and `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off. `409` naming the holder where something live already has it — including the same runner asking twice |
+| `/issues/{key}/claim` | POST | Takes the [lease](#claim). `{ runner, playbookId? }` — the playbook the lease works under, stored as `ClaimPlaybookId` and giving the lease its quiet window (a repo-sourced file row's negative id works too, and sets the window without being stored), `400` naming it where there is no such playbook; answers with the token, the holder, when it was taken and the TTL, `stallLapseSeconds` — the same window a claim goes quiet by, in seconds, or `0` when lapsing is off — and `maxRunSeconds`, the playbook's run cap in seconds or `0` for none (also copied onto the claim, a file row's with no id stored). `409` naming the holder where something live already has it — including the same runner asking twice |
 | `/issues/{key}/claim/heartbeat` | POST | `{ token, chatter?, playbookId?, usage?, usageReadAt? }` — refreshes it, `204`. `409` on a token that is not the row's, on a lease that is over, and on one that has gone quiet — see [Claim](#claim). `chatter` absent leaves the carried line alone, `""` clears it, anything longer than the column is truncated rather than refused. `playbookId` absent leaves the claim's playbook alone, and a value overwrites it, and the claim's quiet window with it (`400` for an unknown playbook; a repo-sourced file row's negative id is accepted); a heartbeat cannot clear it. `usage` is the runner heartbeat's reading and follows its rule (absent or empty leaves the row alone); it is written to the holding session, or to the one runner row the beat kept live (never to every row at the checkout), only on a beat that renewed the lease, is not written when `usageReadAt` is absent or older than the row's own, and a `409` writes nothing |
 | `/issues/{key}/claim?token=…&outcome=…` | DELETE | Releases it, `204`. A mismatched token is `409` and clears nothing; an issue holding no claim is `204` and writes nothing. `outcome` (`dropped`, `worked`, `preempted` or `recused`) is read only where `token` is given and is otherwise optional — an older CLI names none — and a value that is none of those is `400`. **With no token at all it is person-only** — an agent that could clear another runner's claim could take a ticket off it mid-increment |
 | `/issues/{key}/verdicts` | POST | Records a [check](#check) session's [verdict](#verdict). `{ verdict, findings? }`; open to a key and a person, `204`, no body. `400` where the live claim is not under a check playbook (*"a verdict needs a check playbook covering <KEY> where it stands, and none does"* — also what a claim with no playbook named, or no claim at all, gets), for a `verdict` that is not `pass` or `fail` (*"\"<word>\" is not a verdict - it is \"pass\" or \"fail\""*), and for `findings` over the comment body length (*"findings are at most <n> characters"*); `404` on an unknown key. A second call under the same claim replaces the first. Writes a `verdict_recorded` event and moves nothing. No `GET` |
@@ -3625,7 +3636,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/dependency-files` | GET | Every stored [dependency file](#dependency-file), ordered by canonical then trunk, with the path itself alongside them, each entry's id resolved to its current label |
 | `/dependency-files` | PUT | Keeps a runner's [dependency file](#dependency-file) for one repository's trunk. `{ remote, trunk, sha, content?, url?, runner }` — `content` the blob's exact bytes, base64-encoded, absent for a trunk with nothing at the path. Hashes and parses the content itself rather than trusting a client-sent verdict via `DependencyDeclaration.Parse`. The same refusals the trunk build's write takes, naming the trunk, plus content that is not valid base64 or over the parser's own size limit. No event and no question — there is no issue to write either on |
 | `/work/review` | GET | Every issue in the review column the caller holds a checkout of, with its bound repositories and the [merge checks](#merge-check) the board holds — what a runner's poll reads before it asks git anything. `?remote=` (repeatable) and `?standing=` as on the queue; no `clones`, because a poll clones nothing. Not narrowed by a claim, a question, a date or an assignee — see [checking the branches in review](#checking-the-branches-in-review) |
-| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - stored, not yet read); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
+| `/playbooks` | GET | **Reads only.** POST/PATCH/DELETE are plain `[RequireRole(User)]`, and checked again in the action by `PlaybookWrites` so the cut holds with the wall off too - a person means a person at the browser, not merely a signed-in session with no UI. Each playbook carries `isCheck`, `quietLimitSeconds` (null inherits `Hatch:StallLapseMinutes`; `POST`/`PATCH` take it as a string, the three states `budget` takes, 400 *a quiet limit is a whole number of one or more, in seconds* otherwise) and `maxRunSeconds` (null means no limit; `POST`/`PATCH` take it as a string, the same three states, 400 *a run limit is a whole number of one or more, in seconds* otherwise - a claim copies it as its run cap, see [Claim](#claim)); a person's `POST` and `PATCH` take `isCheck?` (absent is false on create and leaves it alone on patch) — see [Check](#check). A response's `prompt` is the effective text and `defaultPrompt` the prescribed one, or null; a `PATCH` of a blank `prompt`, or of one equal to the prescribed text, hands the row back to its prescribed text (400 *a playbook needs a prompt* where there is none) — see [Playbooks](#playbooks) |
 | `/playbook-proposals` | GET | The queue for one [playbook proposal](#playbook-proposal) state, oldest first — pending by default, or `?state=approved`, `rejected` or `all` |
 | `/playbook-proposals/{id}` | GET | One proposal, with every change it carries |
 | `/playbook-proposals` | POST | Files a [playbook proposal](#playbook-proposal) — a reason, an optional issue, and one or more changes — checked against the live board the same way `PATCH /playbooks/{id}` is, and against every other pending proposal naming the same row, before anything saves; changes nothing live. A named issue gets a `playbook_proposed` event |
