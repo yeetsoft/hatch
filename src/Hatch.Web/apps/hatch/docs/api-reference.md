@@ -1256,7 +1256,17 @@ of runners able to take at least one of them - zero or one name, never more,
 since a project with two or more is not listed at all) and `reasons` (one
 `{runner, reason}` per live runner outside `takers`, from the project's
 highest-ranked step that runner cannot take). Empty, not null, when nothing
-qualifies or no runner is live.
+qualifies or no runner is live. `stalled` lists every issue, outside a
+terminal or deferred column, that a person has held or the board has marked
+stalled, in board order (column, then rank, then id), whatever the board's
+shape; each entry carries `key`, `title`, `type`, `stalledAt` (null when it is
+only held), `stalledWhy`, `held`, `letGo` (how many times in a row the loop let
+it go, 0 when it is not marked stalled), `sentence` (the queue's own words for
+why it is folded, null when nothing folds it now) and `kind`: `person` when
+only a person can move it on - held, stalled on a board that never resumes, or
+stalled past the window at the resume limit - and `loop` when the board
+resumes it by itself. `stallResumeSeconds` is the board's resume window, 0 when
+it never resumes one. `stalled` is empty, not null, when there is none.
 
 **Refusals.** None beyond the ordinary ones - every route in this group is
 a read with no body to reject.

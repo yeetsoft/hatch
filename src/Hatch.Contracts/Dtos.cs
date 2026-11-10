@@ -1524,6 +1524,18 @@ public record ReviewDto(
 /// Empty, not null, when nothing qualifies or no runner is live. Defaults to
 /// null so an older client still reads.
 /// </param>
+/// <param name="Stalled">
+/// Every non-terminal, non-deferred issue that is held or marked stalled, in
+/// board order - column, then rank, then id - each with who it waits on:
+/// <c>person</c> when only a person can move it on, <c>loop</c> when the board
+/// resumes it by itself. Empty, not null, when there is none, on every board
+/// shape. Defaults to null so an older client still reads.
+/// </param>
+/// <param name="StallResumeSeconds">
+/// The board's resume window in seconds, 0 when the board does not resume a
+/// stalled issue on its own. Answered on every board shape. Defaults to 0 so an
+/// older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1541,7 +1553,9 @@ public record AttentionDto(
     BackupAttentionDto? Backup = null,
     IReadOnlyList<WaitingOnARunnerDto>? WaitingOnARunner = null,
     IReadOnlyList<TrainStalledDto>? TrainStalled = null,
-    IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null);
+    IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null,
+    IReadOnlyList<StalledIssueDto>? Stalled = null,
+    int StallResumeSeconds = 0);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1646,6 +1660,17 @@ public record NoCodeHeldDto(string Key, string Title, string Type, string Reason
 /// </summary>
 /// <param name="Sentence">The queue's own words, starting <c>deadlocked - </c>.</param>
 public record DeadlockedDto(string Key, string Title, string Type, string Sentence);
+
+/// <summary>
+/// One issue that is held or marked stalled - see <see cref="AttentionDto.Stalled"/>.
+/// </summary>
+/// <param name="StalledAt">When the board marked it stalled; null when it is only held.</param>
+/// <param name="StalledWhy">The reason the stall gave, when it gave one.</param>
+/// <param name="Held">Whether a person has held it.</param>
+/// <param name="LetGo">How many times in a row the loop let it go; 0 when it is not marked stalled.</param>
+/// <param name="Sentence">The queue's own words for the fold; null when nothing folds it now.</param>
+/// <param name="Kind">One of <see cref="StalledKinds"/>.</param>
+public record StalledIssueDto(string Key, string Title, string Type, DateTimeOffset? StalledAt, string? StalledWhy, bool Held, int LetGo, string? Sentence, string Kind);
 
 /// <summary>
 /// An issue whose next move is clear, and that no live runner can take - see
@@ -2492,6 +2517,16 @@ public static class HopKinds
     /// all done, or that declared it finished with no code - see HA-472.
     /// </summary>
     public const string Close = "close";
+}
+
+/// <summary>Who a stalled row waits on - see StalledIssueDto.Kind.</summary>
+public static class StalledKinds
+{
+    /// <summary>Only a person can move it on: held, or stalled past the board's resume allowance.</summary>
+    public const string Person = "person";
+
+    /// <summary>The board resumes it by itself.</summary>
+    public const string Loop = "loop";
 }
 
 /// <summary>Which of the seven kinds folded a row - see QueueEntryDto.BlockedKind.</summary>
