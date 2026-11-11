@@ -64,7 +64,7 @@ public class RunnersSessionControlsTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/runners/{Owned}", context => Stub(context, sent));
+            await harness.OpenAsync(deadline, baseUrl, $"/runners/{Owned}", context => Stub(context, sent));
             await harness.WaitForVisibleAsync(deadline, ".hatch-runner-sessions");
 
             var owner = await harness.EvaluateAsync<string>(deadline, "reading the owner's card", Read);

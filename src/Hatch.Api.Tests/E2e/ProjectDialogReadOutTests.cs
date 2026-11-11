@@ -34,7 +34,7 @@ public class ProjectDialogReadOutTests(ITestOutputHelper output)
 
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
-    private const string ProjectsPath = "/apps/hatch/projects";
+    private const string ProjectsPath = "/projects";
 
     private const string CheckLabel = "A passing check approves the merge";
 

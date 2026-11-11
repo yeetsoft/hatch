@@ -26,6 +26,7 @@ import { IssuePeek } from '../components/IssuePeek';
 import { NewIssueDialog } from '../components/NewIssueDialog';
 import { OmniBar } from '../components/OmniBar';
 import { QueueControl } from '../components/QueueControl';
+import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
@@ -40,10 +41,12 @@ import {
   filterCards,
   initialProject,
   isFiltering,
+  readBoardContributions,
   readBoardTypes,
   revealType,
   scrubbedProject,
   writeBoardProject,
+  writeBoardContributions,
   writeBoardTypes,
 } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
@@ -58,7 +61,7 @@ import { pinnedBoard, readBoardView, resolveBoardLayout, startsCollapsed, writeB
 import type { BoardView } from '../lib/phoneBoard';
 import { columnDroppableId, place, sendTo, targetStatusId } from '../lib/place';
 import type { Placement } from '../lib/place';
-import { columnBlocked } from '../lib/protectedColumns';
+import { columnBlocked, confirmMove } from '../lib/protectedColumns';
 import { flowBand, flowSentence } from '../lib/queue';
 import { chains } from '../lib/chains';
 import { spotlight } from '../lib/spotlight';
@@ -76,12 +79,13 @@ import { useRunners } from '../lib/useRunners';
 import { useScope } from '../lib/useScope';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { usePhone, useStandalone } from '../lib/viewport';
+import { useMoveConfirmation } from '../lib/useMoveConfirmation';
 import { useWipOverride } from '../lib/useWipOverride';
 import { overridden, wipRefusal } from '../lib/wipOverride';
 import { meterText, preview, runs, tightest } from '../lib/wip';
 import type { Tightness } from '../lib/wip';
 import { WipBands } from '../components/WipBands';
-import type { AssigneeDirectory, IssueCard, Project, Status, Wip } from '../types';
+import type { AssigneeDirectory, Board, IssueCard, Project, Status, Wip } from '../types';
 
 /** The URL's whole vocabulary here: which project, by key - the same param
     PlanPage's picker uses. */
@@ -204,6 +208,7 @@ export function BoardPage() {
   const [filter, setFilter] = useState<CardFilter>(() => ({
     ...DEFAULT_FILTER,
     types: readBoardTypes(),
+    contributions: readBoardContributions(),
     project: initialProject(params.get(PROJECT)),
   }));
 
@@ -218,6 +223,7 @@ export function BoardPage() {
     (next: CardFilter) => {
       setFilter((prev) => {
         if (next.types !== prev.types) writeBoardTypes(next.types);
+        if (next.contributions !== prev.contributions) writeBoardContributions(next.contributions);
         if (next.project !== prev.project) {
           const nextParams = new URLSearchParams(params);
           if (next.project) nextParams.set(PROJECT, next.project);
@@ -292,6 +298,11 @@ export function BoardPage() {
   // `onLeave`: Leave it, or dismissing it, catches the board up with the card
   // commit's own catch has already put back.
   const wip = useWipOverride(reload);
+
+  // The second look at a contribution moving into a column that merges pull
+  // requests. Asked before `commit`, so Leave it has nothing to put back.
+  const contributionMove = useMoveConfirmation();
+  const { ask: askContribution } = contributionMove;
 
   useEffect(() => {
     getAssignees().then(setDirectory).catch(() => {
@@ -516,25 +527,32 @@ export function BoardPage() {
       const placed = place(board.issues, visible, String(event.active.id), event.over ? String(event.over.id) : null);
       if (!placed) return;
 
-      // Held past the repaint below and past the request, so the preview
-      // does not go back to rest and then jump again once the reload's own
-      // wip catches up - see lib/wip.ts's preview and the decision on the
-      // ticket this implements.
-      if (zoneIds.has(placed.statusId)) {
-        setLanding(board.issues.find((i) => i.key === placed.key) ?? null);
-      }
+      const drop = async () => {
+        // Held past the repaint below and past the request, so the preview
+        // does not go back to rest and then jump again once the reload's own
+        // wip catches up - see lib/wip.ts's preview and the decision on the
+        // ticket this implements.
+        if (zoneIds.has(placed.statusId)) {
+          setLanding(board.issues.find((i) => i.key === placed.key) ?? null);
+        }
 
-      try {
-        await commit(placed);
-      } catch (err) {
-        // Nothing is asked here: a move the server refused closed nothing.
-        setError(message(err));
-        await reload();
-      } finally {
-        setLanding(null);
-      }
+        try {
+          await commit(placed);
+        } catch (err) {
+          // Nothing is asked here: a move the server refused closed nothing.
+          setError(message(err));
+          await reload();
+        } finally {
+          setLanding(null);
+        }
+      };
+
+      // Nothing has been repainted yet, so Leave it needs no reload.
+      const sentence = contributionSentence(board, placed);
+      if (sentence) askContribution(placed.key, sentence, drop);
+      else await drop();
     },
-    [board, visible, commit, setError, reload, zoneIds],
+    [board, visible, commit, setError, reload, zoneIds, askContribution],
   );
 
   /** The peek's status picker, sending a card to a column by a press rather
@@ -548,16 +566,25 @@ export function BoardPage() {
       if (!placed) return;
 
       const was = board.issues.find((i) => i.key === key)?.statusId;
-      try {
-        await commit(placed, was);
-      } catch (err) {
-        // Reloaded rather than shown here: this line is hidden behind the
-        // peek, and the rethrow is what lets the dialog show it instead.
-        await reload();
-        throw err;
+      const go = async () => {
+        try {
+          await commit(placed, was);
+        } catch (err) {
+          // Reloaded rather than shown here: this line is hidden behind the
+          // peek, and the rethrow is what lets the dialog show it instead.
+          await reload();
+          throw err;
+        }
+      };
+
+      const sentence = contributionSentence(board, placed);
+      if (sentence) {
+        askContribution(key, sentence, go);
+        return;
       }
+      await go();
     },
-    [board, commit, reload],
+    [board, commit, reload, askContribution],
   );
 
   /** The peek's Delete, once it has been confirmed there. A refusal propagates
@@ -923,8 +950,24 @@ export function BoardPage() {
         onConfirm={wip.confirm}
         onClose={wip.close}
       />
+
+      <ContributionMoveDialog
+        asking={contributionMove.asking}
+        busy={contributionMove.busy}
+        error={contributionMove.error}
+        onConfirm={contributionMove.confirm}
+        onClose={contributionMove.close}
+      />
     </div>
   );
+}
+
+/** The confirm a placement raises, or null: the card as the board holds it
+    before the repaint, into the column it was placed in. */
+function contributionSentence(board: Board, placed: Placement): string | null {
+  const card = board.issues.find((i) => i.key === placed.key);
+  const target = board.statuses.find((s) => s.id === placed.statusId);
+  return card && target ? confirmMove(target, card) : null;
 }
 
 const terminalOf = (statuses: Status[], statusId: number) =>

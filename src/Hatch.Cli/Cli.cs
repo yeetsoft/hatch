@@ -44,6 +44,12 @@ public sealed record Cli(
     /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
     public IReadOnlyList<string> Has { get; init; } = [];
 
+    /// <summary>
+    /// The forge a command asks about a pull request, given a path and the repository's canonical identity -
+    /// the same shape as <c>Runtime.Forge</c>. The real <c>gh</c> unless a test says otherwise.
+    /// </summary>
+    public Func<string, string?, IForge> Forge { get; init; } = (path, canonical) => new GhForge(path, canonical);
+
     public DateTimeOffset Now => Clock.GetLocalNow();
 
     public int OffsetMinutes => Board.OffsetMinutes(Now);

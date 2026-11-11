@@ -60,7 +60,7 @@ public class ActivityReportPageTests(ITestOutputHelper output)
             var (actor, key) = await deadline.BoundAsync("filing an issue and a comment", () => FileAsync(baseUrl));
 
             // An actor chosen, over the default fourteen days the filing above is in.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/reports/activity?actor=" + Uri.EscapeDataString(actor));
+            await harness.OpenAsync(deadline, baseUrl, "/reports/activity?actor=" + Uri.EscapeDataString(actor));
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, "main strong");
 

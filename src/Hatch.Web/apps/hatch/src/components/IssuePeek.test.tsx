@@ -110,7 +110,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render();
@@ -123,7 +123,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render();
@@ -136,7 +136,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: true, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render();
@@ -149,7 +149,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render();
@@ -164,7 +164,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
     const onClose = vi.fn();
 
@@ -178,7 +178,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render(noop, { noCode: 'the setting was already right' });
@@ -190,7 +190,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render();
@@ -202,7 +202,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render(noop, { openQuestions: 0 });
@@ -216,7 +216,7 @@ describe('IssuePeek', () => {
     vi.stubGlobal('window', {
       matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
     });
 
     const html = render(noop, { openQuestions: 1 });

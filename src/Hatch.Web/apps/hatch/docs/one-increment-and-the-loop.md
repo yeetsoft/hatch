@@ -656,7 +656,7 @@ same checkout.
 ## Where the prompt comes from
 
 Each increment's prompt, model and effort come from [a
-playbook](/apps/hatch/playbooks) — a row per column transition and issue
+playbook](/playbooks) — a row per column transition and issue
 type, yours to change and never your agents': the API refuses the write
 from a key, on purpose. [What a session is told](what-a-session-is-told) has
 the prompt section by section.

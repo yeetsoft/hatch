@@ -230,6 +230,101 @@ public sealed class ForgeTests
         Assert.Equal("To get started with GitHub CLI, please run:  gh auth login", answer.Why);
     }
 
+    // ---- The body of a pull request ----
+
+    [Fact]
+    public async Task A_pull_requests_body_is_read_with_pr_view_json_body()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"body":"intro\n\nnotes"}""", "") };
+
+        var answer = await runs.Forge().ReadBodyAsync("https://forge.example/o/r/pull/3", default);
+
+        Assert.Equal("intro\n\nnotes", answer.Body);
+        Assert.Null(answer.Why);
+        Assert.Equal(["pr", "view", "https://forge.example/o/r/pull/3", "--json", "body"], Assert.Single(runs.Calls).Args);
+    }
+
+    [Fact]
+    public async Task An_empty_body_is_a_body()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, """{"body":""}""", "") };
+
+        var answer = await runs.Forge().ReadBodyAsync("https://forge.example/o/r/pull/3", default);
+
+        Assert.Equal("", answer.Body);
+        Assert.Null(answer.Why);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"body":null}""")]
+    [InlineData("[]")]
+    [InlineData("not json")]
+    public async Task A_read_that_is_not_a_pull_request_is_said_in_one_line(string printed)
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, printed, "") };
+
+        var answer = await runs.Forge().ReadBodyAsync("https://forge.example/o/r/pull/3", default);
+
+        Assert.Null(answer.Body);
+        Assert.Equal("gh answered with something that is not a pull request", answer.Why);
+    }
+
+    [Fact]
+    public async Task A_body_is_written_from_a_file_without_a_byte_order_mark_and_the_file_is_removed()
+    {
+        string? file = null;
+        byte[]? bytes = null;
+        var runs = new Runs
+        {
+            Answer = args =>
+            {
+                file = args[^1];
+                bytes = File.ReadAllBytes(file);
+                return new GhForge.Ran(0, "", "");
+            },
+        };
+        const string body = "intro é\n\n<!-- marker -->\n";
+
+        var answer = await runs.Forge().EditBodyAsync("https://forge.example/o/r/pull/3", body, default);
+
+        Assert.True(answer.Edited);
+        Assert.Null(answer.Why);
+        var args = Assert.Single(runs.Calls).Args;
+        Assert.Equal(["pr", "edit", "https://forge.example/o/r/pull/3", "--body-file", file], args);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(body), bytes);
+        Assert.False(File.Exists(file));
+    }
+
+    [Fact]
+    public async Task A_body_that_gh_refuses_says_the_first_line_and_still_removes_the_file()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(1, "", "\nGraphQL: must have admin rights\nmore\n") };
+
+        var answer = await runs.Forge().EditBodyAsync("https://forge.example/o/r/pull/3", "body", default);
+
+        Assert.False(answer.Edited);
+        Assert.Equal("GraphQL: must have admin rights", answer.Why);
+        Assert.False(File.Exists(Assert.Single(runs.Calls).Args[^1]));
+    }
+
+    [Theory]
+    [InlineData("/srv/repo.git")]
+    [InlineData("./repo")]
+    public async Task A_local_path_has_no_forge_to_read_or_write_a_body_on(string canonical)
+    {
+        var runs = new Runs();
+
+        var read = await runs.Forge(canonical: canonical).ReadBodyAsync("https://forge.example/o/r/pull/3", default);
+        var edit = await runs.Forge(canonical: canonical).EditBodyAsync("https://forge.example/o/r/pull/3", "body", default);
+
+        Assert.Null(read.Body);
+        Assert.NotNull(read.Why);
+        Assert.False(edit.Edited);
+        Assert.NotNull(edit.Why);
+        Assert.Empty(runs.Calls);
+    }
+
     [Fact]
     public async Task A_gh_that_answers_nonsense_is_a_reason_and_not_an_exception()
     {

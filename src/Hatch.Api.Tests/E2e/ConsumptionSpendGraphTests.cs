@@ -67,7 +67,7 @@ public class ConsumptionSpendGraphTests(ITestOutputHelper output)
             var key = await deadline.BoundAsync("filing an epic", () => FileAsync(baseUrl));
             await deadline.BoundAsync("logging three sessions", () => LogAsync(harness.Services, key));
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/reports/consumption");
+            await harness.OpenAsync(deadline, baseUrl, "/reports/consumption");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, ".hatch-spend-plot");
 

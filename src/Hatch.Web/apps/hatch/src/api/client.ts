@@ -1,3 +1,4 @@
+import { consumptionFilterQuery, type ConsumptionFilterQuery } from '../lib/consumptionReport';
 import { HttpError, refusalSentence } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
@@ -909,30 +910,17 @@ export interface ChangelogReportQuery {
     are repeated once per id; `type` and `sort` are left to the server's default
     when unset, and `limit` and `offsetMinutes` are always sent. */
 export const getConsumptionReport = (query: ConsumptionReportQuery) => {
-  const params = new URLSearchParams();
-  if (query.from) params.set('from', query.from);
-  if (query.to) params.set('to', query.to);
-  for (const id of query.projectId ?? []) params.append('projectId', String(id));
-  for (const id of query.statusId ?? []) params.append('statusId', String(id));
-  if (query.type) params.set('type', query.type);
-  if (query.sort) params.set('sort', query.sort);
+  const params = consumptionFilterQuery(query);
   params.set('limit', String(query.limit));
-  params.set('offsetMinutes', String(query.offsetMinutes));
   const qs = params.toString();
   return fetchJson<ConsumptionReport>('/api/hatch/reports/consumption' + (qs ? '?' + qs : ''));
 };
 
-/** The consumption report route's query string. `offsetMinutes` is minutes east
-    of UTC, the reader's. */
-export interface ConsumptionReportQuery {
-  from?: string | null;
-  to?: string | null;
-  type?: string | null;
-  sort?: string | null;
+/** The consumption report route's query string: `ConsumptionFilterQuery` -
+    shared with the CSV download (`lib/consumptionReport.ts`) - plus the row
+    cap the CSV has none of. */
+export interface ConsumptionReportQuery extends ConsumptionFilterQuery {
   limit: number;
-  offsetMinutes: number;
-  statusId?: number[] | null;
-  projectId?: number[] | null;
 }
 
 export interface WorkLogSessionQuery {

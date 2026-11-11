@@ -616,7 +616,7 @@ right now. That is the board's whole job. The column is found the way
 ### move
 
 ```
-hatch move AER-12 <column>
+hatch move AER-12 <column> [--contribution]
 ```
 
 Moves the ticket to any column that is neither terminal nor protected. The
@@ -626,6 +626,12 @@ something shipped; a deferred column refuses for the same reason; and a
 protected column refuses, because only its approvers move work there, in the
 browser. [The board and its columns](the-board-and-its-columns) has which is
 which. A move is an event under the key's name.
+
+A [contribution](issues#contribution), an issue with a record that it came from
+outside, is refused a column that merges pull requests, in one line, because
+merging it merges someone else's branch. `--contribution`, in any position, says
+that is meant and moves it. It changes nothing else: a protected column is
+refused exactly as above, flag or not, and an issue with no record needs no flag.
 
 ### comment
 
@@ -648,7 +654,15 @@ reviewed, and nothing else, so `open "$(hatch pr AER-12)"` is the whole of
 "show me the review". A ticket that declared it finished with no code prints
 that declaration instead. With two it writes.
 
-- `<url>` records where the review is, having opened one.
+- `<url>` records where the review is, having opened one. It then writes the
+  ticket's chain, from the ticket up to its root, into the pull request's body
+  on the forge as an envelope, replacing one already there and leaving the rest
+  of the body as it was, so a board that receives the pull request can mirror
+  the epic it came from. The read, `--clear` and `--none` do not touch the
+  forge. Where it cannot be done (no `gh`, not signed in, no write access)
+  that is one line on standard error, `hatch: AER-12 - its pull request's body
+  was not updated with the envelope - <why>`, with exit `0` and the URL still
+  recorded.
 - `--clear` takes it off the one it has.
 - `--none "reason"` declares the ticket finished with no code, and prints
   `AER-12: finished with no code - reason`. The reason is required and at

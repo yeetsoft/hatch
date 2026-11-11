@@ -13,6 +13,7 @@ import {
   TABLE_LIMIT,
   TYPE,
   capWords,
+  consumptionCsvHref,
   emptiness,
   humanDuration,
   readSearch,
@@ -26,6 +27,7 @@ import {
   withSort,
   withStatusId,
   withType,
+  type ConsumptionFilterQuery,
   type ConsumptionType,
 } from '../lib/consumptionReport';
 import type { SpendMeasure } from '../lib/leaderboard';
@@ -56,6 +58,9 @@ interface ConsumptionReportBodyProps {
   onSort: (sort: ConsumptionSort) => void;
   measure: SpendMeasure;
   onMeasure: (measure: SpendMeasure) => void;
+  /** The filter `report` was read with - the CSV download's own query, built
+      from the same URL. */
+  query: ConsumptionFilterQuery;
   /** Pinned by tests; the page passes none and gets the reader's. */
   locale?: string;
 }
@@ -126,6 +131,7 @@ export function ConsumptionReportBody({
   onSort,
   measure,
   onMeasure,
+  query,
   locale,
 }: ConsumptionReportBodyProps) {
   if (report === null) return <EmptyState message={noProjectWords()} />;
@@ -158,7 +164,13 @@ export function ConsumptionReportBody({
 
   return (
     <>
-      <p>{totalsLine(report)}</p>
+      <p className="hatch-consumption-totals">
+        {totalsLine(report)}
+        {' · '}
+        <a className="hatch-consumption-csv" href={consumptionCsvHref(query)} download>
+          Download CSV
+        </a>
+      </p>
       {graph}
       {cap && <p className="text-muted">{cap}</p>}
 
@@ -285,7 +297,7 @@ function ConsumptionReportReader({ keys }: { keys: string[] }) {
   if (error && !data) return <p className="text-danger">{error}</p>;
   if (!data) return <p className="text-muted">Loading…</p>;
 
-  const { offered, chosen } = reportProjects(params, data.projects, keys);
+  const { offered, chosen, narrowed } = reportProjects(params, data.projects, keys);
   const type = resolveType(params);
   const sort = resolveSort(params);
   const columns = boardColumns(statuses ?? []);
@@ -293,6 +305,19 @@ function ConsumptionReportReader({ keys }: { keys: string[] }) {
   /* A pasted `status` the board has no column for is every column, in the
      control as in the read - it would otherwise show a value nothing offers. */
   const status = columns.find((c) => c.id === statusId) ? String(statusId) : '';
+
+  /* The same shape `load()` built for `getConsumptionReport`, from the same
+     URL - only `measure`, which touches none of these fields, differs
+     between `params` and the `search` the read keyed on. */
+  const query: ConsumptionFilterQuery = {
+    from,
+    to,
+    type,
+    sort,
+    offsetMinutes,
+    statusId: statusId ? [statusId] : undefined,
+    projectId: narrowed?.map((p) => p.id),
+  };
 
   return (
     <div className="hatch-page">
@@ -357,6 +382,7 @@ function ConsumptionReportReader({ keys }: { keys: string[] }) {
         onSort={(next) => setParams(withSort(params, next), { replace: true })}
         measure={resolveMeasure(params)}
         onMeasure={(next) => setParams(withMeasure(params, next), { replace: true })}
+        query={query}
       />
     </div>
   );

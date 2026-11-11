@@ -80,7 +80,7 @@ public class SearchScopeTests(ITestOutputHelper output)
             string[] scopedIds = [ids["SEA"], ids["SEB"]];
 
             // Scoped to two of three: the facet offers the two, and none chosen draws both.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/search?scope=SEA,SEB");
+            await harness.OpenAsync(deadline, baseUrl, "/search?scope=SEA,SEB");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, TitleOf("SEA"), TitleOf("SEB"));
             Assert.Equal(["", .. scopedIds], Strings(scoped, "options"));
             Assert.Equal("All in scope", scoped.GetProperty("empty").GetString());
