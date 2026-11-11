@@ -138,7 +138,7 @@ comma-separated. A link you click carries the tab's own scope forward; a
 link you paste or are sent means exactly what it says, with no
 browser memory behind it, so two tabs can hold two different scopes at
 once. Projects, Statuses, Playbooks, Runners, Overnight, Get the runner,
-Users, API keys, Settings and Docs ignore it — none of them is an issue
+Users, Settings and Docs ignore it — none of them is an issue
 list. Later sections on this page, and this app's other pages, say where
 else it reaches.
 
