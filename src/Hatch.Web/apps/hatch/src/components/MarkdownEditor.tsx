@@ -305,7 +305,7 @@ function MonacoEditor({
   useEffect(() => {
     onCtrlEnterRef.current = onCtrlEnter;
   });
-  const { resolved } = useTheme();
+  const { resolved, palette } = useTheme();
 
   const executeInsert = (text: string) => {
     const editor = editorRef.current;
@@ -326,12 +326,12 @@ function MonacoEditor({
 
   const { EndOfLinePreference, EditorOption } = monaco.editor;
 
-  // Re-colours an open editor when the theme flips. Passive, on purpose:
+  // Re-colours an open editor when the theme flips or a palette is applied. Passive, on purpose:
   // ThemeProvider writes `<html data-theme>` in a layout effect, and every layout
   // effect in a commit runs before any passive one - so the tokens read here are
   // the new theme's. A layout effect would read the old ones. (The first colouring
   // is done below, before the editor exists; there the tokens are long settled.)
-  useEffect(() => monaco.applyTheme(resolved), [monaco, resolved]);
+  useEffect(() => monaco.applyTheme(resolved), [monaco, resolved, palette]);
 
   useFocusFromLabel(host, () => editorRef.current?.focus());
 

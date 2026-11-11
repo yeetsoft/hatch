@@ -114,7 +114,7 @@ function DocsArticle({ page }: { page: DocPage }) {
   const pageRef = useRef<HTMLDivElement>(null);
   const doc = useMemo(() => renderedDoc(page), [page]);
   const { previous, next } = docNeighbours(DOC_PAGES, page.slug);
-  const { resolved } = useTheme();
+  const { resolved, palette } = useTheme();
 
   // On a fresh load, on a hash change, and on moving from one docs page to another
   // - Back included. The route element is the same for every docs page, so
@@ -127,7 +127,7 @@ function DocsArticle({ page }: { page: DocPage }) {
     target?.scrollIntoView();
   }, [pathname, hash]);
 
-  // Draws (and, on a theme switch, redraws) every mermaid placeholder in the
+  // Draws (and, on a theme or palette change, redraws) every mermaid placeholder in the
   // article. A page with none asks for nothing - doc.mermaidCount gates the
   // import itself, not just the drawing, so mermaid's chunk is never fetched
   // by a route that has no diagram. The source <pre> is never removed, only
@@ -135,7 +135,7 @@ function DocsArticle({ page }: { page: DocPage }) {
   useEffect(() => {
     if (doc.mermaidCount === 0 || !pageRef.current) return;
     return drawMermaid(pageRef.current, (what, e) => clientLogger.error(what, { message: String(e) }));
-  }, [doc, resolved]);
+  }, [doc, resolved, palette]);
 
   // One handler for the whole article. A link into the app goes through the router
   // (no page load, either address); fragments and external links stay the browser's.

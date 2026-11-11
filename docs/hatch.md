@@ -7989,6 +7989,15 @@ One pass, from the board to the release:
    it enters it — see [a conflict increment](#a-conflict-increment-is-judged-by-the-branch-not-by-the-column).
    After the session ends, the runner reads the issue once more — see [when an
    increment does nothing](#when-an-increment-does-nothing) — to find a recusal.
+   A session that ends before its first stream event — the agent's own `init`,
+   `thread.started` or first JSON line — has nothing in the stream to say why,
+   so the runner keeps what the CLI itself wrote: the last 40 lines of its
+   standard error and of its standard output that were not stream events,
+   scrubbed of `hatch_ak_…` keys, other API keys and `Bearer` values, and
+   capped at 200 characters a line. The usage-limit and model-refusal
+   recognisers read those lines whatever the exit code, and the let-go and
+   stall comments carry them in a code block, as does the closing tally line
+   for a stall (its last line). A session that streamed keeps nothing extra.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and

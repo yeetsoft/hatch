@@ -23,6 +23,21 @@ public sealed class RunFacts
     /// <summary>The whole work log entry, or null on a run that ended before it could report.</summary>
     public WorkLogEntryRequest? Result { get; set; }
 
+    private bool _started;
+
+    /// <summary>
+    /// Whether the agent got as far as its first stream event - Claude's
+    /// <c>init</c>, Codex's <c>thread.started</c>, Grok's first JSON line. A
+    /// <see cref="Result"/> counts as well: a quiet run prints one result object
+    /// and no <c>init</c>, and still ran. <see cref="LastAssistantText"/> does
+    /// not, since quiet mode fills it from crash output.
+    /// </summary>
+    public bool Started
+    {
+        get => _started || Result is not null;
+        set => _started = value;
+    }
+
     /// <summary>The session's <c>release-note</c> block, lifted for the runner to post under its claim; null when it wrote none.</summary>
     public string? ReleaseNote { get; set; }
 
@@ -223,6 +238,10 @@ public sealed partial class StreamRender : IAgentStreamReader
     {
         switch (type)
         {
+            case "system" when Text(e, "subtype") == "init":
+                _facts.Started = true;
+                break;
+
             case "assistant":
                 foreach (var part in Content(e))
                     if (Text(part, "type") == "tool_use")
