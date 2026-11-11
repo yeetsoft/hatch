@@ -3508,6 +3508,39 @@ public record ChangelogReportEntryDto(
     DateTimeOffset ClosedAt,
     string Priority);
 
+// ---- Activity report ----
+
+/// <summary>
+/// One actor's events over a range - see <c>ActivityReport.Fold</c>.
+/// </summary>
+/// <param name="Actor">The actor asked for, echoed as typed.</param>
+/// <param name="From">The start of the range as used, clamped forward to the first event ever written.</param>
+/// <param name="To">The end of the range as used.</param>
+/// <param name="Total">Every event in range, after narrowing - not capped.</param>
+/// <param name="Kinds">Events per kind over the whole range, most first then by name.</param>
+/// <param name="Issues">One per issue touched, over the whole range, latest activity first.</param>
+/// <param name="Events">The newest events, newest first, at most the activity feed's own cap.</param>
+/// <param name="Truncated">Whether more events existed than <paramref name="Events"/> lists.</param>
+public record ActivityReportDto(
+    string Actor,
+    DateTimeOffset From,
+    DateTimeOffset To,
+    int Total,
+    IReadOnlyList<ActivityKindCountDto> Kinds,
+    IReadOnlyList<ActivityIssueDto> Issues,
+    IReadOnlyList<ActivityEventDto> Events,
+    bool Truncated);
+
+public record ActivityKindCountDto(string Kind, int Count);
+
+/// <summary>One issue the actor touched, as a card with when they first and last did, and how often.</summary>
+public record ActivityIssueDto(
+    IssueCardDto Issue,
+    DateTimeOffset First,
+    DateTimeOffset Last,
+    int Count,
+    IReadOnlyList<ActivityKindCountDto> Kinds);
+
 // ---- Runners ----
 
 /// <summary>
