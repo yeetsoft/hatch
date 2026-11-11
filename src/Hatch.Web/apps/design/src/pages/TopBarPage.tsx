@@ -119,9 +119,9 @@ export function TopBarPage() {
 
       <GallerySection
         title="The gear, open"
-        note="Pressing the gear opens Theme first, with the current choice checked. No menu passed, no divider and nothing below it."
+        note="Pressing the gear opens Theme first, with the current choice checked, and the palette line beneath it: Random, the dice, the seed and its copy button. Turn Random on to roll a palette; paste a seed into the field to reproduce one. No menu passed, no divider and nothing below it."
       >
-        <div className="stage">
+        <div className="stage stage--gear-open">
           <TopBar appName="Hatch Admin" menuDefaultOpen />
         </div>
       </GallerySection>
@@ -130,7 +130,7 @@ export function TopBarPage() {
         title="The gear, with app items"
         note="A divider, then whatever the app passes as menu - here, two rows a real app's Settings and Docs would occupy."
       >
-        <div className="stage">
+        <div className="stage stage--gear-open">
           <TopBar
             appName="Hatch"
             menuDefaultOpen

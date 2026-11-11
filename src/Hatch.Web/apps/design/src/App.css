@@ -253,6 +253,13 @@
   max-width: 420px;
 }
 
+/* A stage whose bar has its gear open: the panel hangs below the bar and the
+   frame clips it, so the frame is tall enough to hold the Theme row and the
+   palette line beneath it. Fixed, as .stage--narrow's 420px is. */
+.stage--gear-open {
+  min-height: 240px;
+}
+
 /* Narrows --measure on itself rather than the stage's own width, so a
    `measure`-width bar visibly caps and centres inside a stage that otherwise
    spans the same --measure the page column does - a literal for the same
@@ -733,6 +740,12 @@
   align-items: flex-start;
   gap: var(--sp-4);
   min-height: 160px;
+}
+
+/* The gear's own case holds the Theme row and the palette line, and a panel
+   taller than the default stage would run over the next section. */
+.menu-stage--theme {
+  min-height: 260px;
 }
 
 .menu-stage--spread {

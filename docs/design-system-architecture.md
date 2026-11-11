@@ -144,11 +144,22 @@ choice — the choice says *which* of light and dark, the seed says *whose*
 colours — and `hatch.theme` and `applyChoice` mean what they always did.
 
 ```
-key            holds                    absent, or unreadable
--------------  -----------------------  ---------------------------
-hatch.theme    auto | light | dark      auto
-hatch.palette  an hx1- seed             the house palette (tokens.css)
+key                 holds                    absent, or unreadable
+------------------  -----------------------  ---------------------------
+hatch.theme         auto | light | dark      auto
+hatch.palette       an hx1- seed             the house palette (tokens.css)
+hatch.palette.last  an hx1- seed             no seed to return to
 ```
+
+`hatch.palette` is the *applied* seed, so **Random is on exactly when it is
+set** and every reader (the public site's `theme.ts` included) looks at that key
+alone. `hatch.palette.last` is the seed most recently rolled, pasted or applied;
+turning Random off removes the first and leaves the second, so turning it back on
+returns the same theme. Both are written together by `storePalette` in
+[`theme/randomPalette.ts`](../src/Hatch.Web/packages/ui/src/theme/randomPalette.ts),
+which also holds `rollSeed` (the engine's `rollParams`, drawn from
+`crypto.getRandomValues`, or `Math.random` without it) and `checkSeed` (the
+engine's own refusal message, which is the inline text).
 
 A value that does not decode — malformed, or written by an older engine — reads
 as absent, so a stale seed never half-applies.
@@ -176,8 +187,19 @@ preference) rather than removing it, because the OS-keyed pair in `index.html`
 is the house chrome; `ThemeProvider` re-applies when `resolved` changes so that
 override follows an OS flip.
 
+**Random in the gear.** `<ThemeSwitch>` carries the control: a `Random` switch,
+a dice (disabled while Random is off), the seed in a monospace field, and a copy
+button with a `role="status"` region that says "Seed copied". Committing a seed
+(Enter or blur) applies it and turns Random on; a refused one gets an inline
+`role="alert"` and changes nothing. `standalone/topbar.ts` builds the same line
+in DOM calls with the class names the component declares
+(`standaloneClasses.test.ts` holds it to that) and the glyphs from
+[`components/themePickerIcons.ts`](../src/Hatch.Web/packages/ui/src/components/themePickerIcons.ts),
+and drives the store through `storePalette` and `applyPalette`. The configurator's
+Tune button goes after the dice; it is not drawn yet.
+
 Everything that reads the palette is told when it changes: `useTheme()` carries
-`palette` and `setPalette` beside `choice`, and the consumers that read computed
+`palette`, `lastSeed` and `setPalette` beside `choice`, and the consumers that read computed
 colours (the Monaco editors, mermaid, the gallery's token values) depend on
 `palette` as well as `resolved`.
 

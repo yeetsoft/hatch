@@ -23,6 +23,14 @@ export {
   themeColorFor,
   applyThemeColor,
 } from './theme/themeStore';
+export {
+  LAST_PALETTE_STORAGE_KEY,
+  checkSeed,
+  readLastSeed,
+  rollSeed,
+  storePalette,
+  type SeedCheck,
+} from './theme/randomPalette';
 export { paletteCss } from './theme/palette/sheet';
 export type { ThemeChoice, ResolvedTheme, ThemeContextValue } from './theme/themeContext';
 export { ThemeSwitch } from './components/ThemeSwitch';
