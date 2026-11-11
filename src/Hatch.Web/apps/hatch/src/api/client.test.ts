@@ -6,6 +6,7 @@ import {
   getAllRunners,
   getAttachments,
   getAuthMe,
+  getActivityReport,
   getChangelogReport,
   getPlan,
   getQueue,
@@ -338,6 +339,45 @@ describe('getChangelogReport', () => {
     expect(
       await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
     ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
+  });
+});
+
+describe('getActivityReport', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const urlOf = async (query: Parameters<typeof getActivityReport>[0]) => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getActivityReport(query);
+
+    return (fetchMock.mock.calls[0] as unknown[])[0];
+  };
+
+  it('sends the actor alone when nothing else is set', async () => {
+    expect(await urlOf({ actor: 'Ada' })).toBe('/api/hatch/reports/activity?actor=Ada');
+  });
+
+  it('sends every field, repeating projectId once per id', async () => {
+    const url = await urlOf({
+      actor: 'Ada',
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-11-01T00:00:00.000Z',
+      projectId: [3, 5],
+    });
+
+    expect(url).toBe(
+      '/api/hatch/reports/activity?actor=Ada&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+        '&projectId=3&projectId=5',
+    );
+  });
+
+  it('encodes an actor with spaces and an ampersand, and leaves off empty fields', async () => {
+    expect(await urlOf({ actor: 'Rall & Co runner', from: '', to: null, projectId: [] })).toBe(
+      '/api/hatch/reports/activity?actor=Rall+%26+Co+runner',
+    );
   });
 });
 

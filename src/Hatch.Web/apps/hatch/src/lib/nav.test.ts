@@ -4,7 +4,8 @@ import { HOME, HOME_LABEL, NAV, PHONE_ONLY, activeGroup, navFor, navRows } from 
 import type { NavEntry } from './nav';
 
 // Excluded on purpose: /issues/:key is reached from a card, and
-// /reports/timeline, /reports/cumulative-flow and /reports/changelog from the
+// /reports/timeline, /reports/cumulative-flow, /reports/changelog and
+// /reports/activity from the
 // Reports index, and /changelog from the docs Reference section, never the nav;
 // /docs/* is the same page as /docs, for any path under it; / is the logo's and /docs the
 // settings menu's and the phone list's (below), neither a bar entry; /settings and * (the
@@ -18,6 +19,7 @@ const EXCLUDED_ROUTES = new Set([
   '/reports/timeline',
   '/reports/cumulative-flow',
   '/reports/changelog',
+  '/reports/activity',
   '/changelog',
   '/docs/*',
   '/settings',
