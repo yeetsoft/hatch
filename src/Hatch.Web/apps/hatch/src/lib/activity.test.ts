@@ -152,7 +152,7 @@ describe('headlineWords', () => {
 
 describe('the sentences', () => {
   it('names the actor in the empty range', () => {
-    expect(emptyWords('Ada')).toBe('Ada did nothing in this window.');
+    expect(emptyWords('Ada')).toBe('Nothing recorded for Ada in this window.');
   });
 
   it('tells the reader to choose', () => {

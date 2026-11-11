@@ -96,7 +96,7 @@ public class ActivityReportPageTests(ITestOutputHelper output)
 
             // An actor nobody is: still sent as given, the empty range a sentence, and the address unchanged.
             await harness.GoToAsync(deadline, "reports/activity?actor=nobody");
-            await harness.WaitForVisibleAsync(deadline, ".hatch-empty__message:text-is(\"nobody did nothing in this window.\")");
+            await harness.WaitForVisibleAsync(deadline, ".hatch-empty__message:text-is(\"Nothing recorded for nobody in this window.\")");
             Assert.Equal(
                 0,
                 await harness.EvaluateAsync<int>(deadline, "counting the tables", "() => document.querySelectorAll('main table').length"));

@@ -125,7 +125,7 @@ export function headlineWords(report: Pick<ActivityReport, 'total' | 'kinds'>): 
 }
 
 /** The empty range, as a sentence rather than an empty table. */
-export const emptyWords = (actor: string): string => `${actor} did nothing in this window.`;
+export const emptyWords = (actor: string): string => `Nothing recorded for ${actor} in this window.`;
 
 /** What the page says when there is nobody to read. */
 export const chooseActorWords = (): string => 'Choose whose activity to read.';
