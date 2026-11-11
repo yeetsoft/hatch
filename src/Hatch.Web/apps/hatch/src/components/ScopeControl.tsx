@@ -7,7 +7,10 @@ import type { Project } from '../types';
  * The topbar's own scope control: a chip-filled trigger naming the scoped
  * projects, and a panel that ticks any project in or out with no lock - the
  * one place this deliberately does not copy `ProjectsFacet`'s "keep at least
- * one" rule, since scoping to nothing is scoping to everything.
+ * one" rule, since scoping to nothing is scoping to everything. Each row
+ * carries `ChecklistFacet`'s per-row Only, but the footer carries no global
+ * None beside All: a None here would just set the scope back to empty, which
+ * already means every project, so it would read as another All (HA-2201).
  *
  * `null` on a single-project install: the gate lives here, not in the
  * caller, so the "one project -> nothing" acceptance is a direct render test
@@ -62,18 +65,27 @@ export function ScopeControl({
       <div className="hatch-types-panel hatch-scope-control__panel" role="group" aria-label="Projects">
         {projects.map((project) => {
           const on = keys.length === 0 || keys.includes(project.key);
+          const text = `${project.key} — ${project.name}`;
           return (
-            <label key={project.key} className="hatch-types-row">
-              <input
-                type="checkbox"
-                checked={on}
-                onChange={() => onChange(toggleChoice(keys.length === 0 ? allKeys : keys, project.key, allKeys))}
-              />
-              <ProjectMark size="sm" letters={project.key} color={project.color} icon={project.icon} title={project.name} />
-              <span className="hatch-types-name hatch-scope-control__name">
-                {project.key} — {project.name}
-              </span>
-            </label>
+            <div key={project.key} className="hatch-types-item">
+              <label className="hatch-types-label">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() => onChange(toggleChoice(keys.length === 0 ? allKeys : keys, project.key, allKeys))}
+                />
+                <ProjectMark size="sm" letters={project.key} color={project.color} icon={project.icon} title={project.name} />
+                <span className="hatch-types-name hatch-scope-control__name">{text}</span>
+              </label>
+              <button
+                type="button"
+                className="hatch-filter-clear hatch-types-only"
+                aria-label={`Only ${text}`}
+                onClick={() => onChange([project.key])}
+              >
+                Only
+              </button>
+            </div>
           );
         })}
         <div className="hatch-types-footer">

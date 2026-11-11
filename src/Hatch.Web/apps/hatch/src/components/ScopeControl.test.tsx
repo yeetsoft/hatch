@@ -23,7 +23,7 @@ function trigger(html: string) {
 }
 
 function rows(html: string) {
-  return [...html.matchAll(/<label class="hatch-types-row"[\s\S]*?<\/label>/g)].map((m) => m[0]);
+  return [...html.matchAll(/<div class="hatch-types-item">[\s\S]*?<\/button><\/div>/g)].map((m) => m[0]);
 }
 
 describe('ScopeControl', () => {
@@ -108,5 +108,31 @@ describe('ScopeControl', () => {
   it('disables the footer All button only for an empty scope', () => {
     expect(render(three, [])).toContain('<button type="button" class="hatch-filter-clear" disabled="">All</button>');
     expect(render(three, ['AER'])).toContain('<button type="button" class="hatch-filter-clear">All</button>');
+  });
+
+  it('draws one Only button per row, labelled and classed, outside the label', () => {
+    const rs = rows(render(three, []));
+    expect(rs).toHaveLength(3);
+    for (const [i, r] of rs.entries()) {
+      expect(r).toContain(
+        `<button type="button" class="hatch-filter-clear hatch-types-only" aria-label="Only ${three[i].key} — ${three[i].name}">Only</button>`,
+      );
+      const label = r.match(/<label[\s\S]*?<\/label>/)![0];
+      expect(label).not.toContain('hatch-types-only');
+    }
+  });
+
+  it('never disables the Only button, for any scope including a single chosen project', () => {
+    for (const keys of [[], ['AER'], ['HA', 'AER', 'GL']]) {
+      for (const r of rows(render(three, keys))) {
+        const only = r.match(/<button[^>]*hatch-types-only[\s\S]*?<\/button>/)![0];
+        expect(only).not.toContain('disabled=""');
+      }
+    }
+  });
+
+  it('draws no global None beside All, since None would just mean every project again', () => {
+    const html = render(three, ['AER']);
+    expect(html).not.toContain('>None<');
   });
 });
