@@ -14,7 +14,9 @@
 #   - The supervisor. `go-to-work` asks to be restarted as a newer build by
 #     exiting 75, and nothing else on Windows catches that: a downloaded
 #     hatch.exe runs the loop it started as, all night. Here the loop is run,
-#     the 75 is caught, the source is built again, and the loop comes back.
+#     the 75 is caught, the source is built again, and the loop comes back. It
+#     is built before the first launch too, so a night never starts on a build
+#     older than the source beside it.
 #     `do-my-work` is the same loop, supervised the same way, with `--mine` on
 #     the front of its arguments.
 #
@@ -239,33 +241,48 @@ function Use-RunCopy($Runner) {
     Prefix = @(); Directory = $script:RunCopy; Pinned = $false }
 }
 
-# The new source, compiled and copied - the one place in this file that builds
-# anything after the first launch. Returns the runner to go round with.
+# The source compiled, and nothing else: the build step both launches share. $When
+# is "starting" or "restarting", for the line it prints. Returns $true only when
+# a build ran and succeeded, so the caller knows whether there is anything new to
+# copy.
 #
 # A build that fails is not the end of a night: the loop comes back on the copy
 # that is there, and having taken its baseline at startup it will not ask again
 # for the same change. So this says what went wrong and returns, always. Nothing
-# is copied from a failed build, whose output may be half-written.
-function Restart-Runner($Runner) {
+# is copied from a failed build, whose output may be half-written. With nothing
+# changed MSBuild's up-to-date check compiles nothing and leaves the build as it
+# was, so building every time costs seconds and is the freshness check.
+function Build-Source($Runner, [string]$When) {
   if ($Runner.Pinned) {
     # A machine with no SDK on it. Restart anyway: hatch.ps1 itself may be what
     # changed.
-    Write-Err 'hatch: HATCH_RUNNER_BIN names the binary, so there is nothing here to rebuild'
-    return $Runner
+    Write-Err 'hatch: HATCH_RUNNER_BIN names the binary, so there is nothing here to build'
+    return $false
   }
+
+  # Only the SDK was found, so there is no build to bring up to date: Use-RunCopy
+  # builds it, with nothing to carry on with if that fails.
+  if (-not $Runner.Directory) { return $false }
 
   $dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
   if (-not $dotnet) {
-    Write-Err 'hatch: dotnet is not here - carrying on with the binary that is there'
-    return $Runner
+    Write-Err 'hatch: dotnet is not here, so nothing is built - carrying on with the binary that is there'
+    return $false
   }
 
-  Write-Err 'hatch: rebuilding'
+  Write-Err "hatch: building before $When"
   & $dotnet.Source build $Project --configuration Release | Out-Host
   if ($LASTEXITCODE -ne 0) {
-    Write-Err 'hatch: the rebuild failed - carrying on with the binary that is there'
-    return $Runner
+    Write-Err 'hatch: the build failed - carrying on with the binary that is there'
+    return $false
   }
+  return $true
+}
+
+# The new source, compiled and copied - after the first launch. Returns the runner
+# to go round with.
+function Restart-Runner($Runner) {
+  if (-not (Build-Source $Runner 'restarting')) { return $Runner }
 
   try {
     $fresh = Resolve-Runner
@@ -294,6 +311,11 @@ function Restart-Runner($Runner) {
 # out of.
 function Invoke-GoToWork([string[]]$Rest) {
   $script:NightState = [IO.Path]::GetTempFileName()
+
+  # Built before the copy is made, or the loop would run a copy of the old build.
+  # Resolved first so that with no build and no SDK the night stops here, saying
+  # so, as it always has.
+  [void](Build-Source (Resolve-Runner) 'starting')
   $runner = Use-RunCopy (Resolve-Runner)
 
   while ($true) {
@@ -316,7 +338,9 @@ function Invoke-GoToWork([string[]]$Rest) {
 $code = 0
 try {
   $command = if ($Arguments.Count -gt 0) { $Arguments[0] } else { '' }
-  $rest = if ($Arguments.Count -gt 1) { @($Arguments[1..($Arguments.Count - 1)]) } else { @() }
+  # The @() goes round the whole `if`: assigned from one, a single argument comes
+  # out unrolled to a string, and `$rest[0]` below would then be its first letter.
+  $rest = @(if ($Arguments.Count -gt 1) { $Arguments[1..($Arguments.Count - 1)] })
 
   # A loop asked only for its usage is not a night, so `-h` or `--help` straight
   # after either name goes through in place, with no supervisor and no copy in
