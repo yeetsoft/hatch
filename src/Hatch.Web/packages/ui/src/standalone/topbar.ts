@@ -30,7 +30,9 @@
 
 import {
   applyChoice,
+  applyPalette,
   readChoice,
+  readPalette,
   writeChoice,
   type ThemeChoice,
 } from '../theme/themeStore';
@@ -307,6 +309,9 @@ export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
 /** The theme the host page is to be shown in, settled before anything paints. */
 function applyHostTheme(config: StandaloneTopBarConfig): void {
   const theme = config.theme ?? 'switch';
+  /* The palette applies in all three modes: the bar is house chrome, and a
+     host pinned to one appearance still takes the house's colours. */
+  applyPalette(readPalette());
   applyChoice(theme === 'switch' ? readChoice() : theme);
 }
 
