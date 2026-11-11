@@ -218,6 +218,14 @@ days the mean trails over, from 1 to 90; a value outside that is not sent. The
 address carries `measure` and `window`, so a pasted link opens on the same
 picture.
 
+Past eight weeks a **Bars** / **Calendar** toggle appears beside the graph; at
+eight weeks or under it does not, and the page always draws Bars. Calendar
+draws one cell a day, Monday-to-Sunday columns, shaded by the same measure and
+the same scale the bars use, so the two never disagree; a day with nothing in
+it is still a cell, shaded palest rather than left blank, and its title names
+the day and what it holds. The address carries `view=calendar`; eight weeks
+or under, or anything else, reads as Bars.
+
 The Timeline, Cumulative flow, Changelog, Consumption and Activity reports each follow the tab's
 [scope](the-board-and-its-columns#scoping-a-tab-to-projects), and their project
 control works within it. Under a scope it lists only the scope's projects, and

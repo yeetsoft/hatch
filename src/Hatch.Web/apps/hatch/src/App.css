@@ -4095,6 +4095,78 @@ input.hatch-inline-title-input {
   border-color: var(--danger);
 }
 
+/* The Bars / Calendar toggle, drawn above the chart only past eight weeks. */
+.hatch-activity-view-toggle {
+  display: flex;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+
+.hatch-activity-view {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  border-radius: var(--r-ctl);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-activity-view:hover {
+  border-color: var(--primary);
+}
+
+.hatch-activity-view.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+/* ---- The activity calendar, the bars' twin past eight weeks ----
+
+   One cell a day, in the same house tokens as the bars: a step is an
+   opacity on --primary, not a new colour, so the classic contributions
+   grid's shape lands without its colours and literalColours.test.ts does
+   not apply. */
+.hatch-calendar-plot {
+  display: block;
+  width: 100%;
+  height: 140px;
+  margin-top: var(--sp-2);
+}
+
+/* A present day with nothing in it: a flat neutral square, not transparent -
+   it must read as "nothing happened", never as a gap in the grid. */
+.hatch-calendar-step-0 {
+  fill: var(--line);
+}
+
+.hatch-calendar-step-1 {
+  fill: var(--primary);
+  fill-opacity: 0.25;
+}
+
+.hatch-calendar-step-2 {
+  fill: var(--primary);
+  fill-opacity: 0.5;
+}
+
+.hatch-calendar-step-3 {
+  fill: var(--primary);
+  fill-opacity: 0.75;
+}
+
+.hatch-calendar-step-4 {
+  fill: var(--primary);
+  fill-opacity: 1;
+}
+
+/* A day outside the window - padding at the start or end of a week. */
+.hatch-calendar-pad {
+  fill: transparent;
+}
+
 /* Rendered markdown - descriptions and comments. Only the spacing is stated:
    base.css already dresses headings, lists, code and links. */
 .hatch-markdown > :first-child {
