@@ -26,10 +26,9 @@ public interface IAgentCredential
 /// <summary>
 /// The credentials as site settings, read fresh on each call.
 ///
-/// Read rather than captured for the reason <see cref="Photos.ImmichClient"/>
-/// re-reads its host and key: the settings are editable from the admin page
-/// while the app runs, and an OAuth token that expires is pasted in again far
-/// more often than the process restarts.
+/// Read rather than captured because the settings are editable from the admin
+/// page while the app runs, and an OAuth token that expires is pasted in again
+/// far more often than the process restarts.
 ///
 /// They are stored obfuscated and redacted on read like every other
 /// secret-valued setting - see SettingsController's <c>IsSecret</c>, which is
