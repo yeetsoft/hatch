@@ -18,6 +18,21 @@ if [ -z "${GIT_SSH_COMMAND:-}" ] && [ ! -e "${HOME:-/root}/.ssh/known_hosts" ]; 
     export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
 fi
 
+# ---- An image that was meant to be a project's ----
+#
+# The compose file's `runner-image` service hands this container
+# HATCH_RUNNER_IMAGE, empty when nobody named an image, and falls back to the
+# generic image so there is something here to say so. Set and empty is that
+# case; unset is the `runner` service or `docker run`, which have nothing to
+# say about it. A hard exit, since an unnamed image is not something waiting
+# fixes.
+if [ "${HATCH_RUNNER_IMAGE+set}" = set ] && [ -z "$HATCH_RUNNER_IMAGE" ]; then
+    say "HATCH_RUNNER_IMAGE is not set, so the runner-image profile has no project image to start."
+    say "  set HATCH_RUNNER_IMAGE to the image, such as ghcr.io/<owner>/<project>-runner:latest,"
+    say "  or use --profile runner to build and start the generic image."
+    exit 1
+fi
+
 # ---- A checkout to work in, or a workspace to clone into ----
 #
 # A hard exit, not a wait, when neither is there: nothing about this container

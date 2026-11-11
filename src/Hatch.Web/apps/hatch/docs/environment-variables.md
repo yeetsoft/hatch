@@ -47,6 +47,8 @@ saying so; those are read from the environment alone.
 | `HATCH_GIT_EMAIL` | `compose.yaml`, for `runner` (becomes `GIT_AUTHOR_EMAIL`) | empty; the container refuses to start without it | The email on the commits it makes. |
 | `HATCH_GIT_TOKEN` | `compose.yaml`, for `runner`; then the entrypoint | empty | **A secret.** An HTTPS token, answered to `git` through `GIT_ASKPASS`. |
 | `HATCH_GH_TOKEN` | `compose.yaml`, for `runner` (becomes `GH_TOKEN`) | empty: build checks and merges are off | **A secret.** The token `gh` reads to check builds and merge pull requests. |
+| `HATCH_RUNNER_IMAGE` | `compose.yaml`, for `runner-image`; then the entrypoint | empty: the `runner-image` profile refuses to start; unused under `runner` | The image `--profile runner-image` starts instead of building one, such as `ghcr.io/<owner>/<project>-runner:latest` ([the container runner](the-container-runner#starting-it-from-a-named-image)). |
+| `HATCH_RUNNER_PULL_POLICY` | `compose.yaml`, for `runner-image` | `missing` | `missing` pulls only an image this machine lacks, `always` pulls on every `up`, `never` pulls nothing. |
 | **Set for the container by `compose.yaml` or the image** | | | |
 | `HATCH_BASE` | `compose.yaml`, for `runner`; then `hatch` | `http://api:8080` | The API over Compose's own network. Nothing about this crosses the machine. |
 | `HATCH_ROOT` | the image; `compose.yaml`; then `hatch` and the entrypoint | `/checkout` | Where the checkout is mounted. The entrypoint unsets it when nothing is there and a workspace is. |

@@ -151,7 +151,10 @@ services:
     # undo the button that stopped it; `on-failure` obeys the board and still
     # recovers from a crash.
     restart: on-failure
-    environment:
+    # Anchored in place, for `runner-image` below to reuse: an `x-` key at the top
+    # of the file would be printed by `docker compose config`, and this service's
+    # resolved form is meant to stay exactly what it was.
+    environment: &runner-environment
       # The service name, over Compose's own network. Nothing about this
       # crosses the machine.
       HATCH_BASE: http://api:8080
@@ -172,7 +175,7 @@ services:
       # renames the operator value on the way in; HATCH_GIT_TOKEN keeps its own
       # name because git-askpass.sh, not git itself, is what reads it.
       GH_TOKEN: "${HATCH_GH_TOKEN:-}"
-    volumes:
+    volumes: &runner-volumes
       # The repository the board is about. Defaults to the directory this file
       # was reached from, which is right for a checkout you brought the stack
       # up inside of and wrong everywhere else - so set HATCH_CHECKOUT.
@@ -192,6 +195,44 @@ services:
       # Or an SSH agent, which also wants SSH_AUTH_SOCK: /ssh-agent adding to
       # the environment above:
       # - "${SSH_AUTH_SOCK}:/ssh-agent"
+
+  # The same runner, started from an image that is already built and named,
+  # rather than built here: a project's own image, which carries that
+  # repository's toolchain on top of the runner. Off by default, under its own profile - a second service because
+  # `pull_policy` cannot default on whether another variable is set, and
+  # `runner`'s `build:` would otherwise rebuild the generic image and tag it
+  # under the name given here instead of pulling anything.
+  #
+  # No `${HATCH_RUNNER_IMAGE:?...}` on the image: Compose interpolates every
+  # service before it applies a profile, so a required variable here would make
+  # a bare `docker compose up -d` refuse too. It falls back to the generic
+  # image `runner` builds instead, and the container's own entrypoint is what
+  # refuses it - it is handed the variable below, empty when unset.
+  #
+  # `missing` rather than `always`: an image `hatch image build` left on this
+  # machine without pushing it exists nowhere to pull from, and `always` would
+  # refuse to start it. HATCH_RUNNER_PULL_POLICY=always is the way to insist on
+  # the registry's copy.
+  #
+  # `entrypoint` is pinned so an image with no /entrypoint.sh is refused by
+  # Docker, naming the path, instead of running its own default command and
+  # exiting without a word.
+  runner-image:
+    image: "${HATCH_RUNNER_IMAGE:-hatch-local-runner}"
+    pull_policy: "${HATCH_RUNNER_PULL_POLICY:-missing}"
+    entrypoint: ["/entrypoint.sh"]
+    profiles: ["runner-image"]
+    depends_on:
+      - api
+    # `on-failure`, for the reason given on `runner`.
+    restart: on-failure
+    volumes: *runner-volumes
+    environment:
+      <<: *runner-environment
+      # Said even when empty: the entrypoint tells "no image was named" (set,
+      # and empty) from `docker run` and the `runner` service, which never set
+      # it at all.
+      HATCH_RUNNER_IMAGE: "${HATCH_RUNNER_IMAGE:-}"
 
   # The UI Design library's gallery (src/Hatch.Web/apps/design) - every token
   # and component in @hatch/ui, browsable on its own. Off by default, same
