@@ -17,3 +17,4 @@ export {
 export { decodeSeed, encodeSeed, makeSeedCodec, SEED_VERSION, type SeedRefusal, type SeedResult } from './seed';
 export { ROLES, type Role } from './roles';
 export { colourTokens, isColourValue, parseTokenBlocks, type TokenBlock, type TokenBlocks } from './tokenBlocks';
+export { paletteCss } from './sheet';

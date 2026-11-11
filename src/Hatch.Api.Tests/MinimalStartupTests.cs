@@ -1,5 +1,6 @@
 using Hatch.Api.Tests.Hatch;
 using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Quartz;
 using QuartzLogProvider = Quartz.Logging.LogProvider;
@@ -190,11 +191,25 @@ public class MinimalStartupTests
             var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
 
-            // Routes that no longer exist: the platform config seam and the
-            // kiosk-era app-version probe. This factory has the wall
-            // off, so a 404 is the route being gone rather than gated.
-            foreach (var gone in new[] { "/api/apps/config", "/api/app-version/hatch" })
+            // Routes that no longer exist: the platform config seam, the
+            // kiosk-era app-version probe and the four family apps. This
+            // factory has the wall off, so a 404 is the route being gone
+            // rather than gated.
+            foreach (var gone in new[]
+            {
+                "/api/apps/config", "/api/app-version/hatch",
+                "/api/gather", "/api/photos", "/api/quill", "/api/storage",
+            })
                 Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(gone)).StatusCode);
+
+            // The OpenAPI document still generates: two types sharing a name
+            // is what makes Swashbuckle throw here, and nothing else reads it
+            // until somebody opens the page.
+            var swagger = await deadline.BoundAsync("serving /swagger/v1/swagger.json", () => client.GetAsync("/swagger/v1/swagger.json"));
+            Assert.Equal(HttpStatusCode.OK, swagger.StatusCode);
+            using (JsonDocument.Parse(await swagger.Content.ReadAsStringAsync()))
+            {
+            }
 
             await deadline.BoundAsync("letting the jobs' first firings finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }

@@ -48,7 +48,3 @@ deploy, backup and log pipeline. What it does is in
   own public URL is already a setting:
   [`HatchOptions.PublicBaseUrl`](Hatch/HatchOptions.cs) (`Hatch:PublicBaseUrl`).
   Read it from there rather than adding a second setting for the same fact.
-
-DTO names are yours to reuse: the OpenAPI document qualifies a module's schemas
-with its folder name so a second `ItemDto` doesn't take Swagger down for the
-whole app — see [`Common/SwaggerSchemaIds.cs`](../Common/SwaggerSchemaIds.cs).

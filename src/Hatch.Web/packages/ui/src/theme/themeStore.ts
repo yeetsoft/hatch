@@ -15,6 +15,10 @@
    So the mechanism lives here and both callers use it. The React file below
    holds only what is genuinely React: state, an effect, a context. */
 import tokensCss from '../tokens.css?raw';
+import { derivePalette } from './palette/derive';
+import { decodeSeed } from './palette/seed';
+import { paletteCss } from './palette/sheet';
+import type { Palette } from './palette/pairs';
 import { parseTokenBlocks } from './palette/tokenBlocks';
 
 /** What the operator chose. `auto` defers to the OS preference. */
@@ -25,6 +29,9 @@ export type ResolvedTheme = 'light' | 'dark';
 
 /** Where the choice is persisted. Namespaced - apps share an origin. */
 export const THEME_STORAGE_KEY = 'hatch.theme';
+
+/** Where the palette seed is persisted: the `hx1-` string, beside the choice. */
+export const PALETTE_STORAGE_KEY = 'hatch.palette';
 
 export const DARK_QUERY = '(prefers-color-scheme: dark)';
 
@@ -62,6 +69,32 @@ export function writeChoice(choice: ThemeChoice): void {
 }
 
 /**
+ * The stored palette seed, or `null` for the house palette.
+ *
+ * Only a seed the engine accepts reads back: an unreadable store, a malformed
+ * value and a seed an older engine wrote all mean no palette, so a stale value
+ * can never half-apply.
+ */
+export function readPalette(): string | null {
+  try {
+    const stored = window.localStorage.getItem(PALETTE_STORAGE_KEY)?.trim();
+    return stored && decodeSeed(stored).ok ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persists the seed, or forgets it for `null`. Throws are swallowed, as in `writeChoice`. */
+export function writePalette(seed: string | null): void {
+  try {
+    if (seed === null) window.localStorage.removeItem(PALETTE_STORAGE_KEY);
+    else window.localStorage.setItem(PALETTE_STORAGE_KEY, seed);
+  } catch {
+    /* See writeChoice. */
+  }
+}
+
+/**
  * `window` itself is absent under `renderToStaticMarkup` in a test - there is
  * no partitioned-storage equivalent for a media query, so the guard is a
  * plain existence check rather than the try/catch `readChoice` uses. No
@@ -87,7 +120,10 @@ export function applyChoice(choice: ThemeChoice): void {
   } else {
     root.setAttribute('data-theme', choice);
   }
-  applyThemeColor(choice === 'auto' ? null : choice);
+  if (choice !== 'auto') applyThemeColor(choice);
+  /* Auto hands the status bar back to index.html's OS-keyed pair - unless a
+     palette is on, since that pair is the house chrome, not the derived one. */
+  else applyThemeColor(derived ? (prefersDark() ? 'dark' : 'light') : null);
 }
 
 // --chrome, read off tokens.css rather than restated as a third literal
@@ -106,9 +142,12 @@ const CHROME: Record<ResolvedTheme, string> = {
   dark: chromeIn(BLOCKS.dark, 'dark'),
 };
 
+/** The two palettes the applied seed derived, or null for the house palette. */
+let derived: Record<ResolvedTheme, Palette> | null = null;
+
 /** The colour the status bar should carry when Hatch has resolved to `resolved`. */
 export function themeColorFor(resolved: ResolvedTheme): string {
-  return CHROME[resolved];
+  return derived?.[resolved]['--chrome'] ?? CHROME[resolved];
 }
 
 const OVERRIDE_ATTR = 'data-theme-color-override';
@@ -130,6 +169,45 @@ export function applyThemeColor(resolved: ResolvedTheme | null): void {
     document.head.prepend(meta);
   }
   meta.setAttribute('content', themeColorFor(resolved));
+}
+
+const PALETTE_ATTR = 'data-theme-palette';
+
+/**
+ * Puts a seeded palette on the page, or takes it off with `null`.
+ *
+ * One `<style>` this file owns, appended to <head> so it comes after the
+ * token stylesheet and wins on order alone. It restates tokens.css's three
+ * colour blocks (see palette/sheet.ts), so Auto still flips with the OS in CSS
+ * with no JavaScript. It is not inline style on <html>: an inline `style`
+ * outranks every selector, so it could hold neither a light and a dark value
+ * under the media guard nor under the attribute.
+ *
+ * A seed the engine refuses removes the sheet, the same as none.
+ */
+export function applyPalette(seed: string | null): void {
+  if (typeof document === 'undefined') return;
+  const existing = document.head.querySelector<HTMLStyleElement>(`style[${PALETTE_ATTR}]`);
+  const decoded = seed === null ? null : decodeSeed(seed);
+  if (!decoded?.ok) {
+    derived = null;
+    existing?.remove();
+  } else {
+    derived = {
+      light: derivePalette(decoded.params, BLOCKS.light),
+      dark: derivePalette(decoded.params, BLOCKS.dark),
+    };
+    const style = existing ?? document.createElement('style');
+    if (!existing) {
+      style.setAttribute(PALETTE_ATTR, '');
+      document.head.appendChild(style);
+    }
+    style.textContent = paletteCss(decoded.params, BLOCKS);
+  }
+  /* The status bar follows whichever choice is on <html> now. */
+  const attr = document.documentElement.getAttribute('data-theme');
+  if (attr === 'light' || attr === 'dark') applyThemeColor(attr);
+  else applyChoice('auto');
 }
 
 /** Calls back when the OS preference flips. Returns the unsubscribe. */

@@ -97,7 +97,7 @@ public record LinkPersonRequest(Guid? PersonId);
 /// and the one deliberate exception in the migrate Job's bootstrap.
 /// </summary>
 /// <param name="RedeemPath">
-/// The rooted path a scanned QR should open - <c>/apps/auth/r/{code}</c>. Sent
+/// The rooted path a scanned QR should open - <c>/auth/r/{code}</c>. Sent
 /// as a path rather than an absolute URL because the host a QR must carry is
 /// the install's canonical one (<c>Apps:PublicBaseUrl</c>), which the client
 /// already knows how to ask for and how to fall back from.

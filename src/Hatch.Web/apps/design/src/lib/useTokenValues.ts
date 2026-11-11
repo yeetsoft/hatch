@@ -18,14 +18,15 @@ import { useTheme } from '@hatch/ui';
  *   the attribute is on <html> and getComputedStyle returns the new palette.
  *   Reading during render would return the outgoing theme's values.
  * - `resolved` is the dependency rather than `choice`, so the OS flipping
- *   while the switch sits on Auto re-reads too.
+ *   while the switch sits on Auto re-reads too. `palette` is a dependency as
+ *   well: a new seed changes every value while `resolved` stays put.
  *
  * The first paint therefore shows names with no values, for one frame. That is
  * the honest failure mode: the alternative is guessing a value before the
  * cascade has one.
  */
 export function useTokenValues(names: readonly string[]): Record<string, string> {
-  const { resolved } = useTheme();
+  const { resolved, palette } = useTheme();
   const [values, setValues] = useState<Record<string, string>>({});
 
   // The array is rebuilt on every render by every caller; its contents are what
@@ -45,7 +46,7 @@ export function useTokenValues(names: readonly string[]): Record<string, string>
     // render per theme change, on a page nobody is measuring.
     // oxlint-disable-next-line react/set-state-in-effect
     setValues(next);
-  }, [key, resolved]);
+  }, [key, resolved, palette]);
 
   return values;
 }

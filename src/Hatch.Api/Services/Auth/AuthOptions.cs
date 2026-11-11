@@ -112,7 +112,7 @@ public class AuthOptions
     public int LastSeenThrottleSeconds { get; set; } = 60;
 
     /// <summary>Where a document request is sent when it has no grant. Exempt by construction, or the redirect is a loop.</summary>
-    public string SignInPath { get; set; } = "/apps/auth/";
+    public string SignInPath { get; set; } = "/auth/";
 
     /// <summary>
     /// Redemption attempts one client IP may spend per

@@ -39,7 +39,7 @@ wall up refuses that ask outright.
 ## On
 
 A request carrying no cookie and no key is refused, and a page load with
-neither is sent to sign in at `/apps/auth/` — On listens only to a cookie or
+neither is sent to sign in at `/auth/` — On listens only to a cookie or
 a key. **Manage → Users** appears in the nav, because there is now a role to
 hold and a key to mint. `migrate` and `api` have to be given the same
 `Auth__*` lines, which Compose already does (`compose.yaml:56-61`).
@@ -154,13 +154,16 @@ ones below; to set one, add it under `environment:` for `api` in a
   before any path (`Services/Auth/AuthGate.cs:248`, `309-323`).
 - **What stays open with the wall up.** Every path `AuthGate.cs` exempts,
   matched by whole path segment and case-insensitively
-  (`exemptPaths`, `AuthGate.cs:115-189`; `exemptExactPaths`, `204-214`):
+  (`exemptPaths`, `AuthGate.cs:115-175`; `exemptExactPaths`, `178-198`):
   - `/health/live` and `/health/ready`, because a probe presents no cookie,
     and gating them fails readiness on every instance.
-  - `/apps/auth`, `/auth` and `/auth/` (the last two exactly, not as
-    prefixes), `/api/auth/verify`, `/api/auth/redeem` and `/api/auth/google`
-    (sign-in start and callback): the way in. Gating the way in is a redirect
-    loop.
+  - `/auth` and everything under it (the sign-in shell, its assets and the
+    `/auth/r/{code}` link a QR opens), `/api/auth/verify`, `/api/auth/redeem`
+    and `/api/auth/google` (sign-in start and callback): the way in. Gating
+    the way in is a redirect loop. The old `/apps/auth` address is no longer
+    on the list: it is a permanent redirect to `/auth/`, so behind a proxy
+    that asks the wall about the original address, an old bookmark to it is
+    sent to sign in first and reaches the shell by way of its return address.
   - `/.well-known/assetlinks.json`, which Android's own link verifier fetches
     with no cookie.
   - `/api/hatch-revision`, which commit this replica runs. The caller who
