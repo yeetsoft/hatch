@@ -203,8 +203,8 @@ absence starts to hurt:
   — and refused a third time, client-side, in `hatch move`'s speed bump
   (`IssueCommands.cs:256`). Moving *out* of a protected column, and
   reordering within one, need no membership — the check only fires when the
-  target column changes and is itself protected. A program (an API key, or the
-  runner header — `ICallerIdentity.IsProgramAsync`) is refused regardless of
+  target column changes and is itself protected. A program (an API key —
+  `ICallerIdentity.IsProgramAsync`) is refused regardless of
   membership; the local operator with the wall off passes, subject to the same
   check any other person gets. A narrower, separate refusal rides beside it: a
   move into a column with `MergesPullRequest` set is `400` for an issue with no
@@ -602,7 +602,7 @@ or an unknown role, and `409` where it would drop the project's last
 owner; `DELETE /projects/{id}/members/{personId}` takes the same `403`
 and the same no-owner-left `409`. Both are checked twice, the
 `ProjectsController.NotAPerson` idiom a [repository](#repository) or a
-[logo](#logo) write already uses — a key or a keyless runner is refused
+[logo](#logo) write already uses — a key is refused
 outright before the owner check ever runs.
 
 **`POST /projects/{id}/claim` is the way out of a project left with no
@@ -1230,11 +1230,10 @@ express: true }` sets `express`, `{ express: false }` clears it to `none`,
 through the same two guards above — nothing written against the old flag
 breaks.
 
-**Setting either level is closed to a key, and to the runner header where
-the wall is off — the same cut as [expedite](#expedite) and [stories at
-once](#stories-at-once), and for the same reason: a key that could set
-either could carry its own ticket through the night unattended, or approve
-it in advance.** `IssuePreApprovalController` does not set `AcceptKey`,
+**Setting either level is closed to a key — the same cut as
+[expedite](#expedite) and [stories at once](#stories-at-once), and for the
+same reason: a key that could set either could carry its own ticket through
+the night unattended, or approve it in advance.** `IssuePreApprovalController` does not set `AcceptKey`,
 so both routes refuse a program outright before the issue is even looked
 up. It follows that there is no `hatch` verb that sets it — the CLI
 authenticates with a key, so the terminal shows the level (`show`, `board`,
@@ -1315,8 +1314,9 @@ on `(IssueId, RunnerName)` and cascade-deleted with the issue, not a jsonb
 column the way [runner tags](#runner-tags) are: a list replaced whole would
 lose the who-and-when of the entries it did not touch. Each row carries a
 `Reason` (nullable, at most 200 characters after the trim), the actor name
-that set it (`By`), and when (`At`); the runner is named by the same name
-the `LegacyRunners` table is keyed on. Written through `PUT
+that set it (`By`), and when (`At`); the runner is named the same way
+everywhere else - a key's name, or for a genuinely keyless heartbeat the name
+`LegacyRunners` keys on. Written through `PUT
 /issues/{key}/omitted-runners/{runner}`
 (`IssueRunnerOmissionsController.PutOmittedRunner`) with `{ reason }`, and
 lifted through `DELETE` on the same path (`DeleteOmittedRunner`), open to a
@@ -1433,7 +1433,7 @@ their own subtrees under them intact.
 
 What refuses, before anything is written: an unknown target project (`400`);
 the issue's own project, read as no opinion at all rather than a move
-(nothing staged); a caller that is a key or a keyless runner (`403` — an
+(nothing staged); a caller that is a key (`403` — an
 issue's project decides which repository it is dispatched to, the same
 routing-power argument that keeps [binding a remote](#repository) closed to
 a key); any issue in the moving set holding a live [claim](#claim) (`409`,
@@ -2128,7 +2128,7 @@ against its own slice: one epic admitted does not use up a story's slot, and
 the reverse. A person may say *move anyway* (`wipOverride: true` on a move or
 a patch; bulk takes no override), which writes `wip_overridden` beside
 `status_changed` - see [Issue event](#issue-event). Overriding is a person's
-call and not an agent's: a key or a keyless runner sending `wipOverride: true`
+call and not an agent's: a key sending `wipOverride: true`
 is refused with `403`, whatever the load and even where no limit is set. On
 the board and on the issue page, the browser never sends that flag on its own
 first guess: the `409` raises a dialog quoting the sentence above and asking
@@ -3249,8 +3249,7 @@ compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
 
 One reader's own mark on [the overnight](#the-overnight) page — when they last
 read it, nothing more. Set only by `POST /api/hatch/overnight/seen`, a
-person's call and nothing else's: a program or a keyless runner naming itself
-with the runner header is refused the same way
+person's call and nothing else's: a program is refused the same way
 (`OvernightController.NotAPerson`). No body — a person has only their own
 mark to set — and a second call replaces the first rather than adding a row.
 
@@ -3329,8 +3328,8 @@ admin creates the runner.
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
 letters and digits only because a key is copied through shells, YAML and JSON
 and every one of those has an opinion about punctuation. It is shown **exactly
-once**, at mint, in the response to `POST /api/hatch/runners`, which the admin
-app's **API keys** page makes.
+once**, at mint, in the response to `POST /api/hatch/runners`, which the
+Runners page's Create runner dialog calls.
 
 The `hatch_ak_` prefix is not decoration. It is there so that a string pasted
 into a config file, a log line or a commit is recognisable as a Hatch
@@ -3431,7 +3430,7 @@ closes that gap with one guard, in one file, one sentence constant, checked
 in the action on all four writing verbs — the three on `PlaybooksController`
 plus `PATCH /api/hatch/issues/{key}/playbook` — before the row is read. It
 refuses a program outright and, with no branch on the wall's state, any call
-carrying neither a key or runner header nor `Sec-Fetch-Mode`. It does not
+carrying neither a key nor `Sec-Fetch-Mode`. It does not
 stop a caller forging a browser's headers on purpose — with the wall off
 nothing on a request is a credential, the same as every other local-mode
 guard in Hatch.
@@ -3513,9 +3512,10 @@ reads the same way, whichever repository it binds.
 names directly.** `--mine` (see [the dispatcher](#the-dispatcher)) reads a
 key's `OwnerPersonId` to decide whose tickets it may take, so a key that could
 set its own owner could simply say it is whoever holds the tickets it wants.
-`ApiKeysController` is `[RequireAdmin]` with no `AcceptKey` on the whole
-class — not one route carved out of it — so no key can mint a key, revoke one,
-or change whose it is; a person does that, at the API Keys page, on purpose.
+`RunnersController`'s minting, revoking and re-owning routes are each
+`[RequireAdmin]` with no `AcceptKey` — not one route carved out for a key —
+so no key can mint a runner, revoke one, or change whose it is; a person does
+that, at the Runners page, on purpose.
 
 **And so is the WIP section and its limits.** Which columns are work in
 progress, and how much of each slice of the board may sit across them at once,
@@ -3525,8 +3525,8 @@ a ceiling it had just raised for itself. `PUT /api/hatch/wip` therefore lives
 on its own controller (`WipController`) not setting `AcceptKey`, cut in
 the route by the same means, and checked a second time in the action for
 `IssueClaimController.NotAPerson`'s reason: `RoleGate` is dormant wherever the
-wall is off, and a keyless runner there is a program too. Reading is open, like
-the rest: an agent stalled behind a full section is entitled to know why.
+wall is off, so the second check is what still refuses a key there. Reading is
+open, like the rest: an agent stalled behind a full section is entitled to know why.
 
 **And so is pre-approval, both the issue's own level and the column's flag
 it rides on the way through.** Pre-approval decides which gates the loop
@@ -3563,8 +3563,8 @@ against. `PATCH /api/hatch/issues/{key}/wip` therefore lives on its own
 controller (`IssueWipLimitController`) not setting `AcceptKey`, cut by
 the same means as the playbook override, and checked a second time in the
 action for `WipController.NotAPerson`'s reason: `RoleGate` is dormant wherever
-the wall is off, and a keyless runner there is a program too. Reading is
-open like the rest: `wipLimit` rides `IssueDto`, because an agent is entitled
+the wall is off, so the second check is what still refuses a key there.
+Reading is open like the rest: `wipLimit` rides `IssueDto`, because an agent is entitled
 to know how many of its siblings it is competing against. It follows that
 there is no `hatch` verb that sets it, the same as expedite and express.
 
@@ -3619,9 +3619,9 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
 | `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
-| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key or a keyless runner, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
-| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key or a keyless runner; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key or a keyless runner, `409` naming any issue in the moving set holding a live claim |
-| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key or a keyless runner). **A key is refused with `409` while the issue's live claim is a [check](#check)'s** — *"<KEY>'s live claim is a check's - a session judges here, it does not move the ticket"* — before anything else is read, a reorder inside one column included; a person's move is not |
+| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
+| `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim |
+| `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key). **A key is refused with `409` while the issue's live claim is a [check](#check)'s** — *"<KEY>'s live claim is a check's - a session judges here, it does not move the ticket"* — before anything else is read, a reorder inside one column included; a person's move is not |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer`, `message` or — though only the apply has a reason to — `verdict`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |
 | `/issues/{key}/messages/deliver` | POST | marks messages read, all unread or the `ids` named, and answers with only the ones this call marked |
 | `/issues/{key}/questions` | GET | `?open=false` for the answered ones too |
@@ -3638,7 +3638,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/issues/{key}/dangerous` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Dangerous](#dangerous). Trimmed; `""` or whitespace clears it. `400` if `reason` is absent, `400` over 200 characters after trimming, `404` on an unknown issue. Re-sending the value it already holds writes nothing; a change writes `dangerous_changed` |
 | `/issues/{key}/omitted-runners/{runner}` | PUT | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. `{ reason }` — see [Omitted runners](#omitted-runners). The runner name may carry a slash the same way `/runners/{name}` does — escaped to `%2F` in the route, decoded once here before it is trimmed. Trimmed; absent or blank stores none. `400` on a blank runner name or one over `EfHatchRunner.MaxNameLength`, `400` on a reason over 200 characters after trimming, `404` on an unknown issue. Re-sending the reason it already holds writes nothing; a change writes `runner_omitted` |
 | `/issues/{key}/omitted-runners/{runner}` | DELETE | **Open to a key** — `[RequireRole(User, AcceptKey = true)]`. Lifts the issue's own omission of the runner — see [Omitted runners](#omitted-runners). `404` on an unknown issue, and `404` naming the ancestor for a runner the issue does not itself omit; writes `runner_omission_lifted` |
-| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key (or a keyless runner that named itself) must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
+| `/issues/{key}/release-note` | PUT | **Open to a key under the claim** — `[RequireRole(User, AcceptKey = true)]`. `{ note }`, trimmed; null, empty or whitespace clears it. Over 2,000 characters is `400` naming the cap. A person needs no token; a key must send `?heldToken=` equal to the issue's live claim, else `409` — "holds no live claim" where there is none or it has lapsed, "does not match this token" where it differs. A change writes a `release_note_changed` trail entry carrying `{ from, to }`; setting what it already holds writes nothing. Answers the issue; `404` for no such issue |
 | `/issues/{key}/express` | PUT | **Person only** — plain `[RequireRole(User)]`. `{ express }` — see [Express](#pre-approval). Setting what it already holds writes nothing. Now an alias for `/pre-approval` above, sharing its guards |
 | `/issues/{key}/stall` | PUT | Carries no `[RequireRole]` at all — a dispatcher is exactly who leaves this mark. `{ why }` — the sentence an increment leaves behind it saying why it left the ticket where it found it; sets `StalledAt` to now and `StalledWhy` to it, normalised and capped the way claim chatter is. Always writes, so a second mark replaces the first on the row but still leaves its own `stalled` event behind it |
 | `/issues/{key}/hold` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action: an agent that could hold its own ticket could park it off the board for the night. `{ held }` — holds it or resumes it. Resuming clears `StalledAt` and `StalledWhy` together, so *Resume now* leaves nothing behind for the dispatcher to fold on, even where nothing had set `held` true. Setting what it already holds writes nothing and does not move `UpdatedAt` — except that `held: false` still clears a stall mark where one is there to clear |
@@ -3680,9 +3680,9 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/utilization` | GET | My own Claude headroom, off my own runners' heartbeats. `204` when no runner of mine has ever reported a reading — see [the battery](#the-battery) |
 | `/attention` | GET | What the loop is waiting on a person for — the issues up for review that carry a pull request, how many in that column carry none, every open question still waiting on somebody — not one whose ticket has already shipped, every repository's trunk whose latest build is failing (counted, unlike the rest below), and (listed, not counted) the issues in review whose branch conflicts or whose build has failed, plus how many of those are held back from the pull request list on that account (`reviewsHeldBack`), plus every live runner out of Claude usage (`exhaustedRunners`), plus every issue the queue marks [deadlocked](#deadlocked) (`deadlocked`), plus every issue whose next move no live runner can take for want of a model or a development dependency (`waitingOnARunner`, see [a move no live runner can take](#a-move-no-live-runner-can-take)), plus every project whose clear implementation steps no live runner, or only one, can take (`runnerCapacity`, see [runner capacity](#runner-capacity)), plus every issue held or marked stalled, in board order, with who it waits on (`stalled`, `stallResumeSeconds`), plus whatever is wrong with the backup, or null when there is nothing (`backup`). One read for all of it — see [what is waiting on you](#what-is-waiting-on-you) |
 | `/local-person` | GET | What to call whoever is sitting here, and whether anybody said so. `204` wherever the wall is up |
-| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key or a keyless runner, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
-| `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key or a keyless runner may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
-| `/settings/credentials/{agent}` | GET | The same kind of route, generalised past Claude: `{agent}` is `claude`, `codex` or `grok`, else `404`. Wrapped with the same `SecretProtector`, taken by a key or a keyless runner the same way, and refused outright wherever the wall is up — all exactly as `/settings/claude-token`'s row above. `204` when that agent's credential is unset |
+| `/settings` | GET, PUT | **Person only** — plain `[RequireRole(User)]`, so a key is refused the read as well as the write. The Claude subscription token and the two agent API keys a Hatch install of its own has — see [the credentials, still](#the-credentials-still). PUT follows the bulk rule: a field left out is left alone, `""` clears it. It also carries the site's default token caps, `defaultMaxTokens` and `defaultMaxTokensPerHour` (`500k`, `2M`, a whole number; zero or junk is a `400` that writes nothing) — **admin-only to write** inside this person-only route: a `403` for a person who is not an admin with the wall up, and for a key, but only when either default is present in the body. Runners with no cap of their own run under them — see [Runners on the board](#runners-on-the-board) |
+| `/settings/claude-token` | GET | The token itself, wrapped with `SecretProtector` for the wire. The one route in Hatch that hands a live secret back out, and it is cut the opposite way to `/settings` beside it — **a key may take it**, because its ordinary caller is the container runner's entrypoint (`containers/hatch-runner/`) authenticating a `claude` CLI it starts itself. **Refused outright wherever the wall is up** — every caller, key or person — because a token crossing a network is a different question from one handed to a container on the same laptop. `204` when none is set. Kept for an older container; new callers use `/settings/credentials/{agent}` below |
+| `/settings/credentials/{agent}` | GET | The same kind of route, generalised past Claude: `{agent}` is `claude`, `codex` or `grok`, else `404`. Wrapped with the same `SecretProtector`, taken by a key the same way, and refused outright wherever the wall is up — all exactly as `/settings/claude-token`'s row above. `204` when that agent's credential is unset |
 | `/issues/{key}/work-log` | GET, POST | What each session on this issue cost, each entry also carrying its playbook's source and, for a file-sourced row, the trunk, sha and hash it was confirmed against, and which agent ran it (`PlaybookSource`, `PlaybookFileTrunk`, `PlaybookFileSha`, `PlaybookFileHash`, `Agent`), and the playbook, transition, issue type, model and effort it ran under (`PlaybookKey`, `PlaybookFromStatusId`, `PlaybookToStatusId`, `IssueType`, `PlaybookModel`, `PlaybookEffort`); an entry's cost is null when the agent reported no price — unpriced, not `$0` — and a `GET`'s totals carry `unpricedSessions` beside the priced sum. **POST is a key only** — a browser is refused outright, because the only honest writer of a meter reading is the dispatcher that read it. See [the leaderboard](#the-leaderboard) |
 | `/work-log/sessions` | GET | The sessions in a range, ranked, with the range's own totals — see [the leaderboard](#the-leaderboard) |
 | `/work-log/history` | GET | The same rows folded into equal buckets of time, for the graph |
@@ -3692,7 +3692,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
-| `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, or `HATCH_RUNNER`'s override, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
+| `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
 
 Two of the filters are worth knowing: `ancestorKey` returns everything below an
@@ -6457,7 +6457,7 @@ person it works for, or to its own key — and folds everything else with a
 sentence naming whose it is: `"assigned to Ada, not to you"`, or `"assigned to
 nobody - a --mine pass takes only your own"`. "Its own" is read off the calling
 key, never off anything the caller says about itself: the key carries an
-`OwnerPersonId`, set only by an admin at the API Keys page, and a caller whose
+`OwnerPersonId`, set only by an admin at the Runners page, and a caller whose
 key belongs to nobody — never set, or its person since deleted — is refused
 before anything is scanned, with the sentence saying so. A setting like
 `HATCH_ME=Ada` would have reopened [the one edge that is deliberately
@@ -7627,8 +7627,9 @@ One pass, from the board to the release:
    that does not answer, spawns anyway and says so rather than refusing a
    session over a question it could not even ask.
 
-   The session's environment is set first from this runner's own `HATCH_BASE`,
-   `HATCH_KEY` and `HATCH_RUNNER`, plus `PATH` - see
+   The session's environment is set first from this runner's own `HATCH_BASE`
+   and `HATCH_KEY`, plus `PATH` — the pair is how the session spawned is the
+   same runner as the loop that spawned it - see
    [How the session runs](../src/Hatch.Web/apps/hatch/docs/what-a-session-is-told.md#how-the-session-runs).
 
    Three things are done at the spawn: two so that a message to the agent is
@@ -8712,7 +8713,7 @@ install nobody can get wrong.
 
 `config --key <key>` is its mirror for the credential: it writes the key alone,
 needs an origin already set, and refuses an empty one. With the wall up the Runner
-page shows it beside the origin command, and the API keys page is where the key
+page shows it beside the origin command, and the Runners page is where the key
 comes from. A key typed on a command line stays in shell history, which the
 no-echo prompt of plain `hatch config` does not, so the page offers both.
 
@@ -8903,28 +8904,23 @@ registers a platform login item that starts the loop paused at every sign-in -
 and the board still starts nothing: it only sets that paused row running at its
 next heartbeat.
 
-**The runner is named as its claim names it** — a character off the cast list
-in `src/Hatch.Contracts/runner-names.txt` (main and recurring characters from three
-TV shows, plus the colorful one-offs), or `HATCH_RUNNER`'s override, the same
-string every [claim](#claim) already carries. A runner has one identity and
-this is it; the table is keyed on it. The choice is made once per checkout —
-a SHA-256 over the host and the canonical checkout path picks a starting slot
-in the list, and the walk forward from there skips any name another checkout
-on this machine already recorded, or a live runner elsewhere on the board
-already holds — and then recorded in a per-user `runners` file beside
-`config`, so every later run repeats it rather than choosing again. Editing
-the list renames nobody who already has a name. `hatch config` offers the
-chosen or recorded name as its default and accepts another with the same four
-checks; `hatch config --runner <name>` sets it without asking.
+**A runner's name is its key's** — assigned once, at mint, and never chosen
+or recorded by the runner itself. `POST /api/hatch/runners`
+(`RunnersController.CreateRunner`, admin-only, no `AcceptKey`) is the only way
+one is minted, from the Runners page's Create runner dialog. The cast list in
+`src/Hatch.Contracts/runner-names.txt` (main and recurring characters from
+three TV shows, plus the colorful one-offs) only suggests a name there —
+`GET /api/hatch/runners/suggest-name` (`RunnerCast.Suggest`, admin-only,
+`RunnersController.cs:204`) answers one no key or heartbeat already holds —
+and an admin is free to type anything else instead. There is no
+`hatch config --runner`, or any other way, for a checkout to pick or override
+the name it runs under; a runner has one identity, its key's, for good.
 
 Every heartbeat also carries `where` — the machine and checkout the process is
 actually running from — drawn on the Runners page under the name. A heartbeat
 whose name is already the *live* runner at a different `where` is refused with
 `409`: two live runners never share one row, and a gone row can still be taken
-over, which is how a checkout that moved keeps its name. That refusal is the
-backstop; the first choice already tries to dodge it by reading
-`GET /api/hatch/runners/names`, which answers the live names alone - `where`,
-owner and claim stay behind the listing's scope.
+over, which is how a checkout that moved keeps its name.
 `Agent` works the same way - the id of the agent that spawned the process
 (`claude`, `codex`, `grok` or `ollama` today, per `Settings.KnownAgentIds`), absent from a runner that has
 not reported one - but carries no uniqueness check, since two runners sharing
@@ -8934,16 +8930,17 @@ an agent id is not a conflict.
 caller. A person at a browser, and every caller on a Hatch with its wall off,
 read every runner; a key whose owner is an admin does too; a key whose owner
 is anyone else reads only that owner's runners; and a key with no owner reads
-only the runners that belong to nobody. `/runners/names` is unchanged - the
-same live names whoever asks. With the wall on, no key exists until an admin
-has minted one, so "the wall is on" stands for "an admin has claimed this
-Hatch". `Dispatch`, `DriversAsync`, `HeldAsync` and the attention read are
-unscoped on purpose: they read the `LegacyRunners` table, not the route, and the
-filter is on the route only.
+only the runners that belong to nobody. With the wall on, no key exists until
+an admin has minted one, so "the wall is on" stands for "an admin has claimed
+this Hatch". `Dispatch`, `DriversAsync`, `HeldAsync` and the attention read are
+unscoped on purpose: they read the `LegacyRunners` table — kept only for a
+genuinely keyless heartbeat, wall off and no key at all — not the route, and
+the filter is on the route only.
 
-**The runner is a key; the heartbeat is a bridge.** `GET /api/hatch/runners`
+**The runner is a key; the heartbeat row is kept beside it.** `GET /api/hatch/runners`
 joins three things: the key (`EfApiKey`), its config (the `RunnerConfigs` row,
-by the key's id) and the heartbeat row (the `LegacyRunners` table, by name). A key
+by the key's id) and the legacy heartbeat row (the `LegacyRunners` table, by
+name — the one a genuinely keyless beat writes). A key
 that has never run is listed, and is not live. A heartbeat no key claims is
 listed too, with its key fields null. `?live=true` keeps only the entries whose
 heartbeat is not past `Runners.DropBefore`. HA-1937 adds the sessions below
@@ -9454,8 +9451,7 @@ loop dispatches against a playbook row; the weave press is no exception.
 **The press is a person's, not a key's.** Checked by `NotAPerson`, the same
 guard `PostReflect` makes before a reflect-now press - weaving spends a
 breakdown session at the largest model, which is a person's call to spend, not
-an agent's to make for itself. A key or a keyless runner naming itself with
-the runner header is refused either way.
+an agent's to make for itself. A key is refused either way, wall on or off.
 
 A few things the brief has to work around, since the epic it is filed for does
 not exist yet when it is written: it cannot print the epic's own key, so it
@@ -9529,13 +9525,13 @@ That is not ordinary secret hygiene: Hatch ships to other operators, and a
 credential in the artifact is one operator's credential inherited by everyone
 who clones it ([`ethos.md`](ethos.md)).
 
-The key is optional. Against a Hatch started with its wall off
-("Local mode") there is no
-credential to present, and every call names itself with an `X-Hatch-Runner`
-header instead — which is a name and not a proof, and only that Hatch reads one.
-So a `401` is two different sentences, and says which happened: a key that was
-sent and refused is a key to go and look at, and no key at all is a Hatch with
-its wall on and nothing to look at yet.
+A key is optional for a read, never for a loop: `work`, `go-to-work` and
+`do-my-work` refuse before they take a lock, a claim or make a request.
+Against a Hatch started with its wall off ("Local mode") a keyless call reads
+as the local person, never a program — there is no header or other way for it
+to name itself instead. So a `401` is two different sentences, and says which
+happened: a key that was sent and refused is a key to go and look at, and no
+key at all is a Hatch with its wall on and nothing to look at yet.
 
 In this repository, [`scripts/hatch.sh`](../scripts/hatch.sh) still answers to
 every one of these commands and hands them to the program, so nothing anybody

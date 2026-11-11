@@ -82,11 +82,10 @@ project rather than globally.
 - **Owner alone.** A project's landing and auto-heal settings, whether its
   playbooks come from its repository or the board, and its one-pull-request
   policy, are an owner's call; an approver has no say in either.
-- **Keys and runners never count.** A program — an API key, or a runner
-  naming itself with a header — is refused a Protected move regardless of
-  membership. With the wall off, the one local person is a real person
-  rather than a program, and may move work into a Protected column from the
-  browser the same as anyone else; a key or a runner still may not.
+- **Keys never count.** A program — an API key — is refused a Protected move
+  regardless of membership. With the wall off, the one local person is a real
+  person rather than a program, and may move work into a Protected column
+  from the browser the same as anyone else; a key still may not.
 - **The approve hop** carries a pre-approved issue into a Protected column
   with no session and nobody pressing anything by hand: the pre-approval was
   that owner's or approver's own permission, given in advance.
@@ -201,8 +200,8 @@ to sign-in instead.
   only a ticket assigned to that person, or to the key itself, and folds
   every other one.
 - **A key that belongs to nobody has no tickets of its own**, and is refused
-  before a `--mine` pass scans anything: an admin sets it on **Manage → API
-  keys**.
+  before a `--mine` pass scans anything: an admin sets it on the Runners
+  page, from the runner's Identity card.
 
 [One increment and the loop](one-increment-and-the-loop#sharing-a-board) says
 more about sharing one board between people and keys.
