@@ -176,7 +176,8 @@ with `hatch landed`. The increment is not done until it is recorded.
 Where the work goes to review on a branch. It gives the title form (the key,
 then the subject as an area and a sentence) and the exact first line of the
 description, a link to the ticket, and ends with `hatch pr` to record the pull
-request on the ticket. In a one-pull-request story it adds that the closeout
+request on the ticket, which also writes the ticket's chain into the pull
+request's body. In a one-pull-request story it adds that the closeout
 increment, once the tasks are all pushed, opens the one pull request for all of
 them.
 
@@ -303,7 +304,7 @@ the last `release-note` block in the session's output wins, the same rule
 the work log follows. It is written under the claim - only while
 the session's lease on the ticket is still live - and before the work log, so
 a failure further down the increment cannot lose it. Writing none is fine:
-the [changelog](/apps/hatch/reports/changelog) then falls back to showing the
+the [changelog](/reports/changelog) then falls back to showing the
 ticket's title, and either way a person can edit or correct the note from the
 issue page.
 

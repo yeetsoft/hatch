@@ -50,13 +50,17 @@ public sealed class IssueCommands(Cli cli)
 
     public static readonly string[] MoveUsage =
     [
-        "usage: hatch move AER-12 <column>",
+        "usage: hatch move AER-12 <column> [--contribution]",
         "",
         "  Into any non-terminal, non-protected column, found by its name on the",
         "  letters and digits alone. A terminal column is refused: only the",
         "  operator decides that something shipped. A protected column is",
         "  refused too: only its approvers move work there, in the browser",
         "  (CLAUDE.md).",
+        "",
+        "  A contribution - an issue with a record that it came from outside -",
+        "  is refused a column that merges pull requests, because that merges",
+        "  someone else's branch. --contribution says that is meant.",
     ];
 
     public static readonly string[] CommentUsage =
@@ -83,6 +87,10 @@ public sealed class IssueCommands(Cli cli)
         "  hatch pr AER-12 https://...     ...or say where, having opened one",
         "  hatch pr AER-12 --clear         ...or take it off the one it has",
         "  hatch pr AER-12 --none \"why\"   ...or declare it finished with no code",
+        "",
+        "  Recording a url also writes the ticket's chain into the pull request's",
+        "  body, as an envelope; a failure to is one line, and the url is still",
+        "  recorded. The read, --clear and --none do not touch the forge.",
         "",
         "  The read prints the URL alone, so `open \"$(hatch pr AER-12)\"` is the",
         "  whole of \"show me the review\". An issue that declared no code prints the",
@@ -313,9 +321,13 @@ public sealed class IssueCommands(Cli cli)
     public async Task<int> MoveAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, MoveUsage);
-        if (args.Length != 2) return Usage.Refuse(cli.Say, "move takes one issue key and one column", MoveUsage);
 
-        var (key, want) = (args[0], args[1]);
+        // In any position, like the other commands' flags: it is not a key or a column.
+        var positional = args.Where(a => a != "--contribution").ToArray();
+        var contribution = positional.Length != args.Length;
+        if (positional.Length != 2) return Usage.Refuse(cli.Say, "move takes one issue key and one column", MoveUsage);
+
+        var (key, want) = (positional[0], positional[1]);
 
         var board = await cli.Board.BoardAsync(ct);
         if (board is null) return 1;
@@ -344,6 +356,17 @@ public sealed class IssueCommands(Cli cli)
         {
             cli.Say.Complain(
                 $"hatch: \"{want}\" is a protected column - only its approvers move a ticket there (CLAUDE.md)");
+            return 1;
+        }
+
+        // After the refusals above, so a protected column is refused exactly as it was. The
+        // browser asks this question as a confirm; there is no one here to ask, so the flag is the answer.
+        if (column.MergesPullRequest && !contribution
+            && board.Issues.FirstOrDefault(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase))
+                is { Contribution: not null })
+        {
+            cli.Say.Complain(
+                $"hatch: {key} is a contribution, and \"{want}\" merges its pull request - pass --contribution to move it anyway");
             return 1;
         }
 
@@ -463,7 +486,65 @@ public sealed class IssueCommands(Cli cli)
         cli.Say.Line(patched?.PullRequestUrl is { Length: > 0 } now
             ? now
             : $"{patched?.Key ?? key} points at no pull request");
+
+        if (patched?.PullRequestUrl is { Length: > 0 } recorded) await WriteEnvelopeAsync(key, recorded, patched, ct);
         return 0;
+    }
+
+    /// <summary>The most parents one envelope's chain climbs - a backstop to the cycle guard, far deeper than any tree.</summary>
+    private const int MaxChain = 16;
+
+    /// <summary>
+    /// Writes the ticket's chain into the pull request's body, for a board that receives the pull
+    /// request. The record has already been made, so a failure here costs one line and nothing else.
+    /// </summary>
+    private async Task WriteEnvelopeAsync(string key, string url, IssueDto own, CancellationToken ct)
+    {
+        string? why;
+        try
+        {
+            why = await TryWriteEnvelopeAsync(url, own, ct);
+        }
+        catch (HatchException e)
+        {
+            why = e.Message;
+        }
+
+        if (why is not null)
+            cli.Say.Complain($"hatch: {key} - its pull request's body was not updated with the envelope - {why}");
+    }
+
+    /// <summary>The reason the envelope was not written, or null where it was - or where it was already there.</summary>
+    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, CancellationToken ct)
+    {
+        var names = (await cli.Board.StatusesAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
+        var origin = cli.Board.Client.Origin;
+
+        var chain = new List<PullRequestEnvelopeIssue>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var issue = own; issue is not null && seen.Add(issue.Key) && chain.Count < MaxChain;)
+        {
+            chain.Add(new PullRequestEnvelopeIssue(
+                issue.Key, issue.Title, issue.Type, issue.Description,
+                names.GetValueOrDefault(issue.StatusId), issue.ParentKey,
+                $"{origin}/apps/hatch/issues/{issue.Key}"));
+
+            issue = issue.ParentKey is { Length: > 0 } parent && !seen.Contains(parent)
+                ? await cli.Board.IssueAsync(parent, ct)
+                : null;
+        }
+
+        var envelope = new PullRequestEnvelope(PullRequestEnvelope.CurrentVersion, origin, own.ProjectKey, chain);
+
+        var forge = cli.Forge(Directory.GetCurrentDirectory(), null);
+        var read = await forge.ReadBodyAsync(url, ct);
+        if (read.Body is not { } body) return read.Why ?? "the body could not be read";
+
+        var replaced = PullRequestEnvelopeWriter.Replace(body, envelope, PullRequestEnvelopeWriter.GitHubBodyLimit);
+        if (replaced == body) return null;
+
+        var edit = await forge.EditBodyAsync(url, replaced, ct);
+        return edit.Edited ? null : edit.Why ?? "the body could not be written";
     }
 
     /// <summary>

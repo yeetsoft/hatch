@@ -86,6 +86,41 @@ export function readSearch(params: URLSearchParams): string {
   return next.toString();
 }
 
+/** The filter the report's JSON read and its CSV download share - every
+    param `getConsumptionReport` sends but `limit`, which the download has
+    no cap to carry. */
+export interface ConsumptionFilterQuery {
+  from?: string | null;
+  to?: string | null;
+  type?: ConsumptionType | null;
+  sort?: ConsumptionSort | null;
+  offsetMinutes: number;
+  statusId?: number[] | null;
+  projectId?: number[] | null;
+}
+
+/** `query` as the server takes it: `projectId` and `statusId` repeated once
+    per id, `type` and `sort` left off at their default, `offsetMinutes`
+    always sent. The one function `getConsumptionReport` and the CSV link
+    both build their query string from. */
+export function consumptionFilterQuery(query: ConsumptionFilterQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  for (const id of query.statusId ?? []) params.append('statusId', String(id));
+  if (query.type) params.set('type', query.type);
+  if (query.sort) params.set('sort', query.sort);
+  params.set('offsetMinutes', String(query.offsetMinutes));
+  return params;
+}
+
+/** The CSV route's address for the same filter the JSON read used, uncapped -
+    a plain link, not a fetch, so the browser's own download handling and the
+    server's `Content-Disposition` name the file. */
+export const consumptionCsvHref = (query: ConsumptionFilterQuery): string =>
+  `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`;
+
 /** The column the URL names, by its numeric id, or null for every column. A
     column has no `key` the way a project does, and the id is what the API takes.
     Anything that is not a positive whole number is no column at all. */

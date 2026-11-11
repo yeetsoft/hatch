@@ -101,7 +101,7 @@ public class OmittedRunnersTests(ITestOutputHelper output)
             var baseUrl = await harness.StartHostAsync(deadline);
             var (parent, child) = await deadline.BoundAsync("filing the issues", () => SeedAsync(baseUrl, harness.Services));
 
-            var page = $"/apps/hatch/issues/{child}";
+            var page = $"/issues/{child}";
             await harness.OpenAsync(deadline, baseUrl, page);
             var p = harness.Page!;
 

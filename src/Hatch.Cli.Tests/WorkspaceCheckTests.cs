@@ -73,6 +73,54 @@ public sealed class WorkspaceCheckTests : RepoFixture
         Assert.NotEqual(was, ws.Heads()!.Fingerprint("HA-31"));
     }
 
+    [Fact]
+    public void A_recorded_branch_is_the_one_candidate_whatever_the_key_and_a_key_named_branch_is_ignored()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        Publish("ha-2300-other", "y.txt", "y");
+
+        var heads = Ws().Heads()!;
+
+        Assert.Equal(["ar-77-something"], heads.Candidates("HA-2300", "ar-77-something"));
+        Assert.Equal(["ha-2300-other"], heads.Candidates("HA-2300"));
+        Assert.Equal("ar-77-something", heads.BranchFor("HA-2300", null, "ar-77-something"));
+    }
+
+    [Fact]
+    public void A_recorded_branch_that_is_not_on_origin_is_no_candidate_though_a_key_named_one_is()
+    {
+        Publish("ha-2300-other", "y.txt", "y");
+
+        var heads = Ws().Heads()!;
+
+        Assert.Empty(heads.Candidates("HA-2300", "ar-77-something"));
+        Assert.Null(heads.BranchFor("HA-2300", null, "ar-77-something"));
+        Assert.Equal($"{OriginTip("main")}", heads.Fingerprint("HA-2300", "ar-77-something"));
+    }
+
+    [Fact]
+    public void A_recorded_branch_equal_to_the_trunk_is_no_candidate()
+    {
+        Assert.Empty(Ws().Heads()!.Candidates("HA-2300", "main"));
+    }
+
+    [Fact]
+    public void A_fingerprint_on_a_recorded_branch_names_it_and_moves_only_when_it_moves()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        Publish("ha-2300-other", "y.txt", "y");
+        var ws = Ws();
+        var was = ws.Heads()!.Fingerprint("HA-2300", "ar-77-something");
+
+        Assert.Equal($"{OriginTip("main")}\nar-77-something:{OriginTip("ar-77-something")}", was);
+
+        Publish("ha-2300-other", "y2.txt", "y2", reset: false);
+        Assert.Equal(was, ws.Heads()!.Fingerprint("HA-2300", "ar-77-something"));
+
+        Publish("ar-77-something", "x2.txt", "x2", reset: false);
+        Assert.NotEqual(was, ws.Heads()!.Fingerprint("HA-2300", "ar-77-something"));
+    }
+
     // ---- Fetch ----
 
     [Fact]
@@ -318,6 +366,105 @@ public sealed class WorkspaceCheckTests : RepoFixture
         ws.Fetch();
 
         Assert.Null(ws.Check("HA-31")!.PlaybookFilePath);
+    }
+
+    [Fact]
+    public void A_recorded_branch_is_checked_whatever_the_key_and_a_key_named_branch_is_ignored()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        Publish("ha-2300-other", "y.txt", "y");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-2300", recordedBranch: "ar-77-something")!;
+
+        Assert.Equal(MergeVerdicts.Clean, verdict.Kind);
+        Assert.Equal("ar-77-something", verdict.Branch);
+        Assert.Equal(OriginTip("ar-77-something"), verdict.BranchSha);
+        Assert.False(verdict.HoldsTrunk);
+    }
+
+    [Fact]
+    public void A_recorded_branch_that_conflicts_names_the_files()
+    {
+        Publish("ar-77-something", "a.txt", "one\nBRANCH\nthree\n");
+        MoveMain("a.txt", "one\nTRUNK\nthree\n");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-2300", recordedBranch: "ar-77-something")!;
+
+        Assert.Equal(MergeVerdicts.Conflicted, verdict.Kind);
+        Assert.Equal(["a.txt"], verdict.Files);
+        Assert.Equal("ar-77-something", verdict.Branch);
+    }
+
+    [Fact]
+    public void A_recorded_branch_that_is_not_on_origin_is_none_though_a_key_named_branch_is()
+    {
+        Publish("ha-2300-other", "y.txt", "y");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-2300", recordedBranch: "ar-77-something")!;
+
+        Assert.Equal(MergeVerdicts.None, verdict.Kind);
+        Assert.Null(verdict.Branch);
+    }
+
+    [Fact]
+    public void A_merged_recorded_branch_is_none()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        G(_other, "checkout", "--quiet", "main");
+        G(_other, "merge", "--quiet", "--no-edit", "ar-77-something");
+        G(_other, "push", "--quiet", "origin", "main");
+        var ws = Ws();
+        ws.Fetch();
+
+        Assert.Equal(MergeVerdicts.None, ws.Check("HA-2300", recordedBranch: "ar-77-something")!.Kind);
+    }
+
+    [Fact]
+    public void Syncing_a_recorded_branch_merges_the_trunk_into_it_and_leaves_a_key_named_branch_alone()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        Publish("ha-2300-other", "y.txt", "y");
+        MoveMain("b.txt", "b");
+        var other = OriginTip("ha-2300-other");
+        var ws = Ws();
+
+        var synced = ws.Sync("HA-2300", "ar-77-something");
+
+        Assert.Equal(SyncOutcome.Pushed, synced.Outcome);
+        Assert.Equal("ar-77-something", synced.Branch);
+        Assert.Equal(synced.Sha, OriginTip("ar-77-something"));
+        Assert.Equal(other, OriginTip("ha-2300-other"));
+    }
+
+    [Fact]
+    public void Syncing_a_recorded_branch_that_is_not_on_origin_finds_no_branch()
+    {
+        Publish("ha-2300-other", "y.txt", "y");
+
+        Assert.Equal(SyncOutcome.NoBranch, Ws().Sync("HA-2300", "ar-77-something").Outcome);
+    }
+
+    [Fact]
+    public void Leaving_reports_the_verdict_on_a_recorded_branch()
+    {
+        Publish("ar-77-something", "x.txt", "x");
+        MoveMain("b.txt", "b");
+        var ws = Ws();
+        ws.Prepare();
+
+        var found = ws.Leave("HA-2300", syncPullRequest: true, recordedBranch: "ar-77-something").Found!;
+
+        Assert.Equal(MergeVerdicts.Clean, found.Kind);
+        Assert.Equal("ar-77-something", found.Branch);
+        Assert.Equal(OriginTip("ar-77-something"), found.BranchSha);
+        Assert.True(found.HoldsTrunk);
     }
 
     // ---- What leaving reports ----

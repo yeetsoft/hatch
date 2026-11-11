@@ -142,7 +142,7 @@ const stalledIssue = (over: Partial<StalledIssue> = {}): StalledIssue => ({
 });
 
 beforeEach(() => {
-  vi.stubGlobal('window', { location: { pathname: '/apps/hatch/' } });
+  vi.stubGlobal('window', { location: { pathname: '/' } });
   dialogProps = null;
 });
 afterEach(() => vi.unstubAllGlobals());

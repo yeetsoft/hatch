@@ -247,6 +247,10 @@ public static class Fixtures
         MergeWorkDto? mergeWork = null, string? projectKey = null, params MergeCheckDto[] checks) =>
         new(key, repositories ?? [], checks, null, pullRequestUrl, mergeWork, projectKey ?? key[..key.IndexOf('-')]);
 
+    /// <summary>The same, for a contribution that recorded its head <paramref name="branch"/>.</summary>
+    public static ReviewCheckDto ReviewOn(string key, string branch, params MergeCheckDto[] checks) =>
+        Review(key, checks: checks) with { Branch = branch };
+
     /// <summary>The same, with the build verdicts the board holds as well.</summary>
     public static ReviewCheckDto Review(
         string key, IReadOnlyList<WorkRepositoryDto> repositories, IReadOnlyList<MergeCheckDto> checks,

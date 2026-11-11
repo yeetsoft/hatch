@@ -6,7 +6,8 @@ using System.Net;
 namespace Hatch.Api.Tests;
 
 /// <summary>
-/// HA-269's criterion: the PWA manifest comes back as
+/// HA-269's criterion: the PWA manifest, now served at the origin's root
+/// (HA-2248) rather than under <c>/apps/hatch</c>, comes back as
 /// <c>application/manifest+json</c>, not whatever
 /// <see cref="Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider"/>'s
 /// defaults would otherwise fall back to for an unrecognised extension.
@@ -46,7 +47,7 @@ public class ManifestContentTypeTests
             await using var factory = new ManifestFactory(hatch, quartz);
             using var client = factory.CreateClient();
 
-            var response = await client.GetAsync("/apps/hatch/manifest.webmanifest");
+            var response = await client.GetAsync("/manifest.webmanifest");
 
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Equal("application/manifest+json", response.Content.Headers.ContentType?.MediaType);

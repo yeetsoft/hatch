@@ -140,6 +140,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
+                RecordedBranch = i.Contribution != null ? i.Contribution.HeadBranch : null,
             })
             .ToListAsync(ct);
 
@@ -328,7 +329,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             string? heldSentence = null;
             if (tree.EffectivePreApproval(i.Id).Level == PreApprovalLevels.PreApproved)
             {
-                var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince);
+                var judged = MergeWork.Judge(repos, issueMerges, builds, i.PullRequestClosedAt, i.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name, pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.RecordedBranch);
                 if (judged.Kind is WorkKinds.Merge or WorkKinds.Update or WorkKinds.Pending) continue;
                 heldSentence = judged.Sentence;
             }
@@ -394,6 +395,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 .Where(i => i.StatusId == merges.Id)
                 .OrderBy(i => i.Rank).ThenBy(i => i.Id)
                 .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+                .Include(i => i.Contribution)
                 .ToListAsync(ct);
 
             var mergeIds = inMerges.Select(i => i.Id).ToList();
@@ -420,7 +422,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 var j = MergeWork.Judge(
                     issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                     merged, built, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, time.GetUtcNow(), review.Name,
-                    pullRequestHeadSince: issue.PullRequestHeadSince);
+                    pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.Contribution?.HeadBranch);
 
                 var key = IssueKey.Format(issue.Project!.Key, issue.Number);
                 if (j.Kind is WorkKinds.Hold or WorkKinds.Pushback)

@@ -6,6 +6,7 @@ import { ProjectMark, markVars, useCallout } from '@hatch/ui';
 import { ClaimBadge } from './ClaimBadge';
 import { FlowBand } from './FlowBand';
 import { MomentChip } from './MomentChip';
+import { ContributionBadge, ContributionMark } from './ContributionMark';
 import { TypeGlyph } from './TypeGlyph';
 import { statusVars } from '../lib/color';
 import { dangerousTitle } from '../lib/dangerous';
@@ -259,6 +260,7 @@ function CardFace({
   return (
     <>
       <TypeGlyph type={card.type} />
+      {card.contribution && <ContributionMark className="hatch-contribution-mark--card" />}
       <div className="hatch-card-head">
         {project && (
           <ProjectMark
@@ -277,6 +279,11 @@ function CardFace({
           {card.key}
         </span>
       </div>
+      {card.contribution && (
+        <div className="hatch-card-origin">
+          <ContributionBadge contribution={card.contribution} inLink />
+        </div>
+      )}
       {hasMarks(card) && (
         <div className="hatch-card-marks">
           {/* This one first - a fact about which card to read next. */}

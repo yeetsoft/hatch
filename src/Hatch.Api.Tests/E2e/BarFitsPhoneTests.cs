@@ -68,7 +68,7 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
             var violations = new List<string>();
 
             // The widest state: the three session reads are ours, everything else is real.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", StubTheSessionReads);
+            await harness.OpenAsync(deadline, baseUrl, "/", StubTheSessionReads);
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForFirstColumnAsync(deadline);
             await MeasureAsync(harness, deadline, "board", "widest", widest: true, violations);

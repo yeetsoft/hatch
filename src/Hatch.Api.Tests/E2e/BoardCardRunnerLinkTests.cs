@@ -63,13 +63,13 @@ public class BoardCardRunnerLinkTests(ITestOutputHelper output)
 
             await harness.ClickAsync(deadline, ".hatch-card-claim[role=link]");
             await deadline.BoundAsync("waiting for the runner detail", () =>
-                harness.Page!.WaitForURLAsync($"**/apps/hatch/runners/{RunnerName}"));
+                harness.Page!.WaitForURLAsync($"**/runners/{RunnerName}"));
             await harness.WaitForVisibleAsync(deadline, "h2.hatch-section-title:has-text(\"Identity and key\")");
             var path = await harness.ScreenshotAsync(deadline, "2-runner-detail-after-click");
             output.WriteLine($"landed on: {new Uri(harness.Page!.Url).AbsolutePath}");
             output.WriteLine($"screenshot: {path}");
 
-            Assert.Equal($"/apps/hatch/runners/{RunnerName}", new Uri(harness.Page!.Url).AbsolutePath);
+            Assert.Equal($"/runners/{RunnerName}", new Uri(harness.Page!.Url).AbsolutePath);
 
             harness.AssertNoPageErrors();
         }

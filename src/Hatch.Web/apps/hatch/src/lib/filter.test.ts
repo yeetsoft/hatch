@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UNASSIGNED, assigneeToken } from './assignee';
 import {
+  BOARD_CONTRIBUTIONS_STORAGE_KEY,
   BOARD_PROJECT_STORAGE_KEY,
   BOARD_TYPES_STORAGE_KEY,
   DEFAULT_FILTER,
@@ -9,7 +10,9 @@ import {
   filterCards,
   initialProject,
   isFiltering,
+  matchesContributions,
   matchesQuery,
+  readBoardContributions,
   readBoardProject,
   readBoardTypes,
   revealType,
@@ -18,11 +21,12 @@ import {
   toggleWaiting,
   typeCounts,
   typesSummary,
+  writeBoardContributions,
   writeBoardProject,
   writeBoardTypes,
 } from './filter';
 import { ISSUE_TYPES } from '../types';
-import type { Assignee, IssueCard } from '../types';
+import type { Assignee, ContributionRecord, IssueCard } from '../types';
 
 /** A localStorage that holds what it is given, and can be made to throw - the
     same stub phoneBoard.test.ts uses for its storage pair. */
@@ -567,5 +571,73 @@ describe('scrubbedProject', () => {
 
   it('is already empty and stays so', () => {
     expect(scrubbedProject('', offered)).toBe('');
+  });
+});
+
+describe('contributions', () => {
+  const record: ContributionRecord = {
+    pullRequestUrl: null,
+    headBranch: null,
+    authorLogin: 'someone',
+    authorAssociation: 'NONE',
+    filedAt: '2026-11-11T00:00:00Z',
+    filedBy: 'runner',
+  };
+  const board = [
+    card({ key: 'AER-1' }),
+    card({ key: 'AER-2', contribution: record }),
+    card({ key: 'AER-3', type: 'epic', contribution: record }),
+    card({ key: 'AER-4', contribution: null }),
+  ];
+  const keys = (choice: 'all' | 'only' | 'hidden') =>
+    filterCards(board, filter({ contributions: choice })).map((c) => c.key);
+
+  it('opens on All', () => {
+    expect(DEFAULT_FILTER.contributions).toBe('all');
+    expect(keys('all')).toEqual(['AER-1', 'AER-2', 'AER-3', 'AER-4']);
+  });
+
+  it('Only shows the cards with a record, of any type, and nothing else', () => {
+    expect(keys('only')).toEqual(['AER-2', 'AER-3']);
+  });
+
+  it('Hidden shows exactly the cards without one', () => {
+    expect(keys('hidden')).toEqual(['AER-1', 'AER-4']);
+  });
+
+  it('judges a card on its own record, not its stories', () => {
+    const epic = card({ key: 'AER-10', type: 'epic' });
+    const story = card({ key: 'AER-11', type: 'story', parentKey: 'AER-10', contribution: record });
+    const stories = new Map([['AER-10', [story]]]);
+    expect(matchesContributions(epic, 'only')).toBe(false);
+    expect(filterCards([epic], filter({ contributions: 'only' }), stories)).toEqual([]);
+  });
+
+  it('counts as filtering unless it is All', () => {
+    expect(isFiltering(filter({ contributions: 'only' }))).toBe(true);
+    expect(isFiltering(filter({ contributions: 'hidden' }))).toBe(true);
+    expect(isFiltering(filter({ contributions: 'all' }))).toBe(false);
+  });
+
+  it('is remembered between visits', () => {
+    const data = stubStorage();
+    for (const choice of ['all', 'only', 'hidden'] as const) {
+      writeBoardContributions(choice);
+      expect(data[BOARD_CONTRIBUTIONS_STORAGE_KEY]).toBe(choice);
+      expect(readBoardContributions()).toBe(choice);
+    }
+  });
+
+  it('reads All when nothing, or something unknown, is stored', () => {
+    stubStorage();
+    expect(readBoardContributions()).toBe('all');
+    stubStorage({ [BOARD_CONTRIBUTIONS_STORAGE_KEY]: 'everything' });
+    expect(readBoardContributions()).toBe('all');
+  });
+
+  it('survives a store that throws', () => {
+    stubStorage({}, true);
+    expect(readBoardContributions()).toBe('all');
+    expect(() => writeBoardContributions('only')).not.toThrow();
   });
 });

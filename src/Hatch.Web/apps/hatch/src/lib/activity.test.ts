@@ -8,6 +8,8 @@ import {
   estimateRuleWords,
   GAP,
   headlineWords,
+  INCLUDE_KEYS,
+  isPerson,
   isValidGap,
   isValidLead,
   kindWords,
@@ -15,6 +17,7 @@ import {
   LEAD,
   resolveActor,
   resolveGap,
+  resolveIncludeKeys,
   resolveLead,
   sessionLengthWords,
   sessionWhenWords,
@@ -23,6 +26,7 @@ import {
   withActor,
   withGap,
   withLead,
+  withIncludeKeys,
 } from './activity';
 import type { Assignee } from '../types';
 
@@ -73,6 +77,33 @@ describe('withActor', () => {
 
   it('replaces an actor already there', () => {
     expect(withActor(params('actor=Zoe'), 'Ada').getAll(ACTOR)).toEqual(['Ada']);
+  });
+});
+
+describe('includeKeys', () => {
+  it('is on only when the URL says true', () => {
+    expect(resolveIncludeKeys(params(''))).toBe(false);
+    expect(resolveIncludeKeys(params('includeKeys=true'))).toBe(true);
+    expect(resolveIncludeKeys(params('includeKeys=1'))).toBe(false);
+  });
+
+  it('is written when on and removed when off, keeping the rest and not mutating its input', () => {
+    const before = params('actor=Ada&range=2w');
+    const on = withIncludeKeys(before, true);
+
+    expect(on.get(INCLUDE_KEYS)).toBe('true');
+    expect(on.get('actor')).toBe('Ada');
+    expect(before.has(INCLUDE_KEYS)).toBe(false);
+    expect(withIncludeKeys(on, false).has(INCLUDE_KEYS)).toBe(false);
+  });
+
+  it('is offered for a person the directory lists, and for nobody else', () => {
+    const directory = { me: null, assignees: [person('Ada'), key('Ada laptop')] };
+
+    expect(isPerson(directory, 'Ada')).toBe(true);
+    expect(isPerson(directory, 'Ada laptop')).toBe(false);
+    expect(isPerson(directory, 'Gone')).toBe(false);
+    expect(isPerson(directory, null)).toBe(false);
   });
 });
 
