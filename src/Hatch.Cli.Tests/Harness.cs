@@ -590,6 +590,15 @@ public sealed class FakeForge
 
     private readonly Dictionary<string, int> _pullRequestCalls = [];
 
+    /// <summary>Every author association asked for, as <c>path number</c>, in order.</summary>
+    public List<string> AssociationReads { get; } = [];
+
+    /// <summary>What every author association read answers, unless <see cref="AssociationFor"/> says otherwise.</summary>
+    public AssociationAnswer AssociationAnswer { get; set; } = new("MEMBER", null);
+
+    /// <summary>What the association read of one pull request's number answers.</summary>
+    public Dictionary<long, AssociationAnswer> AssociationFor { get; } = [];
+
     /// <summary>Every merge asked for, with the sha it carried, in order.</summary>
     public List<(string Path, string Url, string Sha)> MergeCalls { get; } = [];
 
@@ -660,6 +669,12 @@ public sealed class FakeForge
         {
             owner.PullRequestListReads.Add(path);
             return Task.FromResult(owner.PullRequestList);
+        }
+
+        public Task<AssociationAnswer> ReadAssociationAsync(long number, CancellationToken ct)
+        {
+            owner.AssociationReads.Add($"{path} {number}");
+            return Task.FromResult(owner.AssociationFor.GetValueOrDefault(number, owner.AssociationAnswer));
         }
 
         public Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

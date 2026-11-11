@@ -41,6 +41,13 @@ public sealed record Cli(
     /// </summary>
     public bool Clones { get; init; }
 
+    /// <summary>
+    /// Where a pull request is read from, so <c>queue</c> can say which an outside one would be passed over -
+    /// the checkout's path, then the board's canonical identity for its repository. Replaceable so a test can
+    /// say what the forge holds without one to ask.
+    /// </summary>
+    public Func<string, string?, IForge> Forge { get; init; } = (path, canonical) => new GhForge(path, canonical);
+
     /// <summary>What this runner advertises: detected once at start, merged with what it declares.</summary>
     public IReadOnlyList<string> Has { get; init; } = [];
 

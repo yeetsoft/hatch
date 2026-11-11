@@ -9,7 +9,7 @@ namespace Hatch.Cli.Tests;
 /// the order and the count of the calls and not what git or <c>gh</c> does with
 /// them.
 /// </summary>
-public sealed class MergeTrainTests
+public sealed partial class MergeTrainTests
 {
     private const string Review = "/api/hatch/work/review";
     private const int Interval = 60;
@@ -41,6 +41,11 @@ public sealed class MergeTrainTests
         public Rig Board(params ReviewCheckDto[] rows)
         {
             H.Wire.Json("GET", Review, rows);
+
+            // The outside pull request half asks which project binds a checkout's repository; a board that
+            // binds nothing says so, and the half has nothing to file. Tests about it Replace these.
+            H.Wire.Json("GET", "/api/hatch/trunk-builds", Array.Empty<TrunkBuildDto>());
+            H.Wire.Json("GET", "/api/hatch/projects", Array.Empty<ProjectDto>());
             foreach (var row in rows) H.Wire.Json("PUT", Put(row.Key), Fixtures.MergeCheck());
             H.Runtime.Readout.SetDrives(rows.Select(r => r.ProjectKey).Distinct().ToList());
             return this;

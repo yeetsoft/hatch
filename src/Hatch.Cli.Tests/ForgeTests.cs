@@ -456,9 +456,48 @@ public sealed class ForgeTests
         Assert.Null(answer.Why);
         Assert.Empty(answer.Open!);
         var call = Assert.Single(runs.Calls);
-        Assert.Equal(["pr", "list", "--state", "open", "--limit", "100", "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid"], call.Args);
+        Assert.Equal(["pr", "list", "--state", "open", "--limit", "100", "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid,headRefName,author,isCrossRepository,title,body,createdAt"], call.Args);
         Assert.DoesNotContain("--hostname", call.Args);
         Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task A_listed_pull_request_carries_its_branch_author_fork_title_body_and_when()
+    {
+        const string One = """
+            [
+              {"url":"https://forge.example/owner/repo/pull/7","state":"OPEN","headRefOid":"abc123","number":7,"mergeStateStatus":"CLEAN","reviewDecision":"","isDraft":false,
+               "baseRefName":"main","headRefName":"feature/x","author":{"login":"octocat"},"isCrossRepository":false,
+               "title":"Fix the thing","body":"line one\n\nline three","createdAt":"2026-11-11T09:30:00Z"},
+              {"url":"https://forge.example/owner/repo/pull/8","state":"OPEN","number":8,"author":null,"isCrossRepository":true}
+            ]
+            """;
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, One, "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        var seven = answer.Find("https://forge.example/owner/repo/pull/7")!;
+        Assert.Equal("feature/x", seven.HeadBranch);
+        Assert.Equal("octocat", seven.AuthorLogin);
+        Assert.False(seven.IsCrossRepository);
+        Assert.Equal("Fix the thing", seven.Title);
+        Assert.Equal("line one\n\nline three", seven.Body);
+        Assert.Equal(new DateTimeOffset(2026, 11, 11, 9, 30, 0, TimeSpan.Zero), seven.CreatedAt);
+
+        var eight = answer.Find("https://forge.example/owner/repo/pull/8")!;
+        Assert.True(eight.IsCrossRepository);
+        Assert.Null(eight.AuthorLogin);
+        Assert.Null(eight.CreatedAt);
+    }
+
+    [Fact]
+    public async Task A_listed_pull_request_the_forge_did_not_say_was_a_fork_about_reads_as_null_not_false()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, TwoOpen, "") };
+
+        var answer = await runs.Forge().ReadOpenPullRequestsAsync(default);
+
+        Assert.Null(answer.Find("https://forge.example/owner/repo/pull/7")!.IsCrossRepository);
     }
 
     [Fact]
@@ -572,6 +611,56 @@ public sealed class ForgeTests
         var answer = await runs.Forge(canonical: "/srv/git/repo.git").MergeAsync("https://forge.example/owner/repo/pull/7", "abc123", default);
 
         Assert.False(answer.Merged);
+        Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
+        Assert.Empty(runs.Calls);
+    }
+
+    // ---- ReadAssociationAsync ----
+
+    [Fact]
+    public async Task The_association_is_read_from_the_pulls_route_with_the_host_the_board_named()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "COLLABORATOR\n", "") };
+
+        var answer = await runs.Forge().ReadAssociationAsync(7, default);
+
+        Assert.Equal("COLLABORATOR", answer.Association);
+        Assert.Null(answer.Why);
+        var call = Assert.Single(runs.Calls);
+        Assert.Equal(["api", "--hostname", "forge.example", "repos/{owner}/{repo}/pulls/7", "--jq", ".author_association"], call.Args);
+        Assert.Equal("forge.example/owner/repo", call.Env["GH_REPO"]);
+    }
+
+    [Fact]
+    public async Task A_refused_association_read_says_why_and_reads_nothing()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(1, "", "HTTP 403: Resource not accessible\n") };
+
+        var answer = await runs.Forge().ReadAssociationAsync(7, default);
+
+        Assert.Null(answer.Association);
+        Assert.Equal("HTTP 403: Resource not accessible", answer.Why);
+    }
+
+    [Fact]
+    public async Task An_empty_association_is_not_an_association()
+    {
+        var runs = new Runs { Answer = _ => new GhForge.Ran(0, "\n", "") };
+
+        var answer = await runs.Forge().ReadAssociationAsync(7, default);
+
+        Assert.Null(answer.Association);
+        Assert.NotNull(answer.Why);
+    }
+
+    [Fact]
+    public async Task A_local_path_asks_gh_nothing_for_an_association()
+    {
+        var runs = new Runs();
+
+        var answer = await runs.Forge(canonical: "/srv/git/repo.git").ReadAssociationAsync(7, default);
+
+        Assert.Null(answer.Association);
         Assert.Contains("local path", answer.Why, StringComparison.Ordinal);
         Assert.Empty(runs.Calls);
     }

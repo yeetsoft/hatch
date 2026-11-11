@@ -104,6 +104,26 @@ Only the head is touched on a tick. A clean branch whose build passed merges; a 
 
 None of this spends an increment or a session. The runner acts on its own clock, separate from the clock that reads the build and merge checks above — [`--merge-interval`](cli-reference#go-to-work) against `--interval`. A ticket can therefore be merged under a session that is still working it: if that session's own earlier push already left the branch clean and green, and its turn in the train had come by the time the train ran, the train merges it. That is the design, not a race to fix.
 
+### A pull request nobody on the board knows
+
+A pull request opened on a bound repository by somebody who never went through a ticket has no issue to ride the train on. The elected driver of the project files one: on its own tick, an open pull request that no issue records — on its `pullRequestUrl` or on a contribution — becomes a `task` standing in review, with the pull request, its head branch, its author's login and the forge's word for how they relate to the repository recorded on it. Review is the column left of the first terminal one, found by what is true of the board and not by its name. From there it is an ordinary ticket in review.
+
+The project is the one that binds the repository; where several do, the one whose primary repository it is, else the lowest project id. The ticket's title is the pull request's title, and its description is a header — the pull request's number and link, `@login (association)`, the head branch, when it was opened, and which project took it and why — and then the pull request's body, exactly as written. A title that begins with an issue's key and a body whose first line links that same key name where it came from, and that is recorded too.
+
+Only the driver files, and a runner that does not drive the project reads nothing for it. Two ticks, or two runners across an election, file a pull request once: the board refuses a second record for the same pull request, and a runner that loses that race says so and comments on the ticket it made in error. A failure part-way — the ticket made but not recorded, or recorded but not moved — leaves a ticket you can see, and the next tick finishes it instead of making another.
+
+Everything else is passed over, and said once per pull request per run with its reason:
+
+- it was opened less than ten minutes ago — it is filed once it is older;
+- its branch is named for an issue of any project on the board, which is a branch the loop made;
+- it is a draft;
+- it comes from a fork, or the forge did not say it does not;
+- it merges into a branch other than the repository's bound base;
+- its author is not a member, owner or collaborator of the repository;
+- the board already holds it, because another runner filed it first.
+
+[`hatch queue`](cli-reference#queue) run inside a checkout of the repository lists the pull requests it would pass over, and why.
+
 Adding the column, naming an approver and choosing the forge's own shape are covered start to finish elsewhere and not repeated here: [letting the loop merge for you](letting-the-loop-merge-for-you).
 
 ## Landing on the trunk

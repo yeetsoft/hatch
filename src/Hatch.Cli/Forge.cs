@@ -33,9 +33,25 @@ public sealed record ForgeAnswer(BuildRead? Read, string? Why);
 /// <param name="ReviewDecision">One of <see cref="ReviewDecisions"/>. Null where it was not read, which is not the same as <see cref="ReviewDecisions.None"/>.</param>
 /// <param name="Base">The branch the pull request merges into, by name. Null where it was not read.</param>
 /// <param name="BaseSha">That branch's tip at the time of this read. Null where it was not read.</param>
+/// <param name="HeadBranch">The branch the pull request comes from, by name. Null where it was not read.</param>
+/// <param name="AuthorLogin">Who opened it. Null where it was not read, or the account is gone.</param>
+/// <param name="IsCrossRepository">Whether its head is in another repository, which is a fork. Null where the forge did not say.</param>
+/// <param name="Title">Its title. Null where it was not read.</param>
+/// <param name="Body">Its description, verbatim. Null where it was not read; empty where it has none.</param>
+/// <param name="CreatedAt">When it was opened. Null where it was not read.</param>
 public sealed record PullRequestAnswer(
     string? State, string? Why, string? HeadSha = null, long? Number = null, string? MergeState = null,
-    string? ReviewDecision = null, string? Base = null, string? BaseSha = null);
+    string? ReviewDecision = null, string? Base = null, string? BaseSha = null,
+    string? HeadBranch = null, string? AuthorLogin = null, bool? IsCrossRepository = null,
+    string? Title = null, string? Body = null, DateTimeOffset? CreatedAt = null);
+
+/// <summary>
+/// What a forge answered about how a pull request's author relates to its repository:
+/// the forge's own word for it, or why it could not say.
+/// </summary>
+/// <param name="Association">Stored as the forge gives it (<c>MEMBER</c>, <c>OWNER</c>, <c>COLLABORATOR</c>, <c>NONE</c>...). Null where it was not read.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Association"/> was read.</param>
+public sealed record AssociationAnswer(string? Association, string? Why);
 
 /// <summary>
 /// What a forge answered about every open pull request of a checkout at once: the
@@ -114,6 +130,12 @@ public interface IForge
     /// <see cref="ReadPullRequestAsync"/> can.
     /// </summary>
     Task<PullRequestListAnswer> ReadOpenPullRequestsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// How the author of pull request <paramref name="number"/> relates to the repository, in the forge's
+    /// own word. A read of its own, since the list cannot carry it: only a pull request being considered pays it.
+    /// </summary>
+    Task<AssociationAnswer> ReadAssociationAsync(long number, CancellationToken ct);
 
     /// <summary>Merges the pull request at <paramref name="url"/>, provided its head is still <paramref name="sha"/>.</summary>
     Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct);
@@ -249,7 +271,8 @@ public sealed class GhForge(
 
         var ran = await _run(path, Env(), [
             "pr", "list", "--state", "open", "--limit", OpenPullRequestLimit.ToString(),
-            "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid",
+            "--json", "url,state,headRefOid,number,mergeStateStatus,reviewDecision,isDraft,baseRefName,baseRefOid,"
+                + "headRefName,author,isCrossRepository,title,body,createdAt",
         ], ct);
         if (ran.Code != 0) return new PullRequestListAnswer(null, Why(ran));
 
@@ -274,16 +297,52 @@ public sealed class GhForge(
         }
     }
 
+    /// <summary>
+    /// <c>gh api</c>, not <c>gh pr list</c>, because <c>--json</c> has no field for it. It passes the
+    /// host args every <c>api</c> call passes, since <c>gh api</c> ignores the host in <c>GH_REPO</c>.
+    /// </summary>
+    public async Task<AssociationAnswer> ReadAssociationAsync(long number, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new AssociationAnswer(null, "its repository is a local path, so there is no forge to read an author from");
+
+        var ran = await _run(path, Env(), [
+            "api", .. HostArgs(), $"repos/{{owner}}/{{repo}}/pulls/{number}", "--jq", ".author_association",
+        ], ct);
+        if (ran.Code != 0) return new AssociationAnswer(null, Why(ran));
+
+        return ran.Out.Trim() is { Length: > 0 } association
+            ? new AssociationAnswer(association, null)
+            : new AssociationAnswer(null, "gh answered with no author association");
+    }
+
     /// <summary>One pull request as <c>gh</c> prints it, to its answer - shared by <c>pr view</c> and <c>pr list</c> so the two cannot read it differently.</summary>
     private static PullRequestAnswer ToAnswer(JsonElement pr)
     {
         var number = pr.TryGetProperty("number", out var n) && n.TryGetInt64(out var num) ? num : (long?)null;
         var isDraft = pr.TryGetProperty("isDraft", out var d) && d.ValueKind == JsonValueKind.True;
+
+        // Absent says nothing: a fork is only a fork where the forge said so either way.
+        bool? isCross = pr.TryGetProperty("isCrossRepository", out var x) && x.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? x.ValueKind == JsonValueKind.True
+            : null;
+
+        var login = pr.TryGetProperty("author", out var author) && author.ValueKind == JsonValueKind.Object
+            ? Text(author, "login")
+            : null;
+        var createdAt = Text(pr, "createdAt") is { } created
+            && DateTimeOffset.TryParse(created, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var at)
+                ? at
+                : (DateTimeOffset?)null;
+
         return new PullRequestAnswer(
             ClassifyState(Text(pr, "state")), null, Text(pr, "headRefOid"), number,
             ClassifyMergeState(Text(pr, "mergeStateStatus"), isDraft),
             ClassifyReviewDecision(Text(pr, "reviewDecision")),
-            Text(pr, "baseRefName"), Text(pr, "baseRefOid"));
+            Text(pr, "baseRefName"), Text(pr, "baseRefOid"),
+            Text(pr, "headRefName"), login, isCross, Text(pr, "title"), Text(pr, "body"), createdAt);
     }
 
     public async Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

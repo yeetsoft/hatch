@@ -190,6 +190,28 @@ public static class Branches
     }
 
     /// <summary>
+    /// Whether a branch is named for an issue of any of these projects: <c>&lt;key&gt;-&lt;digits&gt;</c>, then
+    /// the end or a hyphen. Built on <see cref="Names"/>, so the hyphen anchoring is the one rule - <c>ha-31-x</c>
+    /// is HA's, and <c>hax-3</c> and <c>ha-x</c> are not.
+    /// </summary>
+    public static bool BelongsToProject(string branch, IEnumerable<string> projectKeys)
+    {
+        foreach (var project in projectKeys)
+        {
+            var prefix = project.ToLowerInvariant() + "-";
+            if (!branch.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var digits = 0;
+            while (prefix.Length + digits < branch.Length && char.IsAsciiDigit(branch[prefix.Length + digits])) digits++;
+            if (digits == 0) continue;
+
+            if (Names(branch, $"{project}-{branch.Substring(prefix.Length, digits)}")) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// <c>ha-31-deterministic-lifecycle-elements</c>: the key, then the title
     /// as words. Cut at a word, and never ending in a hyphen.
     /// </summary>
