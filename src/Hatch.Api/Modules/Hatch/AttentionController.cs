@@ -133,6 +133,10 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                 i.Project.ChecksRequired,
                 i.Project.CheckApprovesMerge,
                 i.Project.NoCodeCloses,
+                i.Project.RunnersWorkContributions,
+                ContributionPullRequestUrl = i.Contribution != null ? i.Contribution.PullRequestUrl : null,
+                ContributionOriginInstance = i.Contribution != null ? i.Contribution.OriginInstance : null,
+                ContributionOriginKey = i.Contribution != null ? i.Contribution.OriginKey : null,
                 i.PullRequestMergeState,
                 i.PullRequestHeadSha,
                 i.PullRequestHeadSince,
@@ -216,6 +220,30 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .ToListAsync(ct);
         var buildsByIssue = allBuilds.GroupBy(b => b.IssueId).ToDictionary(g => g.Key, g => g.ToList());
 
+        // A contribution's branch the project has not asked a runner to work:
+        // the judge would dispatch it as conflict or build work, so the loop
+        // leaves it and a person acts. It is listed once, here, and not again
+        // under the conflicts or the failing builds or the held-back count.
+        var contributionsHeld = new List<ContributionHeldDto>();
+        var heldIds = new HashSet<long>();
+        foreach (var i in inReview)
+        {
+            var judged = ReviewWork.Judge(
+                i.NoCode,
+                bound.TryGetValue(i.ProjectId, out var heldRepos) ? heldRepos.OrderBy(r => r.SortOrder).ToList() : [],
+                mergesByIssue.TryGetValue(i.Id, out var heldMerges) ? heldMerges : [],
+                buildsByIssue.TryGetValue(i.Id, out var heldBuilds) ? heldBuilds : []);
+
+            if (!ReviewWork.HeldContribution(i.RunnersWorkContributions, i.ContributionPullRequestUrl, judged)) continue;
+
+            heldIds.Add(i.Id);
+            contributionsHeld.Add(new ContributionHeldDto(
+                IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.ContributionPullRequestUrl!,
+                judged.Work ?? ReviewWork.ContributionHeld, i.ContributionOriginInstance, i.ContributionOriginKey));
+        }
+
+        conflicts = conflicts.Where(c => !contributionsHeld.Any(h => h.Key == c.Key)).ToList();
+
         // Listed with only its failed verdicts, plus a pending one that already
         // carries a failing check - a check that has failed counts while the
         // rest are still running. Not counted towards the badge, as the
@@ -227,7 +255,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
             .ToDictionary(g => g.Key, g => (IReadOnlyList<BuildCheckDto>)g.Select(IssueBuildChecks.Project).ToList());
 
         var failingBuilds = inReview
-            .Where(i => failed.ContainsKey(i.Id))
+            .Where(i => failed.ContainsKey(i.Id) && !heldIds.Contains(i.Id))
             .Select(i => new FailingBuildDto(
                 IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.PullRequestUrl, failed[i.Id]))
             .ToList();
@@ -328,6 +356,7 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
                     : family.OpenChildren(i.Id).Count == 0)));
 
         var reviewsHeldBack = inReview.Count(i => !string.IsNullOrWhiteSpace(i.PullRequestUrl)
+            && !heldIds.Contains(i.Id)
             && (conflicted.ContainsKey(i.Id) || failed.ContainsKey(i.Id)));
 
         // Only the ones the judge holds: a landing still waiting on its trunk
@@ -403,7 +432,8 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
 
         return new AttentionDto(
             reviews, withoutPr, questions, conflicts, failingBuilds, reviewsHeldBack, trunkBuilds, exhausted,
-            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds);
+            approvedHeld, approvedWaiting, landingHeld, noCodeHeld, deadlocked, backupRow, waitingOnARunner, trainStalled, runnerCapacity, stalled, dispatch.StallResumeSeconds,
+            ContributionsHeld: contributionsHeld);
     }
 
     /// <summary>

@@ -1,10 +1,10 @@
 using Hatch.Api.Jobs;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// Everything Hatch puts into DI, so the module registry in ModuleRegistration
-/// stays one line per app.
+/// Everything Hatch puts into DI, so Program.cs stays one line for the module.
 /// </summary>
 public static class HatchModule
 {
@@ -36,7 +36,14 @@ public static class HatchModule
         // Singleton for the reason above it: IssueClaims reads an options value
         // and holds nothing else, and every judgement it makes takes the
         // instant it is judging against rather than reading a clock.
-        services.Configure<HatchOptions>(configuration.GetSection(HatchOptions.SectionName));
+        //
+        // Validated on start because a malformed Android asset link must stop
+        // the API rather than reach /.well-known/assetlinks.json and fail
+        // Android's own, invisible verification later.
+        services.AddOptions<HatchOptions>()
+            .Bind(configuration.GetSection(HatchOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<HatchOptions>, AssetLinksValidation>();
         services.AddSingleton<IssueClaims>();
 
         // The one list of model families a pinned id is judged against - a

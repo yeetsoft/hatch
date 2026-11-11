@@ -1,12 +1,6 @@
-using Hatch.Api.Modules.Gather;
-using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Modules.Photos;
-using Hatch.Api.Modules.Quill;
-using Hatch.Api.Modules.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Modules;
 
@@ -17,29 +11,6 @@ namespace Hatch.Api.Modules;
 /// </summary>
 public static class ModuleRegistration
 {
-    /// <summary>
-    /// The module registry. Program.cs calls this once; adding an app adds a line
-    /// here and nothing anywhere else - see Modules/README.md.
-    /// </summary>
-    public static IServiceCollection AddAppModules(this IServiceCollection services, IConfiguration configuration)
-    {
-        // Platform config every app in the family shell can read - see AppsController.
-        services.AddOptions<AppsOptions>()
-            .Bind(configuration.GetSection(AppsOptions.SectionName))
-            .ValidateOnStart();
-        services.AddSingleton<IValidateOptions<AppsOptions>, AssetLinksValidation>();
-
-        // One line per module - each module's own extension registers its context
-        // and its services, so this list stays a table of contents.
-        services.AddStorageModule(configuration);
-        services.AddGatherModule(configuration);
-        services.AddPhotosModule(configuration);
-        services.AddQuillModule(configuration);
-        services.AddHatchModule(configuration);
-
-        return services;
-    }
-
     /// <summary>
     /// Registers a module context against the shared connection string, pinning its
     /// migration history table into <paramref name="schema"/> so <c>dotnet ef</c> and

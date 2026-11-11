@@ -1241,6 +1241,18 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("jsonb")
                         .HasDefaultValue("[]");
 
+                    b.Property<bool>("RunnersWorkContributions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTimeOffset?>("RunnersWorkContributionsAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RunnersWorkContributionsBy")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
                     b.Property<bool>("StoriesOnEpics")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")

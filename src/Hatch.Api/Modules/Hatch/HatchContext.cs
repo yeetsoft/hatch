@@ -346,6 +346,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(p => p.StoriesOnEpics).HasDefaultValue(false);
             e.Property(p => p.CheckApprovesMerge).HasDefaultValue(false);
             e.Property(p => p.NoCodeCloses).HasDefaultValue(false);
+            e.Property(p => p.RunnersWorkContributions).HasDefaultValue(false);
 
             e.Property(p => p.AutoHealBugEnabled).HasDefaultValue(false);
             e.Property(p => p.AutoHealBugPriority).HasDefaultValue(global::Hatch.Contracts.PriorityLevels.Emergency);
