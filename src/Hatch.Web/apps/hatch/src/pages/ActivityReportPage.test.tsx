@@ -1,11 +1,21 @@
+import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { ActivityReportBody } from './ActivityReportPage';
-import { chooseActorWords, emptyWords, headlineWords, truncatedWords } from '../lib/activity';
+import {
+  chooseActorWords,
+  emptyWords,
+  estimateHeadlineWords,
+  estimateRuleWords,
+  headlineWords,
+  sessionLengthWords,
+  sessionWhenWords,
+  truncatedWords,
+} from '../lib/activity';
 import type { ActivityView } from '../lib/activityCalendar';
 import { noProjectWords } from '../lib/timeline';
-import type { ActivityEvent, ActivityReport, ActivityReportIssue, IssueCard } from '../types';
+import type { ActivityEvent, ActivityReport, ActivityReportIssue, ActivitySession, IssueCard } from '../types';
 
 /* No DOM runner and no fetch: the body is rendered from props, as
    ChangelogReportPage.test.tsx does with ChangelogReportBody. */
@@ -32,6 +42,15 @@ const row = (key: string, over: Partial<ActivityReportIssue> = {}): ActivityRepo
   ...over,
 });
 
+const session = (from: string, over: Partial<ActivitySession> = {}): ActivitySession => ({
+  from,
+  to: '2026-11-04T15:00:00.000Z',
+  events: 4,
+  issueKeys: ['HA-5', 'HA-6'],
+  estimatedMinutes: 75,
+  ...over,
+});
+
 const report = (over: Partial<ActivityReport> = {}): ActivityReport => ({
   actor: 'Ada',
   from: '2026-10-28T00:00:00.000Z',
@@ -51,15 +70,15 @@ const report = (over: Partial<ActivityReport> = {}): ActivityReport => ({
     { at: '2026-11-03T00:00:00.000Z', events: 0, hours: 0, rollingEvents: 2, rollingHours: 0.5 },
     { at: '2026-11-04T00:00:00.000Z', events: 2, hours: 1.5, rollingEvents: 2, rollingHours: 0.8 },
   ],
-  sessions: [],
-  estimate: { sessions: 2, minutes: 150, gapMinutes: 30, leadMinutes: 15, windowDays: 3 },
+  sessions: [session('2026-11-04T13:45:00.000Z')],
+  estimate: { sessions: 1, minutes: 75, gapMinutes: 30, leadMinutes: 15, windowDays: 3 },
   ...over,
 });
 
 const render = (
   actor: string | null,
   answer: ActivityReport | null,
-  over: { measure?: 'events' | 'hours'; windowDays?: number | null; view?: ActivityView } = {},
+  over: { measure?: 'events' | 'hours'; windowDays?: number | null; view?: ActivityView; sessionControls?: ReactNode } = {},
 ): string =>
   renderToStaticMarkup(
     <MemoryRouter>
@@ -74,6 +93,7 @@ const render = (
         onWindow={() => {}}
         onView={() => {}}
         locale="en-GB"
+        sessionControls={over.sessionControls}
       />
     </MemoryRouter>,
   );
@@ -101,6 +121,15 @@ describe('ActivityReportBody', () => {
     expect(html).toContain('4 Nov 2026, 14:05');
     expect(html).toContain('To Do → In Progress');
     expect(html).not.toContain(truncatedWords(answer));
+
+    // Sessions: the headline, the rule, the table with its own columns.
+    expect(html).toContain(estimateHeadlineWords(answer.estimate));
+    expect(html).toContain(estimateRuleWords(answer.estimate));
+    for (const column of ['When', 'Length', 'Events', 'Issues']) {
+      expect(html).toContain(`<th>${column}</th>`);
+    }
+    expect(html).toContain(sessionWhenWords(answer.sessions[0], 0, 'en-GB'));
+    expect(html).toContain(sessionLengthWords(answer.sessions[0].estimatedMinutes));
   });
 
   it('draws the graph between the headline and the rundown', () => {
@@ -188,5 +217,11 @@ describe('ActivityReportBody', () => {
     // The graph's controls only move the address; none of them submits.
     for (const tag of ['<form', '<select', '<textarea']) expect(html).not.toContain(tag);
     for (const button of html.match(/<button[^>]*>/g) ?? []) expect(button).toContain('type="button"');
+  });
+
+  it('draws sessionControls in the Sessions section, above the table', () => {
+    const html = render('Ada', report(), { sessionControls: <span>Gap and Lead live here</span> });
+
+    expect(html).toContain('Gap and Lead live here');
   });
 });
