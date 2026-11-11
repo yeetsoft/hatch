@@ -15,6 +15,7 @@
    So the mechanism lives here and both callers use it. The React file below
    holds only what is genuinely React: state, an effect, a context. */
 import tokensCss from '../tokens.css?raw';
+import { parseTokenBlocks } from './palette/tokenBlocks';
 
 /** What the operator chose. `auto` defers to the OS preference. */
 export type ThemeChoice = 'auto' | 'light' | 'dark';
@@ -94,15 +95,15 @@ export function applyChoice(choice: ThemeChoice): void {
 // `prefers-color-scheme` media block) because that is the selector active
 // when applyChoice sets the attribute above - the two blocks are identical,
 // tokens.test.ts already enforces this.
-function chromeIn(selector: RegExp): string {
-  const body = selector.exec(tokensCss)?.[1] ?? '';
-  const match = /--chrome:\s*([^;]+);/.exec(body);
-  if (!match) throw new Error(`tokens.css: no --chrome in ${selector}`);
-  return match[1].trim();
+function chromeIn(block: Record<string, string>, name: string): string {
+  const value = block['--chrome'];
+  if (!value) throw new Error(`tokens.css: no --chrome in the ${name} block`);
+  return value;
 }
+const BLOCKS = parseTokenBlocks(tokensCss);
 const CHROME: Record<ResolvedTheme, string> = {
-  light: chromeIn(/:root\s*\{([^}]*)\}/),
-  dark: chromeIn(/:root\[data-theme=['"]dark['"]\]\s*\{([^}]*)\}/),
+  light: chromeIn(BLOCKS.light, 'light'),
+  dark: chromeIn(BLOCKS.dark, 'dark'),
 };
 
 /** The colour the status bar should carry when Hatch has resolved to `resolved`. */

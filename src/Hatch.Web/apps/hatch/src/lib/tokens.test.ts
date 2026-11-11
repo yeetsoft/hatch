@@ -7,35 +7,12 @@
    at all. */
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
+import { parseTokenBlocks } from '@hatch/ui/palette';
 import { describe, expect, it } from 'vitest';
 
-const css = readFileSync(new URL('../../../../packages/ui/src/tokens.css', import.meta.url), 'utf8').replace(
-  /\/\*[\s\S]*?\*\//g,
-  '',
+const { light, dark: darkAttr, darkMedia } = parseTokenBlocks(
+  readFileSync(new URL('../../../../packages/ui/src/tokens.css', import.meta.url), 'utf8'),
 );
-
-function declarationsOf(selectorPattern: RegExp): Record<string, string> {
-  const match = selectorPattern.exec(css);
-  if (!match) throw new Error(`No match for ${selectorPattern}`);
-  const body = match[1];
-  const props: Record<string, string> = {};
-  for (const statement of body.split(';')) {
-    const trimmed = statement.trim();
-    if (!trimmed) continue;
-    const colon = trimmed.indexOf(':');
-    if (colon === -1) continue;
-    const prop = trimmed.slice(0, colon).trim();
-    const value = trimmed.slice(colon + 1).trim().replace(/\s+/g, ' ');
-    props[prop] = value;
-  }
-  return props;
-}
-
-// The bare :root - light. Excludes :root[data-theme='dark'] and
-// :root:not([data-theme='light']), neither of which has "{" right after "root".
-const light = declarationsOf(/:root\s*\{([^}]*)\}/);
-const darkMedia = declarationsOf(/:root:not\(\[data-theme=['"]light['"]\]\)\s*\{([^}]*)\}/);
-const darkAttr = declarationsOf(/:root\[data-theme=['"]dark['"]\]\s*\{([^}]*)\}/);
 
 describe('tokens.css', () => {
   it('keeps the two dark blocks identical', () => {
