@@ -212,4 +212,16 @@ public sealed class UsageReportTests
     {
         Assert.Equal(0, UsageReport.Turns([Fixtures.Init()]));
     }
+
+    [Fact]
+    public void CostReadsTheResultLinesPrice()
+    {
+        Assert.Equal(0.38m, UsageReport.Cost([Fixtures.Result(turns: 1, cost: 0.38m)]));
+    }
+
+    [Fact]
+    public void CostIsNullWithNoResultLineAtAll()
+    {
+        Assert.Null(UsageReport.Cost([Fixtures.Init()]));
+    }
 }

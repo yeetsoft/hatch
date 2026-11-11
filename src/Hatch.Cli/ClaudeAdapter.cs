@@ -7,7 +7,7 @@ namespace Hatch.Cli;
 /// <summary>The claude CLI, behind <see cref="IAgentAdapter"/>.</summary>
 public sealed class ClaudeAdapter(
     string? configured = null, Action<string>? warn = null, string? tools = null,
-    Func<string, string?>? help = null) : IAgentAdapter, IUsageProbe
+    Func<string, string?>? help = null, string? verdictPath = null) : IAgentAdapter, IUsageProbe
 {
     /// <summary>
     /// The tools an unattended session is spawned with. Every request a session
@@ -38,6 +38,16 @@ public sealed class ClaudeAdapter(
     /// what that one mistake can cost.
     /// </summary>
     private bool _probeCostly;
+
+    /// <summary>The version <see cref="NoteCliVersion"/> was told, read once at process start.</summary>
+    private string? _cliVersion;
+
+    /// <summary>
+    /// Set the first time this process says a probe is costly, whether that
+    /// came from a remembered verdict or from discovering it itself - so the
+    /// sentence is said once per process rather than once per due cycle.
+    /// </summary>
+    private bool _saidCostly;
 
     /// <summary>Whether the CLI's <c>--help</c> names <c>--tools</c>. False until <see cref="CanSpawn"/> has looked.</summary>
     private bool _knowsTools;
@@ -217,11 +227,37 @@ public sealed class ClaudeAdapter(
     public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefusal.Claude(said, endedAt, runnerZone);
 
+    /// <summary>
+    /// What <see cref="MachineFacts.ReadAsync"/> read once at process start.
+    /// Where a verdict from an earlier process already names this version, the
+    /// latch is set from it rather than left for a probe to rediscover - see
+    /// HA-2205.
+    /// </summary>
+    public void NoteCliVersion(string? version)
+    {
+        _cliVersion = version;
+        if (version is null) return;
+
+        var path = verdictPath ?? UsageProbeVerdict.Path();
+        if (UsageProbeVerdict.Read(path) is not { } verdict || !string.Equals(verdict.Version, version, StringComparison.Ordinal))
+            return;
+
+        _probeCostly = true;
+        _saidCostly = true;
+        var cost = verdict.CostUsd is { } usd ? $", {Format.Spent(usd)}" : ", no cost recorded";
+        warn?.Invoke($"hatch: /usage already known to cost a turn on {version}{cost} - remembered from a previous run, no probe this run");
+    }
+
     public async Task<IReadOnlyList<string>?> ProbeAsync(string tempDirectory, CancellationToken ct)
     {
         if (_probeCostly)
         {
-            warn?.Invoke("hatch: probe skipped - /usage was taken as a model turn earlier this run");
+            if (!_saidCostly)
+            {
+                warn?.Invoke("hatch: probe skipped - /usage was taken as a model turn earlier this run");
+                _saidCostly = true;
+            }
+
             return null;
         }
 
@@ -266,7 +302,10 @@ public sealed class ClaudeAdapter(
         if (UsageReport.Turns(lines) > 0)
         {
             _probeCostly = true;
-            warn?.Invoke("hatch: the CLI took /usage as a model turn rather than a local command - no further probes this run");
+            _saidCostly = true;
+            var cost = UsageReport.Cost(lines);
+            warn?.Invoke($"hatch: the CLI took /usage as a model turn rather than a local command, {Format.Spent(cost)} - no further probes this run");
+            if (_cliVersion is not null) new UsageProbeVerdict(_cliVersion, cost).Write(verdictPath ?? UsageProbeVerdict.Path());
             return null;
         }
 
