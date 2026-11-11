@@ -31,6 +31,12 @@ import type { IssueClaim } from '../types';
  * drag handle - a nested `<a>` is never valid markup, and `useNavigate` does
  * the rest. Without the prop, nothing here calls the hook at all, so a badge
  * drawn with no Router around it - QueueModal's - is unaffected.
+ *
+ * The press goes to `claim.claimedBy`, not `claim.runner`: a claim still
+ * carries the checkout's own `--where` in the latter (a loop never sends its
+ * stable name there), so `runner` is what to read in the sentence above and
+ * `claimedBy` is the key's own name - the one `/runners/:name` actually
+ * routes on.
  */
 export function ClaimBadge({ claim, linkRunner = false }: { claim: IssueClaim | null; linkRunner?: boolean }) {
   if (!claim) return null;
@@ -66,8 +72,8 @@ function LinkedHead({ claim }: { claim: IssueClaim }) {
       aria-label={claimTitle(claim, now)}
       role="link"
       tabIndex={0}
-      onClick={headClick(claim.runner, navigate)}
-      onKeyDown={headKey(claim.runner, navigate)}
+      onClick={headClick(claim.claimedBy, navigate)}
+      onKeyDown={headKey(claim.claimedBy, navigate)}
       onMouseDown={(e) => e.stopPropagation()}
       onTouchStart={(e) => e.stopPropagation()}
     >
