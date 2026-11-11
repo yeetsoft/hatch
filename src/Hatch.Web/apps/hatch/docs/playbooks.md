@@ -135,6 +135,11 @@ session at the limit and counts it on the stall ladder, let go and then
 flagged, with the reason run time rather than quiet. A row with no limit, or a
 claim with no playbook, runs as long as it keeps talking.
 
+The Playbooks page's edit dialog has a field for the quiet limit and one for
+the run limit; blank means the board's own window and no limit, respectively.
+A row with either set carries a muted badge for it in the list, `quiet after`
+and `cut off after` a number of seconds, on a file's own rows as well.
+
 **Denied tools** is a list of Claude Code permission rules in deny position on
 a row — a bare tool name such as `Edit`, or a scoped pattern such as
 `Bash(git push *)` — passed to the agent CLI as one denied tool per entry. A
