@@ -3771,11 +3771,17 @@ the last time a session ran. At the top of every idle pass the runner asks its
 own CLI's `/usage` directly, over the same login, in a throwaway temp
 directory rather than any checkout — no project settings, no hooks, and
 `--max-turns 1` so a CLI that mistakes it for a real prompt cannot spend more
-than one turn finding out. It answers the same two windows the stream does,
-plus a scoped weekly window named by the account and a fourth Hatch has never
-carried before, `extra` — the account's own extra-usage balance. The CLI's own
-schema calls this shape experimental, so a login it cannot read from — no plan,
-or a token without the profile scope — gets nothing back, and the panel simply
+than one turn finding out. A CLI that takes `/usage` as a model turn rather
+than a local command pays for that find-out once: the probe latches off for
+the rest of this process, and the verdict is remembered beside the per-user
+config (`hatch config --show` says where), keyed to this CLI's own
+`--version` line, so the next restart inherits it rather than paying again.
+Upgrading the CLI probes once more, under its own new version. It answers
+the same two windows the stream does, plus a scoped weekly window named by
+the account and a fourth Hatch has never carried before, `extra` — the
+account's own extra-usage balance. The CLI's own schema calls this shape
+experimental, so a login it cannot read from — no plan, or a token without
+the profile scope — gets nothing back, and the panel simply
 keeps whatever it already knew. A reading from either source still replaces
 the whole of what the heartbeat sends, never a per-window merge, so the number
 that used to move only while a session ran now moves while the loop is merely
@@ -8385,7 +8391,10 @@ carries no zone of its own, so the correction converts it into the runner's
 own local clock as it replaces the carried one - the same "out of Claude
 usage until ..." line the sentence itself prints is shown in the runner's own
 clock either way. A correction says itself once, and not again merely because
-a later probe lands on the same corrected reading.
+a later probe lands on the same corrected reading. On a CLI already known to
+cost a turn - this run, or remembered from an earlier one - no probe runs at
+all while that holds, so this correction does not either; the backstop below
+is what answers instead.
 
 **The wait cannot outlast the window.** The reset instant above is only
 ever a guess, and the "next occurrence of that clock time" rule it is
@@ -9317,8 +9326,9 @@ HA-173 has the loop ask its own CLI's `/usage` at the top of every idle pass
 same two windows plus a named scoped one and a fourth the session stream never
 carries, `extra`. A probe that answers replaces the panel's whole reading, the
 same rule a session's own stream already follows; a probe that answers nothing
-— an account this CLI cannot read, or one already known to cost a turn for the
-life of this process — leaves the panel exactly as it was. Only where neither
+— an account this CLI cannot read, or one already known to cost a turn, this
+process or a later one on the same CLI version — leaves the panel exactly as
+it was. Only where neither
 source has ever answered does the readout and the closing banner alike simply
 draw no usage line rather than complain.
 
