@@ -19,9 +19,11 @@ public sealed partial class Workspace
 {
     /// <summary>
     /// What origin has for a key: the branches that are not in the trunk yet,
-    /// and the ones that are.
+    /// and the ones that are. Where the issue's contribution recorded a head
+    /// branch, that branch is the only candidate and a name built from the key
+    /// is not looked for.
     /// </summary>
-    private (List<string> Open, List<string> Merged) Branched(string key, string trunk)
+    private (List<string> Open, List<string> Merged) Branched(string key, string trunk, string? recordedBranch = null)
     {
         var open = new List<string>();
         var merged = new List<string>();
@@ -34,7 +36,11 @@ public sealed partial class Workspace
             // origin/HEAD strips to "HEAD", which no key names, and the trunk
             // can be named for a key only by somebody who has been very
             // unlucky - it is never a branch of the issue's own.
-            if (name == trunk || !Branches.Names(name, key)) continue;
+            if (name == trunk) continue;
+            if (recordedBranch is { Length: > 0 } recorded
+                    ? !string.Equals(name, recorded, StringComparison.Ordinal)
+                    : !Branches.Names(name, key))
+                continue;
 
             (InTrunk(trunk, $"refs/remotes/origin/{name}") ? merged : open).Add(name);
         }

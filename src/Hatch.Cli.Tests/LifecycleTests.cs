@@ -542,6 +542,43 @@ public sealed class LifecycleTests
         Assert.False(Assert.Single(without.Workspace.Left).Sync);
     }
 
+    [Fact]
+    public async Task A_contributions_recorded_branch_is_handed_to_leaving()
+    {
+        using var h = new Harness();
+        Board(h, work: Recorded(Fixtures.Work("AER-1", from: "In Review")), pullRequest: "https://forge.example/pr/1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Equal("ar-77-something", Assert.Single(h.Workspace.Left).RecordedBranch);
+    }
+
+    [Fact]
+    public async Task A_row_with_no_recorded_branch_hands_leaving_none()
+    {
+        using var h = new Harness();
+        Board(h, pullRequest: "https://forge.example/pr/1");
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Null(Assert.Single(h.Workspace.Left).RecordedBranch);
+    }
+
+    [Fact]
+    public async Task A_recheck_of_a_contribution_checks_its_recorded_branch()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoRepositories(h);
+        h.Workspace.Verdicts[("/checkouts/one", "AER-1")] = Says(MergeVerdicts.Clean);
+        h.Workspace.Verdicts[("/checkouts/two", "AER-1")] = Says(MergeVerdicts.Clean);
+
+        await lifecycle.RecheckAsync(Recorded(work), chosen, default);
+
+        Assert.Equal(
+            ["check /checkouts/one AER-1 ar-77-something", "check /checkouts/two AER-1 ar-77-something"],
+            h.Workspace.Calls);
+    }
+
     // ---- What LeaveAsync hands back ----
 
     [Fact]
@@ -1046,6 +1083,62 @@ public sealed class LifecycleTests
         var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>();
         Assert.Equal("https://example.test/two.git", put.Remote);
         Assert.False(put.PushedByIncrement);
+    }
+
+    private static WorkDto Recorded(WorkDto work, string branch = "ar-77-something") =>
+        work with
+        {
+            Issue = work.Issue with
+            {
+                Contribution = new ContributionDto(null, branch, "someone", "NONE", DateTimeOffset.UnixEpoch, "runner"),
+            },
+        };
+
+    [Fact]
+    public async Task A_build_recheck_of_a_contribution_reads_the_tip_of_its_recorded_branch_and_not_a_key_named_one()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        foreach (var path in new[] { "/checkouts/one", "/checkouts/two" })
+            h.Workspace.HeadsFor[path] = new RemoteHeads("main", new Dictionary<string, string>
+            {
+                ["main"] = TrunkSha, ["aer-1-thing"] = BuildTip, ["ar-77-something"] = PushedTip,
+            });
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+
+        await lifecycle.RecheckBuildAsync(Recorded(work), chosen, default);
+
+        Assert.Equal(["/checkouts/one " + PushedTip], h.Forge.Reads);
+        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>();
+        Assert.Equal(PushedTip, put.Sha);
+    }
+
+    [Fact]
+    public async Task A_build_recheck_of_a_contribution_whose_recorded_branch_is_gone_reads_nothing()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+
+        var found = await lifecycle.RecheckBuildAsync(Recorded(work), chosen, default);
+
+        Assert.True(found.Unknown);
+        Assert.Empty(h.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_task_on_its_storys_shared_branch_ignores_a_recorded_branch()
+    {
+        using var h = new Harness();
+        var (lifecycle, chosen, work) = TwoBuilds(h, Fixtures.Build(BuildVerdicts.Failed, "example.test/one"));
+        h.Workspace.HeadsFor["/checkouts/one"] = new RemoteHeads("main", new Dictionary<string, string>
+        {
+            ["main"] = TrunkSha, ["aer-9-story"] = PushedTip, ["ar-77-something"] = BuildTip,
+        });
+        h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
+
+        await lifecycle.RecheckBuildAsync(Recorded(work with { BranchKey = "AER-9" }), chosen, default);
+
+        Assert.Equal(["/checkouts/one " + PushedTip], h.Forge.Reads);
     }
 
     [Fact]

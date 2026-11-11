@@ -805,6 +805,37 @@ public sealed class MergeTrainTests
     }
 
     [Fact]
+    public async Task A_contributions_row_is_updated_at_its_recorded_branchs_sha_with_no_branch_named_for_its_key()
+    {
+        using var rig = new Rig().Board(UpdateRow("HA-2300", "ar-77-something") with { Branch = "ar-77-something" });
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("ar-77-something", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip, Number: 7);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Comments("HA-2300"), Fixtures.Comment());
+        rig.H.Wire.Reply("PUT", BroughtCurrentPath("HA-2300"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, 7L, Tip)], rig.H.Forge.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task A_contributions_row_is_merged_at_its_recorded_branchs_sha_with_no_branch_named_for_its_key()
+    {
+        using var rig = new Rig().Board(MergeRow("HA-2300", "ar-77-something", PrUrl) with { Branch = "ar-77-something" });
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("ar-77-something", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("HA-2300"), Fixtures.Issue("HA-2300") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("HA-2300"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
+    }
+
+    [Fact]
     public async Task A_404_from_the_brought_current_route_complains_once_and_does_not_stop_the_rest_of_the_update()
     {
         using var rig = new Rig().Board(UpdateRow("AER-1", "aer-1-thing"));

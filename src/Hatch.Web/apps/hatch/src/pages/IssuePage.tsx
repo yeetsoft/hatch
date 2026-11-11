@@ -57,6 +57,8 @@ import { NewestFirstTitle } from '../components/NewestFirstGlyph';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
 import { StatusSteps } from '../components/StatusSteps';
+import { ContributionBadge } from '../components/ContributionMark';
+import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
 import { MomentField } from '../components/MomentField';
 import { MoveProjectDialog } from '../components/MoveProjectDialog';
@@ -72,7 +74,8 @@ import { repoSourcedOverrideHint } from '../lib/playbookFiles';
 import { submitOmission } from '../lib/runnerOmissions';
 import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, sameTags } from '../lib/runnerTags';
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
-import { moveBlocked } from '../lib/protectedColumns';
+import { originChain } from '../lib/contribution';
+import { confirmMove, moveBlocked } from '../lib/protectedColumns';
 import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
@@ -96,6 +99,7 @@ import { useIssueConfirmations } from '../lib/useIssueConfirmations';
 import { useMoveProject } from '../lib/useMoveProject';
 import { hasMultipleProjects, useProjects } from '../lib/useProjects';
 import { useCoarsePointer } from '../lib/viewport';
+import { useMoveConfirmation } from '../lib/useMoveConfirmation';
 import { useWipOverride } from '../lib/useWipOverride';
 import { wipLimitDraft, wipLimitRequest } from '../lib/wip';
 import { overridden, wipRefusal } from '../lib/wipOverride';
@@ -617,6 +621,9 @@ export function IssuePage() {
   // `onLeave`: `moveStatus`'s own catch has already re-read the issue before asking.
   const wip = useWipOverride();
 
+  // The second look at a contribution moving into a column that merges pull requests.
+  const contributionMove = useMoveConfirmation();
+
   if (error && !issue) return <p className="text-danger">{error}</p>;
   if (!issue || !board) return <p className="text-muted">Loading…</p>;
 
@@ -646,7 +653,7 @@ export function IssuePage() {
 
   /* A const rather than a declaration, so it is written after the guards above
      and `issue` and `board` are the narrowed ones. */
-  const moveStatus = async (statusId: number) => {
+  const sendStatus = async (statusId: number) => {
     // Computed before the patch, so it is the subtree the operator was looking
     // at when they pressed; asked after it, so a refused move asks nothing.
     const offer = closeOffer(board, key, issue.statusId, statusId);
@@ -666,6 +673,19 @@ export function IssuePage() {
       }
       setError(message(err));
     }
+  };
+
+  const moveStatus = async (statusId: number) => {
+    // `moveBlocked` has already disabled a column that would be refused, so a
+    // press that reaches here is one the server will take; a contribution going
+    // where its merge happens is asked about first, and Leave it sends nothing.
+    const target = board.statuses.find((s) => s.id === statusId);
+    const sentence = target ? confirmMove(target, issue) : null;
+    if (sentence) {
+      contributionMove.ask(key, sentence, () => sendStatus(statusId));
+      return;
+    }
+    await sendStatus(statusId);
   };
 
   async function remove() {
@@ -1006,6 +1026,8 @@ export function IssuePage() {
         />
       )}
 
+      <OriginSection issue={issue} board={board} />
+
       <FiledSection issue={issue} board={board} />
 
       <Dependencies
@@ -1051,6 +1073,14 @@ export function IssuePage() {
         error={wip.error}
         onConfirm={wip.confirm}
         onClose={wip.close}
+      />
+
+      <ContributionMoveDialog
+        asking={contributionMove.asking}
+        busy={contributionMove.busy}
+        error={contributionMove.error}
+        onConfirm={contributionMove.confirm}
+        onClose={contributionMove.close}
       />
 
       <MoveProjectDialog move={move} projects={projects} />
@@ -1226,6 +1256,35 @@ function DreamsDrawnOn({ dreams, issueKey }: { dreams: Dream[]; issueKey: string
         {dreams.map((dream) => (
           <li key={dream.id} className="hatch-progress-row">
             <Link to={`/dreams?issue=${issueKey}`}>{firstLine(dream.body)}</Link>
+          </li>
+        ))}
+      </ul>
+    </IssueSection>
+  );
+}
+
+/**
+ * The mirrored ancestors of this issue, root first, each with where it came
+ * from - read off the parents' own records on the board, so a person reading a
+ * task sees the epic it came from. Omitted entirely when no ancestor has a
+ * record, as FiledSection is when there is nothing to show; an ancestor the
+ * board no longer carries is not listed, since there is no card to read.
+ */
+function OriginSection({ issue, board }: { issue: Issue; board: Board }) {
+  const chain = originChain(issue.parentKey, board.issues);
+  if (chain.length === 0) return null;
+
+  return (
+    <IssueSection id="origin" title="Origin" count={chain.length}>
+      <ul className="hatch-progress-list">
+        {chain.map((card) => (
+          <li key={card.key} className="hatch-progress-row">
+            <Link to={`/issues/${card.key}`} className="hatch-plan-key">
+              {card.key}
+            </Link>
+            <TypeBadge type={card.type} />
+            <span className="hatch-progress-title">{card.title}</span>
+            {card.contribution && <ContributionBadge contribution={card.contribution} />}
           </li>
         ))}
       </ul>

@@ -29,7 +29,7 @@ public sealed partial class Workspace
 
     private static int _oldGitSaid;
 
-    public Leaving Leave(string key, bool syncPullRequest)
+    public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null)
     {
         var notes = new List<string>();
         void Note(string line, bool bad = false)
@@ -92,8 +92,8 @@ public sealed partial class Workspace
         // gated on a pull request being recorded; the verdict itself does not -
         // Check reads local remote-tracking refs, which are current for a branch
         // this same tree just pushed, pull request or not.
-        if (syncPullRequest) NoteSync(Sync(lower), Note);
-        var found = Check(lower);
+        if (syncPullRequest) NoteSync(Sync(lower, recordedBranch), Note);
+        var found = Check(lower, recordedBranch: recordedBranch);
 
         return new Leaving(root, notes, found);
     }
@@ -204,7 +204,7 @@ public sealed partial class Workspace
     /// result, <c>commit-tree</c> for the commit, and a push that is a
     /// fast-forward or nothing.
     /// </summary>
-    public Synced Sync(string key)
+    public Synced Sync(string key, string? recordedBranch = null)
     {
         if (!AtLeast(MergeTree))
         {
@@ -221,7 +221,7 @@ public sealed partial class Workspace
         if (!Git("fetch", "--quiet", "--prune", "origin").Ok)
             return new Synced(SyncOutcome.FetchFailed, trunk);
 
-        var (open, _) = Branched(lowerKey, trunk);
+        var (open, _) = Branched(lowerKey, trunk, recordedBranch);
         if (open.Count == 0) return new Synced(SyncOutcome.NoBranch, trunk);
         if (open.Count > 1) return new Synced(SyncOutcome.Ambiguous, trunk, Branches: open);
 
