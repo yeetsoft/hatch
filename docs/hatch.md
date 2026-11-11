@@ -6847,6 +6847,18 @@ reflection to revert or amend it; a confirmed one is reported and left for a
 person to close. `Hypotheses read` is never left out: with no earlier
 reflection, or none due, it reads `None` and says why.
 
+`MoveReflectionChildrenToFiledFrom` (20261111084455) moves what earlier
+reflections filed under themselves to the shape that replaces it. Every issue
+whose parent is of type `reflection`, in every project and every column, closed
+ones included, gets `FiledFromId` set to that reflection and `ParentId`
+cleared, with a `filed_from_changed` and a `parent_changed` event written by
+the board, the pair an API edit would have written. The rule is *children of
+reflections*, never a list of keys, and running it twice writes nothing the
+second time, since the first run leaves no child with a reflection for a
+parent. A child that was pre-approved only through its reflection is no longer,
+since pre-approval travels by parentage alone. It closes nothing: a reflection
+left with no children is for a person to close.
+
 **The epic-breakdown row consults the Dream Board.**
 `RewordEpicBreakdownForDreams` (20261104120000) rewrites that row's
 `DefaultPrompt` alone, only where it still reads the stock text byte for byte,
