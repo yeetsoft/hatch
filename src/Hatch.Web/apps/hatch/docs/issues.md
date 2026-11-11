@@ -179,7 +179,14 @@ Clear it on the issue page, or send `""` to the route; a whitespace-only
 reason also clears, and an absent reason is a 400, so clearing is always said.
 Moving the ticket into a column left of review clears it too, and writes a
 `no_code_changed` event naming the column. A terminal column or a deferred one
-does not clear it. A branch turning up on origin, or a pull request being
+does not clear it. A session claiming the
+ticket while it stands left of review clears it as well, and so does that
+session's claim ending, whether it let go or an operator cleared it: the
+declaration belongs to review, and a ticket that is being worked again is not
+finished with no code. Each writes a `no_code_changed` event naming the column
+it stood in (`standing`). A ticket in review or to its right, in a terminal
+column or in a deferred one keeps it through a claim. Left alone, a stale
+declaration would reach review and wait there for a person to close it. A branch turning up on origin, or a pull request being
 recorded, sets it aside instead, and writes a `no_code_set_aside` event
 carrying the old reason.
 

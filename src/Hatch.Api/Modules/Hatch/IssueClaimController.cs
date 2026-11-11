@@ -111,6 +111,7 @@ public class IssueClaimController(
         if (previous.Token is not null)
             LogLapsed(issue, actor, Holder(previous.ClaimedBy, previous.Runner), previous.HeartbeatAt, now);
 
+        await WithdrawDeclarationAsync(issue, actor, now, ct);
         Log(issue, actor, EfHatchIssueEvent.ClaimTaken, null, Holder(actor, runner), now);
         await db.SaveChangesAsync(ct);
 
@@ -291,6 +292,7 @@ public class IssueClaimController(
         // suppress a preemption that should fire the moment it is forced off.
         if (token is not null) await TouchRunnerAsync(claim, now, ct);
 
+        await WithdrawDeclarationAsync(issue, actor, now, ct);
         Log(
             issue,
             actor,
@@ -564,10 +566,27 @@ public class IssueClaimController(
         issue.UpdatedAt = at;
     }
 
+    /// <summary>
+    /// Withdraws a no-code declaration on an issue still left of review - see
+    /// <see cref="NoCode.ClearStanding"/> - at either end of a claim. The
+    /// columns are read only for a declared issue, so the ordinary take and
+    /// release cost nothing more.
+    /// </summary>
+    private async Task WithdrawDeclarationAsync(EfHatchIssue issue, string actor, DateTimeOffset now, CancellationToken ct)
+    {
+        if (!NoCode.Declared(issue) || issue.Status is not { } standing) return;
+
+        var statuses = await db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync(ct);
+        if (NoCode.ClearStanding(issue, standing, statuses, actor, now) is not { } cleared) return;
+
+        issue.Events.Add(cleared);
+        issue.UpdatedAt = now;
+    }
+
     private async Task<EfHatchIssue?> LoadAsync(string key, CancellationToken ct)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return null;
 
-        return await db.Issues.Include(i => i.Project).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
+        return await db.Issues.Include(i => i.Project).Include(i => i.Status).WithKey(projectKey, number).FirstOrDefaultAsync(ct);
     }
 }
