@@ -358,6 +358,19 @@ describe('runnerStrip', () => {
     });
   });
 
+  it('reads a keyed row, with no beat where of its own, as Working with the key and the line', () => {
+    const [row] = runnerStrip([runner({ claimKey: 'SL-456', line: 'on it', where: null })], NOW);
+
+    expect(row).toMatchObject({ words: 'Working', tone: 'success', claimKey: 'SL-456', line: 'on it' });
+  });
+
+  it('reads a keyed row whose sessions report a future exhaustedUntil as out of usage', () => {
+    const [row] = runnerStrip([runner({ where: null, exhaustedUntil: '2026-09-08T23:40:00Z' })], NOW);
+
+    expect(row.words).toMatch(/^Out of usage until /);
+    expect(row.claimKey).toBeNull();
+  });
+
   it('drops the line from an idle row even when the runner still has one', () => {
     const [row] = runnerStrip([runner({ line: 'an old line' })], NOW);
 

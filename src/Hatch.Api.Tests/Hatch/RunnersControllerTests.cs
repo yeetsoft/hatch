@@ -1271,6 +1271,122 @@ public class RunnersControllerTests
         Assert.Null(found.Sessions[1].ClaimKey);
     }
 
+    [Fact]
+    public async Task AKeyedRunnerWithALiveSessionHoldingAClaim_CarriesItOnTheRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/a"));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key, Runner, chatter: "make test-api", where: "here:/a");
+
+        var runner = await h.OneAsync();
+
+        Assert.Equal(issue.Key, runner.ClaimKey);
+        Assert.Equal("make test-api", runner.Line);
+        Assert.Equal(Now, runner.LineAt);
+        Assert.NotNull(runner.ClaimStatus);
+        Assert.Equal(runner.ClaimStatus, runner.Sessions.Single().ClaimStatus);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWhoseLiveSessionsHoldNoClaim_ReturnsNullForAllFour()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        h.Db.RunnerSessions.Add(NewSession(key.Id, Now, "here:/a"));
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key, Runner, chatter: "elsewhere", where: "here:/elsewhere");
+
+        var runner = await h.OneAsync();
+
+        Assert.Null(runner.ClaimKey);
+        Assert.Null(runner.Line);
+        Assert.Null(runner.LineAt);
+        Assert.Null(runner.ClaimStatus);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWithTwoClaimingSessions_CarriesTheOneHeardFromMostRecently()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var earlier = NewSession(key.Id, Now, "here:/a");
+        h.Db.RunnerSessions.Add(earlier);
+        var first = await h.FileAsync();
+        await h.Db.SaveChangesAsync();
+        await h.ClaimAsync(first.Key, Runner, chatter: "the first", where: "here:/a");
+
+        h.Time.Advance(TimeSpan.FromSeconds(10));
+        h.Db.RunnerSessions.Add(NewSession(key.Id, h.Time.GetUtcNow(), "here:/b"));
+        var second = await h.FileAsync();
+        await h.Db.SaveChangesAsync();
+        await h.ClaimAsync(second.Key, Runner, chatter: "the second", where: "here:/b");
+
+        var runner = await h.OneAsync();
+
+        Assert.Equal(second.Key, runner.ClaimKey);
+        Assert.Equal("the second", runner.Line);
+    }
+
+    [Fact]
+    public async Task AnEndedSessionsClaim_NeverReachesTheRunnerRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var ended = NewSession(key.Id, Now, "here:/a");
+        ended.EndedAt = Now;
+        h.Db.RunnerSessions.Add(ended);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync();
+        await h.ClaimAsync(issue.Key, Runner, chatter: "gone", where: "here:/a");
+
+        var runner = await h.GetAsync(Runner);
+
+        Assert.Null(runner!.ClaimKey);
+        Assert.Null(runner.Line);
+        Assert.Null(runner.ClaimStatus);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWhoseLiveSessionIsOutOfUsage_CarriesTheLatestFutureTimeOnTheRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var one = NewSession(key.Id, Now, "here:/a");
+        one.ExhaustedUntil = Now.AddHours(1);
+        one.ThrottledUntil = Now.AddHours(3);
+        var two = NewSession(key.Id, Now, "here:/b");
+        two.ExhaustedUntil = Now.AddHours(2);
+        two.ThrottledUntil = Now.AddMinutes(-5);
+        h.Db.RunnerSessions.AddRange(one, two);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        Assert.Equal(Now.AddHours(2), runner.ExhaustedUntil);
+        Assert.Equal(Now.AddHours(3), runner.ThrottledUntil);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWhoseSessionUsageTimesHavePassed_CarriesNoneOnTheRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var session = NewSession(key.Id, Now, "here:/a");
+        session.ExhaustedUntil = Now.AddHours(-1);
+        session.ThrottledUntil = Now.AddHours(-2);
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        Assert.Null(runner.ExhaustedUntil);
+        Assert.Null(runner.ThrottledUntil);
+    }
+
     private static EfHatchRunnerSession NewSession(Guid apiKeyId, DateTimeOffset at, string? where, string? remotes = null) => new()
     {
         ApiKeyId = apiKeyId,
@@ -5156,12 +5272,12 @@ public class RunnersControllerTests
         /// provider refuses - see HatchDatabase - and nothing here is testing
         /// the claim.
         /// </summary>
-        public async Task ClaimAsync(string key, string runner, string? chatter = null)
+        public async Task ClaimAsync(string key, string runner, string? chatter = null, string? where = null)
         {
             var issue = await Find(key);
             issue.ClaimToken = Guid.NewGuid();
             issue.ClaimedBy = runner;
-            issue.ClaimRunner = runner;
+            issue.ClaimRunner = where ?? runner;
             issue.ClaimedAt = Time.GetUtcNow();
             issue.ClaimHeartbeatAt = Time.GetUtcNow();
             issue.ClaimChatter = chatter;
