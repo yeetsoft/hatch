@@ -34,21 +34,23 @@ public static class LetGo
     /// </summary>
     public static Task LeftAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string why, string? sessionId,
-        CancellationToken ct) =>
+        CancellationToken ct, string? kept = null) =>
         WriteAsync(
             board, say, adapter, key,
             $"An unattended increment left {key} where it found it and let it go: {why}.",
-            sessionId, "There is no session to resume: the run ended before it said what its id was.", ct);
+            sessionId, "There is no session to resume: the run ended before it said what its id was.", ct, kept);
 
     private static async Task WriteAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string opening, string? sessionId,
-        string noSession, CancellationToken ct)
+        string noSession, CancellationToken ct, string? kept = null)
     {
         var body = opening;
 
         body += sessionId is { Length: > 0 } session
             ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : $"\n\n{noSession}";
+
+        if (kept is { Length: > 0 }) body += "\n\n" + Scrub.Fence(kept);
 
         try
         {

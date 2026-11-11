@@ -15,6 +15,18 @@ public sealed class GrokStreamReaderTests
     }
 
     [Fact]
+    public void TheFirstJsonEvent_MarksTheRunStarted_AndAPlainLineDoesNot()
+    {
+        var (plain, plainReader) = New();
+        plainReader.Read("Error: could not connect").ToList();
+        Assert.False(plain.Started);
+
+        var (json, jsonReader) = New();
+        jsonReader.Read(Fixtures.GrokText("hello")).ToList();
+        Assert.True(json.Started);
+    }
+
+    [Fact]
     public void TheSessionId_IsMintedBeforeAnyLine_AndReplacedByEnd()
     {
         var (facts, reader) = New();

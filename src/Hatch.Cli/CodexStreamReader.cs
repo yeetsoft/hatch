@@ -94,6 +94,10 @@ internal sealed class CodexStreamReader(string root, RunFacts facts, string mode
     {
         switch (type)
         {
+            case "thread.started":
+                facts.Started = true;
+                break;
+
             case "item.started" when e.TryGetProperty("item", out var started):
                 var kind = Text(started, "type");
                 if (kind is "command_execution" or "mcp_tool_call" or "collab_tool_call" or "web_search")

@@ -93,6 +93,28 @@ public sealed class AgentSessionRunnerTests
     }
 
     [Fact]
+    public async Task A_childs_standard_error_is_kept_in_the_result_and_its_stdout_has_no_stray_lines()
+    {
+        var result = await new AgentSessionRunner(UsageOnStderr()).RunAsync(Request(), null, default);
+
+        Assert.NotEmpty(result.Stderr);
+        Assert.Empty(result.Stray);
+    }
+
+    [Fact]
+    public async Task A_stdout_line_that_is_not_an_event_is_kept_as_stray_and_still_streamed()
+    {
+        var lines = new ConcurrentQueue<string>();
+
+        var result = await new AgentSessionRunner(Echo(promptOnStdin: true))
+            .RunAsync(Request("boom\n{\"type\":\"x\"}"), lines.Enqueue, default);
+
+        Assert.Equal(["boom"], result.Stray);
+        Assert.Contains("boom", lines);
+        Assert.Contains("{\"type\":\"x\"}", lines);
+    }
+
+    [Fact]
     public async Task A_childs_standard_error_is_dropped_without_a_callback_and_stdout_is_untouched()
     {
         var adapter = Echo(promptOnStdin: true);
