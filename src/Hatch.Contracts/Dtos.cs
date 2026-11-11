@@ -3175,6 +3175,7 @@ public record WorkLogEntryDto(
 /// <paramref name="TotalTokens"/> and their dollars are in nothing. A client
 /// says "n unpriced" beside the money rather than letting the total pass as complete.
 /// </param>
+/// <param name="DurationMs">Runner wall-clock time summed over the sessions, as the dispatcher measured it - not CPU time and not the claim's lease.</param>
 public record WorkLogTotalsDto(
     int Sessions,
     int Errors,
@@ -3184,7 +3185,8 @@ public record WorkLogTotalsDto(
     long CacheReadTokens,
     long TotalTokens,
     decimal CostUsd,
-    int UnpricedSessions);
+    int UnpricedSessions,
+    long DurationMs);
 
 /// <summary>
 /// An issue's work log: what everything beneath it has cost, what it has cost
@@ -3507,6 +3509,50 @@ public record ChangelogReportEntryDto(
     string? ReleaseNote,
     DateTimeOffset ClosedAt,
     string Priority);
+
+// ---- Consumption report ----
+
+/// <summary>
+/// What each issue matching the filter - and everything beneath it - consumed
+/// in a window: tokens, notional USD and runner time, folded by
+/// <see cref="ConsumptionReport.Fold"/>.
+/// </summary>
+/// <param name="Type">The type filter as resolved - one of the five issue types, or <c>"all"</c>.</param>
+/// <param name="Sort">The sort as resolved - <c>activity</c>, <c>tokens</c>, <c>cost</c> or <c>time</c>.</param>
+/// <param name="Matched">How many issues the filter matched before <paramref name="Limit"/> capped <paramref name="Rows"/> - so a page can say "the first 100 of 240".</param>
+/// <param name="Totals">Every session the filter holds, beneath any matching issue, counted once.</param>
+/// <param name="FirstSessionAt">The earliest session beneath any matching issue, ignoring the window - or null when none has ever run. Read the way <see cref="WorkLogHistoryDto.FirstSessionAt"/> is.</param>
+/// <param name="LastSessionAt">The latest, read the same way.</param>
+/// <param name="Rows">One per issue with at least one session in the window beneath it, in <paramref name="Sort"/> order, capped at <paramref name="Limit"/>.</param>
+/// <param name="History">The same sessions <paramref name="Totals"/> counts, folded into equal time buckets for a graph - the window snapped outward onto the grid, the bucket size chosen by the server.</param>
+public record ConsumptionReportDto(
+    DateTimeOffset From,
+    DateTimeOffset To,
+    string Type,
+    string Sort,
+    int Limit,
+    int Matched,
+    WorkLogTotalsDto Totals,
+    DateTimeOffset? FirstSessionAt,
+    DateTimeOffset? LastSessionAt,
+    IReadOnlyList<ConsumptionRowDto> Rows,
+    WorkLogHistoryDto History);
+
+/// <summary>One issue's own row: what its subtree cost inside the window.</summary>
+/// <param name="ParentKey">The nearest row directly above this one, or null when its own parent is not itself a row.</param>
+/// <param name="Totals">This issue and every descendant, at any depth, inside the window.</param>
+/// <param name="FirstSessionAt">The earliest session in this row's own totals.</param>
+/// <param name="LastSessionAt">The latest - what <c>sort=activity</c> ranks by.</param>
+public record ConsumptionRowDto(
+    string Key,
+    string Title,
+    string Type,
+    string ProjectKey,
+    int StatusId,
+    string? ParentKey,
+    WorkLogTotalsDto Totals,
+    DateTimeOffset FirstSessionAt,
+    DateTimeOffset LastSessionAt);
 
 // ---- Activity report ----
 

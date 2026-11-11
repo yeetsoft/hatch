@@ -279,6 +279,12 @@ public class AdminSurfaceTests
         // asks what it did as readily as a person asks what a runner did.
         "ReportsController.GetActivityReport",
 
+        // What each issue - and everything beneath it - consumed in a window:
+        // tokens, notional USD and runner time, read off the work log.
+        // Key-accepting and open to a person, like WorkLogController's own
+        // reads: a script reads this as readily as a page would.
+        "ReportsController.GetConsumption",
+
         // My own Claude headroom, off my own runners' heartbeats. Key-accepting
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,
@@ -906,6 +912,7 @@ public class AdminSurfaceTests
         "QuestionsController.GetQuestions",
         "ReportsController.GetActivityReport",
         "ReportsController.GetChangelogReport",
+        "ReportsController.GetConsumption",
         "ReportsController.GetCumulativeFlow",
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",

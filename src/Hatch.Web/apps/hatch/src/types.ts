@@ -2242,6 +2242,8 @@ export interface WorkLogTotals {
   /** How many of the sum's rows reported no price - their tokens are in
       totalTokens and their dollars are in nothing. */
   unpricedSessions: number;
+  /** Runner wall-clock time summed over the sessions - not CPU time and not the claim's lease. */
+  durationMs: number;
 }
 
 /** An issue's work log. Mirrors WorkLogDto.

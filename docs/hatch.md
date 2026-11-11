@@ -3710,6 +3710,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable). Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, or an unknown `projectId` — see [the activity report](#the-activity-report) |
+| `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the five types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4529,7 +4530,9 @@ a card each: the Timeline, the Cumulative flow and the
 [Changelog](#the-changelog-report). **One further read, the [flow](#the-flow),
 has no page and no index card** — it is for a program, not a person at a screen — and
 neither has [the activity report](#the-activity-report), one actor's events in a
-range, which has no page or card yet. A
+range, nor [the consumption report](#the-consumption-report), what each issue
+consumed in a window: tokens, notional USD and runner time. Both have no page or
+card yet. A
 new report with a page is one more entry in that index and a route; neither
 report gets a nav entry of its own, and the index card stays the only way in.
 
@@ -4892,6 +4895,80 @@ it stays `[]`.
 It has a page and an index card, but **no CLI subcommand** (`hatch changelog`
 is the older feed, not this report); a script reaches the same answer with
 `hatch api GET /api/hatch/reports/changelog?...`, which is the
+[API surface](#api-surface)'s row for it.
+
+### The consumption report
+
+```
+GET /api/hatch/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&statusId=&projectId=
+```
+
+**What did each epic — or any issue type — consume in a window?** Tokens,
+notional USD and runner time, read off the work log rather than the board. It
+is **for a program**, like [the flow](#the-flow): one JSON read carrying rows,
+totals and a time series, with **no page** and no index card yet — HA-2245 is
+the page, the graph and the CSV sibling.
+
+`from` and `to` are the other reports' own bounds — instants, the 90 days
+ending now by default, the same `400`s for an unparseable or inverted range.
+`type` is one of the five issue types, or `all`; absent or blank is `epic`,
+and anything else is a `400` naming the five and `all`. `sort` is `activity`
+(default, `lastSessionAt` descending), `tokens`, `cost` or `time`, each
+descending; anything else is a `400` naming the four. `limit` is 1 to 500,
+default 100, caps the rows alone, and outside that range is a `400`.
+`offsetMinutes` is minutes east of UTC, aligning the history's daily buckets
+to the reader's own midnight, the same -1440..1440 rule as the changelog
+report's. `statusId` and `projectId` are each repeatable; an id naming no
+column or no project is a `400`. The route is open to a person or to a key,
+and the `400`s above come in that order — bound, offset, type, sort, limit,
+status, project.
+
+It answers `{ from, to, type, sort, limit, matched, totals, firstSessionAt,
+lastSessionAt, rows, history }`:
+
+- `from`, `to`, `type`, `sort` and `limit` are the request as the server
+  resolved it.
+- `matched` is how many issues the filter matched before `limit` capped
+  `rows` — so a caller can say "the first 100 of 240".
+- `totals` is a work-log totals shape (the same one `/work-log/*` answers,
+  now carrying `durationMs`) over **every session the filter holds, beneath
+  any matching issue, counted once** — not the sum of `rows`' own totals,
+  which double-count a sub-epic's sessions against its parent's.
+- `firstSessionAt` and `lastSessionAt` **ignore the window** and respect the
+  rest of the filter, read the same way `/work-log/history`'s own are, so a
+  caller tells "nothing has ever run here" from "nothing ran in the range
+  asked for".
+- `rows` is one entry per issue that matches the filter **and** has at least
+  one session in the window beneath it (itself included) — `{ key, title,
+  type, projectKey, statusId, parentKey, totals, firstSessionAt,
+  lastSessionAt }`. `totals` is that issue's own subtree, inside the window;
+  `parentKey` is the nearest row directly above it, or `null` when its own
+  parent is not itself a row. An issue matching the filter with nothing
+  beneath it in the window is not a row at all.
+- `history` is the same sessions `totals` counts, folded into equal time
+  buckets — the shape `/work-log/history` answers, window snapped outward
+  onto the grid, the bucket size chosen by the server the same way.
+
+#### The rules
+
+- **The window is half-open**, `[from, to)`, the same as the flow's — a
+  session is in it when `from <= EndedAt < to`.
+- **Rows may overlap; the total does not.** A sub-epic is a row of its own
+  and its sessions are also inside its parent's row, because each row answers
+  "what did this issue cost". The report's `totals` and `history` count each
+  session once across every row, by walking each session's issue up through
+  the tree once and crediting every matching ancestor — not by summing the
+  rows, which would count a sub-epic's sessions twice.
+- **A session beneath no matching issue is dropped** — from `rows`, from
+  `totals` and from `history` alike.
+- **`cost` puts every row with nothing priced last**, whatever its own
+  `costUsd` reads as — the same rule `/work-log/sessions?sort=cost` already
+  states for a null price. Every sort breaks a tie on the issue's key.
+- **`statusId` filters on the issue's current column**, the same as
+  elsewhere in the module; two ids read as **either**.
+
+It has no page, no index card and no CLI subcommand; a script reaches it with
+`hatch api GET /api/hatch/reports/consumption?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ### The activity report
