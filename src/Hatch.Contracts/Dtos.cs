@@ -4476,11 +4476,6 @@ public enum RunnerBoardDrift
 /// <param name="Container">Whether this process is running inside a container, on the same terms as <see cref="Os"/>.</param>
 /// <param name="Username">The OS username this process runs as, on the same terms as <see cref="Os"/>.</param>
 /// <param name="ProcessStartedAt">When this process itself started, on the same terms as <see cref="Os"/>.</param>
-/// <param name="LegacyName">
-/// The runner name the checkout's old per-user <c>runners</c> record held,
-/// sent on a process's first loop beat only. Absent is ordinary: nothing was
-/// recorded, the CLI is an older one, or this is any later beat.
-/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4523,8 +4518,7 @@ public record RunnerHeartbeatRequest(
     string? AgentVersion = null,
     bool? Container = null,
     string? Username = null,
-    DateTimeOffset? ProcessStartedAt = null,
-    string? LegacyName = null);
+    DateTimeOffset? ProcessStartedAt = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

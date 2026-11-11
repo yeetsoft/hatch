@@ -6,8 +6,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 /// <remarks>
 /// Redirects <see cref="Console.Out"/> and <see cref="Console.Error"/>, which
-/// are process-wide - restored in a <c>finally</c>, the same guard
-/// <c>RunnerNamesTests</c> already takes for the same reason.
+/// are process-wide - restored in a <c>finally</c>.
 /// </remarks>
 public sealed class LiveTerminalTests
 {
