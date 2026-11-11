@@ -40,4 +40,24 @@ public class IssueEventPayloadTests
         var json = JsonSerializer.SerializeToElement(payload);
         Assert.True(json.GetProperty("expedited").GetBoolean());
     }
+
+    [Fact]
+    public void ContributionFiled_NamesEveryField_InOrder_WithNullsKept()
+    {
+        var payload = IssueEventPayload.ContributionFiled(new EfHatchContribution
+        {
+            IssueId = 1, PullRequestUrl = null, HeadBranch = null, AuthorLogin = "octocat",
+            AuthorAssociation = "NONE", FiledAt = DateTimeOffset.UnixEpoch, FiledBy = "runner-1",
+            OriginInstance = "https://hatch.example", OriginProjectKey = "OTH", OriginKey = "OTH-4",
+        });
+
+        Assert.Equal(
+            ["pullRequestUrl", "headBranch", "authorLogin", "authorAssociation", "originInstance", "originProjectKey", "originKey"],
+            payload.Keys);
+        var json = JsonSerializer.SerializeToElement(payload);
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("pullRequestUrl").ValueKind);
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("headBranch").ValueKind);
+        Assert.Equal("octocat", json.GetProperty("authorLogin").GetString());
+        Assert.Equal("OTH-4", json.GetProperty("originKey").GetString());
+    }
 }

@@ -566,6 +566,11 @@ public class AdminSurfaceTests
         // PATCH, which is key-open too. IssueNoCodeController.
         "IssueNoCodeController.PutIssueNoCode",
 
+        // That an issue came from outside, which a runner is the one to see: the
+        // pull request, its author and where it originated. Write-once, and no
+        // power over the board. IssueContributionController.
+        "IssueContributionController.PutIssueContribution",
+
         // A release note, open to a key only under the issue's live claim: the
         // claim check is in the action, not the attribute, so a key can write the
         // note of the ticket it is working and no other. IssueReleaseNoteController.
@@ -868,6 +873,7 @@ public class AdminSurfaceTests
         "IssueClaimController.Heartbeat",
         "IssueClaimController.ReleaseClaim",
         "IssueClaimController.TakeClaim",
+        "IssueContributionController.PutIssueContribution",
         "IssueDangerousController.PutIssueDangerous",
         "IssueDependenciesController.AddDependency",
         "IssueDependenciesController.RemoveDependency",

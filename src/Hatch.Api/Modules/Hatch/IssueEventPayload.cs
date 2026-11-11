@@ -51,4 +51,20 @@ public static class IssueEventPayload
         foreach (var (key, value) in extra) payload[key] = value;
         return payload;
     }
+
+    /// <summary>
+    /// The payload of a <see cref="EfHatchIssueEvent.ContributionFiled"/> row.
+    /// Every field is written, in this order, with JSON null where the record
+    /// holds none, so a reader finds the same keys on every row.
+    /// </summary>
+    public static Dictionary<string, object?> ContributionFiled(EfHatchContribution c) => new()
+    {
+        ["pullRequestUrl"] = c.PullRequestUrl,
+        ["headBranch"] = c.HeadBranch,
+        ["authorLogin"] = c.AuthorLogin,
+        ["authorAssociation"] = c.AuthorAssociation,
+        ["originInstance"] = c.OriginInstance,
+        ["originProjectKey"] = c.OriginProjectKey,
+        ["originKey"] = c.OriginKey,
+    };
 }

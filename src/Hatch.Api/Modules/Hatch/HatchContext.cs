@@ -32,6 +32,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
     public DbSet<EfHatchMergeCheck> MergeChecks => Set<EfHatchMergeCheck>();
     public DbSet<EfHatchBuildCheck> BuildChecks => Set<EfHatchBuildCheck>();
     public DbSet<EfHatchLanding> Landings => Set<EfHatchLanding>();
+    public DbSet<EfHatchContribution> Contributions => Set<EfHatchContribution>();
     public DbSet<EfHatchTrunkBuild> TrunkBuilds => Set<EfHatchTrunkBuild>();
     public DbSet<EfHatchPlaybookFile> PlaybookFiles => Set<EfHatchPlaybookFile>();
     public DbSet<EfHatchDependencyFile> DependencyFiles => Set<EfHatchDependencyFile>();
@@ -423,6 +424,14 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.HasOne(l => l.Issue)
                 .WithMany(i => i.Landings)
                 .HasForeignKey(l => l.IssueId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EfHatchContribution>(e =>
+        {
+            e.HasOne(c => c.Issue)
+                .WithOne(i => i.Contribution)
+                .HasForeignKey<EfHatchContribution>(c => c.IssueId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -205,7 +205,14 @@ All eight are a key's. `GET /issues` takes a repeatable `projectId`, `type`, `st
 to write it), `ancestorKey` (anything below at any depth, not the issue
 itself), `text` (a substring of the title, plus an exact key match) and
 `filedFromKey` (the issues filed from one issue; `""` means "filed from
-nothing"), all optional and ANDed together. `docs/hatch-planning.md` has these filters in
+nothing"), `pullRequestUrl` (exact match on the pull request an issue holds,
+whether recorded with `hatch pr` or by a contribution record), `originInstance`
+and `originKey` (exact match on a contribution record's origin; a trailing `/`
+on the instance is ignored, and an issue with no record matches neither), all
+optional and ANDed together. Every card, and `GET /issues/{key}`, carries
+`contribution` - the record, or null - and a review row from `GET /work/review`
+carries `branch`, the head branch a contribution recorded, null on the board's
+own rows. `docs/hatch-planning.md` has these filters in
 full, the bulk endpoint's own filters, and the `/plan` reads' arithmetic -
 none of that is re-derived here.
 
@@ -270,6 +277,7 @@ not mint an issue number - try again".
 | omitted-runners | PUT | `/issues/{key}/omitted-runners/{runner}` | key | Omits a runner from this ticket and its subtree, with an optional reason; rewrites the reason if already omitted |
 | omitted-runners | DELETE | `/issues/{key}/omitted-runners/{runner}` | key | Lifts the ticket's own omission of a runner; 404 for one only an ancestor carries |
 | no-code | PUT | `/issues/{key}/no-code` | key | Finished with no code, and why; `""` clears; refused once a branch or pull request exists |
+| contribution | PUT | `/issues/{key}/contribution` | key | That the issue came from outside: pull request URL, head branch, author login and association, origin. Write-once, unique per pull request URL; answers the `IssueDto` |
 | release-note | PUT | `/issues/{key}/release-note` | key | The changelog's sentence for this issue |
 | stall | PUT | `/issues/{key}/stall` | open to anything the wall admits | A runner's own mark that it left the ticket where it found it, and why |
 | hold | PUT | `/issues/{key}/hold` | **person** | Parks/resumes a ticket; clears any stall mark |
@@ -277,7 +285,7 @@ not mint an issue number - try again".
 | landing | PUT | `/issues/{key}/landing` | key | What a repository holds for this issue's branch, per remote |
 
 Several of these are a person's alone; checked one at a time rather than
-assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code` and `landing` are key-open despite
+assumed uniform. `one-pr`, `runner-tags`, `dangerous`, `omitted-runners`, `no-code`, `contribution` and `landing` are key-open despite
 sitting beside five person-only fields: one-pr is the story's or bug's own say over its
 project's default, which gives a key nothing it could not already do by
 filing it that way; runner-tags is a statement about which runner may
@@ -346,6 +354,20 @@ file is held to. `landing` 400s a malformed remote, sha or trunk, and the
 first write for a repository 400s if it omits `trunk`. Every field here
 follows the house no-op rule: setting the value already held writes nothing
 and moves no `UpdatedAt`.
+
+`contribution` takes the record minus `filedAt` and `filedBy`, which the server
+stamps from its clock and the caller. `authorLogin` and `authorAssociation` are
+required; `pullRequestUrl` is optional (a mirrored ancestor has none) and is
+read as `PATCH` reads one; `originInstance` and `originKey` come together or not
+at all, and the instance is stored without a trailing `/`. Each field has a
+length cap, and a body over one is a `400`. The first write records the issue's
+contribution, a `contribution_filed` event naming the caller, and, where the
+issue has no pull request of its own, sets it to the record's with a
+`pull_request_changed` event. A repeat with the same `pullRequestUrl` is a `200`
+that writes nothing, whatever else the body says. `409` for a different URL on
+an issue that already has a record, for a URL another issue's record holds
+(naming that issue), and for an issue whose own pull request is a different
+one; `404` for no such key.
 
 ## The thread
 

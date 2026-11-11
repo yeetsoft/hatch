@@ -436,6 +436,7 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 /// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>. Null on an issue with a child, whatever it declared, since the declaration there says nothing. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
+/// <param name="Contribution">The record that this issue came from outside, or null where it did not - see <see cref="EfHatchContribution"/>. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -473,7 +474,8 @@ public record IssueCardDto(
     string? DangerousFrom = null,
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
     IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
-    string? NoCode = null)
+    string? NoCode = null,
+    ContributionDto? Contribution = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -671,6 +673,7 @@ public record IssueClaimDto(
 /// <param name="OnePrEnforced">Whether this issue's project enforces its one-PR default - <see cref="EfHatchProject.OnePullRequestPolicy"/> is <see cref="OnePullRequestPolicies.Enforced"/>. Filled wherever an <see cref="IssueDto"/> is built.</param>
 /// <param name="FiledFromKey">The key of the issue whose session filed this one, or null - see <see cref="EfHatchIssue.FiledFromId"/>. Provenance only; nothing that gates work reads it.</param>
 /// <param name="FiledKeys">The issues filed from this one, in key order. Empty where there are none.</param>
+/// <param name="Contribution">The record that this issue came from outside, or null where it did not - see <see cref="EfHatchContribution"/>.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -732,7 +735,8 @@ public record IssueDto(
     IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
     bool OnePrEnforced = false,
     string? FiledFromKey = null,
-    IReadOnlyList<string> FiledKeys = null!)
+    IReadOnlyList<string> FiledKeys = null!,
+    ContributionDto? Contribution = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -2234,6 +2238,71 @@ public record NoCodeRequest(string? Reason)
 }
 
 /// <summary>
+/// The record that an issue came from outside, as stored - see
+/// <see cref="EfHatchContribution"/>.
+/// </summary>
+/// <param name="PullRequestUrl">The pull request it came in as. Null on a mirrored ancestor.</param>
+/// <param name="HeadBranch">The pull request's head branch. Null on a mirrored ancestor.</param>
+/// <param name="AuthorLogin">Who opened the pull request, as the forge names them.</param>
+/// <param name="AuthorAssociation">How the forge relates that author to the repository, in the forge's own word.</param>
+/// <param name="FiledAt">When the record was written, by the server's clock.</param>
+/// <param name="FiledBy">The name of the credential that wrote it.</param>
+/// <param name="OriginInstance">The Hatch the issue was mirrored from, without a trailing slash. Null where it did not come from another Hatch.</param>
+/// <param name="OriginProjectKey">The project key on that Hatch.</param>
+/// <param name="OriginKey">The issue's key on that Hatch.</param>
+/// <param name="EnvelopeVersion">The version of the envelope the pull request carried, where one was read.</param>
+/// <param name="EnvelopeNote">Why an envelope could not be read, where it could not.</param>
+public record ContributionDto(
+    string? PullRequestUrl,
+    string? HeadBranch,
+    string AuthorLogin,
+    string AuthorAssociation,
+    DateTimeOffset FiledAt,
+    string FiledBy,
+    string? OriginInstance = null,
+    string? OriginProjectKey = null,
+    string? OriginKey = null,
+    int? EnvelopeVersion = null,
+    string? EnvelopeNote = null);
+
+/// <summary>
+/// A runner's record that an issue came from outside - see
+/// <see cref="EfHatchContribution"/>. It is the record minus when and by whom
+/// it was filed, which the server stamps from its clock and the caller.
+/// </summary>
+/// <param name="PullRequestUrl">The pull request it came in as, as the forge shows it. Null for a mirrored ancestor.</param>
+/// <param name="HeadBranch">The pull request's head branch. Null for a mirrored ancestor.</param>
+/// <param name="AuthorLogin">Who opened the pull request. Required.</param>
+/// <param name="AuthorAssociation">The forge's word for how the author relates to the repository, stored as given. Required.</param>
+/// <param name="OriginInstance">The Hatch the issue was mirrored from. Given with <paramref name="OriginKey"/> or not at all.</param>
+/// <param name="OriginProjectKey">The project key on that Hatch.</param>
+/// <param name="OriginKey">The issue's key on that Hatch.</param>
+/// <param name="EnvelopeVersion">The version of the envelope that was read.</param>
+/// <param name="EnvelopeNote">Why an envelope could not be read.</param>
+public record ContributionRequest(
+    string? PullRequestUrl,
+    string? HeadBranch,
+    string? AuthorLogin,
+    string? AuthorAssociation,
+    string? OriginInstance = null,
+    string? OriginProjectKey = null,
+    string? OriginKey = null,
+    int? EnvelopeVersion = null,
+    string? EnvelopeNote = null)
+{
+    // Here rather than on the entity because both sides of the wire need them;
+    // the entity's own columns take their lengths from these.
+    public const int MaxPullRequestUrlLength = 500;
+    public const int MaxHeadBranchLength = 200;
+    public const int MaxAuthorLoginLength = 100;
+    public const int MaxAuthorAssociationLength = 40;
+    public const int MaxOriginInstanceLength = 500;
+    public const int MaxOriginProjectKeyLength = 16;
+    public const int MaxOriginKeyLength = 32;
+    public const int MaxEnvelopeNoteLength = 500;
+}
+
+/// <summary>
 /// The level to set, by name - <c>"none"</c>, <c>"express"</c> or
 /// <c>"preapproved"</c> - see <see cref="PreApprovalLevels"/>. One required
 /// string rather than a boolean, for the same reason <see cref="PriorityRequest"/>
@@ -2748,6 +2817,7 @@ public record RunnerReasonDto(string Runner, string Reason);
 /// <param name="PullRequestReviewDecision">What the board holds of the pull request's review decision - one of <see cref="ReviewDecisions"/> - for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSha">The head commit the board last read the pull request at, for the same comparison. Null where none is held, and from a board that predates it.</param>
 /// <param name="PullRequestHeadSince">The moment the board first saw the pull request at that head - when the forge's pull request reached the branch tip, as far as the board can tell. Null where none is held, and from a board that predates it.</param>
+/// <param name="Branch">The head branch recorded on the issue's contribution, for an issue that came from outside. Null on the board's own rows, which have no recorded head, and from a board that predates it.</param>
 public record ReviewCheckDto(
     string Key,
     IReadOnlyList<WorkRepositoryDto> Repositories,
@@ -2764,7 +2834,8 @@ public record ReviewCheckDto(
     string? PullRequestMergeState = null,
     string? PullRequestReviewDecision = null,
     string? PullRequestHeadSha = null,
-    DateTimeOffset? PullRequestHeadSince = null);
+    DateTimeOffset? PullRequestHeadSince = null,
+    string? Branch = null);
 
 /// <summary>The kind of work an issue in the merges column is, and why it is not work where it is not - see <see cref="Hatch.Api.Modules.Hatch.MergeWork.Judgement"/>.</summary>
 /// <param name="IsHead">
