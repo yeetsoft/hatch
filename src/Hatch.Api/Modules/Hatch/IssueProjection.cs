@@ -81,7 +81,10 @@ public static class IssueProjection
 
         // The parents of the batch, which are not necessarily in the batch -
         // a story scanned in one column hangs under an epic sitting in another.
-        var parentIds = issues.Select(i => i.ParentId).OfType<long>().Distinct().ToList();
+        // The issues they were filed from are read in the same query, for the
+        // same reason.
+        var parentIds = issues.Select(i => i.ParentId).Concat(issues.Select(i => i.FiledFromId))
+            .OfType<long>().Distinct().ToList();
         var parentKeys = await db.Issues.AsNoTracking()
             .Where(i => parentIds.Contains(i.Id))
             .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
@@ -97,6 +100,17 @@ public static class IssueProjection
 
         var childKeys = childRows
             .GroupBy(r => r.ParentId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g
+                .Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList());
+
+        var filedRows = await db.Issues.AsNoTracking()
+            .Where(i => i.FiledFromId != null && ids.Contains(i.FiledFromId!.Value))
+            .OrderBy(i => i.Project!.Key).ThenBy(i => i.Number)
+            .Select(i => new { FiledFromId = i.FiledFromId!.Value, ProjectKey = i.Project!.Key, i.Number })
+            .ToListAsync(ct);
+
+        var filedKeys = filedRows
+            .GroupBy(r => r.FiledFromId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g
                 .Select(r => IssueKey.Format(r.ProjectKey, r.Number)).ToList());
 
@@ -257,7 +271,9 @@ public static class IssueProjection
                 issue.NoCodeAt,
                 omittedRunnersOwn,
                 omittedRunners,
-                (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced);
+                (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced,
+                FiledFromKey: issue.FiledFromId is { } filedFromId && parentKeys.TryGetValue(filedFromId, out var filedFromKey) ? filedFromKey : null,
+                FiledKeys: filedKeys.TryGetValue(issue.Id, out var filed) ? filed : []);
         });
     }
 

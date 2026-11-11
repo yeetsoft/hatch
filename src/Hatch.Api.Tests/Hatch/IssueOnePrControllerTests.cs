@@ -900,7 +900,7 @@ public class IssueOnePrControllerTests
         await h.SetAsync(story.Key, "on");
 
         var board = Value(await h.Board.GetBoard(default)).Issues.ToDictionary(c => c.Key);
-        var search = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default)).ToDictionary(c => c.Key);
+        var search = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default)).ToDictionary(c => c.Key);
 
         foreach (var cards in new[] { board, search })
         {

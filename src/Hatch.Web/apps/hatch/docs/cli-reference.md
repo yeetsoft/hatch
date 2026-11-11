@@ -345,7 +345,10 @@ hatch show AER-12
 hatch show AER-12 --brief
 ```
 
-The brief, its edges and where it is, followed by every comment on it. The
+The brief, its edges and where it is, followed by every comment on it. A ticket
+that was filed from another says so on a `filed from:` line, and one with
+tickets filed from it lists them on a `filed:` line; both are provenance only,
+and absent where they do not apply. The
 description is markdown and goes to the terminal as it was written. A ticket
 that is expedited, emergency, low, economy, paused, express or pre-approved
 says so, and a level it holds only because an ancestor carries it names that

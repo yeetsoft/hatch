@@ -289,7 +289,7 @@ public class IssueExpediteControllerTests
         Assert.True(read.Expedited);
         Assert.Equal(PriorityLevels.EmergencyName, read.Priority);
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
         var card = cards.Single(c => c.Key == issue.Key);
         Assert.True(card.Expedited);
         Assert.Equal(PriorityLevels.EmergencyName, card.Priority);

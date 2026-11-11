@@ -669,6 +669,8 @@ public record IssueClaimDto(
 /// <param name="OmittedRunnersOwn">The runners this issue's own rows omit, regardless of what it inherits - see <see cref="PriorityTree.OwnOmittedRunners"/>.</param>
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 /// <param name="OnePrEnforced">Whether this issue's project enforces its one-PR default - <see cref="EfHatchProject.OnePullRequestPolicy"/> is <see cref="OnePullRequestPolicies.Enforced"/>. Filled wherever an <see cref="IssueDto"/> is built.</param>
+/// <param name="FiledFromKey">The key of the issue whose session filed this one, or null - see <see cref="EfHatchIssue.FiledFromId"/>. Provenance only; nothing that gates work reads it.</param>
+/// <param name="FiledKeys">The issues filed from this one, in key order. Empty where there are none.</param>
 public record IssueDto(
     string Key,
     int ProjectId,
@@ -728,7 +730,9 @@ public record IssueDto(
     DateTimeOffset? NoCodeAt = null,
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
     IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
-    bool OnePrEnforced = false)
+    bool OnePrEnforced = false,
+    string? FiledFromKey = null,
+    IReadOnlyList<string> FiledKeys = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -
@@ -738,6 +742,7 @@ public record IssueDto(
     public IReadOnlyList<RunnerTagSourceDto> RunnerTagsFrom { get; init; } = RunnerTagsFrom ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn { get; init; } = OmittedRunnersOwn ?? [];
     public IReadOnlyList<RunnerOmissionDto> OmittedRunners { get; init; } = OmittedRunners ?? [];
+    public IReadOnlyList<string> FiledKeys { get; init; } = FiledKeys ?? [];
 }
 
 /// <summary>Taking the lease: who is asking is the credential's to say, so the body names only where from.</summary>
@@ -1021,6 +1026,12 @@ public record ClaimHeartbeatRequest(
 /// the send-back column for <c>express</c>. Either way it is born in the one
 /// save, with no second event.
 /// </param>
+/// <param name="FiledFromKey">
+/// The issue whose session is filing this one - provenance only, in any
+/// project. Absent (or null or blank) is filed from nothing. Refused with a
+/// sentence when it names no issue. Born in the one save, with no
+/// <c>filed_from_changed</c> event.
+/// </param>
 public record IssueCreateRequest(
     int ProjectId,
     string Type,
@@ -1031,7 +1042,8 @@ public record IssueCreateRequest(
     string? DueAt,
     string? OnePr = null,
     string? Priority = null,
-    string? PreApproval = null);
+    string? PreApproval = null,
+    string? FiledFromKey = null);
 
 /// <summary>
 /// An edit. Every field is optional and null means "leave this alone", which
@@ -1039,6 +1051,8 @@ public record IssueCreateRequest(
 /// <paramref name="ParentKey"/> - <c>""</c> - clears the parent. A JSON body
 /// cannot otherwise distinguish "no opinion" from "no parent", and the empty
 /// string is unambiguous because no issue key can ever be one.
+/// <paramref name="FiledFromKey"/> follows the same rule: <c>""</c> clears the
+/// issue it was filed from.
 ///
 /// <paramref name="ReadyAt"/>, <paramref name="DueAt"/> and
 /// <paramref name="PullRequestUrl"/> read the empty string the same way, and for
@@ -1075,7 +1089,8 @@ public record IssuePatchRequest(
     string? PullRequestUrl,
     int? ProjectId,
     bool? MoveDescendants,
-    bool WipOverride = false);
+    bool WipOverride = false,
+    string? FiledFromKey = null);
 
 /// <summary>
 /// A drop on the board: which column, and which cards it landed between. The
@@ -1177,7 +1192,8 @@ public record IssueBulkEditRequest(
     string? ReadyAt = null,
     string? DueAt = null,
     int? ProjectId = null,
-    bool? MoveDescendants = null);
+    bool? MoveDescendants = null,
+    string? FiledFromKey = null);
 
 // ---- Comments and events ----
 

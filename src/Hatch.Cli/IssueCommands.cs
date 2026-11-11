@@ -181,6 +181,8 @@ public sealed class IssueCommands(Cli cli)
         }
         if (issue.ParentKey is { Length: > 0 } parent) cli.Say.Line($"parent:   {parent}");
         if (issue.ChildKeys.Count > 0) cli.Say.Line($"children: {string.Join(", ", issue.ChildKeys)}");
+        if (issue.FiledFromKey is { Length: > 0 } filedFrom) cli.Say.Line($"filed from: {filedFrom}");
+        if (issue.FiledKeys.Count > 0) cli.Say.Line($"filed:    {string.Join(", ", issue.FiledKeys)}");
         if (issue.DependsOnKeys.Count > 0) cli.Say.Line($"depends:  {string.Join(", ", issue.DependsOnKeys)}");
         if (issue.DependentKeys.Count > 0) cli.Say.Line($"blocks:   {string.Join(", ", issue.DependentKeys)}");
         if (issue.ReadyAt is { Length: > 0 } ready) cli.Say.Line($"ready:    {ready}");

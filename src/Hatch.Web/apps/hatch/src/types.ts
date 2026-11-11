@@ -713,6 +713,10 @@ export interface Issue {
   onePrFrom: string | null;
   /** See IssueDto.OnePrEnforced. */
   onePrEnforced: boolean;
+  /** The issue whose session filed this one, or null. Provenance only. See IssueDto.FiledFromKey. */
+  filedFromKey?: string | null;
+  /** The issues filed from this one, in key order. See IssueDto.FiledKeys. */
+  filedKeys?: string[];
   /** See IssueDto.ReleaseNote. */
   releaseNote: string | null;
   /** When an increment last left this ticket where it found it, or null.

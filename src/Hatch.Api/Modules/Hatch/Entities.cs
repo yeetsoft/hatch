@@ -861,6 +861,16 @@ public class EfHatchIssue
     public ICollection<EfHatchIssue> Children { get; set; } = [];
 
     /// <summary>
+    /// The issue whose session filed this one. Provenance only: nothing that
+    /// gates work reads it, so it never holds, orders or blocks anything. It
+    /// may name an issue in another project, as a dependency may, and a
+    /// deleted source leaves it null.
+    /// </summary>
+    public long? FiledFromId { get; set; }
+    public EfHatchIssue? FiledFrom { get; set; }
+    public ICollection<EfHatchIssue> Filed { get; set; } = [];
+
+    /// <summary>
     /// Position within the column. Sparse integers with 1024-sized gaps, so a
     /// drop between two cards is the midpoint and costs one UPDATE; when the
     /// gap closes the whole column is renumbered (see <c>RankService</c>).
@@ -2114,6 +2124,13 @@ public class EfHatchIssueEvent
     public const string VerdictHeld = "verdict_held";
 
     public const string ParentChanged = "parent_changed";
+
+    /// <summary>
+    /// The issue this one was filed from changed. The payload's <c>from</c>
+    /// and <c>to</c> are display keys, either null, written on the issue that
+    /// changed and on no other.
+    /// </summary>
+    public const string FiledFromChanged = "filed_from_changed";
 
     /// <summary>
     /// The issue moved to another project, carrying the subtree under it

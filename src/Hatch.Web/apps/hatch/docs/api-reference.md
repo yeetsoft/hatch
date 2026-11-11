@@ -203,21 +203,22 @@ beyond the standard ones.
 All eight are a key's. `GET /issues` takes a repeatable `projectId`, `type`, `statusId`,
 `parentKey` (`""` means "no parent at all" - the one filter with no other way
 to write it), `ancestorKey` (anything below at any depth, not the issue
-itself) and `text` (a substring of the title, plus an exact key match), all
-optional and ANDed together. `docs/hatch-planning.md` has these filters in
+itself), `text` (a substring of the title, plus an exact key match) and
+`filedFromKey` (the issues filed from one issue; `""` means "filed from
+nothing"), all optional and ANDed together. `docs/hatch-planning.md` has these filters in
 full, the bulk endpoint's own filters, and the `/plan` reads' arithmetic -
 none of that is re-derived here.
 
 `IssueCreateRequest` is `ProjectId`, `Type`, `Title`, an optional
-`Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority` and
-`PreApproval` - `OnePr` only on a `story` or a `bug`, refused on anything else,
+`Description`, `ParentKey`, `ReadyAt`, `DueAt`, `OnePr`, `Priority`,
+`PreApproval` and `FiledFromKey` - `OnePr` only on a `story` or a `bug`, refused on anything else,
 `inherit`/`on`/`off` (`on` and `off` 409 under a project whose one-PR policy is
 `enforced`, before anything is written); `Priority` and `PreApproval` take the level names the two
 `PUT` routes below take, absent meaning `normal` and `none`, so an issue can be
 born at a level in the one save, with no second event. `IssuePatchRequest`
 is `Title?`, `Description?`, `Type?`, `StatusId?`, `ParentKey?`, `ReadyAt?`,
-`DueAt?`, `PullRequestUrl?`, `ProjectId?`, `MoveDescendants?`, `WipOverride` -
-`""` clears `ParentKey`, `ReadyAt`, `DueAt` or `PullRequestUrl` (no issue key,
+`DueAt?`, `PullRequestUrl?`, `ProjectId?`, `MoveDescendants?`, `WipOverride`,
+`FiledFromKey?` - `""` clears `ParentKey`, `FiledFromKey`, `ReadyAt`, `DueAt` or `PullRequestUrl` (no issue key,
 date or URL is ever legitimately empty, so the sentinel is unambiguous);
 `ProjectId` has no clear sentinel, since an issue always belongs to some
 project; a null `MoveDescendants` reads as `true`. `IssueBulkEditRequest`

@@ -29,9 +29,13 @@ public sealed class IssueCommandsTests
         string? dueAt = null,
         string? pr = null,
         string? noCode = null,
-        IReadOnlyList<LandingDto>? landings = null) =>
+        IReadOnlyList<LandingDto>? landings = null,
+        string? filedFrom = null,
+        IReadOnlyList<string>? filed = null) =>
         Fixtures.Issue(key) with
         {
+            FiledFromKey = filedFrom,
+            FiledKeys = filed ?? [],
             ParentKey = parent,
             ChildKeys = children ?? [],
             DependsOnKeys = dependsOn ?? [],
@@ -92,6 +96,33 @@ public sealed class IssueCommandsTests
 
             """.ReplaceLineEndings("\n"),
             h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_what_the_issue_was_filed_from_and_what_was_filed_from_it_where_they_apply()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(filedFrom: "OPS-3", filed: ["AER-20", "OPS-4"]));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("filed from: OPS-3\n", h.Said, StringComparison.Ordinal);
+        Assert.Contains("filed:    AER-20, OPS-4\n", h.Said, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Show_prints_neither_filed_line_for_an_issue_with_no_such_edges()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.DoesNotContain("filed", h.Said, StringComparison.Ordinal);
     }
 
     [Fact]

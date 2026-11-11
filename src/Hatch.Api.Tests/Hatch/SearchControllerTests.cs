@@ -40,7 +40,7 @@ public class SearchControllerTests
         Assert.Equal(4, result.Total);
         Assert.Equal([newest.Key, tiedHigh.Key, tiedLow.Key, oldest.Key], result.Hits.Select(x => x.Card.Key));
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default))
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default))
             .ToDictionary(c => c.Key);
         foreach (var hit in result.Hits)
         {

@@ -38,7 +38,7 @@ public class IssueProjectionPullRequestUrlTests
         var issue = await h.FileAsync("task", "ship it");
         await h.SetPullRequestAsync(issue.Key, "https://forge.example/owner/repo/pull/2");
 
-        var found = Value(await h.Issues.SearchIssues(null, null, null, null, null, issue.Title, default));
+        var found = Value(await h.Issues.SearchIssues(null, null, null, null, null, issue.Title, null, default));
         var card = Assert.Single(found);
 
         Assert.Equal("https://forge.example/owner/repo/pull/2", card.PullRequestUrl);
