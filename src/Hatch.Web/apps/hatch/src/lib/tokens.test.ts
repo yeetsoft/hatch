@@ -8,6 +8,7 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { luminance } from '@hatch/ui';
 
 const css = readFileSync(new URL('../../../../packages/ui/src/tokens.css', import.meta.url), 'utf8').replace(
   /\/\*[\s\S]*?\*\//g,
@@ -94,5 +95,34 @@ describe('tokens.css', () => {
   it('carries the chrome tokens in both dark blocks', () => {
     expect(darkAttr).toHaveProperty('--chrome');
     expect(darkMedia).toHaveProperty('--chrome');
+  });
+
+  /* The budget battery and the usage bars - authored per theme like the
+     flow-viz tokens, so dark can lift the red without the light figures
+     moving. Each pairing must itself clear 4.5:1, in both themes. */
+  it('declares the ramp tokens on :root and in both dark blocks, each pairing clearing 4.5:1', () => {
+    const tones = ['low', 'mid', 'high'];
+    for (const tone of tones) {
+      const fill = `--ramp-${tone}`;
+      const ink = `--on-ramp-${tone}`;
+      for (const [name, block] of [['light', light], ['dark', darkAttr]] as const) {
+        expect(block, `${fill} is missing from ${name}`).toHaveProperty(fill);
+        expect(block, `${ink} is missing from ${name}`).toHaveProperty(ink);
+
+        const fillLuminance = luminance(block[fill]);
+        const inkLuminance = block[ink] === '#ffffff' ? 1 : 0;
+        const [hi, lo] = inkLuminance >= fillLuminance ? [inkLuminance, fillLuminance] : [fillLuminance, inkLuminance];
+        const ratio = (hi + 0.05) / (lo + 0.05);
+
+        expect(ratio, `${ink} on ${fill} in ${name} is below 4.5:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  /* Fixed like --console*: the series are a fixed order, so is their label. */
+  it('declares --on-series on :root and in neither dark block', () => {
+    expect(light).toHaveProperty('--on-series');
+    expect(darkAttr).not.toHaveProperty('--on-series');
+    expect(darkMedia).not.toHaveProperty('--on-series');
   });
 });

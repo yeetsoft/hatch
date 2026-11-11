@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Card, Text } from '@hatch/ui';
+import { Button, Card, HatchMark, Text } from '@hatch/ui';
 import { viewFor, errorMessage, type AuthView, type MeBody } from './lib/authState';
 import { DEFAULT_LANDING, safeReturnTo, signInHref } from './lib/returnTo';
 
@@ -45,7 +45,7 @@ export function App() {
   return (
     <div className="auth-shell">
       <Card as="main" className="auth-card">
-        <img className="auth-mark" src="/apps/auth/favicon.svg" alt="" />
+        <HatchMark className="auth-mark" size={48} gradient />
         <h1>Hatch</h1>
         {view.kind === 'signed-out' && (
           <>

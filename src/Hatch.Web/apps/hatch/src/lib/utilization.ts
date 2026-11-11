@@ -16,7 +16,6 @@
      of that story and `readAt` is how old, so the wording never guesses at
      staleness from a timestamp. */
 
-import { luminance } from '@hatch/ui';
 import type { Utilization, UtilizationLimit } from '../types';
 
 /** The window the ring runs down, in milliseconds. The session limit's own,
@@ -204,14 +203,14 @@ export function worstRow(reading: Utilization | null, now: Date): UtilizationLim
  * name different bands. `from` is the lowest whole percent used in the band:
  * green under 50, yellow 50-79, red 80 and above.
  *
- * Constants here rather than tokens, for the same reason `INK_ON_LIGHT`/
- * `INK_ON_DARK` in `lib/color.ts` are literals rather than tokens. The same
- * colours in both themes.
+ * Tokens rather than constants - each band names the `--ramp-*`/`--on-ramp-*`
+ * pair in `tokens.css`, which is where the colour and its measured contrast
+ * live and where dark authors its one visible difference (red lifted).
  */
-const RAMP: readonly { from: number; color: string; phrase: string }[] = [
-  { from: 0, color: '#1fd65f', phrase: 'plenty left' },
-  { from: 50, color: '#f2c500', phrase: 'over half spent' },
-  { from: 80, color: '#d32f2f', phrase: 'nearly spent' },
+const RAMP: readonly { from: number; tone: 'low' | 'mid' | 'high'; phrase: string }[] = [
+  { from: 0, tone: 'low', phrase: 'plenty left' },
+  { from: 50, tone: 'mid', phrase: 'over half spent' },
+  { from: 80, tone: 'high', phrase: 'nearly spent' },
 ];
 
 /** The band a percentage used falls in, clamped to 0..100 and rounded to the
@@ -224,7 +223,7 @@ function band(percent: number): (typeof RAMP)[number] {
 }
 
 /** The colour of the band a percentage used falls in. */
-export const rampColor = (percent: number): string => band(percent).color;
+export const rampColor = (percent: number): string => `var(--ramp-${band(percent).tone})`;
 
 /** The phrase naming the band a percentage used falls in - the same words
     `batteryLabel` and `rowSentence` say out loud as the colour they sit
@@ -232,22 +231,14 @@ export const rampColor = (percent: number): string => band(percent).color;
 const bandPhrase = (percent: number): string => band(percent).phrase;
 
 /**
- * The ink to write on a ramp fill: pure black or pure white, whichever
- * measures the higher WCAG contrast ratio against it.
+ * The ink to write on the ramp fill a percentage falls in.
  *
- * Not `contrastInk` (`lib/color.ts:53`) as it stands - its dark ink is
- * `#1a1a1a`, which does not clear 4.5:1 against every colour on this ramp.
- * With `#000000`/`#ffffff` each of the three colours clears the 4.5:1 floor.
- * `luminance` is the same arithmetic `contrastInk` uses; only the two inks
- * being compared change.
+ * Reads the band's own `--on-ramp-*` token rather than computing a contrast
+ * ratio: `tokens.test.ts` is where each pairing is measured against 4.5:1,
+ * in both themes, since a computed ratio against a `var()` fill cannot be
+ * checked without a document.
  */
-export function rampInk(color: string): string {
-  const l = luminance(color);
-  const withWhite = (1 + 0.05) / (l + 0.05);
-  const withBlack = (l + 0.05) / 0.05;
-
-  return withWhite >= withBlack ? '#ffffff' : '#000000';
-}
+export const rampInk = (percent: number): string => `var(--on-ramp-${band(percent).tone})`;
 
 /**
  * The custom properties a ramp-coloured element's `style` carries, read by
@@ -257,8 +248,7 @@ export function rampInk(color: string): string {
  * Takes the percentage of the allowance spent, as the badge shows it.
  */
 export function usageVars(percent: number): Record<string, string> {
-  const color = rampColor(percent);
-  return { '--usage-color': color, '--usage-ink': rampInk(color) };
+  return { '--usage-color': rampColor(percent), '--usage-ink': rampInk(percent) };
 }
 
 /**
