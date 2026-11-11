@@ -10,6 +10,26 @@ namespace Hatch.Api.Tests.Hatch;
 /// </summary>
 public class WorkLogRollupTests
 {
+    // ---- Choosing a bucket size ----
+
+    [Fact]
+    public void ExactlyFortyEightHours_IsHourly()
+    {
+        var start = new DateTimeOffset(2026, 9, 6, 0, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(WorkLogBucketSize.Hour, WorkLogRollup.ChooseBucketSize(start, start + TimeSpan.FromHours(48)));
+    }
+
+    [Fact]
+    public void FortyEightHoursAndOneSecond_IsDaily()
+    {
+        var start = new DateTimeOffset(2026, 9, 6, 0, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(
+            WorkLogBucketSize.Day,
+            WorkLogRollup.ChooseBucketSize(start, start + TimeSpan.FromHours(48) + TimeSpan.FromSeconds(1)));
+    }
+
     [Fact]
     public async Task AnEpicsTotal_IsItsOwnEntriesPlusEveryDescendants()
     {

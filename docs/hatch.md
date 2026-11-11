@@ -4974,24 +4974,27 @@ It has no page, no index card and no CLI subcommand; a script reaches it with
 ### The activity report
 
 ```
-GET /api/hatch/reports/activity?actor=&from=&to=&projectId=
+GET /api/hatch/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&lead=&window=
 ```
 
 **What did one actor do, in a range?** The trail every other report folds
 (`IssueEvents`) read by who wrote it: one actor's events as counts by kind, a
-rundown of the issues touched, and the newest rows. The page is
-`/reports/activity`, a card on the Reports index and no nav entry of its own:
-an actor picker (people first, then keys, each by name), the window controls
-at two weeks and the project control within the tab's scope, a headline, a
-rundown row per issue and the trail beneath, the newest 500 events with a line
-saying the listing is cut when `truncated`. The URL carries `actor`, `project`
-and `from`/`to`/`range`; with no `actor` the page opens on the signed-in person
-when the directory lists them, and writes that name into the URL, so a pasted
-link never opens on whoever pastes it. An `actor` the directory does not list is
-still sent as given, so a link to a revoked key's trail still reads. The page
-writes nothing. There is no CLI subcommand yet — a script reaches the read with
-`hatch api GET /api/hatch/reports/activity?...`. The route is open to a person
-or to a key.
+rundown of the issues touched, the newest rows, the rate of work over time,
+and the trail bracketed into working sessions with a rough length each. The
+page is `/reports/activity`, a card on the Reports index and no nav entry of
+its own: an actor picker (people first, then keys, each by name), the window
+controls at two weeks and the project control within the tab's scope, a
+headline, a rundown row per issue and the trail beneath, the newest 500
+events with a line saying the listing is cut when `truncated`. The URL
+carries `actor`, `project` and `from`/`to`/`range`; with no `actor` the page
+opens on the signed-in person when the directory lists them, and writes that
+name into the URL, so a pasted link never opens on whoever pastes it. An
+`actor` the directory does not list is still sent as given, so a link to a
+revoked key's trail still reads. The page writes nothing, and draws neither
+the rate of work nor the bracketed sessions — those are stories of their
+own. There is no CLI subcommand yet — a script reaches the read with `hatch
+api GET /api/hatch/reports/activity?...`. The route is open to a person or
+to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
 own `Actor`. A name no live person or key answers to still answers, with
@@ -5001,12 +5004,33 @@ instants, defaulting to the **fourteen days ending now** — the same window as
 the first event ever written. `projectId` is repeatable and narrows to events
 whose issue is in one of those projects.
 
+Four more parameters shape `series` and `sessions`:
+
+- `offsetMinutes` — minutes east of UTC, 0 when absent, -1440 to 1440 — aligns
+  a daily bucket to the reader's own midnight, read exactly as the work log's
+  own [`offsetMinutes`](#the-graph) is.
+- `gap` — minutes, 30 when absent, 1 to 1440 — the longest stretch between two
+  consecutive events that still counts as one working session.
+- `lead` — minutes, 15 when absent, 0 to 240 — added to every session's
+  estimated length, including a lone event's.
+- `window` — days, 3 when absent, 1 to 90 — how many days the rolling mean in
+  `series` trails over.
+
 The `400`s come in this order: a missing or blank `actor` (`an actor is
 required`); an unparseable or inverted bound, with the same sentences as the
-[timeline](#the-timeline)'s; and a `projectId` naming no project (`there is no
-project 9999`), found with one query for all of them rather than one per id.
+[timeline](#the-timeline)'s; `offsetMinutes` out of range (the work log's own
+sentence); `gap` out of range (`a gap is between 1 and 1440 minutes - not
+{gap}`); `lead` out of range (`a lead is between 0 and 240 minutes - not
+{lead}`); `window` out of range (`a window is between 1 and 90 days - not
+{window}`); a `projectId` naming no project (`there is no project 9999`),
+found with one query for all of them rather than one per id; and, once the
+bucket size is chosen (see below), too many buckets (`{n} buckets is more
+than the 1000 this answers in - ask for a shorter range`) — the work log's own
+cap, [`WorkLogController.MaxBuckets`](#the-graph), without its "ask for daily
+buckets" clause, since there is no `bucket` parameter here to ask for.
 
-It answers `{ actor, from, to, total, kinds, issues, events, truncated }`:
+It answers `{ actor, from, to, total, kinds, issues, events, truncated,
+bucket, offsetMinutes, series, sessions, estimate }`:
 
 - `actor`, `from` and `to` are the request as the server resolved it.
 - `total` is every event in range, after the project narrowing.
@@ -5016,12 +5040,34 @@ It answers `{ actor, from, to, total, kinds, issues, events, truncated }`:
 - `events` is the rows the activity feed lists, newest
   first (`at`, then `id`, descending), **at most 500** — `ActivityController`'s
   own cap — with `truncated` `true` when more existed.
+- `bucket` is the size the server chose, `hour` or `day` — [the work log's own
+  rule](#the-graph): hourly up to 48 hours, daily past it, named back in the
+  answer the same way.
+- `offsetMinutes` echoes the request.
+- `series` is `[{ at, events, hours, rollingEvents, rollingHours }]`, one
+  point per bucket, oldest first; an empty bucket is a zero, never absent.
+  `hours` is the estimated hours of every session that **starts** in that
+  bucket — a session spanning a bucket edge is not split. `rollingEvents` and
+  `rollingHours` are the trailing mean of `events` and `hours` over `window`
+  days, expressed in buckets; the first buckets of the series average over
+  what exists rather than over nothing.
+- `sessions` is `[{ from, to, events, issueKeys, estimatedMinutes }]`, newest
+  `from` first: a maximal run of the actor's events with no gap over `gap`
+  minutes between two consecutive ones. `estimatedMinutes` is `(to - from)`
+  plus `lead` — a one-event session has `to == from` and is worth `lead`
+  alone.
+- `estimate` is `{ sessions, minutes, gapMinutes, leadMinutes, windowDays }`:
+  the totals `sessions` adds up to, beside the parameters they were computed
+  with, so a page can state the rule in one sentence from the answer rather
+  than from its inputs.
 
-`total`, `kinds` and `issues` cover **every event in range**, whatever the cap
-cut from `events`. The window is half-open, `[from, to)`, the same as the
-flow's. The arithmetic is `ActivityReport.Fold`, a pure fold over light rows
-with no payload; the payload is read in a second query for only the rows
-listed, so a busy runner never drags every `jsonb` across. An index on
+`total`, `kinds`, `issues`, `series` and `sessions` cover **every event in
+range**, whatever the cap cut from `events` — narrowed by `projectId` first,
+exactly as `total` is, so a project filter narrows the series and the
+sessions too. The window is half-open, `[from, to)`, the same as the flow's.
+The arithmetic is `ActivityReport.Fold`, a pure fold over light rows with no
+payload; the payload is read in a second query for only the rows listed, so a
+busy runner never drags every `jsonb` across. An index on
 `IssueEvents (Actor, At)` is what keeps the first query from reading the whole
 trail.
 

@@ -10,14 +10,26 @@ public class ActivityReportTests
 {
     private static readonly DateTimeOffset Jan1 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Wide enough to hold every row these tests write, hourly, so the series and sessions never spill off the grid.</summary>
+    private static readonly WorkLogWindow DefaultWindow = new(Jan1, 24, TimeSpan.FromHours(1));
+
+    private static readonly TimeSpan DefaultGap = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan DefaultLead = TimeSpan.FromMinutes(15);
+
     private static ActivityReport.Row Row(
         long id, long issueId, string kind, int hours, int projectId = 1) =>
         new(id, issueId, projectId, kind, Jan1.AddHours(hours));
 
+    private static ActivityReport.Result Fold(
+        IReadOnlyList<ActivityReport.Row> rows, IReadOnlyCollection<int> projectIds, int maxEvents,
+        WorkLogWindow? window = null, TimeSpan? gap = null, TimeSpan? lead = null, int windowDays = 3) =>
+        ActivityReport.Fold(
+            rows, projectIds, maxEvents, window ?? DefaultWindow, gap ?? DefaultGap, lead ?? DefaultLead, windowDays);
+
     [Fact]
     public void NoRows_AnswerEmpty()
     {
-        var result = ActivityReport.Fold([], [], 500);
+        var result = Fold([], [], 500);
 
         Assert.Equal(0, result.Total);
         Assert.Empty(result.Kinds);
@@ -38,7 +50,7 @@ public class ActivityReportTests
             Row(5, 3, "status_changed", 5),
         ];
 
-        var result = ActivityReport.Fold(rows, [], 500);
+        var result = Fold(rows, [], 500);
 
         Assert.Equal(5, result.Total);
         Assert.Equal(
@@ -56,7 +68,7 @@ public class ActivityReportTests
             Row(3, 3, "retitled", 3, projectId: 3),
         ];
 
-        var result = ActivityReport.Fold(rows, [1, 3], 500);
+        var result = Fold(rows, [1, 3], 500);
 
         Assert.Equal(2, result.Total);
         Assert.Equal([3L, 1L], result.Issues.Select(i => i.IssueId).ToArray());
@@ -74,7 +86,7 @@ public class ActivityReportTests
             Row(3, 3, "created", 3),
         ];
 
-        var result = ActivityReport.Fold(rows, [], 2);
+        var result = Fold(rows, [], 2);
 
         Assert.Equal([3L, 2L], result.Events.Select(e => e.Id).ToArray());
         Assert.True(result.Truncated);
@@ -86,7 +98,7 @@ public class ActivityReportTests
     [Fact]
     public void AsManyRowsAsTheCap_IsNotTruncated()
     {
-        var result = ActivityReport.Fold([Row(1, 1, "created", 1), Row(2, 1, "created", 2)], [], 2);
+        var result = Fold([Row(1, 1, "created", 1), Row(2, 1, "created", 2)], [], 2);
 
         Assert.Equal(2, result.Events.Count);
         Assert.False(result.Truncated);
@@ -104,7 +116,7 @@ public class ActivityReportTests
             Row(5, 30, "created", 12),
         ];
 
-        var result = ActivityReport.Fold(rows, [], 500);
+        var result = Fold(rows, [], 500);
 
         Assert.Equal([30L, 20L, 10L], result.Issues.Select(i => i.IssueId).ToArray());
 
@@ -125,8 +137,128 @@ public class ActivityReportTests
             Row(2, 1, "redescribed", 1),
         ];
 
-        var result = ActivityReport.Fold(rows, [], 500);
+        var result = Fold(rows, [], 500);
 
         Assert.Equal([3L, 2L, 1L], result.Events.Select(e => e.Id).ToArray());
+    }
+
+    // ---- Sessions ----
+
+    [Fact]
+    public void TwoEventsExactlyTheGapApart_FoldToOneSession()
+    {
+        ActivityReport.Row[] rows =
+        [
+            new(1, 1, 1, "created", Jan1),
+            new(2, 1, 1, "retitled", Jan1.AddMinutes(30)),
+        ];
+
+        var result = Fold(rows, [], 500, gap: TimeSpan.FromMinutes(30));
+
+        var session = Assert.Single(result.Sessions);
+        Assert.Equal(Jan1, session.From);
+        Assert.Equal(Jan1.AddMinutes(30), session.To);
+        Assert.Equal(2, session.Events);
+    }
+
+    [Fact]
+    public void TwoEventsAGapAndASecondApart_FoldToTwoSessions()
+    {
+        ActivityReport.Row[] rows =
+        [
+            new(1, 1, 1, "created", Jan1),
+            new(2, 1, 1, "retitled", Jan1.AddMinutes(30).AddSeconds(1)),
+        ];
+
+        var result = Fold(rows, [], 500, gap: TimeSpan.FromMinutes(30));
+
+        Assert.Equal(2, result.Sessions.Count);
+    }
+
+    [Fact]
+    public void ALoneEvent_IsWorthTheLeadAlone()
+    {
+        var result = Fold([Row(1, 1, "created", 0)], [], 500, lead: TimeSpan.FromMinutes(15));
+
+        var session = Assert.Single(result.Sessions);
+        Assert.Equal(session.From, session.To);
+        Assert.Equal(15, session.EstimatedMinutes);
+    }
+
+    [Fact]
+    public void Sessions_ComeBackNewestFromFirst()
+    {
+        ActivityReport.Row[] rows =
+        [
+            new(1, 1, 1, "created", Jan1),
+            new(2, 1, 1, "created", Jan1.AddHours(5)),
+        ];
+
+        var result = Fold(rows, [], 500, gap: TimeSpan.FromMinutes(30));
+
+        Assert.Equal([Jan1.AddHours(5), Jan1], result.Sessions.Select(s => s.From).ToArray());
+    }
+
+    [Fact]
+    public void EstimateTotals_TheSessionsAndCarriesTheParameters()
+    {
+        ActivityReport.Row[] rows = [Row(1, 1, "created", 0), Row(2, 1, "created", 10)];
+
+        var result = Fold(
+            rows, [], 500, gap: TimeSpan.FromMinutes(30), lead: TimeSpan.FromMinutes(20), windowDays: 7);
+
+        Assert.Equal(2, result.Estimate.Sessions);
+        Assert.Equal(result.Sessions.Sum(s => s.EstimatedMinutes), result.Estimate.Minutes);
+        Assert.Equal(30, result.Estimate.GapMinutes);
+        Assert.Equal(20, result.Estimate.LeadMinutes);
+        Assert.Equal(7, result.Estimate.WindowDays);
+    }
+
+    // ---- The series ----
+
+    [Fact]
+    public void AnEmptyBucket_IsAZero_NeverAbsent()
+    {
+        ActivityReport.Row[] rows = [Row(1, 1, "created", 0)];
+
+        var result = Fold(rows, [], 500, window: new WorkLogWindow(Jan1, 3, TimeSpan.FromHours(1)));
+
+        Assert.Equal(3, result.Series.Count);
+        Assert.Equal(0, result.Series[1].Events);
+        Assert.Equal(0, result.Series[1].Hours);
+    }
+
+    [Fact]
+    public void ASessionSpanningABucketEdge_CountsItsHoursInItsStartBucket_NotSplit()
+    {
+        ActivityReport.Row[] rows =
+        [
+            new(1, 1, 1, "created", Jan1.AddMinutes(50)),
+            new(2, 1, 1, "retitled", Jan1.AddHours(1).AddMinutes(10)),
+        ];
+        var window = new WorkLogWindow(Jan1, 3, TimeSpan.FromHours(1));
+
+        var result = Fold(rows, [], 500, window: window, gap: TimeSpan.FromMinutes(30), lead: TimeSpan.Zero);
+
+        var session = Assert.Single(result.Sessions);
+        Assert.Equal(20, session.EstimatedMinutes);
+        Assert.Equal(20.0 / 60, result.Series[0].Hours);
+        Assert.Equal(0, result.Series[1].Hours);
+    }
+
+    [Fact]
+    public void TheRollingMean_AtTheLeftEdge_AveragesOnlyWhatExists()
+    {
+        // All six land in the first of three daily buckets; the other two are
+        // empty. A window that divided by three buckets regardless would say
+        // 2 here instead of 6.
+        var rows = Enumerable.Range(0, 6).Select(h => Row(h, 1, "created", h)).ToArray();
+        var window = new WorkLogWindow(Jan1, 3, TimeSpan.FromDays(1));
+
+        var result = Fold(rows, [], 500, window: window, gap: TimeSpan.FromMinutes(30), windowDays: 3);
+
+        Assert.Equal(6, result.Series[0].RollingEvents);
+        Assert.Equal(3, result.Series[1].RollingEvents);
+        Assert.Equal(2, result.Series[2].RollingEvents);
     }
 }
