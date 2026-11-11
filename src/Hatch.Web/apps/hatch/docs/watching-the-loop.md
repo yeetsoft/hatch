@@ -345,11 +345,20 @@ task, bug, or **All**; **Status** keeps the issues now standing in one column,
 begin with - and the head of the sort in use says so. A row whose sessions
 reported no price draws a dash rather than `$0`, and one with some unpriced
 sessions draws what was priced and how many were not. A line over the table
-gives the totals for every issue that matched, and the table holds at most a
+gives the totals for every issue that matched, and under it **Spend over time**
+draws the same filter as one bar per bucket, oldest at the left - an hour or a
+day, as the server chooses - with a bucket in which nothing ran drawn as a zero
+you can still hover; a bucket's hover names how many of its sessions reported
+no price beside its total. The **Tokens** and **Notional USD** buttons over the
+graph pick what it measures, one at a time and never on a shared axis, and the
+choice is in the address bar as `measure`, left out at tokens. The axis and the
+span are labelled from what the server answered, so a window it widened onto
+its grid reads as the wider window. The table holds at most a
 hundred rows: where more matched it says "The first 100 of 240 issues. The totals
 cover all 240." above the table, so the larger total does not read as a bug. A
-window in which nothing was consumed says so, and says when the log does run; a
-filter under which nothing was ever logged says that instead. Every control
+window in which nothing was consumed says so, and says when the log does run,
+and still draws the graph as a row of zero bars; a filter under which nothing
+was ever logged says that instead and draws no graph. Every control
 writes itself to the address bar, leaving out what is still its default.
 
 ## History and the work log

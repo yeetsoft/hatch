@@ -2,8 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { ConsumptionReportBody } from './ConsumptionReportPage';
+import { dayLabel, type SpendMeasure } from '../lib/leaderboard';
 import { UNPRICED_TITLE } from '../lib/workLog';
-import type { ConsumptionReport, ConsumptionRow, ConsumptionSort, Project, Status, WorkLogTotals } from '../types';
+import type {
+  ConsumptionReport,
+  ConsumptionRow,
+  ConsumptionSort,
+  Project,
+  Status,
+  WorkLogHistory,
+  WorkLogTotals,
+} from '../types';
 
 /* No DOM runner and no fetch: the body is rendered from props, as
    ChangelogReportPage.test.tsx does with ChangelogReportBody. */
@@ -34,6 +43,31 @@ const row = (key: string, over: Partial<ConsumptionRow> = {}): ConsumptionRow =>
   ...over,
 });
 
+/* Three daily buckets over a span that is not the report's own - the server
+   snaps outward - the middle one empty and the last with an unpriced session. */
+const history = (over: Partial<WorkLogHistory> = {}): WorkLogHistory => ({
+  from: '2026-07-30T00:00:00.000Z',
+  to: '2026-11-03T00:00:00.000Z',
+  bucket: 'day',
+  totals: totals({ sessions: 8, totalTokens: 2_800_000, costUsd: 6.82 }),
+  firstSessionAt: '2026-08-19T10:00:00.000Z',
+  lastSessionAt: '2026-10-07T10:00:00.000Z',
+  buckets: [
+    { start: '2026-10-05T00:00:00.000Z', end: '2026-10-06T00:00:00.000Z', totals: totals() },
+    {
+      start: '2026-10-06T00:00:00.000Z',
+      end: '2026-10-07T00:00:00.000Z',
+      totals: totals({ sessions: 0, totalTokens: 0, costUsd: 0, durationMs: 0 }),
+    },
+    {
+      start: '2026-10-07T00:00:00.000Z',
+      end: '2026-10-08T00:00:00.000Z',
+      totals: totals({ sessions: 2, totalTokens: 400_000, costUsd: 1.2, unpricedSessions: 1 }),
+    },
+  ],
+  ...over,
+});
+
 const report = (over: Partial<ConsumptionReport> = {}): ConsumptionReport => ({
   from: '2026-08-01T00:00:00.000Z',
   to: '2026-11-01T00:00:00.000Z',
@@ -45,13 +79,18 @@ const report = (over: Partial<ConsumptionReport> = {}): ConsumptionReport => ({
   firstSessionAt: '2026-08-19T10:00:00.000Z',
   lastSessionAt: '2026-10-07T10:00:00.000Z',
   rows: [row('HA-1'), row('HA-2')],
+  history: history(),
   ...over,
 });
 
 const projects = [{ id: 1, key: 'HA', name: 'Hatch', color: '#336699', icon: null } as unknown as Project];
 const statuses = [{ id: 3, name: 'In Progress' } as Status];
 
-const render = (answer: ConsumptionReport | null, sort: ConsumptionSort = 'activity'): string =>
+const render = (
+  answer: ConsumptionReport | null,
+  sort: ConsumptionSort = 'activity',
+  measure: SpendMeasure = 'tokens',
+): string =>
   renderToStaticMarkup(
     <MemoryRouter>
       <ConsumptionReportBody
@@ -60,6 +99,8 @@ const render = (answer: ConsumptionReport | null, sort: ConsumptionSort = 'activ
         statuses={statuses}
         sort={sort}
         onSort={vi.fn()}
+        measure={measure}
+        onMeasure={vi.fn()}
         locale="en-US"
       />
     </MemoryRouter>,
@@ -153,6 +194,86 @@ describe('ConsumptionReportBody', () => {
     expect(html).toContain('No issue consumed anything in this window.');
     expect(html).toContain('The log runs from Aug 19 to Oct 7.');
     expect(html).not.toContain('<table');
+  });
+
+  describe('the spend graph', () => {
+    const bars = (html: string) => html.match(/class="hatch-spend-bar"/g) ?? [];
+    const zeroBars = (html: string) => html.match(/class="hatch-spend-bar"[^>]*height="0"/g) ?? [];
+
+    it('draws one bar per bucket, between the totals line and the table', () => {
+      const html = render(report());
+
+      expect(bars(html)).toHaveLength(3);
+      expect(html.indexOf('2 issues · 8 sessions')).toBeLessThan(html.indexOf('hatch-spend'));
+      expect(html.indexOf('hatch-spend')).toBeLessThan(html.indexOf('<table'));
+    });
+
+    it('presses the chosen measure and says it in the caption', () => {
+      const tokens = render(report());
+      expect(tokens).toMatch(/aria-pressed="true"[^>]*>Tokens</);
+      expect(tokens).toMatch(/aria-pressed="false"[^>]*>Notional USD</);
+      expect(tokens).toContain('Spend by day in tokens, ');
+
+      const cost = render(report(), 'activity', 'cost');
+      expect(cost).toMatch(/aria-pressed="false"[^>]*>Tokens</);
+      expect(cost).toMatch(/aria-pressed="true"[^>]*>Notional USD</);
+      expect(cost).toContain('Spend by day in notional USD, ');
+    });
+
+    it('labels its span and its size from the history, not from the request', () => {
+      const html = render(report({ history: history({ bucket: 'hour' }) }));
+      const asked = report();
+
+      expect(html).toContain(`Spend by hour in tokens, ${dayLabel(asked.history.from)} to ${dayLabel(asked.history.to)}`);
+      expect(html).not.toContain(`${dayLabel(asked.from)} to ${dayLabel(asked.to)}`);
+    });
+
+    it('keeps an empty bucket as a hoverable zero', () => {
+      const html = render(report());
+
+      expect(html).toMatch(/<title>[^<]*— 0 tokens<\/title>/);
+      expect(zeroBars(html)).toHaveLength(1);
+    });
+
+    it('names a bucket’s unpriced count in the hover under cost, and not under tokens', () => {
+      expect(render(report(), 'activity', 'cost')).toContain(', 1 unpriced</title>');
+      expect(render(report())).not.toContain('unpriced</title>');
+    });
+
+    it('draws a row of zero bars, and no table, when nothing ran in the window', () => {
+      const flat = history().buckets.map((b) => ({
+        ...b,
+        totals: totals({ sessions: 0, totalTokens: 0, costUsd: 0, durationMs: 0 }),
+      }));
+      const html = render(
+        report({
+          totals: totals({ sessions: 0 }),
+          rows: [],
+          matched: 0,
+          history: history({ buckets: flat, totals: totals({ sessions: 0 }) }),
+        }),
+      );
+
+      expect(html).toContain('No issue consumed anything in this window.');
+      expect(bars(html)).toHaveLength(3);
+      expect(zeroBars(html)).toHaveLength(3);
+      expect(html).not.toContain('<table');
+    });
+
+    it('draws no graph when nothing was ever logged', () => {
+      const html = render(
+        report({
+          firstSessionAt: null,
+          lastSessionAt: null,
+          totals: totals({ sessions: 0 }),
+          rows: [],
+          history: history({ firstSessionAt: null, lastSessionAt: null, buckets: [] }),
+        }),
+      );
+
+      expect(html).toContain('Nothing has ever been logged under this filter.');
+      expect(html).not.toContain('hatch-spend');
+    });
   });
 
   it('says no project is chosen when there is no report', () => {
