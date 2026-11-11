@@ -1349,7 +1349,6 @@ public class EfHatchIssue
     /// </summary>
     /// <remarks>
     /// <para>A bare <see cref="Guid"/> and not a foreign key, for the reason
-    /// Quill's <c>QuillNote.PersonId</c> is one and
     /// <see cref="CreatedBy"/> is a name: Hatch owns its own schema and its own
     /// migration history, and a constraint from a module into
     /// <c>public.People</c> is the compile-time coupling Modules/README.md

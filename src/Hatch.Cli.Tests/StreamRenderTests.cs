@@ -15,6 +15,20 @@ public sealed class StreamRenderTests
     }
 
     [Fact]
+    public void A_run_has_started_once_init_arrives_and_not_before()
+    {
+        Assert.False(Play("not json at all").Facts.Started);
+        Assert.False(Play(Fixtures.ToolUse("Bash", "ls")).Facts.Started);
+        Assert.True(Play(Fixtures.Init()).Facts.Started);
+    }
+
+    [Fact]
+    public void A_quiet_runs_lone_result_event_counts_as_started()
+    {
+        Assert.True(Play(Fixtures.Result()).Facts.Started);
+    }
+
+    [Fact]
     public void The_session_id_arrives_first_and_is_how_a_run_is_rejoined()
     {
         var (facts, lines) = Play(Fixtures.Init("abc-123"));

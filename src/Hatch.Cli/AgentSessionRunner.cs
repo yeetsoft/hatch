@@ -56,10 +56,18 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
             }
 
             var collected = new StringBuilder();
+            var stderr = new Tail();
+            var stray = new Tail();
             var reading = Task.Run(async () =>
             {
                 while (await process.StandardOutput.ReadLineAsync(CancellationToken.None) is { } line)
                 {
+                    // Not an event: what a CLI says on stdout when it dies before
+                    // it streams anything. A cheap test rather than parsing every
+                    // line twice, and a line cut off mid-write lands here too.
+                    var trimmed = line.Trim();
+                    if (!(trimmed.StartsWith('{') && trimmed.EndsWith('}'))) stray.Add(line);
+
                     if (onLine is null) collected.AppendLine(line);
                     else onLine(line);
                 }
@@ -70,7 +78,10 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
             var errors = Task.Run(async () =>
             {
                 while (await process.StandardError.ReadLineAsync(CancellationToken.None) is { } line)
+                {
                     onError?.Invoke(line);
+                    stderr.Add(line);
+                }
             }, CancellationToken.None);
 
             try
@@ -87,7 +98,7 @@ public sealed class AgentSessionRunner(IAgentAdapter adapter, Action<string>? on
             await Task.WhenAll(writing, reading, errors).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
             await process.WaitForExitAsync(CancellationToken.None);
 
-            return new SessionResult(process.ExitCode, collected.ToString());
+            return new SessionResult(process.ExitCode, collected.ToString(), stderr.ToList(), stray.ToList());
         }
         finally
         {
