@@ -187,9 +187,11 @@ test-web:
 		npm run lint -w apps/$$app && npm run test --if-present -w apps/$$app && npm run build -w apps/$$app; \
 	done'
 
-# Which DbContext the ef-* targets act on. Defaults to the core schema; a module
-# owns its own context and migrations folder (see src/Hatch.Api/Modules/README.md),
-# so target one with e.g. `make ef-database-update context=StorageContext`.
+# Which DbContext the ef-* targets act on. Defaults to the core schema; the one
+# module context, HatchContext, owns its own migrations folder and takes `-o`
+# (see the command in src/Hatch.Api/Modules/README.md), so `make ef-migration`
+# is for AppDbContext and `make ef-database-update context=HatchContext` applies
+# the module's.
 context ?= AppDbContext
 
 # make ef-migration migration=MyMigrationName

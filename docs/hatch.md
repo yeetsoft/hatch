@@ -332,12 +332,15 @@ having in one place.
 [`HatchContext`](../src/Hatch.Api/Modules/Hatch/HatchContext.cs) owns its own
 migration history, applied from its own
 [`Modules/Hatch/Migrations/`](../src/Hatch.Api/Modules/Hatch/Migrations/)
-folder against its own `__EFMigrationsHistory` rows - distinct from the
-unrelated `AppDbContext`'s home-automation migrations at
-[`Migrations/`](../src/Hatch.Api/Migrations/). `Program.cs` calls
-`MigrateAsync` once per registered module context, `HatchContext` included, in
-a loop (`Program.cs:384-387`), only in migrate mode, ahead of any serving
-replica.
+folder against its own `__EFMigrationsHistory` rows - distinct from the core
+`AppDbContext`'s migrations at [`Migrations/`](../src/Hatch.Api/Migrations/),
+which are the `public` schema's: the home-automation tables, and the migration
+that dropped the retired Gather, Photos, Quill and Storage schemas and their
+two Immich settings (`DropFamilyAppSchemas`). `Program.cs` calls `MigrateAsync`
+on `AppDbContext`, then once per registered module context - `HatchContext`
+is the only one - in a loop, only in migrate mode, ahead of any serving
+replica. The loop stays for when a second module exists; a by-name call would
+be a second way to do the same thing.
 
 EF Core's `MigrateAsync` reads `__EFMigrationsHistory` - one row per applied
 `MigrationId` - and applies every migration in its assembly whose
@@ -352,7 +355,7 @@ branches that both touch
 [`HatchContextModelSnapshot.cs`](../src/Hatch.Api/Modules/Hatch/Migrations/HatchContextModelSnapshot.cs)
 produce a real merge or semantic conflict there - caught today by
 `ModelSnapshotTests.TheModelHasNoChangesItsSnapshotDoesNotKnowAbout`
-(`Hatch.Api.Tests/Modules/ModelSnapshotTests.cs:37`), which fails the moment a
+(`Hatch.Api.Tests/Modules/ModelSnapshotTests.cs`), which fails the moment a
 context's live model and its stored snapshot disagree, the same way HA-150's
 `HasDefaultValue` on `Playbooks.Shape` once did.
 
@@ -3938,7 +3941,7 @@ agent. All three are what the *container* runner's entrypoint
 `GET /api/hatch/settings/credentials/{agent}` (`/settings/claude-token`
 still answers too, for an older container). An install whose runners all run
 on somebody's own machine needs none of this. All three are stored the way
-the Immich key and the Anthropic key already are: obfuscated at rest,
+the Anthropic key already is: obfuscated at rest,
 redacted on read, never leaving the API — and, like every other credential in
 Hatch, each is the operator's own to supply ([`docs/ethos.md`](ethos.md)).
 

@@ -20,7 +20,7 @@ namespace Hatch.Api.Tests.Hatch;
 /// <c>make test-api-db</c>, which does it for you.</para>
 ///
 /// <para>Unlike an issue search, a dream's query is an <b>any-word</b> match -
-/// <see cref="Hatch.Api.Modules.Storage.SearchQuery.ToTsQuery"/> called with
+/// <see cref="Hatch.Api.Modules.Hatch.SearchQuery.ToTsQuery"/> called with
 /// <c>anyWord: true</c> - so a dream missing every term is excluded outright
 /// rather than merely ranked last.</para>
 ///

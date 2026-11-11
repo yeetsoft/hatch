@@ -26,8 +26,6 @@ public record SiteSettingsSnapshot(
     int AirQualityAlertThresholdAqi,
     int HazardMaxSeverityAgeHours,
     string? AnthropicApiKey,
-    string? ImmichBaseUrl,
-    string? ImmichApiKey,
     string? ClaudeSubscriptionToken,
     string? CodexApiKey,
     string? XaiApiKey,
@@ -127,13 +125,6 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
                 // Deobfuscated for the same reason as the Google secret above:
                 // the game module has to hand it to an SDK, not display it.
                 AnthropicApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.AnthropicApiKey)),
-                // Trailing slashes trimmed here rather than at every call site:
-                // the operator types a host into a form, and "https://photos/"
-                // and "https://photos" are the same server.
-                ImmichBaseUrl: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.ImmichBaseUrl))?.TrimEnd('/'),
-                // Deobfuscated for the same reason as the two above: the Photos
-                // module hands it to Immich as a header, not to a screen.
-                ImmichApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.ImmichApiKey)),
                 ClaudeSubscriptionToken: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.ClaudeSubscriptionToken)),
                 CodexApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.CodexApiKey)),
                 XaiApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.XaiApiKey)),

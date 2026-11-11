@@ -119,7 +119,7 @@ public class SettingsController(
     private static bool IsSecret(string key) =>
         key is SiteSettingKeys.HomeAssistantToken or SiteSettingKeys.KioskWifiPassword
             or SiteSettingKeys.GoogleClientSecret or SiteSettingKeys.AnthropicApiKey
-            or SiteSettingKeys.ImmichApiKey or SiteSettingKeys.ClaudeSubscriptionToken
+            or SiteSettingKeys.ClaudeSubscriptionToken
             or SiteSettingKeys.CodexApiKey or SiteSettingKeys.XaiApiKey;
 
     /// <summary>Secrets are stored protected, not encrypted (SecretProtector), so they're still redacted before leaving the API - no reason to hand back something trivially reversible.</summary>
