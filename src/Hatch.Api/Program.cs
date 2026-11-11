@@ -486,15 +486,40 @@ if (httpsConfigured) app.UseHttpsRedirection();
 // thing misbehaving. Costs one header per response and nothing else.
 app.UseMiddleware<HatchRevisionMiddleware>();
 
-// The wall. After UseForwardedHeaders because a refusal logs the client IP, and
-// before the /apps static file handlers below because otherwise every SPA
-// bundle serves to anyone who asks. No-ops entirely while Auth:Enabled is false
+// Rewritten before anything else gets a look at the path - including the
+// wall, and including the static handlers below. The board's bundle
+// directory still physically contains an index.html at the old address (Vite
+// still builds into wwwroot/apps/hatch), so a rewrite placed where this used
+// to run - after the static block - would never get the chance: the /apps
+// mount would already have answered it.
+var opt = new RewriteOptions();
+// The board is the whole origin now, so both of the house's old
+// general-purpose addresses, and every deep link that used to live under
+// /apps/hatch, redirect to the same path at the root. The query string
+// travels with every one of these - AddRedirect appends it by default.
+opt.AddRedirect("^apps/hatch$", "/", StatusCodes.Status301MovedPermanently);
+// `/+` rather than a single `/`, and the sub-path captured only when it does
+// not itself start with a slash or a backslash: a plain `^apps/hatch/(.*)$`
+// would echo a leading `/apps/hatch//x.example` straight into a `//` Location,
+// which browsers resolve as another host.
+opt.AddRedirect(@"^apps/hatch/+([^/\\].*)?$", "/$1", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect("^apps/?$", "/", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect("^apps/design$", "apps/design/");
+opt.AddRedirect("^auth/?$", "apps/auth/");
+opt.AddRedirect("^apps/auth$", "apps/auth/");
+app.UseRewriter(opt);
+
+// The wall. After UseForwardedHeaders because a refusal logs the client IP,
+// and after the rewriter above so a request for an old address redirects
+// rather than being evaluated against a path that is about to change; before
+// the static file handlers below because otherwise every document serves to
+// anyone who asks. No-ops entirely while Auth:Enabled is false
 // (docs/auth-architecture.md).
 app.UseMiddleware<AuthMiddleware>();
 
-// The admin app's own boundary, immediately after the wall because it reads the
-// grant the wall just attached, and before the /apps handlers below because it
-// has to cover both the static bundle and the MapFallbackToFile route that
+// The board's own boundary, immediately after the wall because it reads the
+// grant the wall just attached, and before the static handlers below because
+// it has to cover both the static bundle and the MapFallbackToFile route that
 // answers every client-side path underneath it. No-ops entirely unless
 // the wall is on (docs/auth-architecture.md, "The admin flag").
 app.UseMiddleware<AdminAppMiddleware>();
@@ -512,6 +537,39 @@ app.UseRateLimiter();
 // the rest of the API is a branch.
 app.UseWebSockets();
 
+// What the /apps mount, the board's own mount and the fallback below all
+// serve through, so the three rules below are written once: .webmanifest
+// named correctly (absent from FileExtensionContentTypeProvider's own mapping
+// table, checked directly against the installed shared framework's
+// Microsoft.AspNetCore.StaticFiles.dll, not assumed - without this a
+// browser's manifest fetch gets application/octet-stream and silently
+// refuses to treat the PWA as installable), and an explicit Cache-Control,
+// since its absence leaves a browser free to apply *heuristic* freshness and
+// serve index.html from cache without revalidating - on the kiosk tablets
+// that turned a deploy into a no-op even across a reload, because the stale
+// index.html kept naming the stale bundle. Vite content-hashes everything
+// under assets/ (index-BGJobmXl.js), so those URLs are immutable by
+// construction and can be cached hard; the documents that *reference* them -
+// index.html above all - must be revalidated every time, which is what
+// no-cache means (revalidate before reuse), as opposed to no-store (never
+// keep a copy at all): a 304 on an unchanged index.html still costs nothing.
+static StaticFileOptions BoardFileOptions(IFileProvider provider) => new()
+{
+    FileProvider = provider,
+    ContentTypeProvider = new FileExtensionContentTypeProvider
+    {
+        Mappings = { [".webmanifest"] = "application/manifest+json" },
+    },
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        ctx.Context.Response.Headers.CacheControl =
+            path.Contains("/assets/", StringComparison.Ordinal)
+                ? "public, max-age=31536000, immutable"
+                : "no-cache";
+    },
+};
+
 // Apps (static landing page + SPAs living under wwwroot/apps, outside the REST API)
 var appsPath = Path.Combine(app.Environment.WebRootPath, "apps");
 if (Directory.Exists(appsPath))
@@ -522,40 +580,24 @@ if (Directory.Exists(appsPath))
         FileProvider = appsFiles,
         RequestPath = "/apps"
     });
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = appsFiles,
-        RequestPath = "/apps",
-        // .webmanifest is absent from FileExtensionContentTypeProvider's own
-        // mapping table (checked directly against the installed shared
-        // frameworks' Microsoft.AspNetCore.StaticFiles.dll, not assumed), so
-        // without this a browser's manifest fetch gets application/octet-stream
-        // and silently refuses to treat the PWA as installable.
-        ContentTypeProvider = new FileExtensionContentTypeProvider
-        {
-            Mappings = { [".webmanifest"] = "application/manifest+json" },
-        },
-        // Without an explicit Cache-Control, StaticFileMiddleware sends only
-        // ETag/Last-Modified, which leaves a browser free to apply *heuristic*
-        // freshness and serve index.html from cache without revalidating. On
-        // the kiosk tablets that turned a deploy into a no-op even across a
-        // reload, because the stale index.html kept naming the stale bundle.
-        //
-        // Vite content-hashes everything under assets/ (index-BGJobmXl.js), so
-        // those URLs are immutable by construction and can be cached hard. The
-        // documents that *reference* them - index.html above all - must be
-        // revalidated every time, which is what no-cache means (revalidate
-        // before reuse), as opposed to no-store (never keep a copy at all): a
-        // 304 on an unchanged index.html still costs nothing.
-        OnPrepareResponse = ctx =>
-        {
-            var path = ctx.Context.Request.Path.Value ?? string.Empty;
-            ctx.Context.Response.Headers.CacheControl =
-                path.Contains("/assets/", StringComparison.Ordinal)
-                    ? "public, max-age=31536000, immutable"
-                    : "no-cache";
-        },
-    });
+    var appsOptions = BoardFileOptions(appsFiles);
+    appsOptions.RequestPath = "/apps";
+    app.UseStaticFiles(appsOptions);
+}
+
+// The board itself, at the origin's root. A PhysicalFileProvider rooted at
+// its own bundle directory rather than at WebRootPath: the latter would also
+// reach wwwroot/hatch-runner/*, which Dockerfile.api places beside wwwroot/apps
+// rather than inside it precisely so that mounting "apps at /apps and nothing
+// else" (the comment there, now also true of the root) keeps those binaries
+// reachable only through RunnerController and its own [RequireAdmin].
+var boardPath = Path.Combine(appsPath, "hatch");
+PhysicalFileProvider? board = null;
+if (Directory.Exists(boardPath))
+{
+    board = new PhysicalFileProvider(boardPath);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = board });
+    app.UseStaticFiles(BoardFileOptions(board));
 }
 
 // Media library (read-only music share, served so Sonos speakers can stream
@@ -584,24 +626,34 @@ if (!string.IsNullOrWhiteSpace(mediaLibrary.RootPath))
 
 app.UseAuthorization();
 app.MapControllers();
+// An unrouted /api/* answers 404, not the board's index.html: without this,
+// the fallback below - a catch-all with no literal segment to lose to - would
+// be the only endpoint left standing for a typo'd or retired API route, and
+// would answer it with a page of HTML rather than the 404 a caller checking a
+// status code expects. A real controller route still wins regardless of
+// registration order: endpoint routing picks by specificity, and a literal
+// segment always outranks both this and the fallback (RootMountTests proves it).
+app.Map("/api/{**rest}", () => Results.NotFound());
 // Split so a database blip fails readiness (pod leaves the Service) without
 // failing liveness (pod gets restarted) - restarting every replica over a
 // dependency outage just turns one outage into a thundering-herd reconnect.
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
 
-// SPA fallback so client-side routes (e.g. /apps/hatch/issues/AER-12) survive a
-// hard refresh. The :nonfile constraint excludes paths with a dot in the last
-// segment (e.g. assets/index-abc123.js) so real static assets still resolve via
-// UseStaticFiles above instead of being swallowed by this catch-all route
-// during endpoint matching.
+// SPA fallback so client-side routes (e.g. /issues/AER-12) survive a hard
+// refresh. The :nonfile constraint excludes paths with a dot in the last
+// segment (e.g. assets/index-abc123.js, or hatch-runner/win-x64/hatch.exe) so
+// real static assets still resolve via UseStaticFiles above instead of being
+// swallowed by this catch-all route during endpoint matching - and so a
+// runner binary 404s rather than getting index.html, there being no bundle
+// under this provider with its name anyway.
 //
-// Hatch deep links are the point rather than a nicety: /apps/hatch/issues/AER-12
-// is what gets pasted into a chat window and into a VS Code prompt, so it has
-// to survive being opened cold (docs/hatch.md).
-if (Directory.Exists(Path.Combine(appsPath, "hatch")))
+// Hatch deep links are the point rather than a nicety: /issues/AER-12 is what
+// gets pasted into a chat window and into a VS Code prompt, so it has to
+// survive being opened cold (docs/hatch.md).
+if (board is not null)
 {
-    app.MapFallbackToFile("/apps/hatch/{*path:nonfile}", "apps/hatch/index.html");
+    app.MapFallbackToFile("{*path:nonfile}", "index.html", BoardFileOptions(board));
 }
 if (Directory.Exists(Path.Combine(appsPath, "design")))
 {
@@ -612,17 +664,6 @@ if (Directory.Exists(Path.Combine(appsPath, "auth")))
 {
     app.MapFallbackToFile("/apps/auth/{*path:nonfile}", "apps/auth/index.html");
 }
-
-var opt = new RewriteOptions();
-// Hatch is the only app this install serves, so both of the house's old
-// general-purpose addresses land straight on it.
-opt.AddRedirect("^$", "apps/hatch/");
-opt.AddRedirect("^apps/?$", "apps/hatch/");
-opt.AddRedirect("^apps/hatch$", "apps/hatch/");
-opt.AddRedirect("^apps/design$", "apps/design/");
-opt.AddRedirect("^auth/?$", "apps/auth/");
-opt.AddRedirect("^apps/auth$", "apps/auth/");
-app.UseRewriter(opt);
 
 app.UseSwagger();
 app.UseSwaggerUI(c => c.DocumentTitle = "Hatch API");

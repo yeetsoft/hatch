@@ -13,7 +13,7 @@ terminal. The same runner as a container is *The container runner*.
 
 ## Getting it
 
-**Agents → Get the runner** ([`/apps/hatch/runner`](/apps/hatch/runner)) offers
+**Agents → Get the runner** ([`/runner`](/runner)) offers
 this platform's download first, with the others underneath for the machine you
 are not sitting at, and prints the revision it was built from. That is the same
 build as the page serving it, so the two are never a version apart. Four

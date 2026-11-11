@@ -7,16 +7,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { APP_BASENAME } from '../../hatch/src/lib/basename'
+import { isBoardPath } from '../../hatch/src/lib/basename'
 import { REDIRECTS } from '../vite-plugin-redirects'
 import { buildSite } from './testing/buildSite'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
 const ORIGIN = 'https://www.example.invalid'
-// README.md: this app is static output on its own host, not served by Hatch.Api -
-// so a docs link into the hatch app itself (left alone by resolveDocHref) names a
-// file on a different host's build, never this one's. Same exclusion as links.test.ts.
-const OTHER_APP = `${APP_BASENAME}/`
 
 let site: Site
 beforeAll(async () => {
@@ -28,12 +24,17 @@ beforeAll(async () => {
   })
 })
 
+// this app is static output on its own host, not served by Hatch.Api - so a
+// link into the hatch app itself (left alone by resolveDocHref) names a file
+// on a different host's build, never this one's. docs/ is excluded from that
+// check rather than from the file's own, since it is this site's own route
+// too, resolved by docHref rather than by the hatch app's basename.
 const assetsOf = (html: string): string[] =>
   [...html.matchAll(/(?:src|href)="(\/[^"]*)"/g)]
     .map(([, path]) => path)
     .filter((path) => path !== '/')
     .filter((path) => !path.slice(1).startsWith('docs/'))
-    .filter((path) => !path.startsWith(OTHER_APP))
+    .filter((path) => !isBoardPath(path))
 
 const refreshTarget = (html: string): string => {
   const match = html.match(/content="0; url=([^"]*)"/)

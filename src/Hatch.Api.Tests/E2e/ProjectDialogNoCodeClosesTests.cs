@@ -27,7 +27,7 @@ public class ProjectDialogNoCodeClosesTests(ITestOutputHelper output)
 
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
-    private const string ProjectsPath = "/apps/hatch/projects";
+    private const string ProjectsPath = "/projects";
 
     private const string CloseLabel = "A no-code declaration closes the ticket";
 

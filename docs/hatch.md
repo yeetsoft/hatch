@@ -289,18 +289,19 @@ being shell.
 is the standard way to run this install: `db`, a `migrate` step, and `api`
 serving every app — Hatch included — from `http://localhost:8080` (or
 `HATCH_PORT`). There is no reverse proxy in front of it and nothing to rewrite:
-the bundle's own assets live under `/apps/hatch/`, and `/api/hatch/*` is how a
-key can `curl` the API on the same origin the browser uses. The bundle reads its
-basename off the URL (`lib/basename.ts`) rather than assuming a prefix, which is
-what lets it serve unchanged wherever `/apps/hatch/` ends up mounted.
+the board is served at the origin's own root, and `/api/hatch/*` is how a key
+can `curl` the API on the same origin the browser uses. A deep link pasted
+into a chat window or a VS Code prompt — `<origin>/issues/AER-12` — needs no
+prefix, and the old `/apps/hatch/...` form a bookmark or an open pull request
+might still carry answers a permanent redirect to the same path at the root,
+query string intact (`Program.cs`).
 
 **The installed app.** `manifest.webmanifest`
 (`src/Hatch.Web/apps/hatch/public/manifest.webmanifest`) scopes itself to the
-whole origin, `/`, rather than `/apps/hatch/`, because sign-in lives outside
-that prefix (`/apps/auth/`) and because a deployment that serves Hatch at a
-host's own root has ticket links with no prefix at all — either one, inside
-a narrower scope, would open behind a browser bar instead of staying in the
-installed app's own window. There is no service worker: Hatch's deploy story
+whole origin, `/`, and starts there too, because sign-in lives outside it
+(`/apps/auth/`) and because a ticket link copied out of the installed app
+carries no prefix at all — a narrower scope would open behind a browser bar
+instead of staying in the installed app's own window. There is no service worker: Hatch's deploy story
 depends on the browser revalidating `index.html` on every load, and a
 service worker's cache is exactly the layer that turns a deploy into a stale
 app until somebody clears it by hand. The manifest's own `<link>`, in
@@ -3293,8 +3294,10 @@ gate on top of it — and the wall has a second lane, the API key.
   switch. Every Hatch controller carries
   `[RequireRole(PersonRole.User, AcceptKey = true)]` (a handful of
   person-only routes carry `[RequireRole(PersonRole.User)]` with no `AcceptKey`), and
-  the bundle is in `AdminAppMiddleware`'s `GatedApps` beside `/apps/admin`,
-  also at User. The operator's own verbs — people writes and sessions, grants,
+  `AdminAppMiddleware` holds every document request to the same User floor —
+  every path except `/api/*` and whatever the wall already lets through
+  unchallenged, now that the board is the whole origin rather than one bundle
+  under a prefix. The operator's own verbs — people writes and sessions, grants,
   invites, API keys, the core settings — are `[RequireRole(PersonRole.Admin)]`,
   spelled `[RequireAdmin]`.
 
@@ -3309,12 +3312,12 @@ then on the `sub` is the identity, and the email is never used to find it again.
 
 | Reaching | As | Answer |
 |---|---|---|
-| `/apps/hatch/…` navigation | no credential | **302** to sign-in with `?r=` |
+| `/…` navigation (not `/api`) | no credential | **302** to sign-in with `?r=` |
 | `/api/…` | no credential, or a key nobody minted | **401** |
-| `/apps/hatch/…` navigation | signed in, Pending (or a device nobody has claimed) | **302** to sign-in with no `?r=`, where the shell says they are waiting |
+| `/…` navigation (not `/api`) | signed in, Pending (or a device nobody has claimed) | **302** to sign-in with no `?r=`, where the shell says they are waiting |
 | `/api/hatch/…` | signed in, Pending | **403** `pending_approval` |
 | an Admin route | signed in, User | **403** `not_admin` |
-| `/apps/hatch/…` | an API key, or any non-navigation | **404** — indistinguishable from an install built without it |
+| `/…` (not `/api`) | an API key, or any non-navigation | **404** — indistinguishable from an install built without it |
 | an Admin route | an API key | **403** `key_not_accepted` |
 
 The two gates stay separate rather than being folded into one. The wall runs on

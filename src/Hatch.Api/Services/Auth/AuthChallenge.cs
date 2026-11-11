@@ -27,6 +27,29 @@ public static class AuthChallenge
     internal const string SecFetchMode = "Sec-Fetch-Mode";
     private const string RequestedWith = "X-Requested-With";
 
+    /// <summary>Any relative URI resolves against this and nothing leaves it - it exists only so <see cref="Uri"/> will do a server's path normalization for us.</summary>
+    private static readonly Uri ForwardedBase = new("http://forwarded.invalid", UriKind.Absolute);
+
+    /// <summary>
+    /// The path a server will actually serve, from a raw request path (which may
+    /// carry percent-escapes or dot segments the caller has not resolved). Uri
+    /// does the percent-decoding and the dot-segment collapsing in one pass and
+    /// in a server's order, which is what closes the gap a prefix check would
+    /// otherwise leave: <c>/media/%2e%2e/apps/admin</c> is exempt if you only
+    /// look at its prefix, and is <c>/apps/admin</c> by the time Kestrel serves
+    /// it. Shared by <see cref="Controllers.AuthController"/>'s forwardAuth
+    /// endpoint (there, over the URI Traefik forwarded) and
+    /// <see cref="Common.AdminAppMiddleware"/> (here, over the in-process
+    /// request's own path) so the two cannot read the same request differently.
+    /// </summary>
+    public static PathString CanonicalPath(string? rawPath)
+    {
+        if (string.IsNullOrEmpty(rawPath) || rawPath[0] != '/') return "/";
+        if (!Uri.TryCreate(ForwardedBase, rawPath, out var absolute)) return "/";
+
+        return PathString.FromUriComponent(absolute);
+    }
+
     /// <summary>Whether this caller can see a 302 - i.e. whether it is a browser navigating to a document.</summary>
     public static bool PrefersRedirect(IHeaderDictionary headers, string? method)
     {

@@ -54,7 +54,7 @@ public class BoardNarrowColumnsTests(ITestOutputHelper output)
             Assert.True(columnCount >= 3, $"The board has {columnCount} columns; the case needs at least three to leave one narrow.");
             Assert.NotEqual(alphaColumn, betaColumn);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", reducedMotion: true);
+            await harness.OpenAsync(deadline, baseUrl, "/", reducedMotion: true);
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForFirstColumnAsync(deadline);
 

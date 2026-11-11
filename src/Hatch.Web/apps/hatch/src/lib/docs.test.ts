@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { marked } from 'marked';
+import { APP_ROUTE_ROOTS } from './basename';
 import {
   createSlugger,
   docLinkTarget,
@@ -173,21 +176,18 @@ describe('docLinkTarget', () => {
     expect(docLinkTarget('#a%20b')).toEqual({ kind: 'fragment', id: 'a b' });
   });
 
-  it('strips the app prefix from an app path', () => {
-    expect(docLinkTarget('/apps/hatch/runner')).toEqual({ kind: 'app', to: '/runner' });
-    expect(docLinkTarget('/apps/hatch')).toEqual({ kind: 'app', to: '/' });
-    expect(docLinkTarget('/apps/hatch/')).toEqual({ kind: 'app', to: '/' });
-    expect(docLinkTarget('/apps/hatch?a=1')).toEqual({ kind: 'app', to: '/?a=1' });
-    expect(docLinkTarget('/apps/hatch/issues/HA-1?x=1#y')).toEqual({
-      kind: 'app',
-      to: '/issues/HA-1?x=1#y',
-    });
+  it('is an app path, unchanged, for the root or a route this app mounts', () => {
+    expect(docLinkTarget('/')).toEqual({ kind: 'app', to: '/' });
+    expect(docLinkTarget('/runner')).toEqual({ kind: 'app', to: '/runner' });
+    expect(docLinkTarget('/issues/HA-1?x=1#y')).toEqual({ kind: 'app', to: '/issues/HA-1?x=1#y' });
   });
 
-  it('leaves everything else to the browser', () => {
+  it('leaves everything else to the browser - including the old /apps/hatch prefix', () => {
+    expect(docLinkTarget('/apps/hatch')).toEqual({ kind: 'external' });
+    expect(docLinkTarget('/apps/hatch/x')).toEqual({ kind: 'external' });
     expect(docLinkTarget('/apps/hatchery/x')).toEqual({ kind: 'external' });
     expect(docLinkTarget('https://cli.github.com/')).toEqual({ kind: 'external' });
-    expect(docLinkTarget('//example.com/apps/hatch/x')).toEqual({ kind: 'external' });
+    expect(docLinkTarget('//example.com/x')).toEqual({ kind: 'external' });
     expect(docLinkTarget(null)).toEqual({ kind: 'external' });
     expect(docLinkTarget('')).toEqual({ kind: 'external' });
   });
@@ -199,7 +199,16 @@ describe('docLinkTarget', () => {
     for (const href of hrefs) {
       const kind = docLinkTarget(href).kind;
       expect(['fragment', 'app', 'external']).toContain(kind);
-      if (href.startsWith('/apps/hatch/')) expect(kind).toBe('app');
+      if (href.startsWith('/docs/')) expect(kind).toBe('app');
+    }
+  });
+
+  it('agrees with every route App.tsx mounts, so neither can drift from the other', () => {
+    const appTsx = readFileSync(fileURLToPath(new URL('../App.tsx', import.meta.url)), 'utf8');
+    const roots = new Set([...appTsx.matchAll(/<Route path="\/([a-z-]+)/g)].map((m) => m[1]));
+
+    for (const root of roots) {
+      expect(APP_ROUTE_ROOTS as readonly string[]).toContain(root);
     }
   });
 
@@ -216,14 +225,14 @@ describe('resolveDocHref', () => {
   it('resolves the four page-link forms', () => {
     for (const slug of ['upgrading', 'getting-started']) {
       for (const form of [slug, `${slug}.md`, `./${slug}`, `./${slug}.md`]) {
-        expect(resolveDocHref(form)).toBe(`/apps/hatch/docs/${slug}`);
-        expect(resolveDocHref(`${form}#rolling-back`)).toBe(`/apps/hatch/docs/${slug}#rolling-back`);
+        expect(resolveDocHref(form)).toBe(`/docs/${slug}`);
+        expect(resolveDocHref(`${form}#rolling-back`)).toBe(`/docs/${slug}#rolling-back`);
       }
     }
   });
 
   it('keeps a bare # as written', () => {
-    expect(resolveDocHref('upgrading#')).toBe('/apps/hatch/docs/upgrading#');
+    expect(resolveDocHref('upgrading#')).toBe('/docs/upgrading#');
   });
 
   it('returns everything else exactly as given', () => {
@@ -251,8 +260,8 @@ describe('resolveDocHref', () => {
 
   it('rewrites a page link in rendered output', () => {
     const { html } = renderDocs('[a](./upgrading.md#x)');
-    expect(html).toContain('href="/apps/hatch/docs/upgrading#x"');
-    expect(docLinkTarget('/apps/hatch/docs/upgrading#x')).toEqual({ kind: 'app', to: '/docs/upgrading#x' });
+    expect(html).toContain('href="/docs/upgrading#x"');
+    expect(docLinkTarget('/docs/upgrading#x')).toEqual({ kind: 'app', to: '/docs/upgrading#x' });
   });
 
   it('leaves an image source alone', () => {
@@ -262,7 +271,7 @@ describe('resolveDocHref', () => {
 
 describe('renderDocs with a resolver', () => {
   it('defaults to the app address with no second argument', () => {
-    expect(renderDocs('[a](./x)').html).toContain('href="/apps/hatch/docs/x"');
+    expect(renderDocs('[a](./x)').html).toContain('href="/docs/x"');
   });
 
   it('calls the resolver with the parsed slug and fragment, for all four link forms', () => {

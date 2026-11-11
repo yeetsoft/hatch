@@ -1,33 +1,13 @@
 /**
- * Where this bundle is mounted, as far as the browser is concerned.
- *
- * Hatch answers at two addresses, and React Router's `basename` has to agree
- * with whichever one the address bar is showing:
- *
- *   `home.${DOMAIN}/apps/hatch/...` - the bundle in its own right, under /apps
- *   like every other app in the house.
- *
- *   `hatch.${DOMAIN}/...` - the same bundle, reached through the rewrite in
- *   charts/hatch/templates/middleware-hatch.yaml.
- *
- * That rewrite is deliberately server-side, so on the subdomain the path the
- * browser holds is `/issues/AER-12` while the path the API answered is
- * `/apps/hatch/issues/AER-12` - the hostname exists precisely so a ticket link
- * never has to name the prefix. Which means a fixed basename can only ever be
- * right on one of the two: with `/apps/hatch` hardcoded, the subdomain rendered
- * nothing at all, and said so only in a console warning ('<Router
- * basename="/apps/hatch"> is not able to match the URL "/"') with a clean
- * network panel behind it.
- *
- * Matched by whole segment rather than by prefix, the same rule
- * AdminAppMiddleware's gate uses: a later /apps/hatchery would not be this app.
+ * Where this bundle is mounted, as far as the browser is concerned: the
+ * origin's root (HA-2248). React Router's `basename` has to agree with
+ * whatever the address bar is showing, and now there is only one shape to
+ * agree with.
  */
-export const APP_BASENAME = '/apps/hatch';
+export const APP_BASENAME = '/';
 
-export function routerBasename(pathname: string): string {
-  return pathname === APP_BASENAME || pathname.startsWith(`${APP_BASENAME}/`)
-    ? APP_BASENAME
-    : '/';
+export function routerBasename(_pathname: string): string {
+  return APP_BASENAME;
 }
 
 /**
@@ -40,9 +20,7 @@ export function routerBasename(pathname: string): string {
  * whole point and React Router will not open a second document. In the
  * installed app neither does any more - `useStandalone()` (`lib/viewport.ts`)
  * says there is no second document to open into there, so both are now
- * conditional on it, falling back to a routed <Link> instead. On the
- * subdomain this is the identity, and on the house hostname it is what keeps
- * the new tab from landing on /issues/AER-12 with nothing served there.
+ * conditional on it, falling back to a routed <Link> instead.
  */
 export function hrefWithin(basename: string, path: string): string {
   return basename === '/' ? path : `${basename}${path}`;
@@ -55,4 +33,47 @@ export const appHref = (path: string): string =>
 /** A full, copyable address for an in-app route, against a given origin and pathname. */
 export function fullHref(origin: string, pathname: string, path: string): string {
   return `${origin}${hrefWithin(routerBasename(pathname), path)}`;
+}
+
+/**
+ * The first segment of every route `App.tsx` mounts, so a link within a docs
+ * page or a doc's own prose can be told apart from a link leaving the app
+ * without hardcoding either list twice. `docs.test.ts`'s drift guard reads
+ * `App.tsx` itself and asserts every one of its routes' first segments is
+ * named here.
+ */
+export const APP_ROUTE_ROOTS = [
+  'plan',
+  'dreams',
+  'reports',
+  'search',
+  'leaderboard',
+  'bulk',
+  'projects',
+  'statuses',
+  'playbooks',
+  'runners',
+  'overnight',
+  'changelog',
+  'history',
+  'issues',
+  'import',
+  'runner',
+  'settings',
+  'users',
+  'docs',
+] as const;
+
+/** Whether `href` is a path this app routes, rather than one the browser is left to handle on its own. */
+export function isBoardPath(href: string): boolean {
+  if (href === '/') return true;
+  if (href[0] !== '/') return false;
+
+  let end = href.length;
+  for (const mark of ['/', '?', '#']) {
+    const at = href.indexOf(mark, 1);
+    if (at !== -1 && at < end) end = at;
+  }
+
+  return (APP_ROUTE_ROOTS as readonly string[]).includes(href.slice(1, end));
 }
