@@ -4526,13 +4526,13 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There are three reports with
-a card each: the Timeline, the Cumulative flow and the
-[Changelog](#the-changelog-report). **One further read, the [flow](#the-flow),
+per report, each stating the question it answers. There are four reports with
+a card each: the Timeline, the Cumulative flow, the
+[Changelog](#the-changelog-report) and the [Activity](#the-activity-report)
+report. **One further read, the [flow](#the-flow),
 has no page and no index card** — it is for a program, not a person at a screen — and
-neither has [the activity report](#the-activity-report), one actor's events in a
-range, nor [the consumption report](#the-consumption-report), what each issue
-consumed in a window: tokens, notional USD and runner time. Both have no page or
+neither has [the consumption report](#the-consumption-report), what each issue
+consumed in a window: tokens, notional USD and runner time, which has no page or
 card yet. A
 new report with a page is one more entry in that index and a route; neither
 report gets a nav entry of its own, and the index card stays the only way in.
@@ -5024,10 +5024,21 @@ GET /api/hatch/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&
 **What did one actor do, in a range?** The trail every other report folds
 (`IssueEvents`) read by who wrote it: one actor's events as counts by kind, a
 rundown of the issues touched, the newest rows, the rate of work over time,
-and the trail bracketed into working sessions with a rough length each. It
-has no page, no index card and no CLI subcommand yet — a script reaches it
-with `hatch api GET /api/hatch/reports/activity?...`. The route is open to a
-person or to a key.
+and the trail bracketed into working sessions with a rough length each. The
+page is `/reports/activity`, a card on the Reports index and no nav entry of
+its own: an actor picker (people first, then keys, each by name), the window
+controls at two weeks and the project control within the tab's scope, a
+headline, a rundown row per issue and the trail beneath, the newest 500
+events with a line saying the listing is cut when `truncated`. The URL
+carries `actor`, `project` and `from`/`to`/`range`; with no `actor` the page
+opens on the signed-in person when the directory lists them, and writes that
+name into the URL, so a pasted link never opens on whoever pastes it. An
+`actor` the directory does not list is still sent as given, so a link to a
+revoked key's trail still reads. The page writes nothing, and draws neither
+the rate of work nor the bracketed sessions — those are stories of their
+own. There is no CLI subcommand yet — a script reaches the read with `hatch
+api GET /api/hatch/reports/activity?...`. The route is open to a person or
+to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
 own `Actor`. A name no live person or key answers to still answers, with

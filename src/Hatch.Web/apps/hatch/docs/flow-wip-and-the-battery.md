@@ -197,9 +197,17 @@ lists it separately.
 report draws when each epic was in flight and how long its work sat in each
 column; Cumulative flow draws how much work sat in each column over time,
 and where it is piling up, and a **Colour by** control lets that same stack
-be cut by project instead of by column.
+be cut by project instead of by column. The Changelog draws what landed, day,
+week or month at a time. **Activity** answers what one person or key did:
+pick an actor, and it reads the range as a headline (the total and the top
+kinds in words), a rundown with one row per issue touched, and beneath it the
+trail of events as evidence, the newest 500 with a line saying so when more
+existed. It opens on you when you are in the directory, and on nobody, with a
+sentence saying to choose, when you are not; the address carries `?actor=`,
+the project and the window, and an actor in the address who is not in the
+directory (a revoked key, say) is still read. Nothing on it writes.
 
-The Timeline, Cumulative flow and Changelog reports each follow the tab's
+The Timeline, Cumulative flow, Changelog and Activity reports each follow the tab's
 [scope](the-board-and-its-columns#scoping-a-tab-to-projects), and their project
 control works within it. Under a scope it lists only the scope's projects, and
 *all* means every project in scope: the Timeline's empty choice then reads **All
