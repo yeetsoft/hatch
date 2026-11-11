@@ -68,6 +68,24 @@ public class AuthMiddlewareTests
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
     }
 
+    /// <summary>
+    /// The board's own paths are document requests like any other: the wall
+    /// does not know they are special, which is the point of HA-2248 - there is
+    /// no /apps/hatch prefix left to carry the identification for it.
+    /// </summary>
+    [Fact]
+    public async Task ANavigationToABoardPathBouncesToTheSignInShellCarryingWhereItWasGoing()
+    {
+        var request = Request("/plan");
+        request.Headers["Sec-Fetch-Mode"] = "navigate";
+
+        var (context, served) = await Run(request);
+
+        Assert.False(served);
+        Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
+        Assert.Equal("/apps/auth/?r=%2Fplan", context.Response.Headers.Location.ToString());
+    }
+
     [Fact]
     public async Task AnOldBrowserThatOnlySaysAcceptStillGetsTheRedirect()
     {

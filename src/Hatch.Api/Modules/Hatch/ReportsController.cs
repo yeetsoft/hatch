@@ -18,7 +18,8 @@ namespace Hatch.Api.Modules.Hatch;
 [Route("api/hatch/reports")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ReportsController(
-    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase
+    HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
+    IAuthService? keys = null) : ControllerBase
 {
     /// <summary>The range when a caller names neither bound: the ninety days ending now.</summary>
     private static readonly TimeSpan DefaultRange = TimeSpan.FromDays(90);
@@ -566,6 +567,11 @@ public class ReportsController(
     /// </param>
     /// <param name="lead">Added to every session's estimated length, in minutes; 0 to 240, 15 when absent.</param>
     /// <param name="window">How many days the rolling mean in <c>series</c> trails over; 1 to 90, 3 when absent.</param>
+    /// <param name="includeKeys">
+    /// When <paramref name="actor"/> names a person, also counts the events under the keys that person owns which
+    /// a hand typed - see <see cref="ActivityReport.HandTyped"/> - each marked <c>viaKey</c>. False when absent;
+    /// no effect when the actor is not a person.
+    /// </param>
     /// <remarks>
     /// A name no live row answers to still answers, empty: the trail outlives
     /// the person or key it names. The counts, the issue rundown, the series
@@ -578,7 +584,7 @@ public class ReportsController(
         [FromQuery] string? actor, [FromQuery] string? from, [FromQuery] string? to,
         [FromQuery] List<int>? projectId,
         [FromQuery] int offsetMinutes = 0, [FromQuery] int gap = 30, [FromQuery] int lead = 15,
-        [FromQuery] int window = 3, CancellationToken ct = default)
+        [FromQuery] int window = 3, [FromQuery] bool includeKeys = false, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(actor))
             return BadRequest("an actor is required");
@@ -628,6 +634,8 @@ public class ReportsController(
             .Select(e => new ActivityReport.Row(e.Id, e.IssueId, e.Issue!.ProjectId, e.Kind, e.At))
             .ToListAsync(ct);
 
+        if (includeKeys) rows.AddRange(await HandTypedUnderKeysAsync(actor, start, end, ct));
+
         var result = ActivityReport.Fold(
             rows, ids, ActivityController.MaxEvents,
             seriesWindow, TimeSpan.FromMinutes(gap), TimeSpan.FromMinutes(lead), window);
@@ -665,7 +673,7 @@ public class ReportsController(
                 .Where(e => cards.ContainsKey(e.IssueId))
                 .Select(e => new ActivityEventDto(
                     e.Id, cards[e.IssueId].Key, actor, e.Kind,
-                    IssueEventPayload.Parse(payloads.GetValueOrDefault(e.Id)), e.At))
+                    IssueEventPayload.Parse(payloads.GetValueOrDefault(e.Id)), e.At, e.ViaKey))
                 .ToList(),
             result.Truncated,
             WorkLogRollup.Name(bucketSize),
@@ -681,6 +689,49 @@ public class ReportsController(
                 .ToList(),
             new ActivityEstimateDto(
                 result.Estimate.Sessions, result.Estimate.Minutes, gap, lead, result.Estimate.WindowDays));
+    }
+
+    /// <summary>
+    /// The events a hand typed under the keys a person owns, in range - none
+    /// when <paramref name="actor"/> names no live person or the person owns no key.
+    /// </summary>
+    private async Task<List<ActivityReport.Row>> HandTypedUnderKeysAsync(
+        string actor, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    {
+        if (keys is null) return [];
+
+        var person = (await actors.LiveAsync(ct))
+            .FirstOrDefault(a => a.Kind == ActorKind.Person && string.Equals(a.Name, actor, StringComparison.Ordinal));
+        if (person is null) return [];
+
+        var names = (await keys.ListApiKeysAsync(ct))
+            .Where(k => k.OwnerPersonId == person.Id)
+            .Select(k => k.Name)
+            .ToList();
+        if (names.Count == 0) return [];
+
+        var keyRows = (await db.IssueEvents.AsNoTracking()
+                .Where(e => names.Contains(e.Actor) && e.At >= start && e.At < end)
+                .Select(e => new { e.Id, e.IssueId, e.Issue!.ProjectId, e.Kind, e.At, e.Actor })
+                .ToListAsync(ct))
+            .Select(e => new ActivityReport.Row(e.Id, e.IssueId, e.ProjectId, e.Kind, e.At, e.Actor))
+            .ToList();
+        if (keyRows.Count == 0) return [];
+
+        var issueIds = keyRows.Select(r => r.IssueId).Distinct().ToList();
+        string[] claimKinds = [EfHatchIssueEvent.ClaimTaken, EfHatchIssueEvent.ClaimReleased, EfHatchIssueEvent.ClaimLapsed];
+
+        var claimEvents = await db.IssueEvents.AsNoTracking()
+            .Where(e => issueIds.Contains(e.IssueId) && claimKinds.Contains(e.Kind) && e.At < end)
+            .Select(e => new ActivityReport.ClaimEvent(e.Id, e.IssueId, e.Actor, e.Kind, e.At))
+            .ToListAsync(ct);
+
+        var spans = await db.WorkLog.AsNoTracking()
+            .Where(w => issueIds.Contains(w.IssueId) && w.EndedAt >= start && w.StartedAt < end)
+            .Select(w => new ActivityReport.WorkSpan(w.IssueId, w.StartedAt, w.EndedAt))
+            .ToListAsync(ct);
+
+        return ActivityReport.HandTyped(keyRows, claimEvents, spans);
     }
 
     /// <summary>

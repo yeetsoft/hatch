@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 // Bundles straight into the ASP.NET Core static files folder that Hatch.Api
-// serves at /apps/hatch (see Program.cs).
+// serves at the origin's root (see Program.cs). The directory itself is
+// still named wwwroot/apps/hatch - AppVersion and the Makefile read that path.
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(__dirname, '../../../..')
 
 export default defineConfig({
-  base: '/apps/hatch/',
+  base: '/',
   plugins: [react(), hatchRevision({ app: 'hatch' })],
   test: {
     // Vitest stubs every CSS import to an empty module by default, raw query

@@ -1,5 +1,5 @@
 import { Marked, type Token, type Tokens } from 'marked';
-import { APP_BASENAME } from './basename';
+import { isBoardPath } from './basename';
 
 /** The plain text of a run of inline tokens: what a reader sees, with the markup
     gone. A heading token's own `text` is raw markdown (backticks and all), so a
@@ -63,7 +63,7 @@ export type DocHrefResolver = (slug: string, fragment: string) => string;
     `markdown.ts` uses is untouched. */
 export function renderDocs(
   source: string,
-  resolveHref: DocHrefResolver = (slug, fragment) => `${APP_BASENAME}/docs/${slug}${fragment}`,
+  resolveHref: DocHrefResolver = (slug, fragment) => `/docs/${slug}${fragment}`,
 ): { html: string; outline: OutlineEntry[]; ids: string[]; mermaidCount: number } {
   const slug = createSlugger();
   const outline: OutlineEntry[] = [];
@@ -120,18 +120,13 @@ export type DocLinkTarget =
   | { kind: 'external' };
 
 /** What a link inside the document is: a fragment in this page, a path within this
-    app (handed to the router as `to`, the app prefix stripped), or anything else,
-    which is the browser's. The prefix is matched by whole segment, the rule
-    `routerBasename` uses, so `/apps/hatchery/x` is not this app. */
+    app (handed to the router as `to`, unchanged), or anything else, which is the
+    browser's. A path is this app's by whole segment, the rule `isBoardPath` uses,
+    so `/apps/hatchery/x` is not this app. */
 export function docLinkTarget(href: string | null): DocLinkTarget {
   if (!href) return { kind: 'external' };
   if (href.startsWith('#')) return { kind: 'fragment', id: hashId(href) };
-  if (href.startsWith(APP_BASENAME)) {
-    const rest = href.slice(APP_BASENAME.length);
-    if (rest === '' || rest[0] === '/' || rest[0] === '?' || rest[0] === '#') {
-      return { kind: 'app', to: rest[0] === '/' ? rest : `/${rest}` };
-    }
-  }
+  if (isBoardPath(href)) return { kind: 'app', to: href };
   return { kind: 'external' };
 }
 
@@ -175,12 +170,12 @@ function parseDocLink(href: string): { name: string; fragment: string } | null {
 }
 
 /** Where a link to another docs page goes: `slug`, `slug.md`, `./slug` or
-    `./slug.md`, with an optional `#fragment`, become `${APP_BASENAME}/docs/slug`
-    with the fragment kept as written. Anything else - a scheme, an absolute or
-    parent path, a query, a name that is not a slug - comes back unchanged. */
+    `./slug.md`, with an optional `#fragment`, become `/docs/slug` with the
+    fragment kept as written. Anything else - a scheme, an absolute or parent
+    path, a query, a name that is not a slug - comes back unchanged. */
 export function resolveDocHref(href: string): string {
   const parsed = parseDocLink(href);
-  return parsed ? `${APP_BASENAME}/docs/${parsed.name}${parsed.fragment}` : href;
+  return parsed ? `/docs/${parsed.name}${parsed.fragment}` : href;
 }
 
 /** Reads one markdown file, as the glob hands it over, into a page. Every way the

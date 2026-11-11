@@ -70,7 +70,7 @@ public class PlaybooksUnreachableRowTests(ITestOutputHelper output)
             Assert.True(columns.Count >= 3, $"The board has {columns.Count} live columns; the case needs three to draw two moves between them.");
 
             await harness.OpenAsync(
-                deadline, baseUrl, "/apps/hatch/playbooks", context => StubPlaybooks(context, columns[0], columns[1], columns[2]));
+                deadline, baseUrl, "/playbooks", context => StubPlaybooks(context, columns[0], columns[1], columns[2]));
 
             await harness.WaitForVisibleAsync(deadline, "tbody tr:has-text(\"fable\")");
             await harness.WaitForVisibleAsync(deadline, "tbody tr:has-text(\"sonnet\")");

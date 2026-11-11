@@ -15,7 +15,15 @@ namespace Hatch.Api.Modules.Hatch;
 public static class ActivityReport
 {
     /// <summary>One event, less its payload. The caller has already narrowed to one actor and one range.</summary>
-    public sealed record Row(long Id, long IssueId, int ProjectId, string Kind, DateTimeOffset At);
+    /// <param name="ViaKey">The name of the key a person's own key typed this event under, or null for an event under the actor's own name.</param>
+    public sealed record Row(
+        long Id, long IssueId, int ProjectId, string Kind, DateTimeOffset At, string? ViaKey = null);
+
+    /// <summary>One <c>claim_taken</c>, <c>claim_released</c> or <c>claim_lapsed</c> on an issue's trail, whoever wrote it.</summary>
+    public sealed record ClaimEvent(long Id, long IssueId, string Actor, string Kind, DateTimeOffset At);
+
+    /// <summary>One work-log session's wall-clock span on an issue. A row records no key, so this names none.</summary>
+    public sealed record WorkSpan(long IssueId, DateTimeOffset From, DateTimeOffset To);
 
     public sealed record KindCount(string Kind, int Count);
 
@@ -48,6 +56,53 @@ public static class ActivityReport
         int Total, IReadOnlyList<KindCount> Kinds, IReadOnlyList<IssueEntry> Issues,
         IReadOnlyList<Row> Events, bool Truncated,
         IReadOnlyList<SeriesPoint> Series, IReadOnlyList<Session> Sessions, Estimate Estimate);
+
+    /// <summary>
+    /// Of the events a person's own keys wrote, the ones a hand typed - a
+    /// heuristic, read off the trail alone.
+    /// </summary>
+    /// <remarks>
+    /// An event is the loop's when a work-log session of the same issue spans
+    /// it (a row records no key, so the issue and the instant are all there is
+    /// to match), or when the issue's trail shows the key's <c>claim_taken</c>
+    /// with nothing ending that claim before it. A claim is ended by a release,
+    /// a lapse, or another take, from anyone, so a runner that died without
+    /// releasing swallows no later event. The claim events themselves are the
+    /// loop's own. Everything else under the key is a hand's.
+    /// </remarks>
+    /// <param name="keyRows">Every event under the person's keys in range, each with <see cref="Row.ViaKey"/> set.</param>
+    /// <param name="claims">The claim events of the issues <paramref name="keyRows"/> touch, from any time before the range's end.</param>
+    public static List<Row> HandTyped(
+        IReadOnlyList<Row> keyRows, IReadOnlyList<ClaimEvent> claims, IReadOnlyList<WorkSpan> workLog)
+    {
+        var claimsByIssue = claims
+            .GroupBy(c => c.IssueId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.At).ThenBy(c => c.Id).ToList());
+        var spansByIssue = workLog.ToLookup(w => w.IssueId);
+
+        return keyRows.Where(r => !IsLoops(r, claimsByIssue, spansByIssue)).ToList();
+    }
+
+    private static bool IsLoops(
+        Row row, Dictionary<long, List<ClaimEvent>> claimsByIssue, ILookup<long, WorkSpan> spansByIssue)
+    {
+        if (row.Kind.StartsWith("claim_", StringComparison.Ordinal)) return true;
+
+        if (spansByIssue[row.IssueId].Any(w => w.From <= row.At && row.At <= w.To)) return true;
+
+        if (!claimsByIssue.TryGetValue(row.IssueId, out var trail)) return false;
+
+        // Walk the issue's claim events up to this row: the last one decides,
+        // and it only holds when it is this key's own take.
+        ClaimEvent? last = null;
+        foreach (var claim in trail)
+        {
+            if (claim.At > row.At || (claim.At == row.At && claim.Id > row.Id)) break;
+            last = claim;
+        }
+
+        return last is { Kind: "claim_taken" } && last.Actor == row.ViaKey;
+    }
 
     /// <summary>
     /// Counts, per-issue rundown, the newest <paramref name="maxEvents"/> rows, a

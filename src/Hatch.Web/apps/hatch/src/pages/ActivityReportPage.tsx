@@ -15,11 +15,13 @@ import {
   estimateHeadlineWords,
   estimateRuleWords,
   headlineWords,
+  isPerson,
   isValidGap,
   isValidLead,
   kindsWords,
   resolveActor,
   resolveGap,
+  resolveIncludeKeys,
   resolveLead,
   sessionLengthWords,
   sessionWhenWords,
@@ -27,6 +29,7 @@ import {
   truncatedWords,
   withActor,
   withGap,
+  withIncludeKeys,
   withLead,
 } from '../lib/activity';
 import { VIEW, offersCalendar, parseView, withView, type ActivityView } from '../lib/activityCalendar';
@@ -184,7 +187,7 @@ export function ActivityReportBody({
                 <td>
                   <Badge>{event.kind.replaceAll('_', ' ')}</Badge>
                 </td>
-                <td>{event.actor}</td>
+                <td>{event.viaKey ? `${event.actor} via ${event.viaKey}` : event.actor}</td>
                 <td className="text-muted">{describe(event)}</td>
               </tr>
             ))}
@@ -247,8 +250,8 @@ const REPORT_ANSWERS = 'What one person or key did, issue by issue, over a range
  *
  * Everything a pasted link needs is in the URL: `actor` (a name), `project`
  * (repeated keys), the window's `from`/`to`/`range`, the graph's `measure`
- * (`events` or `hours`) and rolling `window` (days, 1 to 90), and `view`
- * (`calendar`, past eight weeks). With no `actor`
+ * (`events` or `hours`), rolling `window` (days, 1 to 90), `includeKeys` (`true`,
+ * offered only for a person) and `view` (`calendar`, past eight weeks). With no `actor`
  * the page opens on the signed-in person - and writes that name into the URL,
  * so the link does not open on whoever pastes it. An actor the directory does not
  * list is still read, as given: the trail outlives the key it names. Nothing
@@ -289,6 +292,7 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
       window: parseWindow(query.get(WINDOW)),
       gap: resolveGap(query),
       lead: resolveLead(query),
+      includeKeys: resolveIncludeKeys(query) && isPerson(directory, actor),
     });
 
     return { report, directory, projects };
@@ -368,6 +372,7 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
   /* Nobody chosen draws a blank first row, so the picker does not claim
      someone it has not read. */
   const options = actorOptions(data.directory.assignees, actor);
+  const includeKeys = resolveIncludeKeys(params);
   const choices = actor === null ? [{ value: '', text: 'Choose…' }, ...options] : options;
 
   const sessionControls = (
@@ -422,6 +427,18 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
                   if (value !== '') setParams(withActor(params, value), { replace: true });
                 }}
               />
+              {isPerson(data.directory, actor) && (
+                <Facet
+                  label="Include my keys"
+                  lit={includeKeys}
+                  value={includeKeys ? 'on' : 'off'}
+                  options={[
+                    { value: 'off', text: 'Off' },
+                    { value: 'on', text: 'On' },
+                  ]}
+                  onChange={(value) => setParams(withIncludeKeys(params, value === 'on'), { replace: true })}
+                />
+              )}
               {hasMultipleProjects(offered) && (
                 <ProjectsFacet
                   projects={offered}
