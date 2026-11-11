@@ -20,6 +20,8 @@ interface PlanView {
   plan: Plan;
   statuses: Status[];
   projects: Project[];
+  /** The scope this was fetched under, in the form `scopeKey` below takes. */
+  scopeKey: string;
 }
 
 /**
@@ -36,6 +38,12 @@ export function PlanPage() {
   const chosen = params.get(PROJECT) ?? '';
   const scope = useScope();
 
+  /* The scope in force, as one string: `scope.keys` is empty until the
+     provider's own project list lands, so a plan fetched before that was
+     fetched unscoped, and this is what tells the two apart. Keys hold no
+     comma (see useScope). */
+  const scopeKey = scope.isScoped ? scope.keys.join(',') : '';
+
   /* Wrapped so useLoaded's effect has a stable dependency, and keyed on the
      chosen project so picking one is a refetch rather than a filter applied
      here - the server scopes both halves of the plan, including the loose
@@ -51,20 +59,31 @@ export function PlanPage() {
        because the URL holds a key - the thing a person would type or paste -
        and the API takes an id. The key is looked up among the offered
        projects, and a key naming none of them reads as nothing chosen. */
-    return { plan: await getPlan(planProjectId(chosen, offered, scope.isScoped)), statuses, projects: offered };
-  }, [chosen, scope.isScoped, scope.keys]);
+    return {
+      plan: await getPlan(planProjectId(chosen, offered, scope.isScoped)),
+      statuses,
+      projects: offered,
+      scopeKey,
+    };
+  }, [chosen, scope.isScoped, scope.keys, scopeKey]);
 
   const { data, error } = useLoaded<PlanView>(load);
 
+  /* Only a plan fetched for the scope now in force is drawn. The provider's
+     list can land after this page's first read, and until the refetch it
+     triggers resolves `data` is still the unscoped one - drawing it would
+     flash every project outside the scope. */
+  const current = data !== null && scope.loaded && data.scopeKey === scopeKey;
+
   useEffect(() => {
-    if (!data) return;
+    if (!data || !current) return;
     // A key in the URL that names no offered project reads as nothing chosen,
     // and the param is dropped - the picker has nothing to show it as.
     if (scrubbedProject(chosen, data.projects) === chosen) return;
     const next = new URLSearchParams(params);
     next.delete(PROJECT);
     setParams(next, { replace: true });
-  }, [data, chosen, params, setParams]);
+  }, [data, current, chosen, params, setParams]);
 
   function choose(key: string) {
     const next = new URLSearchParams(params);
@@ -76,7 +95,7 @@ export function PlanPage() {
   }
 
   if (error && !data) return <p className="text-danger">{error}</p>;
-  if (!data) return <p className="text-muted">Loading…</p>;
+  if (!data || !current) return <p className="text-muted">Loading…</p>;
 
   const { plan, statuses, projects } = data;
   const { live, finished } = orderPlan(plan.epics);
