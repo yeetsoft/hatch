@@ -172,12 +172,14 @@ saying why, when this moves the pointer; see
 ```
 hatch image dockerfile [--base <image>]
 hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]
+hatch image workflow
 ```
 
 `dockerfile` prints the Dockerfile this checkout's `.hatch/dependencies.json`
 renders to. It reads the checkout and the machine-bound settings and makes no
 board call, so it works with nothing configured; it needs no Docker either.
-[`build`](#build) builds that text.
+[`build`](#build) builds that text; [`workflow`](#workflow) hands out a CI
+that renders and builds it in a repository's own GitHub Actions.
 
 The text, in order:
 
@@ -258,6 +260,42 @@ it, or `--push`, which builds and pushes in one step and so never loads the
 list: `docker buildx build --push`, or for podman a manifest built, then
 `manifest push --all`. The exit code is 1. `--push` needs a registry login this
 command never asks for, so run `docker login` (or `podman login`) first.
+
+It touches no ticket and no column, so it writes nothing to the board.
+
+#### workflow
+
+Prints a GitHub Actions workflow that builds and pushes a repository's own
+runner image from its own CI, so it reaches a moved base image or recipe
+without anyone remembering to run `build` by hand. It takes no flags, reads
+nothing and writes nothing: no checkout, no board call, no file. Committing
+the text it prints as `.github/workflows/hatch-runner-image.yml` is a change
+made by a ticket in that repository, the same way the agent block and
+`.hatch/playbooks.yaml` are - Hatch has no write path into a project
+repository and does not grow one.
+
+The workflow runs on a push to the trunk touching `.hatch/**` or the workflow
+file itself, on `workflow_dispatch`, and on a weekly schedule. It needs
+`contents: read` and `packages: write`, and logs into the registry with the
+run's own `GITHUB_TOKEN` - no secret of the repository's own to manage.
+
+- `HATCH_RUNNER_BASE_IMAGE` is that repository's own GitHub Actions repository
+  or organization variable (Settings > Secrets and variables > Actions >
+  Variables) - a different thing from the `hatch` setting of the same name
+  `--base` and `hatch config --runner-base-image` read, which this workflow
+  never consults. Unset, the first step fails naming it and where to set it.
+- `HATCH_RUNNER_IMAGE_NAME` is the same kind of variable, for the image name.
+  Unset, the name is derived the way `--image` derives it for `build`.
+
+It renders by running `hatch image dockerfile` *inside* the base image, with
+the checkout mounted - the base image carries `hatch`, so the run downloads
+nothing from the board and needs no network path to it - and then builds and
+pushes the rendered Dockerfile with `docker/build-push-action`, for
+`linux/amd64,linux/arm64`, tagged `latest` and the commit sha.
+
+[`build --push`](#build) is the other way to build and push the same image:
+anyone with Docker runs it, from a laptop, a runner host, or a CI that is not
+GitHub's.
 
 It touches no ticket and no column, so it writes nothing to the board.
 

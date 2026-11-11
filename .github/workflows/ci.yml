@@ -477,6 +477,15 @@ jobs:
           labels=$(docker inspect --format '{{index .Config.Labels "hatch.dependencies"}}' hatch-image-cli:ci)
           [ -n "$labels" ] || { echo "the hatch.dependencies label is empty" >&2; exit 1; }
 
+      # The cheap path: actionlint against the workflow hatch hands out, rather
+      # than a dogfood run - this repository's own trunk never adopts a
+      # workflow meant for another project's CI.
+      - name: hatch image workflow
+        run: artifacts/hatch/linux-x64/hatch image workflow > /tmp/hatch-runner-image.yml
+
+      - name: actionlint the handed-out workflow
+        run: docker run --rm -v /tmp:/lint -w /lint rhysd/actionlint:latest -color hatch-runner-image.yml
+
   # One job that depends on every other, so a merge gate has exactly one
   # check to name instead of one per job (and one per matrix leg).
   ci:
