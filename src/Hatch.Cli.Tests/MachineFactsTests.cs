@@ -3,8 +3,8 @@ using System.Reflection;
 namespace Hatch.Cli.Tests;
 
 /// <summary>
-/// The six machine facts a beat carries: read once, each null where it could
-/// not be read.
+/// The seven machine facts a beat carries: read once, each null where it
+/// could not be read.
 /// </summary>
 public sealed class MachineFactsTests
 {
@@ -128,7 +128,7 @@ public sealed class MachineFactsTests
     // ---- shape ------------------------------------------------------------
 
     [Fact]
-    public void MachineFacts_has_exactly_the_six_properties()
+    public void MachineFacts_has_exactly_the_seven_properties()
     {
         var names = typeof(MachineFacts)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -136,15 +136,15 @@ public sealed class MachineFactsTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["AgentVersion", "Arch", "Container", "Os", "ProcessStartedAt", "Username"], names);
+        Assert.Equal(["AgentVersion", "Arch", "Container", "Image", "Os", "ProcessStartedAt", "Username"], names);
     }
 
     // ---- Stamp --------------------------------------------------------
 
     [Fact]
-    public void Stamp_fills_the_six_and_leaves_everything_else_alone()
+    public void Stamp_fills_the_seven_and_leaves_everything_else_alone()
     {
-        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch);
+        var facts = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1");
         var request = new RunnerHeartbeatRequest(Kind: "loop", Line: "working");
 
         var stamped = facts.Stamp(request);
@@ -157,6 +157,7 @@ public sealed class MachineFactsTests
             Container = true,
             Username = "runner",
             ProcessStartedAt = DateTimeOffset.UnixEpoch,
+            Image = "ghcr.io/o/r:1",
         };
         Assert.Equal(expected, stamped);
     }
@@ -167,5 +168,36 @@ public sealed class MachineFactsTests
         var request = new RunnerHeartbeatRequest(Kind: "loop", Line: "working");
 
         Assert.Equal(request, MachineFacts.None.Stamp(request));
+    }
+
+    // ---- ImageFrom --------------------------------------------------------
+
+    [Fact]
+    public void ImageFrom_reads_HATCH_IMAGE_trimmed()
+    {
+        Assert.Equal("ghcr.io/o/r:1", MachineFacts.ImageFrom(name => name == "HATCH_IMAGE" ? "  ghcr.io/o/r:1  " : null));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ImageFrom_is_null_for_unset_blank_or_whitespace(string? value)
+    {
+        Assert.Null(MachineFacts.ImageFrom(name => name == "HATCH_IMAGE" ? value : null));
+    }
+
+    [Fact]
+    public void ImageFrom_asks_only_HATCH_IMAGE()
+    {
+        var asked = new List<string>();
+
+        MachineFacts.ImageFrom(name =>
+        {
+            asked.Add(name);
+            return null;
+        });
+
+        Assert.Equal(["HATCH_IMAGE"], asked);
     }
 }

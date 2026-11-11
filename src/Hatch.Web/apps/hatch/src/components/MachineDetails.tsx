@@ -27,6 +27,7 @@ export function MachineDetails({ session, runner, now }: { session: RunnerSessio
           {session.agentVersion != null ? ` ${session.agentVersion}` : ''}
         </Text>
       )}
+      {session.image != null && <Text tone="muted">Image {session.image}</Text>}
       {build && <Text tone="muted">CLI build {build}</Text>}
       {session.username != null && <Text tone="muted">Username {session.username}</Text>}
       {session.ip != null && (

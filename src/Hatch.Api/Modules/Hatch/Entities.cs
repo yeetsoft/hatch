@@ -3200,6 +3200,9 @@ public class EfHatchRunner
     public const int MaxAgentLength = 16;
     public const int MaxHostLength = 64;
 
+    /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
+    public const int MaxImageLength = 256;
+
     /// <summary>Room for a full git sha, or "dev" for an unstamped build.</summary>
     public const int MaxRevisionLength = 40;
 
@@ -3415,6 +3418,16 @@ public class EfHatchRunner
     /// <see cref="Tags"/>. Null is never said, and reads as none.
     /// </summary>
     public string? Has { get; set; }
+
+    /// <summary>
+    /// The image this runner was started from, baked in by <c>hatch image
+    /// build</c> - a fact about the running process, written whenever a
+    /// heartbeat names one and cleared only by a fresh <c>loop</c> beat that
+    /// names none (a restart onto the generic image). Null for a runner from
+    /// that image, or an older one that never said.
+    /// </summary>
+    [MaxLength(MaxImageLength)]
+    public string? Image { get; set; }
 
     /// <summary>
     /// Whether this runner refuses dangerous work. Seeded once by a heartbeat
@@ -3721,6 +3734,10 @@ public class EfHatchRunnerSession
 
     /// <summary>The dependencies this session says it has, newline-joined in the order given, as <see cref="EfHatchRunner.Has"/>.</summary>
     public string? Has { get; set; }
+
+    /// <summary>The image this session was started from, as <see cref="EfHatchRunner.Image"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxImageLength)]
+    public string? Image { get; set; }
 
     /// <summary>
     /// The project keys this session's last heartbeat was answered with as the

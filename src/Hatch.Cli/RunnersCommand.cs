@@ -124,6 +124,7 @@ public sealed class RunnersCommand(Cli cli)
     {
         var parts = new List<string>();
         if (row.Host is { Length: > 0 } host) parts.Add($"on {host}");
+        if (row.Image is { Length: > 0 } image) parts.Add($"image {image}");
         if (row.Runs is { } runs) parts.Add($"{runs} runs");
         if (row.Spent is { } spent) parts.Add(string.Create(CultureInfo.InvariantCulture, $"${spent:F2}"));
         if (row.TokensUsed is { } used)

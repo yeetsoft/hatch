@@ -338,11 +338,14 @@ try
         // says why once; one an operator declared with HATCH_HAS does not.
         var detection = await Detect.RunAsync(
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
-        foreach (var id in detection.Missing(settings.Has))
+        var baked = Detect.ReadDeclared(ImageCommand.BakedPath, out var bakedProblem);
+        if (bakedProblem is not null) say.Complain($"hatch: {bakedProblem}");
+        var declaredHas = settings.Has.Concat(baked).ToArray();
+        foreach (var id in detection.Missing(declaredHas))
             say.Complain($"hatch: {id} not detected - {detection.Results.First(result => result.Id == id).Why}");
         foreach (var note in detection.FallbackNotes())
             say.Complain($"hatch: {note}");
-        var has = detection.Merge(settings.Has);
+        var has = detection.Merge(declaredHas);
         board.Has = has;
 
         // Once per process, same as detection above - a supervisor restart
@@ -398,10 +401,16 @@ try
     // board folds what this machine cannot run. The other fourteen commands have
     // no use for it.
     Detection? queueDetection = null;
+    IReadOnlyList<string> queueDeclaredHas = settings.Has;
     if (command == "queue")
+    {
         queueDetection = await Detect.RunAsync(
             Environment.GetEnvironmentVariable("PATH"), Detect.CurrentOs(), Detect.Lookup(environment), Detect.RealProbe, cancelling.Token);
-    board.Has = queueDetection?.Merge(settings.Has) ?? [];
+        var baked = Detect.ReadDeclared(ImageCommand.BakedPath, out var bakedProblem);
+        if (bakedProblem is not null) say.Complain($"hatch: {bakedProblem}");
+        queueDeclaredHas = settings.Has.Concat(baked).ToArray();
+    }
+    board.Has = queueDetection?.Merge(queueDeclaredHas) ?? [];
 
     // `queue` and `next` read what a pass would, so they declare what this
     // runner can spawn the way `work` does - without a Runtime, since they spawn
@@ -419,7 +428,7 @@ try
     {
         Checkouts = checkouts,
         Clones = settings.Workspace is not null,
-        Has = queueDetection?.Merge(settings.Has) ?? [],
+        Has = queueDetection?.Merge(queueDeclaredHas) ?? [],
     };
 
     return command switch

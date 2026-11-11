@@ -114,7 +114,10 @@ public sealed class ImageCommandTests : IDisposable
         "RUN mkdir -p /etc/hatch && cat > /etc/hatch/dependencies.json <<'DEPENDENCIES_JSON_END'\n" +
         json + "\n" +
         "DEPENDENCIES_JSON_END\n" +
-        "LABEL hatch.dependencies=\"" + json.Replace("\"", "\\\"") + "\"\n";
+        "LABEL hatch.dependencies=\"" + json.Replace("\"", "\\\"") + "\"\n" +
+        "ARG HATCH_IMAGE\n" +
+        "ENV HATCH_IMAGE=${HATCH_IMAGE}\n" +
+        "LABEL hatch.image=\"${HATCH_IMAGE}\"\n";
 
     private string Fixture() =>
         """{"dependencies":["playwright-browsers","make",{"id":"dotnet","version":"10"}]}""";
@@ -312,7 +315,7 @@ public sealed class ImageCommandTests : IDisposable
 
         var build = Assert.Single(Builds);
         Assert.Equal("docker", build.Tool);
-        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", "reg/o/r:t", "."], build.Args);
+        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", "reg/o/r:t", "--build-arg", "HATCH_IMAGE=reg/o/r:t", "."], build.Args);
         Assert.Equal(printed, build.Stdin);
         Assert.Equal(_root, build.WorkingDirectory);
         Assert.Contains("hatch: built reg/o/r:t for linux/arm64", string.Concat(again.Said));
@@ -536,7 +539,7 @@ public sealed class ImageCommandTests : IDisposable
 
         Assert.All(_calls, c => Assert.Equal("podman", c.Tool));
         Assert.DoesNotContain(_calls, c => c.Args[0] == "buildx");
-        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", "i", "."], Builds.Single().Args);
+        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", "i", "--build-arg", "HATCH_IMAGE=i:latest", "."], Builds.Single().Args);
     }
 
     [Fact]
@@ -600,19 +603,20 @@ public sealed class ImageCommandTests : IDisposable
     }
 
     [Fact]
-    public void A_name_shaped_rejection_tags_and_pushes_the_flat_name_once_and_says_which_reached()
+    public void A_name_shaped_rejection_rebuilds_and_pushes_the_flat_name_once_and_says_which_reached()
     {
         Declare(Fixture());
 
         Assert.Equal(0, Building(Refusing(Nested, "invalid reference format")).Run(PushArgs(Nested)));
 
         Assert.Equal(["push", Nested], Pushes[0].Args);
-        Assert.Equal(["tag", Nested, Flat], Assert.Single(Tags).Args);
+        Assert.Equal(2, Builds.Count);
+        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", Flat, "--build-arg", $"HATCH_IMAGE={Flat}:latest", "."], Builds[1].Args);
         Assert.Equal(["push", Flat], Pushes[1].Args);
         Assert.Equal(2, Pushes.Count);
-        Assert.Equal(["build", "push", "tag", "push"], _calls.Select(c => c.Args[0]));
+        Assert.Equal(["build", "push", "build", "push"], _calls.Select(c => c.Args[0]));
         Assert.Contains($"hatch: pushed {Flat} (the registry rejected {Nested})", Said);
-        Assert.Single(Builds);
+        Assert.Empty(Tags);
     }
 
     [Fact]
@@ -628,19 +632,19 @@ public sealed class ImageCommandTests : IDisposable
     }
 
     [Fact]
-    public void A_failed_tag_is_its_own_refusal_and_nothing_is_pushed_after_it()
+    public void A_failed_rebuild_is_its_own_refusal_and_nothing_is_pushed_after_it()
     {
         Declare(Fixture());
 
         Assert.Equal(1, Building(call => call.Args[0] switch
             {
                 "push" => (1, "invalid reference format"),
-                "tag" => (1, "no such image"),
+                "build" when call.Args.Contains(Flat) => (1, "no such image"),
                 _ => (0, ""),
             }).Run(PushArgs(Nested)));
 
         Assert.Single(Pushes);
-        Assert.Equal("hatch: docker tag failed", Complained);
+        Assert.Equal("hatch: docker build failed", Complained);
     }
 
     [Theory]
@@ -725,7 +729,7 @@ public sealed class ImageCommandTests : IDisposable
         Assert.Equal(0, Building().Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
 
         var step = Assert.Single(Buildxes);
-        Assert.Equal(["buildx", "build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "-t", Nested, "--push", "."], step.Args);
+        Assert.Equal(["buildx", "build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "-t", Nested, "--build-arg", $"HATCH_IMAGE={Nested}:latest", "--push", "."], step.Args);
         Assert.Equal(printed, step.Stdin);
         Assert.Equal(_root, step.WorkingDirectory);
         Assert.Empty(Builds);
@@ -769,7 +773,7 @@ public sealed class ImageCommandTests : IDisposable
         Assert.Equal(
             [
                 ["manifest", "rm", Nested],
-                ["build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "--manifest", Nested, "."],
+                ["build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "--manifest", Nested, "--build-arg", $"HATCH_IMAGE={Nested}:latest", "."],
                 ["manifest", "push", "--all", Nested, $"docker://{Nested}"],
             ],
             _calls.Select(c => c.Args.ToArray()));
@@ -810,6 +814,14 @@ public sealed class ImageCommandTests : IDisposable
 
         Assert.EndsWith("name one with --platform, or add --push to build and push it in one step", _say.Complained.Last());
     }
+
+    [Theory]
+    [InlineData("i", "i:latest")]
+    [InlineData("reg/o/r:t", "reg/o/r:t")]
+    [InlineData("reg.example:5000/team/proj", "reg.example:5000/team/proj:latest")]
+    [InlineData("reg.example:5000/team/proj:v1", "reg.example:5000/team/proj:v1")]
+    public void Tagged_appends_latest_only_where_the_last_segment_names_no_tag(string name, string expected) =>
+        Assert.Equal(expected, ImageCommand.Tagged(name));
 
     [Theory]
     [InlineData("ghcr.io/o/r/hatch-runner", "ghcr.io/o/r-hatch-runner")]

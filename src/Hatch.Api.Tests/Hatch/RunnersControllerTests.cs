@@ -405,6 +405,75 @@ public class RunnersControllerTests
         Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
     }
 
+    // ---- Image ----
+
+    [Fact]
+    public async Task AFirstHeartbeatNamingAnImage_StoresAndProjectsIt()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", (await h.OneAsync()).Image);
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", (await h.RowAsync()).Image);
+    }
+
+    [Fact]
+    public async Task ABeatWithNoImage_LeavesAPreviouslyReportedRowUntouched()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", (await h.OneAsync()).Image);
+    }
+
+    [Fact]
+    public async Task ARowThatNeverReportedAnImage_ReadsItNull()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+
+        Assert.Null((await h.OneAsync()).Image);
+    }
+
+    [Fact]
+    public async Task AFreshLoopBeatNamingNoImage_ClearsAPreviouslyReportedOne()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        // A restart onto the generic image: the new process never heard of
+        // the old one's reference, and the fresh beat must not keep it.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Fresh: true));
+
+        Assert.Null((await h.OneAsync()).Image);
+    }
+
+    [Fact]
+    public async Task ALaterLoopBeatWithNoFreshAndNoImage_LeavesThePriorOneAlone()
+    {
+        var h = await NewAsync();
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop", Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        // A supervisor restart carries night state forward and is never
+        // marked Fresh - it must not look like a start onto the generic image.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", (await h.OneAsync()).Image);
+    }
+
+    [Fact]
+    public async Task Image_PastItsLimit_IsTruncatedNotRefused()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Image: new string('i', EfHatchRunner.MaxImageLength + 20)));
+
+        Assert.Equal(new string('i', EfHatchRunner.MaxImageLength), (await h.OneAsync()).Image);
+    }
+
     // ---- Tags ----
 
     [Fact]
@@ -4624,6 +4693,62 @@ public class RunnersControllerTests
         var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
         Assert.Equal("sonnet", row.Models);
         Assert.Equal("node", row.Has);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_NamingAnImage_StoresAndProjectsIt()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", row.Image);
+
+        var session = Assert.Single((await h.OneAsync()).Sessions);
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", session.Image);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AFreshBeatOnANewSessionWithNoImage_StoresNone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        // A fresh session - a restart onto the generic image - carries nothing
+        // forward from any prior incarnation: there is no row yet for it to
+        // read one off.
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Null(row.Image);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_ALaterBeatWithNoImage_LeavesThePriorOneAlone()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Image: "ghcr.io/o/r/hatch-runner:abc123"));
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: Runner));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal("ghcr.io/o/r/hatch-runner:abc123", row.Image);
+    }
+
+    [SkippableFact]
+    public async Task SessionHeartbeat_AnImageLongerThanTheColumn_IsTruncated()
+    {
+        var connectionString = await ConnectAsync();
+        var h = await NewAsync(program: true, connectionString: connectionString);
+
+        await h.SessionBeatAsync(new RunnerHeartbeatRequest(
+            Kind: "loop", Fresh: true, Where: Runner, Image: new string('i', EfHatchRunner.MaxImageLength + 20)));
+
+        var row = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
+        Assert.Equal(EfHatchRunner.MaxImageLength, row.Image!.Length);
     }
 
     [SkippableFact]

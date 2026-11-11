@@ -1331,6 +1331,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<string>("Image")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1545,6 +1549,10 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Host")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Image")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("Ip")
                         .HasMaxLength(64)

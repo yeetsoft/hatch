@@ -189,6 +189,11 @@ The text, in order:
 4. The resolved set, in the declaration's own shape (an id string, or an object
    with `id` and `version`), written to `/etc/hatch/dependencies.json` and
    carried as the image label `hatch.dependencies`.
+5. `ARG HATCH_IMAGE`, `ENV HATCH_IMAGE=${HATCH_IMAGE}` and `LABEL
+   hatch.image="${HATCH_IMAGE}"` - a build arg rather than a literal, since the
+   name is not known until [`build`](#build) resolves one, and empty from a
+   plain `docker build` of this text, which is how a runner tells a built
+   image from the generic one ([the runner](the-runner#image)).
 
 The same declaration renders the same bytes, however its entries are ordered.
 
@@ -210,10 +215,13 @@ It touches no ticket and no column, so it writes nothing to the board.
 Builds and tags the image the Dockerfile above describes. It takes `--base` and
 refuses exactly as `dockerfile` does, because it renders the same text in the
 same process, and gives the tool exactly those bytes on standard input:
-`build -f - --platform <platforms> -t <image> .`, run from the repository root,
-so `.hatch/runner.Dockerfile`'s own `COPY` lines resolve against the checkout as
-they would for `docker build` by hand. The tool's own output is shown as it
-comes. Nothing is pushed unless `--push` says so.
+`build -f - --platform <platforms> -t <image> --build-arg HATCH_IMAGE=<image>
+.`, run from the repository root, so `.hatch/runner.Dockerfile`'s own `COPY`
+lines resolve against the checkout as they would for `docker build` by hand.
+The tool's own output is shown as it comes. Nothing is pushed unless `--push`
+says so. `HATCH_IMAGE` carries `:latest` appended where `<image>`'s own last
+path segment names no tag - a registry's port is not one - since that is the
+tag a plain `docker build -t <image>` leaves it under.
 
 - It runs `docker`, or `podman` where there is no `docker`. With neither on
   `PATH` it says so in one sentence naming both.
@@ -246,10 +254,13 @@ comes. Nothing is pushed unless `--push` says so.
   `forbidden`, `no such host`, a timeout, a refused connection) never retries,
   even when the same output also names the repository, and neither does any
   failure that is neither; the exit code is 1 after the tool's own output and a
-  line naming the step that failed, such as `hatch: docker push failed`. A flat
-  name that is rejected too stops there: two attempts at most. A `--image` that
-  does not end in `/hatch-runner` has no flat name, and its rejection is
-  reported as it came.
+  line naming the step that failed, such as `hatch: docker push failed`. The
+  retry rebuilds under the flat name rather than tagging the image already
+  built - the recipe layers are cached, so it costs little - which is how the
+  baked `HATCH_IMAGE` ends up carrying the name actually pushed rather than
+  the one the registry rejected. A flat name that is rejected too stops there:
+  two attempts at most. A `--image` that does not end in `/hatch-runner` has no
+  flat name, and its rejection is reported as it came.
 
 A list of more than one platform cannot be loaded into a classic local image
 store (Docker's containerd store can). Where the tool refuses one, it says so
@@ -413,8 +424,8 @@ no live session - a gone runner included - prints no line beneath it.
 
 `--json` carries more than this plain-text line shows: the full set the
 endpoint answers under each session - `os`, `arch`, `agentVersion`,
-`container`, `username`, `processStartedAt`, and `ip` (the server's own
-reading of the connection, never sent by the CLI) - where the table above
+`container`, `username`, `processStartedAt`, `image`, and `ip` (the server's
+own reading of the connection, never sent by the CLI) - where the table above
 prints only `os`.
 
 A runner that has reported its own process adds `  on HOST`, `N runs` and
@@ -423,6 +434,11 @@ tokens, before any projects, each only where it has said so. The tokens read
 `2.4M tokens (180k last hour)`: the total, and the last hour in brackets only
 where the runner reported one. A runner that reported only an hour prints no
 tokens at all.
+
+A runner from an image `hatch image build` built adds `  image <ref>` right
+after `on HOST` - the reference baked into the image at build time
+([the runner](the-runner#image)). One from the generic image, or outside one,
+prints nothing extra.
 
 A runner that reports dependencies closes that part of its line with
 `  has dotnet 10.0.100, node 22.11.0, pwsh`, comma-separated, before any

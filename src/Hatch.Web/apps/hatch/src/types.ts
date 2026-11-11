@@ -2523,6 +2523,9 @@ export interface Runner {
   spent: number | null;
   /** The short name of the machine the runner is on. Mirrors RunnerDto.Host. */
   host: string | null;
+  /** The image this runner was started from, baked in by `hatch image build` -
+      null for one from the generic image or outside one. Mirrors RunnerDto.Image. */
+  image?: string | null;
   /** The standing order this loop has not yet read back, or null. Mirrors RunnerOrderDto. */
   order: { kind: 'work' | 'pass'; key: string | null; by: string | null; at: string | null } | null;
   /** The sha this runner's own build was published from, `'dev'` for an
@@ -2618,6 +2621,8 @@ export interface RunnerSession {
   clones?: boolean | null;
   mine?: boolean | null;
   standing?: boolean | null;
+  /** The image this session was started from, as `Runner.image`. Mirrors RunnerSessionDto.Image. */
+  image?: string | null;
 }
 
 /** Sent to `PATCH /runners/{name}/sessions/{id}`: the one session's state. Mirrors RunnerSessionPatchRequest. */

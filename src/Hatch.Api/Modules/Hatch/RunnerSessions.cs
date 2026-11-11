@@ -189,7 +189,8 @@ public sealed class RunnerSessions(Runners runners)
             Container: session.Container,
             Username: session.Username,
             ProcessStartedAt: session.ProcessStartedAt,
-            Ip: session.Ip);
+            Ip: session.Ip,
+            Image: session.Image);
     }
 
     /// <summary>

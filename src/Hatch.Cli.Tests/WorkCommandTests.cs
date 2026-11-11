@@ -64,7 +64,7 @@ public sealed class WorkCommandTests
     [Fact]
     public async Task The_one_off_heartbeat_carries_the_machine()
     {
-        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch);
+        var machine = new MachineFacts("linux", "x64", "2.1.5", true, "runner", DateTimeOffset.UnixEpoch, "ghcr.io/o/r:1");
         using var h = new Harness(machine: machine);
         h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
@@ -81,6 +81,7 @@ public sealed class WorkCommandTests
         Assert.Equal(machine.Container, beat.Container);
         Assert.Equal(machine.Username, beat.Username);
         Assert.Equal(machine.ProcessStartedAt, beat.ProcessStartedAt);
+        Assert.Equal(machine.Image, beat.Image);
     }
 
     [Theory]

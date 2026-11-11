@@ -164,7 +164,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
             runner.Has?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
             RetiredAt: runner.RetiredAt,
-            SupersededBy: runner.RetiredBy);
+            SupersededBy: runner.RetiredBy,
+            Image: runner.Image);
     }
 
     /// <summary>
@@ -254,6 +255,7 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         Tags = beat.Tags,
         Models = beat.Models,
         Has = beat.Has,
+        Image = beat.Image,
         RefusesDangerous = beat.RefusesDangerous,
         Projects = beat.Projects,
         ExhaustedUntil = beat.ExhaustedUntil,
