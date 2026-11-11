@@ -24,3 +24,8 @@
 # other end of the same fix, so that the bytes never arrive wrong rather than
 # only being corrected on the way out.
 *.ps1   text eol=lf
+
+# Install recipes are embedded in Hatch.Contracts and rendered byte for byte into
+# a runner image's Dockerfile; the same set must render the same bytes on every
+# machine. A CRLF checkout would embed \r in each line and change them.
+src/Hatch.Contracts/recipes/*  text eol=lf
