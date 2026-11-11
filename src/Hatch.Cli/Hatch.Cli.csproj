@@ -59,6 +59,17 @@
     <ProjectReference Include="../Hatch.Contracts/Hatch.Contracts.csproj" />
   </ItemGroup>
 
+  <!--
+    The workflow `hatch image workflow` prints, handed out whole rather than
+    generated, so the text in the binary is the text a reviewer read. Embedded
+    for the same reason as Hatch.Contracts' runner-names.txt: a published
+    `hatch` is trimmed and single-file, so it carries no sibling files to read
+    this from disk.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="hatch-runner-image.yml" LogicalName="hatch-runner-image.yml" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Hatch.Contracts" />
   </ItemGroup>

@@ -293,7 +293,7 @@ public sealed class ImageCommandTests : IDisposable
     {
         Assert.Equal(1, Command().Run(["push"]));
 
-        Assert.Contains("usage: hatch image <dockerfile|build>", Complained);
+        Assert.Contains("usage: hatch image <dockerfile|build|workflow>", Complained);
     }
 
     // ---- build ----
@@ -856,6 +856,119 @@ public sealed class ImageCommandTests : IDisposable
     {
         Assert.Contains(ImageCommand.ImageUsage, line => line.Contains("[--push]"));
         Assert.Contains(ImageCommand.ImageUsage, line => line.Contains("--push (build)"));
+    }
+
+    [Fact]
+    public void Usage_names_workflow()
+    {
+        Assert.Contains(ImageCommand.ImageUsage, line => line.Contains("hatch image workflow"));
+    }
+
+    [Fact]
+    public void Workflow_prints_the_exact_text_hatch_image_dockerfile_builds_then_pushes_in_its_own_ci()
+    {
+        const string expected = """
+            name: Build and push the runner image
+
+            on:
+              push:
+                paths:
+                  - '.hatch/**'
+                  - '.github/workflows/hatch-runner-image.yml'
+              workflow_dispatch: {}
+              schedule:
+                - cron: '17 3 * * 0'
+
+            permissions:
+              contents: read
+              packages: write
+
+            jobs:
+              build-and-push:
+                if: github.event_name != 'push' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+                runs-on: ubuntu-latest
+                timeout-minutes: 45
+                steps:
+                  - name: Check the base image is configured
+                    run: |
+                      if [ -z "${{ vars.HATCH_RUNNER_BASE_IMAGE }}" ]; then
+                        echo "::error::HATCH_RUNNER_BASE_IMAGE is not set. Set it to the hatch-runner base image this project builds on, as a repository or organization variable (Settings > Secrets and variables > Actions > Variables)." >&2
+                        exit 1
+                      fi
+
+                  - name: Checkout repository
+                    uses: actions/checkout@v7
+
+                  - name: Set up QEMU
+                    uses: docker/setup-qemu-action@v4
+
+                  - name: Set up Docker Buildx
+                    uses: docker/setup-buildx-action@v4
+
+                  - name: Log in to the Container registry
+                    uses: docker/login-action@v4
+                    with:
+                      registry: ghcr.io
+                      username: ${{ github.actor }}
+                      password: ${{ secrets.GITHUB_TOKEN }}
+
+                  - name: Pull the base image
+                    run: docker pull "${{ vars.HATCH_RUNNER_BASE_IMAGE }}"
+
+                  - name: Render the Dockerfile
+                    run: |
+                      docker run --rm \
+                        -v "${{ github.workspace }}:/checkout" \
+                        --entrypoint hatch \
+                        "${{ vars.HATCH_RUNNER_BASE_IMAGE }}" \
+                        image dockerfile --base "${{ vars.HATCH_RUNNER_BASE_IMAGE }}" \
+                        > Dockerfile.rendered
+
+                  - name: Resolve the image name
+                    id: image
+                    run: |
+                      name="${{ vars.HATCH_RUNNER_IMAGE_NAME }}"
+                      if [ -z "$name" ]; then
+                        name=$(echo "ghcr.io/${{ github.repository }}/hatch-runner" | tr '[:upper:]' '[:lower:]')
+                      fi
+                      echo "name=$name" >> "$GITHUB_OUTPUT"
+
+                  - name: Extract metadata (tags, labels) for Docker
+                    id: meta
+                    uses: docker/metadata-action@v6
+                    with:
+                      images: ${{ steps.image.outputs.name }}
+                      tags: |
+                        type=raw,value=latest
+                        type=raw,value=${{ github.sha }}
+
+                  - name: Build and push the image
+                    uses: docker/build-push-action@v7
+                    with:
+                      context: .
+                      file: ./Dockerfile.rendered
+                      platforms: linux/amd64,linux/arm64
+                      push: true
+                      tags: ${{ steps.meta.outputs.tags }}
+                      labels: ${{ steps.meta.outputs.labels }}
+
+            """;
+
+        Assert.Equal(0, Command().Run(["workflow"]));
+        // The embedded resource is pinned to LF (.gitattributes); this file's own
+        // line endings follow the checkout, so both sides are normalised before comparing.
+        Assert.Equal(expected.ReplaceLineEndings("\n"), Said.ReplaceLineEndings("\n"));
+
+        // Decisions D5/D6 on HA-1874: handed out, not injected - no owner, org or operator name in the text.
+        Assert.DoesNotContain("yeetsoft", Said, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hatch.yeetsoft", Said, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Workflow_refuses_an_argument()
+    {
+        Assert.Equal(1, Command().Run(["workflow", "x"]));
+        Assert.Contains("workflow", Complained);
     }
 
     [Fact]

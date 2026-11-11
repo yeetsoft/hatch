@@ -29,3 +29,8 @@
 # a runner image's Dockerfile; the same set must render the same bytes on every
 # machine. A CRLF checkout would embed \r in each line and change them.
 src/Hatch.Contracts/recipes/*  text eol=lf
+
+# The workflow hatch image workflow embeds and prints verbatim - the same
+# reason as the recipes above, and the text a reviewer read and ran through
+# actionlint is the text a CRLF checkout must not change.
+src/Hatch.Cli/hatch-runner-image.yml  text eol=lf
