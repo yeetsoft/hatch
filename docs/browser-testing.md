@@ -69,8 +69,9 @@ platform.
 From a fresh checkout, in order:
 
 1. **Build the bundle.** `npm run build -w apps/hatch` in `src/Hatch.Web`
-   (`make test-e2e` does it too). `Program.cs` maps `/apps/hatch` only when
-   `src/Hatch.Api/wwwroot/apps/hatch` exists; without it the page is a 404.
+   (`make test-e2e` does it too). `Program.cs` mounts the board at the root
+   only when `src/Hatch.Api/wwwroot/apps/hatch` exists; without it the page
+   is a 404.
 2. **Migrate.** `HATCH_MIGRATE=1 make run` migrates and exits. Compose's
    `migrate` service is the same thing. A serving process never migrates on
    its own.
@@ -80,12 +81,11 @@ From a fresh checkout, in order:
 4. **Render.**
 
    ```
-   pwsh src/Hatch.Api.Tests/bin/Debug/net10.0/playwright.ps1 screenshot <address>/apps/hatch/ <path>.png --device="iPhone 14 Pro" --wait-for-selector=".hatch-column"
+   pwsh src/Hatch.Api.Tests/bin/Debug/net10.0/playwright.ps1 screenshot <address>/ <path>.png --device="iPhone 14 Pro" --wait-for-selector=".hatch-column"
    ```
 
-`<address>` is the one step 3 printed. The page paths are `/apps/hatch/` for the
-board, `/apps/hatch/issues/<key>` for an issue and `/apps/hatch/plan` for the
-plan.
+`<address>` is the one step 3 printed. The page paths are `/` for the board,
+`/issues/<key>` for an issue and `/plan` for the plan.
 
 - **`--device="iPhone 14 Pro"` alone picks WebKit** — the descriptor carries its
   browser — at a 393×660 CSS-px viewport (the descriptor's viewport, not its

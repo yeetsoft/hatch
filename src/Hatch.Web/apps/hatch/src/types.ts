@@ -102,6 +102,12 @@ export interface Project {
   noCodeClosesBy: string | null;
   /** When noCodeCloses was last changed on this project, or null until the first write. */
   noCodeClosesAt: string | null;
+  /** Whether runners work a contribution's branch - resolving its conflicts and fixing its build - or leave it to a person. See ProjectDto.RunnersWorkContributions. */
+  runnersWorkContributions: boolean;
+  /** Who last changed runnersWorkContributions, or null until the first write. */
+  runnersWorkContributionsBy: string | null;
+  /** When runnersWorkContributions was last changed on this project, or null until the first write. */
+  runnersWorkContributionsAt: string | null;
   /** Whether a ticket's work must land in one pull request, or may land in several. See ProjectDto.OnePullRequestPolicy. */
   onePullRequestPolicy: OnePullRequestPolicy;
   /** Who last changed onePullRequestPolicy, or null until the first write. See ProjectDto.OnePullRequestPolicyBy. */
@@ -241,6 +247,23 @@ export interface AssigneeRequest {
   id: string | null;
 }
 
+/** The record that an issue came from outside, as stored - see ContributionDto.
+    Nullable fields are null where the pull request or the origin Hatch did not
+    say; a mirrored ancestor has no pull request of its own. */
+export interface ContributionRecord {
+  pullRequestUrl: string | null;
+  headBranch: string | null;
+  authorLogin: string;
+  authorAssociation: string;
+  filedAt: string;
+  filedBy: string;
+  originInstance?: string | null;
+  originProjectKey?: string | null;
+  originKey?: string | null;
+  envelopeVersion?: number | null;
+  envelopeNote?: string | null;
+}
+
 /** A card on the board. No description and no comments - see IssueCardDto. */
 export interface IssueCard {
   key: string;
@@ -260,6 +283,9 @@ export interface IssueCard {
   /** Who owns this card, or null for nobody - which is most of the board, and
       why the card draws no element at all rather than an empty chip. */
   assignee: Assignee | null;
+  /** The record that this card came from outside, or null. Optional as
+      `filedFromKey` is, so a response without it still reads as no record. */
+  contribution?: ContributionRecord | null;
   /** The lease a running dispatcher holds on this issue, or null. */
   claim: IssueClaim | null;
   /** *This one first.* The server serves an expedited card above every
@@ -715,6 +741,8 @@ export interface Issue {
   onePrEnforced: boolean;
   /** The issue whose session filed this one, or null. Provenance only. See IssueDto.FiledFromKey. */
   filedFromKey?: string | null;
+  /** The record that this issue came from outside, or null. See IssueDto.Contribution. */
+  contribution?: ContributionRecord | null;
   /** The issues filed from this one, in key order. See IssueDto.FiledKeys. */
   filedKeys?: string[];
   /** See IssueDto.ReleaseNote. */
@@ -877,6 +905,8 @@ export interface IssueEvent {
     `IssueEvent`, naming the issue it belongs to. Mirrors ActivityEventDto. */
 export interface ActivityEvent extends IssueEvent {
   issueKey: string;
+  /** On the activity report with `includeKeys`: the person's own key this was typed under. */
+  viaKey?: string | null;
 }
 
 /** A page of `ActivityEvent`, newest first. Mirrors ActivityPageDto. There is
@@ -1126,6 +1156,11 @@ export interface ProjectCheckApprovesMergeWriteRequest {
 /** A write to whether a no-code declaration closes the ticket. See ProjectNoCodeClosesWriteRequest (Hatch.Contracts). */
 export interface ProjectNoCodeClosesWriteRequest {
   noCodeCloses: boolean;
+}
+
+/** A write to whether runners work a contribution's branch. See ProjectRunnersWorkContributionsWriteRequest (Hatch.Contracts). */
+export interface ProjectRunnersWorkContributionsWriteRequest {
+  runnersWorkContributions: boolean;
 }
 
 /** A write to the one-pull-request policy. See ProjectOnePrPolicyWriteRequest (Hatch.Contracts). */
@@ -1945,6 +1980,22 @@ export interface NoCodeHeld {
   reason: string;
 }
 
+/** An issue in review whose branch is a contribution's, in a project that has
+    not asked runners to work those: it conflicts with the trunk or its build
+    failed, and a person acts on it. Mirrors ContributionHeldDto. */
+export interface ContributionHeld {
+  key: string;
+  title: string;
+  type: string;
+  pullRequestUrl: string;
+  /** What is wrong with the branch, in the judge's words. */
+  sentence: string;
+  /** The instance the contribution was mirrored from, or null where it was filed here. */
+  originInstance: string | null;
+  /** The issue's key on originInstance, or null where it was filed here. */
+  originKey: string | null;
+}
+
 /** An issue the board has deadlocked, with the judge's own sentence saying
     why. Mirrors DeadlockedDto. */
 export interface Deadlocked {
@@ -2064,6 +2115,10 @@ export interface Attention {
       Absent from a board that predates them. */
   landingHeld?: LandingHeld[];
   noCodeHeld?: NoCodeHeld[];
+  /** The review-column contributions runners will not work, with the sentence
+      saying what is wrong with each branch - a person's to act on. Absent from
+      a board that predates them. */
+  contributionsHeld?: ContributionHeld[];
   /** The issues the board has deadlocked, with the judge's own sentence saying
       why - a person's to fix, every time. Absent from a board that predates it. */
   deadlocked?: Deadlocked[];

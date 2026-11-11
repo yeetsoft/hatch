@@ -109,6 +109,35 @@ public class MergeWorkTests
     }
 
     [Fact]
+    public void AllNone_WithARecordedBranch_NamesItAndChangesNothingElse()
+    {
+        var bound = new[] { Repo(Remote) };
+        var merges = new[] { Merge(Remote, MergeVerdicts.None) };
+
+        var recorded = MergeWork.Judge(bound, merges, [], null, true, null, null, Now, recordedBranch: "ar-77-something");
+        var plain = MergeWork.Judge(bound, merges, [], null, true, null, null, Now);
+
+        Assert.Equal(WorkKinds.Hold, recorded.Kind);
+        Assert.Equal("its recorded branch `ar-77-something` is not on origin", recorded.Sentence);
+        Assert.Equal(WorkKinds.Hold, plain.Kind);
+        Assert.Equal("no branch on origin is named for it", plain.Sentence);
+    }
+
+    [Fact]
+    public void ARecordedBranch_ChangesNoOtherSentence()
+    {
+        var bound = new[] { Repo(Remote) };
+
+        foreach (var verdict in new[] { MergeVerdicts.Conflicted, MergeVerdicts.Ambiguous })
+        {
+            var merges = new[] { Merge(Remote, verdict) };
+            Assert.Equal(
+                MergeWork.Judge(bound, merges, [], null, true, null, null, Now).Sentence,
+                MergeWork.Judge(bound, merges, [], null, true, null, null, Now, recordedBranch: "ar-77-something").Sentence);
+        }
+    }
+
+    [Fact]
     public void CleanBuildFailed_PushbackRegardlessOfHoldsTrunk()
     {
         var bound = new[] { Repo(Remote) };

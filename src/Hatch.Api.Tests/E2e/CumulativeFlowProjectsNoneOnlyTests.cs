@@ -57,7 +57,7 @@ public class CumulativeFlowProjectsNoneOnlyTests
             var baseUrl = await harness.StartHostAsync(deadline);
             await deadline.BoundAsync("filing two issues", () => FileIssuesAsync(baseUrl));
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/reports/cumulative-flow");
+            await harness.OpenAsync(deadline, baseUrl, "/reports/cumulative-flow");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, Trigger);
 

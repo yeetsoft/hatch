@@ -55,6 +55,8 @@ The build check says how the checks on the branch's tip came out. It is about on
 | `pending` | something is still queued or running; nothing is fixed until every check has concluded, so one increment sees every failure at once |
 | `none` | no check ran on the sha; a push's checks take a moment to appear, so the runner keeps asking for ten minutes before it believes it |
 
+A contribution that came from outside carries the head branch its pull request was opened from, and that recorded branch stands in for a branch named for the issue's key: both checks, the runner's update of the branch and the merge train read the one branch on origin with that name, and a branch named for the key is not looked for. `none` then means the recorded branch is not on origin, and the review and merge columns say so by name, as "its recorded branch `<name>` is not on origin". An issue with no recorded branch is read exactly as before.
+
 An issue in review is dispatched on these two and nothing else. The board reads them in this order:
 
 - Any `conflicted` is conflict work, and it outranks the build. The merge commit gives the branch a new sha, so the build's answer is about to be stale, and a conflicting pull request often gets no CI run at all.

@@ -76,7 +76,7 @@ public class AttentionWaitingOnARunnerTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", context => StubAttention(context, waiting));
+            await harness.OpenAsync(deadline, baseUrl, "/", context => StubAttention(context, waiting));
             await harness.WaitForTopBarAsync(deadline);
 
             if (waiting)

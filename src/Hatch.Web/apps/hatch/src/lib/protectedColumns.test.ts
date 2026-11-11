@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bulkBlocked, columnBlocked, hasMergeColumn, moveBlocked } from './protectedColumns';
-import type { IssueCard, Project, Status } from '../types';
+import { bulkBlocked, columnBlocked, confirmMove, hasMergeColumn, moveBlocked } from './protectedColumns';
+import type { ContributionRecord, IssueCard, Project, Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
   id,
@@ -87,6 +87,9 @@ const project = (over: Partial<Project> = {}): Project => ({
   noCodeCloses: false,
   noCodeClosesBy: null,
   noCodeClosesAt: null,
+  runnersWorkContributions: false,
+  runnersWorkContributionsBy: null,
+  runnersWorkContributionsAt: null,
   onePullRequestPolicy: 'optional',
   onePullRequestPolicyBy: null,
   onePullRequestPolicyAt: null,
@@ -238,5 +241,51 @@ describe('hasMergeColumn', () => {
 
   it('is true when one column is both protected and merges the pull request', () => {
     expect(hasMergeColumn([PROTECTED_ONLY, PROTECTED_MERGING])).toBe(true);
+  });
+});
+
+describe('confirmMove', () => {
+  const record = (over: Partial<ContributionRecord> = {}): ContributionRecord => ({
+    pullRequestUrl: null,
+    headBranch: null,
+    authorLogin: 'someone',
+    authorAssociation: 'NONE',
+    filedAt: '2026-11-11T00:00:00Z',
+    filedBy: 'runner',
+    ...over,
+  });
+  const MERGING = status(4, 3, { mergesPullRequest: true });
+  const issue = { key: 'HA-9', statusId: 3, contribution: record() };
+
+  it('says nothing for an issue that is not a contribution', () => {
+    expect(confirmMove(MERGING, { ...issue, contribution: null })).toBeNull();
+    expect(confirmMove(MERGING, { key: 'HA-9', statusId: 3 })).toBeNull();
+  });
+
+  it('says nothing for a contribution moving into a column that does not merge', () => {
+    expect(confirmMove(PLAIN, { ...issue, statusId: 9 })).toBeNull();
+    expect(confirmMove(PROTECTED_ONLY, issue)).toBeNull();
+  });
+
+  it('says nothing for a drop that stays in its own column', () => {
+    expect(confirmMove(MERGING, { ...issue, statusId: MERGING.id })).toBeNull();
+  });
+
+  it('names the origin and the merge for a contribution into a merging column', () => {
+    const sentence = confirmMove(
+      MERGING,
+      { ...issue, contribution: record({ originKey: 'AER-12', originInstance: 'https://hatch.example.org' }) },
+    );
+    expect(sentence).toContain('HA-9');
+    expect(sentence).toContain('AER-12 · hatch.example.org');
+    expect(sentence).toMatch(/merges someone else's branch/);
+  });
+
+  it('names the author when the record has no origin', () => {
+    expect(confirmMove(MERGING, issue)).toContain('@someone');
+  });
+
+  it('leaves the refusal to moveBlocked', () => {
+    expect(moveBlocked(MERGING, { canApprove: false }, { pullRequestUrl: null })).toMatch(/pull request/i);
   });
 });

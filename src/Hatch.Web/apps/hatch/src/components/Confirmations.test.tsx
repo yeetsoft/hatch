@@ -23,7 +23,7 @@ const noop = () => undefined;
 // anchor-with-target shape.
 beforeEach(() =>
   vi.stubGlobal('window', {
-    location: { pathname: '/apps/hatch/' },
+    location: { pathname: '/' },
     matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
     navigator: {},
   }),
@@ -114,11 +114,11 @@ describe('Chicklet', () => {
   });
 
   it('carries the scope on the key link when one is active', () => {
-    expect(key(liAt('/?scope=AER,FIL', filing))).toContain('href="/apps/hatch/issues/AER-1?scope=AER,FIL"');
+    expect(key(liAt('/?scope=AER,FIL', filing))).toContain('href="/issues/AER-1?scope=AER,FIL"');
   });
 
   it('leaves the key link bare when the scope is empty, or there is no provider', () => {
-    expect(key(liAt('/', filing))).toContain('href="/apps/hatch/issues/AER-1"');
+    expect(key(liAt('/', filing))).toContain('href="/issues/AER-1"');
     expect(key(liAt('/', filing))).not.toContain('scope');
     expect(key(li(filing)[0])).not.toContain('scope');
   });
@@ -129,7 +129,7 @@ describe('Chicklet', () => {
 
   it('routes the key in place, with no new tab and no ↗, when standalone', () => {
     vi.stubGlobal('window', {
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
       matchMedia: () => ({ matches: true, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
     });
@@ -142,7 +142,7 @@ describe('Chicklet', () => {
 
   it('leaves the scope to the keeper on the routed key, standalone', () => {
     vi.stubGlobal('window', {
-      location: { pathname: '/apps/hatch/' },
+      location: { pathname: '/' },
       matchMedia: () => ({ matches: true, addEventListener: noop, removeEventListener: noop }),
       navigator: {},
     });

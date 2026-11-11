@@ -148,7 +148,7 @@ public partial class DescriptionDropTests
             var baseUrl = await harness.StartHostAsync(deadline);
             var key = await SeedIssueAsync(harness.Services);
 
-            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/issues/{key}");
+            await harness.OpenAsync(deadline, baseUrl, $"/issues/{key}");
             await harness.WaitForTopBarAsync(deadline);
 
             await harness.ClickAsync(deadline, $"{DescriptionSection} button:text-is(\"Edit\")");

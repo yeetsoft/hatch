@@ -956,7 +956,7 @@ public sealed class Dispatch(
             verdicts.TryGetValue(i.Id, out var v) ? v : [],
             builds.TryGetValue(i.Id, out var b) ? b : [],
             i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
-            pullRequestHeadSince: i.PullRequestHeadSince));
+            pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.Contribution?.HeadBranch));
         var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
         var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
 
@@ -1083,6 +1083,7 @@ public sealed class Dispatch(
             .Where(i => i.StatusId == merges.Id)
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .ToListAsync(ct);
         if (inTrain.Count == 0) return [];
 
@@ -1873,7 +1874,8 @@ public sealed class Dispatch(
             var judgement = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now,
-                Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince);
+                Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince,
+                recordedBranch: issue.Contribution?.HeadBranch);
 
             // A held or pushed-back row already explains itself, and so does
             // the head's own row - its kind word (merge/update/pending) says
@@ -2003,7 +2005,7 @@ public sealed class Dispatch(
         // whether or not a session is spawned for it. The one exemption is a
         // review self-move the review judge already folds - nothing is handed
         // to any runner on that row, and its own sentence says why.
-        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds) : (ReviewWork.Judgement?)null;
+        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.Contribution?.HeadBranch) : (ReviewWork.Judgement?)null;
         var contributionHeld = judged is { } reviewJudged
             && ReviewWork.HeldContribution(issue.Project!.RunnersWorkContributions, issue.Contribution?.PullRequestUrl, reviewJudged);
         var reviewIdle = judged is { Fold: not null } || contributionHeld;

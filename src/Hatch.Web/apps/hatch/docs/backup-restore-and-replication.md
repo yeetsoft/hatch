@@ -47,7 +47,7 @@ a long outage still ends with that many copies, not one. Nothing but Hatch's
 own exactly-named files in that folder is ever touched, so the folder can hold
 other things.
 
-The [Settings](/apps/hatch/settings) page's Backups card shows the last
+The [Settings](/settings) page's Backups card shows the last
 successful backup, the copies kept and a *Back up now* button, and the
 attention panel raises a hand on a backup that failed or has gone stale.
 

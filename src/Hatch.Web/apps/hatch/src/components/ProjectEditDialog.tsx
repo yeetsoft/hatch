@@ -14,6 +14,7 @@ import {
   putProjectBindsTracker,
   putProjectCheckApprovesMerge,
   putProjectNoCodeCloses,
+  putProjectRunnersWorkContributions,
   putProjectOnePrPolicy,
   putProjectStoriesOnEpics,
   putProjectLanding,
@@ -33,6 +34,7 @@ import {
   projectBindsTrackerDiff,
   projectCheckApprovesMergeDiff,
   projectNoCodeClosesDiff,
+  projectRunnersWorkContributionsDiff,
   projectOnePrPolicyDiff,
   projectStoriesOnEpicsDiff,
   projectDraftDiff,
@@ -195,6 +197,7 @@ export function ProjectEditDialog({
     const bindsTrackerDiff = projectBindsTrackerDiff(draft!);
     const checkApprovesMergeDiff = projectCheckApprovesMergeDiff(draft!);
     const noCodeClosesDiff = projectNoCodeClosesDiff(draft!);
+    const runnersWorkContributionsDiff = projectRunnersWorkContributionsDiff(draft!);
     const onePrPolicyDiff = projectOnePrPolicyDiff(draft!);
     const storiesOnEpicsDiff = projectStoriesOnEpicsDiff(draft!);
     const reflectionDiff = projectReflectionDiff(draft!);
@@ -208,6 +211,7 @@ export function ProjectEditDialog({
       bindsTrackerDiff === null &&
       checkApprovesMergeDiff === null &&
       noCodeClosesDiff === null &&
+      runnersWorkContributionsDiff === null &&
       onePrPolicyDiff === null &&
       storiesOnEpicsDiff === null &&
       reflectionDiff === null &&
@@ -230,6 +234,8 @@ export function ProjectEditDialog({
       if (bindsTrackerDiff !== null) await putProjectBindsTracker(project!.id, bindsTrackerDiff);
       if (checkApprovesMergeDiff !== null) await putProjectCheckApprovesMerge(project!.id, checkApprovesMergeDiff);
       if (noCodeClosesDiff !== null) await putProjectNoCodeCloses(project!.id, noCodeClosesDiff);
+      if (runnersWorkContributionsDiff !== null)
+        await putProjectRunnersWorkContributions(project!.id, runnersWorkContributionsDiff);
       if (storiesOnEpicsDiff !== null) await putProjectStoriesOnEpics(project!.id, storiesOnEpicsDiff);
       if (reflectionDiff !== null) await putProjectReflection(project!.id, reflectionDiff.cadenceDays);
       if (runnerTagsDiff !== null) await putProjectRunnerTags(project!.id, runnerTagsDiff);
@@ -604,6 +610,26 @@ export function ProjectEditDialog({
             <label>
               <input
                 type="checkbox"
+                checked={draft.runnersWorkContributions}
+                onChange={(e) => setDraft((d) => d && { ...d, runnersWorkContributions: e.target.checked })}
+              />
+              Runners work contributions
+            </label>
+            <p className="hatch-section-hint text-muted">
+              Lets runners resolve conflicts and fix failing builds on a contribution's branch. Off, a contribution in
+              review waits for a person.
+            </p>
+            {(project.runnersWorkContributionsBy || project.runnersWorkContributionsAt) && (
+              <p className="hatch-section-hint text-muted">
+                set by {project.runnersWorkContributionsBy} on{' '}
+                {project.runnersWorkContributionsAt
+                  ? new Date(project.runnersWorkContributionsAt).toLocaleDateString()
+                  : ''}
+              </p>
+            )}
+            <label>
+              <input
+                type="checkbox"
                 checked={draft.bindsTracker}
                 disabled={list.length === 0}
                 onChange={(e) => setDraft((d) => d && { ...d, bindsTracker: e.target.checked })}
@@ -657,6 +683,13 @@ export function ProjectEditDialog({
               {project.noCodeCloses ? 'A no-code declaration closes the ticket' : 'A no-code declaration does not close the ticket'}
               {project.noCodeClosesBy || project.noCodeClosesAt
                 ? `, set by ${project.noCodeClosesBy ?? 'unknown'} on ${project.noCodeClosesAt ? new Date(project.noCodeClosesAt).toLocaleDateString() : 'an unknown date'}`
+                : ''}
+              .
+            </p>
+            <p>
+              {project.runnersWorkContributions ? 'Runners work contributions' : 'Runners do not work contributions'}
+              {project.runnersWorkContributionsBy || project.runnersWorkContributionsAt
+                ? `, set by ${project.runnersWorkContributionsBy ?? 'unknown'} on ${project.runnersWorkContributionsAt ? new Date(project.runnersWorkContributionsAt).toLocaleDateString() : 'an unknown date'}`
                 : ''}
               .
             </p>
