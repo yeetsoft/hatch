@@ -274,6 +274,11 @@ public class AdminSurfaceTests
         // the work log; key-accepting and open to a person, like GetTimeline.
         "ReportsController.GetFlow",
 
+        // One actor's events over a range, counts and rows - key-accepting and
+        // open to a person, like GetFlow: it reads the trail, and a runner
+        // asks what it did as readily as a person asks what a runner did.
+        "ReportsController.GetActivityReport",
+
         // My own Claude headroom, off my own runners' heartbeats. Key-accepting
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,
@@ -899,6 +904,7 @@ public class AdminSurfaceTests
         "PullRequestStateController.PutPullRequestState",
         "QuestionsController.GetIssueQuestions",
         "QuestionsController.GetQuestions",
+        "ReportsController.GetActivityReport",
         "ReportsController.GetChangelogReport",
         "ReportsController.GetCumulativeFlow",
         "ReportsController.GetFlow",

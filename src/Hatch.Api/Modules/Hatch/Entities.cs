@@ -2096,6 +2096,7 @@ public class EfHatchVerdict
 [Table("IssueEvents")]
 [Index(nameof(IssueId), nameof(At))]
 [Index(nameof(At), nameof(Id))]
+[Index(nameof(Actor), nameof(At))]
 public class EfHatchIssueEvent
 {
     public const int MaxKindLength = 32;
