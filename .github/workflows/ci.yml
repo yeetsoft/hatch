@@ -413,12 +413,29 @@ jobs:
           done
           docker run --rm --entrypoint test "$image" -d /etc/hatch || { echo "/etc/hatch is missing" >&2; exit 1; }
 
+  # Builds the runner image plus every recipe Hatch ships
+  # (src/Hatch.Contracts/recipes) on amd64 and runs each recipe's .check in
+  # the result. A job of its own rather than steps in hatch-runner-image,
+  # because another story edits that job.
+  hatch-runner-recipes:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build the runner image
+        run: docker build -f containers/hatch-runner/Dockerfile -t hatch-runner:ci .
+
+      - name: Build every recipe on it and run every check
+        run: containers/hatch-runner/check-recipes.sh hatch-runner:ci
+
   # One job that depends on every other, so a merge gate has exactly one
   # check to name instead of one per job (and one per matrix leg).
   ci:
     name: CI
     if: always()
-    needs: [api, hatch-cli, web, e2e, hatch-runner-image]
+    needs: [api, hatch-cli, web, e2e, hatch-runner-image, hatch-runner-recipes]
     runs-on: ubuntu-latest
     steps:
       - name: Check that every job succeeded
