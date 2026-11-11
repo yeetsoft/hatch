@@ -201,7 +201,8 @@ RUN ok= ; for attempt in 1 2 3 4 5 6; do \
 COPY --from=build-env /App/out .
 # The four platform binaries RunnerController serves. Beside wwwroot/apps
 # rather than inside it: the static file handlers in Program.cs mount
-# wwwroot/apps at /apps and wwwroot/apps/hatch at the root, and nothing else,
+# wwwroot/apps at /apps, wwwroot/apps/hatch at the root and wwwroot/apps/auth
+# at /auth, and nothing else,
 # so this directory is reachable only through the controller - which is what
 # keeps the download behind the same [RequireAdmin] as the page that offers
 # it. See AERIE-935.

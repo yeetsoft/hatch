@@ -87,7 +87,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Start(null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=google_not_configured", redirect.Url);
+        Assert.Equal("/auth/?error=google_not_configured", redirect.Url);
         Assert.Empty(db.OAuthStates);
     }
 
@@ -128,7 +128,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/hatch/", redirect.Url);
+        Assert.Equal("/", redirect.Url);
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/hatch/", redirect.Url);
+        Assert.Equal("/", redirect.Url);
         var person = await db.People.SingleAsync();
         Assert.Equal(seeded.Id, person.Id);
         Assert.Equal(PersonRole.User, person.Role);
@@ -207,7 +207,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=email_unverified", redirect.Url);
+        Assert.Equal("/auth/?error=email_unverified", redirect.Url);
         Assert.Null((await db.ExternalIdentities.SingleAsync()).Subject);
         Assert.Empty(db.AuthGrants);
     }
@@ -346,7 +346,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=unknown_state", redirect.Url);
+        Assert.Equal("/auth/?error=unknown_state", redirect.Url);
         Assert.Single(db.AuthGrants);
     }
 
@@ -359,7 +359,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=expired_state", redirect.Url);
+        Assert.Equal("/auth/?error=expired_state", redirect.Url);
         Assert.Empty(db.OAuthStates);
         AssertNothingMinted(db, context);
     }
@@ -371,7 +371,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "nope", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=unknown_state", redirect.Url);
+        Assert.Equal("/auth/?error=unknown_state", redirect.Url);
         AssertNothingMinted(db, context);
     }
 
@@ -386,7 +386,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal($"/apps/auth/?error={code}", redirect.Url);
+        Assert.Equal($"/auth/?error={code}", redirect.Url);
         AssertNothingMinted(db, context);
     }
 
@@ -399,7 +399,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/hatch/", redirect.Url);
+        Assert.Equal("/", redirect.Url);
     }
 
     [Fact]
@@ -411,7 +411,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=email_unverified", redirect.Url);
+        Assert.Equal("/auth/?error=email_unverified", redirect.Url);
         AssertNothingMinted(db, context);
     }
 
@@ -424,7 +424,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=no_subject", redirect.Url);
+        Assert.Equal("/auth/?error=no_subject", redirect.Url);
         AssertNothingMinted(db, context);
     }
 
@@ -437,7 +437,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback("c", "s1", null, CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=invalid_grant", redirect.Url);
+        Assert.Equal("/auth/?error=invalid_grant", redirect.Url);
         AssertNothingMinted(db, context);
     }
 
@@ -448,7 +448,7 @@ public class GoogleSignInTests
 
         var redirect = Assert.IsType<RedirectResult>(await controller.Callback(null, null, "access_denied", CancellationToken.None));
 
-        Assert.Equal("/apps/auth/?error=access_denied", redirect.Url);
+        Assert.Equal("/auth/?error=access_denied", redirect.Url);
         Assert.Equal(0, google.Exchanges);
         AssertNothingMinted(db, context);
     }
@@ -462,7 +462,7 @@ public class GoogleSignInTests
             await controller.Callback(null, null, "<script>alert(1)</script>", CancellationToken.None));
 
         Assert.DoesNotContain("<", redirect.Url);
-        Assert.StartsWith("/apps/auth/?error=", redirect.Url);
+        Assert.StartsWith("/auth/?error=", redirect.Url);
     }
 
     [Fact]

@@ -2,7 +2,7 @@
 export const GOOGLE_START = '/api/auth/google/start';
 
 /** Where an approved person lands when nothing said where they were going. */
-export const DEFAULT_LANDING = '/apps/hatch/';
+export const DEFAULT_LANDING = '/';
 
 /**
  * A rooted, same-origin path, or null. The same rule as the server's

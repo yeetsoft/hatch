@@ -155,7 +155,7 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Auth__BootstrapInviteTtlMinutes` | `60` | TTL for the invite the migration mints into an empty install. |
 | `Auth__GrantRenewAfterDays` | `30` | Re-issues the cookie once it is this old. |
 | `Auth__LastSeenThrottleSeconds` | `60` | Floor on how often a grant's last-seen time is written. |
-| `Auth__SignInPath` | `/apps/auth/` | Where a document request with no grant is sent. |
+| `Auth__SignInPath` | `/auth/` | Where a document request with no grant is sent. |
 | `Auth__RedeemAttemptsPerWindow` | `10` | Redemption attempts one client IP may spend per window. |
 | `Auth__RedeemWindowSeconds` | `60` | The window `RedeemAttemptsPerWindow` is counted over. |
 | `Auth__LocalPerson__Name` | empty | Who local mode says is sitting at the machine when there is no wall to ask. `api` passes the shell's own `USERNAME`/`USER` here, so there is nothing to set. |
@@ -185,8 +185,8 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `DOTNET_ENVIRONMENT` | | Any value but `Development` writes the log as JSON lines instead of the human-formatted default. |
 
 `Auth__SignInPath` cannot usefully move: the wall exempts the literal
-`/apps/auth` (`Services/Auth/AuthGate.cs:164`), so pointing it elsewhere opens
-a redirect loop. The wall's own off/on/required states are covered on
+`/auth` and everything under it (`Services/Auth/AuthGate.cs:166`), so pointing
+it elsewhere opens a redirect loop. The wall's own off/on/required states are covered on
 [the wall, off, on and required](the-wall-off-on-and-required).
 
 A malformed `Hatch__AssetLinks` entry stops the API at start
