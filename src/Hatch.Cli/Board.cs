@@ -539,6 +539,13 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         await Client.GetAsync<List<IssueCardDto>>(
             $"/api/hatch/issues?pullRequestUrl={Uri.EscapeDataString(url)}", ct) ?? [];
 
+    /// <summary>The issue in <paramref name="projectId"/> whose contribution already names <paramref name="key"/> on <paramref name="instance"/> as its origin - at most one, but a list, as the route is.</summary>
+    public async Task<IReadOnlyList<IssueCardDto>> OriginRecordedAsync(
+        int projectId, string instance, string key, CancellationToken ct) =>
+        await Client.GetAsync<List<IssueCardDto>>(
+            $"/api/hatch/issues?projectId={projectId}&originInstance={Uri.EscapeDataString(instance)}"
+            + $"&originKey={Uri.EscapeDataString(key)}", ct) ?? [];
+
     /// <summary>
     /// Records that an issue came from outside - see <see cref="ContributionRequest"/>. A <c>409</c> is not a
     /// fault, the same as <see cref="MergedAsync"/> documents: somebody else holds this pull request, or this
