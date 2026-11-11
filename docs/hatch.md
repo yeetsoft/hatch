@@ -5049,8 +5049,11 @@ offered beside **Bars**: one cell a day, Monday-to-Sunday columns, shaded by
 the same chosen measure and the same `peak` as the bars, so the two never
 disagree; the URL carries `view=calendar`, read as `bars` at eight weeks or
 under or on anything else. The page writes nothing to the board, and does not
-yet draw the bracketed sessions — that is a story of its own. There is no CLI subcommand yet — a script reaches the read with `hatch
-api GET /api/hatch/reports/activity?...`. The route is open to a person or
+yet draw the bracketed sessions — that is a story of its own. `hatch activity
+[--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]`
+prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
+renders neither the series nor the sessions, which `hatch api GET
+/api/hatch/reports/activity?...` still reaches. The route is open to a person or
 to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
