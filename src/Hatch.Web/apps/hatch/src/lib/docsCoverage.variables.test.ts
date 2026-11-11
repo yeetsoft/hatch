@@ -15,7 +15,11 @@ function filesIn(dir: string, keep: (name: string) => boolean): string[] {
 }
 
 const cliSources = filesIn('src/Hatch.Cli/', (name) => name.endsWith('.cs'));
-const runnerSources = filesIn('containers/hatch-runner/', () => true);
+/** Every file the container itself runs, which is what reads its HATCH_*
+    environment. `check-recipes.sh` is a CI-only helper invoked with a base
+    image and platform as plain arguments, never run inside the container,
+    so it has no HATCH_* of its own to lose. */
+const runnerSources = filesIn('containers/hatch-runner/', (name) => name !== 'check-recipes.sh');
 
 /** Every file whose HATCH_* the variables page must name, `compose.yaml` first so
     it is the reader named when several read the same variable. */
