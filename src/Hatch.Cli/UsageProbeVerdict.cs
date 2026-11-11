@@ -32,13 +32,20 @@ public sealed record UsageProbeVerdict(string Version, decimal? CostUsd)
         }
     }
 
-    /// <summary>Hand it forward. Answers whether it got there.</summary>
+    /// <summary>
+    /// Hand it forward, creating the file's directory if nothing has yet - a
+    /// loop keyed from the environment never ran <c>hatch config</c>. Answers
+    /// whether it got there.
+    /// </summary>
     public bool Write(string? path)
     {
         if (path is not { Length: > 0 }) return false;
 
         try
         {
+            var directory = System.IO.Path.GetDirectoryName(path);
+            if (directory is { Length: > 0 }) Directory.CreateDirectory(directory);
+
             File.WriteAllText(path, JsonSerializer.Serialize(this, HatchJson.Default.UsageProbeVerdict));
             return true;
         }
