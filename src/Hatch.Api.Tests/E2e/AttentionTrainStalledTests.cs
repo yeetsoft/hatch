@@ -74,7 +74,11 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
 
             await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-rest .hatch-attention-word:text-is(\"Clear\")");
             await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
-            await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:text-is(\"Waiting on a runner\")");
+            // :has-text, not :text-is - this stub never fills WaitingOnARunner,
+            // so HA-2192 folds the section behind its own heading button, and
+            // the button's own text is the smallest exact match then, not the
+            // h3 around it.
+            await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:has-text(\"Waiting on a runner\")");
 
             if (stalled)
             {
