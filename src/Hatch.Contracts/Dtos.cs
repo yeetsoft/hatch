@@ -39,6 +39,9 @@ namespace Hatch.Contracts;
 /// <param name="NoCodeCloses">Whether a no-code declaration on an issue closes it outright - see <see cref="EfHatchProject.NoCodeCloses"/>. Off by default.</param>
 /// <param name="NoCodeClosesBy">Who last changed <paramref name="NoCodeCloses"/>, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesBy"/>.</param>
 /// <param name="NoCodeClosesAt">When <paramref name="NoCodeCloses"/> was last changed, or null until the first change - see <see cref="EfHatchProject.NoCodeClosesAt"/>.</param>
+/// <param name="RunnersWorkContributions">Whether a runner works a contribution's branch when it conflicts or its build fails - see <see cref="EfHatchProject.RunnersWorkContributions"/>. Off by default.</param>
+/// <param name="RunnersWorkContributionsBy">Who last changed <paramref name="RunnersWorkContributions"/>, or null until the first change - see <see cref="EfHatchProject.RunnersWorkContributionsBy"/>.</param>
+/// <param name="RunnersWorkContributionsAt">When <paramref name="RunnersWorkContributions"/> was last changed, or null until the first change - see <see cref="EfHatchProject.RunnersWorkContributionsAt"/>.</param>
 /// <param name="OnePullRequestPolicy">Whether the project's one-PR default binds its stories - see <see cref="OnePullRequestPolicies"/> and <see cref="EfHatchProject.OnePullRequestPolicy"/>. Optional by default.</param>
 /// <param name="OnePullRequestPolicyBy">Who last changed <paramref name="OnePullRequestPolicy"/>, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyBy"/>.</param>
 /// <param name="OnePullRequestPolicyAt">When <paramref name="OnePullRequestPolicy"/> was last changed, or null until the first change - see <see cref="EfHatchProject.OnePullRequestPolicyAt"/>.</param>
@@ -56,6 +59,7 @@ public record ProjectDto(
     bool StoriesOnEpics = false,
     bool CheckApprovesMerge = false, string? CheckApprovesMergeBy = null, DateTimeOffset? CheckApprovesMergeAt = null,
     bool NoCodeCloses = false, string? NoCodeClosesBy = null, DateTimeOffset? NoCodeClosesAt = null,
+    bool RunnersWorkContributions = false, string? RunnersWorkContributionsBy = null, DateTimeOffset? RunnersWorkContributionsAt = null,
     string OnePullRequestPolicy = OnePullRequestPolicies.Optional, string? OnePullRequestPolicyBy = null, DateTimeOffset? OnePullRequestPolicyAt = null)
 {
     // A default parameter value must be a compile-time constant, so the
@@ -144,6 +148,9 @@ public record ProjectCheckApprovesMergeWriteRequest(bool CheckApprovesMerge);
 
 /// <summary>A write to whether a no-code declaration closes an issue outright - see <see cref="EfHatchProject.NoCodeCloses"/>.</summary>
 public record ProjectNoCodeClosesWriteRequest(bool NoCodeCloses);
+
+/// <summary>A write to whether runners work a contribution's branch - see <see cref="EfHatchProject.RunnersWorkContributions"/>.</summary>
+public record ProjectRunnersWorkContributionsWriteRequest(bool RunnersWorkContributions);
 
 /// <summary>A write to whether a project's one-PR default binds its stories - see <see cref="EfHatchProject.OnePullRequestPolicy"/>.</summary>
 public record ProjectOnePrPolicyWriteRequest(string Policy);
@@ -1572,6 +1579,15 @@ public record ReviewDto(
 /// stalled issue on its own. Answered on every board shape. Defaults to 0 so an
 /// older client still reads.
 /// </param>
+/// <param name="ContributionsHeld">
+/// The review column's issues whose branch is a contribution's - its issue
+/// carries a pull request - that conflicts with the trunk or whose build failed,
+/// in a project whose <c>RunnersWorkContributions</c> is off: the loop leaves
+/// each for a person, and each is listed here with what is wrong, instead of
+/// under <paramref name="Conflicts"/> or <paramref name="FailingBuilds"/> or in
+/// <paramref name="ReviewsHeldBack"/>. Empty, not null, on a board with a review
+/// column; null on one without. Defaults to null so an older client still reads.
+/// </param>
 public record AttentionDto(
     IReadOnlyList<ReviewDto> Reviews,
     int InReviewWithoutPullRequest,
@@ -1591,7 +1607,8 @@ public record AttentionDto(
     IReadOnlyList<TrainStalledDto>? TrainStalled = null,
     IReadOnlyList<RunnerCapacityDto>? RunnerCapacity = null,
     IReadOnlyList<StalledIssueDto>? Stalled = null,
-    int StallResumeSeconds = 0);
+    int StallResumeSeconds = 0,
+    IReadOnlyList<ContributionHeldDto>? ContributionsHeld = null);
 
 /// <summary>
 /// What is wrong with the backups, in a sentence, and when one last worked -
@@ -1689,6 +1706,17 @@ public record LandingHeldDto(string Key, string Title, string Type, string Sente
 /// </summary>
 /// <param name="Reason">The reason the declaration gave.</param>
 public record NoCodeHeldDto(string Key, string Title, string Type, string Reason);
+
+/// <summary>
+/// One review-column issue whose branch is a contribution's, in a project that
+/// has not asked runners to work those: it conflicts with the trunk or its
+/// build failed, and a person acts on it.
+/// </summary>
+/// <param name="PullRequestUrl">The contribution's pull request.</param>
+/// <param name="Sentence">What is wrong with the branch, in the judge's words.</param>
+/// <param name="OriginInstance">The instance the contribution was mirrored from, or null where it was filed here.</param>
+/// <param name="OriginKey">The issue's key on <paramref name="OriginInstance"/>, or null where it was filed here.</param>
+public record ContributionHeldDto(string Key, string Title, string Type, string PullRequestUrl, string Sentence, string? OriginInstance, string? OriginKey);
 
 /// <summary>
 /// One issue the work queue marks deadlocked: waiting, directly or through a

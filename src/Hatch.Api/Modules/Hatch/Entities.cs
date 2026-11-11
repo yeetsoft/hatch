@@ -294,6 +294,30 @@ public class EfHatchProject
     public DateTimeOffset? NoCodeClosesAt { get; set; }
 
     /// <summary>
+    /// Whether a runner works a contribution's branch - an issue whose
+    /// <see cref="EfHatchContribution"/> carries a pull request - when it
+    /// conflicts with the trunk or its build fails. Off by default: such a
+    /// branch is somebody else's, and the dispatcher holds it for a person
+    /// instead. <see cref="ReviewWork.HeldContribution"/> reads it.
+    /// Written only by <see cref="ProjectsController.PutRunnersWorkContributions"/>.
+    /// </summary>
+    public bool RunnersWorkContributions { get; set; }
+
+    /// <summary>
+    /// Who last changed <see cref="RunnersWorkContributions"/>, as a name rather
+    /// than a foreign key - the same shape as <see cref="RepoSourcedBy"/>. Null
+    /// until the first change. Written only by <see cref="ProjectsController.PutRunnersWorkContributions"/>.
+    /// </summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public string? RunnersWorkContributionsBy { get; set; }
+
+    /// <summary>
+    /// When <see cref="RunnersWorkContributions"/> was last changed. Null until the
+    /// first change. Written only by <see cref="ProjectsController.PutRunnersWorkContributions"/>.
+    /// </summary>
+    public DateTimeOffset? RunnersWorkContributionsAt { get; set; }
+
+    /// <summary>
     /// Whether this project binds the tracker's own repository - the project a
     /// session standing in some other project's repository reads to find the
     /// tracker's. At most one project on a board has it on, which the filtered

@@ -59,6 +59,7 @@ it on the machine it is working on. It carries the filing shapes in full -
 | PUT | `/projects/{id}/stories-on-epics` | **person** | Sets `storiesOnEpics` |
 | PUT | `/projects/{id}/check-approves-merge` | **person** | Sets `checkApprovesMerge` |
 | PUT | `/projects/{id}/no-code-closes` | **person** | Sets `noCodeCloses` |
+| PUT | `/projects/{id}/runners-work-contributions` | **person** | Sets `runnersWorkContributions` |
 | PUT | `/projects/{id}/one-pr-policy` | **person** | Sets `onePullRequestPolicy`, returning overrides nothing has started under to inherit on a tightening |
 
 `ProjectCreateRequest` is `Key`, `Name`, an optional `Color` and `Icon`.
@@ -87,7 +88,11 @@ value a project already holds writes nothing. The check-approves-merge PUT body 
 `ProjectCheckApprovesMergeWriteRequest(CheckApprovesMerge)`, and resending the value a project
 already holds writes nothing, the audit fields included. The no-code-closes PUT body is
 `ProjectNoCodeClosesWriteRequest(NoCodeCloses)`, and resending the value a project
-already holds writes nothing, the audit fields included. The one-pr-policy PUT body is
+already holds writes nothing, the audit fields included. The runners-work-contributions PUT body is
+`ProjectRunnersWorkContributionsWriteRequest(RunnersWorkContributions)`; off, the dispatcher holds a
+contribution's conflicted or failed-build branch for a person instead of handing it to a runner, and
+resending the value a project already holds writes nothing, the audit fields included
+(`runnersWorkContributionsBy`, `runnersWorkContributionsAt` on the `ProjectDto`). The one-pr-policy PUT body is
 `ProjectOnePrPolicyWriteRequest(Policy)`, `optional` or `enforced` and nothing else (a `400` names
 the bad value), owner only, and resending the value a project already holds writes nothing, the audit
 fields included. Every other answer is a `ProjectDto`
@@ -111,7 +116,7 @@ caller is not an owner, and 400s naming the Playbooks page the same way if no
 playbook row covers it. The
 runner-tags PUT 403s if the caller is not an owner, and 400s on a tag that
 breaks its format rule or a list over the count limit. The binds-tracker PUT 403s if the caller is not
-an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`.
+an owner, and 400s if the project binds no repository.  The stories-on-epics PUT 403s if the caller is not an owner.  The check-approves-merge PUT 403s if the caller is not an owner.  The no-code-closes PUT 403s if the caller is not an owner. The runners-work-contributions PUT 403s if the caller is not an owner. The one-pr-policy PUT 403s if the caller is not an owner, and 400s on anything but `optional` or `enforced`.
 
 ## Columns
 
@@ -1255,6 +1260,12 @@ failing builds, how many sit in review with no pull request at all, the
 issues in review that declared they were finished with no code and wait for a
 person to close them (`noCodeHeld`) - not one that is pre-approved or in a
 project with the no-code setting on, which the close hop carries - the
+review column's issues whose branch is a contribution's, conflicted or with a
+failed build, in a project with the runners-work-contributions setting off
+(`contributionsHeld`: `key`, `title`, `type`, `pullRequestUrl`, a `sentence`
+saying what is wrong, and the `originInstance` and `originKey` it was mirrored
+from, null for one filed here) - listed there and not under `conflicts`,
+`failingBuilds` or `reviewsHeldBack`, since a person acts on it - the
 merge column's own held-back and still-progressing rows, trunk-landing rows
 the judge holds, failing trunk builds, exhausted runners, and the
 deadlocked rows the dispatcher's own scan flags - an issue waiting, directly
@@ -1323,6 +1334,7 @@ PUT    /projects/{id}/binds-tracker
 PUT    /projects/{id}/stories-on-epics
 PUT    /projects/{id}/check-approves-merge
 PUT    /projects/{id}/no-code-closes
+PUT    /projects/{id}/runners-work-contributions
 PUT    /projects/{id}/one-pr-policy
 PUT    /projects/{id}/reflection
 POST   /projects/{id}/reflect

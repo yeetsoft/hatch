@@ -1,4 +1,9 @@
 using Hatch.Api.Ef;
+using Hatch.Api.Modules.Gather;
+using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Modules.Photos;
+using Hatch.Api.Modules.Quill;
+using Hatch.Api.Modules.Storage;
 using Hatch.Api.Modules;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -87,10 +92,10 @@ internal static class MinimalDatabases
     /// module's own - the migrate-mode loop at Program.cs copied rather than
     /// exercised through Program itself, since migrate mode is a startup
     /// branch this factory's host never takes. <see cref="AppDbContext"/>
-    /// first, then every <see cref="IModuleContext"/> <c>AddAppModules</c>
-    /// registers, in registry order - there is no list of module contexts
-    /// here for the same reason there is none in Program.cs: a module added
-    /// to the registry is migrated by this loop with no second line.
+    /// first, then every <see cref="IModuleContext"/> the module
+    /// registrations register, in Program.cs order - there is no list of
+    /// module contexts here for the same reason there is none in Program.cs: a
+    /// module registered is migrated by this loop with no second line.
     /// </summary>
     public static async Task MigrateAsync(string hatch)
     {
@@ -101,7 +106,12 @@ internal static class MinimalDatabases
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Hatch"] = hatch })
             .Build();
 
-        var services = new ServiceCollection().AddAppModules(configuration);
+        var services = new ServiceCollection()
+            .AddStorageModule(configuration)
+            .AddGatherModule(configuration)
+            .AddPhotosModule(configuration)
+            .AddQuillModule(configuration)
+            .AddHatchModule(configuration);
         await using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 
