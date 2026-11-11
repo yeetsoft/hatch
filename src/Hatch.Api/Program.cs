@@ -509,8 +509,17 @@ opt.AddRedirect("^apps/hatch$", "/", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect(@"^apps/hatch/+([^/\\].*)?$", "/$1", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect("^apps/?$", "/", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect("^apps/design$", "apps/design/");
-opt.AddRedirect("^auth/?$", "apps/auth/");
-opt.AddRedirect("^apps/auth$", "apps/auth/");
+// The sign-in shell lives at /auth/ now; the old address is a permanent
+// redirect, with the query string carried so /apps/auth/?r=%2Fplan still knows
+// where it was going. The bare /auth gets its slash here because the static
+// file middleware never adds one to a sub-mount on its own (the same reason
+// apps/design has a rule above); /auth/ itself is answered by the mount and
+// the fallback further down. The capture follows a literal `/auth/`, so
+// whatever it echoes - even a leading slash - stays a path on this host
+// rather than becoming the `//` the board's rule above has to guard against.
+opt.AddRedirect("^apps/auth/?$", "/auth/", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect("^apps/auth/(.*)$", "/auth/$1", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect("^auth$", "auth/", StatusCodes.Status301MovedPermanently);
 app.UseRewriter(opt);
 
 // The wall. After UseForwardedHeaders because a refusal logs the client IP,
@@ -541,8 +550,9 @@ app.UseRateLimiter();
 // the rest of the API is a branch.
 app.UseWebSockets();
 
-// What the /apps mount, the board's own mount and the fallback below all
-// serve through, so the three rules below are written once: .webmanifest
+// What the /apps mount, the board's own mount, the sign-in shell's mount and
+// the fallbacks below all serve through, so the three rules below are written
+// once: .webmanifest
 // named correctly (absent from FileExtensionContentTypeProvider's own mapping
 // table, checked directly against the installed shared framework's
 // Microsoft.AspNetCore.StaticFiles.dll, not assumed - without this a
@@ -602,6 +612,20 @@ if (Directory.Exists(boardPath))
     board = new PhysicalFileProvider(boardPath);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = board });
     app.UseStaticFiles(BoardFileOptions(board));
+}
+
+// The sign-in shell, at /auth. Mounted the way the board is - its own provider
+// rooted at its own bundle directory - rather than left to the generic /apps
+// mount above, which now only reaches it at the address that redirects.
+var authPath = Path.Combine(appsPath, "auth");
+PhysicalFileProvider? authShell = null;
+if (Directory.Exists(authPath))
+{
+    authShell = new PhysicalFileProvider(authPath);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = authShell, RequestPath = "/auth" });
+    var authOptions = BoardFileOptions(authShell);
+    authOptions.RequestPath = "/auth";
+    app.UseStaticFiles(authOptions);
 }
 
 // Media library (read-only music share, served so Sonos speakers can stream
@@ -664,9 +688,9 @@ if (Directory.Exists(Path.Combine(appsPath, "design")))
     app.MapFallbackToFile("/apps/design/{*path:nonfile}", "apps/design/index.html");
 }
 
-if (Directory.Exists(Path.Combine(appsPath, "auth")))
+if (authShell is not null)
 {
-    app.MapFallbackToFile("/apps/auth/{*path:nonfile}", "apps/auth/index.html");
+    app.MapFallbackToFile("/auth/{*path:nonfile}", "index.html", BoardFileOptions(authShell));
 }
 
 app.UseSwagger();

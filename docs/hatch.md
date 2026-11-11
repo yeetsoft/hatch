@@ -299,7 +299,7 @@ query string intact (`Program.cs`).
 **The installed app.** `manifest.webmanifest`
 (`src/Hatch.Web/apps/hatch/public/manifest.webmanifest`) scopes itself to the
 whole origin, `/`, and starts there too, because sign-in lives outside it
-(`/apps/auth/`) and because a ticket link copied out of the installed app
+(`/auth/`) and because a ticket link copied out of the installed app
 carries no prefix at all — a narrower scope would open behind a browser bar
 instead of staying in the installed app's own window. There is no service worker: Hatch's deploy story
 depends on the browser revalidating `index.html` on every load, and a

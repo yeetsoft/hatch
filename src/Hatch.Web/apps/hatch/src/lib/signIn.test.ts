@@ -55,6 +55,6 @@ describe('signInHref', () => {
   it('carries where the browser is now, so redemption lands back here', async () => {
     const { signInHref } = await import('./signIn');
 
-    expect(signInHref()).toBe('/apps/auth/?r=%2Fapps%2Fhatch%2Fboard%3Fx%3D1');
+    expect(signInHref()).toBe('/auth/?r=%2Fapps%2Fhatch%2Fboard%3Fx%3D1');
   });
 });
