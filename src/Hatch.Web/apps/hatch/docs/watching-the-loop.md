@@ -402,9 +402,14 @@ them: **Trunk builds that fail**, **Backups**, **Stalled merge trains**,
 **Deadlocked**, **Questions to answer**, **Stalled issues**,
 **Pull requests to review**,
 **Approved, not merging**, **Landed, not done**, **Finished with no code**,
-**Runner capacity**, **Waiting on a runner**. **Waiting on a runner** lists
-every issue whose next move no live runner can take for want of a model or a
-tool, and links to the Runners page, where each runner shows what it offers
+**Contributions runners will not work**, **Runner capacity**,
+**Waiting on a runner**. **Contributions runners will not work** lists each
+contribution in review whose branch conflicts with the trunk or whose build
+failed, in a project that has not turned on **Runners work contributions**:
+the key links to the issue, the pull request opens on the forge, and a
+contribution mirrored from another instance names where it came from.
+**Waiting on a runner** lists every issue whose next move no live runner can
+take for want of a model or a tool, and links to the Runners page, where each runner shows what it offers
 ([the runner](the-runner#what-a-runner-advertises) covers what that is); like
 **Backups**, it lights the control and adds no pill to the bar. **Backups**
 appears only when the configured backup is failing or stale, and links to

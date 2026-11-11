@@ -68,6 +68,7 @@ import type {
   ProjectStoriesOnEpicsWriteRequest,
   ProjectCheckApprovesMergeWriteRequest,
   ProjectNoCodeClosesWriteRequest,
+  ProjectRunnersWorkContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
@@ -177,6 +178,9 @@ export const putProjectCheckApprovesMerge = (id: number, request: ProjectCheckAp
 /** Sets whether a no-code declaration closes the ticket. */
 export const putProjectNoCodeCloses = (id: number, request: ProjectNoCodeClosesWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/no-code-closes`, { method: 'PUT', ...asJson(request) });
+/** Sets whether runners work a contribution's branch. */
+export const putProjectRunnersWorkContributions = (id: number, request: ProjectRunnersWorkContributionsWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/runners-work-contributions`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });

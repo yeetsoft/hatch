@@ -5,6 +5,7 @@ import {
   approvedHeldEmptyWords,
   buildIconTone,
   buildIconWords,
+  contributionsHeldEmptyWords,
   deadlockedEmptyWords,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
@@ -156,6 +157,7 @@ export function AttentionHuman({
   const approvedHeld = attention?.approvedHeld ?? [];
   const landingHeld = attention?.landingHeld ?? [];
   const noCodeHeld = attention?.noCodeHeld ?? [];
+  const contributionsHeld = attention?.contributionsHeld ?? [];
   const deadlocked = attention?.deadlocked ?? [];
   const waitingOnARunner = attention?.waitingOnARunner ?? [];
   const runnerCapacity = attention?.runnerCapacity ?? [];
@@ -394,6 +396,45 @@ export function AttentionHuman({
                   </span>
                   <span className="hatch-attention-files">{h.reason}</span>
                 </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AttentionSection>
+
+      <AttentionSection title="Contributions runners will not work" rows={contributionsHeld.length} startOpen={startOpen}>
+        {contributionsHeld.length === 0 ? (
+          <p className="hatch-attention-empty">{contributionsHeldEmptyWords()}</p>
+        ) : (
+          <ul className="hatch-attention-rows">
+            {contributionsHeld.map((h) => (
+              <li key={h.key}>
+                {/* Two places to go, so no single link wraps the row: the key
+                    to the issue, the pull request out to the forge in a new
+                    tab - the fix is a person's, on the branch itself. */}
+                <div className="hatch-attention-row hatch-attention-row-plain">
+                  <span className="hatch-attention-row-head">
+                    <Link className="hatch-attention-key" to={`/issues/${h.key}`}>
+                      {h.key}
+                    </Link>
+                    <span className="hatch-attention-title">{h.title}</span>
+                  </span>
+                  <a
+                    className="hatch-attention-url"
+                    href={h.pullRequestUrl}
+                    title={h.pullRequestUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    {pullRequestWords(h.pullRequestUrl)}
+                  </a>
+                  <span className="hatch-attention-files">{h.sentence}</span>
+                  {h.originInstance && h.originKey && (
+                    <span className="hatch-attention-checks">
+                      mirrored from {h.originInstance}'s {h.originKey}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
