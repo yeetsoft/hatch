@@ -380,7 +380,9 @@ A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
 comma-separated list of dependencies - each an `id` or `id@version` from the
 master list - trimmed, lowercased and deduplicated. It adds to what detection
 finds and never removes. It is read from the same four layers as any other
-setting, and unset means nothing declared.
+setting, and unset means nothing declared. A machine that would rather not
+install a toolchain at all can run a project image instead ([project runner
+images](project-runner-images)).
 
 ```
 HATCH_HAS=dotnet@10.0.100,pwsh
@@ -511,6 +513,9 @@ the short sha where one parsed, and a **File** chip to the blob.
 ```
 
 The Makefile's header comment points at it, so the two move together.
+
+The same file is what a project's runner image is built from: [project runner
+images](project-runner-images) follows it from here to a running container.
 
 ## What a runner refuses
 

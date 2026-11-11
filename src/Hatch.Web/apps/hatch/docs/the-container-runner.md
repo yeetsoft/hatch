@@ -90,7 +90,8 @@ the command line is not passed through to the loop. To hand it bounds such as
 ## Starting it from a named image
 
 The `runner` profile builds `containers/hatch-runner/Dockerfile`. A project's
-own image, which carries that repository's toolchain on top of this one, is
+own image ([project runner images](project-runner-images) follows the whole
+chain, from the declaration to a running container), which carries that repository's toolchain on top of this one, is
 already built somewhere: pulled from a registry, or left on this machine by a
 build. The `runner-image` profile starts a container from it by name, with the
 same environment, checkout and workspace as `runner`, and builds nothing.
