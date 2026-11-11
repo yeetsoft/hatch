@@ -20,6 +20,7 @@ import {
   isReviewPlaybook,
   isUncheckedEdit,
   leftNote,
+  limitNotes,
   matchesProjectFilter,
   maxRunDraft,
   maxRunRequest,
@@ -474,5 +475,26 @@ describe('isOverridden', () => {
 
   it('compares against an empty prescribed text rather than treating it as none', () => {
     expect(isOverridden({ prompt: 'Do the thing.', defaultPrompt: '' })).toBe(true);
+  });
+});
+
+describe('limitNotes', () => {
+  it('says nothing for a row with neither limit set', () => {
+    expect(limitNotes({ quietLimitSeconds: null, maxRunSeconds: null })).toEqual([]);
+  });
+
+  it('names the quiet limit alone', () => {
+    expect(limitNotes({ quietLimitSeconds: 1500, maxRunSeconds: null })).toEqual(['quiet after 1500s']);
+  });
+
+  it('names the run limit alone', () => {
+    expect(limitNotes({ quietLimitSeconds: null, maxRunSeconds: 3600 })).toEqual(['cut off after 3600s']);
+  });
+
+  it('names both, the quiet limit first', () => {
+    expect(limitNotes({ quietLimitSeconds: 1500, maxRunSeconds: 3600 })).toEqual([
+      'quiet after 1500s',
+      'cut off after 3600s',
+    ]);
   });
 });

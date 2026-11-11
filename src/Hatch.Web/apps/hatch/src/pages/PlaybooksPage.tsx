@@ -23,6 +23,7 @@ import {
   fileRowLabel,
   isReviewPlaybook,
   isUncheckedEdit,
+  limitNotes,
   matchesProjectFilter,
   notReadNote,
   playbookLabel,
@@ -486,6 +487,9 @@ export function PlaybookFileRowLine({
         )}
         {isUncheckedEdit(row) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
         {row.unreachableReason && <Badge tone="danger">{row.unreachableReason}</Badge>}
+        {limitNotes(row).map((n) => (
+          <Badge key={n} tone="muted">{n}</Badge>
+        ))}
       </td>
       {label !== undefined && (
         <td>
