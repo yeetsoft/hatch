@@ -316,7 +316,7 @@ certificate fingerprint — supplied as deploy-time config
 behalf.
 
 **Read the board's own Docs**, [`src/Hatch.Web/apps/hatch/docs/`](../src/Hatch.Web/apps/hatch/docs/),
-served at `/apps/hatch/docs/` and imported into the bundle at build time, for
+served at `/docs/` and imported into the bundle at build time, for
 the operator-facing version of the above — the one line, the runner, and the
 block to paste into a friend's own `CLAUDE.md`. It travels with the board it
 describes rather than living only in this repository.
@@ -2359,9 +2359,9 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked`, `preempted`, `recused` or `unservable` — absent
+an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable` or `abandoned` — absent
 is accepted exactly as it always has been, which covers the pick's own
-release, a restart, and an older CLI, and a value that is none of the five is
+release, a restart, and an older CLI, and a value that is none of the six is
 `400`. It is read only where a token is given: the operator's tokenless
 clobber names no increment to have an outcome. The `claim_released` event
 carries it, and it is what `letGo` counts (see [Comment, question and
@@ -2372,7 +2372,7 @@ what it pushed lands as its own comment, not as a dropped increment.
 `recused` is skipped the other way: it *stops* the count exactly as `worked`
 does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
-raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work.
+raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -7885,8 +7885,9 @@ heartbeat, and the heartbeat is the runner's own — it is sent by the process
 holding the lease, not by anything the board has to run. And a run that dies
 mid-increment leaves a row nothing may touch for exactly one TTL, after which
 the next pass takes it with no operator action — and the lock it left behind is
-cleared by the next loop in that checkout, so a `kill -9` needs nobody to tidy
-up after it.
+cleared by the next loop in that checkout — which also ends the session it left
+running and releases the claim, see *A loop that died* below — so a `kill -9`
+needs nobody to tidy up after it.
 
 Running two loops on one machine, each in its own checkout, is walked
 through in [Several runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#several-runners-on-one-machine).
@@ -7899,6 +7900,30 @@ review](#checking-the-branches-in-review). It is not a step of a pass and holds
 no claim; it is what keeps the board's verdicts on those branches current, so
 that the queue below can tell a conflict from a branch that merges cleanly. A
 runner that is paused polls nothing.
+
+**A loop that died.** A loop that dies mid-increment — a crash, a closed
+window — leaves two things behind: the agent it spawned, still running in the
+checkout, and a claim that lapses on its own a lease later. While a session
+runs, the increment keeps a small record of it beside the loop's lock, under
+the system's temporary directory and named for the checkout, never in the tree
+or the night state: the agent's pid and when that process started, the ticket
+key and claim token, and the Hatch base the claim was taken against, with the
+session's id added once the stream has said it. The release deletes it on every
+outcome, and so does the loop's way out. The next `go-to-work` in that checkout
+reads it straight after taking the checkout's lock — so no live loop holds it —
+and before its own first heartbeat and claim. A pid that is still running **and**
+whose start time matches the record's is the session the dead loop left: its
+whole process tree is killed and waited for. A pid that is gone, or whose start
+time differs (the number was reused), is left alone. Then the loop releases the
+claim with `outcome=abandoned`. A `204` means the claim was still that token's
+and is now released, and gets one comment saying a loop died, the session was
+ended and the claim released, with the agent's resume command where the record
+had a session id; a `409` or `404` means the claim had already lapsed, been
+taken or been cleared, and gets no comment. The record is deleted either way,
+and one terminal line says what was done. A record whose Hatch base is not this
+loop's belongs to a checkout pointed at another board: it is reported and left.
+Only the loop cleans up: `hatch work` writes and clears its own record and never
+reads another's.
 
 One pass, from the board to the release:
 
@@ -9944,7 +9969,7 @@ ten minutes; `queue` is where the counts turn back into tickets.
 - **Name the ticket in the pull request, in two places.** The title is the key,
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
-  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
+  `[AER-12](<origin>/issues/AER-12)` and nothing else, then a blank
   line, then the summary. `<origin>` is the address Hatch was reached at
   (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
   AER-12 --dry-run` prints the exact line. Never write a relative link.

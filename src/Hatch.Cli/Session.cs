@@ -61,7 +61,14 @@ public interface ISessionRunner
     /// Runs one increment's session. Cancelling kills it, which is what a
     /// refused heartbeat does.
     /// </summary>
-    Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct);
+    /// <param name="onStarted">
+    /// Called once, with the child's pid and when that process started, as soon
+    /// as it is running - the only place either is visible, since the process
+    /// is local to the spawn. Not called where the child's start time cannot be
+    /// read, which is a child that has already gone.
+    /// </param>
+    Task<SessionResult> RunAsync(
+        SessionRequest request, Action<string>? onLine, CancellationToken ct, Action<int, DateTime>? onStarted = null);
 
     /// <summary>
     /// The same ticket, the same playbook, the same budget, in a session

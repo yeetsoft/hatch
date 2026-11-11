@@ -296,7 +296,7 @@ be a claim to have done the work, not a record of it.
 Asked for only where it is read: an issue with no parent, moving as a plain
 advance into the review column, never on a hop. Its shape depends on what the
 issue is. An epic writes a feature announcement - one sentence, then a short
-paragraph beneath it that may link into the docs as `/apps/hatch/docs/...`, a
+paragraph beneath it that may link into the docs as `/docs/...`, a
 path and never an origin. Anything else writes one line, no body.
 
 The note is capped at 2,000 characters and clipped rather than refused, and

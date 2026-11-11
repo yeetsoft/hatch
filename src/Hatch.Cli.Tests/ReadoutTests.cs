@@ -17,7 +17,7 @@ public sealed class ReadoutTests
     {
         var inc = new IncrementSnapshot(
             "HA-120", "Console: a pinned readout", "In Progress -> In Review",
-            "https://hatch.example.test/apps/hatch/issues/HA-120", Now, 0, Now, null);
+            "https://hatch.example.test/issues/HA-120", Now, 0, Now, null);
         var snapshot = new ReadoutSnapshot(inc, null, RunnerSnapshot.Empty, [], null, NoControls);
 
         var rows = Readout.Draw(snapshot, Now, 200, color: false);
@@ -25,7 +25,7 @@ public sealed class ReadoutTests
         Assert.Contains("HA-120", rows[0], StringComparison.Ordinal);
         Assert.Contains("Console: a pinned readout", rows[0], StringComparison.Ordinal);
         Assert.Contains("In Progress -> In Review", rows[0], StringComparison.Ordinal);
-        Assert.Contains("https://hatch.example.test/apps/hatch/issues/HA-120", rows[0], StringComparison.Ordinal);
+        Assert.Contains("https://hatch.example.test/issues/HA-120", rows[0], StringComparison.Ordinal);
     }
 
     [Fact]

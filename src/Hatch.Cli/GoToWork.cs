@@ -1059,6 +1059,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // After the block above, which replaces the board and with it anything set earlier.
             runtime.Board.Projects = projects;
 
+            // The lock is ours, so no live loop holds these checkouts: whatever
+            // session a dead one left running in them is nobody's, and the claim
+            // it held is a lease on a ticket nobody is working. Before the first
+            // heartbeat and the first claim, so the session ended is never one
+            // this loop started.
+            foreach (var checkout in runtime.Checkouts)
+                await Orphaned.EndAsync(
+                    checkout.Path, runtime.TempDirectory, runtime.Board, runtime.Settings.Base, runtime.Adapter,
+                    runtime.Say, ct);
+
             // What the incarnation before a restart handed over, if this is one.
             var carried = NightState.Read(runtime.NightStatePath);
 
@@ -1159,6 +1169,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
         }
         finally
         {
+            // The normal way out leaves no record: the increment's own release
+            // has deleted it already, and this is for the way out that skipped
+            // that. One for another board is not ours to remove.
+            foreach (var checkout in runtime.Checkouts)
+                SessionRecord.DeleteOurs(
+                    SessionRecord.PathFor(checkout.Path, runtime.TempDirectory), runtime.Settings.Base);
+
             foreach (var held in locks) held.Dispose();
         }
     }

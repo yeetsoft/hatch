@@ -527,7 +527,7 @@ public sealed class IssueCommands(Cli cli)
             chain.Add(new PullRequestEnvelopeIssue(
                 issue.Key, issue.Title, issue.Type, issue.Description,
                 names.GetValueOrDefault(issue.StatusId), issue.ParentKey,
-                $"{origin}/apps/hatch/issues/{issue.Key}"));
+                $"{origin}/issues/{issue.Key}"));
 
             issue = issue.ParentKey is { Length: > 0 } parent && !seen.Contains(parent)
                 ? await cli.Board.IssueAsync(parent, ct)

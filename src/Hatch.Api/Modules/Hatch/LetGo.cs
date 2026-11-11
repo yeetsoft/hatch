@@ -22,7 +22,8 @@ public static class LetGo
     /// <see cref="ClaimOutcomes.Worked"/> or <see cref="ClaimOutcomes.Recused"/>,
     /// a status change, a person's resume, or an answer a person wrote -
     /// whichever comes first. A release with no outcome or an outcome of
-    /// <see cref="ClaimOutcomes.Unservable"/> (or preempted), a hold, and an
+    /// <see cref="ClaimOutcomes.Unservable"/> or <see cref="ClaimOutcomes.Abandoned"/>
+    /// (or preempted), a hold, and an
     /// answer written by a lapse, are skipped rather than counted or stopped at.
     /// </summary>
     public static int Count(IEnumerable<(string Kind, string? Payload)> eventsNewestFirst)
@@ -38,6 +39,7 @@ public static class LetGo
                 if (outcome == ClaimOutcomes.Dropped) { letGo++; continue; }
                 if (outcome == ClaimOutcomes.Worked || outcome == ClaimOutcomes.Recused) break;
                 if (outcome == ClaimOutcomes.Unservable) continue; // unservable: skipped over, as preempted is
+                if (outcome == ClaimOutcomes.Abandoned) continue; // abandoned: the loop died, the increment did not choose
                 continue; // no outcome: skipped over, neither counted nor stopped at
             }
 

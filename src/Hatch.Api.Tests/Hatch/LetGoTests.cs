@@ -45,6 +45,7 @@ public class LetGoTests
     [InlineData(ClaimOutcomes.Preempted)]
     [InlineData(ClaimOutcomes.Recused)]
     [InlineData(ClaimOutcomes.Unservable)]
+    [InlineData(ClaimOutcomes.Abandoned)]
     [InlineData(null)]
     public void ANewerReleaseOfAnyOtherOutcome_ClearsTheRecord(string? outcome)
     {
@@ -122,6 +123,20 @@ public class LetGoTests
         var unservable = Release(ClaimOutcomes.Unservable, "runner", 1);
 
         Assert.Equal(2, Count(drop, unservable, drop));
+    }
+
+    [Fact]
+    public void Count_StepsOverAnAbandonedRelease()
+    {
+        var drop = Release(ClaimOutcomes.Dropped, "runner", 0);
+        var abandoned = Release(ClaimOutcomes.Abandoned, "runner", 1);
+        var worked = Release(ClaimOutcomes.Worked, "runner", 2);
+
+        // Neither counted...
+        Assert.Equal(2, Count(drop, abandoned, drop));
+
+        // ...nor stopped at.
+        Assert.Equal(1, Count(drop, abandoned, worked, drop));
     }
 
     [Fact]

@@ -30,7 +30,7 @@ public class WorkControllerTests
     // ---- The link a session writes into a pull request ----
 
     [Theory]
-    [InlineData("https://home.example.com/", "https://home.example.com/apps/hatch/issues/AER-1")]
+    [InlineData("https://home.example.com/", "https://home.example.com/issues/AER-1")]
     [InlineData("", null)]
     [InlineData("home.example.com", null)]
     public async Task Work_IssueUrl_IsTheConfiguredOriginAndNullWithoutOne(string configured, string? expected)
