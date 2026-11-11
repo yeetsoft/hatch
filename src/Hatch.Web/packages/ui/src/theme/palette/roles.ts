@@ -11,7 +11,8 @@
    derived  regenerated from an accent (or an ink) so the relationship the
             designer authored survives.
    fixed    exactly as authored: the console, the letterbox, the series ramp
-            (CVD-validated, "not a value to improvise on"), shadow and overlay. */
+            (CVD-validated, "not a value to improvise on"), the usage ramp and
+            its inks, shadow and overlay. */
 
 export type Role = 'neutral' | 'accent' | 'derived' | 'fixed';
 
@@ -76,6 +77,13 @@ const FIXED = [
   '--shadow',
   '--overlay',
   ...Array.from({ length: 8 }, (_, at) => `--series-${at + 1}`),
+  '--on-series',
+  '--ramp-low',
+  '--on-ramp-low',
+  '--ramp-mid',
+  '--on-ramp-mid',
+  '--ramp-high',
+  '--on-ramp-high',
 ];
 
 const DERIVED = [
