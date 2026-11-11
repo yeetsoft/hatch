@@ -200,7 +200,7 @@ shows. Its Project filter, the **Lean** chooser under the composer and the
 scope. A `?projectId=` outside the scope is dropped from the address. See
 [Dreams](dreams#finding-one).
 
-**Reports → Timeline, Cumulative flow and Changelog** follow the scope too.
+**Reports → Timeline, Cumulative flow, Changelog and Consumption** follow the scope too.
 Each one's project control lists only the scope's projects, and is not drawn
 for a scope of one project. See [Reports](flow-wip-and-the-battery#reports).
 

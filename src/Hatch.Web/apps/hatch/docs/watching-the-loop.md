@@ -333,6 +333,25 @@ nothing landed pastes the same words the page shows. The button is not drawn
 where the browser has no clipboard access, and a copy the browser refuses is
 said so on the button itself.
 
+**Consumption** lists what each epic consumed in a window - tokens, notional
+dollars and runner time, the epic's own and everything beneath it - one row to
+an epic. It opens on the last three months, with the same window controls -
+**Earlier**, **Today**, **Later** and a **Length**. **Projects** (drawn only
+where there is more than one) is the same checkbox per project, with **All** and
+**None**. **Type** picks what a row is, epic to begin with, or reflection, story,
+task, bug, or **All**; **Status** keeps the issues now standing in one column,
+**Any** to begin with. The table is sorted by clicking a column head - **Tokens**,
+**Notional USD**, **Runner time** or **Last session**, the most recent first to
+begin with - and the head of the sort in use says so. A row whose sessions
+reported no price draws a dash rather than `$0`, and one with some unpriced
+sessions draws what was priced and how many were not. A line over the table
+gives the totals for every issue that matched, and the table holds at most a
+hundred rows: where more matched it says "The first 100 of 240 issues. The totals
+cover all 240." above the table, so the larger total does not read as a bug. A
+window in which nothing was consumed says so, and says when the log does run; a
+filter under which nothing was ever logged says that instead. Every control
+writes itself to the address bar, leaving out what is still its default.
+
 ## History and the work log
 
 These are two different things. **Track → History** is every event across

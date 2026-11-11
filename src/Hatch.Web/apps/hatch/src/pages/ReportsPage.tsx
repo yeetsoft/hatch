@@ -19,6 +19,11 @@ const REPORTS: { to: string; title: string; answers: string }[] = [
     title: 'Changelog',
     answers: 'What landed in each day, week or month, at the level a stakeholder reads.',
   },
+  {
+    to: '/reports/consumption',
+    title: 'Consumption',
+    answers: 'What each epic consumed - tokens, notional dollars and runner time - and how that is trending.',
+  },
 ];
 
 /** The front door to the Reports area: a card per report, each a link in. */

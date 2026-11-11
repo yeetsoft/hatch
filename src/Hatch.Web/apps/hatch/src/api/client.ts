@@ -12,6 +12,7 @@ import type {
   ChangelogReport,
   Comment,
   CommentCreateRequest,
+  ConsumptionReport,
   CumulativeFlow,
   DangerousRequest,
   NoCodeRequest,
@@ -862,6 +863,36 @@ export interface ChangelogReportQuery {
   level: string;
   loose?: boolean | null;
   offsetMinutes: number;
+}
+
+/** What each issue of a type consumed over a window. `projectId` and `statusId`
+    are repeated once per id; `type` and `sort` are left to the server's default
+    when unset, and `limit` and `offsetMinutes` are always sent. */
+export const getConsumptionReport = (query: ConsumptionReportQuery) => {
+  const params = new URLSearchParams();
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  for (const id of query.statusId ?? []) params.append('statusId', String(id));
+  if (query.type) params.set('type', query.type);
+  if (query.sort) params.set('sort', query.sort);
+  params.set('limit', String(query.limit));
+  params.set('offsetMinutes', String(query.offsetMinutes));
+  const qs = params.toString();
+  return fetchJson<ConsumptionReport>('/api/hatch/reports/consumption' + (qs ? '?' + qs : ''));
+};
+
+/** The consumption report route's query string. `offsetMinutes` is minutes east
+    of UTC, the reader's. */
+export interface ConsumptionReportQuery {
+  from?: string | null;
+  to?: string | null;
+  type?: string | null;
+  sort?: string | null;
+  limit: number;
+  offsetMinutes: number;
+  statusId?: number[] | null;
+  projectId?: number[] | null;
 }
 
 export interface WorkLogSessionQuery {
