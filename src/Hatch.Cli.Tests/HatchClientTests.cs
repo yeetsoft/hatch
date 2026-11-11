@@ -19,14 +19,8 @@ public sealed class HatchClientTests
     /// a call under test is waiting on to resolve - real milliseconds spent
     /// polling so the call's own seconds never have to be.
     /// </summary>
-    private static async Task DriveAsync(FakeTimeProvider clock, Task sending, int maxTicks = 30)
-    {
-        for (var i = 0; i < maxTicks && !sending.IsCompleted; i++)
-        {
-            await Task.Delay(5);
-            clock.Advance(TimeSpan.FromSeconds(15));
-        }
-    }
+    private static Task DriveAsync(FakeTimeProvider clock, Task sending) =>
+        ClockDriver.DriveAsync(clock, sending, TimeSpan.FromSeconds(15));
 
     /// <summary>
     /// A key is the caller's whole identity, name included: a bearer, and nothing
