@@ -63,6 +63,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(ChangelogDto))]
 [JsonSerializable(typeof(ChangelogDayDto))]
 [JsonSerializable(typeof(ChangelogEntryDto))]
+[JsonSerializable(typeof(ActivityReportDto))]
 [JsonSerializable(typeof(ChangelogMonthDto))]
 [JsonSerializable(typeof(List<ProjectDto>))]
 [JsonSerializable(typeof(DreamDto))]

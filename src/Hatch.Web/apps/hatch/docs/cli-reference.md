@@ -484,6 +484,30 @@ Reports.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
 - `--json` prints the endpoint's own answer and nothing else.
 
+### activity
+
+```
+hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]
+```
+
+One actor's rundown, as markdown, for pasting into a check-in somewhere else:
+a heading with the window, a headline of what they did in words (the total and
+the top three kinds, the rest as *and N others*), an estimate of the hours it
+came to, then a heading per issue they touched with a bullet per kind of thing
+done and when they first and last did it, in the local clock. A window with
+nothing in it prints one sentence saying so. It writes nothing. The web view is
+the Activity report under Reports; this draws neither its rate of work nor its
+sessions.
+
+- `--actor <name>` is whose activity to read, as the trail spells it. Without
+  it, the owner of the key this runs as; a key with no owner (or no key at all)
+  is refused, and asked for one.
+- `--days <n>` is the window's length, ending at `--before`. Fourteen by default.
+- `--before <instant>` moves the window back to end at that instant, such as
+  `2026-09-12T17:00:00Z`; one that is not an instant is refused. Now by default.
+- `--project <KEY>` narrows it to one project, and refuses a key nobody has.
+- `--json` prints the endpoint's own answer and nothing else.
+
 ### runners
 
 ```
