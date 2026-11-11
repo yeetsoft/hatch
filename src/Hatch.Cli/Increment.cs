@@ -232,6 +232,19 @@ public sealed class IncrementReport
     /// <summary>What the CLI exited with.</summary>
     public int ExitCode { get; set; }
 
+    /// <summary>Whether the agent got as far as its first stream event. See <see cref="RunFacts.Started"/>.</summary>
+    public bool Started { get; set; } = true;
+
+    /// <summary>
+    /// What the CLI said on its way out when it never started: the last lines of
+    /// its stderr and its non-stream stdout, scrubbed by <see cref="Scrub"/>.
+    /// Empty on any run that started, which keeps nothing extra.
+    /// </summary>
+    public string Kept { get; set; } = "";
+
+    /// <summary>The last of <see cref="Kept"/>'s lines, for the tally; empty when nothing was kept.</summary>
+    public string KeptLast { get; set; } = "";
+
     /// <summary>Questions the session opened on its way out.</summary>
     public int Asked { get; set; }
 
@@ -373,7 +386,7 @@ public sealed class IncrementReport
             ? $"its build still fails ({string.Join(", ", StillFailing)}){(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
         : Stalled && StillConflicting.Count > 0
             ? $"still conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk}{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
-        : Stalled ? $"still in \"{Ended}\"{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
+        : Stalled ? $"still in \"{Ended}\"{(Flag is { Length: > 0 } ? $", {Flag}" : "")}{(KeptLast.Length > 0 ? $" - the CLI said \"{KeptLast}\"" : "")}"
         : Flag is { Length: > 0 } flag ? flag
         : "where it ended up is not known";
 }
@@ -565,6 +578,18 @@ public sealed class Increment(
             report.SessionId = facts.SessionId;
             report.Cost = facts.CostUsd;
 
+            // A run that ended before its first stream event has nothing in the
+            // stream to say why, so what the CLI wrote is kept - scrubbed here,
+            // at the one place it is built, so every later reader gets clean text.
+            // A run that started keeps nothing extra.
+            report.Started = facts.Started;
+            if (!facts.Started)
+            {
+                var kept = Scrub.Lines(result.Stray.Concat(result.Stderr));
+                report.Kept = string.Join('\n', kept);
+                report.KeptLast = kept.LastOrDefault() ?? "";
+            }
+
             if (facts.Result is { } summary)
             {
                 report.Turns = summary.Turns;
@@ -653,8 +678,12 @@ public sealed class Increment(
             // guard, an ordinary crash whose last words happened to quote this
             // very sentence - and this file's own tests do - would read as a
             // usage limit and hide the crash behind a clean-looking wait instead
-            // of the three-strikes stall that would otherwise catch it.
-            var said = facts.Result is { IsError: true } ? facts.ResultText
+            // of the three-strikes stall that would otherwise catch it. A crash
+            // whose last assistant words quote the limit needs assistant text,
+            // and a run that never started has none: what the CLI itself wrote
+            // is read whatever the exit code, since it is not the model quoting.
+            var said = !report.Started && report.Kept.Length > 0 ? report.Kept
+                : facts.Result is { IsError: true } ? facts.ResultText
                 : facts.Result is null && result.ExitCode != 0 ? facts.ResultText ?? facts.LastAssistantText
                 : null;
 
@@ -903,11 +932,15 @@ public sealed class Increment(
                             ? report.QuietWhy
                             : report.RunTimeStopped
                             ? report.RunTimeWhy
+                            : !report.Started && report.Kept.Length > 0
+                            ? "the session ended before it started"
                             : said is { Length: > 0 }
                             ? $"the session ended with an error - \"{said}\""
                             : "the session ended without moving it";
 
-                        await LetGo.LeftAsync(board, say, adapter, report.Key, why, report.SessionId, ct);
+                        await LetGo.LeftAsync(
+                            board, say, adapter, report.Key, why, report.SessionId, ct,
+                            kept: report.Kept.Length > 0 ? report.Kept : null);
                         report.LetGo = true;
                         report.Flag = "let go";
                         report.ReleaseOutcome = ClaimOutcomes.Dropped;
@@ -1825,6 +1858,8 @@ public sealed class Increment(
         body += report.SessionId is { Length: > 0 } session
             ? $"\n\nThe session it ran in is still there, with everything it did in context:\n\n    {adapter.ResumeCommand(session)}"
             : "\n\nThere is no session to resume: the run ended before it said what its id was.";
+
+        if (report.Kept.Length > 0) body += "\n\n" + Scrub.Fence(report.Kept);
 
         if (report.ExitCode != 0) body += $"\n\nIt exited {report.ExitCode}.";
 

@@ -169,6 +169,10 @@ internal sealed class GrokStreamReader : IAgentStreamReader
             return [];
         }
 
+        // Here and not in Read, which runs on the first line whatever it is: a
+        // Grok that crashes with plain text on stdout never got started.
+        _facts.Started = true;
+
         var type = Text(e, "type");
         if (type is null)
             return e.TryGetProperty("sessionId", out _) ? QuietJson(e) : [];
