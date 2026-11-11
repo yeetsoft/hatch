@@ -3734,7 +3734,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
-| `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `offsetMinutes`, `gap`, `lead`, `window` — also the rate of work as a `series`, the bracketed `sessions` and their `estimate`. Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, an out-of-range `offsetMinutes`, `gap`, `lead` or `window`, or an unknown `projectId` — see [the activity report](#the-activity-report) |
+| `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `offsetMinutes`, `gap`, `lead`, `window`, `includeKeys` — also the rate of work as a `series`, the bracketed `sessions` and their `estimate`. Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, an out-of-range `offsetMinutes`, `gap`, `lead` or `window`, or an unknown `projectId` — see [the activity report](#the-activity-report) |
 | `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the five types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
 | `/reports/consumption.csv` | GET | The same filter, with no `limit` at all — every matching row as a CSV a spreadsheet opens. Same `from`, `to`, `type`, `sort`, `offsetMinutes`, `statusId`, `projectId`; the same `400`s, in the same order, minus the limit step. Open to a key — see [the consumption report](#the-consumption-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
@@ -5043,7 +5043,7 @@ hatch api GET /api/hatch/reports/consumption.csv?from=2026-08-01&to=2026-09-01
 ### The activity report
 
 ```
-GET /api/hatch/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&lead=&window=
+GET /api/hatch/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&lead=&window=&includeKeys=
 ```
 
 **What did one actor do, in a range?** The trail every other report folds
@@ -5062,7 +5062,8 @@ from the answer (the bucket size, the window's two ends in the reader's clock,
 `estimate.windowDays`), says what the line is under it, and has a number field
 for the rolling mean's `window`; the page always sends the reader's
 `offsetMinutes`, so a daily bucket is the reader's day. The URL carries
-`actor`, `project`, `from`/`to`/`range`, `measure` (`events` or `hours`;
+`actor`, `project`, `from`/`to`/`range`, `includeKeys` (`true`, set by the **Include my
+keys** control beside the picker, shown only when the actor is a person), `measure` (`events` or `hours`;
 anything else reads as `events`) and `window` (1 to 90; anything else is left
 to the server's own); changing `measure` does not read again, changing `window`
 does. With no `actor` the page
@@ -5076,7 +5077,7 @@ view is offered beside **Bars**: one cell a day, Monday-to-Sunday columns,
 shaded by the same chosen measure and the same `peak` as the bars, so the two
 never disagree; the URL carries `view=calendar`, read as `bars` at eight weeks
 or under or on anything else. `hatch activity
-[--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]`
+[--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]`
 prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
 renders neither the series nor the sessions, which `hatch api GET
 /api/hatch/reports/activity?...` still reaches. The route is open to a person or
@@ -5090,7 +5091,12 @@ instants, defaulting to the **fourteen days ending now** — the same window as
 the first event ever written. `projectId` is repeatable and narrows to events
 whose issue is in one of those projects.
 
-Four more parameters shape `series` and `sessions`:
+One more parameter widens whose events are read, and four shape `series` and `sessions`:
+
+- `includeKeys` (default `false`) — when `actor` names a person, also counts the events under keys that person owns which a hand typed, each marked `viaKey: <key name>`. It is a heuristic read off the trail alone: an event under the key is the loop's, and left out, when a work-log session of the same issue spans it (a work-log row records no key, so the issue and the instant are all there is to match) or when the issue's trail shows that key's `claim_taken` with no release, lapse or other take since; the claim events themselves are the loop's too. Every other event under the key is counted as the person's hand. It has no effect when `actor` is not a person. A trail row so counted keeps the person as its `actor`, and the counts, rundown,
+  series and sessions include it, under the same 500-row cap.
+
+The four that shape `series` and `sessions`:
 
 - `offsetMinutes` — minutes east of UTC, 0 when absent, -1440 to 1440 — aligns
   a daily bucket to the reader's own midnight, read exactly as the work log's

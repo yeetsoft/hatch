@@ -94,6 +94,17 @@ public class ActivityReportPageTests(ITestOutputHelper output)
 
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "activity-actor"));
 
+            // HA-2241: a person is chosen, so the control that counts their own keys is offered, and
+            // pressing it writes includeKeys to the address; the page still draws once it has read again.
+            const string keysSelect = "label.hatch-facet:has-text(\"Include my keys\") select";
+            Assert.True(await harness.IsVisibleAsync(deadline, keysSelect), "no Include my keys control was drawn for a person");
+            await harness.SelectOptionAsync(deadline, keysSelect, "on");
+            await harness.WaitForFunctionAsync(
+                deadline, "waiting for includeKeys in the address",
+                "() => new URLSearchParams(location.search).get('includeKeys') === 'true'");
+            await harness.WaitForVisibleAsync(deadline, "main strong");
+            output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "activity-include-keys"));
+
             // An actor nobody is: still sent as given, the empty range a sentence, and the address unchanged.
             await harness.GoToAsync(deadline, "reports/activity?actor=nobody");
             await harness.WaitForVisibleAsync(deadline, ".hatch-empty__message:text-is(\"Nothing recorded for nobody in this window.\")");
@@ -104,6 +115,10 @@ public class ActivityReportPageTests(ITestOutputHelper output)
                 "nobody",
                 await harness.EvaluateAsync<string>(
                     deadline, "reading the address", "() => new URLSearchParams(location.search).get('actor')"));
+
+            Assert.False(
+                await harness.IsVisibleAsync(deadline, keysSelect),
+                "Include my keys is offered for an actor who is no person");
 
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "activity-nobody"));
 

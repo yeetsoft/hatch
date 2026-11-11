@@ -77,6 +77,25 @@ export function withLead(params: URLSearchParams, lead: number): URLSearchParams
   return next;
 }
 
+/** The URL param asking for a person's own keys' hand-typed events as well; `true` or absent. */
+export const INCLUDE_KEYS = 'includeKeys';
+
+/** Whether the URL asks for the person's keys to be counted. */
+export const resolveIncludeKeys = (params: URLSearchParams): boolean => params.get(INCLUDE_KEYS) === 'true';
+
+/** A copy of `params` with `includeKeys` set to `true`, or removed when false. */
+export function withIncludeKeys(params: URLSearchParams, on: boolean): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (on) next.set(INCLUDE_KEYS, 'true');
+  else next.delete(INCLUDE_KEYS);
+
+  return next;
+}
+
+/** Whether `actor` names a person the directory lists - the only actor whose keys can be counted. */
+export const isPerson = (directory: AssigneeDirectory, actor: string | null): boolean =>
+  actor !== null && directory.assignees.some((a) => a.kind === 'person' && a.name === actor);
+
 /** How many kinds the headline names before it folds the rest into a tail. */
 const HEADLINE_KINDS = 3;
 
