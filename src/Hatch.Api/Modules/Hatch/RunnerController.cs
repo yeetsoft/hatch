@@ -21,7 +21,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// setting up a machine, and nobody's dispatcher needs to download the program
 /// it is already running as. Wherever the wall is off - every local install -
 /// the guard is dormant and this answers anyone, exactly like the rest of
-/// /apps/hatch.
+/// the root.
 /// </summary>
 [ApiController]
 [Route("api/hatch/runner")]

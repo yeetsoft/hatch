@@ -241,9 +241,14 @@ public static class PullRequestEnvelopeReader
 
     private static string DeriveInstance(Uri uri)
     {
-        const string marker = "/apps/hatch/";
+        // Hatch writes `<origin>/issues/<KEY>`; pull requests opened before the
+        // root served carry `<origin>/apps/hatch/issues/<KEY>`, and still read.
+        const string oldMarker = "/apps/hatch/";
+        const string marker = "/issues/";
         var path = uri.AbsolutePath;
-        var markerIndex = path.IndexOf(marker, StringComparison.Ordinal);
+        var markerIndex = path.IndexOf(oldMarker, StringComparison.Ordinal);
+        if (markerIndex < 0)
+            markerIndex = path.LastIndexOf(marker, StringComparison.Ordinal);
         var prefix = markerIndex >= 0 ? path[..markerIndex] : path;
         return uri.Authority + prefix;
     }

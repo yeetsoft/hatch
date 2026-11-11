@@ -102,7 +102,7 @@ public static class Fixtures
             Repositories: repositories ?? [],
             Questions: questions ?? [],
             Blocked: blocked,
-            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/apps/hatch/issues/{key}",
+            IssueUrl: noLink ? null : issueUrl ?? $"https://hatch.example.test/issues/{key}",
             Kind: kind,
             Messages: messages,
             Hop: hop,
