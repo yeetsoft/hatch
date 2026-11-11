@@ -1667,6 +1667,119 @@ public class ProjectsControllerTests
         Assert.Equal(Now, read.NoCodeClosesAt);
     }
 
+    // ---- Runners work contributions ----
+
+    [Fact]
+    public async Task AKey_Is403OnPutRunnersWorkContributions()
+    {
+        var h = await NewAsync(program: true);
+
+        var result = await h.Projects.PutRunnersWorkContributions(h.ProjectId, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+
+        Assert.Equal(403, ((ObjectResult)result.Result!).StatusCode);
+        Assert.False((await h.Db.Projects.FindAsync(h.ProjectId))!.RunnersWorkContributions);
+    }
+
+    [Fact]
+    public async Task ANonOwnerApprover_Is403OnPutRunnersWorkContributionsNamingTheProjectKey()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        var approver = h.Actors.AddPerson("Alice");
+        await h.Projects.PutMember(created.Id, approver.Id, new ProjectMemberWriteRequest(ProjectMemberRole.Approver), default);
+        h.Actors.Me = approver;
+
+        var result = await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+
+        Assert.Contains("403", Reason(result.Result));
+        Assert.Contains("only an owner of TST may change whether runners work a contribution's branch", Reason(result.Result));
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        Assert.False(row.RunnersWorkContributions);
+        Assert.Null(row.RunnersWorkContributionsBy);
+        Assert.Null(row.RunnersWorkContributionsAt);
+    }
+
+    [Fact]
+    public async Task PutRunnersWorkContributions_OnAnUnknownProject_IsNotFound()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Projects.PutRunnersWorkContributions(h.ProjectId + 1000, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningRunnersWorkContributionsOn_StampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        var written = Value(await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default));
+
+        Assert.True(written.RunnersWorkContributions);
+        Assert.Equal(h.Nathan.Name, written.RunnersWorkContributionsBy);
+        Assert.Equal(Now, written.RunnersWorkContributionsAt);
+    }
+
+    [Fact]
+    public async Task AnOwnerTurningRunnersWorkContributionsOff_RestampsWhoAndWhen()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.RunnersWorkContributionsBy = "someone earlier";
+        row.RunnersWorkContributionsAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var written = Value(await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(false), default));
+
+        Assert.False(written.RunnersWorkContributions);
+        Assert.Equal(h.Nathan.Name, written.RunnersWorkContributionsBy);
+        Assert.Equal(Now, written.RunnersWorkContributionsAt);
+    }
+
+    [Fact]
+    public async Task ResendingTheRunnersWorkContributionsAProjectAlreadyHolds_WritesNothing()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+        await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+        var row = (await h.Db.Projects.FindAsync(created.Id))!;
+        row.RunnersWorkContributionsBy = "someone earlier";
+        row.RunnersWorkContributionsAt = Now.AddDays(-1);
+        await h.Db.SaveChangesAsync();
+
+        var result = Value(await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default));
+
+        Assert.True(result.RunnersWorkContributions);
+        Assert.Equal("someone earlier", result.RunnersWorkContributionsBy);
+        Assert.Equal(Now.AddDays(-1), result.RunnersWorkContributionsAt);
+    }
+
+    [Fact]
+    public async Task ProjectDto_RoundTripsRunnersWorkContributionsFieldsThroughGetProjects()
+    {
+        var h = await NewAsync();
+        var created = Created(await h.Projects.CreateProject(new ProjectCreateRequest("TST", "Test"), default));
+
+        Assert.False(created.RunnersWorkContributions);
+        Assert.Null(created.RunnersWorkContributionsBy);
+        Assert.Null(created.RunnersWorkContributionsAt);
+        var fresh = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.False(fresh.RunnersWorkContributions);
+        Assert.Null(fresh.RunnersWorkContributionsBy);
+        Assert.Null(fresh.RunnersWorkContributionsAt);
+
+        await h.Projects.PutRunnersWorkContributions(created.Id, new ProjectRunnersWorkContributionsWriteRequest(true), default);
+
+        var read = Value(await h.Projects.GetProjects(default)).Single(p => p.Id == created.Id);
+        Assert.True(read.RunnersWorkContributions);
+        Assert.Equal(h.Nathan.Name, read.RunnersWorkContributionsBy);
+        Assert.Equal(Now, read.RunnersWorkContributionsAt);
+    }
+
     // ---- Reflection ----
 
     [Fact]

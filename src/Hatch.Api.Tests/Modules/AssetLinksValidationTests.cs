@@ -1,12 +1,16 @@
 using Hatch.Api.Modules;
+using Hatch.Api.Modules.Hatch;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Hatch.Api.Tests.Modules;
 
 /// <summary>
-/// Direct construction, no host - the style <c>AppsConfigTests.cs</c> already uses for
-/// <see cref="AppsOptions"/>. This is the one options class in the app validated at
-/// startup rather than left to degrade lazily (see "Why validation differs from
-/// PublicBaseUrl" on HA-265), so it gets its own coverage of what fails and why.
+/// Direct construction, no host. <see cref="HatchOptions.AssetLinks"/> is the one
+/// setting in the app validated at startup rather than left to degrade lazily
+/// (see "Why validation differs from PublicBaseUrl" on HA-265), so it gets its
+/// own coverage of what fails and why.
 /// </summary>
 public class AssetLinksValidationTests
 {
@@ -33,7 +37,7 @@ public class AssetLinksValidationTests
 
     [Fact]
     public void Validate_Succeeds_ForAnEmptyList()
-        => Assert.True(new AssetLinksValidation().Validate(null, new AppsOptions { AssetLinks = [] }).Succeeded);
+        => Assert.True(new AssetLinksValidation().Validate(null, new HatchOptions { AssetLinks = [] }).Succeeded);
 
     /// <summary>
     /// compose.yaml defaults the one wired slot to every field blank when nobody has
@@ -83,7 +87,43 @@ public class AssetLinksValidationTests
         Assert.Contains("AssetLinks:0", result.FailureMessage);
     }
 
-    private static AppsOptions Options(params (string PackageName, string[] Fingerprints)[] packages) => new()
+    /// <summary>
+    /// The binding <see cref="HatchModule"/> registers refuses a malformed
+    /// <c>Hatch__AssetLinks__0__…</c> - the environment-variable form of the
+    /// section - when the options are first built, which is what
+    /// <c>ValidateOnStart</c> does at startup.
+    /// </summary>
+    [Fact]
+    public void HatchModule_RefusesAMalformedFingerprint_FromTheHatchSection()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Hatch:AssetLinks:0:PackageName"] = "com.example.hatch",
+            ["Hatch:AssetLinks:0:Sha256CertFingerprints:0"] = "not-a-fingerprint",
+        }).Build();
+        using var provider = new ServiceCollection().AddHatchModule(configuration).BuildServiceProvider();
+
+        var ex = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<HatchOptions>>().Value);
+        Assert.Contains("Hatch:AssetLinks:0:Sha256CertFingerprints:0", ex.Message);
+    }
+
+    [Fact]
+    public void HatchModule_BindsPublicBaseUrlAndAssetLinks_FromTheHatchSection()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Hatch:PublicBaseUrl"] = "https://example.test",
+            ["Hatch:AssetLinks:0:PackageName"] = "com.example.hatch",
+            ["Hatch:AssetLinks:0:Sha256CertFingerprints:0"] = FingerprintA,
+        }).Build();
+        using var provider = new ServiceCollection().AddHatchModule(configuration).BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<HatchOptions>>().Value;
+        Assert.Equal("https://example.test", options.PublicBaseUrl);
+        Assert.Equal("com.example.hatch", Assert.Single(options.AssetLinks).PackageName);
+    }
+
+    private static HatchOptions Options(params (string PackageName, string[] Fingerprints)[] packages) => new()
     {
         AssetLinks = [.. packages.Select(p => new AssetLinkPackage
         {

@@ -646,6 +646,78 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_ListsAConflictedContributionInContributionsHeld_WhenTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.ContributionAsync(issue, "https://forge.example/pulls/1", "other.example", "OTH-4");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ContributionsHeld!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("https://forge.example/pulls/1", row.PullRequestUrl);
+        Assert.Equal("its branch conflicts with main", row.Sentence);
+        Assert.Equal("other.example", row.OriginInstance);
+        Assert.Equal("OTH-4", row.OriginKey);
+        Assert.Empty(attention.Conflicts);
+        Assert.Empty(attention.FailingBuilds!);
+        Assert.Empty(attention.Reviews);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_ListsAContributionWithAFailedBuildInContributionsHeld_WhenTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.ContributionAsync(issue, "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Clean);
+        await h.BuildAsync(issue, BuildVerdicts.Failed, ["api"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        var row = Assert.Single(attention.ContributionsHeld!);
+        Assert.Equal($"its build on {new string('2', 7)} failed", row.Sentence);
+        Assert.Null(row.OriginInstance);
+        Assert.Null(row.OriginKey);
+        Assert.Empty(attention.FailingBuilds!);
+        Assert.Equal(0, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesAContributionOutOfContributionsHeld_WhenTheSettingIsOn()
+    {
+        var h = await NewAsync();
+        (await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId)).RunnersWorkContributions = true;
+        var issue = await h.FileAsync("story", "from outside", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.ContributionAsync(issue, "https://forge.example/pulls/1");
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.ContributionsHeld!);
+        Assert.Equal(Key(issue), Assert.Single(attention.Conflicts).Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
+    public async Task Attention_LeavesAConflictedRecordWithNoPullRequestOutOfContributionsHeld()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review, pullRequestUrl: "https://forge.example/pulls/1");
+        await h.ContributionAsync(issue, null);
+        await h.CheckAsync(issue, MergeVerdicts.Conflicted, ["a.cs"]);
+
+        var attention = Value(await h.Attention.GetAttention(default));
+
+        Assert.Empty(attention.ContributionsHeld!);
+        Assert.Equal(Key(issue), Assert.Single(attention.Conflicts).Key);
+        Assert.Equal(1, attention.ReviewsHeldBack);
+    }
+
+    [Fact]
     public async Task Attention_HoldsBackAnIssueWithAFailedBuild_AndCountsIt()
     {
         var h = await NewAsync();
@@ -2527,6 +2599,19 @@ public class AttentionControllerTests : IDisposable
                 CheckedAt = Now,
                 Runner = "box:/work/repo",
                 CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task ContributionAsync(
+            EfHatchIssue issue, string? pullRequestUrl, string? originInstance = null, string? originKey = null)
+        {
+            Db.Contributions.Add(new EfHatchContribution
+            {
+                IssueId = issue.Id, PullRequestUrl = pullRequestUrl, HeadBranch = "feature/thing",
+                AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+                OriginInstance = originInstance, OriginKey = originKey,
             });
 
             await Db.SaveChangesAsync();

@@ -1,5 +1,5 @@
 /**
- * Stamps the build's `hatch-revision` into every SPA's index.html, and makes
+ * Stamps the build's `hatch-revision` into each app's index.html, and makes
  * the page send it back on every API call it makes.
  *
  * See docs/plans/version.md. Two things about this plugin are load-bearing and
@@ -8,21 +8,17 @@
  * **It writes into index.html, never into the bundle.** The obvious
  * implementation is a Vite `define` that inlines the sha as a constant, and it
  * would be wrong: Vite content-hashes everything under assets/, so a sha in the
- * bundle changes that bundle's hash on *every* commit. Services/AppVersionService.cs
- * derives a frontend's identity from exactly those hashed filenames, precisely
- * so that a backend-only deploy - by far the common case - leaves it unchanged
- * and the wall tablets don't reload for a change they can't see. A `define`
- * here would turn every deploy into a full-fleet reload. index.html carries no
- * hash, is served `no-cache` (Program.cs), and is already the file
- * AppVersionService reads; a <meta> in it perturbs neither that service's
- * extraction (which matches /apps/<app>/assets/ URLs) nor the client's (which
- * reads script[src]/link[href]).
+ * bundle changes that bundle's hash on *every* commit, so a backend-only
+ * deploy - by far the common case - would change every frontend's files for
+ * a change they can't see. index.html carries no hash and is served
+ * `no-cache` (Program.cs); a <meta> in it perturbs neither the bundle's
+ * filenames nor the client's own check (which reads script[src]/link[href]).
  *
  * **The interceptor lives here rather than in each app's source.** There are
- * six SPAs with six copies of clientLogger.ts and no shared frontend package;
- * a runtime module would have become a seventh sextuplet. Emitting the
- * behaviour from the one place that already has the value keeps it single-
- * sourced, and `head-prepend` gets it in front of the ui-logs ping that
+ * three apps (the board, the sign-in app and the design gallery), each with
+ * its own clientLogger.ts; a runtime module would have become a fourth copy.
+ * Emitting the behaviour from the one place that already has the value keeps
+ * it single-sourced, and `head-prepend` gets it in front of the ui-logs ping that
  * index.html itself fires - so even that first request carries the header.
  *
  * The values come from the environment (Dockerfile.api passes build args
@@ -49,13 +45,13 @@ const DEV_REVISION = 'dev'
 const DEV_SEQUENCE = '0'
 
 export interface HatchRevisionOptions {
-  /** App directory name under wwwroot/apps, e.g. "dashboard". Diagnostics only. */
+  /** App directory name under wwwroot/apps, e.g. "hatch". Diagnostics only. */
   app: string
 }
 
 /**
  * Vite's own `Plugin` and `HtmlTagDescriptor` types, restated structurally
- * rather than imported. This file sits above the six apps and so above the six
+ * rather than imported. This file sits above the apps and so above their
  * node_modules trees - `import type { Plugin } from 'vite'` resolves from none
  * of them. Structural typing means the object still has to satisfy Vite's real
  * `PluginOption` at every call site, which is the check that actually matters;

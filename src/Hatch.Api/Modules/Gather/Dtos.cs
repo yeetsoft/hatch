@@ -1,7 +1,7 @@
 namespace Hatch.Api.Modules.Gather;
 
 // The API-facing shapes for Gather, kept separate from the entities so the two
-// clients - the family shell and the kiosk overlay - have one stable contract.
+// clients - the web app and the kiosk overlay - have one stable contract.
 // NameNormalized never appears here: it is the server's business.
 
 /// <summary>

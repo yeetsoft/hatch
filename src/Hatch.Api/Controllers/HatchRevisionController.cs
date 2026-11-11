@@ -10,12 +10,7 @@ namespace Hatch.Api.Controllers;
 /// What commit this replica is running - and, for a caller that identified its
 /// own build, whether that build is behind, current, or ahead.
 ///
-/// Distinct from <see cref="AppVersionController"/>, which answers a different
-/// question with a better answer for its own purpose: that one compares
-/// content-hashed asset filenames, so a backend-only deploy leaves it unchanged
-/// and the wall tablets don't reload for a change they can't see. This one
-/// names the commit, which is what an operator watching a rollout needs and
-/// what a tablet's reload decision must *not* be keyed on. Both, deliberately.
+/// It names the commit, which is what an operator watching a rollout needs.
 ///
 /// Exempt from the auth wall (see AuthGate's allow-list). It names a commit of
 /// a repository that is on its way to being public, and an unauthenticated
@@ -32,7 +27,7 @@ public class HatchRevisionController(IHatchRevision revision, IFluxRevisionReade
     {
         // A cached answer is a wrong answer: the entire purpose is "what is
         // running *right now*", and this is polled from devices whose HTTP
-        // cache we don't otherwise control. Same call AppVersionController makes.
+        // cache we don't otherwise control.
         Response.Headers.CacheControl = "no-store";
 
         // The cluster's state is for an operator, not for every device on the
