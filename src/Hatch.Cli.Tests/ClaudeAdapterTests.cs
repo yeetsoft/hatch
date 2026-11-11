@@ -252,6 +252,127 @@ public sealed class ClaudeAdapterTests : IDisposable
         Assert.Contains(logged, l => l.Contains("/usage probe exited", StringComparison.Ordinal) && l.Contains("0 line(s)", StringComparison.Ordinal));
     }
 
+    /// <summary>A script that prints <paramref name="json"/> to stdout and exits, standing in for a real claude CLI spawn.</summary>
+    private static string ScriptThatPrints(string directory, string json)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var file = Path.Combine(directory, "fake-claude.cmd");
+            File.WriteAllText(file, $"@echo off\r\necho {json}\r\n");
+            return file;
+        }
+
+        var script = Path.Combine(directory, "fake-claude.sh");
+        File.WriteAllText(script, $"#!/bin/sh\necho '{json}'\n");
+        File.SetUnixFileMode(script,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return script;
+    }
+
+    /// <summary>HA-2205: a verdict file naming the current CLI version pre-sets the latch, so the second process never spawns the probe at all.</summary>
+    [Fact]
+    public async Task NoteCliVersion_pre_sets_the_latch_from_a_verdict_naming_the_current_version()
+    {
+        var directory = Directory.CreateTempSubdirectory("hatch-usage-verdict-").FullName;
+        try
+        {
+            var verdictPath = Path.Combine(directory, "verdict.json");
+            Assert.True(new UsageProbeVerdict("2.1.268 (Claude Code)", 0.38m).Write(verdictPath));
+
+            var logged = new List<string>();
+            // _bin is a plain temp file, not an executable - spawning it would
+            // fail loudly, so a clean null with no such failure says the probe
+            // was never run.
+            var adapter = new ClaudeAdapter(_bin, warn: logged.Add, verdictPath: verdictPath);
+            Assert.True(adapter.CanSpawn(out _));
+
+            adapter.NoteCliVersion("2.1.268 (Claude Code)");
+            var result = await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+            Assert.Null(result);
+            Assert.Single(logged, l => l.Contains("already known to cost a turn", StringComparison.Ordinal) && l.Contains("$0.38", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>HA-2205: a verdict naming a different version is not this process's own, so it is ignored and a probe runs as normal.</summary>
+    [Fact]
+    public async Task NoteCliVersion_ignores_a_verdict_naming_a_different_version()
+    {
+        var directory = Directory.CreateTempSubdirectory("hatch-usage-verdict-").FullName;
+        try
+        {
+            var verdictPath = Path.Combine(directory, "verdict.json");
+            Assert.True(new UsageProbeVerdict("2.1.200 (Claude Code)", 0.38m).Write(verdictPath));
+
+            var git = Reach.Find("git", Environment.GetEnvironmentVariable("PATH"));
+            Assert.NotNull(git);
+
+            var logged = new List<string>();
+            var adapter = new ClaudeAdapter(git, warn: logged.Add, verdictPath: verdictPath);
+            Assert.True(adapter.CanSpawn(out _));
+
+            adapter.NoteCliVersion("2.1.268 (Claude Code)");
+            var result = await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+            Assert.NotNull(result);
+            Assert.DoesNotContain(logged, l => l.Contains("already known to cost a turn", StringComparison.Ordinal));
+            Assert.Contains(logged, l => l.Contains("/usage probe exited", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    /// <summary>HA-2205: "probe skipped" is said once per process, not once per due cycle.</summary>
+    [Fact]
+    public async Task ProbeAsync_says_probe_skipped_only_once_across_consecutive_calls()
+    {
+        var logged = new List<string>();
+        var adapter = new ClaudeAdapter(_bin, warn: logged.Add);
+        Assert.True(adapter.CanSpawn(out _));
+
+        typeof(ClaudeAdapter).GetField("_probeCostly", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(adapter, true);
+
+        await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+        await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+        Assert.Single(logged, l => l.Contains("probe skipped", StringComparison.Ordinal));
+    }
+
+    /// <summary>HA-2205: a probe that discovers the CLI took /usage as a turn writes a verdict file, so the next process can skip its own probe.</summary>
+    [Fact]
+    public async Task ProbeAsync_writes_a_verdict_file_once_it_discovers_the_probe_is_costly()
+    {
+        var directory = Directory.CreateTempSubdirectory("hatch-usage-verdict-").FullName;
+        try
+        {
+            var script = ScriptThatPrints(directory, """{"type":"result","num_turns":1,"total_cost_usd":0.38}""");
+            var verdictPath = Path.Combine(directory, "verdict.json");
+
+            var adapter = new ClaudeAdapter(script, verdictPath: verdictPath);
+            Assert.True(adapter.CanSpawn(out _));
+            adapter.NoteCliVersion("2.1.268 (Claude Code)");
+
+            var result = await ((IUsageProbe)adapter).ProbeAsync(Path.GetTempPath(), default);
+
+            Assert.Null(result);
+            var verdict = UsageProbeVerdict.Read(verdictPath);
+            Assert.NotNull(verdict);
+            Assert.Equal("2.1.268 (Claude Code)", verdict.Version);
+            Assert.Equal(0.38m, verdict.CostUsd);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Fact]
     public void CanSpawn_refuses_with_the_same_sentence_as_today_when_nothing_is_configured_or_on_path()
     {

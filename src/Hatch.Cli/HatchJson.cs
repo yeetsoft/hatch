@@ -99,6 +99,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(BroughtCurrentRequest))]
 [JsonSerializable(typeof(PullRequestPushbackRequest))]
 [JsonSerializable(typeof(NightState))]
+[JsonSerializable(typeof(UsageProbeVerdict))]
 [JsonSerializable(typeof(List<ProjectRepositoryWriteRequest>))]
 [JsonSerializable(typeof(PlaybookFileRequest))]
 [JsonSerializable(typeof(DependencyFileRequest))]

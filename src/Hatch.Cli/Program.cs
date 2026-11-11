@@ -337,6 +337,7 @@ try
         // Once per process, same as detection above - a supervisor restart
         // reads it again rather than carrying it over.
         var machine = await MachineFacts.ReadAsync(adapter, Detect.RealProbe, cancelling.Token);
+        if (adapter is ClaudeAdapter claude) claude.NoteCliVersion(machine.AgentVersion);
 
         var runtime = new Runtime(
             Settings: settings,
