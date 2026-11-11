@@ -12,6 +12,7 @@ import {
   projectReflectionDiff,
   projectRepoSourcedDiff,
   projectRunnerTagsDiff,
+  reflectionWaitsForPerson,
   type ProjectDraft,
 } from './projectDraft';
 import type { OnePullRequestPolicy } from '../types';
@@ -895,5 +896,25 @@ describe('projectReflectionDiff', () => {
   it('sends text that is no number as 0, for the server to refuse, never as null', () => {
     expect(projectReflectionDiff(withCadence('weekly', null))).toEqual({ cadenceDays: 0 });
     expect(projectReflectionDiff(withCadence('weekly', 7))).toEqual({ cadenceDays: 0 });
+  });
+});
+
+describe('reflectionWaitsForPerson', () => {
+  const draft = (reflectionCadenceDays: string, noCodeCloses: boolean) => ({ reflectionCadenceDays, noCodeCloses });
+
+  it('is true when a cadence is set and a no-code declaration does not close the ticket', () => {
+    expect(reflectionWaitsForPerson(draft('5', false))).toBe(true);
+  });
+
+  it('is false when a no-code declaration closes the ticket', () => {
+    expect(reflectionWaitsForPerson(draft('5', true))).toBe(false);
+  });
+
+  it.each(['', '   ', 'abc', '0', '-3'])('is false when the box holds %j, which sets no cadence', (box) => {
+    expect(reflectionWaitsForPerson(draft(box, false))).toBe(false);
+  });
+
+  it('reads a padded number as set', () => {
+    expect(reflectionWaitsForPerson(draft(' 5 ', false))).toBe(true);
   });
 });

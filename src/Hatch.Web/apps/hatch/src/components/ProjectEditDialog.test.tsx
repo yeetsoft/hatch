@@ -359,6 +359,31 @@ describe('ProjectEditDialog', () => {
     expect(html).not.toContain('Reflects every');
   });
 
+  it('tells an owner a cadence will wait for a person while a no-code declaration does not close the ticket', () => {
+    const html = render(project({ canAdminister: true, reflectionCadenceDays: 5, noCodeCloses: false }));
+
+    expect(html).toContain('will wait in review for a person');
+    expect(html).toContain('A no-code declaration closes the ticket');
+  });
+
+  it('does not tell an owner that where a no-code declaration closes the ticket', () => {
+    const html = render(project({ canAdminister: true, reflectionCadenceDays: 5, noCodeCloses: true }));
+
+    expect(html).not.toContain('will wait in review for a person');
+  });
+
+  it('does not tell an owner that where no cadence is set', () => {
+    const html = render(project({ canAdminister: true, reflectionCadenceDays: null, noCodeCloses: false }));
+
+    expect(html).not.toContain('will wait in review for a person');
+  });
+
+  it('does not tell a person who cannot administer the cadence box that', () => {
+    const html = render(project({ canAdminister: false, reflectionCadenceDays: 5, noCodeCloses: false }));
+
+    expect(html).not.toContain('will wait in review for a person');
+  });
+
   it('shows an owner a Reflect now button beside the cadence box', () => {
     const html = render(project({ canAdminister: true }));
 

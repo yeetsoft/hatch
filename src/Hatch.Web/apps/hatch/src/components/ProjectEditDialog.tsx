@@ -39,6 +39,7 @@ import {
   projectDraftKeyObjection,
   projectLandingDiff,
   projectReflectionDiff,
+  reflectionWaitsForPerson,
   projectRepoSourcedDiff,
   projectRunnerTagsDiff,
   type ProjectDraft,
@@ -532,6 +533,12 @@ export function ProjectEditDialog({
               <p className="hatch-section-hint text-muted">
                 Next due {project.reflectionNextDueAt ? new Date(project.reflectionNextDueAt).toLocaleDateString() : ''}. Blank
                 turns it off.
+              </p>
+            )}
+            {reflectionWaitsForPerson(draft) && (
+              <p className="hatch-section-hint text-muted">
+                Each reflection, and each hypothesis it files, will wait in review for a person to close it. Turn on{' '}
+                <em>A no-code declaration closes the ticket</em>, below, and they close themselves.
               </p>
             )}
             <label>
