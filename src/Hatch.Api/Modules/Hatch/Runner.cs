@@ -51,10 +51,11 @@ public sealed record Runner(EfApiKey? Key, EfHatchRunnerConfig? Config, EfHatchR
     /// and no filter, the way <see cref="Runners.HeldAsync"/> reads its own
     /// table whole: the scale here is tens of rows, never thousands.
     ///
-    /// A beat that no key claims and that <see cref="Runners.AdoptByOwnerAsync"/>
-    /// has already folded onto a key's config is history, not a runner: it is
-    /// left out of the unclaimed half below rather than listed a second time
-    /// under its own old name.
+    /// A beat that no key claims and that an earlier, now-removed adoption
+    /// bridge already folded onto a key's config carries its own
+    /// <c>AdoptedAt</c> still - history, not a runner - and is left out of the
+    /// unclaimed half below rather than listed a second time under its own
+    /// old name.
     /// </summary>
     public static async Task<List<Runner>> JoinAsync(HatchContext db, IAuthService keys, CancellationToken ct)
     {

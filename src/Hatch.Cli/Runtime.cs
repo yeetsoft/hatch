@@ -79,12 +79,6 @@ public sealed record Runtime(
     public string ProfilesDirectory { get; init; } = Settings.ProfilesDirectory();
 
     /// <summary>
-    /// Where the old per-checkout runner-name record lives. Replaceable so a
-    /// test reads its own file rather than the machine's.
-    /// </summary>
-    public string RunnerRecordPath { get; init; } = RunnerNames.Record.DefaultPath();
-
-    /// <summary>
     /// Where the night's running totals are handed from one incarnation of the
     /// loop to the next. Set by the supervisor in <c>scripts/hatch.sh</c> or
     /// <c>scripts/hatch.ps1</c> and by nobody else, so its absence is how the
