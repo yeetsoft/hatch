@@ -44,4 +44,18 @@ public sealed class BranchesTests
     [InlineData("", null)]
     public void An_answer_chooses_a_branch_only_when_it_names_exactly_one(string answer, string? expected) =>
         Assert.Equal(expected, Branches.Chosen(answer, ["ha-31-a", "ha-31-b"]) is { } c ? c.ToLowerInvariant() : null);
+
+    [Theory]
+    [InlineData("ha-31-thing", true)]
+    [InlineData("HA-31-thing", true)]
+    [InlineData("ha-31", true)]
+    [InlineData("bee-2-x", true)]
+    [InlineData("ha-31x", false)]
+    [InlineData("hax-3", false)]
+    [InlineData("ha-x", false)]
+    [InlineData("ha-", false)]
+    [InlineData("feature/ha-31", false)]
+    [InlineData("fix-the-thing", false)]
+    public void A_branch_belongs_to_a_project_when_it_names_one_of_its_issues(string branch, bool expected) =>
+        Assert.Equal(expected, Branches.BelongsToProject(branch, ["HA", "BEE"]));
 }

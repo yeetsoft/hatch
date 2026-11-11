@@ -1310,4 +1310,141 @@ public sealed class BoardCommandsTests
 
         Assert.DoesNotContain("takers=", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
     }
+
+    // ---- The outside pull requests a queue read says are passed over ----
+
+    private const string OutsideUrl = "https://example.test/repo/pull/50";
+
+    private static PullRequestAnswer Draft(long number = 50) =>
+        new(PullRequestStates.Open, null, new string('b', 40), number, MergeStates.Draft, ReviewDecisions.None, "main", null,
+            "feature/x", "octocat", false, "Fix", "Body", new DateTimeOffset(2026, 9, 27, 0, 0, 0, TimeSpan.Zero));
+
+    /// <summary>A checkout of a bound repository, a forge that lists one draft pull request in it, and the board's side of that.</summary>
+    private static (CliHarness H, FakeForge Forge, Cli Cli) InACheckout(params QueueEntryDto[] queue)
+    {
+        var h = new CliHarness(clock: new FrozenClock(new DateTimeOffset(2026, 9, 27, 2, 0, 0, TimeSpan.Zero)));
+        var forge = new FakeForge
+        {
+            PullRequestList = new(new Dictionary<string, PullRequestAnswer> { [OutsideUrl] = Draft() }, null),
+        };
+
+        h.Wire.Json("GET", "/api/hatch/work/queue", queue);
+        h.Wire.Json("GET", "/api/hatch/trunk-builds", new[] { Fixtures.TrunkBuild() });
+        h.Wire.Json("GET", "/api/hatch/projects", new[]
+        {
+            new ProjectDto(
+                1, "AER", "Aerie", 0, DateTimeOffset.UnixEpoch, null, null,
+                [new ProjectRepositoryDto("https://example.test/repo.git", Fixtures.MergeCanonical, null)], null, [], false, false),
+        });
+        h.Wire.Json("GET", "/api/hatch/issues", Array.Empty<IssueCardDto>());
+
+        var cli = h.Cli with
+        {
+            Checkouts = [new CheckoutEntry("/checkout", "https://example.test/repo.git", Standing: true)],
+            Forge = forge.For,
+        };
+        return (h, forge, cli);
+    }
+
+    [Fact]
+    public async Task A_queue_run_in_a_checkout_lists_each_pull_request_the_driver_would_pass_over_after_the_rows()
+    {
+        var (h, forge, cli) = InACheckout(
+            new QueueEntryDto(Fixtures.Issue("AER-1"), Fixtures.Status(3, "In Progress"), Fixtures.Status(4, "In Review"), null));
+        using var _ = h;
+
+        Assert.Equal(0, await new BoardCommands(cli).QueueAsync([], default));
+
+        Assert.Equal(
+            $"AER-1  [task]  In Progress  -> In Review\nhatch: pull request #50 ({OutsideUrl}) is not filed - it is a draft",
+            h.Said);
+        Assert.Empty(forge.AssociationReads);
+    }
+
+    [Fact]
+    public async Task The_passed_over_lines_follow_the_empty_sentence_too()
+    {
+        var (h, _, cli) = InACheckout();
+        using var _ = h;
+
+        await new BoardCommands(cli).QueueAsync([], default);
+
+        Assert.Equal(
+            $"hatch: nothing on the board is on the dispatcher's path\nhatch: pull request #50 ({OutsideUrl}) is not filed - it is a draft",
+            h.Said);
+    }
+
+    [Fact]
+    public async Task A_pull_request_an_issue_records_is_not_listed()
+    {
+        var (h, _, cli) = InACheckout();
+        using var _ = h;
+        h.Wire.Replace("GET", "/api/hatch/issues", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Card("AER-9") }, Fixtures.Json));
+
+        await new BoardCommands(cli).QueueAsync([], default);
+
+        Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
+    }
+
+    [Fact]
+    public async Task A_pull_request_the_driver_would_file_is_not_listed_and_is_not_filed_by_a_queue_read()
+    {
+        var (h, forge, cli) = InACheckout();
+        using var _ = h;
+        forge.PullRequestList = new(new Dictionary<string, PullRequestAnswer> { [OutsideUrl] = Draft() with { MergeState = MergeStates.Clean } }, null);
+
+        await new BoardCommands(cli).QueueAsync([], default);
+
+        Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
+        Assert.Equal(["/checkout 50"], forge.AssociationReads);
+        Assert.Empty(h.Wire.Calls.Where(c => c.Method != "GET"));
+    }
+
+    [Theory]
+    [InlineData("--mine")]
+    [InlineData("AER-1")]
+    public async Task A_narrowed_queue_lists_none_and_asks_the_forge_nothing(string arg)
+    {
+        var (h, forge, cli) = InACheckout();
+        using var _ = h;
+
+        await new BoardCommands(cli).QueueAsync([arg], default);
+
+        Assert.DoesNotContain("not filed", h.Said, StringComparison.Ordinal);
+        Assert.Empty(forge.PullRequestListReads);
+    }
+
+    [Fact]
+    public async Task A_board_that_will_not_say_prints_nothing_extra_and_is_not_an_error()
+    {
+        var (h, _, cli) = InACheckout();
+        using var _ = h;
+        h.Wire.Replace("GET", "/api/hatch/trunk-builds", HttpStatusCode.InternalServerError, "boom");
+
+        Assert.Equal(0, await new BoardCommands(cli).QueueAsync([], default));
+        Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
+    }
+
+    [Fact]
+    public async Task A_forge_that_will_not_say_prints_nothing_extra_and_is_not_an_error()
+    {
+        var (h, forge, cli) = InACheckout();
+        using var _ = h;
+        forge.PullRequestList = new(null, "gh is not installed");
+
+        Assert.Equal(0, await new BoardCommands(cli).QueueAsync([], default));
+        Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
+    }
+
+    [Fact]
+    public async Task A_queue_run_outside_any_checkout_asks_nothing_about_pull_requests()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+
+        await new BoardCommands(h.Cli).QueueAsync([], default);
+
+        Assert.Empty(h.Wire.To("GET", "/api/hatch/trunk-builds"));
+        Assert.Empty(h.Wire.To("GET", "/api/hatch/projects"));
+    }
 }

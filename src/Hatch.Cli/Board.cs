@@ -548,6 +548,29 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         return answer.Status;
     }
 
+    /// <summary>The issues that record <paramref name="url"/> as their pull request, or as their contribution's - at most one, but a list, as the route is.</summary>
+    public async Task<IReadOnlyList<IssueCardDto>> PullRequestRecordedAsync(string url, CancellationToken ct) =>
+        await Client.GetAsync<List<IssueCardDto>>(
+            $"/api/hatch/issues?pullRequestUrl={Uri.EscapeDataString(url)}", ct) ?? [];
+
+    /// <summary>
+    /// Records that an issue came from outside - see <see cref="ContributionRequest"/>. A <c>409</c> is not a
+    /// fault, the same as <see cref="MergedAsync"/> documents: somebody else holds this pull request, or this
+    /// issue holds another, and the caller says so and walks on rather than treating it as a refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? Conflict)> ContributionAsync(
+        string key, ContributionRequest request, CancellationToken ct)
+    {
+        var path = $"/api/hatch/issues/{key}/contribution";
+        var answer = await Client.Send(HttpMethod.Put, path, request, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
+
     public Task<CommentDto?> CommentAsync(string key, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>($"/api/hatch/issues/{key}/comments", new CommentCreateRequest(body), ct);
 
