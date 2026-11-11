@@ -101,6 +101,44 @@ RUN case "$TARGETARCH" in \
  && ln -s /opt/microsoft/powershell/$major/pwsh /usr/local/bin/pwsh
 """.ReplaceLineEndings("\n") + "\n";
 
+    private static readonly string Playwright = """
+# playwright-browsers: Playwright's chromium and webkit with their system libraries, into /ms-playwright. The version must match the Microsoft.Playwright package the tests run, whose browser revisions it pins. Needs node, for npx.
+ARG PLAYWRIGHT_VERSION=1.63.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN ok= ; for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && npx --yes playwright@$PLAYWRIGHT_VERSION install --with-deps chromium webkit; then ok=1; break; fi; \
+      echo "playwright: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok" ] \
+ && rm -rf /var/lib/apt/lists/* \
+ && chmod -R a+rX /ms-playwright
+""".ReplaceLineEndings("\n") + "\n";
+
+    private static readonly string Postgres = """
+# postgres: the server and client from PostgreSQL's own apt repo (PGDG), for one major, with its binaries linked onto PATH. The service is not started: a build that needs a database runs `pg_ctl` itself.
+ARG POSTGRES_VERSION=17
+RUN major=${POSTGRES_VERSION%%.*} \
+ && mkdir -p -m 755 /etc/apt/keyrings \
+ && . /etc/os-release \
+ && curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 300 https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+      -o /etc/apt/keyrings/postgresql.asc \
+ && chmod a+r /etc/apt/keyrings/postgresql.asc \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main" \
+      > /etc/apt/sources.list.d/pgdg.list \
+ && ok= \
+ && for attempt in 1 2 3 4 5 6; do \
+      if apt-get update \
+         && apt-get install -y --no-install-recommends postgresql-$major postgresql-client-$major; then ok=1; break; fi; \
+      echo "apt: attempt $attempt failed" >&2; \
+      [ "$attempt" -lt 6 ] && sleep 50; \
+    done; \
+    [ -n "$ok" ] \
+ && rm -rf /var/lib/apt/lists/* \
+ && ln -s /usr/lib/postgresql/$major/bin/* /usr/local/bin/
+""".ReplaceLineEndings("\n") + "\n";
+
     [Fact]
     public void MakeRendersExactlyItsFragment()
     {
@@ -204,6 +242,77 @@ RUN case "$TARGETARCH" in \
             .Descendants("TargetFramework").Single().Value;
 
         Assert.Equal($"ARG DOTNET_VERSION={framework.Replace("net", "")}", FirstArg(Dotnet));
+    }
+
+    [Fact]
+    public void PlaywrightBrowsersRendersExactlyItsFragment()
+    {
+        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
+
+        Assert.Null(problem);
+        Assert.Equal(DependencyRecipes.Recipe("node") + Playwright, text);
+        Assert.DoesNotContain("TARGETARCH", Playwright);
+    }
+
+    [Fact]
+    public void PostgresRendersExactlyItsFragment()
+    {
+        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", null)]);
+
+        Assert.Null(problem);
+        Assert.Equal(Postgres, text);
+        Assert.DoesNotContain("TARGETARCH", text);
+    }
+
+    [Fact]
+    public void ADeclaredPlaywrightVersionChangesOnlyItsDefault()
+    {
+        var expected = Playwright.Replace("ARG PLAYWRIGHT_VERSION=1.63.0", "ARG PLAYWRIGHT_VERSION=1.50.0");
+        Assert.NotEqual(Playwright, expected);
+
+        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", "1.50.0")]);
+
+        Assert.Null(problem);
+        Assert.Equal(DependencyRecipes.Recipe("node") + expected, text);
+    }
+
+    [Fact]
+    public void ADeclaredPostgresVersionChangesOnlyItsDefault()
+    {
+        var expected = Postgres.Replace("ARG POSTGRES_VERSION=17", "ARG POSTGRES_VERSION=16");
+        Assert.NotEqual(Postgres, expected);
+
+        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", "16")]);
+
+        Assert.Null(problem);
+        Assert.Equal(expected, text);
+    }
+
+    [Fact]
+    public void PlaywrightBrowsersAloneRendersNodeFirst()
+    {
+        var expected = DependencyRecipes.Recipe("node") + Playwright;
+
+        var (alone, aloneProblem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
+        var (both, bothProblem) = DependencyRecipes.Render([
+            new DeclaredDependency("playwright-browsers", null),
+            new DeclaredDependency("node", null)]);
+
+        Assert.Null(aloneProblem);
+        Assert.Null(bothProblem);
+        Assert.Equal(expected, alone);
+        Assert.Equal(expected, both);
+    }
+
+    [Fact]
+    public void PlaywrightDefaultIsTheNuGetPackageVersion()
+    {
+        var version = XDocument.Load(Repository("src/Hatch.Api.Tests/Hatch.Api.Tests.csproj"))
+            .Descendants("PackageReference")
+            .Single(reference => (string?)reference.Attribute("Include") == "Microsoft.Playwright")
+            .Attribute("Version")!.Value;
+
+        Assert.Equal($"ARG PLAYWRIGHT_VERSION={version}", FirstArg(Playwright));
     }
 
     private static void AssertBothArchitectures(string text)
