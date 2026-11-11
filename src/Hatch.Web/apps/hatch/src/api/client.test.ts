@@ -402,9 +402,9 @@ describe('getActivityReport', () => {
   });
 
   it('sends includeKeys only when true', async () => {
-    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: true })).toContain('&includeKeys=true');
-    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: false })).not.toContain('includeKeys');
-    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0 })).not.toContain('includeKeys');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: true, gap: 30, lead: 15 })).toContain('&includeKeys=true');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: false, gap: 30, lead: 15 })).not.toContain('includeKeys');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).not.toContain('includeKeys');
   });
 });
 
