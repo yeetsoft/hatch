@@ -22,6 +22,8 @@ export interface RunnersOutlet {
   runners: Runner[] | null;
   secret: RunnerSecret | null;
   setSecret: (secret: RunnerSecret | null) => void;
+  /** Ask the poll again now - a save asks, so the card draws what is true. */
+  reload: () => Promise<void>;
 }
 
 export const useRunnersOutlet = () => useOutletContext<RunnersOutlet>();
@@ -37,13 +39,13 @@ export function RunnersIndex() {
  * docs/runners-page-design.md, "Routes and layout".
  */
 export function RunnersLayout() {
-  const { runners, error } = useRunners(true, true);
+  const { runners, error, reload } = useRunners(true, true);
   const { me, isAdmin } = useMe();
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
   const now = new Date();
   const phone = usePhone();
   const [secret, setSecret] = useState<RunnerSecret | null>(null);
-  const outlet = { runners, secret, setSecret };
+  const outlet = { runners, secret, setSecret, reload };
 
   const match = useMatch('/runners/:name');
   const selected = match?.params.name;

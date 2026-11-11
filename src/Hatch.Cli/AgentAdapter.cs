@@ -106,9 +106,11 @@ public interface IAgentAdapter
     /// <summary>
     /// The longest one foreground tool call runs in this agent before the agent
     /// itself ends it. A call still open past this is treated as hung, and the
-    /// runner stops saying it is still running - see <see cref="IAgentStreamReader.Open"/>.
-    /// Ten minutes is the upper bound used for every agent: one with a shorter
-    /// timeout closes the call sooner anyway.
+    /// runner stops saying it is still running - see <see cref="IAgentStreamReader.Open"/> -
+    /// unless the claim carries a run cap, in which case the runner keeps
+    /// saying it until that cap stops the session; this bounds the call only
+    /// where there is none. Ten minutes is the upper bound used for every
+    /// agent: one with a shorter timeout closes the call sooner anyway.
     /// </summary>
     TimeSpan ToolCeiling => TimeSpan.FromMinutes(10);
 

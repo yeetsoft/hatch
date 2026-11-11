@@ -12,6 +12,10 @@ import {
   deniedToolsDraft,
   deniedToolsRequest,
   isOverridden,
+  maxRunDraft,
+  maxRunRequest,
+  quietLimitDraft,
+  quietLimitRequest,
   transitionLabel,
 } from '../lib/playbooks';
 import { hasMultipleProjects } from '../lib/useProjects';
@@ -46,6 +50,8 @@ interface Draft {
   effort: string;
   budget: string;
   briefLimit: string;
+  quietLimit: string;
+  maxRun: string;
   deniedTools: string;
   isCheck: boolean;
   projectId: string;
@@ -63,6 +69,8 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
       effort: playbook.effort,
       budget: budgetDraft(playbook.budget),
       briefLimit: briefLimitDraft(playbook.briefLimit),
+      quietLimit: quietLimitDraft(playbook.quietLimitSeconds),
+      maxRun: maxRunDraft(playbook.maxRunSeconds),
       deniedTools: deniedToolsDraft(playbook.deniedTools),
       isCheck: playbook.isCheck,
       projectId: playbook.projectId === null ? '' : String(playbook.projectId),
@@ -79,6 +87,8 @@ function openDraft(playbook: Playbook | null, statuses: Status[]): Draft {
     effort: PLAYBOOK_EFFORT_DEFAULT,
     budget: '',
     briefLimit: '',
+    quietLimit: '',
+    maxRun: '',
     deniedTools: '',
     isCheck: false,
     projectId: '',
@@ -145,6 +155,8 @@ export function PlaybookEditDialog({
           effort: draft!.effort,
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
+          quietLimitSeconds: quietLimitRequest(draft!.quietLimit),
+          maxRunSeconds: maxRunRequest(draft!.maxRun),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           projectId: draft!.projectId,
@@ -160,6 +172,8 @@ export function PlaybookEditDialog({
           effort: draft!.effort,
           budget: budgetRequest(draft!.budget),
           briefLimit: briefLimitRequest(draft!.briefLimit),
+          quietLimitSeconds: quietLimitRequest(draft!.quietLimit),
+          maxRunSeconds: maxRunRequest(draft!.maxRun),
           deniedTools: deniedToolsRequest(draft!.deniedTools),
           isCheck: draft!.isCheck,
           projectId: draft!.projectId || undefined,
@@ -243,6 +257,15 @@ export function PlaybookEditDialog({
           </Field>
           <Field label="Brief limit (chars)" hint="Leave blank for no cap.">
             <input inputMode="numeric" value={draft.briefLimit} onChange={(e) => write({ briefLimit: e.target.value })} />
+          </Field>
+          <Field
+            label="Quiet limit (seconds)"
+            hint="Seconds a claim may go without a word before the board lets go of it. Leave blank to use the board's own quiet window."
+          >
+            <input inputMode="numeric" value={draft.quietLimit} onChange={(e) => write({ quietLimit: e.target.value })} />
+          </Field>
+          <Field label="Run limit (seconds)" hint="Seconds a session may run before it is cut off. Leave blank for no limit.">
+            <input inputMode="numeric" value={draft.maxRun} onChange={(e) => write({ maxRun: e.target.value })} />
           </Field>
           <Field label="Denied tools" hint="One rule per line. Leave blank for every tool." as="div">
             <textarea

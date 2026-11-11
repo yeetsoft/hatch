@@ -47,6 +47,28 @@ export function briefLimitRequest(draft: string): string {
   return draft.trim();
 }
 
+/** What the quiet limit field shows: blank for the board's own window, the seconds otherwise.
+    Mirrors briefLimitDraft. */
+export function quietLimitDraft(quietLimitSeconds: number | null): string {
+  return quietLimitSeconds === null ? '' : String(quietLimitSeconds);
+}
+
+/** The field, trimmed, as the wire's `quietLimitSeconds` - blank clears it. */
+export function quietLimitRequest(draft: string): string {
+  return draft.trim();
+}
+
+/** What the run limit field shows: blank for no limit, the seconds otherwise.
+    Mirrors briefLimitDraft. */
+export function maxRunDraft(maxRunSeconds: number | null): string {
+  return maxRunSeconds === null ? '' : String(maxRunSeconds);
+}
+
+/** The field, trimmed, as the wire's `maxRunSeconds` - blank clears it. */
+export function maxRunRequest(draft: string): string {
+  return draft.trim();
+}
+
 /** What the denied tools field shows: one rule per line, blank for none. */
 export function deniedToolsDraft(rules: string[]): string {
   return rules.join('\n');
