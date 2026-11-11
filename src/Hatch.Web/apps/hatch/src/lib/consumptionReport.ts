@@ -9,7 +9,7 @@
 
 import type { ConsumptionReport, ConsumptionSort, IssueType, WorkLogTotals } from '../types';
 import { ISSUE_TYPES } from '../types';
-import { dayLabel } from './leaderboard';
+import { DEFAULT_MEASURE, MEASURE, dayLabel, parseMeasure, type SpendMeasure } from './leaderboard';
 import { UNPRICED_TITLE, moneyPhrase, totalsPhrase } from './workLog';
 
 /** How many rows the table asks for. The endpoint takes up to 500 and defaults
@@ -61,6 +61,29 @@ export function withSort(params: URLSearchParams, sort: ConsumptionSort): URLSea
   else next.set(SORT, sort);
 
   return next;
+}
+
+/** The measure the URL names, or `tokens`: the graph's own, which the leaderboard
+    reads the same way. */
+export const resolveMeasure = (params: URLSearchParams): SpendMeasure => parseMeasure(params.get(MEASURE));
+
+/** A copy of `params` with the measure set, or removed at `tokens`. */
+export function withMeasure(params: URLSearchParams, measure: SpendMeasure): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (measure === DEFAULT_MEASURE) next.delete(MEASURE);
+  else next.set(MEASURE, measure);
+
+  return next;
+}
+
+/** The query string the report's *read* depends on: every param but `measure`,
+    which only rescales a graph that is already drawn. Keying the load on this
+    rather than on the whole string is what lets the toggle skip the refetch. */
+export function readSearch(params: URLSearchParams): string {
+  const next = new URLSearchParams(params);
+  next.delete(MEASURE);
+
+  return next.toString();
 }
 
 /** The column the URL names, by its numeric id, or null for every column. A
