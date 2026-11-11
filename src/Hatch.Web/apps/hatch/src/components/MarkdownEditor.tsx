@@ -55,7 +55,6 @@ interface Handoff {
 }
 
 interface PlainHandle {
-  capture(): Handoff | null;
   insertAtCaret(text: string): boolean;
 }
 
@@ -92,9 +91,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   // Decided once per mount. A tablet with a trackpad reports a coarse primary
   // pointer and gets the textarea too - said in HA-56, not a bug.
   const [coarse] = useState(() => window.matchMedia('(pointer: coarse)').matches);
-  const [ready, setReady] = useState<{ monaco: MonacoModule; handoff: Handoff | null } | null>(() =>
-    !coarse && loaded ? { monaco: loaded, handoff: null } : null,
-  );
+  const [ready, setReady] = useState<{ monaco: MonacoModule } | null>(() => (!coarse && loaded ? { monaco: loaded } : null));
   const [wanted, setWanted] = useState(!props.deferred);
   // Chrome remembers a failed dynamic import for the life of the page, so a
   // second attempt cannot succeed where the first didn't: this is what stays
@@ -102,6 +99,11 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
   const [failed, setFailed] = useState(false);
   const plain = useRef<PlainHandle>(null);
   const monacoHandle = useRef<MonacoHandle>(null);
+  // Where the caret was in the textarea, as of the commit that removes it -
+  // not as of the moment the chunk resolved, which can be a render or two
+  // earlier and a keystroke or two stale. `PlainEditor` writes this itself,
+  // from a layout effect's cleanup, in the same commit `MonacoEditor` mounts in.
+  const handoffRef = useRef<Handoff | null>(null);
 
   useImperativeHandle(props.handle, () => ({
     insertAtCaret: (text) => plain.current?.insertAtCaret(text) ?? monacoHandle.current?.insertAtCaret(text) ?? false,
@@ -112,7 +114,7 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     let live = true;
     loadMonaco().then(
       (monaco) => {
-        if (live) setReady({ monaco, handoff: plain.current?.capture() ?? null });
+        if (live) setReady({ monaco });
       },
       // The textarea it is still showing works; say why it never changed.
       (e: unknown) => {
@@ -125,8 +127,10 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
     };
   }, [coarse, wanted, ready]);
 
-  if (!ready) return <PlainEditor {...props} bodyHandle={plain} onWanted={() => setWanted(true)} failed={failed} />;
-  return <MonacoEditor {...props} bodyHandle={monacoHandle} monaco={ready.monaco} handoff={ready.handoff} />;
+  if (!ready) {
+    return <PlainEditor {...props} bodyHandle={plain} onWanted={() => setWanted(true)} failed={failed} handoffRef={handoffRef} />;
+  }
+  return <MonacoEditor {...props} bodyHandle={monacoHandle} monaco={ready.monaco} handoffRef={handoffRef} />;
 }
 
 /**
@@ -177,9 +181,20 @@ function PlainEditor({
   bodyHandle,
   onWanted,
   failed,
-}: MarkdownEditorProps & { bodyHandle: Ref<PlainHandle>; onWanted: () => void; failed: boolean }) {
+  handoffRef,
+}: MarkdownEditorProps & { bodyHandle: Ref<PlainHandle>; onWanted: () => void; failed: boolean; handoffRef: RefObject<Handoff | null> }) {
   const ref = useAutoGrow(value);
   useFocusFromLabel(ref, () => ref.current?.focus());
+
+  // Where the caret was, as late as it can be read: a layout effect's cleanup
+  // runs in the commit that unmounts this textarea, which is the same commit
+  // `MonacoEditor` mounts in - after whatever was typed in between.
+  useLayoutEffect(() => {
+    return () => {
+      const el = ref.current;
+      if (el) handoffRef.current = { focused: document.activeElement === el, start: el.selectionStart, end: el.selectionEnd };
+    };
+  }, [ref, handoffRef]);
 
   const insertAtCaret = (text: string) => {
     const el = ref.current;
@@ -196,14 +211,8 @@ function PlainEditor({
 
   const image = useImagePaste(insertAtCaret);
 
-  // What the parent asks for at the moment the editor arrives: where the caret
-  // is in this box, so the one that replaces it can put it back. Also the
-  // way in for a caller that wants to insert text at the caret itself.
+  // The way in for a caller that wants to insert text at the caret itself.
   useImperativeHandle(bodyHandle, () => ({
-    capture() {
-      const el = ref.current;
-      return el ? { focused: document.activeElement === el, start: el.selectionStart, end: el.selectionEnd } : null;
-    },
     insertAtCaret(text) {
       if (document.activeElement !== ref.current) return false;
       insertAtCaret(text);
@@ -274,7 +283,7 @@ const px = (custom: string, fallback: number) => {
 
 function MonacoEditor({
   monaco,
-  handoff,
+  handoffRef,
   value,
   onChange,
   rows,
@@ -283,7 +292,7 @@ function MonacoEditor({
   ariaLabel,
   onCtrlEnter,
   bodyHandle,
-}: MarkdownEditorProps & { monaco: MonacoModule; handoff: Handoff | null; bodyHandle: Ref<MonacoHandle> }) {
+}: MarkdownEditorProps & { monaco: MonacoModule; handoffRef: RefObject<Handoff | null>; bodyHandle: Ref<MonacoHandle> }) {
   const host = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ReturnType<MonacoModule['editor']['create']> | null>(null);
   const modelRef = useRef<ReturnType<MonacoModule['editor']['createModel']> | null>(null);
@@ -392,7 +401,11 @@ function MonacoEditor({
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onCtrlEnterRef.current?.());
     }
 
-    // Carry the caret over from the textarea this replaces.
+    // Carry the caret over from the textarea this replaces. Read fresh, not
+    // from a prop fixed when the chunk resolved: this layout effect and the
+    // textarea's own unmount cleanup run in the same commit, so this is the
+    // caret as of the swap, not as of whenever the import settled.
+    const handoff = handoffRef.current;
     if (handoff) {
       const a = model.getPositionAt(handoff.start);
       const b = model.getPositionAt(handoff.end);
@@ -441,7 +454,15 @@ function MonacoEditor({
   // A value the editor did not write itself - a save landing, a send emptying
   // the box, Revert - goes in behind `applying`, so it is not echoed back as an
   // edit. Compared as LF, so line endings alone never count as a change.
-  useEffect(() => {
+  //
+  // A layout effect, not a passive one: it must run inside the commit a
+  // keystroke's onChange triggers, before the browser can hand Monaco another
+  // one. A passive effect runs in a later task - widest when it is batched
+  // into a re-render of the whole board - and by the time it runs `value` may
+  // already be a keystroke stale against the model. Writing a stale value is
+  // model.setValue(), which Monaco treats as a flush: every cursor resets to
+  // line 1, column 1, and the undo stack is dropped.
+  useLayoutEffect(() => {
     const model = modelRef.current;
     if (!model) return;
     const next = normalizeEol(value);
