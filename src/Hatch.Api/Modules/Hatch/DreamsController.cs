@@ -4,7 +4,6 @@ using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using StorageSearchQuery = Hatch.Api.Modules.Storage.SearchQuery;
 
 namespace Hatch.Api.Modules.Hatch;
 
@@ -58,17 +57,17 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
 
         if (loose) query = query.Where(d => !db.DreamThreads.Any(t => t.DreamId == d.Id));
 
-        var tsquery = StorageSearchQuery.ToTsQuery(q, anyWord: true);
+        var tsquery = SearchQuery.ToTsQuery(q, anyWord: true);
 
         if (tsquery is not null)
         {
-            query = query.Where(d => d.SearchVector.Matches(EF.Functions.ToTsQuery(StorageSearchQuery.Config, tsquery)));
+            query = query.Where(d => d.SearchVector.Matches(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)));
         }
 
         var total = await query.CountAsync(ct);
 
         var ordered = tsquery is not null
-            ? query.OrderByDescending(d => d.SearchVector.Rank(EF.Functions.ToTsQuery(StorageSearchQuery.Config, tsquery)))
+            ? query.OrderByDescending(d => d.SearchVector.Rank(EF.Functions.ToTsQuery(SearchQuery.Config, tsquery)))
                 .ThenByDescending(d => d.CreatedAt)
                 .ThenByDescending(d => d.Id)
             : query.OrderByDescending(d => d.CreatedAt)

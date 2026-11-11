@@ -492,14 +492,13 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             e.Property(f => f.Entries).HasColumnType("jsonb");
         });
 
-        // Search documents, the same STORED-generated-column shape
-        // StorageContext.OnModelCreating uses for Item.SearchVector - except
-        // these three carry a weight per source column, which
-        // HasGeneratedTsVectorColumn has no overload to express, so the SQL is
-        // spelled out rather than built from a lambda.
+        // Search documents, each a STORED generated tsvector column. These
+        // carry a weight per source column, which HasGeneratedTsVectorColumn
+        // has no overload to express, so the SQL is spelled out rather than
+        // built from a lambda.
         //
-        // Guarded by provider for the same reason as Storage's: a tsvector has
-        // no InMemory equivalent, and this module's unit tests run on InMemory.
+        // Guarded by provider because a tsvector has no InMemory equivalent,
+        // and this module's unit tests run on InMemory.
         if (Database.IsNpgsql())
         {
             modelBuilder.Entity<EfHatchIssue>()

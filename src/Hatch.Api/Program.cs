@@ -4,11 +4,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Jobs;
 using Hatch.Api.Models.Environment;
 using Hatch.Api.Modules;
-using Hatch.Api.Modules.Gather;
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Modules.Photos;
-using Hatch.Api.Modules.Quill;
-using Hatch.Api.Modules.Storage;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Calendar;
@@ -100,13 +96,8 @@ builder.Services.AddPooledDbContextFactory<AppDbContext>(o =>
 builder.Services.AddScoped<AppDbContext>(sp =>
     sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
 
-// Modules - separate schemas in the same database, each with its own DbContext
-// and migration history (see Modules/README.md). The first four are the family
-// apps HA-2253 deletes; Hatch is the one that stays.
-builder.Services.AddStorageModule(builder.Configuration);
-builder.Services.AddGatherModule(builder.Configuration);
-builder.Services.AddPhotosModule(builder.Configuration);
-builder.Services.AddQuillModule(builder.Configuration);
+// Modules - a separate schema in the same database, each with its own DbContext
+// and migration history (see Modules/README.md). Hatch is the only one.
 builder.Services.AddHatchModule(builder.Configuration);
 
 // Quartz
@@ -347,9 +338,6 @@ builder.Services.AddHealthChecks()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    // Module DTOs carry their module's name, so two modules can each have an
-    // ItemDto without the document failing to generate - see SwaggerSchemaIds.
-    c.CustomSchemaIds(SwaggerSchemaIds.For);
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Hatch API",

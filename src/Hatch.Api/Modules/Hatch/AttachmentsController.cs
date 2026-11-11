@@ -59,7 +59,7 @@ public class AttachmentsController(HatchContext db, TimeProvider time, ICallerId
     [HttpPost]
     [RequireRole(PersonRole.User)]
     [RequestSizeLimit(MaxBytes + 64 * 1024)]
-    public async Task<ActionResult<AttachmentDto>> PostAttachment([FromForm] IFormFile? file, CancellationToken ct)
+    public async Task<ActionResult<AttachmentDto>> PostAttachment(IFormFile? file, CancellationToken ct)
     {
         if (await caller.IsProgramAsync(ct))
             return StatusCode(StatusCodes.Status403Forbidden, "files are attached by a person, not uploaded by an agent");
