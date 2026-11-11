@@ -284,6 +284,59 @@ public class IssueNoCodeControllerTests
         Assert.Equal("nothing to change", (await h.ReadAsync(issue.Key)).NoCode);
     }
 
+    private static EfHatchIssue Row(string? noCode) => new()
+    {
+        ProjectId = 1,
+        Number = 1,
+        Type = "task",
+        Title = "a thing",
+        StatusId = 1,
+        Rank = 1,
+        CreatedBy = "someone",
+        CreatedAt = Now,
+        UpdatedAt = Now,
+        NoCode = noCode,
+        NoCodeAt = noCode is null ? null : Now,
+    };
+
+    [Fact]
+    public async Task ClearStanding_ClearsOnlyAColumnLeftOfReview()
+    {
+        var h = await NewAsync();
+        var statuses = await h.Db.Statuses.AsNoTracking().OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToListAsync();
+        var todo = statuses.Single(s => s.Id == h.Todo);
+        var review = statuses.Single(s => s.Id == h.Review);
+        var done = statuses.Single(s => s.Id == h.Done);
+        var shelved = new EfHatchStatus { Name = "shelved", SortOrder = 99, IsDeferred = true };
+
+        Assert.True(NoCode.LeftOfReview(todo, statuses));
+        Assert.False(NoCode.LeftOfReview(review, statuses));
+        Assert.False(NoCode.LeftOfReview(done, statuses));
+        Assert.False(NoCode.LeftOfReview(shelved, statuses));
+
+        var undeclared = Row(null);
+        Assert.Null(NoCode.ClearStanding(undeclared, todo, statuses, "someone", Now));
+
+        foreach (var kept in new[] { review, done, shelved })
+        {
+            var issue = Row("nothing to change");
+            Assert.Null(NoCode.ClearStanding(issue, kept, statuses, "someone", Now));
+            Assert.Equal("nothing to change", issue.NoCode);
+            Assert.NotNull(issue.NoCodeAt);
+        }
+
+        var declared = Row("nothing to change");
+        var e = NoCode.ClearStanding(declared, todo, statuses, "someone", Now)!;
+        Assert.Null(declared.NoCode);
+        Assert.Null(declared.NoCodeAt);
+        Assert.Equal(EfHatchIssueEvent.NoCodeChanged, e.Kind);
+        Assert.Equal("someone", e.Actor);
+        var payload = JsonDocument.Parse(e.Payload!).RootElement;
+        Assert.Equal("nothing to change", payload.GetProperty("from").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("to").ValueKind);
+        Assert.Equal("todo", payload.GetProperty("standing").GetString());
+    }
+
     private static JsonElement Payload(IssueEventDto e) => e.Payload!.Value;
 
     // ---- Harness ----

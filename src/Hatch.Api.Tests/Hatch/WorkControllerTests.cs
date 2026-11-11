@@ -1870,6 +1870,32 @@ public class WorkControllerTests
         Assert.False(work.AsksReleaseNote);
     }
 
+    // ---- HA-2198/HA-2199: OffersNoCode ----
+
+    [Fact]
+    public async Task OffersNoCode_IsFalseForADispatchLeftOfReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "not yet in implementation", h.Todo);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("in progress", work.ToStatus!.Name);
+        Assert.False(work.OffersNoCode);
+    }
+
+    [Fact]
+    public async Task OffersNoCode_IsTrueForADispatchIntoReview()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "a leaf, no parent", h.InProgress);
+
+        var work = Value(await h.Work.GetWork(Key(issue), null, default));
+
+        Assert.Equal("review", work.ToStatus!.Name);
+        Assert.True(work.OffersNoCode);
+    }
+
     [Fact]
     public async Task Work_StillRefusesTheTerminalNextColumnForAnyOtherColumn()
     {

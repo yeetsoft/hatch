@@ -1986,6 +1986,19 @@ the work needed no branch, and anything that shows otherwise defeats it:
   keeps it, and so does a terminal or a deferred column - closing a ticket, or
   shelving it, does not retract what it said. Setting and clearing by hand are
   `no_code_changed` events as well, carrying `{ from, to }`.
+- **Withdrawn by an increment's claim.** The declaration is the review
+  column's, so a ticket still standing left of review loses it when an
+  increment claims the ticket (`TakeClaim`) and again when that claim ends
+  (`ReleaseClaim`, on the runner's token release and on the operator's
+  tokenless clear alike), through `NoCode.ClearStanding`. The
+  `no_code_changed` event carries `from`, a null `to` and `standing`, the
+  column's name, and is written before the `claim_taken` or `claim_released`
+  event. A ticket at or right of review, or in a terminal or a deferred
+  column, is untouched by either, and a refused take or a release that clears
+  nothing writes nothing. Without it a stale declaration would reach review
+  and fold `ReviewWork.Judge`, hide the ticket from `inReviewWithoutPullRequest`
+  and be carried by the close hop - for work the increment had just shown was
+  not finished with no code.
 
 **Where it stands.** The declared issue stands in the review column with no
 pull request, and the board does not wait for one:
@@ -2019,9 +2032,12 @@ pull request, and the board does not wait for one:
   panel lists it and the close hop carries it, and neither reads a landing.
   Nothing is recorded by `hatch landed` for work that changed nothing.
 
-The prompt a runner is given tells a session whose work changed nothing to
-declare it with `hatch pr --none` and to push no empty branch; the issue page
-shows the declaration and its reason.
+The prompt a runner is given tells a session whose work changed nothing, and
+whose destination is review or a column to its right, to declare it with
+`hatch pr --none` and to push no empty branch. One bound left of review is
+told there is no pull request to open and nothing to declare, and to say what
+it found in the comment instead - there is no review column there to declare
+into. Either way the issue page shows the declaration and its reason.
 
 ### WIP
 

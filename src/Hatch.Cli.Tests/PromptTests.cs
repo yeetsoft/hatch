@@ -40,6 +40,44 @@ public sealed class PromptTests
     }
 
     [Fact]
+    public void An_increment_bound_left_of_review_is_told_there_is_nothing_to_declare()
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", to: "In Review", offersNoCode: false));
+
+        Assert.DoesNotContain("hatch pr AER-12 --none", prompt, StringComparison.Ordinal);
+        Assert.Contains("nothing to declare", prompt, StringComparison.Ordinal);
+        Assert.Contains("Say what it found in the comment instead.", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(null)]
+    public void An_increment_bound_for_review_or_right_of_it_is_told_to_declare_as_today(bool? offersNoCode)
+    {
+        var prompt = Prompt.Compose(Fixtures.Work("AER-12", offersNoCode: offersNoCode));
+
+        Assert.Contains("hatch pr AER-12 --none", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("nothing to declare", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_task_on_a_shared_branch_bound_left_of_review_is_told_there_is_nothing_to_declare()
+    {
+        const string Story = "AER-5";
+        const string Task = "AER-6";
+        var work = Fixtures.Work(Task, to: "In Progress", offersNoCode: false) with { BranchKey = Story, BranchTitle = "The story title" };
+
+        var prompt = Prompt.Compose(work);
+
+        Assert.Contains("## No pull request from this ticket", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain($"hatch pr {Task} --none", prompt, StringComparison.Ordinal);
+        Assert.Contains("nothing to declare", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not push an empty branch", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_trunk_landing_project_is_told_to_land_rather_than_open_a_pull_request()
     {
         var prompt = Prompt.Compose(Fixtures.Work("AER-12", landing: Landings.Trunk));
