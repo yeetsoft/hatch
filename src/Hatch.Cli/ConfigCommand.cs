@@ -37,6 +37,7 @@ public sealed record ConfigCommand(
         "usage: hatch config [--show | --origin <origin> | --key <key>",
         "                     | --repo <path>... | --workspace <dir>",
         "                     | --models <model>... | --has <entry>...",
+        "                     | --runner-base-image <image>",
         "                     | --log on|<dir>|off | --dangerous on|off]",
         "                     [--here | --profile <name>]",
         "",
@@ -63,6 +64,8 @@ public sealed record ConfigCommand(
         "                                  declare what this machine has that detection",
         "                                     cannot see, repeatable",
         "  hatch config --has              ...alone, clears them",
+        "  hatch config --runner-base-image <image>",
+        "                                  the image `hatch image dockerfile` starts from",
         "",
         "  --origin is what Hatch's own Runner page hands a new machine to paste. It",
         "  leaves the key and everything else exactly as they were, so it is also how",
@@ -112,6 +115,11 @@ public sealed record ConfigCommand(
         "  naming the list, with nothing written. Give each its own --has - a comma",
         "  inside one is refused. It adds to what detection finds and never removes.",
         "  Bare --has clears them.",
+        "",
+        "  --runner-base-image writes HATCH_RUNNER_BASE_IMAGE: the image `hatch image",
+        "  dockerfile` renders its FROM line from when --base is not given. It is",
+        "  written alone, and leaves everything else as it was. An image with a space",
+        "  in it is refused, with nothing written.",
         "",
         "  --here writes this checkout's scripts/.env instead of the per-user file -",
         "  combine it with any write above. Refused outside a checkout, and with --show.",
@@ -284,6 +292,8 @@ public sealed record ConfigCommand(
         if (args.Length > 0 && args[0] == "--models") return Models(args, here);
 
         if (args.Length > 0 && args[0] == "--has") return Has(args, here);
+
+        if (args is ["--runner-base-image", var givenImage]) return RunnerBaseImage(givenImage, here);
 
         if (args.Length > 0)
             return Usage.Refuse(Say, "config takes nothing, --show, --origin <origin>, or --key <key>", ConfigUsage);
@@ -1091,6 +1101,54 @@ public sealed record ConfigCommand(
         return 0;
     }
 
+    /// <summary>
+    /// The image <c>hatch image dockerfile</c> starts from, taken from the command line and written without a
+    /// question being asked - everything else is carried forward unchanged.
+    /// </summary>
+    private int RunnerBaseImage(string image, bool here)
+    {
+        image = image.Trim();
+
+        if (image.Length == 0 || image.Any(char.IsWhiteSpace))
+        {
+            Say.Complain("hatch: a runner base image is one word, like debian:bookworm - no spaces or line breaks");
+            return 1;
+        }
+
+        var (overlayPath, overlay) = here ? (CheckoutEnvFile, true)
+            : ProfileName is not null ? (ProfilePath, true)
+            : ((string?)null, false);
+        var fold = Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath);
+        var overlayOnly = Settings.ReadFile(overlayPath);
+        string Field(string name) => overlay ? overlayOnly.GetValueOrDefault(name, "") : fold(name).Value ?? "";
+
+        var origin = Field("HATCH_BASE");
+        var key = Field("HATCH_KEY");
+        var claudeBin = Field("HATCH_CLAUDE_BIN");
+        var codexBin = Field("HATCH_CODEX_BIN");
+        var grokBin = Field("HATCH_GROK_BIN");
+        var agent = Field("HATCH_AGENT");
+        var ollamaHost = Field("HATCH_OLLAMA_HOST");
+        var ollamaTiers = Field("HATCH_OLLAMA_TIERS");
+        var repos = Field("HATCH_REPOS");
+        var workspace = Field("HATCH_WORKSPACE");
+        var log = Field("HATCH_LOG");
+        var dangerous = Field("HATCH_DANGEROUS");
+        var models = Field("HATCH_MODELS");
+        var has = Field("HATCH_HAS");
+
+        var target = overlayPath ?? ConfigPath;
+        Write(
+            origin, key, claudeBin, codexBin, repos, workspace, agent, grokBin,
+            ollamaHost: ollamaHost, ollamaTiers: ollamaTiers, log: log, dangerous: dangerous, models: models, has: has,
+            path: overlayPath, overlay: overlay, mode: "--runner-base-image", runnerBaseImage: image);
+
+        Environment["HATCH_RUNNER_BASE_IMAGE"] = image;
+
+        Say.Line($"wrote {target}");
+        return 0;
+    }
+
     /// <summary>An origin with no scheme is an origin every call will fail on, so it is caught here rather than at the first request.</summary>
     private static bool HasScheme(string origin) =>
         origin.StartsWith("http://", StringComparison.Ordinal) ||
@@ -1342,7 +1400,8 @@ public sealed record ConfigCommand(
     private void Write(
         string origin, string key, string claudeBin, string codexBin, string repos, string workspace = "",
         string agent = "", string grokBin = "", string ollamaHost = "", string ollamaTiers = "",
-        string log = "", string dangerous = "", string models = "", string has = "", string? path = null, bool overlay = false, string mode = "")
+        string log = "", string dangerous = "", string models = "", string has = "", string? path = null, bool overlay = false, string mode = "",
+        string? runnerBaseImage = null)
     {
         var target = path ?? ConfigPath;
 
@@ -1352,6 +1411,12 @@ public sealed record ConfigCommand(
         var claudeTools = overlay
             ? Settings.ReadFile(path).GetValueOrDefault("HATCH_CLAUDE_TOOLS", "")
             : Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath)("HATCH_CLAUDE_TOOLS").Value ?? "";
+
+        // Written only by --runner-base-image, so every other rewrite carries it
+        // forward the way HATCH_CLAUDE_TOOLS is.
+        runnerBaseImage ??= overlay
+            ? Settings.ReadFile(path).GetValueOrDefault("HATCH_RUNNER_BASE_IMAGE", "")
+            : Settings.Layers(CheckoutEnvFile, Environment, ConfigPath, ProfilePath)("HATCH_RUNNER_BASE_IMAGE").Value ?? "";
 
         var lines = !overlay
             ? new List<string>
@@ -1400,6 +1465,7 @@ public sealed record ConfigCommand(
         if (dangerous.Length > 0) lines.Add($"HATCH_DANGEROUS={dangerous}");
         if (models.Length > 0) lines.Add($"HATCH_MODELS={models}");
         if (has.Length > 0) lines.Add($"HATCH_HAS={has}");
+        if (runnerBaseImage.Length > 0) lines.Add($"HATCH_RUNNER_BASE_IMAGE={runnerBaseImage}");
 
         AtomicFile.Write(target, lines);
     }

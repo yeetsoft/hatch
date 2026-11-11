@@ -297,4 +297,28 @@ public class DependencyDeclarationTests
         Assert.Null(refused);
         Assert.StartsWith("entry 1: `make` is not a dependency Hatch knows", refusal);
     }
+
+    [Fact]
+    public void SerializeWritesTheCompactFileShapeABareIdOrAnIdAndVersion()
+    {
+        Assert.Equal("""{"dependencies":[]}""", DependencyDeclaration.Serialize([]));
+        Assert.Equal(
+            """{"dependencies":["make",{"id":"dotnet","version":"10"},"playwright-browsers"]}""",
+            DependencyDeclaration.Serialize([
+                new DeclaredDependency("make", null),
+                new DeclaredDependency("dotnet", "10"),
+                new DeclaredDependency("playwright-browsers", null)]));
+    }
+
+    [Fact]
+    public void ParseOfSerializeIsTheListSerialized()
+    {
+        var (declared, problem) = Parse(Example);
+        Assert.Null(problem);
+
+        var (again, againProblem) = Parse(DependencyDeclaration.Serialize(declared!));
+
+        Assert.Null(againProblem);
+        Assert.Equal(declared, again);
+    }
 }
