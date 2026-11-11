@@ -118,6 +118,15 @@ one, a base branch; use the arrows to reorder them (the first is the primary);
 **Remove** takes one off. Nothing is stored until **Save**. Binding is how the
 board knows which repository a project's tickets are about.
 
+The dialog also has **Reflects every N day(s)**: a cadence at which the project
+reflects on its own recent work, filing hypotheses as it goes. Leave it blank
+and it never does. While a cadence is set and **A no-code declaration closes the
+ticket** is off, a line under the box says that each reflection, and each
+hypothesis it files, will wait in review for a person. They end in a no-code
+declaration, and that setting (or a pre-approval) is the only thing that closes
+such a ticket without one. Tick it and the line goes; nothing is refused either
+way, and the line follows the dialog as you edit, before you save.
+
 ## Your first epic
 
 Press **+** (New issue) on the board, set **Type** to *epic* — it opens on *task* —

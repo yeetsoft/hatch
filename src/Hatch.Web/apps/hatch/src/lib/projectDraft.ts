@@ -213,6 +213,18 @@ export function projectReflectionDiff(draft: ProjectDraft): ProjectReflectionWri
   return cadenceDays === draft.known.reflectionCadenceDays ? null : { cadenceDays };
 }
 
+/** True while the draft sets a cadence and leaves a no-code declaration unable
+    to close the ticket: each reflection, and each hypothesis it files, then
+    waits in review for a person. Read from the draft, not the saved project, so
+    the line it drives comes and goes as either control changes. A cadence is set
+    when the trimmed box is a finite number above zero - the same boxes the
+    server would refuse otherwise. */
+export function reflectionWaitsForPerson(draft: Pick<ProjectDraft, 'reflectionCadenceDays' | 'noCodeCloses'>): boolean {
+  const trimmed = draft.reflectionCadenceDays.trim();
+  const days = Number(trimmed);
+  return trimmed !== '' && Number.isFinite(days) && days > 0 && !draft.noCodeCloses;
+}
+
 /** Its own route and its own request shape, like projectRepoSourcedDiff -
     compared against the committed list, not the raw textarea text, so a
     stray blank line in the box is not a change; order still matters,
