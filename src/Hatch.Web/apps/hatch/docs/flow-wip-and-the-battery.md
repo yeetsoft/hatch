@@ -207,11 +207,11 @@ sentence saying to choose, when you are not; the address carries `?actor=`,
 the project and the window, and an actor in the address who is not in the
 directory (a revoked key, say) is still read. Nothing on it writes.
 
-The Timeline, Cumulative flow, Changelog and Activity reports each follow the tab's
+The Timeline, Cumulative flow, Changelog, Consumption and Activity reports each follow the tab's
 [scope](the-board-and-its-columns#scoping-a-tab-to-projects), and their project
 control works within it. Under a scope it lists only the scope's projects, and
 *all* means every project in scope: the Timeline's empty choice then reads **All
-in scope** rather than **All projects**, and the other two reports tick every
+in scope** rather than **All projects**, and the others tick every
 one of the scope's projects to begin with. A `?project=` in the address that
 lies outside the scope is ignored, not rewritten. A scope of one project draws
 no control at all, since there is nothing to choose between.
