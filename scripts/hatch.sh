@@ -26,7 +26,9 @@
 #     its own source changes under it, and a process cannot exec itself into a
 #     newer build - something that outlives it has to compile the new source and
 #     run it again. That something is this file, which was already sitting here
-#     as the parent. See "The supervisor" below, and docs/hatch.md.
+#     as the parent. It builds before the first launch too, so a night never
+#     starts on a build older than the source beside it. See "The supervisor"
+#     below, and docs/hatch.md.
 #
 # Settings are the program's and are documented in `hatch --help`: an exported
 # variable wins, then scripts/.env in this checkout, then the per-user file
@@ -140,6 +142,13 @@ exec_hatch() {
 # the claim, carrying the night's totals - stays in the runner, where
 # `make test-hatch` can assert them.
 #
+# The same goes for a start. A binary built before the source it sits beside was
+# fixed cannot ask to be replaced - it takes its baseline at startup, so newer
+# source looks like no change, and one that dies at startup never gets as far as
+# asking. So the supervisor builds once before the first launch as well as after
+# every exit 75; MSBuild's own up-to-date check is the freshness check, and with
+# nothing changed it compiles nothing and leaves the binary as it was.
+#
 # The totals travel in a file this names once per night: a restart that started
 # the budget over would be a way of outspending `--max-spend` by restarting.
 # The set host's per-member files sit beside it, as that name plus `.<n>`, and
@@ -164,6 +173,10 @@ supervise_go_to_work() {
   trap "forget_night_state; exit 130" INT
   trap "forget_night_state; exit 143" TERM
 
+  # Before the loop and not in it, so `-h` (which never reaches here) and every
+  # other command stay as fast as they were.
+  rebuild_runner starting
+
   while :; do
     runner_argv
 
@@ -175,16 +188,19 @@ supervise_go_to_work() {
 
     [ "$status" -eq 75 ] || exit "$status"
 
-    rebuild_runner
+    rebuild_runner restarting
     echo "hatch: restarting" >&2
   done
 }
 
 # The new source, compiled - the one place in this file that builds anything.
+# `$1` says which time it is, "starting" or "restarting", for the line it prints.
 #
 # A build that fails is not the end of a night: the loop comes back on the
 # binary that is there, and having taken its baseline at startup it will not ask
 # again for the same change. So this says what went wrong and returns, always.
+# With no binary at all there is nothing to carry on with, and `runner_cmd`
+# stops the night with the reason, as it always has.
 #
 # `build-hatch` and not `publish-hatch`: this is on the hot path of an
 # unattended loop reconnecting at two in the morning, and a single fast Release
@@ -192,13 +208,13 @@ supervise_go_to_work() {
 # self-contained publish is a different, much slower operation aimed at somebody
 # downloading the thing.
 rebuild_runner() {
-  local root cmd
+  local root cmd when="${1:-restarting}"
   root=$(repo_root)
 
   if [ -n "${HATCH_RUNNER_BIN:-}" ]; then
     # A machine with no SDK on it. Restart anyway: hatch.sh itself may be what
     # changed, and this file is read fresh on the way back in.
-    echo "hatch: HATCH_RUNNER_BIN names the binary, so there is nothing here to rebuild" >&2
+    echo "hatch: HATCH_RUNNER_BIN names the binary, so there is nothing here to build" >&2
     return 0
   fi
 
@@ -212,16 +228,19 @@ rebuild_runner() {
       ;;
   esac
 
-  echo "hatch: rebuilding" >&2
+  if ! command -v make >/dev/null && ! command -v dotnet >/dev/null; then
+    echo "hatch: neither make nor dotnet is here, so nothing is built - carrying on with the binary that is there" >&2
+    return 0
+  fi
+
+  echo "hatch: building before $when" >&2
 
   if command -v make >/dev/null; then
     make -C "$root" build-hatch >&2 \
-      || echo "hatch: the rebuild failed - carrying on with the binary that is there" >&2
-  elif command -v dotnet >/dev/null; then
-    dotnet build "${root}/src/Hatch.Cli/Hatch.Cli.csproj" --configuration Release >&2 \
-      || echo "hatch: the rebuild failed - carrying on with the binary that is there" >&2
+      || echo "hatch: the build failed - carrying on with the binary that is there" >&2
   else
-    echo "hatch: neither make nor dotnet is here - carrying on with the binary that is there" >&2
+    dotnet build "${root}/src/Hatch.Cli/Hatch.Cli.csproj" --configuration Release >&2 \
+      || echo "hatch: the build failed - carrying on with the binary that is there" >&2
   fi
 
   return 0
