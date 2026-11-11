@@ -19,7 +19,7 @@ public sealed class ActivityCommand(Cli cli)
 {
     public static readonly string[] ActivityUsage =
     [
-        "usage: hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]",
+        "usage: hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]",
         "",
         "  One actor's rundown, as markdown: what they did in the window, a heading",
         "  per issue they touched with a bullet per kind of thing done, and an",
@@ -33,6 +33,9 @@ public sealed class ActivityCommand(Cli cli)
         "  --before <instant>  move the window back to end at this instant",
         "                      (2026-09-12T17:00:00Z). Now by default",
         "  --project <KEY>     narrow it to one project; a key nobody has is refused",
+        "  --include-keys      also count what a hand typed under the keys the actor owns",
+        "                      (a heuristic: events outside any work-log session or claim",
+        "                      of the loop). Only when --actor names a person",
         "  --json              the endpoint's own answer, and nothing else",
     ];
 
@@ -50,12 +53,14 @@ public sealed class ActivityCommand(Cli cli)
         DateTimeOffset? before = null;
         string? projectKey = null;
         var json = false;
+        var includeKeys = false;
 
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
 
             if (arg == "--json") { json = true; continue; }
+            if (arg == "--include-keys") { includeKeys = true; continue; }
 
             if (arg == "--days")
             {
@@ -128,7 +133,7 @@ public sealed class ActivityCommand(Cli cli)
 
         if (json)
         {
-            var path = Board.ActivityPath(actor, from, to, projectId);
+            var path = Board.ActivityPath(actor, from, to, projectId, includeKeys);
             var answer = await cli.Board.Client.Send(HttpMethod.Get, path, null, ct);
             if (!answer.Ok)
             {
@@ -140,7 +145,7 @@ public sealed class ActivityCommand(Cli cli)
             return 0;
         }
 
-        var report = await cli.Board.ActivityAsync(actor, from, to, projectId, ct);
+        var report = await cli.Board.ActivityAsync(actor, from, to, projectId, includeKeys, ct);
         if (report is null) return 1;
 
         foreach (var line in Render(report, Board.OffsetMinutes(cli.Clock.GetUtcNow()))) cli.Say.Line(line);

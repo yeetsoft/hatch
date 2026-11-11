@@ -877,6 +877,8 @@ export interface IssueEvent {
     `IssueEvent`, naming the issue it belongs to. Mirrors ActivityEventDto. */
 export interface ActivityEvent extends IssueEvent {
   issueKey: string;
+  /** On the activity report with `includeKeys`: the person's own key this was typed under. */
+  viaKey?: string | null;
 }
 
 /** A page of `ActivityEvent`, newest first. Mirrors ActivityPageDto. There is

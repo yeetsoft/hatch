@@ -389,6 +389,12 @@ describe('getActivityReport', () => {
     expect(await urlOf({ actor: 'Ada', offsetMinutes: 0 })).not.toContain('window');
     expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, window: 3 })).toContain('&window=3');
   });
+
+  it('sends includeKeys only when true', async () => {
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: true })).toContain('&includeKeys=true');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: false })).not.toContain('includeKeys');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0 })).not.toContain('includeKeys');
+  });
 });
 
 describe('getActivity', () => {

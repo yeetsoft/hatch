@@ -841,7 +841,7 @@ export interface CumulativeFlowQuery {
     server's own fourteen days stand; `projectId` is repeated once per id.
     `offsetMinutes` is always sent, so daily buckets align to the reader's
     midnight and not UTC's; `window` only when set, so the server's own default
-    stands. */
+    stands; `includeKeys` only when true. */
 export const getActivityReport = (query: ActivityReportQuery) => {
   const params = new URLSearchParams();
   params.set('actor', query.actor);
@@ -850,6 +850,7 @@ export const getActivityReport = (query: ActivityReportQuery) => {
   for (const id of query.projectId ?? []) params.append('projectId', String(id));
   params.set('offsetMinutes', String(query.offsetMinutes));
   if (query.window != null) params.set('window', String(query.window));
+  if (query.includeKeys === true) params.set('includeKeys', 'true');
   return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
 };
 
@@ -862,6 +863,8 @@ export interface ActivityReportQuery {
   offsetMinutes: number;
   /** The rolling mean's width, in buckets; 1..90. */
   window?: number | null;
+  /** Also count what a hand typed under the actor's own keys; sent only when true. */
+  includeKeys?: boolean;
 }
 
 /** Closed epics bucketed over a window. Each parameter is set only when it

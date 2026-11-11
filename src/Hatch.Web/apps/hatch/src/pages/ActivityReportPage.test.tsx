@@ -100,6 +100,13 @@ describe('ActivityReportBody', () => {
     expect(html).not.toContain(truncatedWords(answer));
   });
 
+  it('names the key a row was typed under, and only for such a row', () => {
+    const html = render('Ada', report({ events: [event(2, { viaKey: 'Ada laptop' }), event(1)] }));
+
+    expect(html).toContain('Ada via Ada laptop');
+    expect(html.match(/via /g)).toHaveLength(1);
+  });
+
   it('draws the graph between the headline and the rundown', () => {
     const html = render('Ada', report());
 
