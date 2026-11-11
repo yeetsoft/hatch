@@ -1,12 +1,27 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Badge, Button, Card, EmptyState, PageHeader, Text } from '@hatch/ui';
-import { patchRunner } from '../api/client';
+import { Badge, Button, Card, EmptyState, Modal, PageHeader, Text } from '@hatch/ui';
+import {
+  orderRunnerSession,
+  patchRunner,
+  patchRunnerSession,
+  pauseAllSessions,
+  stopAllSessions,
+  withdrawSessionOrder,
+} from '../api/client';
 import { useRunnersOutlet } from './RunnersLayout';
 import { RunnerBoundsForm } from './RunnerBoundsForm';
 import { RunnerSettingsForm } from './RunnerSettingsForm';
-import { isRetired, lastUsedLabel, liveSessions, runnerActionable, sessionsByStart } from '../lib/runners';
+import {
+  isRetired,
+  lastUsedLabel,
+  liveLoopSessions,
+  liveSessions,
+  runnerActionable,
+  sessionsByStart,
+} from '../lib/runners';
 import { saveRunner } from '../lib/saveRunner';
+import { sessionActions } from '../lib/sessionActions';
 import { usePhone } from '../lib/viewport';
 import { RecentSessions } from './RecentSessions';
 import { SessionBlock } from './SessionBlock';
@@ -17,13 +32,55 @@ import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
     of `RunnerDetail` so they are written once. A retired runner draws no
     live blocks: its row's own badge already says so, and a replaced key's
     sessions are not this screen's to show as live. */
-function SessionsCards({ runner, live, now }: { runner: Runner; live: RunnerSession[]; now: Date }) {
+function SessionsCards({
+  runner,
+  live,
+  now,
+  reload,
+}: {
+  runner: Runner;
+  live: RunnerSession[];
+  now: Date;
+  reload: () => Promise<void>;
+}) {
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
   const hosts = new Set(live.map((session) => session.host).filter((host): host is string => host !== null));
+  const actions = sessionActions(
+    runner.name,
+    { patchRunnerSession, orderRunnerSession, withdrawSessionOrder, pauseAllSessions, stopAllSessions },
+    reload,
+  );
+  const loops = liveLoopSessions(live).length;
+  const fanOut = runner.canControl && runnerActionable(runner) && !isRetired(runner) && loops > 0;
+
+  const stopAll = async () => {
+    setBusy(true);
+    try {
+      setRefusal(await actions.stopAll());
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
 
   return (
     <>
       <Card>
-        <h2 className="hatch-section-title">Live sessions</h2>
+        <div className="hatch-section-head">
+          <h2 className="hatch-section-title">Live sessions</h2>
+          {fanOut && (
+            <div className="hatch-section-actions">
+              <Button onClick={async () => setRefusal(await actions.pauseAll())}>Pause all</Button>
+              <Button variant="danger" onClick={() => setConfirming(true)}>
+                Stop all
+              </Button>
+            </div>
+          )}
+        </div>
+        {!runner.canControl && live.length > 0 && <Text tone="muted">{`${runner.for ?? 'its owner'}'s to control`}</Text>}
+        {refusal && <p className="text-danger">{refusal}</p>}
         {hosts.size >= 2 && (
           <p className="hatch-runner-note">
             This key is in use from {hosts.size} machines. Tags and bounds are per runner, so a key is meant to be
@@ -37,11 +94,34 @@ function SessionsCards({ runner, live, now }: { runner: Runner; live: RunnerSess
         ) : (
           <ul className="hatch-runner-sessions">
             {sessionsByStart(live).map((session) => (
-              <SessionBlock key={session.id} session={session} runner={runner} now={now} />
+              <SessionBlock
+                key={session.id}
+                session={session}
+                runner={runner}
+                now={now}
+                actions={actions}
+                onRefusal={setRefusal}
+              />
             ))}
           </ul>
         )}
       </Card>
+
+      <Modal
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={`Stop ${loops} sessions after their current increment?`}
+        footer={
+          <div className="hatch-form-actions">
+            <Button onClick={() => setConfirming(false)}>Leave it</Button>
+            <Button variant="danger" loading={busy} onClick={stopAll}>
+              Stop all
+            </Button>
+          </div>
+        }
+      >
+        <Text>Each finishes its current increment, then stops. None is cut off partway.</Text>
+      </Modal>
 
       <RecentSessions runner={runner} now={now} />
     </>
@@ -180,7 +260,7 @@ export function RunnerDetail() {
         <PageHeader title={name} actions={actions} level={1} />
         <IdentityCard runner={runner} />
         <RunnerConfigCards runner={runner} live={live} reload={reload} />
-        <SessionsCards runner={runner} live={live} now={now} />
+        <SessionsCards runner={runner} live={live} now={now} reload={reload} />
       </>
     );
   }
@@ -190,7 +270,7 @@ export function RunnerDetail() {
       <PageHeader title={name} actions={actions} level={2} />
       <IdentityCard runner={runner} />
       <RunnerConfigCards runner={runner} live={live} reload={reload} />
-      <SessionsCards runner={runner} live={live} now={now} />
+      <SessionsCards runner={runner} live={live} now={now} reload={reload} />
     </>
   );
 }

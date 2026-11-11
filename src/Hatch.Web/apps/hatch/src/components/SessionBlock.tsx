@@ -2,10 +2,12 @@ import { Link } from 'react-router-dom';
 import { Text } from '@hatch/ui';
 import { agoPhrase } from '../lib/claim';
 import { sessionActivity, sessionParts } from '../lib/runners';
+import type { SessionActions } from '../lib/sessionActions';
 import { moneyPhrase } from '../lib/workLog';
 import { EffectiveBounds } from './EffectiveBounds';
 import { MachineDetails } from './MachineDetails';
 import { RunnerGlyph } from './RunnerGlyph';
+import { SessionControls } from './SessionControls';
 import { TokenBudget } from './TokenBudget';
 import type { Runner, RunnerSession } from '../types';
 
@@ -13,11 +15,22 @@ import type { Runner, RunnerSession } from '../types';
  * One live session, as a `<li>` under its runner - the caller owns the
  * `<ul>` so a multi-host note can sit between it and the list.
  *
- * No controls here (HA-2149's own scope): that is a later task's slot,
- * marked below, and pausing or stopping is per session rather than per
- * runner.
+ * Its controls are per session rather than per runner: `SessionControls`
+ * acts on this one session alone, and hands a refusal up to the card.
  */
-export function SessionBlock({ session, runner, now }: { session: RunnerSession; runner: Runner; now: Date }) {
+export function SessionBlock({
+  session,
+  runner,
+  now,
+  actions,
+  onRefusal,
+}: {
+  session: RunnerSession;
+  runner: Runner;
+  now: Date;
+  actions: SessionActions;
+  onRefusal: (refusal: string | null) => void;
+}) {
   const activity = sessionActivity(session, runner, now);
   const { words, claimKey } = sessionParts(session, runner, now);
 
@@ -46,7 +59,7 @@ export function SessionBlock({ session, runner, now }: { session: RunnerSession;
 
       <MachineDetails session={session} runner={runner} now={now} />
 
-      {/* Controls - Pause/Resume, Stop after this one - are a later task. */}
+      <SessionControls session={session} runner={runner} now={now} actions={actions} onRefusal={onRefusal} />
     </li>
   );
 }

@@ -2287,8 +2287,13 @@ button.hatch-chip {
   min-width: 0;
 }
 
+/* width: auto overrides .hatch-field-grid's own `input { width: 100% }` -
+   this pair sits inside that grid on the Bounds form, and without it the
+   flex-basis the 100% resolves to is the whole row, pushing the document
+   wider than the viewport on a phone (HA-2154's failing build). */
 .hatch-moment-inputs input[type='time'] {
   flex: 0 0 auto;
+  width: auto;
 }
 
 /* ---- Forms ---- */

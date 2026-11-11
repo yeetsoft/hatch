@@ -439,6 +439,33 @@ export const lastUsedLabel = (iso: string | null): string => (iso === null ? 'ne
  */
 export const isControllable = (runner: Runner) => runner.kind === 'loop' && runner.canControl && !isRetired(runner);
 
+/**
+ * Whether this live session has controls for this caller.
+ *
+ * `isControllable` for one session: a `once` session is one increment that
+ * has already read whatever it was going to read, and a revoked or retired
+ * runner answers to nobody, so none of them draws a button.
+ */
+export const sessionControllable = (runner: Runner, session: RunnerSession) =>
+  session.kind === 'loop' && runner.canControl && runnerActionable(runner) && !isRetired(runner);
+
+/** The standing order this session has not yet read back, in the shape
+    `orderSentence` takes - or null where it holds none. */
+export function sessionOrder(session: RunnerSession): NonNullable<Runner['order']> | null {
+  if (!session.orderKind || session.orderedAt == null) return null;
+  return {
+    kind: session.orderKind === 'pass' ? 'pass' : 'work',
+    key: session.orderKey ?? null,
+    by: session.orderedBy ?? null,
+    at: session.orderedAt,
+  };
+}
+
+/** The sessions Pause all and Stop all reach: loops only, as a `once`
+    session reads no instruction. */
+export const liveLoopSessions = (live: readonly RunnerSession[]): RunnerSession[] =>
+  live.filter((session) => session.kind === 'loop');
+
 /** Which of the detail's three variants a caller sees - "Who sees what" in docs/runners-page-design.md. */
 export type DetailVariant = 'admin' | 'owner' | 'viewer';
 
