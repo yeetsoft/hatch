@@ -851,6 +851,7 @@ export type IssueEventKind =
   | 'merge_check_changed'
   | 'pull_request_state_changed'
   | 'build_check_changed'
+  | 'contribution_filed'
   | 'wip_overridden'
   | 'stalled'
   | 'playbook_proposed'

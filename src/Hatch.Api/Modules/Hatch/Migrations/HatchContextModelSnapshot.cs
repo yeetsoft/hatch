@@ -184,6 +184,75 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.ToTable("Comments", "hatch");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchContribution", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AuthorAssociation")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("AuthorLogin")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("EnvelopeNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("EnvelopeVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("FiledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FiledBy")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("HeadBranch")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("IssueId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OriginInstance")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("OriginKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("OriginProjectKey")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("PullRequestUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IssueId")
+                        .IsUnique();
+
+                    b.HasIndex("PullRequestUrl")
+                        .IsUnique();
+
+                    b.HasIndex("OriginInstance", "OriginKey");
+
+                    b.ToTable("Contributions", "hatch");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDependencyFile", b =>
                 {
                     b.Property<long>("Id")
@@ -2069,6 +2138,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Issue");
                 });
 
+            modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchContribution", b =>
+                {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Issue")
+                        .WithOne("Contribution")
+                        .HasForeignKey("Hatch.Api.Modules.Hatch.EfHatchContribution", "IssueId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Issue");
+                });
+
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchDream", b =>
                 {
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchProject", "Project")
@@ -2356,6 +2436,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("Comments");
+
+                    b.Navigation("Contribution");
 
                     b.Navigation("Events");
 
