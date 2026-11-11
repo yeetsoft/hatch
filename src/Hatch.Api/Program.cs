@@ -508,7 +508,10 @@ opt.AddRedirect("^apps/hatch$", "/", StatusCodes.Status301MovedPermanently);
 // which browsers resolve as another host.
 opt.AddRedirect(@"^apps/hatch/+([^/\\].*)?$", "/$1", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect("^apps/?$", "/", StatusCodes.Status301MovedPermanently);
-opt.AddRedirect("^apps/design$", "apps/design/");
+// The gallery is a page of the board now (HA-2250), at the same address
+// shape every other old /apps/<app> address redirects to above.
+opt.AddRedirect("^apps/design/*$", "/design", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect(@"^apps/design/+([^/\\].*)$", "/design/$1", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect("^auth/?$", "apps/auth/");
 opt.AddRedirect("^apps/auth$", "apps/auth/");
 app.UseRewriter(opt);
@@ -658,10 +661,6 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c
 if (board is not null)
 {
     app.MapFallbackToFile("{*path:nonfile}", "index.html", BoardFileOptions(board));
-}
-if (Directory.Exists(Path.Combine(appsPath, "design")))
-{
-    app.MapFallbackToFile("/apps/design/{*path:nonfile}", "apps/design/index.html");
 }
 
 if (Directory.Exists(Path.Combine(appsPath, "auth")))

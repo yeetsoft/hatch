@@ -19,6 +19,7 @@ const SCREENS: Record<string, string> = {
   '/statuses': 'the-board-and-its-columns',
   '/import': 'issues',
   '/bulk': 'issues',
+  '/design': 'the-design-gallery',
   '/users': 'people-roles-and-keys',
   '/docs': 'welcome',
 };

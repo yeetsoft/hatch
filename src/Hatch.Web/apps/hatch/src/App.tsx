@@ -14,6 +14,7 @@ import { OvernightProvider } from './components/OvernightProvider';
 import { PrimaryNav } from './components/PrimaryNav';
 import { PullToRefresh } from './components/PullToRefresh';
 import { ScopeControl } from './components/ScopeControl';
+import { DesignIndexPage, DesignPage } from './design/DesignPage';
 import { BoardPage } from './pages/BoardPage';
 import { PlanPage } from './pages/PlanPage';
 import { DreamsPage } from './pages/DreamsPage';
@@ -196,6 +197,8 @@ function AppShell() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/statuses" element={<StatusesPage />} />
             <Route path="/playbooks" element={<PlaybooksPage />} />
+            <Route path="/design" element={<DesignIndexPage />} />
+            <Route path="/design/:slug" element={<DesignPage />} />
             <Route path="/runners" element={<RunnersLayout />}>
               <Route index element={<RunnersIndex />} />
               <Route path=":name" element={<RunnerDetail />} />

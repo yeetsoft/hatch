@@ -63,6 +63,9 @@ public class RootMountTests(RootMountFixture fixture) : IClassFixture<RootMountF
     [InlineData("/apps/hatch/", "/")]
     [InlineData("/apps", "/")]
     [InlineData("/apps/", "/")]
+    [InlineData("/apps/design/button?x=1", "/design/button?x=1")]
+    [InlineData("/apps/design", "/design")]
+    [InlineData("/apps/design/", "/design")]
     public async Task AnOldAddressRedirectsPermanently_QueryStringIntact(string from, string to)
     {
         fixture.SkipIfUnavailable();
@@ -78,6 +81,17 @@ public class RootMountTests(RootMountFixture fixture) : IClassFixture<RootMountF
     {
         fixture.SkipIfUnavailable();
         var response = await fixture.NoRedirectClient.GetAsync("/apps/hatch//x.example");
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
+        Assert.DoesNotContain("//", response.Headers.Location?.OriginalString);
+    }
+
+    /// <summary>The same guarantee, for the gallery's old prefix.</summary>
+    [SkippableFact]
+    public async Task ATraversalInsideTheOldDesignPrefixNeverEchoesADoubleSlash()
+    {
+        fixture.SkipIfUnavailable();
+        var response = await fixture.NoRedirectClient.GetAsync("/apps/design//x.example");
 
         Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
         Assert.DoesNotContain("//", response.Headers.Location?.OriginalString);

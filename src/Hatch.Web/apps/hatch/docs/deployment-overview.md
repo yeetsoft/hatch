@@ -18,7 +18,6 @@ way to run it ([Kubernetes](kubernetes)), and no manifests ship with Hatch.
 | `migrate` | The API image with `HATCH_MIGRATE=1`, which makes it apply the schema and nothing else | Runs to completion on every start, then **exits, and exited is correct**: that is the state `api` waits for |
 | `api` | The API, and every app it serves, on 8080 inside the container and `HATCH_PORT` outside it | Starts only once `migrate` has completed successfully, and runs until stopped |
 | `runner` | [The container runner](the-container-runner), under the profile `runner` | Off unless that profile is named |
-| `design` | The `@hatch/ui` gallery on 5173, a Vite dev server, under the profile `design` | Off unless that profile is named |
 
 `migrate` and `api` are the same image. Because `migrate` is a separate
 service, a schema change is applied before the new API is started rather than

@@ -25,7 +25,6 @@ WORKDIR /repo
 # Every workspace's package.json is an input to `npm ci`, so they are copied
 # ahead of the sources: an edit to any app's *code* then reuses this layer.
 COPY src/Hatch.Web/package.json src/Hatch.Web/package-lock.json src/Hatch.Web/
-COPY src/Hatch.Web/apps/design/package.json src/Hatch.Web/apps/design/
 COPY src/Hatch.Web/apps/auth/package.json src/Hatch.Web/apps/auth/
 COPY src/Hatch.Web/apps/hatch/package.json src/Hatch.Web/apps/hatch/
 # The shared package is a workspace too: `npm ci` reads the lockfile, finds a
@@ -78,7 +77,7 @@ COPY --from=web-build /repo/src/Hatch.Api/wwwroot/apps ./src/Hatch.Api/wwwroot/a
 # is a use that has to trust it (see Services/HatchRevision.cs).
 ARG HATCH_REVISION
 ARG HATCH_SEQUENCE
-RUN dotnet publish src/Hatch.Api/Hatch.Api.csproj -c Release -o out -p:SkipDesignBuild=true -p:SkipAuthBuild=true -p:SourceRevisionId=$HATCH_REVISION -p:HatchSequence=$HATCH_SEQUENCE
+RUN dotnet publish src/Hatch.Api/Hatch.Api.csproj -c Release -o out -p:SkipAuthBuild=true -p:SourceRevisionId=$HATCH_REVISION -p:HatchSequence=$HATCH_SEQUENCE
 
 # The runner, one self-contained binary per platform this house supports, so a
 # friend downloads a program rather than an SDK. Built from this same commit,
