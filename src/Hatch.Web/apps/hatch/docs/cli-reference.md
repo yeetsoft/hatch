@@ -171,11 +171,13 @@ saying why, when this moves the pointer; see
 
 ```
 hatch image dockerfile [--base <image>]
+hatch image build [--base <image>] [--image <name>] [--platform <list>]
 ```
 
-Prints the Dockerfile this checkout's `.hatch/dependencies.json` renders to. It
-reads the checkout and the machine-bound settings and makes no board call, so it
-works with nothing configured; it needs no Docker either.
+`dockerfile` prints the Dockerfile this checkout's `.hatch/dependencies.json`
+renders to. It reads the checkout and the machine-bound settings and makes no
+board call, so it works with nothing configured; it needs no Docker either.
+[`build`](#build) builds that text.
 
 The text, in order:
 
@@ -200,6 +202,41 @@ The baked block runs after `runner.Dockerfile` and writes under `/etc`, so a
 It refuses, in one sentence, when the checkout has no `.hatch/dependencies.json`
 (naming the path), when the file is not a valid declaration, and when a declared
 dependency ships no install recipe - that repository stays on host runners.
+
+It touches no ticket and no column, so it writes nothing to the board.
+
+#### build
+
+Builds and tags the image the Dockerfile above describes. It takes `--base` and
+refuses exactly as `dockerfile` does, because it renders the same text in the
+same process, and gives the tool exactly those bytes on standard input:
+`build -f - --platform <platforms> -t <image> .`, run from the repository root,
+so `.hatch/runner.Dockerfile`'s own `COPY` lines resolve against the checkout as
+they would for `docker build` by hand. The tool's own output is shown as it
+comes. Nothing is pushed.
+
+- It runs `docker`, or `podman` where there is no `docker`. With neither on
+  `PATH` it says so in one sentence naming both.
+- `--image <name>` is the name to tag, one word. Without it the name comes from
+  the checkout's `origin` remote, whichever of `https://`, `ssh://` or
+  `git@host:` form it is written in (credentials in the URL are ignored): a
+  `github.com` origin gives `ghcr.io/<owner>/<repo>/hatch-runner`, lowercased,
+  because a registry refuses uppercase. Any other host has no registry Hatch
+  can name, and so does no `origin` at all; both are refused, naming
+  `--image`.
+- `--platform <list>` is a comma list of `os/arch`, such as `linux/arm64`.
+  Without it the platforms are read off the base image itself - never a fixed
+  pair, since `--base` can point anywhere. The registry's manifest list is
+  read first (`docker buildx imagetools inspect`, then `docker manifest
+  inspect`; podman's `manifest inspect`), skipping the attestation entries; a
+  base only this machine holds, such as one built a step earlier, has no
+  registry manifest, so its own platform is read from the local image instead.
+  Where none of that reads, the build is refused, naming `--platform`.
+
+A list of more than one platform cannot be loaded into a classic local image
+store (Docker's containerd store can). Where the tool refuses one, it says so
+itself and the build fails; the line after it names `--platform` as the way round
+it, and the exit code is 1.
 
 It touches no ticket and no column, so it writes nothing to the board.
 

@@ -594,6 +594,7 @@ internal partial class Program
         "  hatch use                    which profile is active, or <none>",
         "  hatch use --none             ...clear it",
         "  hatch image dockerfile       the Dockerfile this checkout's declared dependencies render to",
+        "  hatch image build            build and tag the image that Dockerfile describes",
         "  hatch board                  the columns, and how many cards in each",
         "  hatch next                   top workable card of \"todo\"",
         "  hatch next \"in progress\"      ...or of any column",
