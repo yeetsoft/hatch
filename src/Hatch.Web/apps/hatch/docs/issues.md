@@ -51,6 +51,11 @@ issue in another project, and it clears itself if the source is deleted. It is
 set when an issue is filed, or changed later with an edit, and every change
 leaves a line in the issue's history.
 
+The field sits on the issue page too, in the Details card's edit view, right
+after Parent. What it holds is read on the same page in its own section,
+alongside the issues filed from this one — omitted when there is neither a
+source nor anything filed.
+
 **Plan** draws its own meter from this same rollup, one row per epic in the
 house. In a tab scoped to projects its own Project picker follows the same rule
 as the board's: see

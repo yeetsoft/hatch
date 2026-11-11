@@ -1154,6 +1154,9 @@ export interface IssuePatchRequest {
   type?: IssueType | null;
   statusId?: number | null;
   parentKey?: string | null;
+  /** The issue this one was filed from, provenance only. `''` clears it, the
+      same way `parentKey` does. */
+  filedFromKey?: string | null;
   readyAt?: string | null;
   dueAt?: string | null;
   /** An absolute http(s) URL, or `''` to take the issue off the one it holds.
