@@ -5036,9 +5036,11 @@ name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
 revoked key's trail still reads. The page writes nothing, and draws neither
 the rate of work nor the bracketed sessions — those are stories of their
-own. There is no CLI subcommand yet — a script reaches the read with `hatch
-api GET /api/hatch/reports/activity?...`. The route is open to a person or
-to a key.
+own. `hatch activity [--actor <name>] [--days <n>] [--before <instant>]
+[--project <KEY>] [--json]` prints the rundown as markdown, with `--actor`
+defaulting to the key's owner; it renders neither the series nor the
+sessions, which `hatch api GET /api/hatch/reports/activity?...` still
+reaches. The route is open to a person or to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
 own `Actor`. A name no live person or key answers to still answers, with

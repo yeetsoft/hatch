@@ -437,6 +437,7 @@ try
         "next" => await new BoardCommands(cli).NextAsync(rest, cancelling.Token),
         "queue" => await new BoardCommands(cli).QueueAsync(rest, cancelling.Token),
         "changelog" => await new ChangelogCommand(cli).RunAsync(rest, cancelling.Token),
+        "activity" => await new ActivityCommand(cli).RunAsync(rest, cancelling.Token),
         "runners" => await new RunnersCommand(cli).RunAsync(rest, cancelling.Token),
         "standby" => await new StandbyCommand(cli, profileArg, StandbyHosts.ForThisMachine(StandbyHosts.RunProcess)).RunAsync(rest, cancelling.Token),
         "show" => await new IssueCommands(cli).ShowAsync(rest, cancelling.Token),
@@ -551,7 +552,7 @@ internal partial class Program
     /// </summary>
     public static readonly string[] Commands =
     [
-        "config", "use", "image", "standby", "board", "next", "queue", "changelog", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
+        "config", "use", "image", "standby", "board", "next", "queue", "changelog", "activity", "runners", "show", "comments", "start", "move", "comment", "pr", "landed",
         "verdict", "depends", "one-pr", "dangerous", "omit", "recuse", "dream", "ask", "questions", "answer", "api", "work", "go-to-work", "do-my-work",
         .. Internal,
     ];
@@ -612,6 +613,8 @@ internal partial class Program
         "  hatch queue --mine           ...only your own",
         "  hatch changelog              what shipped, as markdown - the newest 7 days that shipped something",
         "  hatch changelog --days 30 --before 2026-09-01 --project AER --json",
+        "  hatch activity               one actor's rundown, as markdown - the key's owner, the last 14 days",
+        "  hatch activity --actor <name> --days 7 --before 2026-09-12T17:00:00Z --project AER --json",
         "  hatch runners                one line per runner that has spoken lately, most recently heard from first",
         "  hatch runners --json          the endpoint's own answer",
         "  hatch show AER-12            the brief, plus its comments",

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -121,6 +123,24 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         var projectQ = projectId is { } id ? $"&projectId={id}" : "";
         return $"/api/hatch/changelog?days={days}{beforeQ}{projectQ}";
     }
+
+    /// <summary>
+    /// One actor's rundown over a window, per <c>GET /api/hatch/reports/activity</c>.
+    /// <c>offsetMinutes</c>, <c>gap</c>, <c>lead</c> and <c>window</c> are never sent:
+    /// <c>activity</c> draws no series and no sessions, so the route's own defaults do.
+    /// </summary>
+    public Task<ActivityReportDto?> ActivityAsync(
+        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, CancellationToken ct) =>
+        Client.GetAsync<ActivityReportDto>(ActivityPath(actor, from, to, projectId), ct);
+
+    /// <summary>The query string <see cref="ActivityAsync"/> sends - named out so a raw <c>--json</c> read can send the same one.</summary>
+    public static string ActivityPath(string actor, DateTimeOffset from, DateTimeOffset to, int? projectId)
+    {
+        var projectQ = projectId is { } id ? $"&projectId={id}" : "";
+        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}";
+    }
+
+    private static string Instant(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>Every project in the house - what <c>--project &lt;KEY&gt;</c> resolves a key against, since the changelog route itself takes only an id.</summary>
     public async Task<IReadOnlyList<ProjectDto>> ProjectsAsync(CancellationToken ct) =>
