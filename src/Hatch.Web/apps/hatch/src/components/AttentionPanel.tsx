@@ -1,11 +1,15 @@
 import { Link } from 'react-router-dom';
 import {
+  agentSectionRowCounts,
   conflictEmptyWords,
   failingBuildEmptyWords,
+  groupCollapsed,
+  humanSectionRowCounts,
   resetWords,
 } from '../lib/attention';
 import { buildWords } from '../lib/buildCheck';
 import { conflictWords } from '../lib/mergeCheck';
+import { AttentionGroup, AttentionSection } from './AttentionFold';
 import { AttentionHuman } from './AttentionHuman';
 import type { Attention } from '../types';
 
@@ -16,21 +20,25 @@ import type { Attention } from '../types';
  * pull request held back by a conflict or a failed build never reads as
  * something waiting on a person.
  *
- * All five sections are always drawn, empty state included. A panel whose sections
- * appeared and disappeared would be a panel whose shape has to be re-read every
- * time it opens - and the empty states are not filler here: one of them is the
- * only place in Hatch that says an issue has sat in review with nowhere to
- * review it.
+ * A section or group with nothing in it is drawn as its heading alone, a
+ * button that a press opens. *Pull requests to review* stays open - and so
+ * keeps the Human group open - while its sentence carries a count
+ * (`reviewWordsCarryAFact`), because that is the only place Hatch says an
+ * issue has sat in review with nowhere to review it. The headings stay, so
+ * the panel's shape is still readable at a glance.
  */
 export function AttentionPanel({
   attention,
   now,
   reload,
+  startOpen,
 }: {
   attention: Attention | null;
   now: Date;
   /** Re-reads the attention, so a row that just filed a bug shows its key for everybody who has the panel open. */
   reload: () => Promise<void>;
+  /** Starts every folded section and group open so a static-markup test can see the empty words. */
+  startOpen?: boolean;
 }) {
   const conflicts = attention?.conflicts ?? [];
   const failingBuilds = attention?.failingBuilds ?? [];
@@ -38,10 +46,10 @@ export function AttentionPanel({
 
   return (
     <div className="hatch-attention-panel">
-      {/* Unlike the four groups below, drawn only when it has rows: this is an
-          alert about a condition that ends by itself, and nothing has to be
-          pressed for it to disappear - see runners.ts and the ticket this
-          shipped with. */}
+      {/* Unlike the sections below, which fold when empty, drawn only when it has
+          rows: this is an alert about a condition that ends by itself, and
+          nothing has to be pressed for it to disappear - see runners.ts and
+          the ticket this shipped with. */}
       {exhaustedRunners.length > 0 && (
         <section className="hatch-attention-section hatch-attention-section-exhausted">
           <h3 className="hatch-attention-heading">Out of usage</h3>
@@ -62,18 +70,20 @@ export function AttentionPanel({
         </section>
       )}
 
-      <div className="hatch-attention-group">
-        <h2 className="hatch-attention-group-heading">Human</h2>
+      <AttentionGroup
+        title="Human"
+        collapsed={groupCollapsed(humanSectionRowCounts(attention))}
+        startOpen={startOpen}
+      >
+        <AttentionHuman attention={attention} now={now} reload={reload} startOpen={startOpen} />
+      </AttentionGroup>
 
-        <AttentionHuman attention={attention} now={now} reload={reload} />
-      </div>
-
-      <div className="hatch-attention-group">
-        <h2 className="hatch-attention-group-heading">Agent</h2>
-
-        <section className="hatch-attention-section">
-          <h3 className="hatch-attention-heading">Branches that conflict</h3>
-
+      <AttentionGroup
+        title="Agent"
+        collapsed={groupCollapsed(agentSectionRowCounts(attention))}
+        startOpen={startOpen}
+      >
+        <AttentionSection title="Branches that conflict" rows={conflicts.length} startOpen={startOpen}>
           {conflicts.length === 0 ? (
             <p className="hatch-attention-empty">{conflictEmptyWords()}</p>
           ) : (
@@ -98,11 +108,9 @@ export function AttentionPanel({
               ))}
             </ul>
           )}
-        </section>
+        </AttentionSection>
 
-        <section className="hatch-attention-section">
-          <h3 className="hatch-attention-heading">Branch builds that fail</h3>
-
+        <AttentionSection title="Branch builds that fail" rows={failingBuilds.length} startOpen={startOpen}>
           {failingBuilds.length === 0 ? (
             <p className="hatch-attention-empty">{failingBuildEmptyWords()}</p>
           ) : (
@@ -127,8 +135,8 @@ export function AttentionPanel({
               ))}
             </ul>
           )}
-        </section>
-      </div>
+        </AttentionSection>
+      </AttentionGroup>
     </div>
   );
 }
