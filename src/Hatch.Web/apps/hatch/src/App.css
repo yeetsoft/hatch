@@ -6633,8 +6633,8 @@ button.hatch-option.chosen {
 }
 
 /* The one section outside a group, above Human - drawn only when it has rows
-   (see AttentionPanel), so this never sits beside an empty state the way the
-   four sections below always can. A tinted ground of its own marks it as the
+   (see AttentionPanel), so it never appears folded the way the sections below
+   do when empty. A tinted ground of its own marks it as the
    one alert here about a condition that ends on its own rather than one a
    person clears. */
 .hatch-attention-section-exhausted {

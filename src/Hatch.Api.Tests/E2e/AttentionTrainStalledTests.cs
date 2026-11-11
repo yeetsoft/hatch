@@ -74,6 +74,10 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
 
             await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-rest .hatch-attention-word:text-is(\"Clear\")");
             await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
+            // With no stalled train every Human section is empty, so HA-2193
+            // folds the whole group behind its own heading button - open it first.
+            if (!stalled)
+                await harness.ClickAsync(deadline, $"{PanelSelector} h2 button.hatch-attention-fold:text-is(\"Human\")");
             // :has-text, not :text-is - this stub never fills WaitingOnARunner,
             // so HA-2192 folds the section behind its own heading button, and
             // the button's own text is the smallest exact match then, not the

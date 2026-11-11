@@ -93,6 +93,9 @@ public class AttentionWaitingOnARunnerTests(ITestOutputHelper output)
             {
                 await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-rest .hatch-attention-word:text-is(\"Clear\")");
                 await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
+                // Every Human section is empty here, so HA-2193 folds the whole
+                // group behind its own heading button - open it first.
+                await harness.ClickAsync(deadline, $"{PanelSelector} h2 button.hatch-attention-fold:text-is(\"Human\")");
                 // :has-text, not :text-is - empty and factless, HA-2192 folds
                 // this section behind its own heading button, and the button's
                 // own text is the smallest exact match then, not the h3 around it.
