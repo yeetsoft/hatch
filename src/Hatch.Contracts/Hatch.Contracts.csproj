@@ -32,4 +32,19 @@
     <EmbeddedResource Include="runner-names.txt" LogicalName="runner-names.txt" />
   </ItemGroup>
 
+  <!--
+    The install recipes DependencyRecipes renders, one Dockerfile fragment per
+    dependency id. Embedded for the same reason as the cast list: a published
+    binary is trimmed and single-file, so they cannot be read from disk. The
+    logical name is `recipes/<id>.Dockerfile`, which is what Recipe(id) asks
+    for. A folder with no recipe in it matches nothing, and that is fine.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="recipes/*.Dockerfile" LogicalName="recipes/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hatch.Api.Tests" />
+  </ItemGroup>
+
 </Project>
