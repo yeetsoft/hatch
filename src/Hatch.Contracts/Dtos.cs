@@ -4211,6 +4211,13 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// </param>
 /// <param name="RetiredAt">When this row was retired - null for one that is not.</param>
 /// <param name="SupersededBy">The name of the row that superseded this one, read beside <paramref name="RetiredAt"/> - null for a row that is not retired.</param>
+/// <param name="Image">
+/// The image this runner was started from, baked in by <c>hatch image build</c>
+/// - a fact about the running process, on the terms <see cref="Host"/> has:
+/// written when a beat names one, and cleared only by a fresh <c>loop</c> beat
+/// that names none. Null for a runner from the generic image, or an older one
+/// that never said.
+/// </param>
 public record RunnerDto(
     string Name,
     string Kind,
@@ -4268,7 +4275,8 @@ public record RunnerDto(
     DateTimeOffset? RotatedAt = null,
     DateTimeOffset? RetiredAt = null,
     string? SupersededBy = null,
-    IReadOnlyList<string>? DrivesTold = null)
+    IReadOnlyList<string>? DrivesTold = null,
+    string? Image = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4332,7 +4340,8 @@ public record RunnerSessionDto(
     bool? Container = null,
     string? Username = null,
     DateTimeOffset? ProcessStartedAt = null,
-    string? Ip = null)
+    string? Ip = null,
+    string? Image = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -4502,6 +4511,13 @@ public enum RunnerBoardDrift
 /// <param name="Container">Whether this process is running inside a container, on the same terms as <see cref="Os"/>.</param>
 /// <param name="Username">The OS username this process runs as, on the same terms as <see cref="Os"/>.</param>
 /// <param name="ProcessStartedAt">When this process itself started, on the same terms as <see cref="Os"/>.</param>
+/// <param name="Image">
+/// The image reference this process was started from, read off the baked
+/// <c>/etc/hatch/dependencies.json</c>'s container and <c>HATCH_IMAGE</c> - a
+/// fact about the process, written when sent; a <see cref="Fresh"/> <c>loop</c>
+/// beat writes it exactly as sent, null included, so a restart onto the
+/// generic image does not keep a stale name.
+/// </param>
 public record RunnerHeartbeatRequest(
     string? Kind = null,
     string? Line = null,
@@ -4544,7 +4560,8 @@ public record RunnerHeartbeatRequest(
     string? AgentVersion = null,
     bool? Container = null,
     string? Username = null,
-    DateTimeOffset? ProcessStartedAt = null);
+    DateTimeOffset? ProcessStartedAt = null,
+    string? Image = null);
 
 /// <summary>
 /// One usage window off a runner's own session stream, or off its own CLI's

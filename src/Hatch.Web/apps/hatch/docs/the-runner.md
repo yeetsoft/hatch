@@ -282,7 +282,12 @@ exception: a caller sending no `tag=` is judged on the tags of the API key it
 called with, so `hatch queue` and `hatch work` run by hand see what a loop
 under the same key sees (a `tag=` sent replaces them, never joins them; with
 no key, or a key with none set, the caller advertises none).
-[Models](#models) and [Has](#has) below have each detection in full.
+[Models](#models) and [Has](#has) below have each detection in full. A
+container `hatch image build` built advertises two more facts with no
+detection of its own, read once at start the same way the six [machine
+facts](#what---show-prints) are: the dependency set it was baked with, which
+[Has](#has) below says joins `HATCH_HAS`, and the image reference itself -
+[Image](#image) below.
 
 A tag is a word a project's, a ticket's, or one of its ancestors' runner tags
 require. A project that requires `gpu` is only worked by a runner that carries
@@ -419,6 +424,14 @@ covers says why once on stderr, as `hatch: <id> not detected - <why>`, and an
 id read from `PATH` after the shell failed says so once, as `hatch: <id> read
 from PATH, not the shell - <why>`.
 
+**A container `hatch image build` built declares a set of its own too** -
+baked to `/etc/hatch/dependencies.json` at build time ([`hatch
+image`](cli-reference#image) says how). It joins
+`HATCH_HAS` as a second declared source, on the same terms: detection still
+runs and still wins, so an id the image was built with but the base no longer
+carries is not silently believed. Neither declares anything for a runner from
+the generic image, or outside one.
+
 The merged set is also sent on every dispatch read - `queue`, `work <key>`
 and the loop's own pass - one `has=` per entry, and never on a hop. A move
 whose project needs a dependency this runner's set does not satisfy is folded
@@ -427,6 +440,24 @@ for it with the board's own sentence, printed unchanged: `AER-1 needs dotnet
 8`. So a runner never claims a ticket only to find its machine cannot run it.
 [What a repository needs](#what-a-repository-needs) says where that need is
 written.
+
+### Image
+
+A container `hatch image build` built advertises the image it was started
+from, with no detection of its own: `HATCH_IMAGE` is baked into the image at
+build time and read once at start, the same way the six [machine
+facts](#what---show-prints) are. A runner from the generic image, or run
+outside one, sends and shows none.
+
+It rides on every heartbeat beside the six machine facts, never on a dispatch
+read - a column or a project cannot require one, the way a tag or a
+dependency can. `hatch runners` closes a row with `image <ref>` right after
+`on <host>`, and the Runners page names it beside the host and the build, in
+the row and in its detail. A fresh `loop` beat that names none clears
+whatever an older incarnation advertised - a restart onto the generic image
+must not keep looking like the one that was built - while any other beat
+naming none leaves the row's own value alone, the way `Os` and the other five
+machine facts do.
 
 ## What a repository needs
 

@@ -424,6 +424,10 @@ The base removes apt's lists at the end of each layer to keep the image small,
 so the `apt-get update` here is the derived image's own.
 
 A derived image changes none of the contract above and only adds packages.
+It is also not the same thing as a project image `hatch image build` bakes
+([HA-1874](/apps/hatch/issues/HA-1874)): neither this image nor a plain `FROM`
+of it sets `HATCH_IMAGE`, so a runner inside either advertises no image -
+[the runner](the-runner#image) says what one does once it is built that way.
 
 The published base carries the label `org.opencontainers.image.revision`,
 naming the commit it was built from, and a derived image inherits it unless its

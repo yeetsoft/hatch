@@ -31,6 +31,9 @@ public sealed record ImageCommand(Terminal Say)
     /// <summary>The image label the resolved set is baked to, and the key a runner reads it back by.</summary>
     public const string LabelKey = "hatch.dependencies";
 
+    /// <summary>The image label the build's own reference is baked to, and the key a runner reads it back by.</summary>
+    public const string ImageLabelKey = "hatch.image";
+
     /// <summary>Where the resolved set is baked inside the image.</summary>
     public const string BakedPath = "/etc/hatch/dependencies.json";
 
@@ -99,7 +102,10 @@ public sealed record ImageCommand(Terminal Say)
         "  (what a recipe requires is installed too) in id order, then",
         "  .hatch/runner.Dockerfile as written when the repository has one, then",
         "  the resolved set baked to /etc/hatch/dependencies.json and into the",
-        "  `hatch.dependencies` label. The same declaration renders the same bytes.",
+        "  `hatch.dependencies` label, then the HATCH_IMAGE build arg baked into",
+        "  the `hatch.image` label - empty from a plain docker build, which is",
+        "  how a runner tells a built image from the generic one. The same",
+        "  declaration renders the same bytes.",
         "",
         "  --base <image> is the image to start from. Without it, HATCH_RUNNER_BASE_IMAGE",
         "  is read, which `hatch config --runner-base-image <image>` writes.",
@@ -264,7 +270,7 @@ public sealed record ImageCommand(Terminal Say)
             return PushWith(tool, image, (name, _) => BuildAndPush(tool, text, platforms, name));
 
         var (code, _) = Tool(new ToolCall(
-            tool, ["build", "-f", "-", "--platform", platforms, "-t", image, "."], text, Root, Say.Line));
+            tool, ["build", "-f", "-", "--platform", platforms, "-t", image, "--build-arg", $"HATCH_IMAGE={Tagged(image)}", "."], text, Root, Say.Line));
         if (code != 0)
         {
             Say.Complain($"hatch: {tool} build failed");
@@ -274,7 +280,7 @@ public sealed record ImageCommand(Terminal Say)
         }
 
         Say.Line($"hatch: built {image} for {platforms}");
-        return push ? PushWith(tool, image, (name, nested) => PushBuilt(tool, name, nested)) : 0;
+        return push ? PushWith(tool, image, (name, nested) => PushBuilt(tool, text, platforms, name, nested)) : 0;
     }
 
     /// <summary>One attempt at getting an image to the registry under <c>name</c>: whether it did, what the tool said, and the step that failed.</summary>
@@ -308,17 +314,36 @@ public sealed record ImageCommand(Terminal Say)
         return 1;
     }
 
-    /// <summary>A built image's push; on the retry it is first tagged with the flat name, so nothing is rebuilt.</summary>
-    private (bool, string, string) PushBuilt(string tool, string name, string? nested)
+    /// <summary>
+    /// A built image's push; on the retry the image is rebuilt under the flat
+    /// name rather than tagged, so the baked <c>HATCH_IMAGE</c> reflects the
+    /// name actually pushed - a plain tag would leave it carrying the
+    /// rejected one. The recipe layers are cached, so the rebuild is cheap.
+    /// </summary>
+    private (bool, string, string) PushBuilt(string tool, string text, string platforms, string name, string? nested)
     {
         if (nested is not null)
         {
-            var (tagged, tagOutput) = Tool(new ToolCall(tool, ["tag", nested, name], null, Root, Say.Line));
-            if (tagged != 0) return (false, tagOutput, $"{tool} tag");
+            var (built, buildOutput) = Tool(new ToolCall(
+                tool, ["build", "-f", "-", "--platform", platforms, "-t", name, "--build-arg", $"HATCH_IMAGE={Tagged(name)}", "."], text, Root, Say.Line));
+            if (built != 0) return (false, buildOutput, $"{tool} build");
         }
 
         var (exit, output) = Tool(new ToolCall(tool, ["push", name], null, Root, Say.Line));
         return (exit == 0, output, $"{tool} push");
+    }
+
+    /// <summary>
+    /// <paramref name="name"/> with <c>:latest</c> appended where its last path
+    /// segment has none - a registry's own port (<c>host:5000/...</c>) is not a
+    /// tag, so only the segment after the final <c>/</c> is asked. The tag a
+    /// plain <c>docker build -t name</c> leaves the image under when
+    /// <paramref name="name"/> names none itself.
+    /// </summary>
+    internal static string Tagged(string name)
+    {
+        var leaf = name[(name.LastIndexOf('/') + 1)..];
+        return leaf.Contains(':') ? name : name + ":latest";
     }
 
     /// <summary>
@@ -330,7 +355,7 @@ public sealed record ImageCommand(Terminal Say)
         if (tool == "docker")
         {
             var (exit, output) = Tool(new ToolCall(
-                tool, ["buildx", "build", "-f", "-", "--platform", platforms, "-t", name, "--push", "."], text, Root, Say.Line));
+                tool, ["buildx", "build", "-f", "-", "--platform", platforms, "-t", name, "--build-arg", $"HATCH_IMAGE={Tagged(name)}", "--push", "."], text, Root, Say.Line));
             return (exit == 0, output, "docker buildx build --push");
         }
 
@@ -339,7 +364,7 @@ public sealed record ImageCommand(Terminal Say)
         Tool(new ToolCall(tool, ["manifest", "rm", name], null, Root, null));
 
         var (built, buildOutput) = Tool(new ToolCall(
-            tool, ["build", "-f", "-", "--platform", platforms, "--manifest", name, "."], text, Root, Say.Line));
+            tool, ["build", "-f", "-", "--platform", platforms, "--manifest", name, "--build-arg", $"HATCH_IMAGE={Tagged(name)}", "."], text, Root, Say.Line));
         if (built != 0) return (false, buildOutput, "podman build");
 
         var (sent, sentOutput) = Tool(new ToolCall(
@@ -446,6 +471,14 @@ public sealed record ImageCommand(Terminal Say)
         text.Append(json).Append('\n');
         text.Append(Delimiter).Append('\n');
         text.Append($"LABEL {LabelKey}=\"{json.Replace("\"", "\\\"")}\"\n");
+
+        // The name is not known at render time - image dockerfile has none - so
+        // it rides in as a build arg rather than a literal, which keeps "the
+        // same declaration renders the same bytes" true for dockerfile and
+        // lets build pass it after the fact.
+        text.Append("ARG HATCH_IMAGE\n");
+        text.Append("ENV HATCH_IMAGE=${HATCH_IMAGE}\n");
+        text.Append($"LABEL {ImageLabelKey}=\"${{HATCH_IMAGE}}\"\n");
 
         return (text.ToString(), baseImage, 0);
     }

@@ -16,7 +16,7 @@ public sealed class RunnersCommandTests
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
         IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null,
         long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null,
-        IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null) =>
+        IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null, string? image = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -24,7 +24,8 @@ public sealed class RunnersCommandTests
             MaxRuns: null, MaxSpend: null, UntilAt: null, GoneAfterSeconds: goneAfterSeconds,
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
             ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
-            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions);
+            TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions,
+            Image: image);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
@@ -155,6 +156,23 @@ public sealed class RunnersCommandTests
         var mute = lines.Single(l => l.StartsWith("mute", StringComparison.Ordinal));
         Assert.DoesNotContain(" runs", mute);
         Assert.DoesNotContain("$", mute);
+    }
+
+    [Fact]
+    public async Task A_row_reporting_its_image_prints_it_after_the_host_and_a_row_reporting_none_does_not()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(name: "built", host: "Fry", image: "ghcr.io/o/r:1"),
+            ARunner(name: "generic", host: "Fry"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        var lines = h.Said.Split('\n');
+        Assert.EndsWith("  on Fry image ghcr.io/o/r:1", lines.Single(l => l.StartsWith("built", StringComparison.Ordinal)));
+        Assert.DoesNotContain("image", lines.Single(l => l.StartsWith("generic", StringComparison.Ordinal)));
     }
 
     [Fact]

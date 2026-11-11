@@ -1099,6 +1099,24 @@ describe('rowThirdLine', () => {
   it('is the owner alone with no sessions', () => {
     expect(rowThirdLine(runner({ for: 'Ada' }), NOW)).toBe('Ada');
   });
+
+  it('names the host then the one live image', () => {
+    const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac', image: 'ghcr.io/o/r:1' })] });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · Mac · ghcr.io/o/r:1');
+  });
+
+  it('counts images when live sessions span more than one', () => {
+    const r = runner({
+      for: 'Ada',
+      sessions: [session({ id: 1, image: 'ghcr.io/o/r:1' }), session({ id: 2, image: 'ghcr.io/o/r:2' })],
+    });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · 2 images');
+  });
+
+  it('names no image when none of the live sessions reported one', () => {
+    const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac' })] });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · Mac');
+  });
 });
 
 describe('runnerLastSeen', () => {

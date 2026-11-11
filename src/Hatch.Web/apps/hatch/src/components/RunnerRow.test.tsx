@@ -130,9 +130,16 @@ describe('RunnerRow', () => {
     expect(html).toContain('>AER-1 - reading the brief</span>');
   });
 
-  it('says whose it is and where it runs on line three', () => {
+  it('says whose it is and where it runs on line three, with the same words in its title', () => {
     const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini' })] }));
 
-    expect(html).toContain('sam · mac-mini');
+    expect(html).toContain('title="sam · mac-mini"');
+    expect(html).toContain('>sam · mac-mini</span>');
+  });
+
+  it('names the image it was built from on line three', () => {
+    const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini', image: 'ghcr.io/o/r:1' })] }));
+
+    expect(html).toContain('sam · mac-mini · ghcr.io/o/r:1');
   });
 });

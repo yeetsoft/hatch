@@ -327,20 +327,26 @@ export function rowSecondLine(runner: Runner, now: Date): string {
 }
 
 /** The row's third line: the owner, then the one distinct host among its
-    live sessions - omitted with none, named with one, counted with more. */
+    live sessions - omitted with none, named with one, counted with more -
+    then the same for the image, so a runner from a built image still reads
+    as one at a glance. */
 export function rowThirdLine(runner: Runner, now: Date): string {
   const owner = runner.for ?? 'no owner';
-  const hosts = Array.from(
-    new Set(
-      liveSessions(runner, now)
-        .map((session) => session.host)
-        .filter((host): host is string => host !== null),
-    ),
-  );
+  const live = liveSessions(runner, now);
+  const distinct = (values: (string | null | undefined)[]): string[] =>
+    Array.from(new Set(values.filter((value): value is string => value !== null && value !== undefined)));
 
-  if (hosts.length === 0) return owner;
-  if (hosts.length === 1) return `${owner} · ${hosts[0]}`;
-  return `${owner} · ${hosts.length} machines`;
+  const hosts = distinct(live.map((session) => session.host));
+  const images = distinct(live.map((session) => session.image));
+
+  const parts = [owner];
+  if (hosts.length === 1) parts.push(hosts[0]);
+  else if (hosts.length > 1) parts.push(`${hosts.length} machines`);
+
+  if (images.length === 1) parts.push(images[0]);
+  else if (images.length > 1) parts.push(`${images.length} images`);
+
+  return parts.join(' · ');
 }
 
 /**

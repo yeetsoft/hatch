@@ -1448,6 +1448,7 @@ public class RunnersController(
             BuiltAt = request.BuiltAt,
             Models = models,
             Has = has,
+            Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
             Projects = keys.Count > 0 ? string.Join('\n', keys) : null,
             RefusesDangerous = request.RefusesDangerous,
             ExhaustedUntil = request.Exhausted == true ? request.ExhaustedUntil : null,
@@ -1516,6 +1517,11 @@ public class RunnersController(
         if (request.Models is not null) row.Models = models;
         if (request.Has is not null) row.Has = has;
 
+        // Written when sent, absent leaving it alone - the same tri-state as
+        // every other fact-vs-absent field here, Image included below for the
+        // one exception a fresh loop beat draws.
+        if (request.Image is not null) row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
+
         // A fact about the process, like Where and Remotes: overwritten by
         // whatever the latest beat said, any kind. Tags are never taken off a
         // beat at all - only PatchRunner moves row.Tags.
@@ -1551,6 +1557,12 @@ public class RunnersController(
         if (request.Fresh == true && kind == EfHatchRunner.LoopKind)
         {
             Bound(row, request);
+
+            // The one field written even where the beat names none: a fresh
+            // start that named no image must not keep a stale one from the
+            // incarnation before it, the way a restart onto the generic image
+            // would otherwise look like it was still the one that was built.
+            row.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
 
             // The one beat that writes state: a start that asked to stand by
             // is paused on the beat that says so, from any state, so its own
@@ -1623,6 +1635,7 @@ public class RunnersController(
             UsageReadAt = request.UsageReadAt,
             Models = models,
             Has = has,
+            Image = Fits(request.Image, EfHatchRunner.MaxImageLength),
             Os = Fits(request.Os, EfHatchRunnerSession.MaxOsLength),
             Arch = Fits(request.Arch, EfHatchRunnerSession.MaxArchLength),
             AgentVersion = Fits(request.AgentVersion, EfHatchRunnerSession.MaxAgentVersionLength),
@@ -1691,6 +1704,13 @@ public class RunnersController(
         // An empty list clears it: Joined answers null for one, the same as Touch.
         if (request.Models is not null) session.Models = models;
         if (request.Has is not null) session.Has = has;
+
+        // Written when sent, absent leaving it alone. Unlike Touch's own row,
+        // a fresh loop beat never reaches here to need the clearing exception:
+        // HeartbeatSessionAsync answers Conflict for a fresh loop beat against
+        // a live session, so a live session is only ever touched on a beat
+        // that is not fresh.
+        if (request.Image is not null) session.Image = Fits(request.Image, EfHatchRunner.MaxImageLength);
 
         // A fact about the process, like Where and Remotes - the same rule Touch draws for a beat.
         if (request.RefusesDangerous is not null) session.RefusesDangerous = request.RefusesDangerous;

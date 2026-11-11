@@ -23,6 +23,7 @@ export function RunnerRow({ runner, selected, now }: { runner: Runner; selected:
   const label = speaking ? sessionParts(speaking, runner, now).words : state === 'gone' ? 'Gone' : 'Not started';
   const sessions = liveSessions(runner, now).length;
   const second = rowSecondLine(runner, now);
+  const third = rowThirdLine(runner, now);
 
   return (
     <Link
@@ -41,8 +42,8 @@ export function RunnerRow({ runner, selected, now }: { runner: Runner; selected:
       <Text as="span" tone="muted" className="hatch-runner-row__second" title={second}>
         {second}
       </Text>
-      <Text as="span" tone="muted" className="hatch-runner-row__third">
-        {rowThirdLine(runner, now)}
+      <Text as="span" tone="muted" className="hatch-runner-row__third" title={third}>
+        {third}
       </Text>
     </Link>
   );

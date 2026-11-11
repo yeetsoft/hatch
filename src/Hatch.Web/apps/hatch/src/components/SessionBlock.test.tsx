@@ -88,6 +88,7 @@ const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
   clones: false,
   runs: 3,
   spent: 1.5,
+  image: 'ghcr.io/o/r:1',
   ...over,
 });
 
@@ -122,6 +123,8 @@ describe('SessionBlock', () => {
     expect(html).toContain('Agent');
     expect(html).toContain('claude');
     expect(html).toContain('5.1');
+    expect(html).toContain('Image');
+    expect(html).toContain('ghcr.io/o/r:1');
     expect(html).toContain('CLI build');
     expect(html).toContain('Username');
     expect(html).toContain('ada');
@@ -140,15 +143,23 @@ describe('SessionBlock', () => {
 
   it('omits rows for an older CLI that never reported them, but still shows a set ip', () => {
     const html = draw(
-      session({ os: null, arch: null, agentVersion: null, container: null, username: null, processStartedAt: null }),
+      session({
+        os: null, arch: null, agentVersion: null, container: null, username: null, processStartedAt: null,
+        image: null,
+      }),
     );
 
     expect(html).not.toContain('OS');
     expect(html).not.toContain('Username');
     expect(html).not.toContain('Container');
     expect(html).not.toContain('Started');
+    expect(html).not.toContain('Image');
     expect(html).toContain('IP');
     expect(html).toContain('10.0.0.1');
+  });
+
+  it('omits the image row for a runner from the generic image, or outside one', () => {
+    expect(draw(session({ image: null }))).not.toContain('Image');
   });
 
   it('draws No for a false container and no row at all for a null one', () => {
