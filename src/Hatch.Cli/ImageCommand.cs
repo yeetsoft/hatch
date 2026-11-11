@@ -86,14 +86,17 @@ public sealed record ImageCommand(Terminal Say)
 
     public static readonly string[] ImageUsage =
     [
-        "usage: hatch image <dockerfile|build> ...",
+        "usage: hatch image <dockerfile|build|workflow> ...",
         "",
         "  hatch image dockerfile [--base <image>]",
         "  hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]",
+        "  hatch image workflow",
         "",
         "  hatch image dockerfile   print the Dockerfile this checkout's",
         "                              .hatch/dependencies.json renders to",
         "  hatch image build        build that Dockerfile with docker (or podman) and tag it",
+        "  hatch image workflow     print a GitHub Actions workflow that builds and",
+        "                              pushes this repository's runner image from its own CI",
         "",
         "  FROM the base image, then each declared dependency's install recipe",
         "  (what a recipe requires is installed too) in id order, then",
@@ -130,16 +133,45 @@ public sealed record ImageCommand(Terminal Say)
         "  A runner.Dockerfile runs before the baked block, which needs root: leave",
         "  the user as root. A declaration naming a dependency with no install recipe",
         "  is refused - that repository stays on host runners.",
+        "",
+        "  workflow prints the text, takes no flags, and makes no board call, no git",
+        "  call and no file write: committing it as .github/workflows/hatch-runner-image.yml",
+        "  is a change this repository's own ticket makes, not something hatch does on",
+        "  its own. docker is the other way to build and push the same image, from a",
+        "  laptop or any other CI.",
     ];
 
     public int Run(string[] args)
     {
         if (Usage.Wanted(args)) return Usage.Print(Say, ImageUsage);
 
-        if (args is not ["dockerfile" or "build", ..])
-            return Usage.Refuse(Say, "image takes `dockerfile` or `build`", ImageUsage);
+        if (args is not ["dockerfile" or "build" or "workflow", ..])
+            return Usage.Refuse(Say, "image takes `dockerfile`, `build` or `workflow`", ImageUsage);
 
-        return args[0] == "dockerfile" ? Dockerfile(args) : Build(args);
+        return args[0] switch
+        {
+            "dockerfile" => Dockerfile(args),
+            "build" => Build(args),
+            _ => Workflow(args),
+        };
+    }
+
+    /// <summary>The workflow <c>hatch-runner-image.yml</c> embeds, read once.</summary>
+    private static readonly Lazy<string> WorkflowText = new(() =>
+    {
+        using var stream = typeof(ImageCommand).Assembly.GetManifestResourceStream("hatch-runner-image.yml")
+                            ?? throw new InvalidOperationException("hatch-runner-image.yml is not embedded in this build");
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
+    });
+
+    private int Workflow(string[] args)
+    {
+        if (args.Length > 1)
+            return Usage.Refuse(Say, "image workflow takes no arguments", ImageUsage);
+
+        Say.Write(WorkflowText.Value);
+        return 0;
     }
 
     private int Dockerfile(string[] args)
