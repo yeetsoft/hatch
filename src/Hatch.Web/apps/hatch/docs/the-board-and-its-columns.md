@@ -86,7 +86,7 @@ across every column and hop above, start to finish.
 ## Narrowing the board
 
 On a desktop window the header is one row, left to right: **Search**,
-**Project**, **Types**, **Needs me**, **…** (More filters), the count
+**Project**, **Types**, **Needs me**, **Contributions**, **…** (More filters), the count
 (*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
 the work queue, the flow view and **+** (New issue). **Search** rests narrow
 and widens while you type in it. **Project** shows only its key (or **All**)
@@ -96,7 +96,14 @@ which keeps that row alone (on a touch screen it is always shown). **All** and
 **None** sit at its foot: **None** leaves the board blank on purpose, with the
 count reading *0 of N*, and **×** brings every type back. The choice, None
 included, is remembered in this browser. **Needs me** shows the
-cards holding a question nobody has answered. **…** opens the filters kept
+cards holding a question nobody has answered. **Contributions** has three
+choices: **All** (the default, a contribution drawn with everything else),
+**Only** (just the cards with a contribution record) and **Hidden** (every card
+but those); the count and **×** treat it like any other filter, and the choice
+is remembered in this browser as the types are. A contribution's card wears a
+mark beside its type glyph and names where it came from; see
+[Contribution](issues#contribution). Dropping one into a column that merges pull
+requests asks first. **…** opens the filters kept
 out of the row, today the **Assignee** choice; the button is lit while one of
 them is set, and the count still includes it. **×** returns every filter to
 its default and is drawn only when one is set. On a phone the row folds
