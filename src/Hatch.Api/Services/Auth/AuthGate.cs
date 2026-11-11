@@ -159,9 +159,11 @@ public class AuthGate(
         "/api/sun-events",
 
         // The sign-in shell and the two endpoints it calls. Gating these is an
-        // infinite redirect loop. Its short alias /auth is exempt too, just
-        // below - exactly rather than by prefix.
-        "/apps/auth",
+        // infinite redirect loop. /auth is the shell's real mount (Program.cs),
+        // so everything under it is exempt by prefix - its JS bundle, and the
+        // r/{code} link a scanned QR opens. The old /apps/auth address is a
+        // permanent redirect (Program.cs), so it needs no entry of its own.
+        "/auth",
         "/api/auth/verify",
         "/api/auth/redeem",
 
@@ -173,23 +175,20 @@ public class AuthGate(
     ];
 
     /// <summary>
-    /// Exempt exactly, rather than as a prefix. <c>/auth</c> is the short form
-    /// of the sign-in URL - short enough to read out over the phone to someone
-    /// holding a new tablet - and it redirects into <c>/apps/auth/</c>
-    /// (Program.cs). It has to work for a caller who by definition has no
-    /// grant yet, and it has to be exempt *here* rather than by moving the
+    /// Exempt exactly, rather than as a prefix, because a prefix would silently
+    /// exempt whatever is mounted underneath it later. This list opens what it
+    /// names and nothing else.
+    ///
+    /// The sign-in shell used to be here: <c>/auth</c> was only a short alias,
+    /// short enough to read out over the phone to someone holding a new tablet,
+    /// that redirected elsewhere, so matching it exactly was enough. It is the
+    /// shell's real mount now, with real content beneath it, and is on the
+    /// prefix list above. It has to be exempt *here* rather than by moving the
     /// rewriter: in production the decision is made by Traefik asking about the
     /// original URI, which never reaches this app's rewrite rules at all.
-    ///
-    /// Matched exactly because a prefix would silently exempt whatever is
-    /// mounted underneath it later. This list opens what it names and nothing
-    /// else.
     /// </summary>
     private static readonly PathString[] exemptExactPaths =
     [
-        "/auth",
-        "/auth/",
-
         // Android's own Digital Asset Links verifier, which fetches this with no
         // cookie jar at all - gating it would make every install's links open
         // in a browser instead of the app. Exact rather than a prefix because

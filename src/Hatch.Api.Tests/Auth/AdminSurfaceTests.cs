@@ -31,11 +31,6 @@ namespace Hatch.Api.Tests.Auth;
 ///   (AuthController.ListGrants, PeopleController.GetSessions) and the
 ///   connection settings (SettingsController, DevicesController's camera
 ///   connection).
-/// - **The family modules are not in this file at all.** Quill, Gather,
-///   Storage and Game are the household's own apps; their authorization is
-///   ownership, expressed as a WHERE clause in the module
-///   (docs/auth-architecture.md, "A person is an authorization input"), and a
-///   global role has nothing to say about them.
 /// - **Two levels, and the level is not a judgement per action.** Everything
 ///   under Modules/Hatch asks for User, with `AcceptKey = true` except the
 ///   person-only routes named in <c>PersonOnly</c>; everything else that is
@@ -121,8 +116,6 @@ public class AdminSurfaceTests
         "CalendarsController.DeleteAccount",
         "HomeAssistantController.FetchFromHomeAssistant",
         "DiscoveryController.GetUnmapped",
-        "PhotosController.RefreshAlbums",
-        "PhotosController.UpdateAlbum",
 
         // Hatch, whole. Reads included, because the board is a list of what
         // the operator is doing and every card title on it - not a fact about

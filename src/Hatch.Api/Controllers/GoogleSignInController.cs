@@ -38,7 +38,7 @@ public class GoogleSignInController(
 {
     public const string NotConfiguredError = "google_not_configured";
 
-    private const string DefaultLanding = "/apps/hatch/";
+    private const string DefaultLanding = "/";
 
     private static readonly string[] Issuers = ["https://accounts.google.com", "accounts.google.com"];
 

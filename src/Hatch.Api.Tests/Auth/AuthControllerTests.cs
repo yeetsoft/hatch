@@ -30,7 +30,7 @@ public class AuthControllerTests
     [InlineData("/health/ready")]
     [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
-    [InlineData("/apps/auth/r/K3M9P2QT")]
+    [InlineData("/auth/r/K3M9P2QT")]
     public async Task VerifyAllowsAnExemptOriginalPath(string uri)
     {
         var controller = NewController(out var context);
@@ -78,10 +78,10 @@ public class AuthControllerTests
         // Absolute, on the host the browser was actually going to. Traefik
         // resolves a redirect from this endpoint against its own request to it,
         // so the relative form AuthMiddleware returns would reach the browser
-        // as http://api.<ns>.svc.cluster.local:8080/apps/auth/ - see
+        // as http://api.<ns>.svc.cluster.local:8080/auth/ - see
         // AuthChallenge.SignInLocation. ?r= stays a relative path regardless.
         Assert.Equal(
-            "https://home.example.com/apps/auth/?r=%2Fapps%2Fadmin%2Fdevices%3Ftab%3Dzones",
+            "https://home.example.com/auth/?r=%2Fapps%2Fadmin%2Fdevices%3Ftab%3Dzones",
             context.Response.Headers.Location.ToString());
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
     }
@@ -99,7 +99,7 @@ public class AuthControllerTests
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "https://kiosk.example.com/apps/auth/?r=%2F",
+            "https://kiosk.example.com/auth/?r=%2F",
             context.Response.Headers.Location.ToString());
     }
 
@@ -120,7 +120,7 @@ public class AuthControllerTests
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "/apps/auth/?r=%2Fapps%2Ffamily%2F",
+            "/auth/?r=%2Fapps%2Ffamily%2F",
             context.Response.Headers.Location.ToString());
     }
 
@@ -135,7 +135,7 @@ public class AuthControllerTests
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "/apps/auth/?r=%2Fapps%2Ffamily%2F",
+            "/auth/?r=%2Fapps%2Ffamily%2F",
             context.Response.Headers.Location.ToString());
     }
 
@@ -458,7 +458,7 @@ public class AuthControllerTests
         Assert.Equal("HATCH-K3M9-P2QT", dto.FormattedCode);
         // Built from Auth:SignInPath, so an install that mounts the shell
         // elsewhere moves the QR target with it.
-        Assert.Equal("/apps/auth/r/K3M9P2QT", dto.RedeemPath);
+        Assert.Equal("/auth/r/K3M9P2QT", dto.RedeemPath);
         Assert.Equal("Ada's iPhone", dto.Label);
         Assert.Equal([("Ada's iPhone", (Guid?)null, false)], auth.InvitesCreated);
         // A live credential has no business in a cache, anyone's.

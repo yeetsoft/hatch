@@ -117,6 +117,44 @@ public sealed class ClaimTests
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(ClaimOutcomes.Dropped)]
+    [InlineData(ClaimOutcomes.Worked)]
+    [InlineData(ClaimOutcomes.Abandoned)]
+    public async Task A_release_on_any_outcome_removes_the_session_record(string? outcome)
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+        var path = SessionRecord.PathFor(h.Root, h.Temp);
+        new SessionRecord(1, 1, "AER-1", Token, DateTimeOffset.UnixEpoch, "https://hatch.example").Write(path);
+        claim!.RecordPath = path;
+
+        await claim.ReleaseAsync(outcome);
+
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task A_release_the_board_never_answers_still_removes_the_session_record()
+    {
+        using var h = new Harness();
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.InternalServerError);
+
+        var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
+        var path = SessionRecord.PathFor(h.Root, h.Temp);
+        new SessionRecord(1, 1, "AER-1", Token, DateTimeOffset.UnixEpoch, "https://hatch.example").Write(path);
+        claim!.RecordPath = path;
+
+        await claim.ReleaseAsync(ClaimOutcomes.Worked);
+
+        Assert.False(File.Exists(path));
+    }
+
     /// <summary>A Hatch too old to know the value 400s it; the lease is still given back, by the plain release.</summary>
     [Fact]
     public async Task An_unservable_release_a_hatch_400s_is_asked_again_without_an_outcome()

@@ -1273,6 +1273,29 @@ public sealed class Increment(
 
         await MarkSaidAsync(work, ct);
 
+        // What a loop that dies mid-increment leaves for the next one in this
+        // checkout to find: the agent's pid and start time, and the claim it
+        // runs under. Written the moment the child is running, since nothing
+        // else sees its pid, and again once the stream has said the session's
+        // id - the resume command the clean-up's comment offers needs it.
+        SessionRecord? record = null;
+        void OnStarted(int pid, DateTime startedAt)
+        {
+            record = new SessionRecord(
+                pid, startedAt.Ticks, claim.Key, claim.Token, _clock.GetUtcNow(), settings.Base, facts.SessionId);
+            claim.RecordPath = SessionRecord.PathFor(root, _temp);
+            record.Write(claim.RecordPath);
+        }
+
+        void NoteSessionId()
+        {
+            if (record is null || claim.RecordPath is null) return;
+            if (facts.SessionId is not { Length: > 0 } id || id == record.SessionId) return;
+
+            record = record with { SessionId = id };
+            record.Write(claim.RecordPath);
+        }
+
         // Through both exits below, the streamed one and the --quiet one: a
         // quiet session gets no rate_limit_event to move the readout at all.
         await using var probing = new Probing(ProbeDuringAsync, ct);
@@ -1283,7 +1306,7 @@ public sealed class Increment(
             // one object at the end carrying the session id, the cost, and the
             // last thing the session said. Nothing is carried on the claim, and
             // that is what --quiet is rather than a gap to engineer around.
-            var quietly = await sessions.RunAsync(request, null, ct);
+            var quietly = await sessions.RunAsync(request, null, ct, OnStarted);
             var output = quietly.Output.Trim();
 
             if (output.StartsWith('{'))
@@ -1353,6 +1376,8 @@ public sealed class Increment(
                 if (line.Length > 0) claim.Chatter.Line = line.Trim();
             }
 
+            NoteSessionId();
+
             // Outside the loop above, for the same reason as the usage read
             // below: a tool call opening or returning is not always a line.
             inFlight.Note(render.Open, _clock.GetUtcNow());
@@ -1397,7 +1422,7 @@ public sealed class Increment(
                 say.Line($"hatch: {work.Issue.Key} - the hard limit was hit at {Format.Compact(render.TokensSoFar)} tokens; stopping the session");
                 stopping.Cancel();
             }
-        }, ct);
+        }, ct, OnStarted);
 
         if (facts.Result is { } streamedEntry)
             facts.Result = streamedEntry with
