@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ProjectMark } from '@hatch/ui';
 import { BuildCheckChips } from './BuildCheckChips';
 import { Command } from './Command';
+import { ContributionBadge, ContributionMark } from './ContributionMark';
 import { LandingChips } from './LandingChips';
 import { MergeConflictChips } from './MergeConflictChips';
 import { MergeHoldChip } from './MergeHoldChip';
@@ -55,6 +56,12 @@ export function IssueSubheader({
           label="Copy link"
         />
         <TypeBadge type={issue.type} />
+        {issue.contribution && (
+          <>
+            <ContributionMark />
+            <ContributionBadge contribution={issue.contribution} />
+          </>
+        )}
         {issue.parentKey && <Link to={`/issues/${issue.parentKey}`}>↳ {issue.parentKey}</Link>}
       </span>
       <span className="hatch-issue-meta">

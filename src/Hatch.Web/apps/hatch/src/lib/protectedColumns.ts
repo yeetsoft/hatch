@@ -10,6 +10,7 @@
    mergesPullRequestBlocked: those answer whether a flag may be ticked on the
    Statuses admin page, not whether a move may land here. */
 
+import { originLabel } from './contribution';
 import type { Issue, IssueCard, Project, Status } from '../types';
 
 /** Why a move into `target` is refused, or null where it is allowed.
@@ -29,6 +30,19 @@ export function moveBlocked(
     return 'This column merges the pull request, and this issue has none';
   }
   return null;
+}
+
+/** The sentence a confirm should say before a contribution moves into a column
+    that merges pull requests, or null where nothing needs asking: not a
+    contribution, a column that does not merge, or a move that goes nowhere.
+    Not a refusal - `moveBlocked` is still the one that refuses, and runs first;
+    this is for a move that is allowed and is worth a second look. */
+export function confirmMove(
+  target: Status,
+  issue: Pick<Issue | IssueCard, 'key' | 'statusId' | 'contribution'>,
+): string | null {
+  if (!issue.contribution || !target.mergesPullRequest || issue.statusId === target.id) return null;
+  return `${issue.key} is a contribution from ${originLabel(issue.contribution)}. Merging it merges someone else's branch.`;
 }
 
 /** Why a drop of the card in hand into `target` would be refused, or null
