@@ -56,6 +56,16 @@ public sealed record PullRequestListAnswer(IReadOnlyDictionary<string, PullReque
 /// <param name="Why">One line, for a sentence. Null where <paramref name="Merged"/> is true.</param>
 public sealed record MergeAnswer(bool Merged, string? Why);
 
+/// <summary>What a forge answered about reading a pull request's body: the body, or why it could not say.</summary>
+/// <param name="Body">The body as the forge holds it - empty for a pull request with none. Null where it was not read.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Body"/> was read.</param>
+public sealed record PullRequestBodyAnswer(string? Body, string? Why);
+
+/// <summary>What a forge answered about rewriting a pull request's body: whether it took, or why it did not.</summary>
+/// <param name="Edited">True where the body was written.</param>
+/// <param name="Why">One line, for a sentence. Null where <paramref name="Edited"/> is true.</param>
+public sealed record BodyEditAnswer(bool Edited, string? Why);
+
 /// <summary>One of <see cref="UpdateOutcomes"/>, or the reason no outcome was reached - see <see cref="UpdateAnswer"/>.</summary>
 public static class UpdateOutcomes
 {
@@ -117,6 +127,12 @@ public interface IForge
 
     /// <summary>Merges the pull request at <paramref name="url"/>, provided its head is still <paramref name="sha"/>.</summary>
     Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct);
+
+    /// <summary>The body of the pull request at <paramref name="url"/>, or why it could not be read. An empty body is a body.</summary>
+    Task<PullRequestBodyAnswer> ReadBodyAsync(string url, CancellationToken ct);
+
+    /// <summary>Replaces the body of the pull request at <paramref name="url"/> with <paramref name="body"/>.</summary>
+    Task<BodyEditAnswer> EditBodyAsync(string url, string body, CancellationToken ct);
 
     /// <summary>
     /// Brings pull request <paramref name="number"/>'s branch current with the
@@ -294,6 +310,55 @@ public sealed class GhForge(
 
         var ran = await _run(path, Env(), ["pr", "merge", url, "--merge", "--admin", "--match-head-commit", sha], ct);
         return ran.Code == 0 ? new MergeAnswer(true, null) : new MergeAnswer(false, Why(ran));
+    }
+
+    public async Task<PullRequestBodyAnswer> ReadBodyAsync(string url, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new PullRequestBodyAnswer(null, "its repository is a local path, so there is no forge to read a pull request's body from");
+
+        var ran = await _run(path, Env(), ["pr", "view", url, "--json", "body"], ct);
+        if (ran.Code != 0) return new PullRequestBodyAnswer(null, Why(ran));
+
+        try
+        {
+            using var doc = JsonDocument.Parse(ran.Out);
+            return doc.RootElement.ValueKind == JsonValueKind.Object && Text(doc.RootElement, "body") is { } body
+                ? new PullRequestBodyAnswer(body, null)
+                : new PullRequestBodyAnswer(null, "gh answered with something that is not a pull request");
+        }
+        catch (JsonException)
+        {
+            return new PullRequestBodyAnswer(null, "gh answered with something that is not a pull request");
+        }
+    }
+
+    /// <summary>
+    /// <c>gh pr edit --body-file</c> from a temporary file: the run delegate has no stdin, and a file is
+    /// written without a byte-order mark, which redirected stdin on Windows is not.
+    /// </summary>
+    public async Task<BodyEditAnswer> EditBodyAsync(string url, string body, CancellationToken ct)
+    {
+        // A local path has no host, and nothing to ask a forge about.
+        if (canonical is { } c && (c.StartsWith('/') || c.StartsWith('.')))
+            return new BodyEditAnswer(false, "its repository is a local path, so there is no forge to edit a pull request's body on");
+
+        var file = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(file, body, new UTF8Encoding(false), ct);
+            var ran = await _run(path, Env(), ["pr", "edit", url, "--body-file", file], ct);
+            return ran.Code == 0 ? new BodyEditAnswer(true, null) : new BodyEditAnswer(false, Why(ran));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return new BodyEditAnswer(false, e.Message);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
     }
 
     /// <summary>

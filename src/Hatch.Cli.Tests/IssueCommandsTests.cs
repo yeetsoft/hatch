@@ -1048,6 +1048,7 @@ public sealed class IssueCommandsTests
     public async Task Pr_with_a_url_patches_the_issue_and_reads_it_back()
     {
         using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
         h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", AnIssue(pr: "https://example.invalid/pull/2"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", "https://example.invalid/pull/2"], default));
@@ -1056,6 +1057,143 @@ public sealed class IssueCommandsTests
         Assert.Equal("https://example.invalid/pull/2", sent.PullRequestUrl);
         Assert.Null(sent.Title);
         Assert.Equal("https://example.invalid/pull/2", h.Said);
+    }
+
+    private const string PrUrl = "https://example.invalid/pull/2";
+
+    /// <summary>A three-deep chain, a distinctive description on each, and the columns that name their statuses.</summary>
+    private static void StubChain(CliHarness h, bool parent = true, bool root = true)
+    {
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress"), Fixtures.Status(1, "To Do") });
+        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", Fixtures.Issue(
+            "AER-12", "task", "The task", "task brief", parentKey: "AER-11", pullRequestUrl: PrUrl, statusId: 3));
+        if (parent)
+            h.Wire.Json("GET", "/api/hatch/issues/AER-11", Fixtures.Issue(
+                "AER-11", "story", "The story", "story brief", parentKey: "AER-10", statusId: 1));
+        if (root)
+            h.Wire.Json("GET", "/api/hatch/issues/AER-10", Fixtures.Issue(
+                "AER-10", "epic", "The epic", "epic brief", statusId: 3));
+    }
+
+    [Fact]
+    public async Task Pr_with_a_url_writes_the_chain_into_the_pull_requests_body_once()
+    {
+        using var h = new CliHarness();
+        StubChain(h);
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
+
+        var edit = Assert.Single(h.Forge.BodyEdits);
+        Assert.Equal(PrUrl, edit.Url);
+        Assert.True(PullRequestEnvelopeReader.TryRead(edit.Body, out var envelope, out _));
+        Assert.Equal(["AER-12", "AER-11", "AER-10"], envelope!.Chain.Select(i => i.Key));
+        Assert.Equal("https://hatch.example", envelope.Instance);
+        Assert.Equal("AER", envelope.Project);
+        Assert.Equal(["In Progress", "To Do", "In Progress"], envelope.Chain.Select(i => i.Status));
+        Assert.Equal(["task brief", "story brief", "epic brief"], envelope.Chain.Select(i => i.Description));
+        Assert.Equal(["AER-11", "AER-10", null], envelope.Chain.Select(i => i.ParentKey));
+        Assert.All(envelope.Chain, i => Assert.EndsWith($"/apps/hatch/issues/{i.Key}", i.Url));
+        Assert.Equal(PrUrl, h.Said);
+        Assert.Empty(h.Complained);
+    }
+
+    [Fact]
+    public async Task Pr_with_a_url_a_second_time_leaves_one_envelope_and_the_rest_of_the_body_alone()
+    {
+        using var h = new CliHarness();
+        StubChain(h);
+        const string seed = "intro\n\nnotes\n";
+        h.Forge.Bodies[PrUrl] = seed;
+
+        await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default);
+        var first = h.Forge.Bodies[PrUrl];
+        await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default);
+
+        var body = h.Forge.Bodies[PrUrl];
+        Assert.Equal(1, Occurrences(body, PullRequestEnvelopeMarkers.Start));
+        Assert.Equal(1, Occurrences(body, PullRequestEnvelopeMarkers.End));
+        Assert.Equal(first, body);
+        Assert.Single(h.Forge.BodyEdits);
+
+        // The writer separates the block from what was there by one blank line, outside the markers.
+        var start = body.IndexOf(PullRequestEnvelopeMarkers.Start, StringComparison.Ordinal);
+        var end = body.IndexOf(PullRequestEnvelopeMarkers.End, StringComparison.Ordinal) + PullRequestEnvelopeMarkers.End.Length;
+        Assert.Equal(seed + "\n\n", body[..start] + body[end..]);
+    }
+
+    private static int Occurrences(string text, string needle) =>
+        (text.Length - text.Replace(needle, "", StringComparison.Ordinal).Length) / needle.Length;
+
+    [Fact]
+    public async Task Pr_with_a_url_where_the_forge_cannot_be_read_says_one_line_and_still_records_the_url()
+    {
+        using var h = new CliHarness();
+        StubChain(h);
+        h.Forge.BodyAnswer = new PullRequestBodyAnswer(null, "gh is not installed");
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
+
+        Assert.Equal("hatch: AER-12 - its pull request's body was not updated with the envelope - gh is not installed", h.Complained);
+        Assert.Equal(PrUrl, h.Wire.To("PATCH", "/api/hatch/issues/AER-12").Single().Read<IssuePatchRequest>().PullRequestUrl);
+        Assert.Equal(PrUrl, h.Said);
+        Assert.Empty(h.Forge.BodyEdits);
+    }
+
+    [Fact]
+    public async Task Pr_with_a_url_where_the_forge_cannot_be_written_says_one_line_and_still_records_the_url()
+    {
+        using var h = new CliHarness();
+        StubChain(h);
+        h.Forge.EditAnswer = new BodyEditAnswer(false, "must have admin rights");
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
+
+        Assert.Equal("hatch: AER-12 - its pull request's body was not updated with the envelope - must have admin rights", h.Complained);
+        Assert.Equal(PrUrl, h.Said);
+    }
+
+    [Fact]
+    public async Task Pr_with_a_url_whose_parent_cannot_be_read_says_one_line_and_still_records_the_url()
+    {
+        using var h = new CliHarness();
+        StubChain(h, parent: false);
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
+
+        Assert.Equal(1, h.Complained.Split('\n').Length);
+        Assert.StartsWith("hatch: AER-12 - its pull request's body was not updated with the envelope - ", h.Complained);
+        Assert.Equal(PrUrl, h.Said);
+        Assert.Empty(h.Forge.BodyEdits);
+    }
+
+    [Fact]
+    public async Task Pr_in_a_cycle_of_parents_stops_at_the_key_it_has_seen()
+    {
+        using var h = new CliHarness();
+        StubChain(h, root: false);
+        h.Wire.Json("GET", "/api/hatch/issues/AER-10", Fixtures.Issue("AER-10", "epic", "The epic", parentKey: "AER-12"));
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
+
+        Assert.True(PullRequestEnvelopeReader.TryRead(Assert.Single(h.Forge.BodyEdits).Body, out var envelope, out _));
+        Assert.Equal(["AER-12", "AER-11", "AER-10"], envelope!.Chain.Select(i => i.Key));
+    }
+
+    [Theory]
+    [InlineData("AER-12")]
+    [InlineData("AER-12", "--clear")]
+    [InlineData("AER-12", "--none", "why")]
+    public async Task Pr_read_clear_and_none_do_not_touch_the_forge(params string[] args)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(pr: PrUrl));
+        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-12/no-code", AnIssue(noCode: "why"));
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(args, default));
+
+        Assert.Empty(h.Forge.BodyReads);
+        Assert.Empty(h.Forge.BodyEdits);
     }
 
     [Fact]

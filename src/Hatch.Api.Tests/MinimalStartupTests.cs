@@ -190,6 +190,12 @@ public class MinimalStartupTests
             var health = await deadline.BoundAsync("serving /health/ready", () => client.GetAsync("/health/ready"));
             Assert.Equal(HttpStatusCode.OK, health.StatusCode);
 
+            // Routes that no longer exist: the platform config seam and the
+            // kiosk-era app-version probe. This factory has the wall
+            // off, so a 404 is the route being gone rather than gated.
+            foreach (var gone in new[] { "/api/apps/config", "/api/app-version/hatch" })
+                Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(gone)).StatusCode);
+
             await deadline.BoundAsync("letting the jobs' first firings finish", () => SettleFirstFiringAsync(factory.Services.GetRequiredService<IScheduler>()));
         }
         finally

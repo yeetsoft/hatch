@@ -650,7 +650,15 @@ reviewed, and nothing else, so `open "$(hatch pr AER-12)"` is the whole of
 "show me the review". A ticket that declared it finished with no code prints
 that declaration instead. With two it writes.
 
-- `<url>` records where the review is, having opened one.
+- `<url>` records where the review is, having opened one. It then writes the
+  ticket's chain, from the ticket up to its root, into the pull request's body
+  on the forge as an envelope, replacing one already there and leaving the rest
+  of the body as it was, so a board that receives the pull request can mirror
+  the epic it came from. The read, `--clear` and `--none` do not touch the
+  forge. Where it cannot be done (no `gh`, not signed in, no write access)
+  that is one line on standard error, `hatch: AER-12 - its pull request's body
+  was not updated with the envelope - <why>`, with exit `0` and the URL still
+  recorded.
 - `--clear` takes it off the one it has.
 - `--none "reason"` declares the ticket finished with no code, and prints
   `AER-12: finished with no code - reason`. The reason is required and at

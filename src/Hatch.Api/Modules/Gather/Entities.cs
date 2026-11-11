@@ -15,7 +15,7 @@ public class GatherList
 {
     public const int MaxNameLength = 60;
 
-    /// <summary>An emoji, matching the family shell's module icons (see registry.ts).</summary>
+    /// <summary>An emoji, matching the web app's module icons (see registry.ts).</summary>
     public const int MaxIconLength = 32;
 
     /// <summary>A theme token name the client resolves; the server never interprets it.</summary>

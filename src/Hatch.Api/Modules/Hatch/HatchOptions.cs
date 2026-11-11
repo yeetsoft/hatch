@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
@@ -135,4 +137,77 @@ public class HatchOptions
     /// service, not here.
     /// </summary>
     public int BackupKeepDays { get; set; } = 14;
+
+    /// <summary>
+    /// Absolute base URL of this Hatch install as it should be *printed* -
+    /// e.g. "https://home.example.com". Empty by default and supplied at
+    /// deploy (compose.yaml passes <c>Hatch__PublicBaseUrl</c> from the
+    /// <c>HATCH_PUBLIC_URL</c> operator variable); deliberately never a literal
+    /// in the repo, per docs/ethos.md.
+    ///
+    /// It exists because a link that leaves Hatch - the issue link a dispatched
+    /// session writes into a pull request - has to carry the canonical host,
+    /// which a runner reaching Hatch as <c>http://api:8080</c> could not
+    /// otherwise get right. Left empty, the runner links with the address it
+    /// reaches Hatch at. Everything else in the web apps is same-origin and
+    /// needs no base URL at all.
+    /// </summary>
+    public string PublicBaseUrl { get; set; } = "";
+
+    /// <summary>
+    /// The value as a client should use it, or null if it is unset or unusable.
+    /// Trailing slashes go (callers append rooted paths), and anything that
+    /// isn't an absolute http(s) URL is rejected rather than passed on: a bare
+    /// "home.example.com" in a pull request gives a reviewer nothing to open.
+    /// </summary>
+    public static string? NormalizeBaseUrl(string? value)
+    {
+        var trimmed = value?.Trim().TrimEnd('/');
+        if (string.IsNullOrEmpty(trimmed)) return null;
+
+        return Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                ? trimmed
+                : null;
+    }
+
+    /// <summary>
+    /// The Android apps allowed to open this install's links without the user
+    /// granting it by hand - deploy-time only, and never a literal in the repo,
+    /// per docs/ethos.md (HA-265). Empty by default; <c>compose.yaml</c> passes
+    /// <c>Hatch__AssetLinks__0__…</c> from the operator's <c>HATCH_ANDROID_PACKAGE</c>
+    /// and <c>HATCH_ANDROID_CERT_FINGERPRINT</c> variables. Unlike
+    /// <see cref="PublicBaseUrl"/>, a bad entry here is not left to degrade quietly:
+    /// <see cref="AssetLinksValidation"/> rejects it at startup, because Android's
+    /// own verification already fails silently and the config feeding it must not.
+    /// </summary>
+    public AssetLinkPackage[] AssetLinks { get; set; } = [];
+
+    public static bool IsValidPackageName(string value) =>
+        Regex.IsMatch(value, @"^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    public static bool IsValidFingerprint(string value) =>
+        Regex.IsMatch(value, @"^([0-9A-Fa-f]{2}:){31}[0-9A-Fa-f]{2}$", RegexOptions.None, TimeSpan.FromSeconds(1));
+}
+
+/// <summary>
+/// A single statement's worth of <see cref="HatchOptions.AssetLinks"/>: one Android
+/// app, identified by its package name, trusted for every certificate fingerprint
+/// it was signed with (ordinarily one, until a key rotation needs both old and new
+/// recognised at once).
+/// </summary>
+public class AssetLinkPackage
+{
+    public string PackageName { get; set; } = "";
+    public string[] Sha256CertFingerprints { get; set; } = [];
+
+    /// <summary>
+    /// compose.yaml's blank-default slot: every field empty. The options binder has no
+    /// way to represent "array index absent", so this is what an unconfigured phone
+    /// binds to rather than an empty array - and it reads as unconfigured both here and
+    /// in the route that serves it (AssetLinksController), not as the malformed entry it
+    /// would be if only some of its fields were blank.
+    /// </summary>
+    public bool IsUnconfigured =>
+        string.IsNullOrEmpty(PackageName) && Array.TrueForAll(Sha256CertFingerprints, string.IsNullOrEmpty);
 }

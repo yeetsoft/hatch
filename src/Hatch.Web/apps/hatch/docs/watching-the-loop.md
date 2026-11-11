@@ -358,7 +358,9 @@ hundred rows: where more matched it says "The first 100 of 240 issues. The total
 cover all 240." above the table, so the larger total does not read as a bug. A
 window in which nothing was consumed says so, and says when the log does run,
 and still draws the graph as a row of zero bars; a filter under which nothing
-was ever logged says that instead and draws no graph. Every control
+was ever logged says that instead and draws no graph. A **Download CSV** link
+beside the totals line hands the whole filter out as a file, uncapped where
+the table reads only the first page. Every control
 writes itself to the address bar, leaving out what is still its default.
 
 ## History and the work log
