@@ -494,11 +494,20 @@ prints one line, once before its first increment, saying so and naming
 as the way to get restarts back.
 
 The supervisor is `scripts/hatch.sh`, or `scripts\hatch.ps1` in PowerShell on
-Windows: it catches the 75, rebuilds and runs the loop again, carrying the
+Windows: it builds before its first launch as well as on every restart, so a night
+never starts on a build older than the source in its own checkout (a build
+that broke at startup, and whose fix has since reached the checkout, is
+replaced by starting the loop again). The build is incremental, so with
+nothing changed it compiles nothing and the loop starts within seconds.
+It catches the 75, rebuilds and runs the loop again, carrying the
 night's totals forward, so a restart cannot outspend `--max-spend`, re-open
 `--max-tokens` or forget the last hour's tokens. A failed
-rebuild is never fatal: the supervisor says so and carries on with the binary
-already there rather than ending the night over it. On Windows, the
+build is never fatal, at the start or on a restart: the supervisor says so
+and carries on with the binary already there rather than ending the night
+over it. With `HATCH_RUNNER_BIN` set, or neither `make` nor `dotnet` on the
+machine, nothing is built and the supervisor prints one line saying why.
+`-h` and `--help` after `go-to-work` or `do-my-work` are not a night and are
+never built for. On Windows, the
 PowerShell supervisor runs the loop from a copy of the build made under
 `%TEMP%`, since Windows will not let a rebuild overwrite a binary a running
 process is still holding open.
