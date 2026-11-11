@@ -941,11 +941,7 @@ public sealed class IncrementTests
         // Advances the fake clock past the backoff the two blips cost - real
         // milliseconds spent polling so the call's own seconds never have to
         // be.
-        for (var i = 0; i < 10 && !running.IsCompleted; i++)
-        {
-            await Task.Delay(5);
-            clock.Advance(TimeSpan.FromSeconds(15));
-        }
+        await ClockDriver.DriveAsync(clock, running, TimeSpan.FromSeconds(15));
 
         var report = await running;
 
