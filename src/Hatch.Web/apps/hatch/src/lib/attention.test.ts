@@ -15,6 +15,7 @@ import {
   humanSectionRowCounts,
   landingHeldEmptyWords,
   noCodeHeldEmptyWords,
+  contributionsHeldEmptyWords,
   pillCount,
   questionEmptyWords,
   resetWords,
@@ -34,7 +35,7 @@ import {
   waitedWords,
   waitingOnARunnerEmptyWords,
 } from './attention';
-import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
+import type { ApprovedHeld, ApprovedWaiting, Attention, BackupAttention, Conflict, ContributionHeld, Deadlocked, ExhaustedRunner, LandingHeld, NoCodeHeld, Question, Review, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-09T12:00:00Z');
 
@@ -87,6 +88,17 @@ const noCodeHeld = (over: Partial<NoCodeHeld> = {}): NoCodeHeld => ({
   title: 'A task that needed no code',
   type: 'task',
   reason: 'The setting was already off.',
+  ...over,
+});
+
+const contributionHeld = (over: Partial<ContributionHeld> = {}): ContributionHeld => ({
+  key: 'AER-31',
+  title: 'A contribution with a red build',
+  type: 'task',
+  pullRequestUrl: 'https://forge.example/pulls/31',
+  sentence: 'Its build failed.',
+  originInstance: null,
+  originKey: null,
   ...over,
 });
 
@@ -240,6 +252,12 @@ describe('attentionCount', () => {
     expect(attentionCount(attention({}))).toBe(0);
     expect(attentionCount(attention({ noCodeHeld: [noCodeHeld()] }))).toBe(1);
     expect(attentionCount(attention({ reviews: [review()], noCodeHeld: [noCodeHeld()] }))).toBe(2);
+  });
+
+  it('counts a contributionsHeld row, adds it to the other sources, and counts an absent field as zero', () => {
+    expect(attentionCount(attention({}))).toBe(0);
+    expect(attentionCount(attention({ contributionsHeld: [contributionHeld()] }))).toBe(1);
+    expect(attentionCount(attention({ reviews: [review()], contributionsHeld: [contributionHeld()] }))).toBe(2);
   });
 
   it('counts a landingHeld row, adds it to the other sources, and counts an absent field as zero', () => {
@@ -676,6 +694,12 @@ describe('trainStalledWords', () => {
   });
 });
 
+describe('contributionsHeldEmptyWords', () => {
+  it('says no contribution in review is waiting', () => {
+    expect(contributionsHeldEmptyWords()).toBe('No contribution in review is waiting on you.');
+  });
+});
+
 describe('noCodeHeldEmptyWords', () => {
   it('says nothing finished with no code is waiting', () => {
     expect(noCodeHeldEmptyWords()).toBe('Nothing finished with no code is waiting on you.');
@@ -944,11 +968,11 @@ describe('groupCollapsed', () => {
 describe('humanSectionRowCounts', () => {
   it('is all zeros, one per section, when there is no attention at all', () => {
     const counts = humanSectionRowCounts(null);
-    expect(counts).toHaveLength(12);
-    expect(counts).toEqual(new Array(12).fill(0));
+    expect(counts).toHaveLength(13);
+    expect(counts).toEqual(new Array(13).fill(0));
   });
 
-  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, runner capacity, waiting on a runner', () => {
+  it('pins the order: trunk builds, backup, stalled trains, deadlocked, questions, stalled, reviews, approved-held, landing-held, no-code-held, contributions-held, runner capacity, waiting on a runner', () => {
     expect(
       humanSectionRowCounts(
         attention({
@@ -962,11 +986,12 @@ describe('humanSectionRowCounts', () => {
           approvedHeld: Array(8).fill(approvedHeld()),
           landingHeld: Array(9).fill(landingHeld()),
           noCodeHeld: Array(10).fill(noCodeHeld()),
-          runnerCapacity: Array(11).fill(runnerCapacity()),
-          waitingOnARunner: Array(12).fill(waitingOnARunner()),
+          contributionsHeld: Array(11).fill(contributionHeld()),
+          runnerCapacity: Array(12).fill(runnerCapacity()),
+          waitingOnARunner: Array(13).fill(waitingOnARunner()),
         }),
       ),
-    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    ).toEqual([2, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 
   it('counts backup as one row when present, none when null', () => {
