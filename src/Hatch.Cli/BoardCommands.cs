@@ -60,6 +60,14 @@ public sealed class BoardCommands(Cli cli)
         "  The queue closes with one line per distinct thing no live runner",
         "  offers or has, among the issues it just printed - a server too old to",
         "  say so prints nothing extra.",
+        "",
+        "  Run inside a checkout of a bound repository, and without --mine or an",
+        "  ancestor, it then lists each open pull request there that no issue",
+        "  records and that the project's driver would pass over rather than file",
+        "  as an issue in review, and why - too young, a draft, a fork, from a",
+        "  branch named for an issue, into another base, or by an author who is",
+        "  not a member, owner or collaborator. A forge it cannot read prints",
+        "  nothing.",
     ];
 
     /// <summary>
@@ -247,7 +255,7 @@ public sealed class BoardCommands(Cli cli)
                 : under is { Length: > 0 }
                     ? $"hatch: nothing under {under} is on the dispatcher's path"
                     : "hatch: nothing on the board is on the dispatcher's path");
-            return 0;
+            return await SayPassedOverAsync(mine || under is { Length: > 0 }, ct);
         }
 
         foreach (var line in Draw(queue)) cli.Say.Line(line);
@@ -275,6 +283,19 @@ public sealed class BoardCommands(Cli cli)
             if (waiting.Count > 0) cli.Say.Lines(Waiting(waiting));
         }
 
+        return await SayPassedOverAsync(mine || under is { Length: > 0 }, ct);
+    }
+
+    /// <summary>
+    /// After the board's rows: each open pull request in the checkout's repository that the runner driving
+    /// its project would pass over rather than file, and why. Said for the whole board only - an outside pull
+    /// request belongs to nobody's tickets and to no epic, so <c>--mine</c> and an ancestor narrow it away.
+    /// </summary>
+    private async Task<int> SayPassedOverAsync(bool narrowed, CancellationToken ct)
+    {
+        if (narrowed) return 0;
+
+        foreach (var line in await OutsidePullRequests.PassedOverAsync(cli, ct)) cli.Say.Line(line);
         return 0;
     }
 
