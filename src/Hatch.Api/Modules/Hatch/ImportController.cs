@@ -54,7 +54,7 @@ public class ImportController(HatchContext db, PlanImportParser parser, RankServ
     /// </remarks>
     [HttpPost("preview")]
     [RequestSizeLimit((long)MaxFileBytes * MaxFiles + 64 * 1024)]
-    public async Task<ActionResult<IReadOnlyList<ParsedEpic>>> Preview([FromForm] IFormFileCollection files, CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<ParsedEpic>>> Preview(IFormFileCollection files, CancellationToken ct)
     {
         if (files is null || files.Count == 0) return BadRequest("no files were uploaded");
         if (files.Count > MaxFiles) return BadRequest($"that is {files.Count} files - {MaxFiles} at a time is the limit");

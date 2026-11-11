@@ -71,7 +71,7 @@ public class FamilySchemasTests
                     "INSERT INTO \"SiteSettings\" (\"Key\", \"Value\") VALUES ('ImmichBaseUrl', 'https://photos.example'), ('ImmichApiKey', 'secret'), ('TimeZone', 'UTC') " +
                     "ON CONFLICT (\"Key\") DO NOTHING");
 
-                Assert.Equal(new[] { "gather", "hatch", "photos", "public", "quill", "storage" }, await SchemasAsync(hatch));
+                Assert.Equal(new[] { "gather", "photos", "public", "quill", "storage" }, await SchemasAsync(hatch));
             }
 
             await MinimalDatabases.MigrateAsync(hatch);
