@@ -487,7 +487,7 @@ Reports.
 ### activity
 
 ```
-hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]
+hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]
 ```
 
 One actor's rundown, as markdown, for pasting into a check-in somewhere else:
@@ -506,6 +506,10 @@ sessions.
 - `--before <instant>` moves the window back to end at that instant, such as
   `2026-09-12T17:00:00Z`; one that is not an instant is refused. Now by default.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
+- `--include-keys` also counts what a hand typed under the keys the actor owns,
+  when the actor is a person. It is a heuristic: an event under the key counts
+  unless a work-log session of that issue spans it or the key holds an unreleased
+  claim on it, in which case it is taken as the loop's.
 - `--json` prints the endpoint's own answer and nothing else.
 
 ### runners
@@ -612,7 +616,7 @@ right now. That is the board's whole job. The column is found the way
 ### move
 
 ```
-hatch move AER-12 <column>
+hatch move AER-12 <column> [--contribution]
 ```
 
 Moves the ticket to any column that is neither terminal nor protected. The
@@ -622,6 +626,12 @@ something shipped; a deferred column refuses for the same reason; and a
 protected column refuses, because only its approvers move work there, in the
 browser. [The board and its columns](the-board-and-its-columns) has which is
 which. A move is an event under the key's name.
+
+A [contribution](issues#contribution), an issue with a record that it came from
+outside, is refused a column that merges pull requests, in one line, because
+merging it merges someone else's branch. `--contribution`, in any position, says
+that is meant and moves it. It changes nothing else: a protected column is
+refused exactly as above, flag or not, and an issue with no record needs no flag.
 
 ### comment
 

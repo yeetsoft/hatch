@@ -1,42 +1,37 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
+using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using System.Net;
 
 namespace Hatch.Api.Tests.Auth;
 
 /// <summary>
-/// Who gets handed an operator app's bundle - admin's, and Hatch's. Three
-/// things have to hold, and each is a different kind of bug if it does not: the
-/// deep links are covered as well as the assets (or /apps/admin/devices serves
-/// index.html to anyone), the refusal is a 404 rather than a 403 (or it
-/// advertises what it is withholding), and every other app is untouched (or a
-/// family member loses the dashboard to a boundary that was never about them).
+/// Who gets the board - every document request now that it is the whole
+/// origin, rather than one bundle under a prefix. Three things have to hold,
+/// and each is a different kind of bug if it does not: the deep links are
+/// covered as well as the assets (or /issues/AER-12 serves index.html to
+/// anyone), the refusal is a 404 rather than a 403 (or it advertises what it
+/// is withholding), and every path the wall itself already lets through -
+/// the API, the health probes, the sign-in shell - is untouched.
 /// </summary>
 public class AdminAppMiddlewareTests
 {
     [Theory]
-    // The bundle itself, the deep link a hard refresh produces, and the
-    // hashed asset - the first is UseStaticFiles, the second is
-    // MapFallbackToFile, and the third would be a hole in either.
-    [InlineData("/apps/admin")]
-    [InlineData("/apps/admin/")]
-    [InlineData("/apps/admin/devices")]
-    [InlineData("/apps/admin/assets/index-BGJobmXl.js")]
-    // Case, because a path is not case sensitive to the file system this is
-    // served from and a guard that is would be trivially stepped around.
-    [InlineData("/APPS/Admin/")]
-    // Hatch, the second operator app behind the same boundary. Its deep links
-    // matter more than most - /apps/hatch/issues/AER-12 is what gets pasted
-    // into a chat window - so a gate that covered only the root would be a
-    // gate that leaked every ticket in the house.
-    [InlineData("/apps/hatch")]
-    [InlineData("/apps/hatch/")]
-    [InlineData("/apps/hatch/issues/AER-12")]
-    [InlineData("/apps/hatch/assets/index-CO5Z7yjM.js")]
-    public async Task WithholdsTheBundleFromEveryoneElse(string path)
+    // The board itself, a deep link a hard refresh produces, and a hashed
+    // asset - the first is UseStaticFiles, the second is MapFallbackToFile,
+    // and the third would be a hole in either.
+    [InlineData("/")]
+    [InlineData("/plan")]
+    [InlineData("/issues/AER-12")]
+    [InlineData("/assets/index-BGJobmXl.js")]
+    // Case: a path is not case sensitive to the file system this is served
+    // from, and a guard that is would be trivially stepped around.
+    [InlineData("/PLAN")]
+    public async Task WithholdsTheBoardFromEveryoneElse(string path)
     {
         var (context, served) = await Run(path, isAdmin: false);
 
@@ -50,14 +45,13 @@ public class AdminAppMiddlewareTests
 
     /// <summary>
     /// A 404 rather than a 403 on purpose: it is indistinguishable from an
-    /// install built without the bundle, which several are - Program.cs mounts
-    /// each SPA only if its directory exists. The API's refusals go the other
-    /// way, and RequireRoleAttribute says why.
+    /// install built without the bundle. The API's refusals go the other way,
+    /// and RequireRoleAttribute says why.
     /// </summary>
     [Fact]
     public async Task TheRefusalNeverAdmitsThereIsSomethingThere()
     {
-        var (context, _) = await Run("/apps/admin/", isAdmin: false);
+        var (context, _) = await Run("/plan", isAdmin: false);
 
         Assert.NotEqual(StatusCodes.Status403Forbidden, context.Response.StatusCode);
         Assert.Empty(context.Response.Headers.Location.ToString());
@@ -66,7 +60,7 @@ public class AdminAppMiddlewareTests
 
     /// <summary>
     /// A person - signed in, but nobody yet, or a device nobody has claimed -
-    /// navigating to the bundle is sent to the sign-in shell, with no ?r=: there
+    /// navigating to the board is sent to the sign-in shell, with no ?r=: there
     /// is nowhere for them to return to yet, and the shell can say they are
     /// waiting. Still no-store, for the same reason as the 404.
     /// </summary>
@@ -77,7 +71,7 @@ public class AdminAppMiddlewareTests
     {
         var gate = new StubRoleGate { Decision = RoleDecision.Refuse(reason) };
 
-        var (context, served) = await Run("/apps/hatch/issues/AER-12", gate: gate,
+        var (context, served) = await Run("/issues/AER-12", gate: gate,
             configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "navigate");
 
         Assert.False(served);
@@ -93,7 +87,7 @@ public class AdminAppMiddlewareTests
     {
         var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.PendingApproval) };
 
-        var (context, _) = await Run("/apps/hatch/assets/index.js", gate: gate,
+        var (context, _) = await Run("/assets/index.js", gate: gate,
             configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "cors");
 
         Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
@@ -106,7 +100,7 @@ public class AdminAppMiddlewareTests
     {
         var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.KeyNotAccepted) };
 
-        var (context, served) = await Run("/apps/hatch/", gate: gate,
+        var (context, served) = await Run("/", gate: gate,
             configure: c => c.Request.Headers["Sec-Fetch-Mode"] = "navigate");
 
         Assert.False(served);
@@ -116,8 +110,9 @@ public class AdminAppMiddlewareTests
     }
 
     [Theory]
-    [InlineData("/apps/admin/devices")]
-    [InlineData("/apps/hatch/issues/AER-12")]
+    [InlineData("/")]
+    [InlineData("/issues/AER-12")]
+    [InlineData("/plan")]
     public async Task ServesItToAnAdministrator(string path)
     {
         var (context, served) = await Run(path, isAdmin: true);
@@ -127,25 +122,46 @@ public class AdminAppMiddlewareTests
     }
 
     [Theory]
-    // Every app that is not this one, plus the API - guarded separately, by an
-    // attribute, on the actions that want it.
-    [InlineData("/apps/dashboard/")]
-    [InlineData("/apps/family/storage")]
-    [InlineData("/apps/auth/")]
-    [InlineData("/apps/docs/")]
+    // The API - guarded separately, by an attribute, on the actions that want
+    // it - and everything the wall itself already lets through unchallenged.
     [InlineData("/api/zones")]
+    [InlineData("/api/hatch/issues")]
+    [InlineData("/health/ready")]
     [InlineData("/media/Beatles/Revolver/01.flac")]
-    // Segment matching, the same rule the wall's allow-list uses: a path that
-    // merely starts with the same characters is a different app.
-    [InlineData("/apps/administration/")]
-    [InlineData("/apps/adminfoo")]
-    [InlineData("/apps/hatchery/")]
-    [InlineData("/apps/hatchfoo")]
+    [InlineData("/apps/auth/")]
+    [InlineData("/auth")]
+    [InlineData("/.well-known/assetlinks.json")]
+    // Case, the same rule the exemption list itself matches by.
+    [InlineData("/HEALTH/ready")]
     public async Task LeavesEverythingElseAlone(string path)
     {
         var (_, served) = await Run(path, isAdmin: false);
 
         Assert.True(served);
+    }
+
+    /// <summary>
+    /// Canonicalised before either check: a dot-segment that collapses onto an
+    /// exempt prefix must not read as exempt (or /media/../apps/admin would
+    /// have reopened the hole this closes), and the same collapse must not read
+    /// an ordinary path as exempt either, which is the case here - Kestrel
+    /// hands this middleware an already percent-decoded, not yet
+    /// dot-collapsed, Request.Path (a raw `%2e%2e` never reaches here as
+    /// such), and /media/../plan collapses to /plan, the board's own.
+    /// </summary>
+    [Fact]
+    public async Task ATraversalOutOfAnExemptPrefixIsGated()
+    {
+        var gate = new StubRoleGate();
+
+        var (context, served) = await Run("/media/../plan", gate: gate);
+
+        Assert.False(served);
+        Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
+        // Canonicalisation decides only whether to ask at all; the gate itself
+        // is still asked about the request exactly as it arrived.
+        Assert.Equal(1, gate.Evaluations);
+        Assert.Equal("/media/../plan", gate.LastAsked.Path);
     }
 
     /// <summary>
@@ -158,7 +174,7 @@ public class AdminAppMiddlewareTests
     {
         var gate = new StubRoleGate { Enabled = false };
 
-        var (_, served) = await Run("/apps/admin/", gate: gate);
+        var (_, served) = await Run("/plan", gate: gate);
 
         Assert.True(served);
         Assert.Equal(0, gate.Evaluations);
@@ -168,17 +184,25 @@ public class AdminAppMiddlewareTests
     /// The gate is asked about the request it is guarding, because the Warning
     /// it logs is what an operator reads when somebody reports the page
     /// missing - and a refusal with the wrong path on it is worse than none.
+    /// The original path, unchanged: canonicalisation is only how this
+    /// middleware decides whether to ask at all.
     /// </summary>
     [Fact]
     public async Task AsksTheGateWithTheRequestItIsAbout()
     {
         var gate = new StubRoleGate { Decision = RoleDecision.Refuse(RoleDecision.NotAdmin) };
 
-        await Run("/apps/admin/settings", gate: gate);
+        await Run("/settings", gate: gate);
 
         // No key: a bundle is for a browser, and an API key has no browser.
-        Assert.Equal(("GET", "/apps/admin/settings", "10.0.0.7", PersonRole.User, false), gate.LastAsked);
+        Assert.Equal(("GET", "/settings", "10.0.0.7", PersonRole.User, false), gate.LastAsked);
     }
+
+    private static readonly IAuthGate Wall = new AuthGate(
+        new StubAuthService(),
+        Options.Create(new AuthOptions()),
+        Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
+        NullLogger<AuthGate>.Instance);
 
     private static async Task<(HttpContext Context, bool Served)> Run(
         string path, bool isAdmin = false, IRoleGate? gate = null, Action<DefaultHttpContext>? configure = null)
@@ -212,7 +236,7 @@ public class AdminAppMiddlewareTests
             return Task.CompletedTask;
         }, Options.Create(new AuthOptions()));
 
-        await middleware.InvokeAsync(context, gate);
+        await middleware.InvokeAsync(context, gate, Wall);
 
         return (context, served);
     }

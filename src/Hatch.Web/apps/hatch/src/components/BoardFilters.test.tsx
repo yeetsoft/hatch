@@ -47,7 +47,8 @@ describe('BoardFilters', () => {
   it('closes the Project chooser on the key and keeps the names in its list', () => {
     const html = render({ ...DEFAULT_FILTER, project: 'GL' });
     const shown = [...html.matchAll(/<span class="hatch-facet__option hatch-facet__option--shown">([^<]*)</g)];
-    expect(shown.map((m) => m[1])).toEqual(['GL']);
+    // Project's, then Contributions' own (All).
+    expect(shown.map((m) => m[1])).toEqual(['GL', 'All']);
     expect(html).toContain('>GL — glasshole</option>');
   });
 
@@ -98,5 +99,28 @@ describe('BoardFilters', () => {
   it('shows no Project facet for one offered project', () => {
     const html = render(DEFAULT_FILTER, false, { projects: [projects[0]] });
     expect(html).not.toContain('hatch-facet__label">Project');
+  });
+
+  it('offers Contributions as All, Only and Hidden, closed on All', () => {
+    const html = render();
+    expect(html).toContain('hatch-facet__label">Contributions');
+    expect(html).toContain('>With everything</option>');
+    expect(html).toContain('>Alone</option>');
+    expect(html).toContain('>Hidden</option>');
+    const shown = [...html.matchAll(/<span class="hatch-facet__option hatch-facet__option--shown">([^<]*)</g)];
+    expect(shown.map((m) => m[1])).toEqual(['All', 'All']);
+  });
+
+  it('lights Contributions, counts and offers Reset once it is not All', () => {
+    const html = render({ ...DEFAULT_FILTER, contributions: 'only' });
+    expect(html).toContain('3 of 9');
+    expect(html).toContain('aria-label="Reset filters"');
+    expect(render()).not.toContain('Reset filters');
+  });
+
+  it('keeps Contributions inside the phone disclosure', () => {
+    const html = render(DEFAULT_FILTER, true);
+    const details = html.slice(html.indexOf('<details'));
+    expect(details).toContain('hatch-facet__label">Contributions');
   });
 });

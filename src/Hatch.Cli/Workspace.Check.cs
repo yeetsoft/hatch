@@ -21,21 +21,25 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
     /// need the fetch it exists to avoid. A branch that merged, or a second one
     /// that appeared, changes it either way.
     /// </remarks>
-    public string? Fingerprint(string key)
+    public string? Fingerprint(string key, string? recordedBranch = null)
     {
         if (TrunkSha is not { } trunk) return null;
 
-        var candidates = Shas
-            .Where(b => b.Key != Trunk && Branches.Names(b.Key, key))
-            .OrderBy(b => b.Key, StringComparer.Ordinal)
-            .Select(b => $"{b.Key}:{b.Value}");
+        var candidates = Candidates(key, recordedBranch)
+            .Select(name => $"{name}:{Shas[name]}");
 
         return string.Join('\n', [trunk, .. candidates]);
     }
 
-    /// <summary>The branches the key claims, trunk excluded, by name.</summary>
-    public IReadOnlyList<string> Candidates(string key) =>
-        Shas.Keys.Where(b => b != Trunk && Branches.Names(b, key)).Order(StringComparer.Ordinal).ToList();
+    /// <summary>
+    /// The branches the key claims, trunk excluded, by name - or, where the
+    /// issue's contribution recorded a head branch, that branch alone when
+    /// origin has it, and a branch named for the key not at all.
+    /// </summary>
+    public IReadOnlyList<string> Candidates(string key, string? recordedBranch = null) =>
+        recordedBranch is { Length: > 0 } recorded
+            ? recorded != Trunk && Shas.ContainsKey(recorded) ? [recorded] : []
+            : Shas.Keys.Where(b => b != Trunk && Branches.Names(b, key)).Order(StringComparer.Ordinal).ToList();
 
     /// <summary>
     /// The branch a build is about: the one branch origin has for the key, or,
@@ -48,9 +52,9 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
     /// <c>ls-remote</c> does not, and counts a stale empty branch the same as
     /// the live one.
     /// </remarks>
-    public string? BranchFor(string key, MergeCheckDto? stored)
+    public string? BranchFor(string key, MergeCheckDto? stored, string? recordedBranch = null)
     {
-        var candidates = Candidates(key);
+        var candidates = Candidates(key, recordedBranch);
         if (candidates.Count == 1) return candidates[0];
 
         return stored is { Verdict: MergeVerdicts.Clean or MergeVerdicts.Conflicted, Branch: { } b }
@@ -198,7 +202,11 @@ public sealed partial class Workspace
     /// even when the branch does change it - only a caller that is asked
     /// reports it at all.
     /// </param>
-    public Verdict? Check(string key, string? playbookFilePath = null)
+    /// <param name="recordedBranch">
+    /// The head branch the issue's contribution recorded, which stands in for a
+    /// branch named for the key. Null reads the key-named rule.
+    /// </param>
+    public Verdict? Check(string key, string? playbookFilePath = null, string? recordedBranch = null)
     {
         if (!AtLeast(MergeTree))
         {
@@ -211,7 +219,7 @@ public sealed partial class Workspace
         var trunkRef = $"refs/remotes/origin/{trunk}";
         if (FullSha(trunkRef) is not { } trunkSha) return null;
 
-        var (open, _) = Branched(key, trunk);
+        var (open, _) = Branched(key, trunk, recordedBranch);
 
         if (open.Count == 0) return new Verdict(MergeVerdicts.None, trunk, trunkSha, null, null, []);
         if (open.Count > 1) return new Verdict(MergeVerdicts.Ambiguous, trunk, trunkSha, null, null, []);

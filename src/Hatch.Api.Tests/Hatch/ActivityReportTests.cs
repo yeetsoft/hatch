@@ -261,4 +261,99 @@ public class ActivityReportTests
         Assert.Equal(3, result.Series[1].RollingEvents);
         Assert.Equal(2, result.Series[2].RollingEvents);
     }
+
+    // ---- HandTyped: a person's own keys ----
+
+    private const string KeyName = "ann-laptop";
+
+    private static ActivityReport.Row KeyRow(long id, long issueId, string kind, int minutes) =>
+        new(id, issueId, 1, kind, Jan1.AddMinutes(minutes), KeyName);
+
+    private static ActivityReport.ClaimEvent Claim(long id, long issueId, string kind, int minutes, string actor = KeyName) =>
+        new(id, issueId, actor, kind, Jan1.AddMinutes(minutes));
+
+    [Fact]
+    public void AKeysEvent_InsideAWorkLogSession_IsTheLoops()
+    {
+        ActivityReport.WorkSpan[] spans = [new(1, Jan1.AddMinutes(10), Jan1.AddMinutes(40))];
+
+        var typed = ActivityReport.HandTyped([KeyRow(1, 1, "commented", 25)], [], spans);
+
+        Assert.Empty(typed);
+    }
+
+    [Fact]
+    public void AKeysEvent_InsideAClaimWithNoWorkLogRowYet_IsTheLoops()
+    {
+        ActivityReport.ClaimEvent[] claims = [Claim(1, 1, "claim_taken", 10)];
+
+        var typed = ActivityReport.HandTyped([KeyRow(2, 1, "status_changed", 25)], claims, []);
+
+        Assert.Empty(typed);
+    }
+
+    [Fact]
+    public void AKeysEvent_OutsideBothASessionAndAClaim_IsTheHands()
+    {
+        // The work-log row is another stretch of the same issue; the claim was
+        // released before the event.
+        ActivityReport.WorkSpan[] spans = [new(1, Jan1.AddMinutes(10), Jan1.AddMinutes(20))];
+        ActivityReport.ClaimEvent[] claims =
+            [Claim(1, 1, "claim_taken", 10), Claim(3, 1, "claim_released", 20)];
+
+        var typed = ActivityReport.HandTyped([KeyRow(4, 1, "commented", 30)], claims, spans);
+
+        var row = Assert.Single(typed);
+        Assert.Equal(4, row.Id);
+        Assert.Equal(KeyName, row.ViaKey);
+    }
+
+    [Fact]
+    public void AKeysEvent_OnAnIssueNoClaimOrSessionTouches_IsTheHands()
+    {
+        ActivityReport.ClaimEvent[] claims = [Claim(1, 2, "claim_taken", 10)];
+        ActivityReport.WorkSpan[] spans = [new(2, Jan1, Jan1.AddHours(1))];
+
+        Assert.Single(ActivityReport.HandTyped([KeyRow(2, 1, "commented", 25)], claims, spans));
+    }
+
+    [Fact]
+    public void AClaimAnotherKeyTook_DoesNotCoverThisKeysEvent()
+    {
+        ActivityReport.ClaimEvent[] claims = [Claim(1, 1, "claim_taken", 10, actor: "bob-runner")];
+
+        Assert.Single(ActivityReport.HandTyped([KeyRow(2, 1, "commented", 25)], claims, []));
+    }
+
+    [Fact]
+    public void ALaterTakeByAnotherHolder_EndsAClaimThatWasNeverReleased()
+    {
+        // A runner that died without releasing: the next holder's take is the
+        // end of its claim, so a hand-typed event after it is counted.
+        ActivityReport.ClaimEvent[] claims =
+            [Claim(1, 1, "claim_taken", 10), Claim(2, 1, "claim_taken", 20, actor: "bob-runner")];
+
+        Assert.Single(ActivityReport.HandTyped([KeyRow(3, 1, "commented", 25)], claims, []));
+    }
+
+    [Fact]
+    public void TheClaimEventsThemselves_AreTheLoops()
+    {
+        var typed = ActivityReport.HandTyped(
+            [KeyRow(1, 1, "claim_taken", 10), KeyRow(2, 1, "claim_released", 20), KeyRow(3, 1, "claim_lapsed", 30)], [], []);
+
+        Assert.Empty(typed);
+    }
+
+    [Fact]
+    public void ARowsViaKey_SurvivesTheFold()
+    {
+        var rows = new[] { Row(1, 1, "created", 1), KeyRow(2, 1, "commented", 90) };
+
+        var result = Fold(rows, [], 500);
+
+        Assert.Equal(2, result.Total);
+        Assert.Equal(KeyName, result.Events[0].ViaKey);
+        Assert.Null(result.Events[1].ViaKey);
+    }
 }

@@ -247,6 +247,23 @@ export interface AssigneeRequest {
   id: string | null;
 }
 
+/** The record that an issue came from outside, as stored - see ContributionDto.
+    Nullable fields are null where the pull request or the origin Hatch did not
+    say; a mirrored ancestor has no pull request of its own. */
+export interface ContributionRecord {
+  pullRequestUrl: string | null;
+  headBranch: string | null;
+  authorLogin: string;
+  authorAssociation: string;
+  filedAt: string;
+  filedBy: string;
+  originInstance?: string | null;
+  originProjectKey?: string | null;
+  originKey?: string | null;
+  envelopeVersion?: number | null;
+  envelopeNote?: string | null;
+}
+
 /** A card on the board. No description and no comments - see IssueCardDto. */
 export interface IssueCard {
   key: string;
@@ -266,6 +283,9 @@ export interface IssueCard {
   /** Who owns this card, or null for nobody - which is most of the board, and
       why the card draws no element at all rather than an empty chip. */
   assignee: Assignee | null;
+  /** The record that this card came from outside, or null. Optional as
+      `filedFromKey` is, so a response without it still reads as no record. */
+  contribution?: ContributionRecord | null;
   /** The lease a running dispatcher holds on this issue, or null. */
   claim: IssueClaim | null;
   /** *This one first.* The server serves an expedited card above every
@@ -721,6 +741,8 @@ export interface Issue {
   onePrEnforced: boolean;
   /** The issue whose session filed this one, or null. Provenance only. See IssueDto.FiledFromKey. */
   filedFromKey?: string | null;
+  /** The record that this issue came from outside, or null. See IssueDto.Contribution. */
+  contribution?: ContributionRecord | null;
   /** The issues filed from this one, in key order. See IssueDto.FiledKeys. */
   filedKeys?: string[];
   /** See IssueDto.ReleaseNote. */
@@ -883,6 +905,8 @@ export interface IssueEvent {
     `IssueEvent`, naming the issue it belongs to. Mirrors ActivityEventDto. */
 export interface ActivityEvent extends IssueEvent {
   issueKey: string;
+  /** On the activity report with `includeKeys`: the person's own key this was typed under. */
+  viaKey?: string | null;
 }
 
 /** A page of `ActivityEvent`, newest first. Mirrors ActivityPageDto. There is

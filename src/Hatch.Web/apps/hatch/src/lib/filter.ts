@@ -38,7 +38,16 @@ export interface CardFilter {
       last choice (`readBoardProject`/`initialProject`, below) - a pasted link
       always wins. */
   project: string;
+  /** How contributions - cards carrying a record that they came from outside -
+      are drawn: with everything, alone, or not at all. Remembered between
+      visits as the types are (`readBoardContributions`). */
+  contributions: ContributionChoice;
 }
+
+/** The three ways the board can treat contributions. */
+export type ContributionChoice = 'all' | 'only' | 'hidden';
+
+export const CONTRIBUTION_CHOICES: ContributionChoice[] = ['all', 'only', 'hidden'];
 
 /** The types a browser's first visit opens the board on, and what Reset returns
     to: every type, every column saying what it holds. After that the board opens
@@ -48,7 +57,14 @@ export const DEFAULT_TYPES: IssueType[] = [...ISSUE_TYPES];
 /** What a browser's first visit opens the board on, and what Reset returns to.
     The types are remembered between visits; the rest of this opens as it is
     here. */
-export const DEFAULT_FILTER: CardFilter = { types: DEFAULT_TYPES, query: '', waiting: false, assignee: '', project: '' };
+export const DEFAULT_FILTER: CardFilter = {
+  types: DEFAULT_TYPES,
+  query: '',
+  waiting: false,
+  assignee: '',
+  project: '',
+  contributions: 'all',
+};
 
 /** Where the chosen types are persisted - namespaced next to
     `hatch.board.view` (lib/phoneBoard.ts). */
@@ -81,6 +97,33 @@ export function readBoardTypes(): IssueType[] {
 export function writeBoardTypes(types: IssueType[]): void {
   try {
     window.localStorage.setItem(BOARD_TYPES_STORAGE_KEY, JSON.stringify(types));
+  } catch {
+    /* See above. */
+  }
+}
+
+/** Where the contributions choice is persisted - next to
+    BOARD_TYPES_STORAGE_KEY. */
+export const BOARD_CONTRIBUTIONS_STORAGE_KEY = 'hatch.board.contributions';
+
+/** The stored choice, or `'all'` - for anything unknown or unreadable, with the
+    same try/catch as readBoardTypes and for the same reason. */
+export function readBoardContributions(): ContributionChoice {
+  try {
+    const stored = window.localStorage.getItem(BOARD_CONTRIBUTIONS_STORAGE_KEY);
+    const known = CONTRIBUTION_CHOICES.find((choice) => choice === stored);
+    if (known) return known;
+  } catch {
+    /* See above. */
+  }
+  return 'all';
+}
+
+/** Persists the choice, `'all'` included. A store that cannot be written is not
+    worth surfacing, as writeBoardTypes already treats its own store. */
+export function writeBoardContributions(choice: ContributionChoice): void {
+  try {
+    window.localStorage.setItem(BOARD_CONTRIBUTIONS_STORAGE_KEY, choice);
   } catch {
     /* See above. */
   }
@@ -138,7 +181,8 @@ export const isFiltering = (filter: CardFilter): boolean =>
   filter.query.trim() !== '' ||
   filter.waiting ||
   filter.assignee !== '' ||
-  filter.project !== '';
+  filter.project !== '' ||
+  filter.contributions !== 'all';
 
 /**
  * Everything about a card that a search box can see: its key, its title, its
@@ -175,12 +219,17 @@ export const matchesAssignee = (card: IssueCard, assignee: string): boolean => {
   return card.assignee !== null && assigneeToken(card.assignee) === assignee;
 };
 
+/** Whether a card is drawn under the contributions choice: *all* draws every
+    card, *only* the ones with a record, *hidden* the ones without. */
+export const matchesContributions = (card: IssueCard, choice: ContributionChoice): boolean =>
+  choice === 'all' || (choice === 'only') === Boolean(card.contribution);
+
 /**
  * Whether a card passes the filter. `stories` is each epic's carried stories
  * (`storiesByEpic` from `carried()`, lib/storiesOnEpics.ts); an epic answers
  * the waiting, assignee and query clauses for the group of itself and its
- * stories, each clause decided on its own. The types and project clauses stay
- * the card's own. With no stories the group is the card alone.
+ * stories, each clause decided on its own. The types, project and
+ * contributions clauses stay the card's own. With no stories the group is the card alone.
  */
 export const matchesFilter = (
   card: IssueCard,
@@ -193,6 +242,7 @@ export const matchesFilter = (
     (!filter.waiting || group.some((c) => c.openQuestions > 0)) &&
     group.some((c) => matchesAssignee(c, filter.assignee)) &&
     (filter.project === '' || card.projectKey === filter.project) &&
+    matchesContributions(card, filter.contributions) &&
     group.some((c) => matchesQuery(c, filter.query))
   );
 };

@@ -37,8 +37,8 @@ const light = declarationsOf(/:root\s*\{([^}]*)\}/);
 describe('manifest.webmanifest', () => {
   it('declares the PWA identity fields exactly', () => {
     expect(manifest.scope).toBe('/');
-    expect(manifest.start_url).toBe('/apps/hatch/');
-    expect(manifest.id).toBe('/apps/hatch/');
+    expect(manifest.start_url).toBe('/');
+    expect(manifest.id).toBe('/');
     expect(manifest.display).toBe('standalone');
     expect(manifest.launch_handler.client_mode).toBe('navigate-existing');
   });
@@ -51,7 +51,7 @@ describe('manifest.webmanifest', () => {
   it('names icons that exist on disk at their declared size', async () => {
     expect(manifest.icons.length).toBeGreaterThan(0);
     for (const icon of manifest.icons as Array<{ src: string; sizes: string }>) {
-      const relative = icon.src.replace(/^\/apps\/hatch\//, '');
+      const relative = icon.src.replace(/^\//, '');
       const path = fileURLToPath(new URL(`../../public/${relative}`, import.meta.url));
       expect(existsSync(path), `${icon.src} does not exist at ${path}`).toBe(true);
 

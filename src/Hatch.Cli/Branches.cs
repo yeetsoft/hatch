@@ -262,6 +262,14 @@ public static class Branches
     public static bool IsShared(WorkDto work) =>
         work.BranchKey is { Length: > 0 } key && !key.Equals(work.Issue.Key, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The head branch the issue's contribution recorded, which stands in for a
+    /// branch named for the key - the issue's own record only: a task on its
+    /// story's shared branch checks the story's branch, whatever it has recorded.
+    /// </summary>
+    public static string? RecordedFor(WorkDto work) =>
+        IsShared(work) ? null : work.Issue.Contribution?.HeadBranch is { Length: > 0 } head ? head : null;
+
     /// <summary>The key every git call for this dispatch names its branch by - the issue's own, unless it shares.</summary>
     public static string KeyOf(WorkDto work) => IsShared(work) ? work.BranchKey! : work.Issue.Key;
 

@@ -5,7 +5,7 @@ order: 30
 summary: Installing Hatch as an app on a phone, and what it can and cannot do there.
 ---
 
-**Android, Chrome.** Open `<your-hatch-origin>/apps/hatch/`, sign in if the
+**Android, Chrome.** Open `<your-hatch-origin>/`, sign in if the
 wall is up ([the wall, off, on and required](the-wall-off-on-and-required)), then
 menu (⋮) → **Install app**. An icon named Hatch lands on the home screen;
 opening it shows a splash screen, then the board, full-screen, with no
@@ -75,6 +75,6 @@ that needs a native app, which this isn't. A link tapped in another app
 always opens Safari, installed or not; Hatch itself is only ever reached by
 tapping its own icon.
 
-Installing claims every path on Hatch's origin, not only `/apps/hatch/` —
-right when Hatch is the only thing on that origin, as it is in the stack
-this page starts from, and worth knowing if it ever isn't.
+Installing claims every path on Hatch's origin: the manifest's `scope` is `/`,
+the whole origin, which is right when Hatch is the only thing on it, as it is
+in the stack this page starts from, and worth knowing if it ever isn't.

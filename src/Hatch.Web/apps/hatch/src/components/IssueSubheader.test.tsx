@@ -22,7 +22,7 @@ function stubWindow(pathname: string, navigator: Record<string, unknown> = {}) {
   vi.stubGlobal('navigator', navigator);
 }
 
-beforeEach(() => stubWindow('/apps/hatch/'));
+beforeEach(() => stubWindow('/'));
 afterEach(() => vi.unstubAllGlobals());
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
@@ -145,18 +145,18 @@ describe('IssueSubheader', () => {
     expect(html).not.toContain('review: approved');
   });
 
-  it('builds the full address against the hatch. subdomain path shape', () => {
+  it('builds the full address against the origin, with no prefix', () => {
     stubWindow('/issues/HA-446');
     const html = render({ key: 'HA-446' });
 
     expect(html).toContain('https://example.test/issues/HA-446');
   });
 
-  it('builds the full address against the house-hostname path shape', () => {
+  it('ignores a prefix the pathname carries - there is only one address now', () => {
     stubWindow('/apps/hatch/issues/HA-446');
     const html = render({ key: 'HA-446' });
 
-    expect(html).toContain('https://example.test/apps/hatch/issues/HA-446');
+    expect(html).toContain('https://example.test/issues/HA-446');
   });
 
   it('carries the scope on the copy-link address when one is active', () => {
@@ -165,11 +165,11 @@ describe('IssueSubheader', () => {
     expect(renderAt('/?scope=AER,FIL', { key: 'HA-446' })).toContain('https://example.test/issues/HA-446?scope=AER,FIL');
   });
 
-  it('carries the scope under the house-hostname path shape too', () => {
+  it('carries the scope whatever prefix the pathname carries', () => {
     stubWindow('/apps/hatch/issues/HA-446');
 
     expect(renderAt('/?scope=AER,FIL', { key: 'HA-446' })).toContain(
-      'https://example.test/apps/hatch/issues/HA-446?scope=AER,FIL',
+      'https://example.test/issues/HA-446?scope=AER,FIL',
     );
   });
 

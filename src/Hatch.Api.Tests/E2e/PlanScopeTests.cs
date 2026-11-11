@@ -75,7 +75,7 @@ public class PlanScopeTests(ITestOutputHelper output)
             await deadline.BoundAsync("filing three epics", () => FileEpicsAsync(baseUrl));
 
             // Scoped to two of three: the picker offers the two, and none chosen draws both.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/plan?scope=PLA,PLB");
+            await harness.OpenAsync(deadline, baseUrl, "/plan?scope=PLA,PLB");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, [EpicTitle("PLA"), EpicTitle("PLB")], [EpicTitle("PLC")]);
             Assert.Equal(["", "PLA", "PLB"], Strings(scoped, "options"));
             Assert.Equal("All in scope", scoped.GetProperty("empty").GetString());
