@@ -62,6 +62,64 @@ public sealed class GoToWorkTests
         Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
     }
 
+    [Fact]
+    public async Task A_session_a_dead_loop_left_is_cleaned_up_before_the_first_claim()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var dead = Guid.NewGuid();
+
+        // A pid no process has, so the clean-up finds it gone and kills nothing.
+        new SessionRecord(int.MaxValue, DateTime.UtcNow.Ticks, "AER-9", dead, DateTimeOffset.UtcNow, "https://hatch.example", "old-session")
+            .Write(SessionRecord.PathFor(h.Root, h.Temp));
+        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-9/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-9/comments", Fixtures.Comment());
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-9/claim"));
+        Assert.Contains($"token={dead}", released.Query, StringComparison.Ordinal);
+        Assert.Contains("outcome=abandoned", released.Query, StringComparison.Ordinal);
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-9/comments"));
+
+        var calls = h.Wire.Calls.Select(c => $"{c.Method} {c.Path}").ToList();
+        Assert.True(
+            calls.IndexOf("DELETE /api/hatch/issues/AER-9/claim") < calls.IndexOf("POST /api/hatch/issues/AER-1/claim"),
+            "the dead loop's claim was released before this loop took one of its own");
+        Assert.False(File.Exists(SessionRecord.PathFor(h.Root, h.Temp)));
+    }
+
+    [Fact]
+    public async Task A_loop_with_no_record_claims_as_it_always_has_and_a_once_run_leaves_none_behind()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        h.Sessions.Child = (4242, DateTime.UtcNow);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("a loop died", StringComparison.Ordinal));
+        Assert.False(File.Exists(SessionRecord.PathFor(h.Root, h.Temp)));
+    }
+
+    [Fact]
+    public async Task A_record_for_another_board_is_left_where_it_was_through_a_whole_run()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        var path = SessionRecord.PathFor(h.Root, h.Temp);
+        new SessionRecord(int.MaxValue, DateTime.UtcNow.Ticks, "AER-9", Guid.NewGuid(), DateTimeOffset.UtcNow, "https://elsewhere.example")
+            .Write(path);
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        Assert.Empty(h.Wire.To("DELETE", "/api/hatch/issues/AER-9/claim"));
+        Assert.True(File.Exists(path));
+        Assert.Contains(h.Say.Complained, l => l.Contains("another board", StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// HA-1612: the log is a wrapper around whichever terminal the run was
     /// handed, so a pass says what it always said and the file gets the same.
@@ -1235,8 +1293,9 @@ public sealed class GoToWorkTests
             return Task.FromResult(lines);
         }
 
-        public Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct) =>
-            Inner.RunAsync(request, onLine, ct);
+        public Task<SessionResult> RunAsync(
+            SessionRequest request, Action<string>? onLine, CancellationToken ct, Action<int, DateTime>? onStarted = null) =>
+            Inner.RunAsync(request, onLine, ct, onStarted);
 
         public Task<int> AttachAsync(SessionRequest request, CancellationToken ct) => Inner.AttachAsync(request, ct);
 
