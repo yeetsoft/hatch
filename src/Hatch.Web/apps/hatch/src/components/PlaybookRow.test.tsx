@@ -253,6 +253,50 @@ describe('PlaybookRow', () => {
     expect(render(null)).not.toContain('hatch-badge--danger');
   });
 
+  it('draws a muted badge for each limit that is set, and neither when both are null', () => {
+    const render = (quietLimitSeconds: number | null, maxRunSeconds: number | null) =>
+      renderToStaticMarkup(
+        <PlaybookRow
+          playbook={{ ...BASE, quietLimitSeconds, maxRunSeconds }}
+          projects={ONE_PROJECT}
+          statuses={STATUSES}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      );
+    const both = render(1500, 3600);
+    expect(both).toContain('quiet after 1500s');
+    expect(both).toContain('cut off after 3600s');
+    expect(both).toContain('hatch-badge--muted');
+
+    const neither = render(null, null);
+    expect(neither).not.toContain('quiet after');
+    expect(neither).not.toContain('cut off after');
+    expect(neither.match(/<td/g)).toHaveLength(both.match(/<td/g)!.length);
+  });
+
+  it.each([
+    ['a trunk-card row (no label)', undefined],
+    ['a merged main-table row (labelled)', "HA's own"],
+  ])('draws a badge for each limit that is set on %s of PlaybookFileRowLine', (_name, label) => {
+    const render = (quietLimitSeconds: number | null, maxRunSeconds: number | null) =>
+      renderToStaticMarkup(
+        <table>
+          <tbody>
+            <PlaybookFileRowLine row={{ ...FILE_ROW, quietLimitSeconds, maxRunSeconds }} statuses={STATUSES} label={label} />
+          </tbody>
+        </table>,
+      );
+    const both = render(1500, 3600);
+    expect(both).toContain('quiet after 1500s');
+    expect(both).toContain('cut off after 3600s');
+
+    const neither = render(null, null);
+    expect(neither).not.toContain('quiet after');
+    expect(neither).not.toContain('cut off after');
+    expect(neither.match(/<td/g)).toHaveLength(both.match(/<td/g)!.length);
+  });
+
   it('has an ungated Delete button, outside the open button', () => {
     const html = renderToStaticMarkup(
       <PlaybookRow playbook={BASE} projects={ONE_PROJECT} statuses={STATUSES} onEdit={noop} onDelete={noop} />,
