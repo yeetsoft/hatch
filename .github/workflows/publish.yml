@@ -147,6 +147,12 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ github.event.workflow_run.head_sha }}
+          # metadata-action emits org.opencontainers.image.revision on its own,
+          # but from github.sha - and on a workflow_run trigger that is the
+          # default branch's tip, not necessarily the head_sha this build checked
+          # out and tagged. A custom label of the same key overrides the default.
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7

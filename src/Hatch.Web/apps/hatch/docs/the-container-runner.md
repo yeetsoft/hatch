@@ -305,6 +305,51 @@ Its loop's locks live inside the container, so nothing stops two containers
 sharing one volume and working the same clone at once. Run **one container per
 workspace**.
 
+## Building on it
+
+A project image extends this image rather than reproducing it
+([HA-1874](/apps/hatch/issues/HA-1874)). What it can count on staying put:
+
+- **A Debian-family base.** The `hatch` binary is a glibc build, so an Alpine
+  (musl) base would leave an image whose binary cannot start.
+- **`hatch` at `/usr/local/bin/hatch`**, because the entrypoint, the loop and
+  every script that shells out to it look it up there.
+- **`/entrypoint.sh` as the `ENTRYPOINT`.** It turns the container's
+  environment into a running loop, and an image that replaces it has stopped
+  being a runner.
+- **Root as the user**, with no `USER` instruction. A bind-mounted checkout is
+  owned by the host's uid, and a container user whose uid does not match cannot
+  write to the branch it is meant to push.
+- **`IS_SANDBOX=1`**, which lets the `claude` CLI run in bypass mode as uid 0
+  in an unattended increment.
+- **`HATCH_ROOT=/checkout` and `HATCH_WORKSPACE=/workspace`**, where the loop
+  looks for a mounted checkout and where it clones what it has no checkout of.
+- **`/root/.local/bin` and `/root/.grok/bin` on `PATH`**, where the `claude` and
+  `grok` installers put their binaries.
+- **`/etc/hatch/` reserved** for what an image bakes in about itself. It exists
+  and is empty here; a derived image may put files in it and may not use it for
+  anything else.
+
+The whole of a derived image can be two lines. The base is
+`ghcr.io/<owner>/hatch-runner`, where `<owner>` is whoever publishes the image
+you pull, never a literal owner:
+
+```
+FROM ghcr.io/<owner>/hatch-runner:latest
+RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+```
+
+The base removes apt's lists at the end of each layer to keep the image small,
+so the `apt-get update` here is the derived image's own.
+
+A derived image changes none of the contract above and only adds packages.
+
+The published base carries the label `org.opencontainers.image.revision`,
+naming the commit it was built from, and a derived image inherits it unless its
+own build sets one. It is published under two tags, `latest` and the commit sha;
+[building it or pulling it](deployment-overview#building-it-or-pulling-it) has
+which is which.
+
 ## Upgrading it
 
 The service builds rather than pulls (`build:` with `pull_policy: build`), so
