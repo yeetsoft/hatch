@@ -63,7 +63,24 @@ public static class ReviewWork
     /// review row has always kept - nothing reads the kind of a folded row.
     /// </param>
     /// <param name="Fold">Null when there is something for an agent to do.</param>
-    public readonly record struct Judgement(string Kind, string? Fold);
+    /// <param name="Work">What the agent would be asked to do, as a sentence, where <paramref name="Fold"/> is null; null where it is not.</param>
+    public readonly record struct Judgement(string Kind, string? Fold, string? Work = null);
+
+    /// <summary>
+    /// The sentence for a review row held back because its branch is a
+    /// contribution's and the project has not said runners work those - see
+    /// <see cref="HeldContribution"/>.
+    /// </summary>
+    public const string ContributionHeld = "a contribution's branch is not worked by a runner unless the project says so";
+
+    /// <summary>
+    /// Whether a review row is held back as a contribution: the project does not
+    /// have runners work contributions, the issue's contribution carries a pull
+    /// request, and the judge would otherwise have dispatched it as conflict or
+    /// build work. A row the judge folds is not held here - it stays where it is.
+    /// </summary>
+    public static bool HeldContribution(bool runnersWork, string? contributionPullRequestUrl, Judgement judged) =>
+        !runnersWork && contributionPullRequestUrl is not null && judged.Fold is null;
 
     /// <summary>
     /// Why a row has no branch on origin: none is named for its key, or, where its
@@ -76,16 +93,26 @@ public static class ReviewWork
 
     public static Judgement Judge(
         EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
+        string? recordedBranch = null) =>
+        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch);
+
+    /// <summary>
+    /// The judgement from the facts alone, for a caller that has projected rows
+    /// rather than loaded issues: the issue's no-code declaration and the
+    /// repositories its project binds, in sort order.
+    /// </summary>
+    public static Judgement Judge(
+        string? noCode, IReadOnlyList<EfHatchProjectRepository> bound,
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
         string? recordedBranch = null)
     {
-        if (NoCode.Declared(issue)) return Fold(NoCode.Sentence);
-
-        var bound = issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList();
+        if (NoCode.Declared(noCode)) return Fold(NoCode.Sentence);
 
         var counted = Counted(bound, merges);
 
         if (counted.Any(v => v.Verdict == MergeVerdicts.Conflicted))
-            return new Judgement(WorkKinds.Conflicts, null);
+            return new Judgement(WorkKinds.Conflicts, null,
+                $"its branch conflicts with {counted.First(v => v.Verdict == MergeVerdicts.Conflicted).Trunk}");
 
         if (counted.Count == 0)
             return Fold($"no runner has checked its branch against {bound.FirstOrDefault()?.BaseBranch ?? "the trunk"} yet");
@@ -105,8 +132,8 @@ public static class ReviewWork
         var builtAt = builds.Where(b => clean.Any(m => m.Canonical == b.Canonical)).ToList();
         var about = AboutTheBranch(clean, builtAt);
 
-        if (about.Any(b => b.Verdict == BuildVerdicts.Failed))
-            return new Judgement(WorkKinds.Build, null);
+        if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Failed) is { } failed)
+            return new Judgement(WorkKinds.Build, null, $"its build on {Short(failed.Sha)} failed");
 
         if (about.FirstOrDefault(b => b.Verdict == BuildVerdicts.Pending) is { } running)
             return Fold($"its build on {Short(running.Sha)} is still running");

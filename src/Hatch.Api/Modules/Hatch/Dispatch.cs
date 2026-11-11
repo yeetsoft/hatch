@@ -2005,7 +2005,10 @@ public sealed class Dispatch(
         // whether or not a session is spawned for it. The one exemption is a
         // review self-move the review judge already folds - nothing is handed
         // to any runner on that row, and its own sentence says why.
-        var reviewIdle = conflicts && ReviewWork.Judge(issue, verdicts, builds).Fold is not null;
+        var judged = conflicts ? ReviewWork.Judge(issue, verdicts, builds, issue.Contribution?.HeadBranch) : (ReviewWork.Judgement?)null;
+        var contributionHeld = judged is { } reviewJudged
+            && ReviewWork.HeldContribution(issue.Project!.RunnersWorkContributions, issue.Contribution?.PullRequestUrl, reviewJudged);
+        var reviewIdle = judged is { Fold: not null } || contributionHeld;
         if (!reviewIdle && TagFold(issue, from, tags ?? TagDeclaration.Unjudged, gate) is { } tagBlock)
             return new Blocking(tagBlock, BlockedKinds.Other);
 
@@ -2086,7 +2089,7 @@ public sealed class Dispatch(
         // actually makes. The missing-playbook sentence below says that for
         // every other move; this says it for the one this project's setting
         // adds, before the move is ever asked about generically.
-        if (conflicts && ReviewWork.Judge(issue, verdicts, builds, issue.Contribution?.HeadBranch) is { Fold: { } reviewBlock })
+        if (judged is { Fold: { } reviewBlock })
             return CheckColumn(issue, from, statuses, verdicts, builds) is { } merge
                 ? new Blocking(
                     $"a passing check would carry it into \"{merge.Name}\", but no check playbook covers \"{from.Name}\" to \"{merge.Name}\" for {An(issue.Type)} - " +
@@ -2095,6 +2098,11 @@ public sealed class Dispatch(
                         : "add one on the Playbooks page"),
                     BlockedKinds.Other)
                 : new Blocking(reviewBlock, BlockedKinds.Other);
+
+        // A contribution's branch the project has not asked a runner to work:
+        // conflict or build work the judge would dispatch, held for a person.
+        // A person's own to act on, not a fault in the setup, hence its kind.
+        if (contributionHeld) return new Blocking(ReviewWork.ContributionHeld, BlockedKinds.Person);
 
         // A story, bug or task standing left of the implementation column
         // stops where it stands until its own parent reaches it - whatever
