@@ -162,8 +162,8 @@ hatch work
 
 `hatch config --show` says what is set, and which layer it came from. A Hatch
 with its wall off needs no key, and `hatch config` takes a blank when it asks.
-With the wall up, the runner needs an API key — an admin mints one under
-**Manage → API keys**, and
+With the wall up, the runner needs an API key — an admin mints one on the
+Runners page, and
 [putting a front door on it](the-wall-off-on-and-required#putting-a-front-door-on-it) (step 5) has the line
 that hands it over.
 

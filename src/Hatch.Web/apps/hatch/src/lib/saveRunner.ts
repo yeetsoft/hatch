@@ -5,9 +5,9 @@ import type { RunnerPatchRequest } from '../types';
  * One of the runner detail's saves: PATCH the runner, then ask again.
  *
  * Returns the sentence the card should show - the server's refusal - or null
- * where the save went through. The reload runs either way, as `act()` in
- * RunnersPage does: a refused press must not leave the card drawing what was
- * asked for rather than what is true.
+ * where the save went through. The reload runs either way, as `act()` did on
+ * the old runners page: a refused press must not leave the card drawing what
+ * was asked for rather than what is true.
  *
  * `patch` and `reload` are passed in so what a press does is testable without
  * a click: the cards hand over `patchRunner` and the layout's `reload`.

@@ -19,8 +19,6 @@ import {
   dangerousLabel,
   detailVariant,
   drivesLabel,
-  formRefusal,
-  groupByHost,
   groupedTokens,
   isIssueKeyShape,
   orderSentence,
@@ -51,7 +49,6 @@ import {
   runnerLastSeen,
   sortRunners,
   speakingSession,
-  topRefusal,
   tokenBudget,
   tokenFieldHint,
   tokenFieldOf,
@@ -772,44 +769,6 @@ describe('groupedTokens', () => {
   });
 });
 
-describe('refusal routing', () => {
-  const perHour = '--max-tokens-per-hour takes a token count, like 500k or 2M - not "x"';
-  const failure = (text: string, over: { runner?: string; routed?: boolean } = {}) => ({
-    runner: 'a',
-    text,
-    routed: true,
-    ...over,
-  });
-
-  it('routes a bounds save naming a token flag to that field on that runner, and off the top', () => {
-    const f = failure(perHour);
-    expect(topRefusal(f)).toBeNull();
-    expect(formRefusal(f, 'a')).toEqual({ text: perHour, field: 'maxTokensPerHour' });
-    expect(formRefusal(failure('--max-tokens takes a token count'), 'a')?.field).toBe('maxTokens');
-  });
-
-  it('gives another runner\'s form nothing', () => {
-    expect(formRefusal(failure(perHour), 'b')).toBeNull();
-  });
-
-  it('keeps any other refusal at the top, with no form refusal', () => {
-    const f = failure('--max-runs takes a whole number');
-    expect(topRefusal(f)).toBe('--max-runs takes a whole number');
-    expect(formRefusal(f, 'a')).toBeNull();
-  });
-
-  it('keeps a token-flag refusal of a press other than a bounds save at the top', () => {
-    const f = failure(perHour, { routed: false });
-    expect(topRefusal(f)).toBe(perHour);
-    expect(formRefusal(f, 'a')).toBeNull();
-  });
-
-  it('is null both ways for no refusal', () => {
-    expect(topRefusal(null)).toBeNull();
-    expect(formRefusal(null, 'a')).toBeNull();
-  });
-});
-
 describe('orderSentence', () => {
   const ago = new Date(NOW.getTime() - 120_000).toISOString();
 
@@ -858,29 +817,6 @@ describe('runnerBuildLabel', () => {
       `${SHA.slice(0, 7)} · 3 hours ago`,
     );
     expect(runnerBuildLabel(session({ revision: undefined }), NOW)).toBeNull();
-  });
-});
-
-describe('groupByHost', () => {
-  it('gathers a host at the place of its first member and sums runs and spend, null as zero', () => {
-    const groups = groupByHost([
-      runner({ name: 'a', host: 'box', runs: 2, spent: 1 }),
-      runner({ name: 'x', host: 'other', runs: 1, spent: 5 }),
-      runner({ name: 'b', host: 'box', runs: null, spent: 0.5 }),
-    ]);
-    expect(groups.map((g) => [g.host, g.runners.map((r) => r.name)])).toEqual([
-      ['box', ['a', 'b']],
-      ['other', ['x']],
-    ]);
-    expect(groups[0]).toMatchObject({ totalRuns: 2, totalSpent: 1.5 });
-  });
-
-  it('leaves each runner with no host alone, with a null host', () => {
-    const groups = groupByHost([runner({ name: 'a', host: null }), runner({ name: 'b', host: '' })]);
-    expect(groups.map((g) => [g.host, g.runners.length])).toEqual([
-      [null, 1],
-      [null, 1],
-    ]);
   });
 });
 

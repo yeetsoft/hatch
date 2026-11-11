@@ -2700,41 +2700,6 @@ export interface AuthMe {
   personId: string | null;
 }
 
-// ---- API keys ----
-
-/** Whose tickets a key's `--mine` reaches. The page's own shape, built from `Runner`/`RunnerMinted` in `lib/apiKeys.ts`. */
-export interface ApiKeyOwner {
-  id: string;
-  name: string;
-}
-
-/** One API key as the Admin page lists it - the page's own shape, built from
-    `Runner`/`RunnerMinted` in `lib/apiKeys.ts`. The secret is
-    not here and never is: it exists once, in the response to the mint. */
-export interface ApiKey {
-  id: string;
-  name: string;
-  /** The leading characters of the secret - enough to match a row to a config file. */
-  prefix: string;
-  createdAt: string;
-  lastUsedAt: string | null;
-  revokedAt: string | null;
-  /** Null for a key owned by nobody - never set, or its person since deleted. */
-  owner: ApiKeyOwner | null;
-}
-
-/** A freshly minted key, in the page's own shape - built from `RunnerMinted` in `lib/apiKeys.ts`. */
-export interface ApiKeyMinted {
-  key: ApiKey;
-  secret: string;
-}
-
-/** Sent as `CreateRunnerRequest`. Omitted `ownerPersonId` defaults to the admin minting it. */
-export interface ApiKeyCreateRequest {
-  name: string;
-  ownerPersonId?: string;
-}
-
 /** A freshly minted runner's key. Mirrors RunnerMintedDto. */
 export interface RunnerMinted {
   runner: Runner;

@@ -20,12 +20,11 @@ const SCREENS: Record<string, string> = {
   '/import': 'issues',
   '/bulk': 'issues',
   '/users': 'people-roles-and-keys',
-  '/api-keys': 'people-roles-and-keys',
   '/docs': 'welcome',
 };
 
 // NAV itself, flattened to {to,label}: navFor(isAdmin) drops the admin-only
-// rows (/users, /api-keys) this test must still cover. The phone-only rows
+// row (/users) this test must still cover. The phone-only rows
 // (Docs) and the logo's board are in the nav too, so they are covered here.
 const rows: { to: string; label: string }[] = [
   { to: '/', label: 'Board' },

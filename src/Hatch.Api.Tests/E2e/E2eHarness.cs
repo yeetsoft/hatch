@@ -49,11 +49,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
 
     public const string TypesOnlySelector = ".hatch-types-only";
 
-    public const string RunnersCardSelector = ".hatch-card--flush";
-
-    /// <summary>Every control a Runners row draws in its group: the buttons, and the ticket input.</summary>
-    public const string RunnerControlSelector = ".hatch-reorder--wrap button, .hatch-reorder--wrap input";
-
     public const string EmptyBoard = "This board has no columns yet.";
 
     /// <summary>Wider than the phone breakpoint: a phone takes the stacked <c>details</c> branch, a different render.</summary>
@@ -143,36 +138,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         """;
 
     /// <summary>
-    /// Runs in the page and reads the Runners page as it stands. Each control
-    /// carries its own box and its cell's; the card is reported by its border
-    /// box, and <see cref="MeasureRunnersAsync"/> takes the border off.
-    /// </summary>
-    private const string MeasureRunnersScript = """
-        ([cardSelector, controlSelector]) => {
-          const plain = (r) => ({ x: r.x, y: r.y, width: r.width, height: r.height });
-          const card = document.querySelector(cardSelector);
-          const table = card === null ? null : card.querySelector('.hatch-table');
-          if (card === null || table === null) return null;
-          const root = document.scrollingElement;
-          return {
-            innerWidth: window.innerWidth,
-            scrollWidth: root.scrollWidth,
-            clientWidth: root.clientWidth,
-            coarsePointerMatches: window.matchMedia('(pointer: coarse)').matches,
-            card: plain(card.getBoundingClientRect()),
-            table: plain(table.getBoundingClientRect()),
-            controls: [...document.querySelectorAll(controlSelector)].map((element) => ({
-              name: element.tagName.toLowerCase() + ' "' + (element.getAttribute('aria-label') || element.textContent.trim()) + '"',
-              box: plain(element.getBoundingClientRect()),
-              cell: plain(element.closest('td').getBoundingClientRect()),
-              scrollWidth: element.scrollWidth,
-              clientWidth: element.clientWidth,
-            })),
-          };
-        }
-        """;
-
-    /// <summary>
     /// Runs in the page and reads the card holding the Omitted runners section
     /// and every element inside its rows and its add form. Null when the
     /// section is not drawn.
@@ -206,45 +171,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
             card: plain(card.getBoundingClientRect()),
             elements,
           };
-        }
-        """;
-
-    /// <summary>
-    /// Runs in the page and reads each Runners row's Token budget cell and
-    /// activity badge, found by the runner's name rather than by position. The
-    /// cell is the one under the <c>Token budget</c> heading, and the bounds
-    /// text the one under <c>Bounds</c>, so a column added before either does
-    /// not move the read. A fill's track is measured by
-    /// <c>clientWidth</c>: the track has a 1px border, and the fill is a percent
-    /// of its content box.
-    /// </summary>
-    private const string MeasureRunnerBudgetsScript = """
-        () => {
-          const headings = [...document.querySelectorAll('.hatch-table thead th')];
-          const column = headings.findIndex((th) => th.textContent.trim() === 'Token budget');
-          const boundsColumn = headings.findIndex((th) => th.textContent.trim() === 'Bounds');
-          if (column < 0 || boundsColumn < 0) return null;
-          const root = document.scrollingElement;
-          const rows = [...document.querySelectorAll('.hatch-table tbody tr')]
-            .filter((tr) => tr.querySelector('.hatch-runner-name') !== null)
-            .map((tr) => {
-              const cell = tr.children[column];
-              return {
-                name: tr.querySelector('.hatch-runner-name').textContent.trim(),
-                cellText: cell.textContent.trim(),
-                boundsText: tr.children[boundsColumn].textContent.trim(),
-                lines: [...cell.querySelectorAll('.hatch-token-budget-line > span')].map((span) => span.textContent.trim()),
-                bars: [...cell.querySelectorAll('.hatch-usage-bar-fill')].map((fill) => ({
-                  fillWidth: fill.getBoundingClientRect().width,
-                  trackWidth: fill.parentElement.clientWidth,
-                  styleWidth: fill.style.width,
-                  usageColor: fill.style.getPropertyValue('--usage-color'),
-                  color: getComputedStyle(fill).backgroundColor,
-                })),
-                badge: [...tr.children[1].querySelectorAll('.hatch-badge')].map((b) => b.textContent.trim()).join(' | '),
-              };
-            });
-          return { scrollWidth: root.scrollWidth, clientWidth: root.clientWidth, rows };
         }
         """;
 
@@ -608,32 +534,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         deadline.BoundAsync($"resizing the viewport to {width}x{height}", () =>
             page!.SetViewportSizeAsync(width, height));
 
-    /// <summary>The Runners page's card, table and row controls as the page stands; the card is reported inside its 1px border.</summary>
-    public async Task<RunnersMeasurement> MeasureRunnersAsync(Deadline deadline)
-    {
-        var read = await deadline.BoundAsync("measuring the Runners page", () =>
-            page!.EvaluateAsync<JsonElement>(MeasureRunnersScript, new[] { RunnersCardSelector, RunnerControlSelector }));
-
-        Assert.True(read.ValueKind != JsonValueKind.Null, $"{RunnersCardSelector} with a .hatch-table inside it is not on the page");
-
-        const double border = 1;
-        var card = ReadBox(read.GetProperty("card"));
-
-        return new RunnersMeasurement(
-            read.GetProperty("innerWidth").GetInt32(),
-            read.GetProperty("scrollWidth").GetInt32(),
-            read.GetProperty("clientWidth").GetInt32(),
-            read.GetProperty("coarsePointerMatches").GetBoolean(),
-            new Box(card.X + border, card.Y + border, card.Width - 2 * border, card.Height - 2 * border),
-            ReadBox(read.GetProperty("table")),
-            read.GetProperty("controls").EnumerateArray().Select(c => new ControlMeasurement(
-                c.GetProperty("name").GetString()!,
-                ReadBox(c.GetProperty("box")),
-                ReadBox(c.GetProperty("cell")),
-                c.GetProperty("scrollWidth").GetInt32(),
-                c.GetProperty("clientWidth").GetInt32())).ToList());
-    }
-
     /// <summary>The Details card, every Omitted runners row and the add form's elements as the page stands; the card is its border box.</summary>
     public async Task<OmittedRunnersMeasurement> MeasureOmittedRunnersAsync(Deadline deadline)
     {
@@ -653,31 +553,6 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
                 ReadBox(e.GetProperty("box")),
                 e.GetProperty("scrollWidth").GetInt32(),
                 e.GetProperty("clientWidth").GetInt32())).ToList());
-    }
-
-    /// <summary>Each Runners row's Token budget cell and activity badge as the page stands.</summary>
-    public async Task<RunnerBudgetsMeasurement> MeasureRunnerBudgetsAsync(Deadline deadline)
-    {
-        var read = await deadline.BoundAsync("measuring the Runners token budgets", () =>
-            page!.EvaluateAsync<JsonElement>(MeasureRunnerBudgetsScript));
-
-        Assert.True(read.ValueKind != JsonValueKind.Null, "the Runners table has no Token budget or Bounds column");
-
-        return new RunnerBudgetsMeasurement(
-            read.GetProperty("scrollWidth").GetInt32(),
-            read.GetProperty("clientWidth").GetInt32(),
-            read.GetProperty("rows").EnumerateArray().Select(r => new RunnerBudgetRow(
-                r.GetProperty("name").GetString()!,
-                r.GetProperty("cellText").GetString()!,
-                r.GetProperty("boundsText").GetString()!,
-                r.GetProperty("lines").EnumerateArray().Select(l => l.GetString()!).ToList(),
-                r.GetProperty("bars").EnumerateArray().Select(b => new BudgetBar(
-                    b.GetProperty("fillWidth").GetDouble(),
-                    b.GetProperty("trackWidth").GetDouble(),
-                    b.GetProperty("styleWidth").GetString()!,
-                    b.GetProperty("usageColor").GetString()!,
-                    b.GetProperty("color").GetString()!)).ToList(),
-                r.GetProperty("badge").GetString()!)).ToList());
     }
 
     private static Box ReadBox(JsonElement box) => new(
