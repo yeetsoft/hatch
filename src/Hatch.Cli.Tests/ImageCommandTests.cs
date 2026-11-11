@@ -35,6 +35,23 @@ public sealed class ImageCommandTests : IDisposable
 
     private List<ImageCommand.ToolCall> Builds => _calls.Where(c => c.Args[0] == "build").ToList();
 
+    private List<ImageCommand.ToolCall> Buildxes => _calls.Where(c => c.Args[0] == "buildx" && c.Args[1] == "build").ToList();
+
+    private List<ImageCommand.ToolCall> Pushes => _calls.Where(c => c.Args[0] == "push").ToList();
+
+    private List<ImageCommand.ToolCall> Tags => _calls.Where(c => c.Args[0] == "tag").ToList();
+
+    private const string Nested = "ghcr.io/o/r/hatch-runner";
+
+    private const string Flat = "ghcr.io/o/r-hatch-runner";
+
+    private static string[] PushArgs(string image, string platform = "linux/arm64") =>
+        ["build", "--base", "b", "--image", image, "--platform", platform, "--push"];
+
+    /// <summary>A registry that refuses <paramref name="refused"/> with <paramref name="message"/> and takes any other name.</summary>
+    private static Func<ImageCommand.ToolCall, (int, string)> Refusing(string refused, string message) => call =>
+        call.Args[0] == "push" && call.Args[1] == refused ? (1, message) : (0, "");
+
     /// <summary>
     /// A command with a fake tool: <paramref name="answer"/> says what each call prints and exits with, and every
     /// call is kept in <see cref="_calls"/>. <paramref name="onPath"/> is what is installed.
@@ -192,7 +209,7 @@ public sealed class ImageCommandTests : IDisposable
 
         Command(variable: "from-the-variable").Run(["dockerfile", "--base", "from-the-flag"]);
 
-        Assert.StartsWith("FROM from-the-flag\n", Said);
+        Assert.StartsWith("FROM from-the-flag", Said);
     }
 
     [Fact]
@@ -202,7 +219,7 @@ public sealed class ImageCommandTests : IDisposable
 
         Command(variable: "from-the-variable").Run(["dockerfile"]);
 
-        Assert.StartsWith("FROM from-the-variable\n", Said);
+        Assert.StartsWith("FROM from-the-variable", Said);
     }
 
     [Fact]
@@ -553,8 +570,292 @@ public sealed class ImageCommandTests : IDisposable
         Assert.Equal(1, Building(call => call.Args[0] == "build" ? (1, "ERROR: docker exporter does not support multi-platform") : (0, ""))
             .Run(["build", "--base", "b", "--image", "i", "--platform", "linux/amd64,linux/arm64"]));
 
-        Assert.Equal(["hatch: docker build failed", "hatch: linux/amd64,linux/arm64 is more than one platform, which docker cannot load into the local image store - name one with --platform"], _say.Complained);
+        Assert.Equal(["hatch: docker build failed", "hatch: linux/amd64,linux/arm64 is more than one platform, which docker cannot load into the local image store - name one with --platform, or add --push to build and push it in one step"], _say.Complained);
         Assert.Contains("does not support multi-platform", Said);
+    }
+
+    [Fact]
+    public void Push_of_a_name_the_registry_takes_pushes_it_once_and_says_so()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building().Run(PushArgs(Nested)));
+
+        Assert.Equal(["push", Nested], Assert.Single(Pushes).Args);
+        Assert.Empty(Tags);
+        Assert.Contains($"hatch: pushed {Nested}", Said);
+        Assert.DoesNotContain("rejected", Said);
+    }
+
+    [Fact]
+    public void Push_is_asked_after_the_build_and_the_tools_output_is_live()
+    {
+        Declare(Fixture());
+
+        Building(call => (0, call.Args[0] == "push" ? "pushing layers" : "building")).Run(PushArgs(Nested));
+
+        Assert.Equal(["build", "push"], _calls.Select(c => c.Args[0]));
+        Assert.All(_calls, c => Assert.NotNull(c.OnLine));
+        Assert.Equal(1, Said.Split("pushing layers").Length - 1);
+    }
+
+    [Fact]
+    public void A_name_shaped_rejection_tags_and_pushes_the_flat_name_once_and_says_which_reached()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building(Refusing(Nested, "invalid reference format")).Run(PushArgs(Nested)));
+
+        Assert.Equal(["push", Nested], Pushes[0].Args);
+        Assert.Equal(["tag", Nested, Flat], Assert.Single(Tags).Args);
+        Assert.Equal(["push", Flat], Pushes[1].Args);
+        Assert.Equal(2, Pushes.Count);
+        Assert.Equal(["build", "push", "tag", "push"], _calls.Select(c => c.Args[0]));
+        Assert.Contains($"hatch: pushed {Flat} (the registry rejected {Nested})", Said);
+        Assert.Single(Builds);
+    }
+
+    [Fact]
+    public void A_flat_name_rejected_too_is_exit_one_with_no_third_attempt()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(call => call.Args[0] == "push" ? (1, "invalid reference format") : (0, ""))
+            .Run(PushArgs(Nested)));
+
+        Assert.Equal(2, Pushes.Count);
+        Assert.Equal("hatch: docker push failed", Complained);
+    }
+
+    [Fact]
+    public void A_failed_tag_is_its_own_refusal_and_nothing_is_pushed_after_it()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(call => call.Args[0] switch
+            {
+                "push" => (1, "invalid reference format"),
+                "tag" => (1, "no such image"),
+                _ => (0, ""),
+            }).Run(PushArgs(Nested)));
+
+        Assert.Single(Pushes);
+        Assert.Equal("hatch: docker tag failed", Complained);
+    }
+
+    [Theory]
+    [InlineData("unauthorized: authentication required")]
+    [InlineData("dial tcp: lookup ghcr.io: no such host")]
+    [InlineData("invalid reference format, but denied: requested access to the resource is denied")]
+    public void A_login_or_network_rejection_never_falls_back(string message)
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(Refusing(Nested, message)).Run(PushArgs(Nested)));
+
+        Assert.Single(Pushes);
+        Assert.Empty(Tags);
+        Assert.Contains(message, Said);
+        Assert.Equal("hatch: docker push failed", Complained);
+    }
+
+    [Fact]
+    public void A_failure_that_is_neither_does_not_fall_back()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(Refusing(Nested, "something odd")).Run(PushArgs(Nested)));
+
+        Assert.Single(Pushes);
+    }
+
+    [Fact]
+    public void An_image_that_does_not_end_in_hatch_runner_has_no_flat_name_and_its_rejection_is_reported_as_it_came()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(Refusing("reg/o/r:v1", "invalid reference format")).Run(PushArgs("reg/o/r:v1")));
+
+        Assert.Single(Pushes);
+        Assert.Empty(Tags);
+        Assert.Equal("hatch: docker push failed", Complained);
+    }
+
+    [Fact]
+    public void Without_push_nothing_is_pushed_tagged_or_made_a_manifest()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building().Run(["build", "--base", "b", "--image", Nested, "--platform", "linux/arm64"]));
+        Assert.Equal(0, Building(onPath: "podman").Run(["build", "--base", "b", "--image", Nested, "--platform", "linux/arm64"]));
+
+        Assert.DoesNotContain(_calls, c => c.Args[0] is "push" or "tag" or "manifest" || c.Args.Contains("--push"));
+        Assert.DoesNotContain("pushed", Said);
+    }
+
+    [Fact]
+    public void Push_given_twice_is_refused()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building().Run(["build", "--base", "b", "--push", "--push"]));
+
+        Assert.Contains("--push", Complained);
+        Assert.Contains("usage: hatch image", Complained);
+        Assert.Empty(_calls);
+    }
+
+    [Fact]
+    public void Push_as_a_bare_switch_may_stand_anywhere_among_the_flags()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building().Run(["build", "--push", "--base", "b", "--image", Nested, "--platform", "linux/arm64"]));
+
+        Assert.Single(Pushes);
+    }
+
+    [Fact]
+    public void Push_with_several_platforms_on_docker_is_one_buildx_step_and_no_plain_build()
+    {
+        Declare(Fixture());
+        Command().Run(["dockerfile", "--base", "b"]);
+        var printed = Said;
+
+        Assert.Equal(0, Building().Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+
+        var step = Assert.Single(Buildxes);
+        Assert.Equal(["buildx", "build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "-t", Nested, "--push", "."], step.Args);
+        Assert.Equal(printed, step.Stdin);
+        Assert.Equal(_root, step.WorkingDirectory);
+        Assert.Empty(Builds);
+        Assert.Empty(Pushes);
+        Assert.Contains($"hatch: pushed {Nested}", Said);
+    }
+
+    [Fact]
+    public void Push_with_several_platforms_on_docker_retries_the_build_under_the_flat_name()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building(call => call.Args.Contains(Nested) ? (1, "ERROR: invalid reference format") : (0, ""))
+            .Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+
+        Assert.Equal(2, Buildxes.Count);
+        Assert.Contains(Flat, Buildxes[1].Args);
+        Assert.Empty(Tags);
+        Assert.Contains($"hatch: pushed {Flat} (the registry rejected {Nested})", Said);
+    }
+
+    [Fact]
+    public void A_buildx_failure_that_is_the_login_exits_one_labelled_with_the_step()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(call => (1, "unauthorized"))
+            .Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+
+        Assert.Single(Buildxes);
+        Assert.Equal("hatch: docker buildx build --push failed", Complained);
+    }
+
+    [Fact]
+    public void Push_with_several_platforms_on_podman_is_three_steps_with_the_stale_manifest_cleared_first()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building(onPath: "podman").Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+
+        Assert.Equal(
+            [
+                ["manifest", "rm", Nested],
+                ["build", "-f", "-", "--platform", "linux/amd64,linux/arm64", "--manifest", Nested, "."],
+                ["manifest", "push", "--all", Nested, $"docker://{Nested}"],
+            ],
+            _calls.Select(c => c.Args.ToArray()));
+        Assert.All(_calls, c => Assert.Equal("podman", c.Tool));
+        Assert.Contains($"hatch: pushed {Nested}", Said);
+    }
+
+    [Fact]
+    public void On_podman_a_rejected_manifest_push_retries_both_steps_flat_and_the_failed_step_is_named()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(0, Building(call => call.Args[0] == "manifest" && call.Args[1] == "push" && call.Args.Contains(Nested)
+                ? (1, "Error: invalid repository name")
+                : (0, ""), onPath: "podman")
+            .Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+
+        Assert.Equal(2, _calls.Count(c => c.Args[0] == "manifest" && c.Args[1] == "push"));
+        Assert.Contains($"hatch: pushed {Flat} (the registry rejected {Nested})", Said);
+    }
+
+    [Fact]
+    public void On_podman_a_failed_build_step_is_named_and_not_retried_unless_it_reads_as_the_name()
+    {
+        Declare(Fixture());
+
+        Assert.Equal(1, Building(call => call.Args[0] == "build" ? (2, "step failed: invalid repository name") : (0, ""), onPath: "podman")
+            .Run(PushArgs(Nested, "linux/amd64,linux/arm64")));
+        Assert.Equal("hatch: podman build failed", Complained);
+    }
+
+    [Fact]
+    public void Several_platforms_without_push_name_push_as_the_way_to_build_and_push_in_one_step()
+    {
+        Declare(Fixture());
+
+        Building(call => (1, "no")).Run(["build", "--base", "b", "--image", "i", "--platform", "linux/amd64,linux/arm64"]);
+
+        Assert.EndsWith("name one with --platform, or add --push to build and push it in one step", _say.Complained.Last());
+    }
+
+    [Theory]
+    [InlineData("ghcr.io/o/r/hatch-runner", "ghcr.io/o/r-hatch-runner")]
+    [InlineData("reg.example:5000/team/proj/hatch-runner", "reg.example:5000/team/proj-hatch-runner")]
+    [InlineData("o/r/hatch-runner", null)]
+    [InlineData("ghcr.io/o/r/hatch-runner:v1", null)]
+    [InlineData("ghcr.io/o/r/other", null)]
+    [InlineData("hatch-runner", null)]
+    [InlineData("ghcr.io//r/hatch-runner", null)]
+    public void The_flat_name_replaces_the_final_slash_and_only_for_the_derived_shape(string nested, string? expected) =>
+        Assert.Equal(expected, ImageCommand.FlatName(nested));
+
+    [Theory]
+    [InlineData("invalid reference format")]
+    [InlineData("Invalid Repository Name, ASCII only")]
+    [InlineData("repository name must be lowercase")]
+    [InlineData("NAME INVALID")]
+    [InlineData("errors: code=NAME_INVALID")]
+    [InlineData("repository name not valid")]
+    [InlineData("invalid repository")]
+    public void Each_name_shaped_phrase_is_a_rejection_of_the_name_in_any_case(string output) =>
+        Assert.True(ImageCommand.NameRejected($"Error response from daemon: {output} (x)"));
+
+    [Theory]
+    [InlineData("unauthorized")]
+    [InlineData("DENIED")]
+    [InlineData("Authentication Required")]
+    [InlineData("forbidden")]
+    [InlineData("no such host")]
+    [InlineData("timeout")]
+    [InlineData("timed out")]
+    [InlineData("Connection Refused")]
+    [InlineData("i/o timeout")]
+    public void Each_login_or_network_phrase_wins_over_a_name_phrase(string phrase)
+    {
+        Assert.False(ImageCommand.NameRejected(phrase));
+        Assert.False(ImageCommand.NameRejected($"invalid reference format: {phrase}"));
+        Assert.False(ImageCommand.NameRejected($"{phrase}\ninvalid repository name"));
+        Assert.False(ImageCommand.NameRejected(""));
+    }
+
+    [Fact]
+    public void Usage_names_push()
+    {
+        Assert.Contains(ImageCommand.ImageUsage, line => line.Contains("[--push]"));
+        Assert.Contains(ImageCommand.ImageUsage, line => line.Contains("--push (build)"));
     }
 
     [Fact]
