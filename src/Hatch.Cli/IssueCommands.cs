@@ -84,6 +84,10 @@ public sealed class IssueCommands(Cli cli)
         "  hatch pr AER-12 --clear         ...or take it off the one it has",
         "  hatch pr AER-12 --none \"why\"   ...or declare it finished with no code",
         "",
+        "  Recording a url also writes the ticket's chain into the pull request's",
+        "  body, as an envelope; a failure to is one line, and the url is still",
+        "  recorded. The read, --clear and --none do not touch the forge.",
+        "",
         "  The read prints the URL alone, so `open \"$(hatch pr AER-12)\"` is the",
         "  whole of \"show me the review\". An issue that declared no code prints the",
         "  declaration instead. The reason is at most 200 characters.",
@@ -463,7 +467,65 @@ public sealed class IssueCommands(Cli cli)
         cli.Say.Line(patched?.PullRequestUrl is { Length: > 0 } now
             ? now
             : $"{patched?.Key ?? key} points at no pull request");
+
+        if (patched?.PullRequestUrl is { Length: > 0 } recorded) await WriteEnvelopeAsync(key, recorded, patched, ct);
         return 0;
+    }
+
+    /// <summary>The most parents one envelope's chain climbs - a backstop to the cycle guard, far deeper than any tree.</summary>
+    private const int MaxChain = 16;
+
+    /// <summary>
+    /// Writes the ticket's chain into the pull request's body, for a board that receives the pull
+    /// request. The record has already been made, so a failure here costs one line and nothing else.
+    /// </summary>
+    private async Task WriteEnvelopeAsync(string key, string url, IssueDto own, CancellationToken ct)
+    {
+        string? why;
+        try
+        {
+            why = await TryWriteEnvelopeAsync(url, own, ct);
+        }
+        catch (HatchException e)
+        {
+            why = e.Message;
+        }
+
+        if (why is not null)
+            cli.Say.Complain($"hatch: {key} - its pull request's body was not updated with the envelope - {why}");
+    }
+
+    /// <summary>The reason the envelope was not written, or null where it was - or where it was already there.</summary>
+    private async Task<string?> TryWriteEnvelopeAsync(string url, IssueDto own, CancellationToken ct)
+    {
+        var names = (await cli.Board.StatusesAsync(ct)).ToDictionary(s => s.Id, s => s.Name);
+        var origin = cli.Board.Client.Origin;
+
+        var chain = new List<PullRequestEnvelopeIssue>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var issue = own; issue is not null && seen.Add(issue.Key) && chain.Count < MaxChain;)
+        {
+            chain.Add(new PullRequestEnvelopeIssue(
+                issue.Key, issue.Title, issue.Type, issue.Description,
+                names.GetValueOrDefault(issue.StatusId), issue.ParentKey,
+                $"{origin}/apps/hatch/issues/{issue.Key}"));
+
+            issue = issue.ParentKey is { Length: > 0 } parent && !seen.Contains(parent)
+                ? await cli.Board.IssueAsync(parent, ct)
+                : null;
+        }
+
+        var envelope = new PullRequestEnvelope(PullRequestEnvelope.CurrentVersion, origin, own.ProjectKey, chain);
+
+        var forge = cli.Forge(Directory.GetCurrentDirectory(), null);
+        var read = await forge.ReadBodyAsync(url, ct);
+        if (read.Body is not { } body) return read.Why ?? "the body could not be read";
+
+        var replaced = PullRequestEnvelopeWriter.Replace(body, envelope, PullRequestEnvelopeWriter.GitHubBodyLimit);
+        if (replaced == body) return null;
+
+        var edit = await forge.EditBodyAsync(url, replaced, ct);
+        return edit.Edited ? null : edit.Why ?? "the body could not be written";
     }
 
     /// <summary>
