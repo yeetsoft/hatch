@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { EmptyState, PageHeader, ProjectMark, Table, markVars } from '@hatch/ui';
+import { Card, EmptyState, PageHeader, ProjectMark, Table, markVars } from '@hatch/ui';
 import { getConsumptionReport, getProjects, getStatuses } from '../api/client';
 import { Facet } from '../components/Facet';
+import { SpendGraph } from '../components/SpendGraph';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { ReportWindowControls } from '../components/ReportWindowControls';
 import { TypeGlyph } from '../components/TypeGlyph';
@@ -14,16 +15,20 @@ import {
   capWords,
   emptiness,
   humanDuration,
+  readSearch,
+  resolveMeasure,
   resolveSort,
   resolveStatusId,
   resolveType,
   rowCost,
   totalsLine,
+  withMeasure,
   withSort,
   withStatusId,
   withType,
   type ConsumptionType,
 } from '../lib/consumptionReport';
+import type { SpendMeasure } from '../lib/leaderboard';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { noProjectWords, reportProjects, withProjects } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
@@ -49,6 +54,8 @@ interface ConsumptionReportBodyProps {
   statuses: Status[];
   sort: ConsumptionSort;
   onSort: (sort: ConsumptionSort) => void;
+  measure: SpendMeasure;
+  onMeasure: (measure: SpendMeasure) => void;
   /** Pinned by tests; the page passes none and gets the reader's. */
   locale?: string;
 }
@@ -106,10 +113,10 @@ function Row({
 
 /**
  * What the consumption report draws, once it has loaded: the totals over the
- * whole filter, a note when the table holds only the first of them, and a row
- * per issue in the server's own order - never re-sorted here, which would rank
- * a capped sample. Pure of the load and the URL, so a test can render it from
- * props.
+ * whole filter, the spend over time, a note when the table holds only the first
+ * of the rows, and a row per issue in the server's own order - never re-sorted
+ * here, which would rank a capped sample. Pure of the load and the URL, so a
+ * test can render it from props.
  */
 export function ConsumptionReportBody({
   report,
@@ -117,12 +124,34 @@ export function ConsumptionReportBody({
   statuses,
   sort,
   onSort,
+  measure,
+  onMeasure,
   locale,
 }: ConsumptionReportBodyProps) {
   if (report === null) return <EmptyState message={noProjectWords()} />;
 
+  /* Drawn from the answer's own `history`, never from `report.from` and `to`:
+     the server snaps the window outward onto its grid. */
+  const graph = (
+    <Card>
+      <h2 className="hatch-section-title">Spend over time</h2>
+      <SpendGraph history={report.history} measure={measure} onMeasure={onMeasure} />
+    </Card>
+  );
+
+  /* Drawn on an empty window and not on an empty log, as on the leaderboard: a
+     window nobody worked is a row of zeroed buckets, which is a measurement,
+     and a log that has never been written is a sentence. */
   const empty = emptiness(report, locale);
-  if (empty) return <EmptyState message={empty.text} />;
+  if (empty?.kind === 'never') return <EmptyState message={empty.text} />;
+  if (empty) {
+    return (
+      <>
+        <EmptyState message={empty.text} />
+        {graph}
+      </>
+    );
+  }
 
   const byKey = new Map(projects.map((project) => [project.key, project]));
   const cap = capWords(report.matched, report.rows.length);
@@ -130,6 +159,7 @@ export function ConsumptionReportBody({
   return (
     <>
       <p>{totalsLine(report)}</p>
+      {graph}
       {cap && <p className="text-muted">{cap}</p>}
 
       <Table scroll>
@@ -197,16 +227,19 @@ const TYPE_OPTIONS: { value: ConsumptionType; text: string }[] = [
  *
  * The window comes off the URL's `from` and `to`, or a `range` shorthand, and
  * falls back to the last ninety days; the controls write those, and `project`
- * (repeated keys), `type`, `status` (a column's id) and `sort`, each leaving its
- * default out of the URL. A `project` outside the tab's scope is ignored, not
- * rewritten.
+ * (repeated keys), `type`, `status` (a column's id), `sort` and `measure`, each
+ * leaving its default out of the URL. A `project` outside the tab's scope is
+ * ignored, not rewritten.
  */
 function ConsumptionReportReader({ keys }: { keys: string[] }) {
   const [params, setParams] = useSearchParams();
 
   const { from, to, now, offsetMinutes, move } = useReportWindow(90);
 
-  const search = params.toString();
+  /* Without `measure`, which only rescales the graph already drawn: keyed on the
+     whole string, a press of the toggle would change `load` and refetch the
+     report. A string compares by value, so no memo is needed. */
+  const search = readSearch(params);
 
   const load = useCallback(async (): Promise<ConsumptionReportView> => {
     /* The read waits on the project list rather than going out beside it: the
@@ -322,6 +355,8 @@ function ConsumptionReportReader({ keys }: { keys: string[] }) {
         statuses={statuses ?? []}
         sort={sort}
         onSort={(next) => setParams(withSort(params, next), { replace: true })}
+        measure={resolveMeasure(params)}
+        onMeasure={(next) => setParams(withMeasure(params, next), { replace: true })}
       />
     </div>
   );
