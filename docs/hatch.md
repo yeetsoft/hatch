@@ -392,6 +392,11 @@ last and when, a name and an instant, null until the first change, and
 issue closes it outright), with `NoCodeClosesBy` and `NoCodeClosesAt` beside
 it - who changed it last and when, a name and an instant, null until the
 first change, and
+`RunnersWorkContributions` (`bool`, default `false` - whether a runner works
+a contribution's branch when it conflicts or its build fails), with
+`RunnersWorkContributionsBy` and `RunnersWorkContributionsAt` beside it - who
+changed it last and when, a name and an instant, null until the first change,
+and
 `OnePullRequestPolicy` (`"optional"` by default, or `"enforced"` - whether a
 story or bug may carry a one-pull-request setting of its own, see [One pull
 request](#one-pull-request)), with `OnePullRequestPolicyBy` and
@@ -468,6 +473,22 @@ nothing, the stamp included. The close hop reads the flag, carrying a
 declared childless issue through pre-approved or not once it is on, see [the
 hop](#the-hop); a declared row it carries this way also stops being one of
 [what is waiting on you](#what-is-waiting-on-you)'s `noCodeHeld`.
+
+`RunnersWorkContributions` is written through its own route, `PUT
+/projects/{id}/runners-work-contributions`
+(`ProjectsController.PutRunnersWorkContributions`), guarded the same way -
+`[RequireRole(User)]`, `NotAPerson` checked again in the action, then an owner
+check answering `403` naming the project's key (*"only an owner of `<KEY>` may
+change whether runners work a contribution's branch"*) to anyone else, and
+`404` on an unknown project. A change stamps `RunnersWorkContributionsBy` and
+`RunnersWorkContributionsAt`; re-sending the value the project already holds
+writes nothing, the stamp included. With it off, a review row whose issue has a
+contribution carrying a pull request, and which the review judge would
+dispatch as conflict or build work, is folded for a person
+(`ReviewWork.HeldContribution`) and listed in
+[what is waiting on you](#what-is-waiting-on-you)'s `contributionsHeld`
+instead of `conflicts` and `failingBuilds`; a row the judge folds anyway, or a
+record with no pull request, is untouched.
 
 `OnePullRequestPolicy` is written through its own route too, `PUT
 /projects/{id}/one-pr-policy` (`ProjectsController.PutOnePrPolicy`), guarded
@@ -3622,6 +3643,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/projects/{id}/binds-tracker` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ bindsTracker }` — turning it on clears the flag from whichever other project held it, in the same save, and the response names that project's key as `clearedKey` (`null` where none held it); turning it off clears nothing else. `403` naming the project's key from anybody but an owner, `400` where turning it on and the project binds no repository, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/stories-on-epics` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ storiesOnEpics }` — whether the project's stories show on their epics' cards instead of as cards of their own; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/check-approves-merge` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ checkApprovesMerge }` — whether a passing check counts as the approval that lets the project's pull request merge; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `checkApprovesMergeBy`/`checkApprovesMergeAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
+| `/projects/{id}/runners-work-contributions` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ runnersWorkContributions }` — whether a runner works a contribution's branch when it conflicts or its build fails; this route is the only way to write the flag, and the answer is the `ProjectDto`. A change stamps `runnersWorkContributionsBy`/`runnersWorkContributionsAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing |
 | `/projects/{id}/no-code-closes` | PUT | **Person only** — plain `[RequireRole(User)]`, owner only. `{ noCodeCloses }` — whether a no-code declaration on an issue closes it outright; this route is the only way to write the flag (`PATCH` and `POST` on `/projects` do not reach it), and the answer is the `ProjectDto`. A change stamps `noCodeClosesBy`/`noCodeClosesAt`. `403` naming the project's key from anybody but an owner, `404` on an unknown project. Re-sending what it already holds writes nothing. The close hop reads it, see [the hop](#the-hop) |
 | `/projects/{id}/members` | GET | Who owns or approves on this project — open to a key, reading who is on a project is not a power |
 | `/projects/{id}/members/{personId}` | PUT | **Person only** — plain `[RequireRole(User)]`, and only an owner of the project may call it. `{ role }` — `"owner"` or `"approver"`. `403` from anybody else, `400` on an unknown person or role, `409` where it would leave the project with no owner |

@@ -892,6 +892,43 @@ public class ProjectsController(
     }
 
     /// <summary>
+    /// Whether <see cref="EfHatchProject.RunnersWorkContributions"/> is on - a
+    /// runner works a contribution's branch when it conflicts or its build
+    /// fails, rather than the dispatcher holding it for a person. Only an owner
+    /// may call this. It is accepted whatever the project binds or has
+    /// playbooks for, and writing the value a project already has changes
+    /// nothing, the audit columns included. This route is the only way to
+    /// write the flag; <c>PATCH</c> and <c>POST</c> do not reach it.
+    /// </summary>
+    [HttpPut("{id:int}/runners-work-contributions")]
+    [RequireRole(PersonRole.User)]
+    public async Task<ActionResult<ProjectDto>> PutRunnersWorkContributions(int id, ProjectRunnersWorkContributionsWriteRequest request, CancellationToken ct)
+    {
+        if (await NotAPerson(ct) is { } refusal) return refusal;
+
+        var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (project is null) return NotFound();
+
+        if (!await access.IsOwnerAsync(id, ct))
+            return new ObjectResult($"only an owner of {project.Key} may change whether runners work a contribution's branch") { StatusCode = StatusCodes.Status403Forbidden };
+
+        if (request.RunnersWorkContributions != project.RunnersWorkContributions)
+        {
+            project.RunnersWorkContributions = request.RunnersWorkContributions;
+            project.RunnersWorkContributionsBy = await caller.ActorNameAsync(ct);
+            project.RunnersWorkContributionsAt = time.GetUtcNow();
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Project {ProjectKey} runners work contributions set to {RunnersWorkContributions} by {Actor}", project.Key, project.RunnersWorkContributions, project.RunnersWorkContributionsBy);
+        }
+
+        var count = await db.Issues.CountAsync(i => i.ProjectId == id, ct);
+        var repositories = await RepositoriesAsync(id, ct);
+        var logoUpdatedAt = await LogoUpdatedAtAsync(id, ct);
+        var (members, canApprove, canAdminister) = await MembersAsync(id, ct);
+        return ToDto(project, count, repositories, logoUpdatedAt, members, canApprove, canAdminister, time.GetUtcNow());
+    }
+
+    /// <summary>
     /// Whether <see cref="EfHatchProject.NoCodeCloses"/> is on - a no-code
     /// declaration on an issue closes it outright, rather than leaving it for
     /// a person. Only an owner may call this. It is accepted whatever the
@@ -1059,6 +1096,7 @@ public class ProjectsController(
             project.StoriesOnEpics,
             project.CheckApprovesMerge, project.CheckApprovesMergeBy, project.CheckApprovesMergeAt,
             project.NoCodeCloses, project.NoCodeClosesBy, project.NoCodeClosesAt,
+            project.RunnersWorkContributions, project.RunnersWorkContributionsBy, project.RunnersWorkContributionsAt,
             project.OnePullRequestPolicy, project.OnePullRequestPolicyBy, project.OnePullRequestPolicyAt);
 
     private async Task<List<ProjectMemberDto>> LiveMembersAsync(int projectId, CancellationToken ct)

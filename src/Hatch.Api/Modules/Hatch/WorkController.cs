@@ -658,6 +658,7 @@ public class WorkController(
         if (refusal is not null) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
@@ -723,6 +724,7 @@ public class WorkController(
         if (refusal is not null) return BadRequest(refusal);
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 

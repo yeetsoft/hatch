@@ -511,6 +511,93 @@ public class DispatchTests
         Assert.Equal("no runner has checked its branch against the trunk yet", RowFor(scan, issue).Blocked);
     }
 
+    // ---- A contribution's branch: held for a person unless the project says runners work it ----
+
+    [Fact]
+    public async Task ScanAsync_AConflictedContribution_IsHeldForAPersonWhileTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Review, h.Review);
+        var issue = await h.FileAsync("story", "from outside", h.Review);
+        await h.AddContributionAsync(issue, "https://example.com/o/r/pull/9");
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Conflicted);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal(ReviewWork.ContributionHeld, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AContributionWithAFailedBuild_IsHeldForAPersonWhileTheSettingIsOff()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Review, h.Review);
+        var issue = await h.FileAsync("story", "from outside", h.Review);
+        await h.AddContributionAsync(issue, "https://example.com/o/r/pull/9");
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Failed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal(ReviewWork.ContributionHeld, row.Blocked);
+        Assert.Equal(BlockedKinds.Person, row.BlockedKind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AContributionsConflictAndFailedBuild_AreDispatchedWhileTheSettingIsOn()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Review, h.Review);
+        await h.RunnersWorkContributionsAsync();
+        var conflicted = await h.FileAsync("story", "conflicts", h.Review);
+        await h.AddContributionAsync(conflicted, "https://example.com/o/r/pull/9");
+        await h.AddMergeCheckAsync(conflicted, MergeVerdicts.Conflicted);
+        var failing = await h.FileAsync("story", "fails", h.Review);
+        await h.AddContributionAsync(failing, "https://example.com/o/r/pull/10");
+        await h.AddMergeCheckAsync(failing, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(failing, BuildVerdicts.Failed);
+
+        var scan = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(scan, conflicted).Blocked);
+        Assert.Equal(WorkKinds.Conflicts, RowFor(scan, conflicted).Kind);
+        Assert.Null(RowFor(scan, failing).Blocked);
+        Assert.Equal(WorkKinds.Build, RowFor(scan, failing).Kind);
+    }
+
+    [Fact]
+    public async Task ScanAsync_AContributionRecordWithNoPullRequest_IsDispatchedWhateverTheSetting()
+    {
+        var h = await NewAsync();
+        await h.AddPlaybookAsync(h.Review, h.Review);
+        var conflicted = await h.FileAsync("story", "conflicts", h.Review);
+        await h.AddContributionAsync(conflicted, null);
+        await h.AddMergeCheckAsync(conflicted, MergeVerdicts.Conflicted);
+
+        var off = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+        await h.RunnersWorkContributionsAsync();
+        var on = await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default);
+
+        Assert.Null(RowFor(off, conflicted).Blocked);
+        Assert.Null(RowFor(on, conflicted).Blocked);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ACleanPassingContribution_IsFoldedByTheJudgesOwnSentence()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review);
+        await h.AddContributionAsync(issue, "https://example.com/o/r/pull/9");
+        await h.AddMergeCheckAsync(issue, MergeVerdicts.Clean);
+        await h.AddBuildCheckAsync(issue, BuildVerdicts.Passed);
+
+        var row = RowFor(await h.Dispatch.ScanAsync(0, null, null, RepositoryDeclaration.Undeclared, false, default), issue);
+
+        Assert.Equal("its branch merges cleanly with main and its build passes - nothing for an agent to do", row.Blocked);
+        Assert.Equal(BlockedKinds.Other, row.BlockedKind);
+    }
+
     [Fact]
     public async Task ScanAsync_ARepositoryTheCallerLacksAndTagsItLacks_NamesTheRepositoryFirst()
     {
@@ -1682,6 +1769,45 @@ public class DispatchTests
                 CheckedBy = "runner",
             });
 
+            await Db.SaveChangesAsync();
+        }
+
+        /// <summary>A build verdict on the sha <see cref="AddMergeCheckAsync"/> gives a clean branch.</summary>
+        public async Task AddBuildCheckAsync(EfHatchIssue issue, string verdict)
+        {
+            var remote = "https://example.com/o/r";
+            var (canonical, _) = RemoteIdentity.Canonical(remote);
+            Db.BuildChecks.Add(new EfHatchBuildCheck
+            {
+                IssueId = issue.Id,
+                Remote = remote,
+                Canonical = canonical!,
+                Branch = "aer-1-thing",
+                Sha = new string('b', 40),
+                ShaSince = Now,
+                Verdict = verdict,
+                CheckedAt = Now,
+                Runner = "host:/checkout",
+                CheckedBy = "runner",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task AddContributionAsync(EfHatchIssue issue, string? pullRequestUrl)
+        {
+            Db.Contributions.Add(new EfHatchContribution
+            {
+                IssueId = issue.Id, PullRequestUrl = pullRequestUrl, HeadBranch = "feature/thing",
+                AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        public async Task RunnersWorkContributionsAsync()
+        {
+            (await Db.Projects.SingleAsync(p => p.Id == ProjectId)).RunnersWorkContributions = true;
             await Db.SaveChangesAsync();
         }
 
