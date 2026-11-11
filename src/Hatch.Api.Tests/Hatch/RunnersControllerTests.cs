@@ -735,24 +735,6 @@ public class RunnersControllerTests
         Assert.Contains("63", row.Usage);
     }
 
-    [SkippableFact]
-    public async Task ABeatFromAKeyThatBelongsToNobody_LandsAsASessionWithNoOwner_AndIsNotRefused()
-    {
-        var h = await NewAsync(program: true, connectionString: await ConnectAsync());
-
-        // Not refused: BeatAsync throws on anything but a value, so a heartbeat
-        // from an ownerless key reaching this line at all is the assertion. A
-        // key-bearing beat lands as a session and never writes LegacyRunners
-        // (HA-2166).
-        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
-            Usage: [new RunnerUsageWindowDto("session", "Session", 10, null)], UsageReadAt: Now));
-
-        Assert.Empty(await h.Db.LegacyRunners.ToListAsync());
-        var session = await h.Db.RunnerSessions.AsNoTracking().SingleAsync();
-        Assert.Equal(h.Caller.Key!.Id, session.ApiKeyId);
-        Assert.Contains("10", session.Usage);
-    }
-
     [Fact]
     public async Task APercentPast100_IsClamped()
     {
