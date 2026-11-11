@@ -136,6 +136,51 @@ With no attribute, the media guard governs, so a machine that changes theme
 while the tab is backgrounded is already correct on the next paint with no
 JavaScript involved.
 
+### The palette
+
+A second stored value, under a second key: `hatch.palette`, the `hx1-…` seed
+string the palette engine reads (`@hatch/ui/palette`). It is independent of the
+choice — the choice says *which* of light and dark, the seed says *whose*
+colours — and `hatch.theme` and `applyChoice` mean what they always did.
+
+```
+key            holds                    absent, or unreadable
+-------------  -----------------------  ---------------------------
+hatch.theme    auto | light | dark      auto
+hatch.palette  an hx1- seed             the house palette (tokens.css)
+```
+
+A value that does not decode — malformed, or written by an older engine — reads
+as absent, so a stale seed never half-applies.
+
+`applyPalette(seed)` derives the palette from each of the token file's blocks
+and writes **one generated stylesheet**: a `<style data-theme-palette>` appended
+to `<head>`, after the `<link>` or `<style>` tokens.css arrives in, so it wins on
+order alone. It restates the token file's three blocks with the derived colour
+tokens and nothing else — the light `:root`, the dark palette under
+`prefers-color-scheme` guarded by `:root:not([data-theme='light'])`, and
+`:root[data-theme='dark']` — and both dark blocks take the same derived map,
+so they are identical by construction. `applyPalette(null)` removes the element.
+Auto therefore still flips with the OS in CSS, with no JavaScript.
+
+**Why a stylesheet and not inline style on `<html>`.** An inline `style`
+outranks every selector, so it could hold one value per token and no more: it
+cannot be a light value and a dark one under the media guard or the attribute.
+It would pin the palette to whichever theme was resolved when it was written,
+and break the property above — Auto following the OS with no JavaScript.
+
+**The status bar.** `applyThemeColor` writes the derived `--chrome` when a
+palette is on, so the browser's bar matches the page's bar. Auto with a palette
+is the one case that now writes the `theme-color` override (for the OS
+preference) rather than removing it, because the OS-keyed pair in `index.html`
+is the house chrome; `ThemeProvider` re-applies when `resolved` changes so that
+override follows an OS flip.
+
+Everything that reads the palette is told when it changes: `useTheme()` carries
+`palette` and `setPalette` beside `choice`, and the consumers that read computed
+colours (the Monaco editors, mermaid, the gallery's token values) depend on
+`palette` as well as `resolved`.
+
 ### The mechanism, and why it is in two files
 
 [`theme/themeStore.ts`](../src/Hatch.Web/packages/ui/src/theme/themeStore.ts) is
@@ -148,7 +193,7 @@ The split exists because there are three callers. The others are
 [`standalone/topbar.ts`](../src/Hatch.Web/packages/ui/src/standalone/topbar.ts),
 the bar on pages Hatch did not build with Vite, and
 [`apps/site/src/theme.ts`](../src/Hatch.Web/apps/site/src/theme.ts), which runs
-`applyChoice(readChoice())` on the public site and has no control. Those pages must read and write
+`applyPalette(readPalette())` and `applyChoice(readChoice())` on the public site and has no control. Those pages must read and write
 the *same* stored choice as the apps — a house where the theme you picked in
 one app does not survive the click into Swagger is a house with two themes —
 and importing `ThemeProvider` to get it would drag React onto a static page to
@@ -160,8 +205,9 @@ Three behaviours worth knowing before touching it:
   locked-down context. An unreadable store means `auto`; an unwritable one means
   the choice holds for the tab and is forgotten on reload. Neither is an error
   worth surfacing — refusing to change theme at all is worse.
-- **The attribute is written in `useLayoutEffect`**, not `useEffect`, so a
-  stored `dark` on a light-preference machine never shows a light frame first.
+- **The attribute and the palette are written in one `useLayoutEffect`**, not
+  `useEffect`, so a stored `dark` on a light-preference machine never shows a
+  light frame first, and a stored seed never shows the house palette first.
 - **`useTheme()` throws outside a `<ThemeProvider>`.** A silently-light toggle
   is harder to find than a stack trace, and `<TopBar>` always renders the switch
   — so a provider above it is a requirement, not a nicety.

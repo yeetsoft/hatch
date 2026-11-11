@@ -58,10 +58,10 @@ export function PromptDiff({ defaultPrompt, prompt }: { defaultPrompt: string; p
 
 function MonacoDiff({ monaco, defaultPrompt, prompt }: { monaco: MonacoModule; defaultPrompt: string; prompt: string }) {
   const host = useRef<HTMLDivElement>(null);
-  const { resolved } = useTheme();
+  const { resolved, palette } = useTheme();
 
   // Passive, as in MarkdownEditor: the theme tokens are settled by then.
-  useEffect(() => monaco.applyTheme(resolved), [monaco, resolved]);
+  useEffect(() => monaco.applyTheme(resolved), [monaco, resolved, palette]);
 
   useLayoutEffect(() => {
     const el = host.current;
