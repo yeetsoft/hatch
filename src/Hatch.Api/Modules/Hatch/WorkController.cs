@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners,
+    IOptions<HatchOptions> hatchOptions, RankService ranks, ICallerIdentity caller, Runners runners,
     IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
 {
     private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
@@ -1673,7 +1673,7 @@ public class WorkController(
     /// fills it in.
     /// </summary>
     private string? IssueUrl(string key) =>
-        AppsOptions.NormalizeBaseUrl(apps.Value.PublicBaseUrl) is { } origin
+        HatchOptions.NormalizeBaseUrl(hatchOptions.Value.PublicBaseUrl) is { } origin
             ? $"{origin}/apps/hatch/issues/{key}"
             : null;
 

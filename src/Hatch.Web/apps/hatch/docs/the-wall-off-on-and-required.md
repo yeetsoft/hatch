@@ -166,9 +166,6 @@ ones below; to set one, add it under `environment:` for `api` in a
   - `/api/hatch-revision`, which commit this replica runs. The caller who
     most needs it is a stale tab about to be refused, so it is answered to
     everyone.
-  - `/api/app-version`, the content-hashed asset filenames of each app, which
-    the kiosk shell fetches with no cookie to tell a dashboard from the
-    proxy's error page.
   - `/api/ui-logs`, `/api/vm-console-logs`, `/api/kiosk/provisioning-info`
     and `/api/sun-events`, which callers with no cookie reach.
   - The media library's configured `RequestPath`, `/media` unless changed
@@ -209,14 +206,14 @@ Hatch.
   `crossorigin="use-credentials"`: a fetch with no cookie gets a 401, and an
   app whose manifest 401s never offers to install (`docs/hatch.md:160-172`).
 - **Android's asset links.** `HATCH_ANDROID_PACKAGE` and
-  `HATCH_ANDROID_CERT_FINGERPRINT` (`Apps__AssetLinks__0__PackageName` and
-  `Apps__AssetLinks__0__Sha256CertFingerprints__0`, `compose.yaml:111-112`)
+  `HATCH_ANDROID_CERT_FINGERPRINT` (`Hatch__AssetLinks__0__PackageName` and
+  `Hatch__AssetLinks__0__Sha256CertFingerprints__0`, `compose.yaml:111-112`)
   are served at `/.well-known/assetlinks.json`
   (`Modules/AssetLinksController.cs:25-44`). It is open with the wall up. It
   answers `404` while both are unset. A malformed value stops the API at
   start (`Modules/AssetLinksValidation.cs`). A second phone is
-  `Apps__AssetLinks__1__PackageName` and
-  `Apps__AssetLinks__1__Sha256CertFingerprints__0` (`compose.yaml:105-110`).
+  `Hatch__AssetLinks__1__PackageName` and
+  `Hatch__AssetLinks__1__Sha256CertFingerprints__0` (`compose.yaml:105-110`).
   [Hatch on your
   phone](hatch-on-your-phone#letting-it-own-links-on-android) shows how to
   read the two values off the phone.

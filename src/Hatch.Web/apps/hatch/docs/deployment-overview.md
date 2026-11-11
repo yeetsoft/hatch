@@ -119,8 +119,8 @@ private, `docker login ghcr.io` first, with a token that can read packages.
 [Environment variables](environment-variables) has every one. The operator's
 eight: `HATCH_PORT`; `HATCH_AUTH` → `Auth__Enabled`; the three
 `HATCH_GOOGLE_*` variables → `Auth__Google__*`; `HATCH_PUBLIC_URL` →
-`Apps__PublicBaseUrl`; and the two `HATCH_ANDROID_*` variables →
-`Apps__AssetLinks__0__…`. The runner's own variables are on
+`Hatch__PublicBaseUrl`; and the two `HATCH_ANDROID_*` variables →
+`Hatch__AssetLinks__0__…`. The runner's own variables are on
 [the container runner](the-container-runner#the-variables). `api` passes the
 shell's own `USERNAME`/`USER` as `Auth__LocalPerson__Name`, so there is
 nothing to set for that one.
@@ -163,11 +163,10 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `Auth__Google__ClientId` | empty | The Google sign-in client's id. |
 | `Auth__Google__ClientSecret` | empty | **A secret.** The Google sign-in client's secret. |
 | `Auth__Google__RedirectUri` | empty | Where Google sends a person back to; set it behind a TLS proxy, where the scheme and host the API sees are not the ones Google has registered. |
-| **`Apps__*`, bound by `Modules/AppsOptions.cs`** | | |
-| `Apps__PublicBaseUrl` | empty | The address a browser opens this Hatch at, printed into a QR label or a pull request's link back to its ticket. |
-| `Apps__AssetLinks__0__PackageName` | empty | One phone's installed app, trusted to open this install's links without the user granting it by hand. |
-| `Apps__AssetLinks__0__Sha256CertFingerprints__0` | empty | That app's signing certificate fingerprint. |
 | **`Hatch__*`, bound by `Modules/Hatch/HatchOptions.cs`** | | |
+| `Hatch__PublicBaseUrl` | empty | The address a browser opens this Hatch at, printed into a pull request's link back to its ticket. |
+| `Hatch__AssetLinks__0__PackageName` | empty | One phone's installed app, trusted to open this install's links without the user granting it by hand. |
+| `Hatch__AssetLinks__0__Sha256CertFingerprints__0` | empty | That app's signing certificate fingerprint. |
 | `Hatch__ClaimTtlSeconds` | `300` | How long a claim survives without a heartbeat. |
 | `Hatch__RunnerGoneAfterSeconds` | `90` | How long a runner may go without a heartbeat before its row reads *gone*. |
 | `Hatch__StallLapseMinutes` | `5` | How long a claim may go untouched before it is considered quiet. |
@@ -187,12 +186,12 @@ named anywhere here are `localhost`, `db` and compose's own service names.
 | `DOTNET_ENVIRONMENT` | | Any value but `Development` writes the log as JSON lines instead of the human-formatted default. |
 
 `Auth__SignInPath` cannot usefully move: the wall exempts the literal
-`/apps/auth` (`Services/Auth/AuthGate.cs:180`), so pointing it elsewhere opens
+`/apps/auth` (`Services/Auth/AuthGate.cs:164`), so pointing it elsewhere opens
 a redirect loop. The wall's own off/on/required states are covered on
 [the wall, off, on and required](the-wall-off-on-and-required).
 
-A malformed `Apps__AssetLinks` entry stops the API at start
-(`Modules/AssetLinksValidation.cs`), unlike `Apps__PublicBaseUrl`, which
+A malformed `Hatch__AssetLinks` entry stops the API at start
+(`Modules/AssetLinksValidation.cs`), unlike `Hatch__PublicBaseUrl`, which
 degrades quietly.
 
 The migration creates `hatch`'s schema on every start; see

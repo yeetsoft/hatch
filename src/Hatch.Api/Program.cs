@@ -4,6 +4,11 @@ using Hatch.Api.Ef;
 using Hatch.Api.Jobs;
 using Hatch.Api.Models.Environment;
 using Hatch.Api.Modules;
+using Hatch.Api.Modules.Gather;
+using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Modules.Photos;
+using Hatch.Api.Modules.Quill;
+using Hatch.Api.Modules.Storage;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
 using Hatch.Api.Services.Calendar;
@@ -95,10 +100,14 @@ builder.Services.AddPooledDbContextFactory<AppDbContext>(o =>
 builder.Services.AddScoped<AppDbContext>(sp =>
     sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
 
-// Family app modules - separate schemas in the same database, each with its own
-// DbContext and migration history. The registry lives in Modules/ so adding an
-// app doesn't touch this file at all (see Modules/README.md).
-builder.Services.AddAppModules(builder.Configuration);
+// Modules - separate schemas in the same database, each with its own DbContext
+// and migration history (see Modules/README.md). The first four are the family
+// apps HA-2253 deletes; Hatch is the one that stays.
+builder.Services.AddStorageModule(builder.Configuration);
+builder.Services.AddGatherModule(builder.Configuration);
+builder.Services.AddPhotosModule(builder.Configuration);
+builder.Services.AddQuillModule(builder.Configuration);
+builder.Services.AddHatchModule(builder.Configuration);
 
 // Quartz
 builder.Services.AddQuartz(q =>
@@ -153,15 +162,10 @@ void AddHaClient<TClient>() where TClient : BaseClient =>
 
 // Services
 builder.Services.AddTransient<IEnvironmentService, EnvironmentService>();
-// Singleton so the parsed index.html is read once per replica rather than once
-// per poll - every kiosk tablet hits this on a timer for as long as it's up.
-builder.Services.AddSingleton<IAppVersionService, AppVersionService>();
 
 // The build's own git identity, and what Flux has reconciled from it
 // (docs/plans/version.md). Singletons: the first is immutable for the life of
 // the process, the second holds one HttpClient and one short-lived cache.
-// Registered next to IAppVersionService deliberately - the two answer
-// different questions and the comment on each says which.
 builder.Services.AddSingleton<IHatchRevision, HatchRevision>();
 builder.Services.AddSingleton<IFluxRevisionReader, FluxRevisionReader>();
 

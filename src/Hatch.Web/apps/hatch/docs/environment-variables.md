@@ -13,7 +13,7 @@ Nothing here is secret-bearing by default: every default below is empty, a
 public value or a plain setting. The few variables that carry a secret are
 named as such, and the value belongs in your shell or a `.env` beside
 `compose.yaml`, never in a file you commit. The configuration keys these
-variables land on inside the API (`Auth__*`, `Apps__*`, `Hatch__*` and
+variables land on inside the API (`Auth__*`, `Hatch__*` and
 `ConnectionStrings__*`) belong to [Deployment overview](deployment-overview),
 not to this page.
 
@@ -35,7 +35,7 @@ saying so; those are read from the environment alone.
 | `HATCH_GOOGLE_CLIENT_ID` | `compose.yaml`, for `migrate` and `api` | empty | The Google sign-in client's id, for a Hatch with its wall up. |
 | `HATCH_GOOGLE_CLIENT_SECRET` | `compose.yaml`, for `migrate` and `api` | empty | **A secret.** The Google sign-in client's secret. |
 | `HATCH_GOOGLE_REDIRECT_URI` | `compose.yaml`, for `migrate` and `api` | empty: derived from the request | Where Google sends a person back to. Set it behind a TLS proxy, where the scheme and host the API sees are not the ones Google has registered. |
-| `HATCH_PUBLIC_URL` | `compose.yaml`, for `api` (as `Apps__PublicBaseUrl`) | empty: the address the runner itself reaches Hatch at | The address a browser opens this Hatch at, so a pull request's link back to its ticket is one a reviewer can open. |
+| `HATCH_PUBLIC_URL` | `compose.yaml`, for `api` (as `Hatch__PublicBaseUrl`) | empty: the address the runner itself reaches Hatch at | The address a browser opens this Hatch at, so a pull request's link back to its ticket is one a reviewer can open. |
 | `HATCH_ANDROID_PACKAGE` | `compose.yaml`, for `api` | empty: no statements are served | The package name of one phone's installed app, read off the phone ([Hatch on your phone](hatch-on-your-phone)). |
 | `HATCH_ANDROID_CERT_FINGERPRINT` | `compose.yaml`, for `api` | empty: no statements are served | The signing certificate's fingerprint for that same app. |
 | `HATCH_BACKUP_DIR` | `compose.yaml`, for `api` (as `Hatch__BackupPath`) | empty: no backups | A folder on the host Hatch writes its nightly database copies into. Written with forward slashes, even on Windows ([Backup, restore and replication](backup-restore-and-replication)). |
