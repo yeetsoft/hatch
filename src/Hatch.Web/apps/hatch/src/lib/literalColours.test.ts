@@ -70,6 +70,11 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     literal: '#7a5cff',
     reason: 'a sample project colour - operator data',
   },
+  {
+    file: 'packages/ui/src/theme/palette/oklch.ts',
+    literal: 'rgba(',
+    reason: 'formatRgba builds the string from its arguments - a pattern, not a literal colour',
+  },
 ];
 
 /** Replaces a match with the same number of newlines it contained, so every
