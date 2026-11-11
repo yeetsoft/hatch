@@ -11,7 +11,9 @@ import {
 } from '../api/client';
 import { useRunnersOutlet } from './RunnersLayout';
 import { RunnerBoundsForm } from './RunnerBoundsForm';
+import { RunnerKeyActions } from './RunnerKeyActions';
 import { RunnerSettingsForm } from './RunnerSettingsForm';
+import { SecretPanel } from './SecretPanel';
 import {
   isRetired,
   lastUsedLabel,
@@ -22,6 +24,7 @@ import {
 } from '../lib/runners';
 import { saveRunner } from '../lib/saveRunner';
 import { sessionActions } from '../lib/sessionActions';
+import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
 import { RecentSessions } from './RecentSessions';
 import { SessionBlock } from './SessionBlock';
@@ -182,12 +185,27 @@ function RunnerConfigCards({
  * docs/runners-page-design.md. Identity facts draw as muted text, never
  * inputs; `rotatedAt`/`revokedAt` draw only when set.
  *
- * `actions` is a slot for the owner select, Rotate and Revoke buttons a later
- * task fills - nothing passes it yet. `refusal` draws inside this Card, never
- * at the page's top: a failed save belongs to the section whose control
- * failed, per "Identity and key".
+ * `actions` is a slot for the owner select, Rotate and Revoke buttons -
+ * `RunnerKeyActions`, for an admin on a runner that is neither revoked nor
+ * retired. `refusal` draws inside this Card, never at the page's top: a
+ * failed save belongs to the section whose control failed, per "Identity
+ * and key".
+ *
+ * `ownerEditable` hides the "for X / no owner" text line, since
+ * `RunnerKeyActions`'s own owner select already says who it is for - an
+ * Owner or a Viewer still reads it as text.
  */
-export function IdentityCard({ runner, actions, refusal }: { runner: Runner; actions?: ReactNode; refusal?: string | null }) {
+export function IdentityCard({
+  runner,
+  actions,
+  refusal,
+  ownerEditable,
+}: {
+  runner: Runner;
+  actions?: ReactNode;
+  refusal?: string | null;
+  ownerEditable?: boolean;
+}) {
   return (
     <Card>
       <h2 className="hatch-section-title">Identity and key</h2>
@@ -201,7 +219,7 @@ export function IdentityCard({ runner, actions, refusal }: { runner: Runner; act
       <Text tone="muted">Last used {lastUsedLabel(runner.lastUsedAt ?? null)}</Text>
       {runner.rotatedAt != null && <Text tone="muted">Rotated {new Date(runner.rotatedAt).toLocaleString()}</Text>}
       {runner.revokedAt != null && <Text tone="muted">Revoked {new Date(runner.revokedAt).toLocaleString()}</Text>}
-      <Text tone="muted">{runner.for ? `for ${runner.for}` : 'no owner'}</Text>
+      {!ownerEditable && <Text tone="muted">{runner.for ? `for ${runner.for}` : 'no owner'}</Text>}
       {refusal && <p className="text-danger">{refusal}</p>}
       {actions}
     </Card>
@@ -214,7 +232,8 @@ export function IdentityCard({ runner, actions, refusal }: { runner: Runner; act
     layout". */
 export function RunnerDetail() {
   const { name } = useParams();
-  const { runners, reload } = useRunnersOutlet();
+  const { runners, reload, secret, setSecret } = useRunnersOutlet();
+  const { isAdmin } = useMe();
   const phone = usePhone();
   const now = new Date();
 
@@ -244,12 +263,20 @@ export function RunnerDetail() {
   // checkout's source (make build-hatch there). Mirrors RunnersPage.tsx.
   const behind = runner.boardDrift === 'Behind';
   const rebuild = runner.sourceDrift === 'Behind';
-  const actions = (behind || rebuild) && (
+  const badges = (behind || rebuild) && (
     <>
       {behind && <Badge tone="danger">Behind</Badge>}
       {rebuild && <Badge tone="danger">Rebuild</Badge>}
     </>
   );
+
+  // Admin, on a runner that is neither revoked nor retired - "Who sees what":
+  // only that variant creates, picks an owner, rotates or revokes.
+  const canManageKey = isAdmin && runnerActionable(runner) && !isRetired(runner);
+  const keyActions = canManageKey && (
+    <RunnerKeyActions runner={runner} onSecret={setSecret} reload={reload} />
+  );
+  const secretPanel = secret?.name === runner.name && <SecretPanel secret={secret} onDone={() => setSecret(null)} />;
 
   if (phone) {
     return (
@@ -257,8 +284,9 @@ export function RunnerDetail() {
         <Button as={Link} to="/runners">
           <span aria-hidden="true">‹</span> Runners
         </Button>
-        <PageHeader title={name} actions={actions} level={1} />
-        <IdentityCard runner={runner} />
+        <PageHeader title={name} actions={badges} level={1} />
+        {secretPanel}
+        <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
         <RunnerConfigCards runner={runner} live={live} reload={reload} />
         <SessionsCards runner={runner} live={live} now={now} reload={reload} />
       </>
@@ -267,8 +295,9 @@ export function RunnerDetail() {
 
   return (
     <>
-      <PageHeader title={name} actions={actions} level={2} />
-      <IdentityCard runner={runner} />
+      <PageHeader title={name} actions={badges} level={2} />
+      {secretPanel}
+      <IdentityCard runner={runner} actions={keyActions} ownerEditable={canManageKey} />
       <RunnerConfigCards runner={runner} live={live} reload={reload} />
       <SessionsCards runner={runner} live={live} now={now} reload={reload} />
     </>

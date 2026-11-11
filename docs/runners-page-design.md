@@ -434,9 +434,9 @@ new secret once, as create does.
 ### Revoke
 
 `Modal` "Revoke {name}?". Body: "Anything using this key is refused from the
-next call, and its sessions end. The runner, its tags, history and attribution
-stay, marked revoked, so the audit trail can still name it. To replace a leaked
-secret and keep the runner working, rotate instead."
+next call. The runner, its tags, history and attribution stay, marked revoked,
+so the audit trail can still name it. To replace a leaked secret and keep the
+runner working, rotate instead."
 
 - **The footer is `Leave it` and `Revoke`.** `Leave it` is secondary and the
   first button in the footer, so it is the first Tab stop: the modal focuses its
@@ -447,9 +447,9 @@ secret and keep the runner working, rotate instead."
   body's last sentence, which points at rotate, is the guard against revoking
   when a leak was the reason.
 
-The call is `POST /api/hatch/runners/{name}/revoke` (HA-1936). That revoking
-ends a runner's live sessions is taken from this design, not from either brief;
-if the revoke work lands differently, the body is the sentence to change.
+The call is `POST /api/hatch/runners/{name}/revoke` (HA-1936), which stamps
+`RevokedAt` and ends no session of its own - the body above says only what is
+actually true of it.
 
 ## Components
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { RunnersLayout, RunnersIndex } from './RunnersLayout';
@@ -84,10 +84,16 @@ const live = (name: string, over: Partial<Runner> = {}) => runner({ name, sessio
 
 const QUILL = live('Quill');
 
-const state = vi.hoisted(() => ({ read: { runners: null as Runner[] | null, error: null as string | null }, phone: false }));
+const state = vi.hoisted(() => ({
+  read: { runners: null as Runner[] | null, error: null as string | null },
+  phone: false,
+  isAdmin: true,
+}));
 vi.mock('../lib/useRunners', () => ({ useRunners: () => state.read }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
-vi.mock('../lib/useMe', () => ({ useMe: () => ({ me: { kind: 'person', name: 'a', role: 'admin' }, isAdmin: true }) }));
+vi.mock('../lib/useMe', () => ({
+  useMe: () => ({ me: { kind: 'person', name: 'a', role: state.isAdmin ? 'admin' : 'user' }, isAdmin: state.isAdmin }),
+}));
 
 // Copied from pages/DocsPage.test.tsx's own helper, nested the same way App.tsx nests the runners routes.
 function renderAt(path: string, phone = false): string {
@@ -105,6 +111,10 @@ function renderAt(path: string, phone = false): string {
 }
 
 describe('RunnersLayout', () => {
+  beforeEach(() => {
+    state.isAdmin = true;
+  });
+
   it('desk: /runners draws the list beside the empty detail', () => {
     state.read = { runners: [QUILL], error: null };
     const html = renderAt('/runners');
@@ -169,5 +179,32 @@ describe('RunnersLayout', () => {
     state.read = { runners: [QUILL], error: 'the runners could not be read' };
     const html = renderAt('/runners');
     expect(html).toMatch(/text-danger[^>]*>the runners could not be read/);
+  });
+});
+
+describe('RunnersLayout: Create runner', () => {
+  beforeEach(() => {
+    state.isAdmin = true;
+  });
+
+  it('an admin sees Create runner in the desk list header', () => {
+    state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners')).toContain('>Create runner</button>');
+  });
+
+  it('an admin sees Create runner in the phone list header', () => {
+    state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners', true)).toContain('>Create runner</button>');
+  });
+
+  it('an admin does not see Create runner at the phone detail route', () => {
+    state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners/Quill', true)).not.toContain('Create runner');
+  });
+
+  it('a non-admin sees no Create runner button', () => {
+    state.isAdmin = false;
+    state.read = { runners: [QUILL], error: null };
+    expect(renderAt('/runners')).not.toContain('Create runner');
   });
 });

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 import { RunnersLayout, RunnersIndex } from './RunnersLayout';
 import { RunnerDetail, IdentityCard } from './RunnerDetail';
 import type { Runner, RunnerSession } from '../types';
@@ -86,10 +86,15 @@ const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
   ...over,
 });
 
-const state = vi.hoisted(() => ({ read: { runners: null as Runner[] | null, error: null as string | null }, phone: false }));
+const state = vi.hoisted(() => ({
+  read: { runners: null as Runner[] | null, error: null as string | null },
+  phone: false,
+  me: { kind: 'local' as 'local' | 'person' | 'none' | 'key', name: 'a', role: 'admin' as 'admin' | 'user' | null },
+  isAdmin: true,
+}));
 vi.mock('../lib/useRunners', () => ({ useRunners: () => state.read }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
-vi.mock('../lib/useMe', () => ({ useMe: () => ({ me: { kind: 'person', name: 'a', role: 'admin' }, isAdmin: true }) }));
+vi.mock('../lib/useMe', () => ({ useMe: () => ({ me: state.me, isAdmin: state.isAdmin }) }));
 
 // Nested the same way App.tsx nests the runners routes - see RunnersLayout.test.tsx.
 function renderAt(path: string, phone = false): string {
@@ -105,6 +110,11 @@ function renderAt(path: string, phone = false): string {
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  state.isAdmin = true;
+  state.me = { kind: 'person', name: 'a', role: 'admin' };
+});
 
 describe('RunnerDetail', () => {
   it('draws the identity facts: heading, name, prefix, created, last used', () => {
@@ -151,7 +161,9 @@ describe('RunnerDetail', () => {
     expect(html).not.toContain('Rebuild');
   });
 
-  it('draws the owner as text: for {name}, or no owner', () => {
+  it('draws the owner as text for an owner or a viewer: for {name}, or no owner', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'person', name: 'a', role: 'user' };
     state.read = { runners: [runner({ name: 'Quill', for: 'Ada' })], error: null };
     expect(renderAt('/runners/Quill')).toContain('for Ada');
 
@@ -317,5 +329,78 @@ describe('IdentityCard', () => {
   it('draws a refusal inside the card', () => {
     const html = renderToStaticMarkup(<IdentityCard runner={runner({ name: 'Quill' })} refusal="could not save" />);
     expect(html).toMatch(/text-danger[^>]*>could not save/);
+  });
+});
+
+describe('RunnerDetail: the owner select, Rotate and Revoke', () => {
+  it('an admin sees them on an actionable runner', () => {
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).toContain('aria-label="Owner of Quill"');
+    expect(html).toContain('>Rotate key</button>');
+    expect(html).toContain('>Revoke</button>');
+  });
+
+  it('a non-admin sees none of them', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'person', name: 'a', role: 'user' };
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).not.toContain('aria-label="Owner of Quill"');
+    expect(html).not.toContain('Rotate key');
+    expect(html).not.toContain('>Revoke<');
+  });
+
+  it('wall off sees none of them', () => {
+    state.isAdmin = false;
+    state.me = { kind: 'local', name: 'a', role: null };
+    state.read = { runners: [runner({ name: 'Quill' })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).not.toContain('aria-label="Owner of Quill"');
+    expect(html).not.toContain('Rotate key');
+    expect(html).not.toContain('>Revoke<');
+  });
+
+  it('a revoked runner has none even for an admin', () => {
+    state.read = { runners: [runner({ name: 'Quill', revokedAt: at(-1000) })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).not.toContain('aria-label="Owner of Quill"');
+    expect(html).not.toContain('Rotate key');
+    expect(html).not.toContain('>Revoke<');
+    // Read-only, as an Owner or a Viewer would see it.
+    expect(html).toContain('no owner');
+  });
+});
+
+describe('RunnerDetail: the secret panel', () => {
+  // A harness that supplies the outlet context directly, since the secret
+  // lives in RunnersLayout's own useState and this proves RunnerDetail's own
+  // rule: drawn only when the held secret names the runner on screen.
+  function renderWithSecret(path: string, secret: { name: string; secret: string; rotated: boolean } | null) {
+    const outlet = { runners: [runner({ name: 'Quill' }), runner({ name: 'Other' })], secret, setSecret: () => {}, reload: async () => {} };
+    return renderToStaticMarkup(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/runners" element={<Outlet context={outlet} />}>
+            <Route path=":name" element={<RunnerDetail />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  it('draws on the matching runner', () => {
+    const html = renderWithSecret('/runners/Quill', { name: 'Quill', secret: 'hatch_ak_abc', rotated: false });
+    expect(html).toContain('New secret for Quill');
+  });
+
+  it('draws nothing on a different runner', () => {
+    const html = renderWithSecret('/runners/Other', { name: 'Quill', secret: 'hatch_ak_abc', rotated: false });
+    expect(html).not.toContain('New secret for');
+  });
+
+  it('draws nothing with no secret held', () => {
+    const html = renderWithSecret('/runners/Quill', null);
+    expect(html).not.toContain('New secret for');
   });
 });
