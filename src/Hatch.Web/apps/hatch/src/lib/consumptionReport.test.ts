@@ -9,15 +9,19 @@ import {
   capWords,
   emptiness,
   humanDuration,
+  readSearch,
+  resolveMeasure,
   resolveSort,
   resolveStatusId,
   resolveType,
   rowCost,
   totalsLine,
+  withMeasure,
   withSort,
   withStatusId,
   withType,
 } from './consumptionReport';
+import { MEASURE } from './leaderboard';
 import { UNPRICED_TITLE } from './workLog';
 import type { ConsumptionReport, WorkLogTotals } from '../types';
 
@@ -46,6 +50,15 @@ const report = (over: Partial<ConsumptionReport> = {}): ConsumptionReport => ({
   firstSessionAt: '2026-08-19T10:00:00.000Z',
   lastSessionAt: '2026-10-07T10:00:00.000Z',
   rows: [],
+  history: {
+    from: '2026-08-01T00:00:00.000Z',
+    to: '2026-11-01T00:00:00.000Z',
+    bucket: 'day',
+    totals: totals(),
+    firstSessionAt: '2026-08-19T10:00:00.000Z',
+    lastSessionAt: '2026-10-07T10:00:00.000Z',
+    buckets: [],
+  },
   ...over,
 });
 
@@ -90,6 +103,51 @@ describe('sort', () => {
   it('writes a non-default sort and falls back on a typo', () => {
     expect(withSort(query(''), 'cost').toString()).toBe(`${SORT}=cost`);
     expect(resolveSort(query('sort=sessions'))).toBe('activity');
+  });
+});
+
+describe('measure', () => {
+  it('defaults to tokens and writes nothing at the default', () => {
+    expect(resolveMeasure(query(''))).toBe('tokens');
+    expect(withMeasure(query('measure=cost&range=3m'), 'tokens').toString()).toBe('range=3m');
+  });
+
+  it('reads cost, and takes junk and a case slip as the default', () => {
+    expect(resolveMeasure(query('measure=cost'))).toBe('cost');
+    expect(resolveMeasure(query('measure=banana'))).toBe('tokens');
+    expect(resolveMeasure(query('measure=COST'))).toBe('tokens');
+  });
+
+  it('writes a non-default measure and keeps the rest of the address', () => {
+    expect(withMeasure(query('type=all'), 'cost').toString()).toBe(`type=all&${MEASURE}=cost`);
+  });
+
+  it('never mutates its input', () => {
+    const params = query('measure=cost');
+    withMeasure(params, 'tokens');
+    expect(params.toString()).toBe('measure=cost');
+  });
+});
+
+describe('readSearch', () => {
+  it('is the same before and after the measure moves, so the report is not refetched', () => {
+    const before = query('type=all&range=3m');
+
+    expect(readSearch(withMeasure(before, 'cost'))).toBe(readSearch(before));
+    expect(readSearch(withMeasure(before, 'cost'))).toBe('type=all&range=3m');
+  });
+
+  it('changes when anything the read depends on does', () => {
+    const before = query('range=3m');
+
+    expect(readSearch(withType(before, 'task'))).not.toBe(readSearch(before));
+    expect(readSearch(withSort(before, 'cost'))).not.toBe(readSearch(before));
+  });
+
+  it('does not mutate its input', () => {
+    const params = query('measure=cost');
+    readSearch(params);
+    expect(params.toString()).toBe('measure=cost');
   });
 });
 

@@ -2361,6 +2361,10 @@ export interface ConsumptionReport {
   firstSessionAt: string | null;
   lastSessionAt: string | null;
   rows: ConsumptionRow[];
+  /** The same filter over the same window, in equal buckets - snapped outward
+      onto the bucket grid, so the graph labels itself from here and not from
+      `from` and `to`. */
+  history: WorkLogHistory;
 }
 
 /** An issue's work log. Mirrors WorkLogDto.
