@@ -400,6 +400,12 @@ describe('getActivityReport', () => {
     expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).not.toContain('window');
     expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, window: 3, gap: 30, lead: 15 })).toContain('&window=3');
   });
+
+  it('sends includeKeys only when true', async () => {
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: true, gap: 30, lead: 15 })).toContain('&includeKeys=true');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, includeKeys: false, gap: 30, lead: 15 })).not.toContain('includeKeys');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).not.toContain('includeKeys');
+  });
 });
 
 describe('getActivity', () => {

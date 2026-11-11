@@ -181,7 +181,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
     /// </summary>
     private async Task OneProjectDrawsNoControlAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
     {
-        await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/");
+        await harness.OpenAsync(deadline, baseUrl, "/");
         await harness.WaitForTopBarAsync(deadline);
         await harness.WaitForFirstColumnAsync(deadline);
 

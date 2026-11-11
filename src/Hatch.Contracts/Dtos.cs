@@ -1353,8 +1353,13 @@ public record QuestionDto(
 public record IssueEventDto(long Id, string Actor, string Kind, JsonElement? Payload, DateTimeOffset At);
 
 /// <summary>One row of <see cref="ActivityPageDto"/> - the same shape as <see cref="IssueEventDto"/>, naming the issue it belongs to.</summary>
+/// <param name="ViaKey">
+/// On the activity report with <c>includeKeys</c> only: the name of the person's own key this
+/// event was typed under, so the row reads as the person's but says which key wrote it. Absent otherwise.
+/// </param>
 public record ActivityEventDto(
-    long Id, string IssueKey, string Actor, string Kind, JsonElement? Payload, DateTimeOffset At);
+    long Id, string IssueKey, string Actor, string Kind, JsonElement? Payload, DateTimeOffset At,
+    string? ViaKey = null);
 
 /// <summary>
 /// A page of the event trail across every issue, newest first.

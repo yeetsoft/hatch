@@ -130,14 +130,16 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// <c>activity</c> draws no series and no sessions, so the route's own defaults do.
     /// </summary>
     public Task<ActivityReportDto?> ActivityAsync(
-        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, CancellationToken ct) =>
-        Client.GetAsync<ActivityReportDto>(ActivityPath(actor, from, to, projectId), ct);
+        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, bool includeKeys, CancellationToken ct) =>
+        Client.GetAsync<ActivityReportDto>(ActivityPath(actor, from, to, projectId, includeKeys), ct);
 
     /// <summary>The query string <see cref="ActivityAsync"/> sends - named out so a raw <c>--json</c> read can send the same one.</summary>
-    public static string ActivityPath(string actor, DateTimeOffset from, DateTimeOffset to, int? projectId)
+    public static string ActivityPath(
+        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, bool includeKeys = false)
     {
         var projectQ = projectId is { } id ? $"&projectId={id}" : "";
-        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}";
+        var keysQ = includeKeys ? "&includeKeys=true" : "";
+        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}{keysQ}";
     }
 
     private static string Instant(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);

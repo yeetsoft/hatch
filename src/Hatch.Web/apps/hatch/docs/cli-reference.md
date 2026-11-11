@@ -487,7 +487,7 @@ Reports.
 ### activity
 
 ```
-hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]
+hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]
 ```
 
 One actor's rundown, as markdown, for pasting into a check-in somewhere else:
@@ -506,6 +506,10 @@ sessions.
 - `--before <instant>` moves the window back to end at that instant, such as
   `2026-09-12T17:00:00Z`; one that is not an instant is refused. Now by default.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
+- `--include-keys` also counts what a hand typed under the keys the actor owns,
+  when the actor is a person. It is a heuristic: an event under the key counts
+  unless a work-log session of that issue spans it or the key holds an unreleased
+  claim on it, in which case it is taken as the loop's.
 - `--json` prints the endpoint's own answer and nothing else.
 
 ### runners

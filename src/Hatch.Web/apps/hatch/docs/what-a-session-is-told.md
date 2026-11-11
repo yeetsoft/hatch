@@ -304,7 +304,7 @@ the last `release-note` block in the session's output wins, the same rule
 the work log follows. It is written under the claim - only while
 the session's lease on the ticket is still live - and before the work log, so
 a failure further down the increment cannot lose it. Writing none is fine:
-the [changelog](/apps/hatch/reports/changelog) then falls back to showing the
+the [changelog](/reports/changelog) then falls back to showing the
 ticket's title, and either way a person can edit or correct the note from the
 issue page.
 
