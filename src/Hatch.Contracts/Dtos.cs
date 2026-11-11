@@ -3567,6 +3567,11 @@ public record ConsumptionRowDto(
 /// <param name="Issues">One per issue touched, over the whole range, latest activity first.</param>
 /// <param name="Events">The newest events, newest first, at most the activity feed's own cap.</param>
 /// <param name="Truncated">Whether more events existed than <paramref name="Events"/> lists.</param>
+/// <param name="Bucket">The size the server chose, <c>hour</c> or <c>day</c> - see <c>WorkLogRollup.ChooseBucketSize</c>.</param>
+/// <param name="OffsetMinutes">Minutes east of UTC, as given - aligns a daily bucket to the reader's own midnight.</param>
+/// <param name="Series">One point per bucket, oldest first; an empty bucket is a zero, never absent.</param>
+/// <param name="Sessions">The trail bracketed into working sessions, newest <c>from</c> first.</param>
+/// <param name="Estimate">The totals <paramref name="Sessions"/> add up to, beside the parameters they were computed with.</param>
 public record ActivityReportDto(
     string Actor,
     DateTimeOffset From,
@@ -3575,7 +3580,12 @@ public record ActivityReportDto(
     IReadOnlyList<ActivityKindCountDto> Kinds,
     IReadOnlyList<ActivityIssueDto> Issues,
     IReadOnlyList<ActivityEventDto> Events,
-    bool Truncated);
+    bool Truncated,
+    string Bucket,
+    int OffsetMinutes,
+    IReadOnlyList<ActivitySeriesPointDto> Series,
+    IReadOnlyList<ActivitySessionDto> Sessions,
+    ActivityEstimateDto Estimate);
 
 public record ActivityKindCountDto(string Kind, int Count);
 
@@ -3586,6 +3596,28 @@ public record ActivityIssueDto(
     DateTimeOffset Last,
     int Count,
     IReadOnlyList<ActivityKindCountDto> Kinds);
+
+/// <summary>One bucket of the rate of work over time - see <c>ActivityReport.Fold</c>.</summary>
+/// <param name="Events">Every event in this bucket.</param>
+/// <param name="Hours">The estimated hours of every session that <em>starts</em> in this bucket - a session spanning a bucket edge is not split.</param>
+/// <param name="RollingEvents">The trailing mean of <paramref name="Events"/> over the window, in buckets - the first buckets of the series average over what exists.</param>
+/// <param name="RollingHours">The trailing mean of <paramref name="Hours"/>, read the same way.</param>
+public record ActivitySeriesPointDto(DateTimeOffset At, int Events, double Hours, double RollingEvents, double RollingHours);
+
+/// <summary>
+/// A maximal run of the actor's events with no gap over <c>gap</c> minutes
+/// between two consecutive ones.
+/// </summary>
+/// <param name="IssueKeys">Every issue touched during the session, distinct, first-seen order.</param>
+/// <param name="EstimatedMinutes">
+/// <c>(to - from)</c> plus the lead - a one-event session has <c>to == from</c>
+/// and is worth the lead alone.
+/// </param>
+public record ActivitySessionDto(
+    DateTimeOffset From, DateTimeOffset To, int Events, IReadOnlyList<string> IssueKeys, double EstimatedMinutes);
+
+/// <summary>The totals <c>sessions</c> add up to, beside the parameters they were computed with - so a page can state the rule in one sentence.</summary>
+public record ActivityEstimateDto(int Sessions, double Minutes, int GapMinutes, int LeadMinutes, int WindowDays);
 
 // ---- Runners ----
 

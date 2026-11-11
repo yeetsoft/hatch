@@ -95,7 +95,7 @@ public class ReportsControllerActivityTests
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetActivityReport(actor, null, null, null, default);
+        var result = await h.Reports.GetActivityReport(actor, null, null, null, ct: default);
 
         Assert.Equal("an actor is required", Refusal(result));
     }
@@ -107,7 +107,7 @@ public class ReportsControllerActivityTests
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetActivityReport("ann", from, to, null, default);
+        var result = await h.Reports.GetActivityReport("ann", from, to, null, ct: default);
 
         Assert.Equal(RangeBounds.NotAnInstant(from ?? to), Refusal(result));
     }
@@ -118,7 +118,7 @@ public class ReportsControllerActivityTests
         var h = await NewAsync();
 
         var result = await h.Reports.GetActivityReport(
-            "ann", Now.ToString("o"), Now.AddDays(-1).ToString("o"), null, default);
+            "ann", Now.ToString("o"), Now.AddDays(-1).ToString("o"), null, ct: default);
 
         Assert.Equal("a range ends before it begins", Refusal(result));
     }
@@ -128,9 +128,70 @@ public class ReportsControllerActivityTests
     {
         var h = await NewAsync();
 
-        var result = await h.Reports.GetActivityReport("ann", null, null, [h.ProjectId, 9999], default);
+        var result = await h.Reports.GetActivityReport("ann", null, null, [h.ProjectId, 9999], ct: default);
 
         Assert.Equal("there is no project 9999", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData(-1441)]
+    [InlineData(1441)]
+    public async Task AnOffsetOutOfRange_IsRefused_NamingIt(int offsetMinutes)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetActivityReport(
+            "ann", null, null, null, offsetMinutes: offsetMinutes, ct: default);
+
+        Assert.Equal(
+            $"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1441)]
+    public async Task AGapOutOfRange_IsRefused_NamingIt(int gap)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetActivityReport("ann", null, null, null, gap: gap, ct: default);
+
+        Assert.Equal($"a gap is between 1 and 1440 minutes - not {gap}", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(241)]
+    public async Task ALeadOutOfRange_IsRefused_NamingIt(int lead)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetActivityReport("ann", null, null, null, lead: lead, ct: default);
+
+        Assert.Equal($"a lead is between 0 and 240 minutes - not {lead}", Refusal(result));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(91)]
+    public async Task AWindowOutOfRange_IsRefused_NamingIt(int window)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetActivityReport("ann", null, null, null, window: window, ct: default);
+
+        Assert.Equal($"a window is between 1 and 90 days - not {window}", Refusal(result));
+    }
+
+    [Fact]
+    public async Task TooManyBuckets_IsRefused_NamingTheCap()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetActivityReport(
+            "ann", "2020-01-01T00:00:00Z", "2026-01-31T00:00:00Z", null, ct: default);
+
+        Assert.Contains($"more than the {WorkLogController.MaxBuckets} this answers in", Refusal(result));
     }
 
     // ---- The answer ----
@@ -140,7 +201,7 @@ public class ReportsControllerActivityTests
     {
         var h = await NewAsync();
 
-        var dto = Value(await h.Reports.GetActivityReport("gone", null, null, null, default));
+        var dto = Value(await h.Reports.GetActivityReport("gone", null, null, null, ct: default));
 
         Assert.Equal("gone", dto.Actor);
         Assert.Equal(0, dto.Total);
@@ -157,7 +218,7 @@ public class ReportsControllerActivityTests
         var issue = await AddIssueAsync(h);
         await EventAsync(h, issue.Id, "ann", Now.AddDays(-20));
 
-        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, default));
+        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
 
         Assert.Equal(Now, dto.To);
         Assert.Equal(Now.AddDays(-14), dto.From);
@@ -173,7 +234,7 @@ public class ReportsControllerActivityTests
         await EventAsync(h, issue.Id, "ann", Now.AddDays(-2));
 
         var dto = Value(await h.Reports.GetActivityReport(
-            "ann", Now.AddDays(-30).ToString("o"), null, null, default));
+            "ann", Now.AddDays(-30).ToString("o"), null, null, ct: default));
 
         Assert.Equal(first, dto.From);
         Assert.Equal(1, dto.Total);
@@ -190,7 +251,7 @@ public class ReportsControllerActivityTests
         await EventAsync(h, issue.Id, "ann", Now.AddDays(-20));
         await EventAsync(h, issue.Id, "ann", Now);
 
-        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, default));
+        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
 
         Assert.Equal(1, dto.Total);
         Assert.All(dto.Events, e => Assert.Equal("ann", e.Actor));
@@ -206,8 +267,8 @@ public class ReportsControllerActivityTests
         await EventAsync(h, mine.Id, "ann", Now.AddDays(-1));
         await EventAsync(h, theirs.Id, "ann", Now.AddDays(-2));
 
-        var all = Value(await h.Reports.GetActivityReport("ann", null, null, null, default));
-        var narrowed = Value(await h.Reports.GetActivityReport("ann", null, null, [other], default));
+        var all = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
+        var narrowed = Value(await h.Reports.GetActivityReport("ann", null, null, [other], ct: default));
 
         Assert.Equal(2, all.Total);
         Assert.Equal(1, narrowed.Total);
@@ -227,7 +288,7 @@ public class ReportsControllerActivityTests
             });
         await h.Db.SaveChangesAsync();
 
-        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, default));
+        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
 
         Assert.Equal(ActivityController.MaxEvents, dto.Events.Count);
         Assert.True(dto.Truncated);
@@ -244,7 +305,7 @@ public class ReportsControllerActivityTests
         var issue = await AddIssueAsync(h);
         await EventAsync(h, issue.Id, "ann", Now.AddDays(-1), "retitled", "{\"from\":\"a\",\"to\":\"b\"}");
 
-        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, default));
+        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
 
         var row = Assert.Single(dto.Events);
         Assert.Equal("AER-1", row.IssueKey);
@@ -255,5 +316,33 @@ public class ReportsControllerActivityTests
         Assert.Equal(1, entry.Count);
         Assert.Equal(Now.AddDays(-1), entry.First);
         Assert.Equal(Now.AddDays(-1), entry.Last);
+    }
+
+    [Fact]
+    public async Task TheSeriesAndTheSessions_NameTheirIssueAndCarryTheEstimate()
+    {
+        var h = await NewAsync();
+        var issue = await AddIssueAsync(h);
+        await EventAsync(h, issue.Id, "ann", Now.AddDays(-1));
+        await EventAsync(h, issue.Id, "ann", Now.AddDays(-1).AddMinutes(10));
+
+        var dto = Value(await h.Reports.GetActivityReport(
+            "ann", null, null, null, gap: 30, lead: 15, window: 3, ct: default));
+
+        Assert.Equal("hour", dto.Bucket);
+        Assert.Equal(0, dto.OffsetMinutes);
+        Assert.NotEmpty(dto.Series);
+        Assert.All(dto.Series, p => Assert.True(p.RollingEvents >= 0));
+
+        var session = Assert.Single(dto.Sessions);
+        Assert.Equal(2, session.Events);
+        Assert.Equal(["AER-1"], session.IssueKeys);
+        Assert.Equal(10 + 15, session.EstimatedMinutes);
+
+        Assert.Equal(1, dto.Estimate.Sessions);
+        Assert.Equal(25, dto.Estimate.Minutes);
+        Assert.Equal(30, dto.Estimate.GapMinutes);
+        Assert.Equal(15, dto.Estimate.LeadMinutes);
+        Assert.Equal(3, dto.Estimate.WindowDays);
     }
 }

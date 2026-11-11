@@ -558,16 +558,26 @@ public class ReportsController(
     /// <param name="from">The start of the range; fourteen days before <paramref name="to"/> when absent.</param>
     /// <param name="to">The end of the range; now when absent.</param>
     /// <param name="projectId">Narrows to events whose issue is in one of these projects, repeatable; every project when absent or empty.</param>
+    /// <param name="offsetMinutes">Minutes east of UTC, aligning a daily bucket to the reader's own midnight - the work log's own parameter.</param>
+    /// <param name="gap">
+    /// The longest stretch, in minutes, between two consecutive events that
+    /// still counts as one working session; 1 to 1440, 30 when absent.
+    /// </param>
+    /// <param name="lead">Added to every session's estimated length, in minutes; 0 to 240, 15 when absent.</param>
+    /// <param name="window">How many days the rolling mean in <c>series</c> trails over; 1 to 90, 3 when absent.</param>
     /// <remarks>
     /// A name no live row answers to still answers, empty: the trail outlives
-    /// the person or key it names. The counts and the issue rundown cover every
-    /// event in range; only the rows are capped, at <see cref="ActivityController.MaxEvents"/>,
-    /// and a payload is read for only the rows listed.
+    /// the person or key it names. The counts, the issue rundown, the series
+    /// and the sessions cover every event in range; only the rows are capped,
+    /// at <see cref="ActivityController.MaxEvents"/>, and a payload is read for
+    /// only the rows listed.
     /// </remarks>
     [HttpGet("activity")]
     public async Task<ActionResult<ActivityReportDto>> GetActivityReport(
         [FromQuery] string? actor, [FromQuery] string? from, [FromQuery] string? to,
-        [FromQuery] List<int>? projectId, CancellationToken ct)
+        [FromQuery] List<int>? projectId,
+        [FromQuery] int offsetMinutes = 0, [FromQuery] int gap = 30, [FromQuery] int lead = 15,
+        [FromQuery] int window = 3, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(actor))
             return BadRequest("an actor is required");
@@ -576,6 +586,18 @@ public class ReportsController(
 
         if (RangeBounds.Resolve(from, to, now, DefaultChangelogRange, out var start, out var end) is { } refusal)
             return BadRequest(refusal);
+
+        if (offsetMinutes is < -1440 or > 1440)
+            return BadRequest($"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
+
+        if (gap is < 1 or > 1440)
+            return BadRequest($"a gap is between 1 and 1440 minutes - not {gap}");
+
+        if (lead is < 0 or > 240)
+            return BadRequest($"a lead is between 0 and 240 minutes - not {lead}");
+
+        if (window is < 1 or > 90)
+            return BadRequest($"a window is between 1 and 90 days - not {window}");
 
         var ids = (projectId ?? []).Distinct().ToList();
         if (ids.Count > 0)
@@ -592,12 +614,22 @@ public class ReportsController(
         var first = await db.IssueEvents.AsNoTracking().MinAsync(e => (DateTimeOffset?)e.At, ct);
         start = RangeBounds.ClampStart(start, end, first);
 
+        var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
+        var seriesWindow = WorkLogRollup.Align(start, end, bucketSize, offsetMinutes);
+
+        if (seriesWindow.Buckets > WorkLogController.MaxBuckets)
+            return BadRequest(
+                $"{seriesWindow.Buckets} buckets is more than the {WorkLogController.MaxBuckets} this answers in " +
+                "- ask for a shorter range");
+
         var rows = await db.IssueEvents.AsNoTracking()
             .Where(e => e.Actor == actor && e.At >= start && e.At < end)
             .Select(e => new ActivityReport.Row(e.Id, e.IssueId, e.Issue!.ProjectId, e.Kind, e.At))
             .ToListAsync(ct);
 
-        var result = ActivityReport.Fold(rows, ids, ActivityController.MaxEvents);
+        var result = ActivityReport.Fold(
+            rows, ids, ActivityController.MaxEvents,
+            seriesWindow, TimeSpan.FromMinutes(gap), TimeSpan.FromMinutes(lead), window);
 
         var listed = result.Events.Select(e => e.Id).ToList();
         var payloads = listed.Count == 0
@@ -609,6 +641,14 @@ public class ReportsController(
 
         var issueIds = result.Issues.Select(i => i.IssueId).ToHashSet();
         var (cards, _) = await LoadCardsAsync(issueIds, now, ct, withTree: false);
+
+        var sessionIssueIds = result.Sessions.SelectMany(s => s.IssueIds).ToHashSet();
+        var sessionIssueKeys = sessionIssueIds.Count == 0
+            ? new Dictionary<long, string>()
+            : await db.Issues.AsNoTracking()
+                .Where(i => sessionIssueIds.Contains(i.Id))
+                .Select(i => new { i.Id, ProjectKey = i.Project!.Key, i.Number })
+                .ToDictionaryAsync(i => i.Id, i => IssueKey.Format(i.ProjectKey, i.Number), ct);
 
         ActivityKindCountDto[] KindsOf(IReadOnlyList<ActivityReport.KindCount> kinds) =>
             kinds.Select(k => new ActivityKindCountDto(k.Kind, k.Count)).ToArray();
@@ -626,7 +666,20 @@ public class ReportsController(
                     e.Id, cards[e.IssueId].Key, actor, e.Kind,
                     IssueEventPayload.Parse(payloads.GetValueOrDefault(e.Id)), e.At))
                 .ToList(),
-            result.Truncated);
+            result.Truncated,
+            WorkLogRollup.Name(bucketSize),
+            offsetMinutes,
+            result.Series
+                .Select(p => new ActivitySeriesPointDto(p.At, p.Events, p.Hours, p.RollingEvents, p.RollingHours))
+                .ToList(),
+            result.Sessions
+                .Select(s => new ActivitySessionDto(
+                    s.From, s.To, s.Events,
+                    s.IssueIds.Where(sessionIssueKeys.ContainsKey).Select(id => sessionIssueKeys[id]).ToList(),
+                    s.EstimatedMinutes))
+                .ToList(),
+            new ActivityEstimateDto(
+                result.Estimate.Sessions, result.Estimate.Minutes, gap, lead, result.Estimate.WindowDays));
     }
 
     /// <summary>
