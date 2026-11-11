@@ -56,7 +56,8 @@ public interface IWorkspace
     /// along the way said as lines for the ticket.
     /// </summary>
     /// <param name="syncPullRequest">The issue has a pull request, so its branch on origin is brought up to date with the trunk.</param>
-    Leaving Leave(string key, bool syncPullRequest);
+    /// <param name="recordedBranch">The head branch the issue's contribution recorded, in place of a branch named for the key.</param>
+    Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null);
 
     /// <summary>
     /// The trunk's name and every branch on origin, from one <c>ls-remote</c> -
@@ -84,7 +85,7 @@ public interface IWorkspace
     /// origin, read from the refs as they stand. Does not fetch, and touches no
     /// worktree or index. Null when it cannot be said.
     /// </summary>
-    Verdict? Check(string key, string? playbookFilePath = null);
+    Verdict? Check(string key, string? playbookFilePath = null, string? recordedBranch = null);
 
     /// <summary>
     /// A path's exact bytes, read from the refs as they stand - does not fetch;
@@ -106,7 +107,7 @@ public interface IWorkspace
     /// already - fetching first, so the answer is about origin's branch as it
     /// is now.
     /// </summary>
-    Synced Sync(string key);
+    Synced Sync(string key, string? recordedBranch = null);
 
     /// <summary>
     /// Back on the trunk and nothing else - what an increment whose lease went
