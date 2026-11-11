@@ -13,6 +13,7 @@ import {
   sessionWhenWords,
   truncatedWords,
 } from '../lib/activity';
+import type { ActivityView } from '../lib/activityCalendar';
 import { noProjectWords } from '../lib/timeline';
 import type { ActivityEvent, ActivityReport, ActivityReportIssue, ActivitySession, IssueCard } from '../types';
 
@@ -77,7 +78,7 @@ const report = (over: Partial<ActivityReport> = {}): ActivityReport => ({
 const render = (
   actor: string | null,
   answer: ActivityReport | null,
-  over: { measure?: 'events' | 'hours'; windowDays?: number | null; sessionControls?: ReactNode } = {},
+  over: { measure?: 'events' | 'hours'; windowDays?: number | null; view?: ActivityView; sessionControls?: ReactNode } = {},
 ): string =>
   renderToStaticMarkup(
     <MemoryRouter>
@@ -87,8 +88,10 @@ const render = (
         offsetMinutes={0}
         measure={over.measure ?? 'events'}
         windowDays={over.windowDays ?? null}
+        view={over.view ?? 'bars'}
         onMeasure={() => {}}
         onWindow={() => {}}
+        onView={() => {}}
         locale="en-GB"
         sessionControls={over.sessionControls}
       />
@@ -144,6 +147,34 @@ describe('ActivityReportBody', () => {
 
     expect(html).toMatch(/aria-pressed="true"[^>]*>Estimated hours</);
     expect(html).toMatch(/<input type="number"[^>]*value="7"/);
+  });
+
+  it('offers the Bars/Calendar toggle only past eight weeks, and draws Bars under it', () => {
+    const short = render('Ada', report());
+    expect(short).not.toContain('Calendar');
+
+    const long = render('Ada', report({ from: '2026-08-01T00:00:00.000Z', to: '2026-11-11T00:00:00.000Z' }));
+    expect(long).toMatch(/aria-pressed="true"[^>]*>Bars</);
+    expect(long).toMatch(/aria-pressed="false"[^>]*>Calendar</);
+    expect(long).toContain('hatch-activity-plot');
+  });
+
+  it('draws the calendar when chosen, over a window past eight weeks', () => {
+    const html = render('Ada', report({ from: '2026-08-01T00:00:00.000Z', to: '2026-11-11T00:00:00.000Z' }), {
+      view: 'calendar',
+    });
+
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Bars</);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Calendar</);
+    expect(html).toContain('hatch-calendar-plot');
+    expect(html).not.toContain('hatch-activity-plot');
+  });
+
+  it('reads view=calendar as Bars when the window is eight weeks or under', () => {
+    const html = render('Ada', report(), { view: 'calendar' });
+
+    expect(html).not.toContain('Calendar');
+    expect(html).toContain('hatch-activity-plot');
   });
 
   it('draws the graph only when something happened', () => {

@@ -103,7 +103,10 @@ export const peak = (report: Pick<ActivityReport, 'series'>, measure: ActivityMe
 /** A figure to one decimal place with no trailing zero: `3`, `2.3`, `0.5`. */
 export const figure = (n: number): string => String(Math.round(n * 10) / 10);
 
-const quantity = (n: number, measure: ActivityMeasure): string =>
+/** A value in words, by measure: `3 events`, `2.3 estimated hours`. Shared
+    with `lib/activityCalendar.ts` so a bar's hover and a cell's title never
+    put the same number into two different sentences. */
+export const quantity = (n: number, measure: ActivityMeasure): string =>
   measure === 'hours' ? `${figure(n)} estimated ${n === 1 ? 'hour' : 'hours'}` : `${n} ${n === 1 ? 'event' : 'events'}`;
 
 /**
