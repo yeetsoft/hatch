@@ -91,11 +91,21 @@ const session = (over: Partial<RunnerSession> = {}): RunnerSession => ({
   ...over,
 });
 
+const actions = {
+  pause: async () => null,
+  resume: async () => null,
+  stop: async () => null,
+  order: async () => null,
+  withdraw: async () => null,
+  pauseAll: async () => null,
+  stopAll: async () => null,
+};
+
 const draw = (session_: RunnerSession, runner_: Runner = runner()) =>
   renderToStaticMarkup(
     <MemoryRouter>
       <ul>
-        <SessionBlock session={session_} runner={runner_} now={NOW} />
+        <SessionBlock session={session_} runner={runner_} now={NOW} actions={actions} onRefusal={() => {}} />
       </ul>
     </MemoryRouter>,
   );
@@ -160,5 +170,64 @@ describe('SessionBlock', () => {
   it('draws nothing yet with no claim', () => {
     const html = draw(session({ claimKey: null, line: null }));
     expect(html).toContain('nothing yet');
+  });
+});
+
+describe('SessionBlock: controls', () => {
+  it('draws Pause, Stop after this one and the ticket input for an owner on a loop session', () => {
+    const html = draw(session());
+
+    expect(html).toContain('>Pause</button>');
+    expect(html).toContain('Stop after this one');
+    expect(html).toContain('aria-label="Ticket to work"');
+    expect(html).toContain('Run one pass');
+  });
+
+  it('says Resume on a paused session', () => {
+    const html = draw(session({ state: 'paused' }));
+
+    expect(html).toContain('>Resume</button>');
+    expect(html).not.toContain('>Pause</button>');
+  });
+
+  it('says one increment on a once session and draws no button', () => {
+    const html = draw(session({ kind: 'once' }));
+
+    expect(html).toContain('one increment');
+    expect(html).not.toContain('<button');
+  });
+
+  it('draws the held order and Withdraw, and no input, while an order is held', () => {
+    const html = draw(
+      session({ orderKind: 'work', orderKey: 'HA-12', orderedBy: 'Ada', orderedAt: at(-60_000) }),
+    );
+
+    expect(html).toContain('ordered to work HA-12 by Ada');
+    expect(html).toContain('>Withdraw</button>');
+    expect(html).not.toContain('<input');
+    expect(html).not.toContain('Work this ticket');
+  });
+
+  it('draws no button for a viewer', () => {
+    const html = draw(session(), runner({ canControl: false }));
+
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('one increment');
+  });
+
+  it('draws no button on a revoked runner', () => {
+    expect(draw(session(), runner({ revokedAt: at(-1000) }))).not.toContain('<button');
+  });
+
+  it('disables Work this ticket while the input is empty', () => {
+    expect(draw(session())).toMatch(/<button[^>]*disabled[^>]*>Work this ticket<\/button>/);
+  });
+
+  it('disables every control on a stopping session', () => {
+    const html = draw(session({ state: 'stopping' }));
+
+    for (const label of ['Pause', 'Stop after this one', 'Work this ticket', 'Run one pass']) {
+      expect(html).toMatch(new RegExp(`<button[^>]*disabled[^>]*>${label}</button>`));
+    }
   });
 });

@@ -25,7 +25,10 @@ import {
   isIssueKeyShape,
   orderSentence,
   isControllable,
+  liveLoopSessions,
   runnerActionable,
+  sessionControllable,
+  sessionOrder,
   MAX_SPEND_HINT,
   mineLabel,
   repositoriesLabel,
@@ -397,6 +400,51 @@ describe('isControllable', () => {
 
   it('is false for a once runner even where canControl is true', () => {
     expect(isControllable(runner({ kind: 'once', canControl: true }))).toBe(false);
+  });
+});
+
+describe('sessionControllable', () => {
+  it('is a loop session on a runner this caller controls', () => {
+    expect(sessionControllable(runner(), session())).toBe(true);
+  });
+
+  it('is false for a once session, since nothing would ever read an instruction off it', () => {
+    expect(sessionControllable(runner(), session({ kind: 'once' }))).toBe(false);
+  });
+
+  it('is false for a viewer, a revoked runner and a retired one', () => {
+    expect(sessionControllable(runner({ canControl: false }), session())).toBe(false);
+    expect(sessionControllable(runner({ revokedAt: '2026-09-08T12:00:00Z' }), session())).toBe(false);
+    expect(sessionControllable(runner({ retiredAt: '2026-09-08T12:00:00Z' }), session())).toBe(false);
+  });
+});
+
+describe('sessionOrder', () => {
+  it('is null for a session holding no order', () => {
+    expect(sessionOrder(session())).toBeNull();
+    expect(sessionOrder(session({ orderKind: 'work', orderKey: 'HA-1', orderedAt: null }))).toBeNull();
+  });
+
+  it('is the order in the shape orderSentence takes', () => {
+    const held = sessionOrder(
+      session({ orderKind: 'work', orderKey: 'HA-12', orderedBy: 'Ada', orderedAt: '2026-09-08T11:59:00Z' }),
+    );
+
+    expect(held).toEqual({ kind: 'work', key: 'HA-12', by: 'Ada', at: '2026-09-08T11:59:00Z' });
+  });
+
+  it('carries a pass with no key', () => {
+    const held = sessionOrder(session({ orderKind: 'pass', orderedAt: '2026-09-08T11:59:00Z' }));
+
+    expect(held).toEqual({ kind: 'pass', key: null, by: null, at: '2026-09-08T11:59:00Z' });
+  });
+});
+
+describe('liveLoopSessions', () => {
+  it('keeps the loops and drops a once session', () => {
+    const live = [session({ id: 1 }), session({ id: 2, kind: 'once' }), session({ id: 3 })];
+
+    expect(liveLoopSessions(live).map((s) => s.id)).toEqual([1, 3]);
   });
 });
 

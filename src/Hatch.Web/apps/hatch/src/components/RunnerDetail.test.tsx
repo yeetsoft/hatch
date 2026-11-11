@@ -204,6 +204,66 @@ describe('RunnerDetail: Live sessions', () => {
   });
 });
 
+describe('RunnerDetail: Pause all and Stop all', () => {
+  const soon = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();
+  const live = (over: Partial<RunnerSession> = {}) => session({ lastSeenAt: soon(0), ...over });
+  const withSessions = (over: Partial<Runner>, sessions: RunnerSession[]) => {
+    state.read = { runners: [runner({ name: 'Quill', sessions, ...over })], error: null };
+    return renderAt('/runners/Quill');
+  };
+
+  it('draws both in the heading row for an owner with a live loop session', () => {
+    const html = withSessions({}, [live()]);
+
+    expect(html).toContain('>Pause all</button>');
+    expect(html).toContain('>Stop all</button>');
+    expect(html.indexOf('Live sessions')).toBeLessThan(html.indexOf('Pause all'));
+    expect(html.indexOf('Pause all')).toBeLessThan(html.indexOf('hatch-runner-sessions'));
+  });
+
+  it('draws both on the phone too', () => {
+    state.read = { runners: [runner({ name: 'Quill', sessions: [live()] })], error: null };
+    const html = renderAt('/runners/Quill', true);
+
+    expect(html).toContain('>Pause all</button>');
+    expect(html).toContain('>Stop all</button>');
+  });
+
+  it('draws neither with no live session, or with only a once session', () => {
+    for (const html of [withSessions({}, []), withSessions({}, [live({ kind: 'once' })])]) {
+      expect(html).not.toContain('Pause all');
+      expect(html).not.toContain('Stop all');
+    }
+  });
+
+  it('draws neither on a revoked runner', () => {
+    const html = withSessions({ revokedAt: at(-1000) }, [live()]);
+
+    expect(html).not.toContain('Pause all');
+    expect(html).not.toContain('Stop all');
+  });
+
+  it('says whose it is to control to a viewer, and draws no button in the card', () => {
+    const html = withSessions({ canControl: false, for: 'Ada' }, [live()]);
+    const card = html.slice(html.indexOf('Live sessions'));
+
+    expect(card).toContain("Ada&#x27;s to control");
+    expect(card).not.toContain('<button');
+  });
+
+  it('falls back to its owner for a viewer on a runner with no owner', () => {
+    expect(withSessions({ canControl: false, for: null }, [live()])).toContain('its owner&#x27;s to control');
+  });
+
+  it('draws no to-control line for an owner', () => {
+    expect(withSessions({ for: 'Ada' }, [live()])).not.toContain("to control");
+  });
+
+  it('keeps the Stop all modal shut until pressed', () => {
+    expect(withSessions({}, [live(), live({ id: 2 })])).not.toContain('after their current increment');
+  });
+});
+
 describe('RunnerDetail: What it may work and Bounds', () => {
   const draws = (html: string) => ({
     settings: html.includes('Save settings'),
