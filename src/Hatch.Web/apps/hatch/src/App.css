@@ -3973,6 +3973,128 @@ input.hatch-inline-title-input {
   margin-top: var(--sp-2);
 }
 
+/* ---- The activity graph, on the activity report ----
+
+   The spend graph's twin: hand-cut SVG in house tokens, the geometry in
+   lib/activityGraph.ts. The one difference is the rolling-mean line, a stroke
+   among fills. */
+.hatch-activity {
+  margin-top: var(--sp-2);
+}
+
+.hatch-activity-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.hatch-activity-measures {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.hatch-activity-measure {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  border-radius: var(--r-ctl);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--t-label);
+  cursor: pointer;
+}
+
+.hatch-activity-measure:hover {
+  border-color: var(--primary);
+}
+
+.hatch-activity-measure.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+
+.hatch-activity-peak {
+  margin-left: auto;
+  font-size: var(--t-label);
+}
+
+/* The baseline is on the container rather than in the SVG, so an all-zero
+   range is a flat line on an axis rather than a blank box. */
+.hatch-activity-plot {
+  display: block;
+  width: 100%;
+  height: 140px;
+  margin-top: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.hatch-activity-slot {
+  fill: transparent;
+}
+
+.hatch-activity-slot:hover {
+  fill: var(--primary-bg);
+}
+
+.hatch-activity-bar {
+  fill: var(--primary);
+}
+
+/* A stroke, where every mark above is a fill: the SVG is stretched with
+   preserveAspectRatio="none", so without a non-scaling stroke the line would
+   thin and thicken with the aspect ratio. A single bucket is a zero-length
+   line, which only a round cap draws. */
+.hatch-activity-line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.hatch-activity-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: var(--t-label);
+  margin-top: var(--sp-2);
+}
+
+.hatch-activity-rolling {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--t-label);
+  margin-top: var(--sp-2);
+}
+
+/* A short swatch of the line's own colour, so the sentence names what it keys. */
+.hatch-activity-key {
+  display: inline-block;
+  width: var(--sp-4);
+  border-top: 2px solid var(--ink);
+}
+
+.hatch-activity-window {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+.hatch-activity-window input {
+  width: 4.5rem;
+}
+
+.hatch-activity-window input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
 /* Rendered markdown - descriptions and comments. Only the spacing is stated:
    base.css already dresses headings, lists, code and links. */
 .hatch-markdown > :first-child {

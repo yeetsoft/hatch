@@ -838,13 +838,18 @@ export interface CumulativeFlowQuery {
 
 /** One actor's events over a range. `actor` is always sent, exactly as given
     (`URLSearchParams` does the encoding); `from` and `to` only when set, so the
-    server's own fourteen days stand; `projectId` is repeated once per id. */
+    server's own fourteen days stand; `projectId` is repeated once per id.
+    `offsetMinutes` is always sent, so daily buckets align to the reader's
+    midnight and not UTC's; `window` only when set, so the server's own default
+    stands. */
 export const getActivityReport = (query: ActivityReportQuery) => {
   const params = new URLSearchParams();
   params.set('actor', query.actor);
   if (query.from) params.set('from', query.from);
   if (query.to) params.set('to', query.to);
   for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  params.set('offsetMinutes', String(query.offsetMinutes));
+  if (query.window != null) params.set('window', String(query.window));
   return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
 };
 
@@ -853,6 +858,10 @@ export interface ActivityReportQuery {
   from?: string | null;
   to?: string | null;
   projectId?: number[] | null;
+  /** Minutes east of UTC, the reader's. */
+  offsetMinutes: number;
+  /** The rolling mean's width, in buckets; 1..90. */
+  window?: number | null;
 }
 
 /** Closed epics bucketed over a window. Each parameter is set only when it

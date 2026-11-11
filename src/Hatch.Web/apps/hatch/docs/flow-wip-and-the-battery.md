@@ -200,12 +200,23 @@ and where it is piling up, and a **Colour by** control lets that same stack
 be cut by project instead of by column. The Changelog draws what landed, day,
 week or month at a time. **Activity** answers what one person or key did:
 pick an actor, and it reads the range as a headline (the total and the top
-kinds in words), a rundown with one row per issue touched, and beneath it the
+kinds in words), a graph of the rate of work over time, a rundown with one row
+per issue touched, and beneath it the
 trail of events as evidence, the newest 500 with a line saying so when more
 existed. It opens on you when you are in the directory, and on nobody, with a
 sentence saying to choose, when you are not; the address carries `?actor=`,
 the project and the window, and an actor in the address who is not in the
-directory (a revoked key, say) is still read. Nothing on it writes.
+directory (a revoked key, say) is still read. Nothing on it writes to the board.
+
+The graph is one bar per day (or per hour, over a day or less), oldest first,
+with a line through the rolling mean. **Events** and **Estimated hours** switch
+what it measures and rescale the whole graph — the two never share an axis; a
+day with nothing in it is a bar of no height, not a gap, and hovering its slot
+says what it holds. Under the graph a sentence says what the line is (`3-day
+rolling mean of events per day`), and a **Window, days** field changes how many
+days the mean trails over, from 1 to 90; a value outside that is not sent. The
+address carries `measure` and `window`, so a pasted link opens on the same
+picture.
 
 The Timeline, Cumulative flow, Changelog, Consumption and Activity reports each follow the tab's
 [scope](the-board-and-its-columns#scoping-a-tab-to-projects), and their project

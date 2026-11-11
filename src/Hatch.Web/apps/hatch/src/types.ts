@@ -920,6 +920,46 @@ export interface ActivityReport {
   /** Newest first. */
   events: ActivityEvent[];
   truncated: boolean;
+  /** The size the server chose for `series`: hourly over a day or less. */
+  bucket: 'hour' | 'day';
+  /** Minutes east of UTC the buckets were aligned to - the reader's. */
+  offsetMinutes: number;
+  /** One point per bucket over the window, oldest first, empty buckets
+      included. */
+  series: ActivitySeriesPoint[];
+  sessions: ActivitySession[];
+  estimate: ActivityEstimate;
+}
+
+/** One bucket of the rate of work. `hours` counts the sessions that start in
+    it; each `rolling` is the trailing mean over the window, in buckets.
+    Mirrors ActivitySeriesPointDto. */
+export interface ActivitySeriesPoint {
+  at: string;
+  events: number;
+  hours: number;
+  rollingEvents: number;
+  rollingHours: number;
+}
+
+/** A run of the actor's events with no gap over the gap between two of them.
+    Mirrors ActivitySessionDto. */
+export interface ActivitySession {
+  from: string;
+  to: string;
+  events: number;
+  issueKeys: string[];
+  estimatedMinutes: number;
+}
+
+/** What `sessions` add up to, beside the parameters they were computed with.
+    Mirrors ActivityEstimateDto. */
+export interface ActivityEstimate {
+  sessions: number;
+  minutes: number;
+  gapMinutes: number;
+  leadMinutes: number;
+  windowDays: number;
 }
 
 /** How full the WIP section is right now. Mirrors WipDto - not WipSection

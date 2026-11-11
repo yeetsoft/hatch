@@ -43,13 +43,35 @@ const report = (over: Partial<ActivityReport> = {}): ActivityReport => ({
   issues: [row('HA-5'), row('HA-6')],
   events: [event(2, { issueKey: 'HA-6' }), event(1)],
   truncated: false,
+  bucket: 'day',
+  offsetMinutes: 0,
+  series: [
+    { at: '2026-11-02T00:00:00.000Z', events: 4, hours: 1, rollingEvents: 4, rollingHours: 1 },
+    { at: '2026-11-03T00:00:00.000Z', events: 0, hours: 0, rollingEvents: 2, rollingHours: 0.5 },
+    { at: '2026-11-04T00:00:00.000Z', events: 2, hours: 1.5, rollingEvents: 2, rollingHours: 0.8 },
+  ],
+  sessions: [],
+  estimate: { sessions: 2, minutes: 150, gapMinutes: 30, leadMinutes: 15, windowDays: 3 },
   ...over,
 });
 
-const render = (actor: string | null, answer: ActivityReport | null): string =>
+const render = (
+  actor: string | null,
+  answer: ActivityReport | null,
+  over: { measure?: 'events' | 'hours'; windowDays?: number | null } = {},
+): string =>
   renderToStaticMarkup(
     <MemoryRouter>
-      <ActivityReportBody actor={actor} report={answer} offsetMinutes={0} locale="en-GB" />
+      <ActivityReportBody
+        actor={actor}
+        report={answer}
+        offsetMinutes={0}
+        measure={over.measure ?? 'events'}
+        windowDays={over.windowDays ?? null}
+        onMeasure={() => {}}
+        onWindow={() => {}}
+        locale="en-GB"
+      />
     </MemoryRouter>,
   );
 
@@ -78,6 +100,31 @@ describe('ActivityReportBody', () => {
     expect(html).not.toContain(truncatedWords(answer));
   });
 
+  it('draws the graph between the headline and the rundown', () => {
+    const html = render('Ada', report());
+
+    expect(html).toContain('<h2>Over time</h2>');
+    expect(html).toContain('hatch-activity-plot');
+    expect(html).toContain('3-day rolling mean of events per day');
+    expect(html.indexOf('6 events:')).toBeLessThan(html.indexOf('<h2>Over time</h2>'));
+    expect(html.indexOf('<h2>Over time</h2>')).toBeLessThan(html.indexOf('<h2>Rundown</h2>'));
+  });
+
+  it('draws the graph on the measure and window it is given', () => {
+    const html = render('Ada', report(), { measure: 'hours', windowDays: 7 });
+
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Estimated hours</);
+    expect(html).toMatch(/<input type="number"[^>]*value="7"/);
+  });
+
+  it('draws the graph only when something happened', () => {
+    const empty = report({ total: 0, kinds: [], issues: [], events: [], series: [] });
+
+    expect(render('Ada', empty)).not.toContain('Over time');
+    expect(render(null, null)).not.toContain('Over time');
+    expect(render('Ada', null)).not.toContain('Over time');
+  });
+
   it('draws the cut line, and only then', () => {
     const answer = report({ truncated: true, total: 612 });
 
@@ -104,11 +151,11 @@ describe('ActivityReportBody', () => {
     expect(render('Ada', null)).toContain(noProjectWords());
   });
 
-  it('draws nothing that could write', () => {
+  it('draws nothing that could write to the board', () => {
     const html = render('Ada', report());
 
-    for (const tag of ['<button', '<form', '<input', '<select', '<textarea']) {
-      expect(html).not.toContain(tag);
-    }
+    // The graph's controls only move the address; none of them submits.
+    for (const tag of ['<form', '<select', '<textarea']) expect(html).not.toContain(tag);
+    for (const button of html.match(/<button[^>]*>/g) ?? []) expect(button).toContain('type="button"');
   });
 });
