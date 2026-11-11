@@ -159,9 +159,12 @@ nothing but the prompt keeps a session to that. Two things go further:
 - **The reflection row** carries a denied-tools list that takes away `Edit`,
   `Write`, `NotebookEdit` and the git writers. It keeps `Read`, a plain `Bash`
   and the `hatch` verbs, so it still reads the repository and moves its own
-  ticket. It is not a check. A reflection also reads the hypotheses earlier
-  reflections filed, and reports each as confirmed, refuted or unreadable in a
-  `Hypotheses read` section that is always present.
+  ticket. It is not a check. It files every recommendation and hypothesis
+  linked back to it rather than parented under it, each hypothesis carrying a
+  dependency on the issue its change names and measuring itself on its own
+  date, and reports each hypothesis it finds as confirmed, refuted or
+  unreadable in a `Hypotheses read` section that is always present. It ends
+  by declaring no code rather than moving its own ticket to Backlog.
 - **A check playbook** is the only kind of row that cannot move its ticket at
   all. While its claim is held, a key's move of that ticket is refused; the
   session records a verdict, pass or fail with its findings, and the runner
@@ -191,7 +194,7 @@ The column names below are the stock ones.
 | Breakdown → Backlog | epics | Turns a captured idea into an epic: rewrites the description, files stories under it and sequences them | Judges |
 | Breakdown → Backlog | stories | Writes at most five acceptance criteria and cuts the plan into tasks; a story that needs more becomes an epic | Judges |
 | Breakdown → Backlog | tasks and bugs | Formalises a note: what is wrong, where the code is, a pattern to copy, one criterion | Judges |
-| Breakdown → Backlog | reflections | Reads the board's own history for a window, writes the report and files each recommendation | Judges, with denied tools |
+| Breakdown → Review | reflections | Reads the board's own history for a window, writes the report, files each recommendation and hypothesis linked back to it, and declares no code | Judges, with denied tools |
 | To Do → In Progress | epics | Chooses which story starts | Judges |
 | To Do → In Progress | any type | Final analysis: sharpens the criteria, writes the implementation detail onto the ticket, and files tasks only where the work splits along a real seam | Judges |
 | In Progress → In Review | any type, leaf | Writes the code, gets it green, pushes it and puts it up for review | **Edits** |
