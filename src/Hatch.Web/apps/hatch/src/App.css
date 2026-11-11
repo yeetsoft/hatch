@@ -3239,6 +3239,19 @@ input.hatch-inline-title-input {
   margin: var(--sp-3) 0;
 }
 
+/* The Create runner dialog's Name field and its "Suggest another" button.
+   The button sits beside the Field rather than inside its <label>, which
+   may hold at most one labelable element. */
+.hatch-runner-create-name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hatch-runner-create-name > .hatch-field {
+  flex: 1;
+}
+
 /* ---- The API keys page ---- */
 /* A revoked key is still a fact worth reading, so it is dimmed and not hidden. */
 .hatch-keys-revoked {

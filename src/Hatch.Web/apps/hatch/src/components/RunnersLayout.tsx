@@ -1,21 +1,15 @@
 import { useState } from 'react';
-import { Outlet, useMatch, useOutletContext } from 'react-router-dom';
-import { EmptyState, PageHeader } from '@hatch/ui';
+import { Outlet, useMatch, useNavigate, useOutletContext } from 'react-router-dom';
+import { Button, EmptyState, PageHeader } from '@hatch/ui';
+import { CreateRunnerDialog } from './CreateRunnerDialog';
 import { RunnerList } from './RunnerList';
 import { useRunners } from '../lib/useRunners';
 import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
+import type { RunnerSecret } from '../lib/runnerKey';
 import type { Runner } from '../types';
 
-/** A newly-minted or rotated secret, shown once - "The secret panel" in
-    docs/runners-page-design.md. Held only in this `useState`, never storage,
-    URL or router state, so it is gone the moment the page is left. Nothing
-    renders it yet; a later task draws `SecretPanel` from it. */
-export interface RunnerSecret {
-  name: string;
-  secret: string;
-  rotated: boolean;
-}
+export type { RunnerSecret } from '../lib/runnerKey';
 
 /** What the layout hands its detail route through the `<Outlet/>` context. */
 export interface RunnersOutlet {
@@ -44,15 +38,41 @@ export function RunnersLayout() {
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
   const now = new Date();
   const phone = usePhone();
+  const navigate = useNavigate();
   const [secret, setSecret] = useState<RunnerSecret | null>(null);
+  const [creating, setCreating] = useState(false);
   const outlet = { runners, secret, setSecret, reload };
 
   const match = useMatch('/runners/:name');
   const selected = match?.params.name;
 
-  const list = <RunnerList runners={runners} selected={selected} isAdmin={isAdmin} wallOff={wallOff} now={now} />;
-  const header = <PageHeader title="Runners" />;
+  function onCreated(created: RunnerSecret) {
+    setCreating(false);
+    setSecret(created);
+    navigate(`/runners/${encodeURIComponent(created.name)}`);
+    void reload();
+  }
+
+  const list = (
+    <RunnerList
+      runners={runners}
+      selected={selected}
+      isAdmin={isAdmin}
+      wallOff={wallOff}
+      now={now}
+      onCreate={() => setCreating(true)}
+    />
+  );
+  // Never on the wall-off variant: the admin routes this opens are dormant
+  // there, and hatch config bootstraps the runner instead.
+  const headerActions = isAdmin && (
+    <Button variant="primary" onClick={() => setCreating(true)}>
+      Create runner
+    </Button>
+  );
+  const header = <PageHeader title="Runners" actions={headerActions} />;
   const failed = error && <p className="text-danger">{error}</p>;
+  const dialog = <CreateRunnerDialog open={creating} onClose={() => setCreating(false)} onCreated={onCreated} />;
 
   if (phone) {
     if (match) {
@@ -68,6 +88,7 @@ export function RunnersLayout() {
         {header}
         {failed}
         {list}
+        {dialog}
       </div>
     );
   }
@@ -82,6 +103,7 @@ export function RunnersLayout() {
           <Outlet context={outlet} />
         </section>
       </div>
+      {dialog}
     </div>
   );
 }

@@ -105,7 +105,10 @@ name, that HA-1937 retires.
   ("What the audit trail will call it") and **Belongs to** ("Whose tickets
   this key's `--mine` will reach"), then **Mint key**. The secret is shown
   once, on the page, and the response is sent `no-store`, so it is never shown
-  again. A name already held, by a key revoked or not, is refused.
+  again. A name already held, by a key revoked or not, is refused. A runner is
+  also created this way from **Runners → Create runner** — the same name and
+  owner fields, the same once-shown secret beside the two `hatch config`
+  commands it needs next.
 - **Replacing a secret.** An admin rotates a runner with
   `POST /api/hatch/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
@@ -113,7 +116,9 @@ name, that HA-1937 retires.
   bounds, sessions, omissions and attribution carry over, and the key's prefix
   and a `rotatedAt` time are updated; a revoked runner cannot be rotated
   (`409`) — rotate to replace a leaked secret and keep the runner working,
-  revoke to stop it. [`api-reference`](api-reference) has the route.
+  revoke to stop it. [`api-reference`](api-reference) has the route. On the
+  Runners page these are Rotate key and Revoke on a runner's own Identity
+  card, admin only.
 - **What a key reaches.** Everything under `/api/hatch`, less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
