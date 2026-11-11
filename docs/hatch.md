@@ -262,15 +262,15 @@ absence starts to hurt:
 ## Where it lives
 
 **Backend: a module.** `src/Hatch.Api/Modules/Hatch`, its own `hatch` schema,
-its own migration history, one line in `AddAppModules` — the shape
+its own migration history, one line in `Program.cs` — the shape
 [`Modules/README.md`](../src/Hatch.Api/Modules/README.md) describes. Splitting
 it into its own service later is a connection-string change, so "part of the
 API for now" costs nothing architecturally.
 
-**Frontend: its own workspace SPA**, not a family-shell module.
+**Frontend: its own workspace SPA.**
 `src/Hatch.Web/apps/hatch`, built into `wwwroot/apps/hatch`, served by the same
 pod — the arrangement the admin and docs apps already use. It is an operator's
-tool, and the family shell is the household's.
+tool.
 
 **The wire contract: its own project.** `src/Hatch.Contracts` holds the
 records the API serves and the records a client sends it — nothing else, and
@@ -310,7 +310,7 @@ that silently never offers to install. `GET /.well-known/assetlinks.json`
 (`AssetLinksController`, [below](#the-wall-the-roles-and-api-keys)) answers
 Android's own link-ownership check with the operator's package name and
 certificate fingerprint — supplied as deploy-time config
-(`Apps__AssetLinks__0__PackageName`/`…Sha256CertFingerprints__0`,
+(`Hatch__AssetLinks__0__PackageName`/`…Sha256CertFingerprints__0`,
 `compose.yaml`), never a value this repository could know on an operator's
 behalf.
 

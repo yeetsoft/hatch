@@ -115,6 +115,25 @@ If the older API fails against the newer schema, put the data back too:
 restore the backup taken before the upgrade, as described under
 [Restoring](backup-restore-and-replication#restoring).
 
+## Settings renamed from `Apps__*`
+
+The install's public address and its Android asset links are Hatch's own
+settings now. The `HATCH_PUBLIC_URL`, `HATCH_ANDROID_PACKAGE` and
+`HATCH_ANDROID_CERT_FINGERPRINT` variables are unchanged, and `compose.yaml`
+passes them on to the new names. If you set the settings by hand rather than
+through those variables, rename them:
+
+| Was | Is |
+| --- | --- |
+| `Apps__PublicBaseUrl` | `Hatch__PublicBaseUrl` |
+| `Apps__AssetLinks__<n>__PackageName` | `Hatch__AssetLinks__<n>__PackageName` |
+| `Apps__AssetLinks__<n>__Sha256CertFingerprints__<m>` | `Hatch__AssetLinks__<n>__Sha256CertFingerprints__<m>` |
+
+The old names are read by nothing, so a value left under one is ignored.
+
+The kiosk-era `/api/app-version` and `/api/apps/config` routes are gone; a
+board never called either.
+
 ## The runner after an upgrade
 
 Download the runner again from **Agents → Get the runner**. That page prints

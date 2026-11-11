@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { ConsumptionReportBody } from './ConsumptionReportPage';
+import { consumptionFilterQuery, type ConsumptionFilterQuery } from '../lib/consumptionReport';
 import { dayLabel, type SpendMeasure } from '../lib/leaderboard';
 import { UNPRICED_TITLE } from '../lib/workLog';
 import type {
@@ -86,10 +87,16 @@ const report = (over: Partial<ConsumptionReport> = {}): ConsumptionReport => ({
 const projects = [{ id: 1, key: 'HA', name: 'Hatch', color: '#336699', icon: null } as unknown as Project];
 const statuses = [{ id: 3, name: 'In Progress' } as Status];
 
+const defaultQuery = (): ConsumptionFilterQuery => {
+  const r = report();
+  return { from: r.from, to: r.to, type: 'epic', sort: 'activity', offsetMinutes: 0 };
+};
+
 const render = (
   answer: ConsumptionReport | null,
   sort: ConsumptionSort = 'activity',
   measure: SpendMeasure = 'tokens',
+  query: ConsumptionFilterQuery = defaultQuery(),
 ): string =>
   renderToStaticMarkup(
     <MemoryRouter>
@@ -101,6 +108,7 @@ const render = (
         onSort={vi.fn()}
         measure={measure}
         onMeasure={vi.fn()}
+        query={query}
         locale="en-US"
       />
     </MemoryRouter>,
@@ -171,6 +179,17 @@ describe('ConsumptionReportBody', () => {
     expect(render(report())).not.toContain('The first');
   });
 
+  it('draws a Download CSV link, with a bare download attribute and the href carrying the query the report was read with', () => {
+    const query: ConsumptionFilterQuery = { from: '2026-08-01T00:00:00.000Z', type: 'story', sort: 'cost', offsetMinutes: -60 };
+    const html = render(report(), 'activity', 'tokens', query);
+
+    const escapedHref = `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`.replace(
+      /&/g,
+      '&amp;',
+    );
+    expect(html).toContain(`<a class="hatch-consumption-csv" href="${escapedHref}" download="">Download CSV</a>`);
+  });
+
   it('marks the active sortable head descending and the rest none', () => {
     const html = render(report(), 'cost');
 
@@ -186,6 +205,7 @@ describe('ConsumptionReportBody', () => {
 
     expect(html).toContain('Nothing has ever been logged under this filter.');
     expect(html).not.toContain('<table');
+    expect(html).not.toContain('hatch-consumption-csv');
   });
 
   it('says nothing ran in this window, and where the log does run', () => {
@@ -194,6 +214,7 @@ describe('ConsumptionReportBody', () => {
     expect(html).toContain('No issue consumed anything in this window.');
     expect(html).toContain('The log runs from Aug 19 to Oct 7.');
     expect(html).not.toContain('<table');
+    expect(html).not.toContain('hatch-consumption-csv');
   });
 
   describe('the spend graph', () => {
@@ -277,6 +298,9 @@ describe('ConsumptionReportBody', () => {
   });
 
   it('says no project is chosen when there is no report', () => {
-    expect(render(null)).toContain('No project is chosen.');
+    const html = render(null);
+
+    expect(html).toContain('No project is chosen.');
+    expect(html).not.toContain('hatch-consumption-csv');
   });
 });

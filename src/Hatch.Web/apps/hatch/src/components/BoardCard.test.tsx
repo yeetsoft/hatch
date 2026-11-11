@@ -6,7 +6,7 @@ import { SortableContext } from '@dnd-kit/sortable';
 import { MemoryRouter } from 'react-router-dom';
 import { BoardCard, CardPreview, lineClick } from './BoardCard';
 import { countWords, needsMe, stripLabel } from '../lib/storiesOnEpics';
-import type { IssueCard, Project, Status } from '../types';
+import type { ContributionRecord, IssueCard, Project, Status } from '../types';
 
 const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   key: 'AER-1',
@@ -337,6 +337,49 @@ const anchorSpans = (html: string): Array<[number, number]> => {
   }
   return spans;
 };
+
+describe('BoardCard CardFace, a contribution', () => {
+  const record: ContributionRecord = {
+    pullRequestUrl: null,
+    headBranch: null,
+    authorLogin: 'someone',
+    authorAssociation: 'NONE',
+    filedAt: '2026-11-11T00:00:00Z',
+    filedBy: 'runner',
+    originKey: 'HA-9',
+    originInstance: 'https://hatch.example.org',
+  };
+  const face = (c: IssueCard) =>
+    renderToStaticMarkup(<CardPreview card={c} waiting={false} terminal={false} project={project()} />);
+
+  it('wears nothing new without a record', () => {
+    const html = face(card());
+    expect(html).not.toContain('hatch-contribution');
+  });
+
+  it('wears the mark beside the type glyph, on every type, and names the origin', () => {
+    for (const type of ['epic', 'reflection', 'story', 'task', 'bug'] as const) {
+      const html = face(card({ type, contribution: record }));
+      expect(html).toContain(`hatch-type-glyph--${type}`);
+      expect(html).toContain('hatch-contribution-mark');
+      expect(html).toContain('HA-9');
+      expect(html).toContain('hatch.example.org');
+    }
+  });
+
+  it('names @login where the record has no origin key', () => {
+    const html = face(card({ contribution: { ...record, originKey: null, originInstance: null } }));
+    expect(html).toContain('@someone');
+  });
+
+  it('nests no <a inside the face anchor', () => {
+    const c = card({ contribution: record });
+    const html = renderSortable(<BoardCard card={c} />, [c.key]);
+    for (const [start, end] of anchorSpans(html)) {
+      expect(html.slice(start, end).indexOf('<a ', 1)).toBe(-1);
+    }
+  });
+});
 
 describe('BoardCard, carrying stories', () => {
   const epic = card({ type: 'epic', key: 'AER-1' });

@@ -1,4 +1,5 @@
 using Hatch.Api.Modules;
+using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -62,7 +63,7 @@ public class AssetLinksControllerTests
     }
 
     private static AssetLinksController Controller(params AssetLinkPackage[] assetLinks) =>
-        new(Options.Create(new AppsOptions { AssetLinks = assetLinks }))
+        new(Options.Create(new HatchOptions { AssetLinks = assetLinks }))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };

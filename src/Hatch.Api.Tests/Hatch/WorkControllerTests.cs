@@ -14989,7 +14989,7 @@ public class WorkControllerTests
             Keys = keys,
             Sessions = sessions,
             Work = new WorkController(
-                db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
+                db, actors, claims ?? TestClaims.With(), time, Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, runners, keys, sessions),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),
