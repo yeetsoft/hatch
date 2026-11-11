@@ -83,7 +83,7 @@ reads it as text. **Rotate key** and **Revoke** are an admin's too, and neither
 appears on a revoked runner. A **Behind** badge beside the name means a live
 session's own build has fallen behind the board's (restart it against a newer
 deploy), and a **Rebuild** badge means one has fallen behind its own checkout's
-source (run `make build-hatch` in that checkout). The two never mean the same
+source (run `make build-hatch` in that checkout, or start its supervised loop again, which builds first). The two never mean the same
 thing, and either, both or neither can be true of one runner; a session started
 outside a checkout holding Hatch's source never shows **Rebuild**. A failed save
 in this card says so inside it.
