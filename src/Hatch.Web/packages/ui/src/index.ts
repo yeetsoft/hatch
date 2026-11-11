@@ -9,8 +9,7 @@
    The cost of that, knowingly: a CSS import is a side effect, so a barrel
    export puts every component's styles in every consuming app's bundle even
    where the component is tree-shaken out of the JavaScript. Both consumers now
-   render the whole library - the top bar brought the theme switch and the app
-   switcher with it - and admin is slated to use all nine Phase 4 primitives,
+   render the whole library - the top bar brought the theme switch with it -
    so per-component entry points would buy nothing and cost every import site
    an extra specifier. Revisit if a consumer ever wants a genuinely small slice
    of the library. */

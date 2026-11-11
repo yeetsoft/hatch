@@ -1,7 +1,7 @@
 namespace Hatch.Api.Modules.Storage;
 
 // The API-facing shapes for Storage Helper, kept separate from the entities so
-// the family shell has a stable contract. Codes travel in both forms: Code is
+// the web app has a stable contract. Codes travel in both forms: Code is
 // what's stored and what URLs use, DisplayCode is what a label prints.
 
 public record LocationDto(Guid Id, string Name, string? Description, int CrateCount, DateTimeOffset CreatedAt);
