@@ -1,0 +1,24 @@
+{
+  "title": "AER-12 Story: a plain one",
+  "read": {
+    "ok": true,
+    "envelope": {
+      "version": 99,
+      "instance": "hatch.example.com",
+      "project": "AER",
+      "chain": [
+        {
+          "key": "AER-12",
+          "title": "A story",
+          "type": null,
+          "description": null,
+          "status": null,
+          "parentKey": null,
+          "url": null,
+          "truncated": false
+        }
+      ]
+    }
+  },
+  "versionZero": { "ok": false, "key": null, "instance": null }
+}
