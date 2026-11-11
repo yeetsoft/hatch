@@ -271,7 +271,7 @@ public class IssueDangerousControllerTests
 
         /// <summary>The card the issue list draws for <paramref name="key"/>.</summary>
         public async Task<IssueCardDto> CardAsync(string key) =>
-            Value(await Issues.SearchIssues(null, null, null, null, null, null, default)).Single(c => c.Key == key);
+            Value(await Issues.SearchIssues(null, null, null, null, null, null, null, default)).Single(c => c.Key == key);
 
         /// <summary>The card the search draws for <paramref name="key"/>, with no query - the arm InMemory can run.</summary>
         public async Task<IssueCardDto> HitAsync(string key) =>

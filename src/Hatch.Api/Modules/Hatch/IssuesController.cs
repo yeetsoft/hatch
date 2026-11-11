@@ -70,6 +70,11 @@ public class IssuesController(
     /// the one filter that cannot be written any other way and is exactly how
     /// the orphans get found.
     /// </param>
+    /// <param name="filedFromKey">
+    /// The issues filed from this one - see <see cref="EfHatchIssue.FiledFromId"/>.
+    /// The empty string means "filed from nothing", the way an empty
+    /// <paramref name="parentKey"/> means no parent.
+    /// </param>
     /// <param name="ancestorKey">
     /// Anything below this issue at any depth - the epic's stories and their
     /// tasks - and not the issue itself, because "under AER-1" is a question
@@ -88,6 +93,7 @@ public class IssuesController(
         [FromQuery] string? parentKey,
         [FromQuery] string? ancestorKey,
         [FromQuery] string? text,
+        [FromQuery] string? filedFromKey,
         CancellationToken ct)
     {
         if (type is not null && !EfHatchIssue.IsValidType(type))
@@ -111,6 +117,20 @@ public class IssuesController(
                 var parent = await LoadAsync(parentKey, ct);
                 if (parent is null) return BadRequest($"there is no {parentKey}");
                 query = query.Where(i => i.ParentId == parent.Id);
+            }
+        }
+
+        if (filedFromKey is not null)
+        {
+            if (filedFromKey.Length == 0)
+            {
+                query = query.Where(i => i.FiledFromId == null);
+            }
+            else
+            {
+                var source = await LoadAsync(filedFromKey, ct);
+                if (source is null) return BadRequest($"there is no {filedFromKey}");
+                query = query.Where(i => i.FiledFromId == source.Id);
             }
         }
 
@@ -296,6 +316,9 @@ public class IssuesController(
         if (!ReadMoment(request.ReadyAt, "readyAt", out var readyAt, out var momentError)) return BadRequest(momentError);
         if (!ReadMoment(request.DueAt, "dueAt", out var dueAt, out momentError)) return BadRequest(momentError);
 
+        var filedFrom = await ResolveFiledFromAsync(request.FiledFromKey, null, ct);
+        if (filedFrom.Error is { } filedFromError) return BadRequest(filedFromError);
+
         bool? onePr = null;
         if (request.OnePr is { } onePrText && !IssueOnePrController.TryParse(onePrText, out onePr))
             return BadRequest(IssueOnePrController.UnknownValue(onePrText));
@@ -382,6 +405,7 @@ public class IssuesController(
                 Description = request.Description ?? "",
                 StatusId = status.Id,
                 ParentId = parent.Issue?.Id,
+                FiledFromId = filedFrom.Issue?.Id,
                 Rank = await ranks.BottomAsync(status.Id, ct),
                 ReadyAt = readyAt?.At,
                 ReadyAtHasTime = readyAt?.HasTime ?? false,
@@ -547,7 +571,7 @@ public class IssuesController(
 
         var patch = new IssuePatchRequest(
             null, null, request.Type, request.StatusId, request.ParentKey, request.ReadyAt, request.DueAt, null,
-            request.ProjectId, request.MoveDescendants);
+            request.ProjectId, request.MoveDescendants, FiledFromKey: request.FiledFromKey);
 
         if (Invalid(null, null, request.Type, required: false) is { } invalid) return BadRequest(invalid);
         if (!ReadEdit(patch, out var edit, out var editError)) return BadRequest(editError);
@@ -772,6 +796,13 @@ public class IssuesController(
             if (parent.Error is { } parentError) return (false, parentError, null, null, [], null);
         }
 
+        (EfHatchIssue? Issue, string? Error) filedFrom = (null, null);
+        if (edit.FiledFromKey is not null)
+        {
+            filedFrom = await ResolveFiledFromAsync(edit.FiledFromKey, issue.Id, ct);
+            if (filedFrom.Error is { } filedFromError) return (false, filedFromError, null, null, [], null);
+        }
+
         // Asked last, and only when the column is actually changing, so a
         // board with no limit set pays no read and nothing after this can
         // refuse the edit once the gate has admitted it.
@@ -898,6 +929,14 @@ public class IssuesController(
             issue.ParentId = parent.Issue?.Id;
         }
 
+        if (edit.FiledFromKey is not null && filedFrom.Issue?.Id != issue.FiledFromId)
+        {
+            var from = issue.FiledFromId is null ? null : await KeyOfAsync(issue.FiledFromId.Value, ct);
+            var to = filedFrom.Issue is null ? null : await KeyOfAsync(filedFrom.Issue, ct);
+            events.Add(Event(actor, EfHatchIssueEvent.FiledFromChanged, new { from, to }, now));
+            issue.FiledFromId = filedFrom.Issue?.Id;
+        }
+
         if (targetProject is not null)
         {
             var target = targetProject;
@@ -991,6 +1030,12 @@ public class IssuesController(
 
         var children = await db.Issues.Where(i => i.ParentId == issue.Id).ToListAsync(ct);
         foreach (var child in children) child.ParentId = null;
+
+        // Provenance, not structure: the database's SetNull would clear these
+        // anyway; done here for the providers that do not apply it, and with
+        // no event, since nothing about the issues filed from it was edited.
+        var filed = await db.Issues.Where(i => i.FiledFromId == issue.Id).ToListAsync(ct);
+        foreach (var other in filed) other.FiledFromId = null;
 
         db.Issues.Remove(issue);
         await db.SaveChangesAsync(ct);
@@ -1100,6 +1145,28 @@ public class IssuesController(
     }
 
     // ---- Parenting ----
+
+    /// <summary>
+    /// The issue a key says this one was filed from. Provenance only, so the
+    /// one rule is that it exists, and it is not the issue itself: no project
+    /// check, no type pairing, no cycle walk - A filed from B and B from A
+    /// is harmless, nothing reads the chain.
+    /// </summary>
+    /// <param name="key">Null for "no opinion", empty for "filed from nothing".</param>
+    /// <param name="selfId">The issue being edited, when it already exists.</param>
+    private async Task<(EfHatchIssue? Issue, string? Error)> ResolveFiledFromAsync(
+        string? key, long? selfId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return (null, null);
+        if (!IssueKey.TryParse(key, out var projectKeyPart, out var number))
+            return (null, $"\"{key}\" is not an issue key");
+
+        var source = await db.Issues.Include(i => i.Project)
+            .WithKey(projectKeyPart, number).FirstOrDefaultAsync(ct);
+        if (source is null) return (null, $"there is no {key}");
+        if (source.Id == selfId) return (null, "an issue cannot be filed from itself");
+        return (source, null);
+    }
 
     /// <summary>
     /// The parent a key names, checked against every rule that makes a
@@ -1329,12 +1396,13 @@ public class IssuesController(
         bool SetPullRequest,
         string? PullRequestUrl,
         int? ProjectId,
-        bool? MoveDescendants)
+        bool? MoveDescendants,
+        string? FiledFromKey)
     {
         /// <summary>Whether this edit names nothing at all - the request a bulk edit refuses rather than reports as a hundred no-ops.</summary>
         public bool IsEmpty =>
             Title is null && Description is null && Type is null && StatusId is null
-            && ParentKey is null && !SetReady && !SetDue && !SetPullRequest && ProjectId is null;
+            && ParentKey is null && FiledFromKey is null && !SetReady && !SetDue && !SetPullRequest && ProjectId is null;
     }
 
     /// <summary>
@@ -1363,7 +1431,8 @@ public class IssuesController(
             request.PullRequestUrl is not null,
             pullRequestUrl,
             request.ProjectId,
-            request.MoveDescendants);
+            request.MoveDescendants,
+            request.FiledFromKey);
 
         return true;
     }

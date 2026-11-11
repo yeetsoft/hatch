@@ -49,14 +49,15 @@ GET  ${HATCH_BASE}/api/hatch/issues?ancestorKey=AER-12&type=task&statusId=2
 POST ${HATCH_BASE}/api/hatch/issues/bulk
 ```
 
-The filters are `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey` and
-`text`; they combine with AND and every one is optional. Two are worth knowing:
+The filters are `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`,
+`text` and `filedFromKey` (the issues filed from one issue, `""` for those filed
+from nothing); they combine with AND and every one is optional. Two are worth knowing:
 `ancestorKey` returns everything below an issue at any depth — an epic's stories
 and their tasks in one request — and `parentKey=` (empty) finds the issues with
 no parent at all.
 
 The bulk endpoint takes `keys` and any of `type`, `statusId`, `parentKey`,
-`readyAt`, `dueAt`, `projectId` and `moveDescendants`, with the same rules a
+`filedFromKey`, `readyAt`, `dueAt`, `projectId` and `moveDescendants`, with the same rules a
 single `PATCH` follows: a field left out is left alone, and `""` clears one.
 It answers with `changed`, `unchanged`, `failures` and `rekeyed` — a key that
 refuses the edit is reported with its reason and left exactly as it was, a

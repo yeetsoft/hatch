@@ -41,6 +41,16 @@ column — the totals count **leaves**, issues with no children of their own,
 so a story standing in review with every task still in To Do reads as To Do,
 because the tasks are the work and not the story's own column.
 
+## Filed from
+
+An issue also records which issue's session filed it, and the issue it was
+filed from lists what was filed from it. That is provenance and nothing more:
+it holds nothing, orders nothing and blocks nothing, and an issue filed from
+one that is still open is picked up exactly as any other. It can point at an
+issue in another project, and it clears itself if the source is deleted. It is
+set when an issue is filed, or changed later with an edit, and every change
+leaves a line in the issue's history.
+
 **Plan** draws its own meter from this same rollup, one row per epic in the
 house. In a tab scoped to projects its own Project picker follows the same rule
 as the board's: see

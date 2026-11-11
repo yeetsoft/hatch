@@ -672,6 +672,46 @@ public class WorkControllerTests
         Assert.Null(Value(await h.Work.GetWork(Key(second), null, default)).Blocked);
     }
 
+    /// <summary>
+    /// What an issue was filed from is provenance and nothing gates on it: B,
+    /// filed from an issue that is still open, is dispatched exactly as C,
+    /// filed from nothing - the same queue entry, the same next pick, the same
+    /// answer to a named take - whether the source is waiting, or being worked.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AnIssueFiledFromAnOpenIssue_IsDispatchedExactlyAsOneFiledFromNothing(bool sourceClaimed)
+    {
+        var h = await NewAsync();
+        var source = await h.FileAsync("story", "the source, still open", h.Review);
+        var filed = await h.FileAsync("story", "filed from it", h.Todo, rank: 1024);
+        var control = await h.FileAsync("story", "filed from nothing", h.Todo, rank: 2048);
+        filed.FiledFromId = source.Id;
+        await h.Db.SaveChangesAsync();
+        if (sourceClaimed) await h.ClaimAsync(source);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default));
+        var b = queue.Single(e => e.Issue.Key == Key(filed));
+        var c = queue.Single(e => e.Issue.Key == Key(control));
+
+        Assert.Null(b.Blocked);
+        Assert.Null(b.BlockedKind);
+        Assert.False(b.Deadlocked);
+        Assert.Equal(c.Blocked, b.Blocked);
+        Assert.Equal(c.BlockedKind, b.BlockedKind);
+        Assert.Equal(c.Deadlocked, b.Deadlocked);
+        Assert.Equal(c.Kind, b.Kind);
+        Assert.Equal(c.Hop, b.Hop);
+        Assert.Equal(c.ToStatus?.Id, b.ToStatus?.Id);
+
+        // Not held off, and picked first by its own rank, as it would be with
+        // no source at all.
+        Assert.Equal(Key(filed), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+        Assert.Null(Value(await h.Work.GetWork(Key(filed), null, default)).Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(control), null, default)).Blocked);
+    }
+
     [Fact]
     public async Task ADependency_DoesNotStopWorkThatHasAlreadyStarted()
     {

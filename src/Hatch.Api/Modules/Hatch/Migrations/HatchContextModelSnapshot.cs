@@ -413,6 +413,9 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<long?>("FiledFromId")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("Held")
                         .HasColumnType("boolean");
 
@@ -520,6 +523,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FiledFromId");
 
                     b.HasIndex("ParentId");
 
@@ -2085,6 +2090,11 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
             modelBuilder.Entity("Hatch.Api.Modules.Hatch.EfHatchIssue", b =>
                 {
+                    b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "FiledFrom")
+                        .WithMany("Filed")
+                        .HasForeignKey("FiledFromId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Hatch.Api.Modules.Hatch.EfHatchIssue", "Parent")
                         .WithMany("Children")
                         .HasForeignKey("ParentId")
@@ -2101,6 +2111,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasForeignKey("StatusId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("FiledFrom");
 
                     b.Navigation("Parent");
 
@@ -2336,6 +2348,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Navigation("Comments");
 
                     b.Navigation("Events");
+
+                    b.Navigation("Filed");
 
                     b.Navigation("Landings");
 
