@@ -513,6 +513,14 @@ public class WorkController(
         var verdicts = await _dispatch.MergeChecksAsync(checkIds, ct);
         var builds = await _dispatch.BuildChecksAsync(checkIds, ct);
 
+        // The head branch a contribution recorded, for the rows that came from
+        // outside: it is the only branch the board knows the name of there.
+        var contributionRows = await db.Contributions.AsNoTracking()
+            .Where(c => c.HeadBranch != null && checkIds.Contains(c.IssueId))
+            .Select(c => new { c.IssueId, c.HeadBranch })
+            .ToListAsync(ct);
+        var recordedBranches = contributionRows.ToDictionary(c => c.IssueId, c => c.HeadBranch);
+
         // A trunk-landing issue in review has no branch for a runner to check;
         // what it reports is where the commit landed and how the trunk's build
         // fares there. Read once for every such row, and for no other.
@@ -577,7 +585,8 @@ public class WorkController(
                 i.PullRequestMergeState,
                 i.PullRequestReviewDecision,
                 i.PullRequestHeadSha,
-                i.PullRequestHeadSince);
+                i.PullRequestHeadSince,
+                recordedBranches.GetValueOrDefault(i.Id));
         }).ToList();
     }
 

@@ -154,6 +154,8 @@ public static class IssueProjection
             .GroupBy(m => m.IssueId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<EfHatchMergeCheck>)g.ToList());
 
+        var contributions = await IssueContributions.ForIssuesAsync(db, ids, ct);
+
         // What each repository holds for the batch, one query for all of it -
         // the same reasoning the verdicts above get. Ordered by canonical
         // remote so the list a page draws is stable between reads. No
@@ -273,7 +275,8 @@ public static class IssueProjection
                 omittedRunners,
                 (issue.Project?.OnePullRequestPolicy ?? projects[issue.ProjectId].OnePullRequestPolicy) == global::Hatch.Contracts.OnePullRequestPolicies.Enforced,
                 FiledFromKey: issue.FiledFromId is { } filedFromId && parentKeys.TryGetValue(filedFromId, out var filedFromKey) ? filedFromKey : null,
-                FiledKeys: filedKeys.TryGetValue(issue.Id, out var filed) ? filed : []);
+                FiledKeys: filedKeys.TryGetValue(issue.Id, out var filed) ? filed : [],
+                Contribution: contributions.GetValueOrDefault(issue.Id));
         });
     }
 

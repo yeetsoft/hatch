@@ -185,6 +185,9 @@ public class BoardController(
 
         var wip = await Wip.LoadAsync(db, claims, statuses, now, ct);
 
+        var contributions = await IssueContributions.ForIssuesAsync(
+            db, issues.Concat(past).Select(i => i.Id).ToList(), ct);
+
         IssueCardDto Card(CardRow i)
         {
             var (effective, effectiveFrom) = priorities.Effective(i.Id);
@@ -223,7 +226,8 @@ public class BoardController(
                 DangerousOwn: i.Dangerous,
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
-                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
+                Contribution: contributions.GetValueOrDefault(i.Id));
         }
 
         var cards = issues.Select(Card).ToList();
