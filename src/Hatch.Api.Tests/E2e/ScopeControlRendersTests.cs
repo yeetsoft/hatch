@@ -66,7 +66,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
 
     private const string Panel = ".hatch-types-panel";
 
-    private const string Row = ".hatch-types-row";
+    private const string Row = ".hatch-types-item";
 
     private const string NavSelector = E2eHarness.TopBar + " .hatch-primary-nav";
 
@@ -98,6 +98,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
             await deadline.BoundAsync("filing two more projects", () => FileProjectsAsync(baseUrl, ("BBB", "#2f9e44"), ("CCC", "#d6336c")));
             await UnscopedAsync(harness, deadline, baseUrl, violations);
             await OpenThePanelAsync(harness, deadline, baseUrl, violations);
+            await OnlyNarrowsToOneProjectAsync(harness, deadline, baseUrl, violations);
             await WalkTheScopeDownAsync(harness, deadline, baseUrl, violations);
             await DarkAsync(harness, deadline, baseUrl, violations);
 
@@ -454,7 +455,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
               return {
                 rows: panel.querySelectorAll('{{Row}}').length,
                 checked: [...panel.querySelectorAll('{{Row}} input[type=checkbox]')].map(c => c.checked),
-                allDisabled: panel.querySelector('.hatch-filter-clear').disabled,
+                allDisabled: panel.querySelector('.hatch-types-footer .hatch-filter-clear').disabled,
                 left: box.left,
                 right: box.right,
                 innerWidth: window.innerWidth,
@@ -478,6 +479,54 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
 
         // From here a reload would be a failure: the scope is written by replace, in place.
         await harness.EvaluateAsync<bool>(deadline, "marking the page", "() => { window.__noReload = 1; return true; }");
+    }
+
+    /// <summary>
+    /// HA-2201: each row carries its own Only, the footer carries no global None
+    /// beside All (one here means every project, so a None would just be
+    /// another All), and a click on a row's Only narrows the scope to that one
+    /// project alone, by replace, with the panel left open. Called with the
+    /// panel open and every project ticked, and leaves it that way for
+    /// <see cref="WalkTheScopeDownAsync"/>.
+    /// </summary>
+    private async Task OnlyNarrowsToOneProjectAsync(E2eHarness harness, Deadline deadline, string baseUrl, List<string> violations)
+    {
+        var footer = await harness.EvaluateAsync<JsonElement>(
+            deadline,
+            "reading the footer and the rows' Only buttons",
+            $$"""
+            () => {
+              const panel = document.querySelector('{{Panel}}');
+              return {
+                footerButtons: [...panel.querySelectorAll('.hatch-types-footer button')].map(b => b.textContent.trim()),
+                onlyLabels: [...panel.querySelectorAll('{{Row}} .hatch-types-only')].map(b => b.getAttribute('aria-label')),
+              };
+            }
+            """);
+        output.WriteLine($"--- footer and Only buttons: {footer}");
+
+        var footerButtons = footer.GetProperty("footerButtons").EnumerateArray().Select(b => b.GetString()).ToList();
+        if (!footerButtons.SequenceEqual(["All"]))
+            violations.Add($"only: the footer reads [{string.Join(", ", footerButtons)}], not just [\"All\"] (no global None)");
+
+        var onlyLabels = footer.GetProperty("onlyLabels").EnumerateArray().Select(b => b.GetString()).ToList();
+        if (!onlyLabels.SequenceEqual(["Only AAA — Project AAA", "Only BBB — Project BBB", "Only CCC — Project CCC"]))
+            violations.Add($"only: the rows' Only buttons read [{string.Join(", ", onlyLabels)}]");
+
+        var history = await harness.EvaluateAsync<int>(deadline, "reading the history length before Only", "() => history.length");
+
+        await harness.ClickAsync(deadline, $"{Panel} >> {Row} >> nth=1 >> .hatch-types-only");
+        await WaitForScopeAsync(harness, deadline, "BBB", "BBB - Hatch");
+        await CheckScopedAsync(harness, deadline, "only BBB", ["BBB"], history, violations);
+
+        var panelOpen = await harness.IsVisibleAsync(deadline, Panel);
+        if (!panelOpen) violations.Add("only: the panel closed on its own click");
+
+        // Back to every project ticked, so the walk that follows starts from the state it expects.
+        await EnsurePanelOpenAsync(harness, deadline);
+        await harness.ClickAsync(deadline, $"{Panel} >> .hatch-types-footer button:text-is(\"All\")");
+        await WaitForScopeAsync(harness, deadline, "", "Hatch");
+        await EnsurePanelOpenAsync(harness, deadline);
     }
 
     /// <summary>Looks 2 and 3: untick down to one project and then to none, the address and the title following each tick, with no reload and no history entry.</summary>

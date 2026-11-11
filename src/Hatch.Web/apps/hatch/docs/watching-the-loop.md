@@ -11,65 +11,225 @@ waiting on you for.
 
 ## Runners
 
-**Agents → Runners** lists every runner that has spoken to this Hatch lately:
-a row appears within a minute of it starting and drops off two hours after it
-stops. This page lists every runner, because a person is looking; a key
-reading the same list gets its owner's runners, an admin's key gets every one,
-and a key with no owner gets only the runners that belong to nobody. `hatch
-runners` is the same read at a terminal, one line per row. Renaming a runner,
-or restarting it under a new name, used to leave the old row sitting as *Gone*
-until it aged off. Now the new one's first beat retires the old row, and it
-leaves this page and `hatch runners` at once, though its history is kept. A
-beat from the old name brings it back by itself. A row is retired only
-once it has been quiet past `Hatch:RunnerGoneAfterSeconds`, or when a loop
-in the same checkout reports in under a new name.
-Each row has:
+**Agents → Runners** is a list of runners on the left and the selected runner's
+detail on the right. On a phone they are two pages: the list, and the detail
+behind a **Runners** link back to it. A runner is a key with its sessions
+beneath it: the key is what gets created and revoked, and each checkout using it
+is a session. `hatch runners` is the same read at a terminal, one line per
+runner with its sessions indented beneath.
 
-- **Runner** - its name, and `one increment` where it is not a `loop` (a loop
-  says nothing here, since that is the default); a **Behind** badge when its
-  own build has fallen behind the board's (restart it against a newer
-  deploy), and a **Rebuild** badge when its own build has fallen behind its
-  own checkout's source (run `make build-hatch` in that checkout). The two
-  never mean the same thing, and either, both or neither can be true of one
-  row; a runner started outside a checkout holding Hatch's source never shows
-  **Rebuild**.
-- **Doing** - `Gone`, `Out of usage until …`, `Over … tokens/hour until …`,
-  `Paused`, `Stopping`, `Working <KEY>` or `Idle`. Silence beats everything
-  else: a runner that has stopped
-  answering reads `Gone` whatever it was last asked to do. Silence is ninety
-  seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
-  zero or less is not believed, and ninety stands. The key in `Working <KEY>`
-  is a link to the ticket. `Over 200k tokens/hour until 3:40am` sits below
-  `Gone` and `Out of usage` and above `Paused`. It means the loop is waiting
-  out its hourly token cap and resumes by itself when the time passes. A row
-  that holds no hourly cap reads `Over its hourly token cap until …`.
-- **Last said** - the last line it reported. A loop that stops at one of its
-  own bounds ends on `Stopped: <why>`, for example `Stopped: --max-runs 3
-  reached`.
-- **Heard from** - how long ago its last heartbeat was.
-- **Bounds** - only the ones actually set; a row with none says so rather
-  than showing empty caps. The two token caps read `2M tokens` and `200k
-  tokens/hour` where set, each followed by `(default)` where the runner holds
-  no cap of its own and is reading the site default instead of one it set.
-  The `under` epic, where set, is a link to its ticket too. `Refuses
-  dangerous work` is one of the bounds shown, when set.
-- **Token budget** - `used / cap tokens` for the night and `used / cap per
-  hour` for the last hour, each with a bar. The bar is green under 80% of the
-  cap, amber from 80%, and red at the cap. A window with no cap reads `…
-  tokens, no cap`, with no bar. A row with neither cap set reads `No token
-  budget`. A cap inherited from the site default carries the same
-  `(default)` marker here as it does in Bounds.
+To make a runner, see [Create runner](people-roles-and-keys#runners-and-their-keys).
 
-Beneath a row, one quieter line per live session it holds: where it is working
-from, its agent and its OS (each `-` where it has not said), and a **Doing**
-badge decided by the same rule as the row's own, with the held ticket as a link.
-Two checkouts that report under one name are one runner row with two of these
-lines. A session is live when it has not ended and has been heard from within
-the runner's silence limit; an ended or silent one is left out, and a runner
-with no live sessions draws exactly the row above and nothing more. The lines
-have no controls, since Pause, Stop and orders are the runner's and not a
-session's, and a retired row draws none. It is the same list `hatch runners`
-indents under each runner.
+### The list
+
+One row per runner, headed **Runners**. A page shows every runner, because a
+person is looking; a key reading the same list gets its owner's runners, an
+admin's key gets every one, and a key with no owner gets only the runners that
+belong to nobody.
+
+Each row opens that runner's detail, and has three lines:
+
+- The glyph, the runner's name, and on the right an `x2` badge (or `x3`, and so
+  on) when more than one session is live, and a `revoked` badge when it is.
+- What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
+  several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
+  `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Gone - last seen
+  …`, or `Not started`. The full line is its tooltip.
+- Its owner, or `no owner`, then the machine it runs on - or `{n} machines` when
+  its live sessions are on several.
+
+**The glyph** is the runner's most urgent state among its live sessions, ranked
+gone, out of usage, throttled, paused or stopping, working, idle, none. Its shape
+carries the state, so colour is never the only signal:
+
+| State | Shape |
+| --- | --- |
+| Gone | ring with a diagonal slash, red |
+| Out of usage | solid disc with a bar cut out, red |
+| Throttled | half-filled disc, amber |
+| Paused, stopping | two vertical bars, blue |
+| Working | solid disc, green |
+| Idle | hollow ring, grey |
+| Not started | dashed ring, grey |
+
+Throttled is amber, not red, because it heals itself when the hour turns and
+nobody has to act. **Not started** is a runner that has never had a session, and
+it is never drawn as **Gone**: a runner that has not started has not gone
+missing. **Gone** is a runner that has had sessions and has none live now.
+
+A session is live when it has not ended and has been heard from within the
+runner's silence limit. Silence beats everything else: a runner that has stopped
+answering reads `Gone` whatever it was last asked to do. Silence is ninety
+seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
+zero or less is not believed, and ninety stands. `Over 200k tokens/hour until
+3:40am` ranks below `Gone` and `Out of usage` and above `Paused`. It means the
+loop is waiting out its hourly token cap and resumes by itself when the time
+passes. A runner that holds no hourly cap reads `Over its hourly token cap until
+…`.
+
+Runners with a live session come first, then the rest, each group by the most
+recent time it was heard from and then by name. Revoked runners sit last, in a
+collapsed **Revoked (n)** that opens by itself when you are looking at one of
+them. There is no such group when none is revoked.
+
+### The detail
+
+Five cards, in this order.
+
+**Identity and key.** Its name, the key's prefix, when it was created, when it
+was last used, and when it was rotated or revoked, where either has happened. The
+owner is an admin's to change, from a list of people and *nobody*; everyone else
+reads it as text. **Rotate key** and **Revoke** are an admin's too, and neither
+appears on a revoked runner. A **Behind** badge beside the name means a live
+session's own build has fallen behind the board's (restart it against a newer
+deploy), and a **Rebuild** badge means one has fallen behind its own checkout's
+source (run `make build-hatch` in that checkout). The two never mean the same
+thing, and either, both or neither can be true of one runner; a session started
+outside a checkout holding Hatch's source never shows **Rebuild**. A failed save
+in this card says so inside it.
+
+**What it may work.** **Tags** (one per line; empty is any runner) and **Under**
+(an epic to stay inside, like `AER-930`; empty is the whole board, and a link
+beside it opens the ticket), saved together with **Save settings**, or undone with
+**Revert**. The loop adopts a changed list on its very next heartbeat, saying so
+once - `hatch: the board set --tag ...`, or `--tag off` for none. Tags are set
+only here, or by a `PATCH` on the runner; the CLI never sends them.
+
+Beneath them, **Declared by its sessions** is read-only: **Projects** is every
+project any live session was started with (every project when none), and whether
+each session **refuses dangerous work**, one line per session. Both are the
+running process's own report, carried on every heartbeat and overwritten each
+time, like its remotes; only a new process started with `--project` or a
+different `HATCH_DANGEROUS` changes them. Projects narrows which tickets a
+session picks up and nothing else: the merge train is unaffected, and an approved
+pull request in any project still merges on its own clock. **Refuse dangerous
+work** stops the board handing that session an issue flagged dangerous (see
+[`hatch dangerous`](cli-reference#dangerous) for the flag).
+
+**Bounds.** Five ceilings - **Max runs**, **Max spend**, **Max tokens this run**,
+**Max tokens per hour** and **Until** (an hour, not just a day) - with **Save
+bounds** and **Revert**. A session's own flags narrow these and never raise them.
+When the runner is held under an epic, the card opens with `Also held under
+HA-12`, linked. A line above the fields sums what the live sessions have used:
+runs, spend, tokens this run and tokens this hour. [One increment and the
+loop](one-increment-and-the-loop#bounds-timeouts-and-stopping) covers what each
+bound actually does.
+
+The two token boxes take a token count, like `500k` or `2M`, and show it back as
+`500,000` when you leave the box. Empty clears the cap. A value that is not a
+token count blocks **Save bounds**. When the board refuses a value, the refusal
+appears under the field it names; any other refusal appears above the buttons.
+
+**The two defaults a runner inherits when it holds no cap of its own** are set
+on Settings, by an admin only - with the wall off, anyone at the keyboard. A
+runner with none of its own runs under them, which is the `(default)` beside the
+label of a token box. A box reading the site default shows empty, not the number
+it inherits - saving with no edit leaves it inheriting, rather than locking that
+figure in as the runner's own. Its hint names the figure it is inheriting instead
+of the usual token-count wording, so the empty box is never mistaken for an unset
+cap.
+
+Each fresh start of a loop - one started by hand, or the supervisor's first
+start - writes the bounds it was started with onto its runner on its first
+heartbeat, overwriting an edit made here and clearing any bound the runner held
+for a flag the loop was not given. A supervisor restart does not: it keeps what
+the runner holds, so an edit made here survives it. A runner made by `hatch work`
+or `go-to-work --once` never takes bounds from that heartbeat.
+
+**Live sessions.** One block per live session, oldest first, so a block never
+moves as it beats: its checkout, its state and how long ago it was heard from;
+the ticket it holds, as a link, and the last line it printed (or `nothing yet`);
+its controls; its runs, spend and token budget; and its own bounds, narrowed by
+its flags. A `go-to-work` loop that stops at one of its own bounds ends on
+`Stopped: <why>`, for example `Stopped: --max-runs 3 reached`. The token budget
+reads `used / cap tokens` for the night and `used / cap per hour` for the last
+hour, each with a bar: green under 80% of the cap, amber from 80%, red at the
+cap. A window with no cap reads `… tokens, no cap`, with no bar, and a cap taken
+from the site default carries `(default)`.
+
+A loop session's controls are **Pause** (or **Resume** on a paused one), **Stop
+after this one**, and an order: a box for a ticket key with **Work this ticket**,
+and **Run one pass**. An order not yet read is drawn as `ordered to work <KEY> by
+<name>, <how long ago>`, with **Withdraw**, until the loop reads it; a loop holds
+one at a time, so the order box is replaced by that line while it stands. The loop
+takes an order at its next heartbeat, paused or running, then returns to what its
+state says. A `once` session has no controls and says `one increment`.
+
+**Pause all** and **Stop all** sit in the card's heading when at least one loop
+session is live. **Pause all** acts at once. **Stop all** asks first - `Stop 3
+sessions after their current increment?` - and each session finishes its current
+increment, then stops; none is cut off partway.
+
+A press only records what the board wants: the runner reads it between
+increments, at its next heartbeat, never in the middle of one. Nothing on the
+server starts or stops a process, which is why the same buttons work for a runner
+in a container or on a laptop behind a router: the loop does the reading, and the
+loop is what exits.
+
+When live sessions span more than one machine, a note at the top says so: a key
+is meant to be one machine, and tags and bounds are per runner. With none live,
+the card says how to start one.
+
+Each block ends in a closed **Machine** panel, showing what the session's last
+heartbeat said about itself. It carries six machine fields - `os`, `arch`,
+`agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`, seven in
+all. The six come from the CLI itself and are missing for a session run by a CLI
+old enough to predate them, and the panel leaves a missing field out. `ip` is
+never one of the six - it is the server's own reading of the connection, taken
+after the forwarded header from the proxy in front of it is applied, so it is
+set on every session regardless of CLI version, including one that sends none of
+the other six. The panel also names the session's host, its agent, its build (a
+short sha and how long ago, or `dev build` for one that hasn't been stamped), the
+repositories it serves and what it drives. Nothing else is collected: no
+environment variable, no process id, no MAC address.
+
+**Recent sessions.** The runner's last twenty sessions,
+newest first: where, kind, when it started and ended, runs, spend and tokens. It
+has no controls, and the card is left out when there are none. The
+**Leaderboard** stays the place for spend over time and by session.
+
+A runner's name is recorded for a (profile, checkout) pair, so one checkout run
+under two profiles speaks to two boards under two names, and each board's page
+shows it under the name recorded for that pair. See [the runner's
+name](the-runner#the-runners-name).
+
+### Who can do what
+
+- **An admin** creates runners, changes their owner, rotates and revokes keys,
+  and can do everything an owner can.
+- **An owner** edits the runner's settings and bounds, controls its sessions, and
+  uses **Pause all** and **Stop all**. The owner reads the key's facts as text.
+- **Anyone else** sees everything read-only, and a line at the top of **Live
+  sessions** reading `{owner}'s to control`.
+- **With the wall off** the page draws the owner's view for whoever is at the
+  keyboard, with no **Create runner**, **Rotate key** or **Revoke**: a runner
+  makes itself when `hatch config` runs in its checkout.
+- **A revoked runner** has no actions for anybody, and its settings read as text.
+
+A key may read the runners and heartbeat as one, but never set a bound or a
+control, since an agent that could raise its own **Max spend** could raise its own
+budget.
+
+### On the board
+
+A runner holding a ticket shows on that ticket too. On the board, its card
+carries a small robot head - blue while the runner is live, amber once it has gone
+quiet on a lease it still holds. Live is judged per session: the key's own
+heartbeat counts, and so does any one of its sessions still inside the gone
+horizon, so a key running several checkouts at once draws the head lit while any
+one of them is still being heard from, even if the others have gone quiet. The
+issue page names the claim as `<runner> at <where>` - who holds it, and from which
+checkout - since when, and the last line that checkout printed. Clearing a claim
+by hand makes the ticket claimable again at once; the runner notices and stops at
+its next heartbeat, within a minute by default, so until then its session may
+still push or move the ticket. Clicking the robot head itself, rather than the
+rest of the card, opens that runner's own page at `/runners/<name>` instead of
+the issue.
+
+The board's own **Go to Work** / **Pause** button sets the same state Pause and
+Resume do here.
+
+### How a loop ends its session
 
 A `go-to-work` loop ends its own session when it exits, whichever way it
 exits - a bound, `--stop-file`, a stop from the board, Ctrl-C - so a loop
@@ -81,148 +241,6 @@ so once - how long it will wait at most - and starts as soon as the session
 goes. If that session beats again while the new loop waits, it is a real second
 loop in the checkout, and the new one is refused with the usual "is already the
 runner" sentence and exits 1.
-
-Renaming a checkout's runner retires its old name. The moment a loop beats from
-a checkout under a new name, every older loop row from that same checkout, for
-the same owner, is marked retired: it reads **Retired** in place of **Doing**
-and `replaced by <new name>` in place of the controls, draws no Pause, Stop or
-Order, and is never counted as live or elected to drive a merge train. Only a
-loop beat retires a row, and only from the same checkout: a `once` pass beside
-a loop uses the loop's name and retires nothing, and a beat from another
-checkout retires nothing. A retired row that beats again under its own name
-is un-retired and counts as live again; otherwise it drops off with the rest,
-two hours after its last beat.
-
-A retired row's tags are carried once. A runner's tags live on its key's config,
-so the first loop beat from a key that has no config at all writes one holding
-the union of the tags on the key's own-named row and on every row that key's
-name retired (at most eight, the most recently heard first). A union with no
-tags creates nothing. A key whose config already exists, tagged or empty, keeps
-it untouched: a config with no tags is the operator's deliberate "none", never
-"not yet set".
-
-Runners that report the same machine are listed together, and a line under them
-totals what that machine has run and spent between them - its increments and its
-dollars. A machine with one runner draws no such line, and a runner that never
-said where it runs is never grouped with another: an absent machine is not
-evidence of a shared one.
-
-A runner's name is recorded for a (profile, checkout) pair, so one checkout run
-under two profiles speaks to two boards under two names, and each board's page
-shows it as one row under the name recorded for that pair. The two rows need
-not match, and the page does not group them by checkout - only by machine. See
-[the runner's name](the-runner#the-runners-name).
-
-Spend shows here only as that per-machine total, with no cost column; the
-**Leaderboard** stays the place for spend over time and by session. Own-tickets-only
-still shows on the row, inside Bounds: the repositories a runner serves no
-longer do, and show once the row is unfolded instead - neither is a control
-on this page.
-
-A loop's row, and only a loop's, carries controls: **Pause** (or **Resume**
-on a paused one), **Stop after this one**, and a **Details** panel - where it
-runs, the agent it runs, the models it offers, its build - a short sha and how
-long ago, or `dev build` for one that hasn't been stamped - what it drives, the
-repositories it serves, and the dependencies it has - `has dotnet 10.0.100,
-node 22.11.0`, shown only when it reported any - then a Bounds form - **Under**, **Max runs**, **Max spend**, **Max tokens this run**, **Max tokens per hour**, **Until** (an hour,
-not just a day), and **Tags**, with **Save bounds** and **Revert**. **Projects**
-and **Refuse dangerous work** read in Bounds as the process's own report, but
-the form does not write either one: both are a fact the running process
-carries on every heartbeat, like its remotes, and only a new process started
-with different flags changes what the row shows.
-**Refuse dangerous work** stops the board handing that runner an issue flagged
-dangerous (see [`hatch dangerous`](cli-reference#dangerous) for the flag),
-from the loop's own `HATCH_DANGEROUS` setting.
-The row also carries an Order
-control: a box for a ticket
-key with **Work this ticket**, and **Run one pass**. The loop takes an order at
-its next heartbeat, paused or running, then returns to what its state says.
-A press only records what the board wants:
-the runner reads it between increments, at its next heartbeat, never in the
-middle of one. Nothing on the server starts or stops a process, which is why
-the same buttons work for a runner in a container or on a laptop behind a
-router: the loop does the reading, and the loop is what exits. Only a person
-can press them. A row that belongs to somebody can be pressed by its owner or
-an admin only; to everyone else it says whose it is. A key may read the
-runners and heartbeat as one, but never set a bound or a control, since an
-agent that could raise its own **Max spend**
-could raise its own budget. [One increment and the loop](one-increment-and-the-loop#bounds-timeouts-and-stopping)
-covers what each bound actually does.
-
-The models and the dependencies are what the runner's last beat reported -
-detection merged with `HATCH_HAS`, as [has](the-runner#has) describes - and
-nothing a person sets on this page.
-
-The two token boxes take a token count, like `500k` or `2M`, and show it back
-as `500,000` when you leave the box. Empty clears the cap. A value that is not
-a token count blocks **Save bounds**. When the board refuses a value, the
-refusal appears under the field it names.
-
-**The two defaults a runner inherits when it holds no cap of its own** are
-set on Settings, by an admin only - with the wall off, anyone at the
-keyboard. A runner with none of its own runs under them, which is the
-`(default)` marker in Bounds and Token budget above, and the empty, hinted
-field below.
-
-A box reading the site default rather than a cap of its own shows empty, not
-the number it inherits - saving with no edit leaves it inheriting, rather
-than locking that figure in as the runner's own. Its hint names the figure it
-is inheriting instead of the usual token-count wording, so the empty box is
-never mistaken for an unset cap.
-
-**Tags** are set only here - or by a `PATCH` on the row, or carried once from
-retired rows (see above) - the CLI never sends them. The loop adopts a changed list on its very next heartbeat, saying so
-once - `hatch: the board set --tag ...`, or `--tag off` for none.
-
-Each fresh start of a loop -
-one started by hand, or the supervisor's first start - writes the bounds it
-was started with onto its row on its first heartbeat, overwriting an edit made
-here and clearing any bound the row held for a flag the loop was not given.
-A supervisor restart does not: it keeps what the row holds, so an edit made
-here survives it. A row made by `hatch work` or `go-to-work --once` never
-takes bounds from that heartbeat.
-
-**Projects** is a fact about the running process, not a bound or a form
-field: a row bound to some shows `projects HA, AER` in Bounds,
-comma-separated; `hatch runners` prints the same binding space-separated,
-`projects HA AER`. Unlike the bounds above, it is carried on every
-heartbeat of any kind - loop or `once` - and overwritten each time. It
-narrows which tickets this runner picks up, and nothing else: the merge
-train is unaffected, and an approved pull request in any project still
-merges on its own clock. There is nowhere on this page to set it; only a
-new process started with `--project` changes what the row shows.
-
-The board's own **Go to Work** / **Pause** button writes this row's `state`
-the same way Pause/Resume here do.
-
-An order not yet read is drawn on the row as `ordered to work <KEY> by <name>,
-<how long ago>`, with **Withdraw**, until the loop reads it; a loop holds one
-at a time, so the Order control is replaced by that line while it stands.
-
-A runner holding a ticket shows on that ticket too. On the board, its card
-carries a small robot head - blue while the runner is live, amber once it
-has gone quiet on a lease it still holds. Live is judged per session now, not
-just the one beat row: the key's own heartbeat counts, and so does any one of
-its sessions still inside the gone horizon, so a key running several
-checkouts at once draws the head lit while any one of them is still being
-heard from, even if the others have gone quiet. The issue page names the
-claim as `<runner> at <where>` - who holds it, and from which checkout - since
-when, and the last line that checkout printed. Clearing a claim by hand makes
-the ticket claimable again at once; the runner notices and stops at its next
-heartbeat, within a minute by default, so until then its session may still
-push or move the ticket. Clicking the robot head itself, rather than the rest
-of the card, opens that runner's own page at `/runners/<name>` instead of the
-issue.
-
-A session's heartbeat carries six machine fields - `os`, `arch`,
-`agentVersion`, `container`, `username`, `processStartedAt` - plus `ip`,
-seven in all. The six come from the CLI itself and are missing for a session
-run by a CLI old enough to predate them; `ip` is never one of the six - it
-is the server's own reading of the connection, taken after the forwarded
-header from the proxy in front of it is applied, so it is set on every
-session regardless of CLI version, including one that sends none of the
-other six. Nothing else is collected: no environment variable, no process
-id, no MAC address.
 
 ## Overnight
 

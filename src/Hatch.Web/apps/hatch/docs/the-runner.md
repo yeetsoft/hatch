@@ -19,6 +19,11 @@ are not sitting at, and prints the revision it was built from. That is the same
 build as the page serving it, so the two are never a version apart. Four
 platforms are built: `win-x64`, `osx-arm64`, `osx-x64` and `linux-x64`.
 
+On a Hatch with the wall up, an admin makes the runner's key from **Agents →
+Runners → Create runner**. The secret is shown once, with the `hatch config
+--origin` and `hatch config --key` commands that take it (see [Runners and their
+keys](people-roles-and-keys#runners-and-their-keys)).
+
 Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On macOS and
 Linux it needs marking executable first:
 
