@@ -5047,7 +5047,11 @@ name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
 revoked key's trail still reads. The page writes `gap` and `lead` to the URL,
 editable on the page, and draws the bracketed sessions and a rough-hours
-estimate, alongside the rate of work over time. `hatch activity
+estimate, alongside the rate of work over time. Past eight weeks a **Calendar**
+view is offered beside **Bars**: one cell a day, Monday-to-Sunday columns,
+shaded by the same chosen measure and the same `peak` as the bars, so the two
+never disagree; the URL carries `view=calendar`, read as `bars` at eight weeks
+or under or on anything else. `hatch activity
 [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]`
 prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
 renders neither the series nor the sessions, which `hatch api GET

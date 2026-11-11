@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { getActivityReport, getAssignees, getProjects } from '../api/client';
+import { ActivityCalendar } from '../components/ActivityCalendar';
 import { ActivityGraph } from '../components/ActivityGraph';
 import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
@@ -31,6 +32,7 @@ import {
   withIncludeKeys,
   withLead,
 } from '../lib/activity';
+import { VIEW, offersCalendar, parseView, withView, type ActivityView } from '../lib/activityCalendar';
 import {
   MEASURE,
   WINDOW,
@@ -58,8 +60,12 @@ interface ActivityReportBodyProps {
   measure: ActivityMeasure;
   /** The rolling window the URL names, or `null` for the server's own. */
   windowDays: number | null;
+  /** Bars or Calendar, as the URL names it - read as Bars whenever the window
+      is too short to offer Calendar at all. */
+  view: ActivityView;
   onMeasure: (measure: ActivityMeasure) => void;
   onWindow: (days: number) => void;
+  onView: (view: ActivityView) => void;
   /** Pinned by tests; the page passes none and gets the reader's. */
   locale?: string;
   /** The Gap/Lead controls, a slot rather than drawn here: this body has a
@@ -79,14 +85,19 @@ export function ActivityReportBody({
   offsetMinutes,
   measure,
   windowDays,
+  view,
   onMeasure,
   onWindow,
+  onView,
   locale,
   sessionControls,
 }: ActivityReportBodyProps) {
   if (actor === null) return <EmptyState message={chooseActorWords()} />;
   if (report === null) return <EmptyState message={noProjectWords()} />;
   if (report.total === 0) return <EmptyState message={emptyWords(actor)} />;
+
+  const canCalendar = offersCalendar(report.from, report.to);
+  const effectiveView = canCalendar ? view : 'bars';
 
   return (
     <>
@@ -95,14 +106,38 @@ export function ActivityReportBody({
       </p>
 
       <h2>Over time</h2>
-      <ActivityGraph
-        report={report}
-        measure={measure}
-        onMeasure={onMeasure}
-        windowDays={windowDays ?? report.estimate.windowDays}
-        onWindow={onWindow}
-        locale={locale}
-      />
+      {canCalendar && (
+        <div className="hatch-activity-view-toggle" role="group" aria-label="View">
+          <button
+            type="button"
+            className={`hatch-activity-view${effectiveView === 'bars' ? ' active' : ''}`}
+            aria-pressed={effectiveView === 'bars'}
+            onClick={() => onView('bars')}
+          >
+            Bars
+          </button>
+          <button
+            type="button"
+            className={`hatch-activity-view${effectiveView === 'calendar' ? ' active' : ''}`}
+            aria-pressed={effectiveView === 'calendar'}
+            onClick={() => onView('calendar')}
+          >
+            Calendar
+          </button>
+        </div>
+      )}
+      {effectiveView === 'calendar' ? (
+        <ActivityCalendar report={report} measure={measure} onMeasure={onMeasure} locale={locale} />
+      ) : (
+        <ActivityGraph
+          report={report}
+          measure={measure}
+          onMeasure={onMeasure}
+          windowDays={windowDays ?? report.estimate.windowDays}
+          onWindow={onWindow}
+          locale={locale}
+        />
+      )}
 
       <h2>Rundown</h2>
       <Card flush>
@@ -214,9 +249,9 @@ const REPORT_ANSWERS = 'What one person or key did, issue by issue, over a range
  * What one actor did over a range, issue by issue, with the trail beneath.
  *
  * Everything a pasted link needs is in the URL: `actor` (a name), `project`
- * (repeated keys), the window's `from`/`to`/`range`, and the graph's `measure`
- * (`events` or `hours`), rolling `window` (days, 1 to 90) and `includeKeys` (`true`,
- * offered only for a person). With no `actor`
+ * (repeated keys), the window's `from`/`to`/`range`, the graph's `measure`
+ * (`events` or `hours`), rolling `window` (days, 1 to 90), `includeKeys` (`true`,
+ * offered only for a person) and `view` (`calendar`, past eight weeks). With no `actor`
  * the page opens on the signed-in person - and writes that name into the URL,
  * so the link does not open on whoever pastes it. An actor the directory does not
  * list is still read, as given: the trail outlives the key it names. Nothing
@@ -229,10 +264,11 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
 
   const search = params.toString();
 
-  /* What the read depends on: the address without `measure`. Both measures are
-     in the one answer, so pressing a button must not fetch it again - and
-     `search` itself changes with the press. */
-  const readSearch = withMeasure(params, 'events').toString();
+  /* What the read depends on: the address without `measure` or `view`. Both
+     measures are in the one answer and `view` picks no answer at all, so
+     pressing either button must not fetch again - and `search` itself
+     changes with the press. */
+  const readSearch = withView(withMeasure(params, 'events'), 'bars').toString();
 
   const load = useCallback(async (): Promise<ActivityReportView> => {
     /* The read waits on the directory and the project list rather than going
@@ -315,6 +351,10 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
 
   function chooseWindow(days: number) {
     setParams(withWindow(params, days), { replace: true });
+  }
+
+  function chooseView(view: ActivityView) {
+    setParams(withView(params, view), { replace: true });
   }
 
   function chooseProjects(picked: string[]) {
@@ -419,8 +459,10 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
         offsetMinutes={offsetMinutes}
         measure={parseMeasure(params.get(MEASURE))}
         windowDays={parseWindow(params.get(WINDOW))}
+        view={parseView(params.get(VIEW))}
         onMeasure={chooseMeasure}
         onWindow={chooseWindow}
+        onView={chooseView}
         sessionControls={sessionControls}
       />
     </div>
