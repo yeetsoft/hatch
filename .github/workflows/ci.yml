@@ -477,6 +477,25 @@ jobs:
           labels=$(docker inspect --format '{{index .Config.Labels "hatch.dependencies"}}' hatch-image-cli:ci)
           [ -n "$labels" ] || { echo "the hatch.dependencies label is empty" >&2; exit 1; }
 
+      # Two checkouts with distinct declarations: --repo renders and builds
+      # the union, and the baked label carries every one of their ids.
+      - name: hatch image build --repo renders the union of two repositories
+        run: |
+          set -euo pipefail
+          a=$(mktemp -d) && git -C "$a" init --quiet
+          b=$(mktemp -d) && git -C "$b" init --quiet
+          mkdir -p "$a/.hatch" "$b/.hatch"
+          echo '{"dependencies":["make","node"]}' > "$a/.hatch/dependencies.json"
+          echo '{"dependencies":["make",{"id":"dotnet","version":"10"}]}' > "$b/.hatch/dependencies.json"
+
+          artifacts/hatch/linux-x64/hatch image build \
+            --repo "$a" --repo "$b" --base hatch-runner:ci --image hatch-image-union-cli:ci
+
+          labels=$(docker inspect --format '{{index .Config.Labels "hatch.dependencies"}}' hatch-image-union-cli:ci)
+          for id in make node dotnet; do
+            echo "$labels" | grep -q "\"$id\"" || { echo "the hatch.dependencies label is missing $id: $labels" >&2; exit 1; }
+          done
+
       # The cheap path: actionlint against the workflow hatch hands out, rather
       # than a dogfood run - this repository's own trunk never adopts a
       # workflow meant for another project's CI.

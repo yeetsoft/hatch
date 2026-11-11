@@ -170,8 +170,9 @@ saying why, when this moves the pointer; see
 ### image
 
 ```
-hatch image dockerfile [--base <image>]
+hatch image dockerfile [--base <image>] [--repo <path>]... [--all]
 hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]
+                   [--repo <path>]... [--all]
 hatch image workflow
 ```
 
@@ -180,6 +181,43 @@ renders to. It reads the checkout and the machine-bound settings and makes no
 board call, so it works with nothing configured; it needs no Docker either.
 [`build`](#build) builds that text; [`workflow`](#workflow) hands out a CI
 that renders and builds it in a repository's own GitHub Actions.
+
+With neither `--repo` nor `--all`, both render for the standing checkout
+alone, exactly as below. Given several repositories, both render one
+Dockerfile carrying the **union** of their declared sets - a set union, not
+a composition of images - and a runner built from it advertises the union.
+
+- `--repo <path>` is repeatable: given, the build renders for exactly the
+  named checkouts, in the order given, deduplicated. Each needs only a
+  `.git` - no `origin` is required, unlike a named checkout `hatch queue`
+  serves. The standing checkout is not added automatically; name it too if
+  it belongs among the several.
+- `--all` renders for every checkout this runner serves: the standing one,
+  every `HATCH_REPOS` entry, and the workspace's clones - the same set
+  [`hatch queue`](#queue) would serve. A stray under the workspace prints the
+  same line every other command prints for one.
+- `--repo` and `--all` together are refused: `image build/dockerfile takes
+  --repo or --all, not both`.
+
+Resolving to more than one repository:
+
+- Each repository's own declaration is read and validated on its own first,
+  so an unknown id, a bad version, or a dependency with no install recipe
+  refuses the whole build exactly as it would alone, naming that repository
+  too: `hatch: <repository> - <the same sentence>`.
+- A dependency pinned to two different versions across repositories refuses
+  in one sentence naming the dependency and both repositories: `` hatch:
+  `<id>` is declared at <v1> by <repoA> and at <v2> by <repoB> - a recipe
+  installs one version ``.
+- The union renders in the same canonical id order a single declaration
+  renders in.
+- No repository's own `.hatch/runner.Dockerfile` is read - there is no
+  single owner to take it from once there is more than one repository.
+- `build` past one resolved repository requires `--image`: `hatch: more than
+  one repository - pass --image <name>, there is no single repository to
+  derive an image name from`. `dockerfile` takes no `--image` either way.
+- The tool's working directory and build context (`.`) is the first resolved
+  repository.
 
 The text, in order:
 
@@ -218,8 +256,10 @@ Builds and tags the image the Dockerfile above describes. It takes `--base` and
 refuses exactly as `dockerfile` does, because it renders the same text in the
 same process, and gives the tool exactly those bytes on standard input:
 `build -f - --platform <platforms> -t <image> --build-arg HATCH_IMAGE=<image>
-.`, run from the repository root, so `.hatch/runner.Dockerfile`'s own `COPY`
-lines resolve against the checkout as they would for `docker build` by hand.
+.`, run from the resolved repository's root (the first, past one), so
+`.hatch/runner.Dockerfile`'s own `COPY` lines resolve against the checkout as
+they would for `docker build` by hand - moot past one repository, since no
+repository's fragment is read there.
 The tool's own output is shown as it comes. Nothing is pushed unless `--push`
 says so. `HATCH_IMAGE` carries `:latest` appended where `<image>`'s own last
 path segment names no tag - a registry's port is not one - since that is the
@@ -227,13 +267,14 @@ tag a plain `docker build -t <image>` leaves it under.
 
 - It runs `docker`, or `podman` where there is no `docker`. With neither on
   `PATH` it says so in one sentence naming both.
-- `--image <name>` is the name to tag, one word. Without it the name comes from
-  the checkout's `origin` remote, whichever of `https://`, `ssh://` or
-  `git@host:` form it is written in (credentials in the URL are ignored): a
-  `github.com` origin gives `ghcr.io/<owner>/<repo>/hatch-runner`, lowercased,
-  because a registry refuses uppercase. Any other host has no registry Hatch
-  can name, and so does no `origin` at all; both are refused, naming
-  `--image`.
+- `--image <name>` is the name to tag, one word. Resolving to more than one
+  repository, it is required - see `--repo` and `--all` above. With one,
+  without it the name comes from the checkout's `origin` remote,
+  whichever of `https://`, `ssh://` or `git@host:` form it is written in
+  (credentials in the URL are ignored): a `github.com` origin gives
+  `ghcr.io/<owner>/<repo>/hatch-runner`, lowercased, because a registry
+  refuses uppercase. Any other host has no registry Hatch can name, and so
+  does no `origin` at all; both are refused, naming `--image`.
 - `--platform <list>` is a comma list of `os/arch`, such as `linux/arm64`.
   Without it the platforms are read off the base image itself - never a fixed
   pair, since `--base` can point anywhere. The registry's manifest list is

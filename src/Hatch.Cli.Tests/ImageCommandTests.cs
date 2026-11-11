@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Hatch.Contracts;
 
@@ -13,6 +14,7 @@ public sealed class ImageCommandTests : IDisposable
     private const string Json = """{"dependencies":[{"id":"dotnet","version":"10"},"make","node","playwright-browsers"]}""";
 
     private readonly string _root = Directory.CreateTempSubdirectory("hatch-image-").FullName;
+    private readonly List<string> _extraRoots = [];
     private readonly Transcript _say = new();
 
     private string Said => string.Concat(_say.Said);
@@ -121,6 +123,40 @@ public sealed class ImageCommandTests : IDisposable
 
     private string Fixture() =>
         """{"dependencies":["playwright-browsers","make",{"id":"dotnet","version":"10"}]}""";
+
+    /// <summary>A second (or third) checkout for a union: a temp directory with a bare <c>.git</c> - all <see cref="Checkouts.IsCheckout"/> needs.</summary>
+    private string CreateRepo()
+    {
+        var path = Directory.CreateTempSubdirectory("hatch-image-repo-").FullName;
+        Directory.CreateDirectory(Path.Combine(path, ".git"));
+        _extraRoots.Add(path);
+        return path;
+    }
+
+    private static void DeclareAt(string repoPath, string content)
+    {
+        Directory.CreateDirectory(Path.Combine(repoPath, ".hatch"));
+        File.WriteAllText(Path.Combine(repoPath, ".hatch", "dependencies.json"), content);
+    }
+
+    /// <summary>A real checkout, for the one test that needs <c>origin</c> to resolve - <c>--all</c>'s HATCH_REPOS entries go through the same check named checkouts always have.</summary>
+    private string CreateGitRepo(string? origin = null)
+    {
+        var path = Directory.CreateTempSubdirectory("hatch-image-repo-").FullName;
+        _extraRoots.Add(path);
+        Git(path, "init", "--quiet");
+        if (origin is not null) Git(path, "remote", "add", "origin", origin);
+        return path;
+    }
+
+    private static void Git(string dir, params string[] args)
+    {
+        var start = new ProcessStartInfo { FileName = "git", WorkingDirectory = dir, UseShellExecute = false };
+        foreach (var arg in args) start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        process.WaitForExit();
+    }
 
     [Fact]
     public void It_prints_from_then_the_recipes_in_id_order_then_the_baked_block_and_nothing_else()
@@ -299,6 +335,120 @@ public sealed class ImageCommandTests : IDisposable
         Assert.Contains("usage: hatch image <dockerfile|build|workflow>", Complained);
     }
 
+    // ---- --repo and --all ----
+
+    [Fact]
+    public void Two_repositories_render_the_union_the_concatenated_list_itself_would_give()
+    {
+        var repoA = CreateRepo();
+        var repoB = CreateRepo();
+        DeclareAt(repoA, """{"dependencies":["make"]}""");
+        DeclareAt(repoB, """{"dependencies":["node"]}""");
+
+        Assert.Equal(0, Command().Run(["dockerfile", "--base", "debian:bookworm", "--repo", repoA, "--repo", repoB]));
+
+        var (recipes, resolved, problem) = DependencyRecipes.Render([new DeclaredDependency("make", null), new DeclaredDependency("node", null)]);
+        Assert.Null(problem);
+        var expected = "FROM debian:bookworm\n" + recipes + Baked(DependencyDeclaration.Serialize(resolved!));
+        Assert.Equal(expected, Said);
+    }
+
+    [Fact]
+    public void A_version_pinned_two_ways_across_repositories_names_the_id_and_both_repositories()
+    {
+        var repoA = CreateRepo();
+        var repoB = CreateRepo();
+        DeclareAt(repoA, """{"dependencies":[{"id":"dotnet","version":"10"}]}""");
+        DeclareAt(repoB, """{"dependencies":[{"id":"dotnet","version":"8"}]}""");
+
+        Assert.Equal(1, Command().Run(["dockerfile", "--base", "b", "--repo", repoA, "--repo", repoB]));
+
+        Assert.Equal($"hatch: `dotnet` is declared at 10 by {repoA} and at 8 by {repoB} - a recipe installs one version", Complained);
+        Assert.Empty(_say.Said);
+    }
+
+    [Fact]
+    public void A_no_recipe_dependency_among_several_repositories_refuses_the_whole_build_naming_that_repository()
+    {
+        var repoA = CreateRepo();
+        var repoB = CreateRepo();
+        DeclareAt(repoA, """{"dependencies":["make"]}""");
+        DeclareAt(repoB, """{"dependencies":["pwsh"]}""");
+
+        var command = Command(renderer: declared => declared.Any(d => d.Id == "pwsh")
+            ? (null, null, "`pwsh` is on the master list but ships no install recipe - a repository declaring it stays on host runners")
+            : DependencyRecipes.Render(declared));
+
+        Assert.Equal(1, command.Run(["dockerfile", "--base", "b", "--repo", repoA, "--repo", repoB]));
+
+        Assert.Equal(
+            $"hatch: {repoB} - `pwsh` is on the master list but ships no install recipe - a repository declaring it stays on host runners",
+            Complained);
+        Assert.Empty(_say.Said);
+    }
+
+    [Fact]
+    public void A_repo_flag_given_twice_is_one_checkout()
+    {
+        var repo = CreateRepo();
+        DeclareAt(repo, """{"dependencies":["make"]}""");
+
+        Assert.Equal(0, Command().Run(["dockerfile", "--base", "b", "--repo", repo, "--repo", repo]));
+
+        Assert.Equal("FROM b\n" + DependencyRecipes.Recipe("make") + Baked("""{"dependencies":["make"]}"""), Said);
+    }
+
+    [Fact]
+    public void Repo_and_all_together_refuse()
+    {
+        Assert.Equal(1, Command().Run(["dockerfile", "--repo", _root, "--all"]));
+        Assert.Contains("--repo or --all, not both", Complained);
+        Assert.Empty(_say.Said);
+
+        Assert.Equal(1, Building().Run(["build", "--repo", _root, "--all"]));
+        Assert.Contains("--repo or --all, not both", Complained);
+    }
+
+    [Fact]
+    public void All_resolves_the_same_set_a_direct_TryDiscoverServing_call_does()
+    {
+        Declare("""{"dependencies":["dotnet"]}""");
+
+        var named = CreateGitRepo("https://example.test/owner/named.git");
+        DeclareAt(named, """{"dependencies":["make"]}""");
+
+        var workspace = Directory.CreateTempSubdirectory("hatch-image-ws-").FullName;
+        _extraRoots.Add(workspace);
+        var clone = Path.Combine(workspace, "example.test", "owner", "cloned");
+        Directory.CreateDirectory(Path.Combine(clone, ".git"));
+        DeclareAt(clone, """{"dependencies":["node"]}""");
+
+        var command = new ImageCommand(_say)
+        {
+            Root = _root,
+            Fold = name => name switch
+            {
+                "HATCH_REPOS" => (named, Settings.Layer.Environment),
+                "HATCH_WORKSPACE" => (workspace, Settings.Layer.Environment),
+                _ => (null, Settings.Layer.Unset),
+            },
+        };
+
+        Assert.True(Checkouts.TryDiscoverServing(
+            _root, [named], workspace, defaulted: false,
+            out var checkouts, out _, out _, out _, out _));
+        Assert.Equal(3, checkouts.Count);
+
+        Assert.Equal(0, command.Run(["dockerfile", "--base", "b", "--all"]));
+
+        // Three checkouts resolved means the baked set carries all three ids - and no more.
+        Assert.Contains("\"dotnet\"", Said);
+        Assert.Contains("\"make\"", Said);
+        Assert.Contains("\"node\"", Said);
+        var baked = Said[Said.IndexOf("dependencies\":[", StringComparison.Ordinal)..];
+        Assert.Equal(3, baked[..baked.IndexOf(']')].Count(c => c == ',') + 1);
+    }
+
     // ---- build ----
 
     [Fact]
@@ -367,6 +517,39 @@ public sealed class ImageCommandTests : IDisposable
         Assert.Equal(1, Building().Run(["build", "--base", "a", "--base", "b"]));
         Assert.Equal(1, Building().Run(["build", "--base", "b", "--image", "--platform", "linux/arm64"]));
         Assert.Empty(_calls);
+    }
+
+    [Fact]
+    public void Build_with_more_than_one_repository_and_no_image_refuses_naming_image()
+    {
+        var repoA = CreateRepo();
+        var repoB = CreateRepo();
+        DeclareAt(repoA, """{"dependencies":["make"]}""");
+        DeclareAt(repoB, """{"dependencies":["node"]}""");
+
+        Assert.Equal(1, Building().Run(["build", "--base", "b", "--repo", repoA, "--repo", repoB]));
+
+        Assert.Equal(
+            "hatch: more than one repository - pass --image <name>, there is no single repository to derive an image name from",
+            Complained);
+        Assert.Empty(_calls);
+    }
+
+    [Fact]
+    public void Build_with_more_than_one_repository_and_image_runs_the_tool_at_the_first_repository()
+    {
+        var repoA = CreateRepo();
+        var repoB = CreateRepo();
+        DeclareAt(repoA, """{"dependencies":["make"]}""");
+        DeclareAt(repoB, """{"dependencies":["node"]}""");
+
+        Assert.Equal(0, Building().Run(
+            ["build", "--base", "b", "--image", "reg/o/r:t", "--platform", "linux/arm64", "--repo", repoA, "--repo", repoB]));
+
+        var build = Assert.Single(Builds);
+        Assert.Equal(repoA, build.WorkingDirectory);
+        Assert.Equal(["build", "-f", "-", "--platform", "linux/arm64", "-t", "reg/o/r:t", "--build-arg", "HATCH_IMAGE=reg/o/r:t", "."], build.Args);
+        Assert.Equal(0, _originAsked);
     }
 
     [Theory]
@@ -1016,13 +1199,16 @@ public sealed class ImageCommandTests : IDisposable
 
     public void Dispose()
     {
-        try
+        foreach (var root in (IReadOnlyList<string>) [_root, .. _extraRoots])
         {
-            Directory.Delete(_root, recursive: true);
-        }
-        catch (IOException)
-        {
-            // A temporary directory that will not go is not a failing test.
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // A temporary directory that will not go is not a failing test.
+            }
         }
     }
 }
