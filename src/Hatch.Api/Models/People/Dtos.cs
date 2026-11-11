@@ -18,8 +18,8 @@ namespace Hatch.Api.Models.People;
 /// </param>
 /// <param name="Role">
 /// What this person may reach: <c>pending</c>, <c>user</c> or <c>admin</c>.
-/// Read openly on purpose: this list is what the family shell renders names and
-/// faces from, and who may do what is not a secret in a household. See
+/// Read openly on purpose: this list is what the web apps render names and
+/// faces from, and who may do what is not a secret on a team. See
 /// EfPerson.Role.
 /// </param>
 /// <param name="Email">
