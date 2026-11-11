@@ -1,6 +1,7 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Badge, Card, EmptyState, PageHeader, Table } from '@hatch/ui';
+import { Badge, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { getActivityReport, getAssignees, getProjects } from '../api/client';
 import { ActivityGraph } from '../components/ActivityGraph';
 import { Facet } from '../components/Facet';
@@ -10,15 +11,25 @@ import {
   actorOptions,
   chooseActorWords,
   emptyWords,
+  estimateHeadlineWords,
+  estimateRuleWords,
   headlineWords,
   isPerson,
+  isValidGap,
+  isValidLead,
   kindsWords,
   resolveActor,
+  resolveGap,
   resolveIncludeKeys,
+  resolveLead,
+  sessionLengthWords,
+  sessionWhenWords,
   touchWords,
   truncatedWords,
   withActor,
+  withGap,
   withIncludeKeys,
+  withLead,
 } from '../lib/activity';
 import {
   MEASURE,
@@ -51,6 +62,9 @@ interface ActivityReportBodyProps {
   onWindow: (days: number) => void;
   /** Pinned by tests; the page passes none and gets the reader's. */
   locale?: string;
+  /** The Gap/Lead controls, a slot rather than drawn here: this body has a
+      standing test asserting it draws nothing that could write. */
+  sessionControls?: ReactNode;
 }
 
 /**
@@ -68,6 +82,7 @@ export function ActivityReportBody({
   onMeasure,
   onWindow,
   locale,
+  sessionControls,
 }: ActivityReportBodyProps) {
   if (actor === null) return <EmptyState message={chooseActorWords()} />;
   if (report === null) return <EmptyState message={noProjectWords()} />;
@@ -145,6 +160,42 @@ export function ActivityReportBody({
         </Table>
       </Card>
       {report.truncated && <p className="text-muted">{truncatedWords(report)}</p>}
+
+      <h2>Sessions</h2>
+      <p>
+        <strong>{estimateHeadlineWords(report.estimate)}</strong>
+      </p>
+      <p className="text-muted">{estimateRuleWords(report.estimate)}</p>
+      {sessionControls}
+      <Card flush>
+        <Table>
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Length</th>
+              <th>Events</th>
+              <th>Issues</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.sessions.map((session) => (
+              <tr key={session.from}>
+                <td className="text-muted">{sessionWhenWords(session, offsetMinutes, locale)}</td>
+                <td>{sessionLengthWords(session.estimatedMinutes)}</td>
+                <td>{session.events}</td>
+                <td>
+                  {session.issueKeys.map((key, i) => (
+                    <span key={key}>
+                      {i > 0 && ', '}
+                      <Link to={`/issues/${key}`}>{key}</Link>
+                    </span>
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
     </>
   );
 }
@@ -203,6 +254,8 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
       projectId: narrowed?.map((p) => p.id),
       offsetMinutes,
       window: parseWindow(query.get(WINDOW)),
+      gap: resolveGap(query),
+      lead: resolveLead(query),
       includeKeys: resolveIncludeKeys(query) && isPerson(directory, actor),
     });
 
@@ -210,6 +263,42 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
   }, [from, to, offsetMinutes, readSearch, keys]);
 
   const { data, error } = useLoaded<ActivityReportView>(load);
+
+  /* Local text, so a digit typed mid-edit does not write to the URL until the
+     control is committed; each resyncs from the URL whenever it changes under
+     the input, including from this page's own default-actor write. */
+  const [gapText, setGapText] = useState(String(resolveGap(params)));
+  const [leadText, setLeadText] = useState(String(resolveLead(params)));
+
+  useEffect(() => {
+    setGapText(String(resolveGap(params)));
+  }, [params]);
+
+  useEffect(() => {
+    setLeadText(String(resolveLead(params)));
+  }, [params]);
+
+  function commitGap() {
+    const parsed = Number(gapText);
+    const current = resolveGap(params);
+    if (!isValidGap(parsed)) {
+      setGapText(String(current));
+      return;
+    }
+    setGapText(String(parsed));
+    if (parsed !== current) setParams(withGap(params, parsed), { replace: true });
+  }
+
+  function commitLead() {
+    const parsed = Number(leadText);
+    const current = resolveLead(params);
+    if (!isValidLead(parsed)) {
+      setLeadText(String(current));
+      return;
+    }
+    setLeadText(String(parsed));
+    if (parsed !== current) setParams(withLead(params, parsed), { replace: true });
+  }
 
   /* The signed-in person, written into the URL once resolved, so the address
      says whose rundown it is. Replace rather than push: the page opened on
@@ -245,6 +334,33 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
   const options = actorOptions(data.directory.assignees, actor);
   const includeKeys = resolveIncludeKeys(params);
   const choices = actor === null ? [{ value: '', text: 'Choose…' }, ...options] : options;
+
+  const sessionControls = (
+    <div className="hatch-timeline-controls" role="group" aria-label="Session">
+      <Field label="Gap" hint="minutes of quiet that ends a session">
+        <input
+          type="number"
+          value={gapText}
+          onChange={(e) => setGapText(e.target.value)}
+          onBlur={commitGap}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitGap();
+          }}
+        />
+      </Field>
+      <Field label="Lead" hint="minutes added to every session's length">
+        <input
+          type="number"
+          value={leadText}
+          onChange={(e) => setLeadText(e.target.value)}
+          onBlur={commitLead}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitLead();
+          }}
+        />
+      </Field>
+    </div>
+  );
 
   return (
     <div className="hatch-page">
@@ -305,6 +421,7 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
         windowDays={parseWindow(params.get(WINDOW))}
         onMeasure={chooseMeasure}
         onWindow={chooseWindow}
+        sessionControls={sessionControls}
       />
     </div>
   );

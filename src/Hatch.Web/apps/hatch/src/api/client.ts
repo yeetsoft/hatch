@@ -850,6 +850,8 @@ export const getActivityReport = (query: ActivityReportQuery) => {
   for (const id of query.projectId ?? []) params.append('projectId', String(id));
   params.set('offsetMinutes', String(query.offsetMinutes));
   if (query.window != null) params.set('window', String(query.window));
+  params.set('gap', String(query.gap));
+  params.set('lead', String(query.lead));
   if (query.includeKeys === true) params.set('includeKeys', 'true');
   return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
 };
@@ -863,6 +865,12 @@ export interface ActivityReportQuery {
   offsetMinutes: number;
   /** The rolling mean's width, in buckets; 1..90. */
   window?: number | null;
+  /** Minutes between two consecutive events that still counts as one working
+      session - always resolved by the caller, as `offsetMinutes` is elsewhere. */
+  gap: number;
+  /** Minutes added to every session's estimated length - always resolved by
+      the caller. */
+  lead: number;
   /** Also count what a hand typed under the actor's own keys; sent only when true. */
   includeKeys?: boolean;
 }

@@ -7,13 +7,75 @@
    the page imports them from there and nothing here copies them. */
 
 import { compareAssignees } from './assignee';
-import type { ActivityKindCount, ActivityReport, Assignee, AssigneeDirectory } from '../types';
+import type {
+  ActivityEstimate,
+  ActivityKindCount,
+  ActivityReport,
+  ActivitySession,
+  Assignee,
+  AssigneeDirectory,
+} from '../types';
 
 const MINUTE_MS = 60_000;
 
 /** The URL param naming whose events the report reads: the actor's name, which
     is what an event's `actor` holds. */
 export const ACTOR = 'actor';
+
+/** The URL params naming the session-bracketing parameters, mirroring the
+    API's own `gap`/`lead` query parameters and their defaults and bounds. */
+export const GAP = 'gap';
+export const LEAD = 'lead';
+export const DEFAULT_GAP = 30;
+export const DEFAULT_LEAD = 15;
+const GAP_BOUNDS = { min: 1, max: 1440 };
+const LEAD_BOUNDS = { min: 0, max: 240 };
+
+const inBounds = (n: number, bounds: { min: number; max: number }): boolean =>
+  Number.isInteger(n) && n >= bounds.min && n <= bounds.max;
+
+function resolveMinutes(raw: string | null, fallback: number, bounds: { min: number; max: number }): number {
+  if (raw === null) return fallback;
+  const n = Number(raw);
+
+  return inBounds(n, bounds) ? n : fallback;
+}
+
+/** The gap, off the URL: the integer in range, else `DEFAULT_GAP` - never
+    refuses, as `resolveWindow` doesn't. */
+export const resolveGap = (params: URLSearchParams): number =>
+  resolveMinutes(params.get(GAP), DEFAULT_GAP, GAP_BOUNDS);
+
+/** The lead, off the URL: the integer in range, else `DEFAULT_LEAD` - never
+    refuses, as `resolveWindow` doesn't. */
+export const resolveLead = (params: URLSearchParams): number =>
+  resolveMinutes(params.get(LEAD), DEFAULT_LEAD, LEAD_BOUNDS);
+
+/** Whether `n` is a gap the server would accept - what a committed input is
+    checked against before it is sent. */
+export const isValidGap = (n: number): boolean => inBounds(n, GAP_BOUNDS);
+
+/** Whether `n` is a lead the server would accept - what a committed input is
+    checked against before it is sent. */
+export const isValidLead = (n: number): boolean => inBounds(n, LEAD_BOUNDS);
+
+/** A copy of `params` with the gap set. Every other param is kept; the input
+    is never mutated. */
+export function withGap(params: URLSearchParams, gap: number): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.set(GAP, String(gap));
+
+  return next;
+}
+
+/** A copy of `params` with the lead set. Every other param is kept; the input
+    is never mutated. */
+export function withLead(params: URLSearchParams, lead: number): URLSearchParams {
+  const next = new URLSearchParams(params);
+  next.set(LEAD, String(lead));
+
+  return next;
+}
 
 /** The URL param asking for a person's own keys' hand-typed events as well; `true` or absent. */
 export const INCLUDE_KEYS = 'includeKeys';
@@ -153,13 +215,11 @@ export const chooseActorWords = (): string => 'Choose whose activity to read.';
 export const truncatedWords = (report: Pick<ActivityReport, 'total' | 'events'>): string =>
   `Showing the newest ${report.events.length} of ${report.total} events; the rundown above covers all of them.`;
 
-/**
- * An instant in the reader's own clock, as `4 Nov 2026, 14:05`. `offsetMinutes`
- * (minutes east of UTC) shifts it onto the reader's wall clock, which is then
- * formatted as UTC so the runtime's zone never moves it, as `bucketLabel` does.
- * The optional locale exists so tests can pin one.
- */
-export function touchWords(iso: string, offsetMinutes: number, locale?: string): string {
+/** An instant shifted onto the reader's wall clock (minutes east of UTC),
+    split into its date and time, each formatted as UTC so the runtime's own
+    zone never moves it a second time. Shared by `touchWords` and
+    `sessionWhenWords`. */
+function shiftedParts(iso: string, offsetMinutes: number, locale?: string): { date: string; time: string } {
   const shifted = new Date(Date.parse(iso) + offsetMinutes * MINUTE_MS);
   const date = shifted.toLocaleDateString(locale, {
     day: 'numeric',
@@ -173,5 +233,75 @@ export function touchWords(iso: string, offsetMinutes: number, locale?: string):
     timeZone: 'UTC',
   });
 
+  return { date, time };
+}
+
+/**
+ * An instant in the reader's own clock, as `4 Nov 2026, 14:05`. `offsetMinutes`
+ * (minutes east of UTC) shifts it onto the reader's wall clock, which is then
+ * formatted as UTC so the runtime's zone never moves it, as `bucketLabel` does.
+ * The optional locale exists so tests can pin one.
+ */
+export function touchWords(iso: string, offsetMinutes: number, locale?: string): string {
+  const { date, time } = shiftedParts(iso, offsetMinutes, locale);
+
   return `${date}, ${time}`;
+}
+
+/**
+ * The totals in `estimate` as one headline sentence:
+ * `3 sessions, about 2.5 hours in this window`. Singular below 2 sessions or
+ * 1.05 hours.
+ */
+export function estimateHeadlineWords(estimate: Pick<ActivityEstimate, 'sessions' | 'minutes'>): string {
+  const hours = estimate.minutes / 60;
+  const sessionWord = estimate.sessions < 2 ? 'session' : 'sessions';
+  const hourWord = hours < 1.05 ? 'hour' : 'hours';
+
+  return `${estimate.sessions} ${sessionWord}, about ${hours.toFixed(1)} ${hourWord} in this window`;
+}
+
+/** The rule the headline's estimate was computed under, as one sentence, from
+    `estimate.gapMinutes`/`estimate.leadMinutes` alone - never from the
+    `gap`/`lead` inputs, which may differ from what the answer was computed
+    with. */
+export function estimateRuleWords(estimate: Pick<ActivityEstimate, 'gapMinutes' | 'leadMinutes'>): string {
+  const gap = estimate.gapMinutes === 1 ? '1 minute' : `${estimate.gapMinutes} minutes`;
+  const lead = estimate.leadMinutes === 1 ? '1 minute' : `${estimate.leadMinutes} minutes`;
+
+  return (
+    `A session ends after ${gap} of quiet; each is counted from its first event to its last, ` +
+    `plus ${lead}.`
+  );
+}
+
+/** A session's estimated length, rough and with no seconds: `45m`, `1h`,
+    `1h30m`. A lone-event session's length is the lead alone. */
+export function sessionLengthWords(minutes: number): string {
+  const total = Math.round(minutes);
+  if (total < 60) return `${total}m`;
+
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
+
+  return rest === 0 ? `${hours}h` : `${hours}h${rest}m`;
+}
+
+/**
+ * When a session started and ended, in the reader's own clock. The same
+ * calendar day (after the offset shift) names the date once:
+ * `4 Nov 2026, 09:00–10:30`; different days name both:
+ * `4 Nov 2026, 23:30 – 5 Nov 2026, 00:15`.
+ */
+export function sessionWhenWords(
+  session: Pick<ActivitySession, 'from' | 'to'>,
+  offsetMinutes: number,
+  locale?: string,
+): string {
+  const from = shiftedParts(session.from, offsetMinutes, locale);
+  const to = shiftedParts(session.to, offsetMinutes, locale);
+
+  if (from.date === to.date) return `${from.date}, ${from.time}–${to.time}`;
+
+  return `${from.date}, ${from.time} – ${to.date}, ${to.time}`;
 }

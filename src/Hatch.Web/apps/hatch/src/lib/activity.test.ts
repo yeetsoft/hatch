@@ -4,16 +4,28 @@ import {
   actorOptions,
   chooseActorWords,
   emptyWords,
+  estimateHeadlineWords,
+  estimateRuleWords,
+  GAP,
   headlineWords,
   INCLUDE_KEYS,
   isPerson,
+  isValidGap,
+  isValidLead,
   kindWords,
   kindsWords,
+  LEAD,
   resolveActor,
+  resolveGap,
   resolveIncludeKeys,
+  resolveLead,
+  sessionLengthWords,
+  sessionWhenWords,
   touchWords,
   truncatedWords,
   withActor,
+  withGap,
+  withLead,
   withIncludeKeys,
 } from './activity';
 import type { Assignee } from '../types';
@@ -208,5 +220,134 @@ describe('touchWords', () => {
 
   it('moves west across midnight into the day before', () => {
     expect(touchWords('2026-11-04T01:00:00.000Z', -300, 'en-GB')).toBe('3 Nov 2026, 20:00');
+  });
+});
+
+describe('resolveGap', () => {
+  it('defaults with no gap in the URL', () => {
+    expect(resolveGap(params(''))).toBe(30);
+  });
+
+  it('takes the integer in range', () => {
+    expect(resolveGap(params('gap=45'))).toBe(45);
+  });
+
+  it('defaults rather than refuses when out of range or not a number', () => {
+    expect(resolveGap(params('gap=0'))).toBe(30);
+    expect(resolveGap(params('gap=1441'))).toBe(30);
+    expect(resolveGap(params('gap=soon'))).toBe(30);
+    expect(resolveGap(params('gap=12.5'))).toBe(30);
+  });
+});
+
+describe('resolveLead', () => {
+  it('defaults with no lead in the URL', () => {
+    expect(resolveLead(params(''))).toBe(15);
+  });
+
+  it('takes the integer in range, including the bottom of it', () => {
+    expect(resolveLead(params('lead=20'))).toBe(20);
+    expect(resolveLead(params('lead=0'))).toBe(0);
+  });
+
+  it('defaults rather than refuses when out of range or not a number', () => {
+    expect(resolveLead(params('lead=-1'))).toBe(15);
+    expect(resolveLead(params('lead=241'))).toBe(15);
+    expect(resolveLead(params('lead=never'))).toBe(15);
+  });
+});
+
+describe('isValidGap and isValidLead', () => {
+  it('accepts the integer in range, rejects anything else', () => {
+    expect(isValidGap(1)).toBe(true);
+    expect(isValidGap(1440)).toBe(true);
+    expect(isValidGap(0)).toBe(false);
+    expect(isValidGap(1441)).toBe(false);
+    expect(isValidGap(12.5)).toBe(false);
+    expect(isValidGap(NaN)).toBe(false);
+  });
+
+  it('allows a lead of zero, which a gap may not be', () => {
+    expect(isValidLead(0)).toBe(true);
+    expect(isValidGap(0)).toBe(false);
+    expect(isValidLead(240)).toBe(true);
+    expect(isValidLead(241)).toBe(false);
+  });
+});
+
+describe('withGap and withLead', () => {
+  it('set the one param and keep everything else, without mutating the input', () => {
+    const before = params('actor=Ada&gap=30');
+    const after = withGap(before, 45);
+
+    expect(after.get(GAP)).toBe('45');
+    expect(after.get('actor')).toBe('Ada');
+    expect(before.get(GAP)).toBe('30');
+  });
+
+  it('sets the lead', () => {
+    expect(withLead(params('lead=15'), 20).get(LEAD)).toBe('20');
+  });
+});
+
+describe('estimateHeadlineWords', () => {
+  it('names the sessions and the hours', () => {
+    expect(estimateHeadlineWords({ sessions: 3, minutes: 150 })).toBe('3 sessions, about 2.5 hours in this window');
+  });
+
+  it('says session and hour in the singular', () => {
+    expect(estimateHeadlineWords({ sessions: 1, minutes: 45 })).toBe('1 session, about 0.8 hour in this window');
+    expect(estimateHeadlineWords({ sessions: 2, minutes: 60 })).toBe('2 sessions, about 1.0 hour in this window');
+  });
+});
+
+describe('estimateRuleWords', () => {
+  it('states the rule from the estimate\'s own gap and lead', () => {
+    expect(estimateRuleWords({ gapMinutes: 30, leadMinutes: 15 })).toBe(
+      'A session ends after 30 minutes of quiet; each is counted from its first event to its last, ' +
+        'plus 15 minutes.',
+    );
+  });
+
+  it('says minute in the singular', () => {
+    expect(estimateRuleWords({ gapMinutes: 1, leadMinutes: 1 })).toBe(
+      'A session ends after 1 minute of quiet; each is counted from its first event to its last, plus 1 minute.',
+    );
+  });
+});
+
+describe('sessionLengthWords', () => {
+  it('is minutes alone under an hour', () => {
+    expect(sessionLengthWords(15)).toBe('15m');
+  });
+
+  it('is whole hours with none left over', () => {
+    expect(sessionLengthWords(120)).toBe('2h');
+  });
+
+  it('is hours and minutes', () => {
+    expect(sessionLengthWords(90)).toBe('1h30m');
+  });
+});
+
+describe('sessionWhenWords', () => {
+  it('names the date once on the same calendar day', () => {
+    expect(
+      sessionWhenWords(
+        { from: '2026-11-04T09:00:00.000Z', to: '2026-11-04T10:30:00.000Z' },
+        0,
+        'en-GB',
+      ),
+    ).toBe('4 Nov 2026, 09:00–10:30');
+  });
+
+  it('names both dates when the offset carries the session into the next day', () => {
+    expect(
+      sessionWhenWords(
+        { from: '2026-11-04T23:30:00.000Z', to: '2026-11-05T00:15:00.000Z' },
+        0,
+        'en-GB',
+      ),
+    ).toBe('4 Nov 2026, 23:30 – 5 Nov 2026, 00:15');
   });
 });

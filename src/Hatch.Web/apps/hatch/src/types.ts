@@ -906,6 +906,30 @@ export interface ActivityReportIssue {
   kinds: ActivityKindCount[];
 }
 
+/** A maximal run of the actor's events with no gap over `gap` minutes between
+    two consecutive ones. Mirrors ActivitySessionDto. */
+export interface ActivitySession {
+  from: string;
+  to: string;
+  events: number;
+  /** Every issue touched during the session, distinct, first-seen order. */
+  issueKeys: string[];
+  /** `(to - from)` plus the lead - a one-event session has `to === from` and
+      is worth the lead alone. */
+  estimatedMinutes: number;
+}
+
+/** The totals `sessions` add up to, beside the parameters they were computed
+    with - so a page can state the rule in one sentence from the answer
+    rather than from its inputs. Mirrors ActivityEstimateDto. */
+export interface ActivityEstimate {
+  sessions: number;
+  minutes: number;
+  gapMinutes: number;
+  leadMinutes: number;
+  windowDays: number;
+}
+
 /** One actor's events over a range. `total`, `kinds` and `issues` cover every
     event in range; `events` is the newest of them, capped, and `truncated` says
     more existed. Mirrors ActivityReportDto. */
@@ -929,6 +953,7 @@ export interface ActivityReport {
   /** One point per bucket over the window, oldest first, empty buckets
       included. */
   series: ActivitySeriesPoint[];
+  /** The trail bracketed into working sessions, newest `from` first. */
   sessions: ActivitySession[];
   estimate: ActivityEstimate;
 }
@@ -942,26 +967,6 @@ export interface ActivitySeriesPoint {
   hours: number;
   rollingEvents: number;
   rollingHours: number;
-}
-
-/** A run of the actor's events with no gap over the gap between two of them.
-    Mirrors ActivitySessionDto. */
-export interface ActivitySession {
-  from: string;
-  to: string;
-  events: number;
-  issueKeys: string[];
-  estimatedMinutes: number;
-}
-
-/** What `sessions` add up to, beside the parameters they were computed with.
-    Mirrors ActivityEstimateDto. */
-export interface ActivityEstimate {
-  sessions: number;
-  minutes: number;
-  gapMinutes: number;
-  leadMinutes: number;
-  windowDays: number;
 }
 
 /** How full the WIP section is right now. Mirrors WipDto - not WipSection

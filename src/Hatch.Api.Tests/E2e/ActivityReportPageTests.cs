@@ -73,7 +73,7 @@ public class ActivityReportPageTests(ITestOutputHelper output)
                 await harness.IsVisibleAsync(deadline, $"a[href$=\"/issues/{key}\"]"),
                 $"no link to {key} was drawn");
             Assert.Equal(
-                2,
+                3,
                 await harness.EvaluateAsync<int>(deadline, "counting the tables", "() => document.querySelectorAll('main table').length"));
             Assert.True(
                 await harness.EvaluateAsync<bool>(
