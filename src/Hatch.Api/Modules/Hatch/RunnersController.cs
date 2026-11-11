@@ -236,6 +236,25 @@ public class RunnersController(
 
         if (runner.Sessions is not { Count: > 0 } own) return dto;
 
+        // Since the claim moved onto the session, a keyed runner has no beat
+        // `where` for the row's own lookup to hit. Fold the claim and the
+        // usage facts up from its live sessions, the way Models and Has are.
+        var live = own.Where(s => sessions.IsLive(s, now)).ToList();
+        if (dto.ClaimKey is null)
+        {
+            var holding = live
+                .OrderByDescending(s => s.LastSeenAt).ThenByDescending(s => s.Id)
+                .Select(s => Holding(held, (runner.Name, s.Where ?? "")))
+                .FirstOrDefault(h => h is not null);
+            if (holding is { } h)
+                dto = dto with { ClaimKey = h.Key, Line = h.Claim.Chatter, LineAt = h.Claim.ChatterAt, ClaimStatus = h.Status };
+        }
+
+        if (!(dto.ExhaustedUntil > now) && Latest(live.Select(s => s.ExhaustedUntil), now) is { } exhausted)
+            dto = dto with { ExhaustedUntil = exhausted };
+        if (!(dto.ThrottledUntil > now) && Latest(live.Select(s => s.ThrottledUntil), now) is { } throttled)
+            dto = dto with { ThrottledUntil = throttled };
+
         return dto with
         {
             Sessions = own
@@ -1705,6 +1724,14 @@ public class RunnersController(
         Dictionary<(string Runner, string Where), (string Key, ClaimSnapshot Claim, string? Status)> held,
         (string Runner, string Where) name) =>
         held.TryGetValue(name, out var claim) ? claim : null;
+
+    /// <summary>
+    /// The latest of the times still ahead of <paramref name="now"/>, or null.
+    /// Latest rather than earliest: one key is one account, and the account is
+    /// out until the last session that was told so is.
+    /// </summary>
+    private static DateTimeOffset? Latest(IEnumerable<DateTimeOffset?> times, DateTimeOffset now) =>
+        times.Where(t => t > now).Max();
 
     // ---- The two numbers ----
 
