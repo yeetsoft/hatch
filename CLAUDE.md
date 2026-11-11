@@ -30,7 +30,7 @@ itself — never to a person's tickets generally: plain `go-to-work` still skips
 every person's own, exactly as it always has. `hatch do-my-work` is exactly
 `go-to-work --mine`, for a friend on a smaller budget who wants to spend it on
 their own tickets and nobody else's. Whose tickets a key's `--mine` reaches is
-set by an admin on the API Keys page, never by the key itself.
+set by an admin on the Runners page, never by the key itself.
 
 It is one program — [`src/Hatch.Cli`](src/Hatch.Cli), published as a single
 binary for macOS, Windows and Linux — because an operator who clones Hatch has

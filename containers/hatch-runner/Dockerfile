@@ -9,6 +9,36 @@
 # primary path for anything else - see the Docs page "The container runner"
 # (src/Hatch.Web/apps/hatch/docs/the-container-runner.md#whether-it-is-for-you).
 #
+# The contract a derived image may rely on
+#
+# A `FROM hatch-runner` image is an operator's own toolchain on top of this one,
+# and what follows is what it can count on staying put:
+#
+#   - A Debian-family base. The hatch binary is a glibc build, so an Alpine
+#     (musl) base would leave an image whose binary cannot start.
+#   - The hatch binary at /usr/local/bin/hatch, because the entrypoint, the
+#     loop and every script that shells out to it look it up there.
+#   - /entrypoint.sh as the ENTRYPOINT. It is what turns the container's
+#     environment into a running loop, and an image that replaces it has
+#     stopped being a runner.
+#   - Root as the user, with no USER instruction. A bind-mounted checkout is
+#     owned by the host's uid, and a container user whose uid does not match
+#     cannot write to the branch it is supposed to push.
+#   - IS_SANDBOX=1, which is what lets the claude CLI run in bypass mode as
+#     uid 0 in an unattended increment; the reasoning is at the ENV below.
+#   - HATCH_ROOT=/checkout and HATCH_WORKSPACE=/workspace, where the loop looks
+#     for a mounted checkout and where it clones what it has no checkout of.
+#   - /root/.local/bin and /root/.grok/bin on PATH, where the claude and grok
+#     installers put their binaries.
+#   - /etc/hatch/, reserved for what an image bakes in about itself. It exists
+#     and is empty here; a derived image may put files in it and may not use
+#     it for anything else.
+#
+# A derived image adds packages and changes none of that. One thing to know
+# when it does: apt's lists are removed at the end of each layer here, to keep
+# the image small, so a derived image runs `apt-get update` itself before its
+# first `apt-get install`.
+#
 # Build context is the repository root, like src/Hatch.Api/Dockerfile.api and
 # unlike the three containers/ images beside this one: this needs
 # src/Hatch.Cli, which is not under this directory.
@@ -225,5 +255,9 @@ ENV HATCH_ROOT=/checkout
 # second way in beside the mount above, for a container with nothing bind
 # mounted at all. Named here for the same reason HATCH_ROOT is.
 ENV HATCH_WORKSPACE=/workspace
+
+# /etc/hatch/ is reserved for what an image bakes in about itself, and is empty
+# here on purpose (HA-1882 will read /etc/hatch/dependencies.json from it).
+RUN mkdir -p /etc/hatch
 
 ENTRYPOINT ["/entrypoint.sh"]

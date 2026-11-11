@@ -27,7 +27,8 @@ Postgres. So for a repository that declares a toolchain in
 steps ([what a repository needs](the-runner#what-a-repository-needs)), and it
 still takes breakdown, analysis and review. The runner that *can* build such a
 repository is the one built from the project's own image
-([HA-1874](/apps/hatch/issues/HA-1874)). A container whose operator bakes in its own
+([HA-1874](/apps/hatch/issues/HA-1874)), which Compose starts with the
+`runner-image` profile ([starting it from a named image](#starting-it-from-a-named-image)). A container whose operator bakes in its own
 toolchain declares it with `HATCH_HAS` ([the runner](the-runner#has)).
 
 So it can plan, break
@@ -85,6 +86,84 @@ loop*. Anything after `up -d` on
 the command line is not passed through to the loop. To hand it bounds such as
 `--max-runs` or `--under`, add a `command:` to the `runner:` service in
 `compose.yaml`; the controls on the page are usually the easier route.
+
+## Starting it from a named image
+
+The `runner` profile builds `containers/hatch-runner/Dockerfile`. A project's
+own image, which carries that repository's toolchain on top of this one, is
+already built somewhere: pulled from a registry, or left on this machine by a
+build. The `runner-image` profile starts a container from it by name, with the
+same environment, checkout and workspace as `runner`, and builds nothing.
+
+Two variables:
+
+- `HATCH_RUNNER_IMAGE` is the image to start, such as
+  `ghcr.io/<owner>/<project>-runner:latest`. Required under this profile.
+- `HATCH_RUNNER_PULL_POLICY` is `missing` (the default), `always` or `never`.
+  `missing` pulls only an image this machine does not already have, so an
+  image that exists only locally still starts. `always` pulls on every `up`,
+  for the registry's current copy, and refuses an image that was never pushed.
+  `never` pulls nothing.
+
+macOS / Linux:
+
+```
+HATCH_RUNNER_IMAGE=ghcr.io/<owner>/<project>-runner:latest \
+HATCH_CHECKOUT=/path/to/your/checkout \
+HATCH_GIT_NAME="Your Name" \
+HATCH_GIT_EMAIL=you@example.org \
+docker compose --profile runner-image up -d
+```
+
+PowerShell:
+
+```
+$env:HATCH_RUNNER_IMAGE="ghcr.io/<owner>/<project>-runner:latest"
+$env:HATCH_CHECKOUT="C:\path\to\your\checkout"
+$env:HATCH_GIT_NAME="Your Name"
+$env:HATCH_GIT_EMAIL="you@example.org"
+docker compose --profile runner-image up -d
+```
+
+The service is `runner-image`, so `docker compose --profile runner-image logs -f
+runner-image` is its log. `--profile runner` is still what builds the generic
+image, and neither variable changes it.
+
+**Without `docker compose`.** The same container is a `docker run`, with the
+same variables the stack sets. The entrypoint is the image's own, so name no
+command:
+
+```
+docker run -d --restart on-failure \
+  -e HATCH_BASE=<where this Hatch is reached from the container> \
+  -e HATCH_KEY=<the runner's key> \
+  -e GIT_AUTHOR_NAME="Your Name" \
+  -e GIT_AUTHOR_EMAIL=you@example.org \
+  -v /path/to/your/checkout:/checkout \
+  -v hatch-workspace:/workspace \
+  ghcr.io/<owner>/<project>-runner:latest
+```
+
+**No image named.** The profile with no `HATCH_RUNNER_IMAGE` falls back to the
+generic image that `runner` builds, and the entrypoint inside it refuses,
+naming the variable and exiting 1. Build that image first (`--profile runner`);
+without it Docker refuses with a pull error for `hatch-local-runner` instead,
+which does not name the variable. The check cannot be Compose's
+own required-variable form, since Compose reads every service's variables
+before it applies a profile, and a required one would stop a plain `docker
+compose up -d` as well.
+
+**An image that is not a runner.** The service starts `/entrypoint.sh`
+explicitly, so an image without one is refused straight away by Docker, naming
+the path, rather than running whatever it defaults to and exiting without a
+word.
+
+### Pulling a private image
+
+`docker` pulls the image before the container exists, so a private image needs
+the host to be logged in to its registry (`docker login <registry>`), or, on a
+cluster, an image pull secret. The container's own `gh` and git tokens
+(`HATCH_GH_TOKEN`, `HATCH_GIT_TOKEN`) play no part in the pull.
 
 ## Its credential
 
@@ -260,7 +339,7 @@ still works, and build checks and merges are off.
 
 ## The variables
 
-Everything the `runner` service and its entrypoint read:
+Everything the `runner` and `runner-image` services and the entrypoint read:
 
 | Variable | Meaning | Default |
 |---|---|---|
@@ -273,6 +352,8 @@ Everything the `runner` service and its entrypoint read:
 | `HATCH_OLLAMA_HOST` | Where the Ollama server is, for an `ollama` agent (see *Reaching an Ollama outside the container*) | Empty; required under `ollama` |
 | `HATCH_OLLAMA_TIERS` | Which model id each alias (`haiku`, `sonnet`, `opus`, `fable`) means to an `ollama` agent | Empty: the CLI's own default model |
 | `HATCH_KEY` | The API key the container calls with; the runner's name is the key's | Required: the runner is the key |
+| `HATCH_RUNNER_IMAGE` | The image the `runner-image` profile starts (see *Starting it from a named image*) | Required under `runner-image`; unused under `runner` |
+| `HATCH_RUNNER_PULL_POLICY` | Whether `runner-image` pulls: `missing`, `always` or `never` | `missing` |
 
 Four more are set for the container, and are not for changing: `HATCH_BASE`
 (`http://api:8080`, the API over Compose's own network), `HATCH_ROOT`
@@ -304,6 +385,51 @@ brings it back the moment you fix the mount.
 Its loop's locks live inside the container, so nothing stops two containers
 sharing one volume and working the same clone at once. Run **one container per
 workspace**.
+
+## Building on it
+
+A project image extends this image rather than reproducing it
+([HA-1874](/apps/hatch/issues/HA-1874)). What it can count on staying put:
+
+- **A Debian-family base.** The `hatch` binary is a glibc build, so an Alpine
+  (musl) base would leave an image whose binary cannot start.
+- **`hatch` at `/usr/local/bin/hatch`**, because the entrypoint, the loop and
+  every script that shells out to it look it up there.
+- **`/entrypoint.sh` as the `ENTRYPOINT`.** It turns the container's
+  environment into a running loop, and an image that replaces it has stopped
+  being a runner.
+- **Root as the user**, with no `USER` instruction. A bind-mounted checkout is
+  owned by the host's uid, and a container user whose uid does not match cannot
+  write to the branch it is meant to push.
+- **`IS_SANDBOX=1`**, which lets the `claude` CLI run in bypass mode as uid 0
+  in an unattended increment.
+- **`HATCH_ROOT=/checkout` and `HATCH_WORKSPACE=/workspace`**, where the loop
+  looks for a mounted checkout and where it clones what it has no checkout of.
+- **`/root/.local/bin` and `/root/.grok/bin` on `PATH`**, where the `claude` and
+  `grok` installers put their binaries.
+- **`/etc/hatch/` reserved** for what an image bakes in about itself. It exists
+  and is empty here; a derived image may put files in it and may not use it for
+  anything else.
+
+The whole of a derived image can be two lines. The base is
+`ghcr.io/<owner>/hatch-runner`, where `<owner>` is whoever publishes the image
+you pull, never a literal owner:
+
+```
+FROM ghcr.io/<owner>/hatch-runner:latest
+RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+```
+
+The base removes apt's lists at the end of each layer to keep the image small,
+so the `apt-get update` here is the derived image's own.
+
+A derived image changes none of the contract above and only adds packages.
+
+The published base carries the label `org.opencontainers.image.revision`,
+naming the commit it was built from, and a derived image inherits it unless its
+own build sets one. It is published under two tags, `latest` and the commit sha;
+[building it or pulling it](deployment-overview#building-it-or-pulling-it) has
+which is which.
 
 ## Upgrading it
 
