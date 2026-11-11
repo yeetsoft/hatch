@@ -366,6 +366,21 @@ public static class WorkLogRollup
         return new WorkLogWindow(new DateTimeOffset(start, TimeSpan.Zero), buckets, length);
     }
 
+    /// <summary>The range up to which a bucket size chosen rather than named is hourly.</summary>
+    private static readonly TimeSpan HourlyUpTo = TimeSpan.FromHours(48);
+
+    /// <summary>
+    /// The bucket size a range earns when nobody named one: hourly up to
+    /// <see cref="HourlyUpTo"/>, daily past it - decided from the range as
+    /// requested rather than as snapped, so the choice is a function of what
+    /// the caller typed. Shared between <see cref="WorkLogController.GetHistory"/>,
+    /// which falls back to it only when its own <c>bucket</c> parameter is
+    /// absent, and <see cref="ReportsController.GetConsumption"/>, which has no
+    /// such parameter and always calls it.
+    /// </summary>
+    public static WorkLogBucketSize ChooseBucketSize(DateTimeOffset start, DateTimeOffset end) =>
+        end - start <= HourlyUpTo ? WorkLogBucketSize.Hour : WorkLogBucketSize.Day;
+
     /// <summary>The wire form of a bucket size, which is its lowercase name.</summary>
     public static string Name(WorkLogBucketSize bucket) => bucket == WorkLogBucketSize.Day ? "day" : "hour";
 
@@ -404,7 +419,8 @@ public static class WorkLogRollup
         long OutputTokens,
         long CacheCreationTokens,
         long CacheReadTokens,
-        decimal? CostUsd);
+        decimal? CostUsd,
+        long DurationMs);
 
     /// <summary>Shared, because an empty bucket is the common case and each one would otherwise allocate a list to say so.</summary>
     private static readonly List<Row> NoRows = [];
@@ -449,7 +465,8 @@ public static class WorkLogRollup
 
     /// <summary>What the fold needs of a session, and nothing else.</summary>
     private static Row Meter(SessionRow r) => new(
-        r.EndedAt, r.IsError, r.InputTokens, r.OutputTokens, r.CacheCreationTokens, r.CacheReadTokens, r.CostUsd);
+        r.EndedAt, r.IsError, r.InputTokens, r.OutputTokens, r.CacheCreationTokens, r.CacheReadTokens, r.CostUsd,
+        r.DurationMs);
 
     private static WorkLogSessionDto Dto(SessionRow r) => new(
         r.Id,
@@ -497,7 +514,8 @@ public static class WorkLogRollup
                 w.OutputTokens,
                 w.CacheCreationTokens,
                 w.CacheReadTokens,
-                w.CostUsd));
+                w.CostUsd,
+                w.DurationMs));
 
     /// <summary>
     /// The arithmetic, in one place so a bucket's headline and a subtree's
@@ -532,7 +550,8 @@ public static class WorkLogRollup
             // running. An unpriced one is counted, not zero: it adds nothing to
             // the sum and is reported beside it, so the total reads as a floor.
             rows.Sum(r => r.CostUsd ?? 0m),
-            rows.Count(r => r.CostUsd is null));
+            rows.Count(r => r.CostUsd is null),
+            rows.Sum(r => r.DurationMs));
     }
 
     /// <summary>

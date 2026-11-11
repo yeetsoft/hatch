@@ -126,6 +126,30 @@ public class WorkLogRollupTests
     }
 
     [Fact]
+    public async Task DurationMs_SumsAcrossTheSubtree_TheSameAdditionAsEverythingElse()
+    {
+        var db = await NewAsync();
+        var (epic, story, task) = await ThreeLevelsAsync(db);
+
+        var onEpic = Entry(db, epic, 1_000, 0.10m, isError: false, Now);
+        onEpic.DurationMs = 60_000;
+        var onStory = Entry(db, story, 20_000, 2.00m, isError: false, Now);
+        onStory.DurationMs = 120_000;
+        var onTask = Entry(db, task, 300_000, 30.00m, isError: false, Now);
+        onTask.DurationMs = 300_000;
+
+        db.WorkLog.AddRange(onEpic, onStory, onTask);
+        await db.SaveChangesAsync();
+
+        var whole = await WorkLogRollup.TotalsAsync(db, epic, includeDescendants: true, default);
+        var storySubtree = await WorkLogRollup.TotalsAsync(db, story, includeDescendants: true, default);
+        var epicOwn = await WorkLogRollup.TotalsAsync(db, epic, includeDescendants: false, default);
+
+        Assert.Equal(480_000, whole.DurationMs);
+        Assert.Equal(whole.DurationMs, epicOwn.DurationMs + storySubtree.DurationMs);
+    }
+
+    [Fact]
     public async Task TheFourCounts_AreCarriedSeparatelyAndSumToTheHeadline()
     {
         var db = await NewAsync();

@@ -25,6 +25,12 @@ public class ReportsController(
     /// <summary>The range when a caller names neither bound, on this report alone: the changelog feed's own fourteen days.</summary>
     private static readonly TimeSpan DefaultChangelogRange = TimeSpan.FromDays(14);
 
+    /// <summary>The most rows a consumption read will list, past which the request is an export rather than a table.</summary>
+    public const int MaxConsumptionRows = 500;
+
+    /// <summary>What a caller who named no limit gets on the consumption read: more than a page draws, far less than the cap.</summary>
+    private const int DefaultConsumptionRows = 100;
+
     /// <summary>
     /// When the work happened: the top-level epics active in a range, and the
     /// work beneath each, as stretches in the board's active columns.
@@ -624,6 +630,163 @@ public class ReportsController(
     }
 
     /// <summary>
+    /// What each issue matching the filter - and everything beneath it -
+    /// consumed in a window: tokens, notional USD and runner time, wired to
+    /// <see cref="ConsumptionReport.Fold"/>. No cards: a script reads this,
+    /// not a page.
+    /// </summary>
+    /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="type">One of the five issue types, or <c>all</c>; <c>epic</c> when absent.</param>
+    /// <param name="sort"><c>activity</c> (default, <c>lastSessionAt</c> descending), <c>tokens</c>, <c>cost</c> (unpriced rows last) or <c>time</c>.</param>
+    /// <param name="limit">How many rows to list, 1 to <see cref="MaxConsumptionRows"/>.</param>
+    /// <param name="offsetMinutes">Minutes east of UTC, aligning the history's daily buckets to the reader's own midnight.</param>
+    /// <param name="statusId">Narrows to issues sitting in any of these columns, repeatable; every column when absent or empty. An id naming no column is a <c>400</c>.</param>
+    /// <param name="projectId">Narrows to these projects' issues, repeatable; every project when absent or empty. An id naming no project is a <c>400</c>.</param>
+    /// <remarks>
+    /// Refused in this order: the bound, the offset, the type, the sort, the
+    /// limit, the status, the project - so a request wrong in several places
+    /// always comes back with the same sentence.
+    /// </remarks>
+    [HttpGet("consumption")]
+    public async Task<ActionResult<ConsumptionReportDto>> GetConsumption(
+        [FromQuery] string? from, [FromQuery] string? to, [FromQuery] string? type, [FromQuery] string? sort,
+        [FromQuery] int limit = DefaultConsumptionRows, [FromQuery] int offsetMinutes = 0,
+        [FromQuery] List<int>? statusId = null, [FromQuery] List<int>? projectId = null, CancellationToken ct = default)
+    {
+        var now = time.GetUtcNow();
+
+        if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        if (offsetMinutes is < -1440 or > 1440)
+            return BadRequest($"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
+
+        var trimmedType = type?.Trim();
+        string resolvedType;
+        if (string.IsNullOrEmpty(trimmedType))
+            resolvedType = "epic";
+        else if (string.Equals(trimmedType, "all", StringComparison.OrdinalIgnoreCase))
+            resolvedType = "all";
+        else if (EfHatchIssue.IsValidType(trimmedType))
+            resolvedType = trimmedType;
+        else
+            return BadRequest($"a type is {string.Join(", ", EfHatchIssue.Types)} or all - not \"{type}\"");
+
+        var trimmedSort = sort?.Trim();
+        ConsumptionReport.ConsumptionSort resolvedSort;
+        if (string.IsNullOrEmpty(trimmedSort) || string.Equals(trimmedSort, "activity", StringComparison.OrdinalIgnoreCase))
+            resolvedSort = ConsumptionReport.ConsumptionSort.Activity;
+        else if (string.Equals(trimmedSort, "tokens", StringComparison.OrdinalIgnoreCase))
+            resolvedSort = ConsumptionReport.ConsumptionSort.Tokens;
+        else if (string.Equals(trimmedSort, "cost", StringComparison.OrdinalIgnoreCase))
+            resolvedSort = ConsumptionReport.ConsumptionSort.Cost;
+        else if (string.Equals(trimmedSort, "time", StringComparison.OrdinalIgnoreCase))
+            resolvedSort = ConsumptionReport.ConsumptionSort.Time;
+        else
+            return BadRequest($"a sort is activity, tokens, cost or time - not \"{sort}\"");
+
+        if (limit is < 1 or > MaxConsumptionRows)
+            return BadRequest($"a limit is between 1 and {MaxConsumptionRows} - not {limit}");
+
+        var statusIds = (statusId ?? []).Distinct().ToList();
+        foreach (var id in statusIds)
+            if (!await db.Statuses.AnyAsync(s => s.Id == id, ct))
+                return BadRequest($"there is no column {id}");
+
+        var projectIds = (projectId ?? []).Distinct().ToList();
+        foreach (var id in projectIds)
+            if (!await db.Projects.AnyAsync(p => p.Id == id, ct))
+                return BadRequest($"there is no project {id}");
+
+        var candidateQuery = db.Issues.AsNoTracking().AsQueryable();
+        if (projectIds.Count > 0) candidateQuery = candidateQuery.Where(i => projectIds.Contains(i.ProjectId));
+        if (resolvedType != "all") candidateQuery = candidateQuery.Where(i => i.Type == resolvedType);
+        if (statusIds.Count > 0) candidateQuery = candidateQuery.Where(i => statusIds.Contains(i.StatusId));
+
+        var candidates = (await candidateQuery
+                .Select(i => new { i.Id, i.ParentId, ProjectKey = i.Project!.Key, i.Number, i.Title, i.Type, i.StatusId })
+                .ToListAsync(ct))
+            .Select(i => new ConsumptionReport.Candidate(
+                i.Id, i.ParentId, IssueKey.Format(i.ProjectKey, i.Number), i.Title, i.Type, i.ProjectKey, i.StatusId))
+            .ToList();
+
+        // Every issue's parent, not only candidates' - a session or an
+        // intervening ancestor need not be a candidate for one further up to
+        // earn the credit.
+        var parentOf = await db.Issues.AsNoTracking()
+            .Select(i => new { i.Id, i.ParentId })
+            .ToDictionaryAsync(i => i.Id, i => i.ParentId, ct);
+
+        var sessionsQuery = db.WorkLog.AsNoTracking().Where(w => w.EndedAt >= start && w.EndedAt < end);
+        if (projectIds.Count > 0) sessionsQuery = sessionsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+
+        var sessions = (await sessionsQuery
+                .Select(w => new
+                {
+                    w.IssueId, w.EndedAt, w.IsError, w.InputTokens, w.OutputTokens,
+                    w.CacheCreationTokens, w.CacheReadTokens, w.CostUsd, w.DurationMs,
+                })
+                .ToListAsync(ct))
+            .Select(w => new ConsumptionReport.Session(
+                w.IssueId, w.EndedAt, w.IsError, w.InputTokens, w.OutputTokens,
+                w.CacheCreationTokens, w.CacheReadTokens, w.CostUsd, w.DurationMs))
+            .ToList();
+
+        var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
+        var window = WorkLogRollup.Align(start, end, bucketSize, offsetMinutes);
+
+        var result = ConsumptionReport.Fold(sessions, candidates, parentOf, window, resolvedSort);
+
+        // Ignores the window and respects the rest of the filter, the same two
+        // extra bound reads WorkLogRollup.FirstEndedAsync already makes -
+        // scoped to every candidate and everything beneath it, so "nothing has
+        // ever run here" reads apart from "nothing ran in the range asked for".
+        var scopeIdSet = new HashSet<long>();
+        var children = ChildrenOf(parentOf);
+        foreach (var c in candidates)
+        {
+            scopeIdSet.Add(c.Id);
+            scopeIdSet.UnionWith(Descend(children, c.Id));
+        }
+
+        var scopeIds = scopeIdSet.ToList();
+        var boundsQuery = db.WorkLog.AsNoTracking().Where(w => scopeIds.Contains(w.IssueId));
+        if (projectIds.Count > 0) boundsQuery = boundsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+
+        var firstSessionAt = await boundsQuery.OrderBy(w => w.EndedAt)
+            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
+        var lastSessionAt = await boundsQuery.OrderByDescending(w => w.EndedAt)
+            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
+
+        var rows = result.Rows
+            .Take(limit)
+            .Select(r => new ConsumptionRowDto(
+                r.Key, r.Title, r.Type, r.ProjectKey, r.StatusId, r.ParentKey, r.Totals, r.FirstSessionAt, r.LastSessionAt))
+            .ToList();
+
+        return new ConsumptionReportDto(
+            start,
+            end,
+            resolvedType,
+            ConsumptionReport.Name(resolvedSort),
+            limit,
+            result.Rows.Count,
+            result.Totals,
+            firstSessionAt,
+            lastSessionAt,
+            rows,
+            new WorkLogHistoryDto(
+                window.From,
+                window.From + window.Length * window.Buckets,
+                WorkLogRollup.Name(bucketSize),
+                result.Totals,
+                firstSessionAt,
+                lastSessionAt,
+                result.Buckets.Select(b => new WorkLogBucketDto(b.Start, b.End, b.Totals)).ToList()));
+    }
+
+    /// <summary>
     /// The nearest epic above <paramref name="issueId"/>, walking <c>ParentId</c>
     /// through <paramref name="byId"/> - dictionary lookups only, never a query
     /// per step, unlike <see cref="IssuesController.ResolveParentAsync"/>'s own
@@ -737,6 +900,53 @@ public class ReportsController(
 
     /// <summary>The card the loose work is drawn under: no issue, so nothing on it is real.</summary>
     private static readonly IssueCardDto OtherCard = new("other", "", "epic", "Other", 0, 0, null, null, null);
+
+    /// <summary>Shared, because a childless issue is the common case and each one would otherwise allocate a list to say so.</summary>
+    private static readonly List<long> NoChildren = [];
+
+    /// <summary><paramref name="parentOf"/>, inverted - every issue's direct children, for <see cref="GetConsumption"/>'s own descent.</summary>
+    private static Dictionary<long, List<long>> ChildrenOf(Dictionary<long, long?> parentOf)
+    {
+        var children = new Dictionary<long, List<long>>();
+
+        foreach (var (id, parentId) in parentOf)
+        {
+            if (parentId is not { } parent) continue;
+            if (!children.TryGetValue(parent, out var siblings)) children[parent] = siblings = [];
+            siblings.Add(id);
+        }
+
+        return children;
+    }
+
+    /// <summary>
+    /// Every issue below <paramref name="rootId"/>, at any depth, and not the
+    /// issue itself - <see cref="Rollup"/>'s own descent, copied rather than
+    /// reached into since that walk is private there. The same <c>seen</c>-set
+    /// guard against a cycle that got in some other way than parenting ever
+    /// refuses to make.
+    /// </summary>
+    private static List<long> Descend(Dictionary<long, List<long>> children, long rootId)
+    {
+        var seen = new HashSet<long> { rootId };
+        var found = new List<long>();
+        var generation = new List<long> { rootId };
+
+        while (generation.Count > 0)
+        {
+            var next = new List<long>();
+
+            foreach (var id in generation)
+            foreach (var child in children.TryGetValue(id, out var kids) ? kids : NoChildren)
+                if (seen.Add(child))
+                    next.Add(child);
+
+            found.AddRange(next);
+            generation = next;
+        }
+
+        return found;
+    }
 
     private static void CollectIds(TimelineReport.Node node, HashSet<long> ids)
     {

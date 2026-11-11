@@ -41,9 +41,6 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// <summary>What a caller who named no range gets: enough nights to see a shape.</summary>
     private static readonly TimeSpan DefaultRange = TimeSpan.FromDays(14);
 
-    /// <summary>The range up to which an unnamed bucket size is hourly.</summary>
-    private static readonly TimeSpan HourlyUpTo = TimeSpan.FromHours(48);
-
     /// <summary>
     /// The most rows one answer will list, past which the request is an export
     /// rather than a leaderboard. The totals cover the whole filter either way,
@@ -113,9 +110,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
         WorkLogBucketSize size;
         if (string.IsNullOrEmpty(trimmed))
         {
-            // Decided from the range as requested rather than as snapped, so the
-            // choice is a function of what the caller typed.
-            size = end - start <= HourlyUpTo ? WorkLogBucketSize.Hour : WorkLogBucketSize.Day;
+            size = WorkLogRollup.ChooseBucketSize(start, end);
         }
         else if (string.Equals(trimmed, "hour", StringComparison.OrdinalIgnoreCase))
         {

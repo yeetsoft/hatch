@@ -35,6 +35,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   totalTokens: 63_380,
   costUsd: 3.41,
   unpricedSessions: 0,
+  durationMs: 842_000,
   ...over,
 });
 

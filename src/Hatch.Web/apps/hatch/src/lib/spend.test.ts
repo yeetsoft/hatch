@@ -22,6 +22,7 @@ const totals = (over: Partial<WorkLogTotals> = {}): WorkLogTotals => ({
   totalTokens: 1_000,
   costUsd: 1,
   unpricedSessions: 0,
+  durationMs: 60_000,
   ...over,
 });
 
@@ -35,6 +36,7 @@ const empty: WorkLogTotals = {
   totalTokens: 0,
   costUsd: 0,
   unpricedSessions: 0,
+  durationMs: 0,
 };
 
 const bucket = (start: string, over?: Partial<WorkLogTotals>): WorkLogBucket => ({
