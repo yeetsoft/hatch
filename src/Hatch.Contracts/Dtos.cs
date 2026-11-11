@@ -857,7 +857,16 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Unservable = "unservable";
 
-    public static bool IsValid(string outcome) => outcome is Dropped or Worked or Preempted or Recused or Unservable;
+    /// <summary>
+    /// The loop that ran the increment died - a crash, a closed window - and
+    /// the next loop in that checkout ended the session it left and released
+    /// the claim. Neither a drop nor work, so <c>LetGo</c> steps over it as
+    /// over <see cref="Unservable"/>.
+    /// </summary>
+    public const string Abandoned = "abandoned";
+
+    public static bool IsValid(string outcome) =>
+        outcome is Dropped or Worked or Preempted or Recused or Unservable or Abandoned;
 }
 
 /// <summary>

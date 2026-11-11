@@ -163,6 +163,70 @@ public sealed class IncrementTests
     }
 
     [Fact]
+    public async Task A_running_session_leaves_a_record_with_its_pid_and_claim_and_the_release_removes_it()
+    {
+        using var h = new Harness();
+        var token = Guid.NewGuid();
+        var (claim, _) = await HoldingAsync(h, "AER-1", token);
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        var started = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        h.Sessions.Child = (4242, started);
+
+        var path = SessionRecord.PathFor(h.Root, h.Temp);
+        SessionRecord? first = null;
+        SessionRecord? streamed = null;
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            first = SessionRecord.Read(path);
+            onLine?.Invoke(Fixtures.Init("s-9"));
+            streamed = SessionRecord.Read(path);
+            onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
+            return Task.FromResult(new SessionResult(0, ""));
+        };
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        // Written the moment the child was running, before the stream said anything.
+        Assert.NotNull(first);
+        Assert.Equal(4242, first.Pid);
+        Assert.Equal(started, first.StartedAt);
+        Assert.Equal("AER-1", first.Key);
+        Assert.Equal(token, first.Token);
+        Assert.Equal("https://hatch.example", first.Base);
+        Assert.Null(first.SessionId);
+
+        // ...and written again once it had said the session's id.
+        Assert.Equal("s-9", streamed?.SessionId);
+        Assert.True(File.Exists(path));
+
+        await claim.ReleaseAsync(ClaimOutcomes.Worked);
+
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
+    public async Task A_runner_that_reports_no_child_leaves_no_record()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+
+        await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.False(File.Exists(SessionRecord.PathFor(h.Root, h.Temp)));
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
     public async Task A_reader_that_mints_a_session_id_hands_it_to_the_spawn()
     {
         using var h = new Harness();

@@ -100,10 +100,20 @@ public sealed class FakeSessions : ISessionRunner
             }
         };
 
-    public Task<SessionResult> RunAsync(SessionRequest request, Action<string>? onLine, CancellationToken ct)
+    /// <summary>
+    /// What a spawned child's pid and start time would be, reported through
+    /// <c>onStarted</c> before the behaviour runs. Null is a runner that
+    /// reports nothing, which is what every test before the session record
+    /// assumed.
+    /// </summary>
+    public (int Pid, DateTime StartedAt)? Child { get; set; }
+
+    public Task<SessionResult> RunAsync(
+        SessionRequest request, Action<string>? onLine, CancellationToken ct, Action<int, DateTime>? onStarted = null)
     {
         Spawned.Add(request);
         Started.TrySetResult();
+        if (Child is { } child) onStarted?.Invoke(child.Pid, child.StartedAt);
         return Behaviour(request, onLine, ct);
     }
 
