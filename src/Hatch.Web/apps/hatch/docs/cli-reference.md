@@ -171,7 +171,7 @@ saying why, when this moves the pointer; see
 
 ```
 hatch image dockerfile [--base <image>]
-hatch image build [--base <image>] [--image <name>] [--platform <list>]
+hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]
 ```
 
 `dockerfile` prints the Dockerfile this checkout's `.hatch/dependencies.json`
@@ -213,7 +213,7 @@ same process, and gives the tool exactly those bytes on standard input:
 `build -f - --platform <platforms> -t <image> .`, run from the repository root,
 so `.hatch/runner.Dockerfile`'s own `COPY` lines resolve against the checkout as
 they would for `docker build` by hand. The tool's own output is shown as it
-comes. Nothing is pushed.
+comes. Nothing is pushed unless `--push` says so.
 
 - It runs `docker`, or `podman` where there is no `docker`. With neither on
   `PATH` it says so in one sentence naming both.
@@ -232,11 +232,32 @@ comes. Nothing is pushed.
   base only this machine holds, such as one built a step earlier, has no
   registry manifest, so its own platform is read from the local image instead.
   Where none of that reads, the build is refused, naming `--platform`.
+- `--push` pushes the image once it is built, a bare switch given once. The
+  name the build resolved is pushed first and, on success, the command says
+  `hatch: pushed <name>`. Registries differ on whether a name nests three
+  segments deep: Docker Hub takes two only, GHCR and most OCI registries take
+  more. When the push is rejected in words that name the repository name itself
+  (`invalid reference format`, `invalid repository name`, `repository name must
+  be`, `name invalid`, `NAME_INVALID`, `repository name not valid`), the image
+  is tried once more as `<registry>/<owner>/<repo>-hatch-runner` - tagged with
+  the flat name, not rebuilt - and the line says which name it reached: `hatch:
+  pushed <flat> (the registry rejected <nested>)`. A rejection that reads as the
+  login or the network (`unauthorized`, `denied`, `authentication required`,
+  `forbidden`, `no such host`, a timeout, a refused connection) never retries,
+  even when the same output also names the repository, and neither does any
+  failure that is neither; the exit code is 1 after the tool's own output and a
+  line naming the step that failed, such as `hatch: docker push failed`. A flat
+  name that is rejected too stops there: two attempts at most. A `--image` that
+  does not end in `/hatch-runner` has no flat name, and its rejection is
+  reported as it came.
 
 A list of more than one platform cannot be loaded into a classic local image
 store (Docker's containerd store can). Where the tool refuses one, it says so
 itself and the build fails; the line after it names `--platform` as the way round
-it, and the exit code is 1.
+it, or `--push`, which builds and pushes in one step and so never loads the
+list: `docker buildx build --push`, or for podman a manifest built, then
+`manifest push --all`. The exit code is 1. `--push` needs a registry login this
+command never asks for, so run `docker login` (or `podman login`) first.
 
 It touches no ticket and no column, so it writes nothing to the board.
 
