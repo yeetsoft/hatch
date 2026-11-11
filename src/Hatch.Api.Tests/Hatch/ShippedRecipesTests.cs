@@ -315,6 +315,97 @@ RUN major=${POSTGRES_VERSION%%.*} \
         Assert.Equal($"ARG PLAYWRIGHT_VERSION={version}", FirstArg(Playwright));
     }
 
+    public static IEnumerable<object[]> MasterListIds() =>
+        Dependencies.Default.Rows.Select(row => new object[] { row.Id });
+
+    [Theory]
+    [MemberData(nameof(MasterListIds))]
+    public void EveryMasterListEntryHasARecipeAndACheck(string id)
+    {
+        var hasRecipe = DependencyRecipes.Recipe(id) is not null;
+        var hasCheck = File.Exists(Path.Combine(RecipesDirectory(), $"{id}.check"));
+
+        Assert.True(hasRecipe && hasCheck,
+            $"""master-list entry "{id}" has no recipe: add src/Hatch.Contracts/recipes/{id}.Dockerfile and {id}.check""");
+    }
+
+    [Fact]
+    public void EveryRecipeFileIsOnTheMasterList()
+    {
+        var known = Dependencies.Default.Rows.Select(row => row.Id).ToHashSet(StringComparer.Ordinal);
+        var directory = RecipesDirectory();
+
+        foreach (var file in Directory.GetFiles(directory, "*.Dockerfile").Concat(Directory.GetFiles(directory, "*.check")))
+        {
+            var stem = Path.GetFileNameWithoutExtension(file);
+            Assert.True(known.Contains(stem), $"{Path.GetFileName(file)} has no entry on the master list - add \"{stem}\" to Dependencies.Default or remove the file");
+        }
+    }
+
+    [Fact]
+    public void TheWholeListRendersToTheSameBytesEveryTime()
+    {
+        var forward = Dependencies.Default.Rows.Select(row => new DeclaredDependency(row.Id, null)).ToList();
+        var reversed = Enumerable.Reverse(forward).ToList();
+
+        var (first, firstProblem) = DependencyRecipes.Render(forward);
+        var (second, secondProblem) = DependencyRecipes.Render(forward);
+        var (fromReversed, reversedProblem) = DependencyRecipes.Render(reversed);
+
+        Assert.Null(firstProblem);
+        Assert.Null(secondProblem);
+        Assert.Null(reversedProblem);
+        Assert.Equal(first, second);
+        Assert.Equal(first, fromReversed);
+
+        var fromDisk = string.Concat(Dependencies.Default.Rows
+            .Select(row => row.Id)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .Select(id => File.ReadAllText(Path.Combine(RecipesDirectory(), $"{id}.Dockerfile"))));
+
+        Assert.Equal(fromDisk, first);
+    }
+
+    public static IEnumerable<object[]> RecipeFragmentPaths() =>
+        Directory.GetFiles(RecipesDirectory(), "*.Dockerfile").Select(path => new object[] { path });
+
+    [Theory]
+    [MemberData(nameof(RecipeFragmentPaths))]
+    public void EveryFragmentHasTheExpectedShape(string path)
+    {
+        var id = Path.GetFileNameWithoutExtension(path);
+        var text = File.ReadAllText(path);
+
+        Assert.False(text.Contains('\r'), $"{id}.Dockerfile has a \\r - recipes are LF-only");
+        Assert.True(text.EndsWith('\n') && !text.EndsWith("\n\n", StringComparison.Ordinal),
+            $"{id}.Dockerfile must end with exactly one newline");
+        Assert.StartsWith($"# {id}:", text);
+
+        foreach (var line in text.Split('\n'))
+        {
+            if (line.Length == 0) continue;
+
+            var instruction = line.Split(' ')[0];
+            Assert.False(instruction is "FROM" or "COPY" or "ADD",
+                $"{id}.Dockerfile has a line starting \"{instruction}\" - a recipe is a fragment, not a stage");
+        }
+    }
+
+    /// <summary>
+    /// The same walk-up-to-the-repository trick as <see cref="Repository"/>, for
+    /// the directory itself rather than one file in it.
+    /// </summary>
+    private static string RecipesDirectory()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "src", "Hatch.Contracts", "recipes");
+            if (Directory.Exists(candidate)) return candidate;
+        }
+
+        throw new DirectoryNotFoundException($"Could not find src/Hatch.Contracts/recipes above {AppContext.BaseDirectory}.");
+    }
+
     private static void AssertBothArchitectures(string text)
     {
         Assert.Contains("case \"$TARGETARCH\" in", text);
