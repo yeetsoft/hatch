@@ -192,8 +192,8 @@ A second loop on the same machine is walked through in [several runners on one
 machine](the-runner#several-runners-on-one-machine).
 
 **This repository has a project image.** A runner that works Hatch's own
-tickets does not need .NET, Node, PowerShell, Playwright's browsers or
-PostgreSQL installed on your machine: Hatch's repository publishes an image
+tickets does not need .NET, Node, PowerShell or Playwright's browsers
+installed on your machine: Hatch's repository publishes an image
 that carries them, at `ghcr.io/<owner>/<repo>/hatch-runner`, built from
 `.hatch/dependencies.json` on the trunk. Start a container from it with
 `HATCH_RUNNER_IMAGE=ghcr.io/<owner>/<repo>/hatch-runner:latest docker compose

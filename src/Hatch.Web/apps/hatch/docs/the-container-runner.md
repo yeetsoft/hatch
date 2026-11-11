@@ -126,10 +126,10 @@ docker compose --profile runner-image up -d
 ```
 
 A project image with `postgres` in its `.hatch/dependencies.json` has the
-server binaries but no running server, and a container with only the checkout
-mounted has no Docker socket to reach one through. Hatch's own image runs its
-Postgres-backed API tests with `make test-api-local-db`, which starts a scratch
-server, runs the tests against it and removes it.
+server binaries but no running server; a build that needs one starts it itself.
+Declare `postgres` only when the build really runs a server binary: a project
+whose database comes from `docker compose` declares `docker`, and a `postgres`
+no live runner has turns every runner away from the project's development steps.
 
 The service is `runner-image`, so `docker compose --profile runner-image logs -f
 runner-image` is its log. `--profile runner` is still what builds the generic

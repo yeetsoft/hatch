@@ -50,7 +50,7 @@ http://localhost:8080/apps/hatch/docs/, with the pages' source in
 
 This repository has a project image: the generic runner image with what
 `make build`, `make test-api` and `make test-web` need on top of it - the .NET
-SDK, Node, PowerShell 7, Playwright's browsers and PostgreSQL 18, as
+SDK, Node, PowerShell 7, Playwright's browsers and Docker, as
 [`.hatch/dependencies.json`](.hatch/dependencies.json) declares them.
 [`hatch-runner-image.yml`](.github/workflows/hatch-runner-image.yml) builds it
 on every push to the trunk that touches `.hatch/` and publishes it, for amd64
@@ -69,9 +69,9 @@ HATCH_GIT_EMAIL=you@example.org \
 docker compose --profile runner-image up -d
 ```
 
-Inside it there is no Docker socket, so the Postgres-backed API tests run with
-`make test-api-local-db`, which starts a throwaway server and removes it
-afterwards. The rest of the variables are in
+The image carries no Postgres server: the build never runs one. `make test-api`
+needs no database, and the Postgres-backed lane, `make test-api-db`, starts its
+database with `docker compose`. The rest of the variables are in
 [the container runner](src/Hatch.Web/apps/hatch/docs/the-container-runner.md#starting-it-from-a-named-image).
 
 ## Get an agent working tickets

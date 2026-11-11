@@ -188,6 +188,14 @@ so the trail says who did what without anybody being asked to record it.
   bare `dotnet` — the npm step needs the shell profile.
   `.hatch/dependencies.json` is the machine-readable form of what a build needs;
   a build that starts needing something new updates it in the same change.
+  **It is also the gate that decides which runners may work this repository**:
+  an id no live runner advertises (`hatch runners`) locks every runner out,
+  including from the ticket that would undo it. Never add an id or raise a
+  version in an increment — propose it on the ticket and stop for the
+  operator. **`postgres` is not a dependency of this repository**: the database
+  comes from `docker compose`, which `docker` covers. A ticket that says
+  otherwise is stale; ask, don't follow it. An entry missing from the file was
+  removed on purpose until `git log` says otherwise.
 - Never commit unless asked.
 - No hardcoded domains, addresses, hostnames, or people, anywhere — including
   in plans and comments. See [`docs/ethos.md`](docs/ethos.md).
