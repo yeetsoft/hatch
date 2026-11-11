@@ -27,10 +27,29 @@ public class RepositoryDependencyFileTests
                 new DeclaredDependency("node", "22"),
                 new DeclaredDependency("pwsh", "7"),
                 new DeclaredDependency("playwright-browsers", null),
-                new DeclaredDependency("postgres", "18"),
                 new DeclaredDependency("docker", null),
             ],
             dependencies);
+    }
+
+    /// <summary>
+    /// Not a change detector: a decision, restored twice after an increment
+    /// re-added <c>postgres</c> and turned every runner away from this
+    /// repository's development steps (#1625, then #1725). Do not edit this
+    /// test to make a change pass - ask the operator first.
+    /// </summary>
+    [Fact]
+    public void TheRepositoryNeverDeclaresAPostgresServer()
+    {
+        var (dependencies, problem) = DependencyDeclaration.Parse(File.ReadAllBytes(RepositoryFile()));
+
+        Assert.Null(problem);
+        Assert.False(
+            dependencies.Any(d => d.Id == "postgres"),
+            $"{DependencyDeclaration.Path} must not declare `postgres`. Nothing this repository's build runs needs a " +
+            "Postgres server binary: `make test-api` needs no database, and `make test-api-db` gets one from " +
+            "`docker compose up -d db`, which `docker` already covers. A `postgres` entry no live runner has makes " +
+            "the board offer this repository's development steps to nobody, including the ticket that would undo it.");
     }
 
     /// <summary>
