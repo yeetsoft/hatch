@@ -1,3 +1,4 @@
+using System.Text;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
@@ -709,11 +710,119 @@ public class ReportsController(
     {
         var now = time.GetUtcNow();
 
+        var (bounds, boundsRefusal) = ParseConsumptionBounds(from, to, type, sort, offsetMinutes, now);
+        if (boundsRefusal is not null) return BadRequest(boundsRefusal);
+        var (start, end, resolvedType, resolvedSort) = bounds!.Value;
+
+        if (limit is < 1 or > MaxConsumptionRows)
+            return BadRequest($"a limit is between 1 and {MaxConsumptionRows} - not {limit}");
+
+        var (scope, scopeRefusal) = await ResolveConsumptionScopeAsync(statusId, projectId, ct);
+        if (scopeRefusal is not null) return BadRequest(scopeRefusal);
+        var (statusIds, projectIds) = scope!.Value;
+
+        var inputs = await LoadConsumptionInputsAsync(resolvedType, statusIds, projectIds, start, end, offsetMinutes, ct);
+
+        var result = ConsumptionReport.Fold(inputs.Sessions, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
+
+        // Ignores the window and respects the rest of the filter, the same two
+        // extra bound reads WorkLogRollup.FirstEndedAsync already makes -
+        // scoped to every candidate and everything beneath it, so "nothing has
+        // ever run here" reads apart from "nothing ran in the range asked for".
+        var scopeIdSet = new HashSet<long>();
+        var children = ChildrenOf(inputs.ParentOf);
+        foreach (var c in inputs.Candidates)
+        {
+            scopeIdSet.Add(c.Id);
+            scopeIdSet.UnionWith(Descend(children, c.Id));
+        }
+
+        var scopeIds = scopeIdSet.ToList();
+        var boundsQuery = db.WorkLog.AsNoTracking().Where(w => scopeIds.Contains(w.IssueId));
+        if (projectIds.Count > 0) boundsQuery = boundsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
+
+        var firstSessionAt = await boundsQuery.OrderBy(w => w.EndedAt)
+            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
+        var lastSessionAt = await boundsQuery.OrderByDescending(w => w.EndedAt)
+            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
+
+        var rows = result.Rows
+            .Take(limit)
+            .Select(r => new ConsumptionRowDto(
+                r.Key, r.Title, r.Type, r.ProjectKey, r.StatusId, r.ParentKey, r.Totals, r.FirstSessionAt, r.LastSessionAt))
+            .ToList();
+
+        var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
+
+        return new ConsumptionReportDto(
+            start,
+            end,
+            resolvedType,
+            ConsumptionReport.Name(resolvedSort),
+            limit,
+            result.Rows.Count,
+            result.Totals,
+            firstSessionAt,
+            lastSessionAt,
+            rows,
+            new WorkLogHistoryDto(
+                inputs.Window.From,
+                inputs.Window.From + inputs.Window.Length * inputs.Window.Buckets,
+                WorkLogRollup.Name(bucketSize),
+                result.Totals,
+                firstSessionAt,
+                lastSessionAt,
+                result.Buckets.Select(b => new WorkLogBucketDto(b.Start, b.End, b.Totals)).ToList()));
+    }
+
+    /// <summary>
+    /// <see cref="GetConsumption"/>'s whole filter, uncapped, as a file a
+    /// spreadsheet opens - sharing its parsing and its fold rather than a
+    /// second one, and reading no <c>limit</c> at all, which is how "one
+    /// given is ignored" holds with no code written to ignore it.
+    /// </summary>
+    /// <param name="from">The start of the range; ninety days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="type">One of the five issue types, or <c>all</c>; <c>epic</c> when absent.</param>
+    /// <param name="sort"><c>activity</c> (default, <c>lastSessionAt</c> descending), <c>tokens</c>, <c>cost</c> (unpriced rows last) or <c>time</c>.</param>
+    /// <param name="offsetMinutes">Minutes east of UTC, the same bound as the JSON route's - this route folds no history, so it affects nothing here but is still refused out of range.</param>
+    /// <param name="statusId">Narrows to issues sitting in any of these columns, repeatable; every column when absent or empty. An id naming no column is a <c>400</c>.</param>
+    /// <param name="projectId">Narrows to these projects' issues, repeatable; every project when absent or empty. An id naming no project is a <c>400</c>.</param>
+    [HttpGet("consumption.csv")]
+    public async Task<IActionResult> GetConsumptionCsv(
+        [FromQuery] string? from, [FromQuery] string? to, [FromQuery] string? type, [FromQuery] string? sort,
+        [FromQuery] int offsetMinutes = 0,
+        [FromQuery] List<int>? statusId = null, [FromQuery] List<int>? projectId = null, CancellationToken ct = default)
+    {
+        var now = time.GetUtcNow();
+
+        var (bounds, boundsRefusal) = ParseConsumptionBounds(from, to, type, sort, offsetMinutes, now);
+        if (boundsRefusal is not null) return BadRequest(boundsRefusal);
+        var (start, end, resolvedType, resolvedSort) = bounds!.Value;
+
+        var (scope, scopeRefusal) = await ResolveConsumptionScopeAsync(statusId, projectId, ct);
+        if (scopeRefusal is not null) return BadRequest(scopeRefusal);
+        var (statusIds, projectIds) = scope!.Value;
+
+        var inputs = await LoadConsumptionInputsAsync(resolvedType, statusIds, projectIds, start, end, offsetMinutes, ct);
+
+        var result = ConsumptionReport.Fold(inputs.Sessions, inputs.Candidates, inputs.ParentOf, inputs.Window, resolvedSort);
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(ConsumptionCsv.Write(result.Rows))).ToArray();
+        var fileName = $"consumption-{start.ToUniversalTime():yyyy-MM-dd}-{end.ToUniversalTime():yyyy-MM-dd}.csv";
+
+        return File(bytes, "text/csv; charset=utf-8", fileName);
+    }
+
+    /// <summary>The bound, the offset, the type and the sort - the first of the consumption filter's refusals, shared by <see cref="GetConsumption"/> and <see cref="GetConsumptionCsv"/>.</summary>
+    private (ConsumptionBounds? Bounds, string? Refusal) ParseConsumptionBounds(
+        string? from, string? to, string? type, string? sort, int offsetMinutes, DateTimeOffset now)
+    {
         if (RangeBounds.Resolve(from, to, now, DefaultRange, out var start, out var end) is { } refusal)
-            return BadRequest(refusal);
+            return (null, refusal);
 
         if (offsetMinutes is < -1440 or > 1440)
-            return BadRequest($"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
+            return (null, $"an offset from UTC is minutes between -1440 and 1440 - not {offsetMinutes}");
 
         var trimmedType = type?.Trim();
         string resolvedType;
@@ -724,7 +833,7 @@ public class ReportsController(
         else if (EfHatchIssue.IsValidType(trimmedType))
             resolvedType = trimmedType;
         else
-            return BadRequest($"a type is {string.Join(", ", EfHatchIssue.Types)} or all - not \"{type}\"");
+            return (null, $"a type is {string.Join(", ", EfHatchIssue.Types)} or all - not \"{type}\"");
 
         var trimmedSort = sort?.Trim();
         ConsumptionReport.ConsumptionSort resolvedSort;
@@ -737,21 +846,33 @@ public class ReportsController(
         else if (string.Equals(trimmedSort, "time", StringComparison.OrdinalIgnoreCase))
             resolvedSort = ConsumptionReport.ConsumptionSort.Time;
         else
-            return BadRequest($"a sort is activity, tokens, cost or time - not \"{sort}\"");
+            return (null, $"a sort is activity, tokens, cost or time - not \"{sort}\"");
 
-        if (limit is < 1 or > MaxConsumptionRows)
-            return BadRequest($"a limit is between 1 and {MaxConsumptionRows} - not {limit}");
+        return (new ConsumptionBounds(start, end, resolvedType, resolvedSort), null);
+    }
 
+    /// <summary>The status and the project existence checks - the consumption filter's second pair of refusals, shared the same way.</summary>
+    private async Task<(ConsumptionScope? Scope, string? Refusal)> ResolveConsumptionScopeAsync(
+        List<int>? statusId, List<int>? projectId, CancellationToken ct)
+    {
         var statusIds = (statusId ?? []).Distinct().ToList();
         foreach (var id in statusIds)
             if (!await db.Statuses.AnyAsync(s => s.Id == id, ct))
-                return BadRequest($"there is no column {id}");
+                return (null, $"there is no column {id}");
 
         var projectIds = (projectId ?? []).Distinct().ToList();
         foreach (var id in projectIds)
             if (!await db.Projects.AnyAsync(p => p.Id == id, ct))
-                return BadRequest($"there is no project {id}");
+                return (null, $"there is no project {id}");
 
+        return (new ConsumptionScope(statusIds, projectIds), null);
+    }
+
+    /// <summary>The candidates, every issue's parent, the sessions in the window and the window itself - what <see cref="ConsumptionReport.Fold"/> needs, loaded once for both routes.</summary>
+    private async Task<ConsumptionInputs> LoadConsumptionInputsAsync(
+        string resolvedType, List<int> statusIds, List<int> projectIds,
+        DateTimeOffset start, DateTimeOffset end, int offsetMinutes, CancellationToken ct)
+    {
         var candidateQuery = db.Issues.AsNoTracking().AsQueryable();
         if (projectIds.Count > 0) candidateQuery = candidateQuery.Where(i => projectIds.Contains(i.ProjectId));
         if (resolvedType != "all") candidateQuery = candidateQuery.Where(i => i.Type == resolvedType);
@@ -789,55 +910,22 @@ public class ReportsController(
         var bucketSize = WorkLogRollup.ChooseBucketSize(start, end);
         var window = WorkLogRollup.Align(start, end, bucketSize, offsetMinutes);
 
-        var result = ConsumptionReport.Fold(sessions, candidates, parentOf, window, resolvedSort);
-
-        // Ignores the window and respects the rest of the filter, the same two
-        // extra bound reads WorkLogRollup.FirstEndedAsync already makes -
-        // scoped to every candidate and everything beneath it, so "nothing has
-        // ever run here" reads apart from "nothing ran in the range asked for".
-        var scopeIdSet = new HashSet<long>();
-        var children = ChildrenOf(parentOf);
-        foreach (var c in candidates)
-        {
-            scopeIdSet.Add(c.Id);
-            scopeIdSet.UnionWith(Descend(children, c.Id));
-        }
-
-        var scopeIds = scopeIdSet.ToList();
-        var boundsQuery = db.WorkLog.AsNoTracking().Where(w => scopeIds.Contains(w.IssueId));
-        if (projectIds.Count > 0) boundsQuery = boundsQuery.Where(w => projectIds.Contains(w.Issue!.ProjectId));
-
-        var firstSessionAt = await boundsQuery.OrderBy(w => w.EndedAt)
-            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
-        var lastSessionAt = await boundsQuery.OrderByDescending(w => w.EndedAt)
-            .Select(w => (DateTimeOffset?)w.EndedAt).FirstOrDefaultAsync(ct);
-
-        var rows = result.Rows
-            .Take(limit)
-            .Select(r => new ConsumptionRowDto(
-                r.Key, r.Title, r.Type, r.ProjectKey, r.StatusId, r.ParentKey, r.Totals, r.FirstSessionAt, r.LastSessionAt))
-            .ToList();
-
-        return new ConsumptionReportDto(
-            start,
-            end,
-            resolvedType,
-            ConsumptionReport.Name(resolvedSort),
-            limit,
-            result.Rows.Count,
-            result.Totals,
-            firstSessionAt,
-            lastSessionAt,
-            rows,
-            new WorkLogHistoryDto(
-                window.From,
-                window.From + window.Length * window.Buckets,
-                WorkLogRollup.Name(bucketSize),
-                result.Totals,
-                firstSessionAt,
-                lastSessionAt,
-                result.Buckets.Select(b => new WorkLogBucketDto(b.Start, b.End, b.Totals)).ToList()));
+        return new ConsumptionInputs(candidates, parentOf, sessions, window);
     }
+
+    /// <summary>The bound, the offset, the type and the sort, resolved - <see cref="ParseConsumptionBounds"/>'s own success shape.</summary>
+    private readonly record struct ConsumptionBounds(
+        DateTimeOffset Start, DateTimeOffset End, string Type, ConsumptionReport.ConsumptionSort Sort);
+
+    /// <summary>The status and project ids, resolved - <see cref="ResolveConsumptionScopeAsync"/>'s own success shape.</summary>
+    private readonly record struct ConsumptionScope(List<int> StatusIds, List<int> ProjectIds);
+
+    /// <summary>What <see cref="ConsumptionReport.Fold"/> needs - <see cref="LoadConsumptionInputsAsync"/>'s own shape.</summary>
+    private readonly record struct ConsumptionInputs(
+        List<ConsumptionReport.Candidate> Candidates,
+        Dictionary<long, long?> ParentOf,
+        List<ConsumptionReport.Session> Sessions,
+        WorkLogWindow Window);
 
     /// <summary>
     /// The nearest epic above <paramref name="issueId"/>, walking <c>ParentId</c>

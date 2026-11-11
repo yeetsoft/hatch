@@ -20,6 +20,11 @@ const REPORTS: { to: string; title: string; answers: string }[] = [
     answers: 'What landed in each day, week or month, at the level a stakeholder reads.',
   },
   {
+    to: '/reports/consumption',
+    title: 'Consumption',
+    answers: 'What each epic consumed - tokens, notional dollars and runner time - and how that is trending.',
+  },
+  {
     to: '/reports/activity',
     title: 'Activity',
     answers: 'What one person or key did, issue by issue, over a range.',
