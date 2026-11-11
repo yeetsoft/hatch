@@ -77,6 +77,7 @@ import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
+import { filedFromCandidates } from '../lib/filedFrom';
 import { deleteQuestion } from '../lib/deletion';
 import { firstLine } from '../lib/dreams';
 import { describe } from '../lib/events';
@@ -813,6 +814,23 @@ export function IssuePage() {
             />
           </Field>
 
+          {/* `as="div"` for the reason the Parent field is - see there. Set
+              here, read in its own section below (FiledSection) - this is
+              provenance only, so there is nothing for it to order or block. */}
+          <Field
+            label="Filed from"
+            as="div"
+            hint="Provenance only - it holds nothing, orders nothing and blocks nothing."
+          >
+            <IssuePicker
+              label="Filed from"
+              value={issue.filedFromKey ?? null}
+              candidates={filedFromCandidates(board.issues, issue.key)}
+              emptyMessage="Nothing else is on the board yet."
+              onChange={(filedFromKey) => save({ filedFromKey })}
+            />
+          </Field>
+
           {/* `as="div"` for the reason the Parent field is - see there: a
               <label> wrapping a control with text in it swallows the
               accessible name, and the field carries its own aria-label. */}
@@ -988,6 +1006,8 @@ export function IssuePage() {
         />
       )}
 
+      <FiledSection issue={issue} board={board} />
+
       <Dependencies
         issue={issue}
         board={board}
@@ -1072,6 +1092,46 @@ function StatusBar({
 
       <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} blocked={blocked} />
     </section>
+  );
+}
+
+/**
+ * Provenance in both directions: the issue this one was filed from, and the
+ * issues filed from it. Read-only - the picker that sets `filedFromKey` is
+ * the Details edit view above, not here.
+ *
+ * Omitted entirely when there is neither a source nor anything filed, the
+ * same way `Progress` is omitted when there is nothing to show.
+ */
+function FiledSection({ issue, board }: { issue: Issue; board: Board }) {
+  const filedKeys = issue.filedKeys ?? [];
+
+  if (!issue.filedFromKey && filedKeys.length === 0) return null;
+
+  return (
+    <>
+      <IssueSection id="filed-from" title="Filed from">
+        {issue.filedFromKey ? (
+          <ul className="hatch-progress-list">
+            <DependencyRow issueKey={issue.filedFromKey} board={board} />
+          </ul>
+        ) : (
+          <p className="text-muted">&mdash;</p>
+        )}
+      </IssueSection>
+
+      <IssueSection id="filed" title="Filed" count={filedKeys.length}>
+        {filedKeys.length === 0 ? (
+          <p className="text-muted">&mdash;</p>
+        ) : (
+          <ul className="hatch-progress-list">
+            {filedKeys.map((key) => (
+              <DependencyRow key={key} issueKey={key} board={board} />
+            ))}
+          </ul>
+        )}
+      </IssueSection>
+    </>
   );
 }
 
