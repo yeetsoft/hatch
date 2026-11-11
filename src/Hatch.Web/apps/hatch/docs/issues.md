@@ -213,6 +213,30 @@ person's word that nothing was built. [The lifecycle of a
 ticket](the-lifecycle-of-a-ticket) and [the board and its
 columns](the-board-and-its-columns#who-moves-work) already say this.
 
+## Contribution
+
+An issue can say it came from outside: a pull request somebody else opened, or
+the mirror of an issue on another Hatch. That is its contribution record, one
+per issue, and it is written by a runner through its own route, never by editing
+the issue. It holds the pull request URL, the head branch, the author's login
+and the forge's own word for how they relate to the repository (`CONTRIBUTOR`,
+`NONE` and so on, kept as given), where it originated (the other Hatch's
+address, project key and issue key, if there is one), and when and by which
+runner it was filed. A mirrored ancestor has an origin and no pull request, so
+its URL and branch are empty.
+
+The record is write-once. Writing it again with the same pull request changes
+nothing, and a different one is refused. One pull request is one issue: a URL
+another issue's record already holds is refused, naming that issue. Where the
+issue has no pull request of its own, the record's becomes it; where it has a
+different one, the write is refused and nothing is written. The first write adds
+a `contribution_filed` event carrying the URL, branch, author and origin.
+
+`hatch show` prints a `contribution:` line for an issue with a record, the issue
+and its board card carry it as `contribution`, and `GET /issues` can ask whether
+a pull request or an originating key is already here with `pullRequestUrl`, or
+`originInstance` and `originKey`.
+
 ## Runner tags
 
 A ticket's own say over which runner may work it — a project may

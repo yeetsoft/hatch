@@ -31,7 +31,8 @@ public sealed class IssueCommandsTests
         string? noCode = null,
         IReadOnlyList<LandingDto>? landings = null,
         string? filedFrom = null,
-        IReadOnlyList<string>? filed = null) =>
+        IReadOnlyList<string>? filed = null,
+        ContributionDto? contribution = null) =>
         Fixtures.Issue(key) with
         {
             FiledFromKey = filedFrom,
@@ -45,6 +46,7 @@ public sealed class IssueCommandsTests
             PullRequestUrl = pr,
             NoCode = noCode,
             Landings = landings ?? [],
+            Contribution = contribution,
         };
 
     // ---- show ----
@@ -1068,6 +1070,53 @@ public sealed class IssueCommandsTests
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
         Assert.Contains("no code:      an investigation", h.Said);
+    }
+
+    [Fact]
+    public async Task Show_prints_where_a_contribution_came_from_who_by_and_when_it_was_filed()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(contribution: new ContributionDto(
+            "https://forge.example/o/r/pull/7", "feature/thing", "octocat", "FIRST_TIME_CONTRIBUTOR",
+            DateTimeOffset.Parse("2026-11-11T12:34:56+00:00"), "runner-1",
+            "https://hatch.example", "OTH", "OTH-4")));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains(
+            "contribution: from https://hatch.example OTH-4, by octocat (FIRST_TIME_CONTRIBUTOR), branch feature/thing, filed 2026-11-11 12:34 UTC by runner-1",
+            h.Said);
+    }
+
+    [Fact]
+    public async Task Show_leaves_out_the_clauses_a_contribution_holds_nothing_for()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(contribution: new ContributionDto(
+            "https://forge.example/o/r/pull/7", null, "octocat", "NONE",
+            DateTimeOffset.Parse("2026-11-11T12:34:56+00:00"), "runner-1")));
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.Contains("contribution: by octocat (NONE), filed 2026-11-11 12:34 UTC by runner-1", h.Said);
+        Assert.DoesNotContain("branch", h.Said.Split('\n').Single(l => l.StartsWith("contribution:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Show_says_nothing_of_a_contribution_where_there_is_no_record()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+
+        await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
+
+        Assert.DoesNotContain("contribution:", h.Said);
     }
 
     // ---- verdict ----

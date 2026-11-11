@@ -10310,6 +10310,27 @@ public class WorkControllerTests
         Assert.Null(row.PullRequestReviewDecision);
         Assert.Null(row.PullRequestHeadSha);
         Assert.Null(row.PullRequestHeadSince);
+        Assert.Null(row.Branch);
+    }
+
+    [Fact]
+    public async Task ReviewRead_CarriesTheHeadBranchAContributionRecorded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review);
+        await h.FileAsync("story", "ours", h.Review);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        h.Db.Contributions.Add(new EfHatchContribution
+        {
+            IssueId = issue.Id, PullRequestUrl = "https://example.com/o/r/pull/1", HeadBranch = "feature/thing",
+            AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var rows = Value(await h.Work.GetReview(null, true, default));
+
+        Assert.Equal("feature/thing", rows.Single(r => r.Key == Key(issue)).Branch);
+        Assert.Null(rows.Single(r => r.Key != Key(issue)).Branch);
     }
 
     [Fact]
