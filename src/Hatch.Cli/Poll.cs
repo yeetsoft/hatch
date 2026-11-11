@@ -103,10 +103,14 @@ public sealed class Poll
     private HashSet<string> _saidBefore = [];
 
     /// <summary>One issue in one checkout, and what the board already holds for it.</summary>
-    /// <remarks>A target with <paramref name="Landing"/> set is a landing target: one landing of a trunk-landing issue, asked of git and never merge- or build-checked.</remarks>
+    /// <remarks>
+    /// A target with <paramref name="Landing"/> set is a landing target: one landing of a trunk-landing issue, asked of git and never merge- or build-checked.
+    /// One with <paramref name="RecordedBranch"/> set is checked and built on that branch, in place of a branch named for its key.
+    /// </remarks>
     private sealed record Target(
         string Key, Checkouts.Polled Where, MergeCheckDto? Stored, BuildCheckDto? StoredBuild, LandingDto? Landing = null,
-        string? PullRequestHeadSha = null, DateTimeOffset? PullRequestHeadSince = null, bool Merging = false);
+        string? PullRequestHeadSha = null, DateTimeOffset? PullRequestHeadSince = null, bool Merging = false,
+        string? RecordedBranch = null);
 
     /// <summary>
     /// Takes the verdicts that are due, if this interval's poll is - once per
@@ -196,7 +200,7 @@ public sealed class Poll
 
                 list.Add(new Target(
                     issue.Key, where, stored, storedBuild, null,
-                    issue.PullRequestHeadSha, issue.PullRequestHeadSince, issue.MergeWork is not null));
+                    issue.PullRequestHeadSha, issue.PullRequestHeadSince, issue.MergeWork is not null, issue.Branch));
             }
         }
 
@@ -258,7 +262,7 @@ public sealed class Poll
         var moved = new List<(Target Target, string Fingerprint)>();
         foreach (var target in issues)
         {
-            if (heads.Fingerprint(target.Key) is not { } fingerprint)
+            if (heads.Fingerprint(target.Key, target.RecordedBranch) is not { } fingerprint)
             {
                 complain($"hatch: origin has no {heads.Trunk} for {name}, so its branches in review were not checked");
                 break;
@@ -266,7 +270,7 @@ public sealed class Poll
 
             if (_seen.TryGetValue((path, target.Key), out var seen) && seen == fingerprint) continue;
 
-            if (Vouches(target.Stored, heads, target.Key))
+            if (Vouches(target.Stored, heads, target.Key, target.RecordedBranch))
             {
                 _seen[(path, target.Key)] = fingerprint;
                 continue;
@@ -287,7 +291,7 @@ public sealed class Poll
         var unknown = 0;
         foreach (var (target, fingerprint) in moved)
         {
-            if (workspace.Check(target.Key, target.Where.PlaybookFilePath) is not { } verdict)
+            if (workspace.Check(target.Key, target.Where.PlaybookFilePath, target.RecordedBranch) is not { } verdict)
             {
                 unknown++;
                 continue;
@@ -416,9 +420,9 @@ public sealed class Poll
                 // two. None is silent - a merged, deleted branch is the
                 // commonest case - but several that the merge check names none
                 // of is a line, since nothing else says why no build is read.
-                if (heads.BranchFor(target.Key, target.Stored) is not { } branch)
+                if (heads.BranchFor(target.Key, target.Stored, target.RecordedBranch) is not { } branch)
                 {
-                    if (heads.Candidates(target.Key) is { Count: > 1 } several)
+                    if (heads.Candidates(target.Key, target.RecordedBranch) is { Count: > 1 } several)
                         complain($"hatch: {target.Key} has {several.Count} branches on origin in {name} ({string.Join(", ", several)}) and its merge check names none of them, so its build was not read");
                     continue;
                 }
@@ -986,12 +990,12 @@ public sealed class Poll
     /// shas as they are now. Only <c>clean</c> and <c>conflicted</c> can - the
     /// other two carry no branch sha to compare.
     /// </summary>
-    private static bool Vouches(MergeCheckDto? stored, RemoteHeads heads, string key)
+    private static bool Vouches(MergeCheckDto? stored, RemoteHeads heads, string key, string? recordedBranch)
     {
         if (stored is not { Verdict: MergeVerdicts.Clean or MergeVerdicts.Conflicted, Branch: { } branch }) return false;
         if (stored.Verdict == MergeVerdicts.Clean && stored.HoldsTrunk is null) return false;
 
-        return heads.Candidates(key) is [var only]
+        return heads.Candidates(key, recordedBranch) is [var only]
             && only == branch
             && stored.BranchSha == heads.Shas[only]
             && stored.TrunkSha == heads.TrunkSha

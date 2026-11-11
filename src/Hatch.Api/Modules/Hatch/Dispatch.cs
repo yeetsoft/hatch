@@ -199,6 +199,7 @@ public sealed class Dispatch(
         var candidates = await query
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .ToListAsync(ct);
 
         var byColumn = candidates.GroupBy(i => i.StatusId).ToDictionary(g => g.Key, g => g.ToList());
@@ -955,7 +956,7 @@ public sealed class Dispatch(
             verdicts.TryGetValue(i.Id, out var v) ? v : [],
             builds.TryGetValue(i.Id, out var b) ? b : [],
             i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, now,
-            pullRequestHeadSince: i.PullRequestHeadSince));
+            pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: i.Contribution?.HeadBranch));
         var brought = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
         var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, brought, ct);
 
@@ -1082,6 +1083,7 @@ public sealed class Dispatch(
             .Where(i => i.StatusId == merges.Id)
             .OrderBy(i => i.Rank).ThenBy(i => i.Id)
             .Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .ToListAsync(ct);
         if (inTrain.Count == 0) return [];
 
@@ -1872,7 +1874,8 @@ public sealed class Dispatch(
             var judgement = MergeWork.Judge(
                 issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                 verdicts, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, claimed.Now,
-                Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince);
+                Columns.AwaitingReview(statuses)?.Name, pullRequestHeadSince: issue.PullRequestHeadSince,
+                recordedBranch: issue.Contribution?.HeadBranch);
 
             // A held or pushed-back row already explains itself, and so does
             // the head's own row - its kind word (merge/update/pending) says
@@ -2083,7 +2086,7 @@ public sealed class Dispatch(
         // actually makes. The missing-playbook sentence below says that for
         // every other move; this says it for the one this project's setting
         // adds, before the move is ever asked about generically.
-        if (conflicts && ReviewWork.Judge(issue, verdicts, builds) is { Fold: { } reviewBlock })
+        if (conflicts && ReviewWork.Judge(issue, verdicts, builds, issue.Contribution?.HeadBranch) is { Fold: { } reviewBlock })
             return CheckColumn(issue, from, statuses, verdicts, builds) is { } merge
                 ? new Blocking(
                     $"a passing check would carry it into \"{merge.Name}\", but no check playbook covers \"{from.Name}\" to \"{merge.Name}\" for {An(issue.Type)} - " +

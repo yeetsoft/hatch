@@ -65,8 +65,18 @@ public static class ReviewWork
     /// <param name="Fold">Null when there is something for an agent to do.</param>
     public readonly record struct Judgement(string Kind, string? Fold);
 
+    /// <summary>
+    /// Why a row has no branch on origin: none is named for its key, or, where its
+    /// contribution recorded a head branch, that branch is not there.
+    /// </summary>
+    internal static string NoBranchOnOrigin(string? recordedBranch) =>
+        recordedBranch is { Length: > 0 } branch
+            ? $"its recorded branch `{branch}` is not on origin"
+            : "no branch on origin is named for it";
+
     public static Judgement Judge(
-        EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds)
+        EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
+        string? recordedBranch = null)
     {
         if (NoCode.Declared(issue)) return Fold(NoCode.Sentence);
 
@@ -84,7 +94,7 @@ public static class ReviewWork
             return Fold("more than one branch on origin is named for it - delete the ones that are not its branch");
 
         if (counted.All(v => v.Verdict == MergeVerdicts.None))
-            return Fold("no branch on origin is named for it");
+            return Fold(NoBranchOnOrigin(recordedBranch));
 
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;
