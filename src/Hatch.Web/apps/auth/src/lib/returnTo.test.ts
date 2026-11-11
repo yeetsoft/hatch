@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { safeReturnTo, signInHref } from './returnTo';
+import { DEFAULT_LANDING, safeReturnTo, signInHref } from './returnTo';
 
 describe('safeReturnTo', () => {
   it('keeps rooted same-origin paths', () => {
@@ -12,6 +12,16 @@ describe('safeReturnTo', () => {
     for (const raw of [null, '', 'https://x', '//x', '/\\x', 'x']) {
       expect(safeReturnTo(raw)).toBeNull();
     }
+  });
+});
+
+describe('DEFAULT_LANDING', () => {
+  it('is the origin root, where the board is served', () => {
+    expect(DEFAULT_LANDING).toBe('/');
+  });
+
+  it('is itself a safe return path', () => {
+    expect(safeReturnTo(DEFAULT_LANDING)).toBe(DEFAULT_LANDING);
   });
 });
 

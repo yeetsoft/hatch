@@ -17,7 +17,7 @@
  */
 
 /** Where the shell lives. Exempt from the gate by construction, or this is a loop. */
-export const SIGN_IN_PATH = '/apps/auth/';
+export const SIGN_IN_PATH = '/auth/';
 
 /** One navigation per document. A burst of parallel 401s must not stack them. */
 let leaving = false;
