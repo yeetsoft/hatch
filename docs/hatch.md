@@ -5044,8 +5044,9 @@ does. With no `actor` the page
 opens on the signed-in person when the directory lists them, and writes that
 name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
-revoked key's trail still reads. The page writes nothing to the board, and does not
-yet draw the bracketed sessions — that is a story of its own. `hatch activity
+revoked key's trail still reads. The page writes `gap` and `lead` to the URL,
+editable on the page, and draws the bracketed sessions and a rough-hours
+estimate, alongside the rate of work over time. `hatch activity
 [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]`
 prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
 renders neither the series nor the sessions, which `hatch api GET
