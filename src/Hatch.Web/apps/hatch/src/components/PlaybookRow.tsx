@@ -1,7 +1,7 @@
 import { Badge, Button, Text } from '@hatch/ui';
 import { StatusPill } from './StatusPill';
 import { TypeBadge } from './TypeBadge';
-import { isOverridden, isReviewPlaybook, isUncheckedEdit, playbookLabel, transitionLabel } from '../lib/playbooks';
+import { isOverridden, isReviewPlaybook, isUncheckedEdit, limitNotes, playbookLabel, transitionLabel } from '../lib/playbooks';
 import { hasMultipleProjects } from '../lib/useProjects';
 import type { Playbook, Project, Status } from '../types';
 
@@ -63,6 +63,9 @@ export function PlaybookRow({
         {isUncheckedEdit(playbook) && <Badge tone="danger">a check with no denied tools can edit</Badge>}
         {playbook.unreachableReason && <Badge tone="danger">{playbook.unreachableReason}</Badge>}
         {isOverridden(playbook) && <Badge tone="muted">the operator&apos;s own wording</Badge>}
+        {limitNotes(playbook).map((n) => (
+          <Badge key={n} tone="muted">{n}</Badge>
+        ))}
         {note && <Badge tone="muted">{note}</Badge>}
       </td>
       {multipleProjects && (

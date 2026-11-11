@@ -69,6 +69,15 @@ export function maxRunRequest(draft: string): string {
   return draft.trim();
 }
 
+/** The list's words for a row's quiet limit and run limit, in that order -
+    each only when set, so a row with neither says nothing. */
+export function limitNotes(p: Pick<Playbook, 'quietLimitSeconds' | 'maxRunSeconds'>): string[] {
+  const notes: string[] = [];
+  if (p.quietLimitSeconds !== null) notes.push(`quiet after ${p.quietLimitSeconds}s`);
+  if (p.maxRunSeconds !== null) notes.push(`cut off after ${p.maxRunSeconds}s`);
+  return notes;
+}
+
 /** What the denied tools field shows: one rule per line, blank for none. */
 export function deniedToolsDraft(rules: string[]): string {
   return rules.join('\n');
