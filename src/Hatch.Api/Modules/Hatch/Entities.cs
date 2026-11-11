@@ -1373,6 +1373,9 @@ public class EfHatchIssue
     public ICollection<EfHatchMergeCheck> MergeChecks { get; set; } = [];
     public ICollection<EfHatchBuildCheck> BuildChecks { get; set; } = [];
     public ICollection<EfHatchLanding> Landings { get; set; } = [];
+
+    /// <summary>Set when the issue came from outside - see <see cref="EfHatchContribution"/>.</summary>
+    public EfHatchContribution? Contribution { get; set; }
     public ICollection<EfHatchVerdict> Verdicts { get; set; } = [];
     public ICollection<EfHatchWorkLogEntry> WorkLog { get; set; } = [];
     public ICollection<EfHatchIssueRunnerOmission> RunnerOmissions { get; set; } = [];
@@ -1701,6 +1704,82 @@ public class EfHatchLanding
 
     [MaxLength(Common.PersonName.MaxChars)]
     public required string RecordedBy { get; set; }
+}
+
+/// <summary>
+/// The fact that an issue came from outside: a pull request somebody else
+/// opened, or the mirror of an issue on another Hatch. One record per issue,
+/// written by a runner through its own route and never by editing the issue.
+/// </summary>
+/// <remarks>
+/// <para>Write-once. The first write is the record; a write that repeats its
+/// pull request URL changes nothing, and a different one is refused. The
+/// pull request URL is unique across records, so one pull request is one
+/// issue. It is null on a mirrored ancestor, which has an origin and no pull
+/// request of its own, and so is <see cref="HeadBranch"/>. Postgres treats
+/// nulls as distinct, so the unique index needs no filter.</para>
+///
+/// <para><see cref="AuthorAssociation"/> is the forge's own word for how the
+/// author relates to the repository, stored as given and never interpreted
+/// here. <see cref="OriginInstance"/> is stored without a trailing slash so
+/// that an exact match finds it. The (<see cref="OriginInstance"/>,
+/// <see cref="OriginKey"/>) index is for the find-or-create that mirroring an
+/// originating tree does. <see cref="EnvelopeVersion"/> and
+/// <see cref="EnvelopeNote"/> say what became of the envelope the pull request
+/// carried: which version was read, or why none could be.</para>
+/// </remarks>
+[Table("Contributions")]
+[Index(nameof(IssueId), IsUnique = true)]
+[Index(nameof(PullRequestUrl), IsUnique = true)]
+[Index(nameof(OriginInstance), nameof(OriginKey))]
+public class EfHatchContribution
+{
+    public const int MaxPullRequestUrlLength = ContributionRequest.MaxPullRequestUrlLength;
+    public const int MaxHeadBranchLength = ContributionRequest.MaxHeadBranchLength;
+    public const int MaxAuthorLoginLength = ContributionRequest.MaxAuthorLoginLength;
+    public const int MaxAuthorAssociationLength = ContributionRequest.MaxAuthorAssociationLength;
+    public const int MaxOriginInstanceLength = ContributionRequest.MaxOriginInstanceLength;
+    public const int MaxOriginProjectKeyLength = ContributionRequest.MaxOriginProjectKeyLength;
+    public const int MaxOriginKeyLength = ContributionRequest.MaxOriginKeyLength;
+    public const int MaxEnvelopeNoteLength = ContributionRequest.MaxEnvelopeNoteLength;
+
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public long Id { get; set; }
+
+    public long IssueId { get; set; }
+    public EfHatchIssue? Issue { get; set; }
+
+    [MaxLength(MaxPullRequestUrlLength)]
+    public string? PullRequestUrl { get; set; }
+
+    [MaxLength(MaxHeadBranchLength)]
+    public string? HeadBranch { get; set; }
+
+    [MaxLength(MaxAuthorLoginLength)]
+    public required string AuthorLogin { get; set; }
+
+    [MaxLength(MaxAuthorAssociationLength)]
+    public required string AuthorAssociation { get; set; }
+
+    public required DateTimeOffset FiledAt { get; set; }
+
+    /// <summary>The name of the credential it was filed under - a name and not an id, for the reason <see cref="EfHatchIssue.CreatedBy"/> is.</summary>
+    [MaxLength(Common.PersonName.MaxChars)]
+    public required string FiledBy { get; set; }
+
+    [MaxLength(MaxOriginInstanceLength)]
+    public string? OriginInstance { get; set; }
+
+    [MaxLength(MaxOriginProjectKeyLength)]
+    public string? OriginProjectKey { get; set; }
+
+    [MaxLength(MaxOriginKeyLength)]
+    public string? OriginKey { get; set; }
+
+    public int? EnvelopeVersion { get; set; }
+
+    [MaxLength(MaxEnvelopeNoteLength)]
+    public string? EnvelopeNote { get; set; }
 }
 
 /// <summary>
@@ -2387,6 +2466,16 @@ public class EfHatchIssueEvent
     /// only sets whether an increment pushed the sha, write none.
     /// </summary>
     public const string BuildCheckChanged = "build_check_changed";
+
+    /// <summary>
+    /// A runner recorded that the issue came from outside - see
+    /// <see cref="EfHatchContribution"/>. The actor is the runner's key. The
+    /// payload is <c>{ pullRequestUrl, headBranch, authorLogin,
+    /// authorAssociation, originInstance, originProjectKey, originKey }</c>,
+    /// each null where the record holds none. Written once, by the write that
+    /// creates the record; a write that repeats it writes none.
+    /// </summary>
+    public const string ContributionFiled = "contribution_filed";
 
     /// <summary>
     /// The operator took it off somebody - the same column cleared, and a

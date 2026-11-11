@@ -3094,7 +3094,7 @@ ticket — payload `{ runner, by }`),
 `{ verdict, playbookId }`, written on every call, a replace under the same claim
 included), `verdict_held` (the apply found a second consecutive fail and moved
 nothing - payload `{ verdict, playbookId }`, `verdict` always `fail`, written
-beside the `asked` for the question it posts), `merge_check_changed`, `build_check_changed`, `pull_request_state_changed` (the
+beside the `asked` for the question it posts), `merge_check_changed`, `build_check_changed`, `contribution_filed` (a runner recorded that the issue came from outside - payload `{ pullRequestUrl, headBranch, authorLogin, authorAssociation, originInstance, originProjectKey, originKey }`, each null where the record holds none; written once, by the write that creates the record), `pull_request_state_changed` (the
 forge's last word on the recorded pull request - its merge state, its review
 decision, or the head sha they were read at - differs from what the board
 held, the first read counting; payload `{ from, to }`, each side `{ mergeState,

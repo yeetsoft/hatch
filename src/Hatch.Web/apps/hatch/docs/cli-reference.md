@@ -555,7 +555,11 @@ the ancestor issue each tag beyond its own came from. A ticket with omitted runn
 person's write. A ticket a live runner holds says so on a `runner:` line - who
 holds it, since when, and how long ago it was last heard from, with what it
 is doing - drawn from the ticket itself, so it shows for any holder and is
-absent once the lease has lapsed. A story or bug of a project that enforces its
+absent once the lease has lapsed. A ticket that came from outside prints a
+`contribution:` line - where it originated (the instance and key) when it has
+one, the author and their association, the head branch, and when and by which
+runner it was filed - leaving out each clause the record holds nothing for.
+A story or bug of a project that enforces its
 one-PR default gets the `one-pr:` line too, as `hatch one-pr` reads it. Reads only. `--brief`, which may come before or after the key,
 prints the header alone - everything above the blank line that precedes the
 description - and leaves out the description and every comment, with no

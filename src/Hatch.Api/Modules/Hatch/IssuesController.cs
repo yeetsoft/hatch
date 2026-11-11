@@ -85,6 +85,18 @@ public class IssuesController(
     /// names outright, so pasting <c>AER-12</c> into a search box finds
     /// <c>AER-12</c>.
     /// </param>
+    /// <param name="pullRequestUrl">
+    /// Exact match against the pull request the issue holds, whether it was
+    /// recorded with <c>hatch pr</c> or came in on a contribution record - see
+    /// <see cref="EfHatchContribution"/>. So a filer can ask whether a pull
+    /// request is already here without listing the board.
+    /// </param>
+    /// <param name="originInstance">
+    /// Exact match against the instance a contribution record names as the
+    /// origin, ignoring a trailing slash. Records only: an issue with no record
+    /// has no origin.
+    /// </param>
+    /// <param name="originKey">Exact match against the key a contribution record names on its origin instance. Usually given with <paramref name="originInstance"/>, since a key means nothing without it.</param>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<IssueCardDto>>> SearchIssues(
         [FromQuery] List<int>? projectId,
@@ -94,7 +106,10 @@ public class IssuesController(
         [FromQuery] string? ancestorKey,
         [FromQuery] string? text,
         [FromQuery] string? filedFromKey,
-        CancellationToken ct)
+        CancellationToken ct,
+        [FromQuery] string? pullRequestUrl = null,
+        [FromQuery] string? originInstance = null,
+        [FromQuery] string? originKey = null)
     {
         if (type is not null && !EfHatchIssue.IsValidType(type))
             return BadRequest($"an issue is one of {string.Join(", ", EfHatchIssue.Types)} - not \"{type}\"");
@@ -132,6 +147,25 @@ public class IssuesController(
                 if (source is null) return BadRequest($"there is no {filedFromKey}");
                 query = query.Where(i => i.FiledFromId == source.Id);
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(pullRequestUrl))
+        {
+            var url = pullRequestUrl.Trim();
+            query = query.Where(i => i.PullRequestUrl == url
+                || (i.Contribution != null && i.Contribution.PullRequestUrl == url));
+        }
+
+        if (!string.IsNullOrWhiteSpace(originInstance))
+        {
+            var instance = IssueContributions.NormalizeInstance(originInstance);
+            query = query.Where(i => i.Contribution != null && i.Contribution.OriginInstance == instance);
+        }
+
+        if (!string.IsNullOrWhiteSpace(originKey))
+        {
+            var origin = originKey.Trim();
+            query = query.Where(i => i.Contribution != null && i.Contribution.OriginKey == origin);
         }
 
         if (!string.IsNullOrWhiteSpace(ancestorKey))
@@ -201,6 +235,8 @@ public class IssuesController(
         var now = time.GetUtcNow();
         var priorities = await PriorityTree.ForAsync(db, ct);
 
+        var contributions = await IssueContributions.ForIssuesAsync(db, rows.Select(r => r.Id).ToList(), ct);
+
         var cards = new List<IssueCardDto>(rows.Count);
         foreach (var i in rows)
         {
@@ -251,7 +287,8 @@ public class IssuesController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt,
-                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities)));
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
+                Contribution: contributions.GetValueOrDefault(i.Id)));
         }
 
         return cards;
@@ -1454,7 +1491,7 @@ public class IssuesController(
     private const string ExpectedPullRequestUrl =
         "an absolute http or https address, like https://example.com/owner/repo/pull/12";
 
-    private static bool ReadPullRequestUrl(string? text, out string? url, out string? error)
+    internal static bool ReadPullRequestUrl(string? text, out string? url, out string? error)
     {
         url = null;
         error = null;

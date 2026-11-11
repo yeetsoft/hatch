@@ -34,4 +34,38 @@ public sealed class DtosTests
         Assert.NotNull(back);
         Assert.Equal(file, back.PlaybookFile);
     }
+
+    [Fact]
+    public void The_contribution_members_default_to_null_so_an_older_board_still_reads()
+    {
+        Assert.Null(Fixtures.Issue("AER-1").Contribution);
+        Assert.Null(Fixtures.Card("AER-1").Contribution);
+        Assert.Null(new ReviewCheckDto("AER-1", [], []).Branch);
+    }
+
+    [Fact]
+    public void ContributionDto_round_trips_through_HatchClient_Json()
+    {
+        var contribution = new ContributionDto(
+            "https://forge.example/o/r/pull/7", "feature/thing", "octocat", "NONE",
+            DateTimeOffset.Parse("2026-11-11T12:34:56+00:00"), "runner-1",
+            "https://hatch.example", "OTH", "OTH-4", 1, null);
+        var issue = Fixtures.Issue("AER-1") with { Contribution = contribution };
+
+        var json = JsonSerializer.Serialize(issue, HatchClient.Json);
+        var back = JsonSerializer.Deserialize<IssueDto>(json, HatchClient.Json);
+
+        Assert.NotNull(back);
+        Assert.Equal(contribution, back.Contribution);
+        Assert.Contains("\"contribution\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ContributionRequest_serialises_through_HatchClient_Json()
+    {
+        var json = JsonSerializer.Serialize(
+            new ContributionRequest("https://forge.example/o/r/pull/7", "main", "octocat", "NONE"), HatchClient.Json);
+
+        Assert.Contains("\"authorLogin\":\"octocat\"", json, StringComparison.Ordinal);
+    }
 }

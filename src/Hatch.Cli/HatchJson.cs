@@ -82,6 +82,8 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(DangerousRequest))]
 [JsonSerializable(typeof(OmitRunnerRequest))]
 [JsonSerializable(typeof(NoCodeRequest))]
+[JsonSerializable(typeof(ContributionRequest))]
+[JsonSerializable(typeof(ContributionDto))]
 [JsonSerializable(typeof(ReleaseNoteRequest))]
 [JsonSerializable(typeof(WorkLogEntryRequest))]
 [JsonSerializable(typeof(ClaimRequest))]

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -169,6 +171,10 @@ public sealed class IssueCommands(Cli cli)
         // Said only where the issue declared it finished with no code.
         if (issue.NoCode is { Length: > 0 } noCode) cli.Say.Line($"no code:      {noCode}");
 
+        // Said only where the issue came from outside, each clause left out
+        // where the record holds none of it.
+        if (issue.Contribution is { } contribution) cli.Say.Line(Contribution(contribution));
+
         // Said only where it is on, or where a story has been told one way or
         // the other, or where the project enforces it; a project that never
         // turned it on has nothing to report.
@@ -224,6 +230,22 @@ public sealed class IssueCommands(Cli cli)
         var comments = await cli.Board.CommentsAsync(args[0], ct);
         PrintComments(cli.Say, comments);
         return 0;
+    }
+
+    /// <summary>
+    /// The <c>contribution:</c> line: where it came from, who by, which branch,
+    /// and when and by which runner it was filed. A clause is left out where
+    /// the record holds nothing for it.
+    /// </summary>
+    private static string Contribution(ContributionDto c)
+    {
+        var clauses = new List<string>();
+        if (c.OriginInstance is { Length: > 0 } instance)
+            clauses.Add($"from {instance} {c.OriginKey}".TrimEnd());
+        clauses.Add($"by {c.AuthorLogin} ({c.AuthorAssociation})");
+        if (c.HeadBranch is { Length: > 0 } branch) clauses.Add($"branch {branch}");
+        clauses.Add($"filed {c.FiledAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} UTC by {c.FiledBy}");
+        return $"contribution: {string.Join(", ", clauses)}";
     }
 
     private static string Listed(IReadOnlyList<string> items) =>
