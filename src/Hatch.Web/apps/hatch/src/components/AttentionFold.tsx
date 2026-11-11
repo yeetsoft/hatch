@@ -71,9 +71,7 @@ export function AttentionSection({
 /**
  * One group of sections - Human or Agent. With every section inside it
  * empty, the `h2` becomes the same kind of disclosure button `AttentionSection`
- * draws for a `h3`, and its children only draw once opened. Not used until
- * HA-2193 wires the panel's two groups through it, but written and exported
- * now so that ticket only has to call it.
+ * draws for a `h3`, and its children only draw once opened.
  */
 export function AttentionGroup({
   title,
