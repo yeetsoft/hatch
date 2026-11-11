@@ -11,8 +11,6 @@ import type { NavEntry } from './nav';
 // unknown-route fallback) are not pages a menu lists. :name is /runners'
 // nested detail route - the regex below captures a nested <Route>'s path
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
-// /runners-legacy is the old Runners page, kept off the nav only until the e2e
-// cases that read its DOM are rewritten for the new one and it is removed.
 const EXCLUDED_ROUTES = new Set([
   '/',
   '/docs',
@@ -24,7 +22,6 @@ const EXCLUDED_ROUTES = new Set([
   '/docs/*',
   '/settings',
   ':name',
-  '/runners-legacy',
   '*',
 ]);
 
@@ -141,12 +138,11 @@ describe('navFor', () => {
   it('drops the admin-only rows for anybody else', () => {
     const rows = manage(navFor(false)).rows.map((row) => row.to);
     expect(rows).not.toContain('/users');
-    expect(rows).not.toContain('/api-keys');
   });
 
-  it('ends Manage with Users then API keys for an Admin', () => {
+  it('ends Manage with Users for an Admin', () => {
     const rows = manage(navFor(true)).rows.map((row) => row.to);
-    expect(rows.slice(-2)).toEqual(['/users', '/api-keys']);
+    expect(rows.slice(-1)).toEqual(['/users']);
   });
 });
 
@@ -178,9 +174,7 @@ describe('navRows', () => {
     const tos = (rows: ReturnType<typeof navRows>) => rows.map((row) => row.to);
 
     expect(tos(navRows(false))).not.toContain('/users');
-    expect(tos(navRows(false))).not.toContain('/api-keys');
     expect(tos(navRows(true))).toContain('/users');
-    expect(tos(navRows(true))).toContain('/api-keys');
   });
 
   it('flattens to exactly one row per link and per group row plus the phone-only ones, with none dropped or duplicated', () => {

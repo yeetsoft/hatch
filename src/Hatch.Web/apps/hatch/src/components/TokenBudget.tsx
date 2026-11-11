@@ -4,8 +4,8 @@ import { sessionTokenBudget } from '../lib/runners';
 import type { RunnerSession } from '../types';
 
 /** A session's token budget: the night's line, then the hour's, each with a
-    bar where it has a cap. Copied from `RunnersPage.tsx`'s own `TokenBudget`,
-    widened from a runner to a session - see `sessionTokenBudget`. */
+    bar where it has a cap. Copied from the old runners page's own
+    `TokenBudget`, widened from a runner to a session - see `sessionTokenBudget`. */
 export function TokenBudget({ session }: { session: RunnerSession }) {
   const lines = sessionTokenBudget(session);
   if (lines.length === 0) return <Text tone="muted">No token budget</Text>;

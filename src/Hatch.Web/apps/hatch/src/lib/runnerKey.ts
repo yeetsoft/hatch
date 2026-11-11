@@ -28,10 +28,10 @@ export interface RunnerSecret {
 }
 
 /**
- * Why Create would be refused before it is sent, or null - mirrors
- * `mintProblem` in `lib/apiKeys.ts`. The server says the same things and
- * stays the authority; this only keeps a button from being pressed to be
- * told what the form already knows.
+ * Why Create would be refused before it is sent, or null - mirrors the old
+ * `mintProblem` the Runners page's create form carried before it moved here.
+ * The server says the same things and stays the authority; this only keeps
+ * a button from being pressed to be told what the form already knows.
  */
 export function createProblem(name: string): string | null {
   const trimmed = name.trim();

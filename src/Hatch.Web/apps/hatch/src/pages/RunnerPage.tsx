@@ -259,7 +259,7 @@ export function RunnerPage() {
             This Hatch has its wall up, so the runner needs a key.{' '}
             {advice === 'needs-key-admin' ? (
               <>
-                Mint one on the <Link to="/api-keys">API keys</Link> page and put it in the second command.
+                Mint one on the <Link to="/runners">Runners</Link> page and put it in the second command.
               </>
             ) : (
               <>Ask an admin for one and put it in the second command.</>

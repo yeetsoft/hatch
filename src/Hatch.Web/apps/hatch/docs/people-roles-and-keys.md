@@ -99,16 +99,14 @@ it (state, caps, tags, projects), kept in `RunnerConfigs` against the key's id.
 The heartbeat table a running loop writes is a bridge, joined to the key by
 name, that HA-1937 retires.
 
-- **Where it is minted.** **Manage → API keys**, admin only. A key is minted by
-  *creating a runner* (`POST /api/hatch/runners`): no key may mint, rotate,
-  revoke or re-own a key, only a person at that screen. The form takes **Name**
-  ("What the audit trail will call it") and **Belongs to** ("Whose tickets
-  this key's `--mine` will reach"), then **Mint key**. The secret is shown
-  once, on the page, and the response is sent `no-store`, so it is never shown
-  again. A name already held, by a key revoked or not, is refused. A runner is
-  also created this way from **Runners → Create runner** — the same name and
-  owner fields, the same once-shown secret beside the two `hatch config`
-  commands it needs next.
+- **Where it is minted.** A key is minted only by *creating a runner*
+  (`POST /api/hatch/runners`), from **Runners → Create runner**, admin only:
+  no key may mint, rotate, revoke or re-own a key, only a person at that
+  screen. The dialog takes **Name** ("What the audit trail will call it") and
+  **Owner** ("Whose tickets this key's `--mine` will reach"), then **Create**.
+  The secret is shown once, on the page, beside the two `hatch config`
+  commands it needs next, and the response is sent `no-store`, so it is never
+  shown again. A name already held, by a key revoked or not, is refused.
 - **Replacing a secret.** An admin rotates a runner with
   `POST /api/hatch/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
@@ -191,11 +189,12 @@ to sign-in instead.
 
 ## Whose tickets `--mine` reaches
 
-- **Who sets it.** An admin, on **Manage → API keys** — a key may never set
-  its own. **Belongs to**, on the mint form, lists people only and is
-  pre-selected to the admin at the screen; left as is, that admin becomes the
-  key's owner. The **Owner** select on an existing, unrevoked row also offers
-  `nobody`; a revoked row shows its owner as text only.
+- **Who sets it.** An admin, from a runner's Identity card on the Runners
+  page — a key may never set its own. **Owner**, on the create dialog and the
+  Identity card, lists people only and is pre-selected to the admin at the
+  screen; left as is, that admin becomes the key's owner. The **Owner** select
+  on an existing, unrevoked row also offers `nobody`; a revoked row shows its
+  owner as text only.
 - **Whose tickets it reaches.** The signed-in person; failing that, the key's
   owner; failing that, the local person where the wall is off. `--mine` takes
   only a ticket assigned to that person, or to the key itself, and folds

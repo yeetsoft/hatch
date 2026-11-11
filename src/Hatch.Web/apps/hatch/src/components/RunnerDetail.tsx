@@ -260,7 +260,7 @@ export function RunnerDetail() {
 
   // Two badges, two fixes: Behind is a binary older than the board's
   // (restart it against a newer deploy), Rebuild one older than its own
-  // checkout's source (make build-hatch there). Mirrors RunnersPage.tsx.
+  // checkout's source (make build-hatch there).
   const behind = runner.boardDrift === 'Behind';
   const rebuild = runner.sourceDrift === 'Behind';
   const badges = (behind || rebuild) && (

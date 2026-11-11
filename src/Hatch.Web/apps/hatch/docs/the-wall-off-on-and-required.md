@@ -40,8 +40,7 @@ wall up refuses that ask outright.
 
 A request carrying no cookie and no key is refused, and a page load with
 neither is sent to sign in at `/apps/auth/` — On listens only to a cookie or
-a key. **Manage → Users** and
-**Manage → API keys** appear in the nav, because there is now a role to
+a key. **Manage → Users** appears in the nav, because there is now a role to
 hold and a key to mint. `migrate` and `api` have to be given the same
 `Auth__*` lines, which Compose already does (`compose.yaml:56-61`).
 
@@ -94,7 +93,7 @@ one,** so sign in yourself before you share the address.
 [People, roles and keys](people-roles-and-keys#roles) has the rest: how
 somebody after that is approved, or added ahead of time.
 
-**5. The runner now needs a key.** Open **Manage → API keys**, mint one,
+**5. The runner now needs a key.** Open **Runners**, press Create runner,
 and give it to the runner:
 
 ```

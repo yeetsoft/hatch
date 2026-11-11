@@ -34,9 +34,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { ImportPage } from './pages/ImportPage';
 import { DocsPage } from './pages/DocsPage';
 import { RunnerPage } from './pages/RunnerPage';
-import { RunnersPage } from './pages/RunnersPage';
 import { OvernightPage } from './pages/OvernightPage';
-import { ApiKeysPage } from './pages/ApiKeysPage';
 import { UsersPage } from './pages/UsersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { appHref } from './lib/basename';
@@ -198,7 +196,6 @@ function AppShell() {
               <Route index element={<RunnersIndex />} />
               <Route path=":name" element={<RunnerDetail />} />
             </Route>
-            <Route path="/runners-legacy" element={<RunnersPage />} />
             <Route path="/overnight" element={<OvernightPage />} />
             <Route path="/changelog" element={<Navigate to="/reports/changelog" replace />} />
             <Route path="/history" element={<HistoryPage />} />
@@ -207,7 +204,6 @@ function AppShell() {
             <Route path="/runner" element={<RunnerPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/users" element={<UsersPage />} />
-            <Route path="/api-keys" element={<ApiKeysPage />} />
             <Route path="/docs" element={<DocsPage />} />
             <Route path="/docs/*" element={<DocsPage />} />
             {/* An unknown deep link lands on the board rather than on nothing -

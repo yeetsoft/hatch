@@ -242,54 +242,6 @@ export function runnerStrip(runners: readonly Runner[], now: Date): RunnerStripR
   });
 }
 
-/** The runners that share one machine, with what that machine has spent. */
-export interface RunnerHostGroup {
-  /** The machine, or null for a runner that never said - always alone. */
-  host: string | null;
-  runners: Runner[];
-  totalRuns: number;
-  totalSpent: number;
-}
-
-/**
- * The runners gathered by the machine they run from, each group at the place
- * its first member held - the server's order, so this does not sort.
- *
- * A runner with no host is a group of one and is never gathered with another:
- * an absent host is not evidence of a shared machine. A member whose `runs` or
- * `spent` is null has not reported yet and counts as nothing, the same reading
- * the field itself carries.
- */
-export function groupByHost(runners: readonly Runner[]): RunnerHostGroup[] {
-  const byHost = new Map<string, Runner[]>();
-  for (const runner of runners) {
-    if (!runner.host) continue;
-    const members = byHost.get(runner.host);
-    if (members) members.push(runner);
-    else byHost.set(runner.host, [runner]);
-  }
-
-  const emitted = new Set<string>();
-  const groups: RunnerHostGroup[] = [];
-  const group = (host: string | null, members: Runner[]): RunnerHostGroup => ({
-    host,
-    runners: members,
-    totalRuns: members.reduce((sum, m) => sum + (m.runs ?? 0), 0),
-    totalSpent: members.reduce((sum, m) => sum + (m.spent ?? 0), 0),
-  });
-
-  for (const runner of runners) {
-    if (!runner.host) {
-      groups.push(group(null, [runner]));
-    } else if (!emitted.has(runner.host)) {
-      emitted.add(runner.host);
-      groups.push(group(runner.host, byHost.get(runner.host) as Runner[]));
-    }
-  }
-
-  return groups;
-}
-
 /** Whether this row was replaced by another name from the same checkout. */
 export const isRetired = (runner: Runner) => Boolean(runner.retiredAt);
 
@@ -838,29 +790,3 @@ export function groupedTokens(text: string): string {
   return count === null ? text : thousands(count);
 }
 
-/** The last press a runner's row was refused, and which row it was. `routed`
-    is true for a bounds save, the one press the form can show a refusal
-    under; any other press has no form open to show it in. */
-export interface Refusal {
-  runner: string;
-  text: string;
-  routed: boolean;
-}
-
-/** The refusal the top of the page draws: all of them, except a bounds save's
-    that names a token flag, which the form draws under its field instead. */
-export function topRefusal(failure: Refusal | null): string | null {
-  if (failure === null) return null;
-  return failure.routed && tokenFieldOf(failure.text) !== null ? null : failure.text;
-}
-
-/** The refusal one runner's form draws under a token field, or null where
-    the refusal was another runner's, another flag's, or not a bounds save's. */
-export function formRefusal(
-  failure: Refusal | null,
-  runner: string,
-): { text: string; field: 'maxTokens' | 'maxTokensPerHour' } | null {
-  if (failure === null || !failure.routed || failure.runner !== runner) return null;
-  const field = tokenFieldOf(failure.text);
-  return field === null ? null : { text: failure.text, field };
-}

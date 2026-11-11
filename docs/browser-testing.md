@@ -51,12 +51,6 @@ error (`AssertNoPageErrors`).
 The smoke runs in Chromium, headless. The `iPhone 14 Pro` profile runs in
 WebKit.
 
-`RunnersFitTests.cs` measures the Runners page with two stubbed rows and fails,
-naming the control, its box and the box it escaped, when any button or input in
-a row's `.hatch-reorder--wrap` is clipped: outside the card at desktop, outside
-the table or under 44px on the phone profile, outside its own cell, or squeezed
-past its own `scrollWidth`.
-
 `OmittedRunnersTests.cs` drives the issue page's Omitted runners section against
 the real host: an own, a recused and an inherited row, Lift, Omit, the refusal
 sentences, and the fit of every row and add control inside the Details card, on
