@@ -5034,8 +5034,9 @@ carries `actor`, `project` and `from`/`to`/`range`; with no `actor` the page
 opens on the signed-in person when the directory lists them, and writes that
 name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
-revoked key's trail still reads. The page writes nothing, and draws neither
-the rate of work nor the bracketed sessions — those are stories of their
+revoked key's trail still reads. The page writes `gap` and `lead` to the URL,
+editable on the page, and draws the bracketed sessions and a rough-hours
+estimate; it does not yet draw the rate of work over time — a story of its
 own. There is no CLI subcommand yet — a script reaches the read with `hatch
 api GET /api/hatch/reports/activity?...`. The route is open to a person or
 to a key.

@@ -845,6 +845,8 @@ export const getActivityReport = (query: ActivityReportQuery) => {
   if (query.from) params.set('from', query.from);
   if (query.to) params.set('to', query.to);
   for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  params.set('gap', String(query.gap));
+  params.set('lead', String(query.lead));
   return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
 };
 
@@ -853,6 +855,12 @@ export interface ActivityReportQuery {
   from?: string | null;
   to?: string | null;
   projectId?: number[] | null;
+  /** Minutes between two consecutive events that still counts as one working
+      session - always resolved by the caller, as `offsetMinutes` is elsewhere. */
+  gap: number;
+  /** Minutes added to every session's estimated length - always resolved by
+      the caller. */
+  lead: number;
 }
 
 /** Closed epics bucketed over a window. Each parameter is set only when it

@@ -356,8 +356,10 @@ describe('getActivityReport', () => {
     return (fetchMock.mock.calls[0] as unknown[])[0];
   };
 
-  it('sends the actor alone when nothing else is set', async () => {
-    expect(await urlOf({ actor: 'Ada' })).toBe('/api/hatch/reports/activity?actor=Ada');
+  it('sends the actor and gap/lead alone when nothing else is set', async () => {
+    expect(await urlOf({ actor: 'Ada', gap: 30, lead: 15 })).toBe(
+      '/api/hatch/reports/activity?actor=Ada&gap=30&lead=15',
+    );
   });
 
   it('sends every field, repeating projectId once per id', async () => {
@@ -366,18 +368,20 @@ describe('getActivityReport', () => {
       from: '2026-10-01T00:00:00.000Z',
       to: '2026-11-01T00:00:00.000Z',
       projectId: [3, 5],
+      gap: 45,
+      lead: 20,
     });
 
     expect(url).toBe(
       '/api/hatch/reports/activity?actor=Ada&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
-        '&projectId=3&projectId=5',
+        '&projectId=3&projectId=5&gap=45&lead=20',
     );
   });
 
-  it('encodes an actor with spaces and an ampersand, and leaves off empty fields', async () => {
-    expect(await urlOf({ actor: 'Rall & Co runner', from: '', to: null, projectId: [] })).toBe(
-      '/api/hatch/reports/activity?actor=Rall+%26+Co+runner',
-    );
+  it('encodes an actor with spaces and an ampersand, and leaves off empty from/to/projectId', async () => {
+    expect(
+      await urlOf({ actor: 'Rall & Co runner', from: '', to: null, projectId: [], gap: 30, lead: 15 }),
+    ).toBe('/api/hatch/reports/activity?actor=Rall+%26+Co+runner&gap=30&lead=15');
   });
 });
 
