@@ -964,11 +964,7 @@ public sealed class ClaimTests
         // Advances the fake clock past the release's own budget - real
         // milliseconds spent polling so the ten seconds this proves never
         // hangs on never have to be spent for real.
-        for (var i = 0; i < 10 && !releasing.IsCompleted; i++)
-        {
-            await Task.Delay(5);
-            clock.Advance(TimeSpan.FromSeconds(3));
-        }
+        await ClockDriver.DriveAsync(clock, releasing, TimeSpan.FromSeconds(3));
 
         await releasing.WaitAsync(TimeSpan.FromSeconds(2));
 
