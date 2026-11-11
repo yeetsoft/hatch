@@ -886,6 +886,41 @@ export interface ActivityPage {
   hasMore: boolean;
 }
 
+/** One kind of event and how many of it there were. Mirrors
+    ActivityKindCountDto. */
+export interface ActivityKindCount {
+  kind: string;
+  count: number;
+}
+
+/** One issue an actor touched over the range: the card, when they first and
+    last did, how often, and what. Mirrors ActivityIssueDto. */
+export interface ActivityReportIssue {
+  issue: IssueCard;
+  first: string;
+  last: string;
+  count: number;
+  kinds: ActivityKindCount[];
+}
+
+/** One actor's events over a range. `total`, `kinds` and `issues` cover every
+    event in range; `events` is the newest of them, capped, and `truncated` says
+    more existed. Mirrors ActivityReportDto. */
+export interface ActivityReport {
+  /** The actor asked for, echoed as typed. */
+  actor: string;
+  from: string;
+  to: string;
+  total: number;
+  /** Most first, then by name. */
+  kinds: ActivityKindCount[];
+  /** Latest activity first. */
+  issues: ActivityReportIssue[];
+  /** Newest first. */
+  events: ActivityEvent[];
+  truncated: boolean;
+}
+
 /** How full the WIP section is right now. Mirrors WipDto - not WipSection
     (the settings shape, with a nullable limit and no load): this one carries a
     load for every slice, whether or not it has a limit. */

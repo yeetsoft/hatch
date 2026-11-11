@@ -19,6 +19,11 @@ const REPORTS: { to: string; title: string; answers: string }[] = [
     title: 'Changelog',
     answers: 'What landed in each day, week or month, at the level a stakeholder reads.',
   },
+  {
+    to: '/reports/activity',
+    title: 'Activity',
+    answers: 'What one person or key did, issue by issue, over a range.',
+  },
 ];
 
 /** The front door to the Reports area: a card per report, each a link in. */
