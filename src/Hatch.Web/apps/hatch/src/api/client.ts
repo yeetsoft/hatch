@@ -896,9 +896,25 @@ export const getPersonSessions = (id: string) =>
   fetchJson<PersonSession[]>(`/api/people/${seg(id)}/sessions`);
 export const revokeGrant = (id: string) => fetchJson<void>(`/api/auth/grants/${seg(id)}`, { method: 'DELETE' });
 
-/** The grant this browser holds - how the Users page knows which session row is
-    "this browser". Null when there is no grant (the wall is off). */
-export const getAuthMe = () => fetchJson<AuthMe | undefined>('/api/auth/me').then((me) => me ?? null);
+/**
+ * The grant this browser holds - how the Users page knows which session row is
+ * "this browser". Null when there is no grant (the wall is off), which is a
+ * 401 off this one route rather than the refusal every other fetch here
+ * means it as: a wall-off deployment never holds a grant at all, so routing
+ * that through `fetchJson` would read "no grant" as "signed out" and bounce
+ * the browser to the sign-in shell for a caller the wall never asked to sign
+ * in to begin with.
+ */
+export async function getAuthMe(): Promise<AuthMe | null> {
+  const res = await fetch('/api/auth/me', { headers: { Accept: 'application/json' } });
+  if (res.status === 401) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new HttpError(refusalSentence(text, `GET /api/auth/me failed: ${res.status} ${res.statusText}`), res.status, undefined);
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : null) as AuthMe | null;
+}
 
 // ---- Revision ----
 

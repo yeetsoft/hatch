@@ -5,6 +5,7 @@ import {
   getActivity,
   getAllRunners,
   getAttachments,
+  getAuthMe,
   getChangelogReport,
   getPlan,
   getQueue,
@@ -94,6 +95,28 @@ describe('runner orders', () => {
       '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('getAuthMe', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads null off a 401, the wall-off shape, rather than the generic refusal every other call means it as', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getAuthMe()).resolves.toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', expect.anything());
+  });
+
+  it('reads the grant off a 200', async () => {
+    const me = { grantId: 'g1', personId: null };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(me), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(getAuthMe()).resolves.toEqual(me);
   });
 });
 
