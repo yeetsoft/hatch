@@ -2748,6 +2748,163 @@ public class IssueClaimTests
         Assert.Equal(id, Assert.Single(await LetGo.ByAsync(h.Connect(), runner, default)).Key);
     }
 
+    // ---- A no-code declaration is the review column's (HA-2198) ----
+    //
+    // The take and the release are conditional UPDATEs, so this lives here and
+    // not beside ClearOnMove's tests. The harness has no review column, so each
+    // test adds its own after "doing": review (40), done (50, terminal) and
+    // shelved (60, deferred). "todo" and "doing" then stand left of review.
+
+    private const string Declared = "nothing to change";
+
+    private sealed record ReviewColumns(int Review, int Done, int Shelved);
+
+    private static async Task<ReviewColumns> AddReviewColumnsAsync(Harness h)
+    {
+        var review = new EfHatchStatus { Name = "review", SortOrder = 40 };
+        var done = new EfHatchStatus { Name = "done", SortOrder = 50, IsTerminal = true };
+        var shelved = new EfHatchStatus { Name = "shelved", SortOrder = 60, IsDeferred = true };
+        var db = h.Connect();
+        db.AddRange(review, done, shelved);
+        await db.SaveChangesAsync();
+        return new ReviewColumns(review.Id, done.Id, shelved.Id);
+    }
+
+    /// <summary>The row's column and declaration, written straight - a move or a declare is not what is under test.</summary>
+    private static async Task StandAsync(Harness h, string key, int statusId, bool declared)
+    {
+        var id = (await h.RowAsync(key)).Id;
+        await h.Connect().Issues.Where(i => i.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(i => i.StatusId, statusId)
+            .SetProperty(i => i.NoCode, declared ? Declared : null)
+            .SetProperty(i => i.NoCodeAt, declared ? Now : null));
+    }
+
+    private static async Task<IReadOnlyList<IssueEventDto>> NoCodeEventsAsync(Harness h, string key) =>
+        (await h.EventsAllAsync(key)).Where(e => e.Kind == EfHatchIssueEvent.NoCodeChanged).ToList();
+
+    private static async Task AssertDeclaredAsync(Harness h, string key, int events = 0)
+    {
+        var row = await h.RowAsync(key);
+        Assert.Equal(Declared, row.NoCode);
+        Assert.NotNull(row.NoCodeAt);
+        Assert.Equal(events, (await NoCodeEventsAsync(h, key)).Count);
+    }
+
+    private static async Task AssertWithdrawnAsync(Harness h, string key, string standing)
+    {
+        var row = await h.RowAsync(key);
+        Assert.Null(row.NoCode);
+        Assert.Null(row.NoCodeAt);
+
+        var e = Assert.Single(await NoCodeEventsAsync(h, key));
+        var payload = e.Payload!.Value;
+        Assert.Equal(Declared, payload.GetProperty("from").GetString());
+        Assert.Null(payload.GetProperty("to").GetString());
+        Assert.Equal(standing, payload.GetProperty("standing").GetString());
+    }
+
+    [SkippableFact]
+    public async Task ADeclarationInDoing_IsWithdrawnWhenTheClaimIsReleased()
+    {
+        await using var h = await NewAsync();
+        await AddReviewColumnsAsync(h);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await StandAsync(h, issue, h.DoingStatusId, declared: true);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, null, default));
+
+        await AssertWithdrawnAsync(h, issue, "doing");
+    }
+
+    [SkippableFact]
+    public async Task ADeclarationInTodo_IsWithdrawnWhenTheClaimIsTaken()
+    {
+        await using var h = await NewAsync();
+        await AddReviewColumnsAsync(h);
+        var issue = await h.FileAsync();
+        await StandAsync(h, issue, h.StatusId, declared: true);
+
+        Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default));
+
+        await AssertWithdrawnAsync(h, issue, "todo");
+    }
+
+    [SkippableFact]
+    public async Task ADeclarationMadeInReview_SurvivesTheClaimThatEnds_HoweverItGotThere()
+    {
+        // Claimed in doing, declared there, then moved into review.
+        // Claimed, moved into review, then declared. Either way the state at
+        // release is a declaration in review.
+        foreach (var declaredBeforeTheMove in new[] { true, false })
+        {
+            await using var h = await NewAsync();
+            var columns = await AddReviewColumnsAsync(h);
+            var issue = await h.FileAsync();
+            var token = await h.TakeAsync(issue);
+
+            if (declaredBeforeTheMove) await StandAsync(h, issue, h.DoingStatusId, declared: true);
+            await StandAsync(h, issue, columns.Review, declared: true);
+
+            Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, null, default));
+
+            await AssertDeclaredAsync(h, issue);
+        }
+    }
+
+    [SkippableFact]
+    public async Task ADeclarationInReviewDoneOrAShelf_SurvivesAClaimAndItsRelease()
+    {
+        foreach (var column in new Func<ReviewColumns, int>[] { c => c.Review, c => c.Done, c => c.Shelved })
+        {
+            await using var h = await NewAsync();
+            var issue = await h.FileAsync();
+            var columns = await AddReviewColumnsAsync(h);
+            await StandAsync(h, issue, column(columns), declared: true);
+
+            var token = Value(await h.Claims.TakeClaim(issue, new ClaimRequest("somewhere:/checkouts/one"), default)).Token;
+            await AssertDeclaredAsync(h, issue);
+
+            Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, null, default));
+            await AssertDeclaredAsync(h, issue);
+        }
+    }
+
+    [SkippableFact]
+    public async Task AnOperatorsTokenlessClear_WithdrawsADeclarationInDoing()
+    {
+        await using var h = await NewAsync();
+        await AddReviewColumnsAsync(h);
+        var issue = await h.FileAsync();
+        await h.TakeAsync(issue);
+        await StandAsync(h, issue, h.DoingStatusId, declared: true);
+
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, null, null, null, default));
+
+        await AssertWithdrawnAsync(h, issue, "doing");
+    }
+
+    [SkippableFact]
+    public async Task ARefusedTake_AndAReleaseWithAWrongToken_LeaveTheDeclaration()
+    {
+        await using var h = await NewAsync();
+        await AddReviewColumnsAsync(h);
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+        await StandAsync(h, issue, h.DoingStatusId, declared: true);
+
+        Conflict(await h.Claims.TakeClaim(issue, new ClaimRequest("elsewhere:/checkouts/two"), default));
+        await AssertDeclaredAsync(h, issue);
+
+        Conflict(await h.Claims.ReleaseClaim(issue, Guid.NewGuid(), null, null, default));
+        await AssertDeclaredAsync(h, issue);
+
+        // The claim that is still held is the one that ends it.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, null, null, default));
+        await AssertWithdrawnAsync(h, issue, "doing");
+    }
+
     // ---- The harness ----
 
     private sealed class Harness : IAsyncDisposable
