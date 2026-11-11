@@ -93,7 +93,11 @@ public class AttentionWaitingOnARunnerTests(ITestOutputHelper output)
             {
                 await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-rest .hatch-attention-word:text-is(\"Clear\")");
                 await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
-                await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:text-is(\"Waiting on a runner\")");
+                // :has-text, not :text-is - empty and factless, HA-2192 folds
+                // this section behind its own heading button, and the button's
+                // own text is the smallest exact match then, not the h3 around it.
+                await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:has-text(\"Waiting on a runner\")");
+                await harness.ClickAsync(deadline, $"{PanelSelector} h3:has-text(\"Waiting on a runner\") button.hatch-attention-fold");
                 await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} .hatch-attention-empty:text-is(\"{EmptySentence}\")");
                 Assert.False(await harness.IsVisibleAsync(deadline, $"{PanelSelector} a.hatch-attention-row:has-text(\"See the Runners page\")"));
             }

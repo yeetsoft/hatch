@@ -86,7 +86,10 @@ public class AttentionRunnerCapacityTests(ITestOutputHelper output)
             await harness.WaitForTopBarAsync(deadline);
 
             await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);
-            await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:text-is(\"Runner capacity\")");
+            // :has-text, not :text-is - HA-2192 folds an empty, factless section
+            // behind its own heading button, and the button's own text is the
+            // smallest exact match then, not the h3 around it.
+            await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} h3:has-text(\"Runner capacity\")");
 
             if (hasRow)
             {
@@ -101,6 +104,9 @@ public class AttentionRunnerCapacityTests(ITestOutputHelper output)
             }
             else
             {
+                // Empty and factless, so HA-2192 folds it behind its own
+                // heading button - open it before looking for its sentence.
+                await harness.ClickAsync(deadline, $"{PanelSelector} h3:has-text(\"Runner capacity\") button.hatch-attention-fold");
                 await harness.WaitForVisibleAsync(deadline, $"{PanelSelector} .hatch-attention-empty:text-is(\"{EmptySentence}\")");
                 Assert.False(await harness.IsVisibleAsync(deadline, $"{PanelSelector} .hatch-attention-key:text-is(\"{Row.ProjectKey}\")"));
             }

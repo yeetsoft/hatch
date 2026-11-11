@@ -149,9 +149,9 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('AttentionHuman', () => {
   it('draws trunk builds first, then deadlocked, questions, stalled issues, pull requests, approved, landed, finished with no code, runner capacity, then waiting on a runner, each with the panel’s own empty wording', () => {
-    const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} />);
+    const html = renderToStaticMarkup(<AttentionHuman attention={null} now={new Date()} reload={noop} startOpen />);
 
-    const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
+    const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">(?:<button[^>]*>)?([^<]*)(?:<\/button>)?<\/h3>/g)].map((m) => m[1]);
     expect(headings).toEqual([
       'Trunk builds that fail',
       'Deadlocked',
@@ -255,11 +255,11 @@ describe('AttentionHuman', () => {
   it('draws the empty wording and no list when the server sends no stalled rows', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ stalled: undefined })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ stalled: undefined })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
-    const section = html.slice(html.indexOf('>Stalled issues</h3>'), html.indexOf('>Pull requests to review</h3>'));
+    const section = html.slice(html.indexOf('>Stalled issues</'), html.indexOf('>Pull requests to review</'));
     expect(section).toContain('Nothing is stalled.');
     expect(section).not.toContain('<ul');
   });
@@ -275,11 +275,11 @@ describe('AttentionHuman', () => {
       </MemoryRouter>,
     );
 
-    const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">([^<]*)<\/h3>/g)].map((m) => m[1]);
+    const headings = [...html.matchAll(/<h3 class="hatch-attention-heading">(?:<button[^>]*>)?([^<]*)(?:<\/button>)?<\/h3>/g)].map((m) => m[1]);
     expect(headings[0]).toBe('Trunk builds that fail');
     expect(headings[1]).toBe('Backups');
     expect(headings[2]).toBe('Deadlocked');
-    expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
+    expect(html.indexOf('>Backups</h3>')).toBeLessThan(html.indexOf('>Deadlocked</'));
     expect(html).toContain('The last backup failed.');
     expect(html).toContain('Last successful backup:');
     expect(html).toContain('href="/settings"');
@@ -315,7 +315,7 @@ describe('AttentionHuman', () => {
   it('shows the empty words when nothing is waiting on a runner, with no link to the Runners page', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ waitingOnARunner: [] })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ waitingOnARunner: [] })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
@@ -333,7 +333,7 @@ describe('AttentionHuman', () => {
     );
 
     expect(html).not.toContain(waitingOnARunnerEmptyWords());
-    expect(html).toContain('>Waiting on a runner</h3>');
+    expect(html).toContain('>Waiting on a runner</');
     expect(html).toContain(row.key);
     expect(html).toContain(row.title);
     expect(html).toContain(`in ${row.move} - ${row.missing}`);
@@ -345,7 +345,7 @@ describe('AttentionHuman', () => {
     for (const over of [{ runnerCapacity: [] }, {}]) {
       const html = renderToStaticMarkup(
         <MemoryRouter>
-          <AttentionHuman attention={attention(over)} now={new Date()} reload={noop} />
+          <AttentionHuman attention={attention(over)} now={new Date()} reload={noop} startOpen />
         </MemoryRouter>,
       );
 
@@ -363,7 +363,7 @@ describe('AttentionHuman', () => {
     );
 
     expect(html).not.toContain(runnerCapacityEmptyWords());
-    expect(html).toContain('>Runner capacity</h3>');
+    expect(html).toContain('>Runner capacity</');
     expect(html).toContain(row.projectKey);
     expect(html).toContain(runnerCapacityWords(row));
     for (const key of row.keys) {
@@ -377,7 +377,7 @@ describe('AttentionHuman', () => {
   it('shows the empty words when nothing is deadlocked', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ deadlocked: [] })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ deadlocked: [] })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
@@ -410,7 +410,7 @@ describe('AttentionHuman', () => {
     expect(html).toContain(row.projectName);
     expect(html).toContain(trainStalledWords(row).replace("'", '&#x27;'));
     expect(html).toContain(`href="/issues/${row.headKey}"`);
-    expect(html.indexOf('>Stalled merge trains</h3>')).toBeLessThan(html.indexOf('>Deadlocked</h3>'));
+    expect(html.indexOf('>Stalled merge trains</h3>')).toBeLessThan(html.indexOf('>Deadlocked</'));
   });
 
   it('lists a deadlocked row’s key, title and sentence under Deadlocked, linked to the issue', () => {
@@ -423,7 +423,7 @@ describe('AttentionHuman', () => {
     );
 
     expect(html).not.toContain(deadlockedEmptyWords());
-    expect(html).toContain('>Deadlocked</h3>');
+    expect(html).toContain('>Deadlocked</');
     expect(html).toContain(row.key);
     expect(html).toContain(row.title);
     expect(html).toContain(row.sentence);
@@ -433,7 +433,7 @@ describe('AttentionHuman', () => {
   it('shows the empty words when nothing landed has stopped short of done', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ landingHeld: [] })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ landingHeld: [] })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
@@ -459,7 +459,7 @@ describe('AttentionHuman', () => {
   it('shows the empty words when nothing finished with no code is waiting', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ noCodeHeld: [] })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ noCodeHeld: [] })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
@@ -485,7 +485,7 @@ describe('AttentionHuman', () => {
   it('shows the empty words when nothing approved has stopped merging', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>
-        <AttentionHuman attention={attention({ approvedHeld: [] })} now={new Date()} reload={noop} />
+        <AttentionHuman attention={attention({ approvedHeld: [] })} now={new Date()} reload={noop} startOpen />
       </MemoryRouter>,
     );
 
@@ -568,5 +568,78 @@ describe('AttentionHuman', () => {
     expect(html).not.toContain('File a bug');
     expect(html).toContain('HA-1');
     expect(dialogProps).toMatchObject({ open: false, buildId: build.id });
+  });
+});
+
+describe('AttentionHuman folding', () => {
+  // Trunk builds, Deadlocked, Questions, Stalled issues, Pull requests,
+  // Approved, Landed, Finished with no code, Runner capacity, Waiting on a
+  // runner - the ten sections AttentionSection wraps. Backups and Stalled
+  // merge trains are not among them: both stay their own plain <section>.
+  const emptyWords = (a: Attention | null) => [
+    trunkBuildEmptyWords(),
+    deadlockedEmptyWords(),
+    questionEmptyWords(),
+    stalledEmptyWords(),
+    reviewEmptyWords(a),
+    approvedHeldEmptyWords(),
+    landingHeldEmptyWords(),
+    noCodeHeldEmptyWords(),
+    htmlEscaped(runnerCapacityEmptyWords()),
+    waitingOnARunnerEmptyWords(),
+  ];
+
+  it('starts every section folded, showing no empty words, when attention is empty or null', () => {
+    for (const a of [attention(), null]) {
+      const html = renderToStaticMarkup(
+        <MemoryRouter>
+          <AttentionHuman attention={a} now={new Date()} reload={noop} />
+        </MemoryRouter>,
+      );
+
+      expect(html.match(/aria-expanded="false"/g)).toHaveLength(10);
+      for (const words of emptyWords(a)) {
+        expect(html).not.toContain(words);
+      }
+    }
+  });
+
+  it('draws a section with a row plain, with no button between its heading and the next', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ deadlocked: [deadlocked()] })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    const start = html.indexOf('<h3 class="hatch-attention-heading">Deadlocked</h3>');
+    expect(start).toBeGreaterThan(-1);
+
+    const section = html.slice(start, html.indexOf('<h3', start + 1));
+    expect(section).not.toContain('<button');
+  });
+
+  it('opens Pull requests to review alone when its empty words carry a fact, leaving the other nine folded', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention({ inReviewWithoutPullRequest: 3 })} now={new Date()} reload={noop} />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('3 issues are in review with no pull request recorded.');
+    expect(html).toContain('<h3 class="hatch-attention-heading">Pull requests to review</h3>');
+    expect(html.match(/aria-expanded="false"/g)).toHaveLength(9);
+  });
+
+  it('starts every section open, showing every empty words string, with startOpen', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <AttentionHuman attention={attention()} now={new Date()} reload={noop} startOpen />
+      </MemoryRouter>,
+    );
+
+    expect(html.match(/aria-expanded="true"/g)).toHaveLength(10);
+    for (const words of emptyWords(attention())) {
+      expect(html).toContain(words);
+    }
   });
 });

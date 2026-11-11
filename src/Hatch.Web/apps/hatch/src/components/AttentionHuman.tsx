@@ -10,6 +10,7 @@ import {
   noCodeHeldEmptyWords,
   questionEmptyWords,
   reviewEmptyWords,
+  reviewWordsCarryAFact,
   runnerCapacityEmptyWords,
   runnerCapacityWords,
   stalledEmptyWords,
@@ -25,6 +26,7 @@ import {
 import { lastSuccessWords } from '../lib/backup';
 import { playbookFileWords } from '../lib/mergeCheck';
 import { pullRequestWords } from '../lib/pullRequest';
+import { AttentionSection } from './AttentionFold';
 import { TrunkBuildBugDialog } from './TrunkBuildBugDialog';
 import type { Attention, TrunkBuild } from '../types';
 
@@ -139,11 +141,14 @@ export function AttentionHuman({
   attention,
   now,
   reload,
+  startOpen,
 }: {
   attention: Attention | null;
   now: Date;
   /** Re-reads the attention, so a row that just filed a bug shows its key for everybody drawing this. */
   reload: () => Promise<void>;
+  /** Starts every empty section open rather than folded, so a static-markup test can see its empty words with no press. */
+  startOpen?: boolean;
 }) {
   const reviews = attention?.reviews ?? [];
   const questions = attention?.questions ?? [];
@@ -161,9 +166,7 @@ export function AttentionHuman({
 
   return (
     <>
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Trunk builds that fail</h3>
-
+      <AttentionSection title="Trunk builds that fail" rows={trunkBuilds.length} startOpen={startOpen}>
         {trunkBuilds.length === 0 ? (
           <p className="hatch-attention-empty">{trunkBuildEmptyWords()}</p>
         ) : (
@@ -175,7 +178,7 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
       {/* Next, since a database with no copy outranks everything under it.
           Unlike Waiting on a runner it has no empty state: a healthy or
@@ -225,9 +228,7 @@ export function AttentionHuman({
         </section>
       )}
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Deadlocked</h3>
-
+      <AttentionSection title="Deadlocked" rows={deadlocked.length} startOpen={startOpen}>
         {deadlocked.length === 0 ? (
           <p className="hatch-attention-empty">{deadlockedEmptyWords()}</p>
         ) : (
@@ -245,11 +246,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Questions to answer</h3>
-
+      <AttentionSection title="Questions to answer" rows={questions.length} startOpen={startOpen}>
         {questions.length === 0 ? (
           <p className="hatch-attention-empty">{questionEmptyWords()}</p>
         ) : (
@@ -271,11 +270,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Stalled issues</h3>
-
+      <AttentionSection title="Stalled issues" rows={stalled.length} startOpen={startOpen}>
         {stalled.length === 0 ? (
           <p className="hatch-attention-empty">{stalledEmptyWords()}</p>
         ) : (
@@ -294,11 +291,14 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Pull requests to review</h3>
-
+      <AttentionSection
+        title="Pull requests to review"
+        rows={reviews.length}
+        fact={reviewWordsCarryAFact(attention)}
+        startOpen={startOpen}
+      >
         {reviews.length === 0 ? (
           <p className="hatch-attention-empty">{reviewEmptyWords(attention)}</p>
         ) : (
@@ -336,11 +336,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Approved, not merging</h3>
-
+      <AttentionSection title="Approved, not merging" rows={approvedHeld.length} startOpen={startOpen}>
         {approvedHeld.length === 0 ? (
           <p className="hatch-attention-empty">{approvedHeldEmptyWords()}</p>
         ) : (
@@ -360,11 +358,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Landed, not done</h3>
-
+      <AttentionSection title="Landed, not done" rows={landingHeld.length} startOpen={startOpen}>
         {landingHeld.length === 0 ? (
           <p className="hatch-attention-empty">{landingHeldEmptyWords()}</p>
         ) : (
@@ -382,11 +378,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Finished with no code</h3>
-
+      <AttentionSection title="Finished with no code" rows={noCodeHeld.length} startOpen={startOpen}>
         {noCodeHeld.length === 0 ? (
           <p className="hatch-attention-empty">{noCodeHeldEmptyWords()}</p>
         ) : (
@@ -404,11 +398,9 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Runner capacity</h3>
-
+      <AttentionSection title="Runner capacity" rows={runnerCapacity.length} startOpen={startOpen}>
         {runnerCapacity.length === 0 ? (
           <p className="hatch-attention-empty">{runnerCapacityEmptyWords()}</p>
         ) : (
@@ -433,13 +425,12 @@ export function AttentionHuman({
             ))}
           </ul>
         )}
-      </section>
+      </AttentionSection>
 
       {/* The only one a person fixes by changing a runner, not the panel.
-          Always drawn, with an empty state. */}
-      <section className="hatch-attention-section">
-        <h3 className="hatch-attention-heading">Waiting on a runner</h3>
-
+          Folds the same as every other section here when it has nothing to
+          show - "always drawn" now means the heading, not the empty state. */}
+      <AttentionSection title="Waiting on a runner" rows={waitingOnARunner.length} startOpen={startOpen}>
         {waitingOnARunner.length === 0 ? (
           <p className="hatch-attention-empty">{waitingOnARunnerEmptyWords()}</p>
         ) : (
@@ -464,7 +455,7 @@ export function AttentionHuman({
             </Link>
           </>
         )}
-      </section>
+      </AttentionSection>
     </>
   );
 }

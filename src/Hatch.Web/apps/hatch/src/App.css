@@ -6679,6 +6679,53 @@ button.hatch-option.chosen {
   color: var(--muted);
 }
 
+/* A section or group heading with nothing to show folds behind this button
+   instead of drawing its empty state outright - a reset button that keeps
+   the heading's own size and colour, so it reads the same open or closed. */
+.hatch-attention-fold,
+.hatch-attention-group-heading .hatch-attention-fold {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1-5);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hatch-attention-fold::before {
+  content: '';
+  width: 0.4em;
+  height: 0.4em;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+}
+
+.hatch-attention-fold[aria-expanded='true']::before {
+  transform: rotate(45deg);
+}
+
+.hatch-attention-fold:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--r-in);
+}
+
+@media (max-width: 40rem) {
+  .hatch-attention-fold {
+    min-height: 44px;
+  }
+}
+
 /* Not filler. One of the two says an issue has sat in review with nowhere to
    review it, which is said nowhere else in Hatch. */
 .hatch-attention-empty {
