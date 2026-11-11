@@ -3711,6 +3711,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
 | `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable). Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, or an unknown `projectId` — see [the activity report](#the-activity-report) |
 | `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the five types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
+| `/reports/consumption.csv` | GET | The same filter, with no `limit` at all — every matching row as a CSV a spreadsheet opens. Same `from`, `to`, `type`, `sort`, `offsetMinutes`, `statusId`, `projectId`; the same `400`s, in the same order, minus the limit step. Open to a key — see [the consumption report](#the-consumption-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4907,7 +4908,8 @@ GET /api/hatch/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&s
 notional USD and runner time, read off the work log rather than the board. It
 is **for a program**, like [the flow](#the-flow): one JSON read carrying rows,
 totals and a time series, with **no page** and no index card yet — HA-2245 is
-the page, the graph and the CSV sibling.
+the page, HA-2246 the graph and HA-2247 the page's own CSV download. The CSV
+sibling below is this route's, not theirs.
 
 `from` and `to` are the other reports' own bounds — instants, the 90 days
 ending now by default, the same `400`s for an unparseable or inverted range.
@@ -4970,6 +4972,48 @@ lastSessionAt, rows, history }`:
 It has no page, no index card and no CLI subcommand; a script reaches it with
 `hatch api GET /api/hatch/reports/consumption?...`, which is the
 [API surface](#api-surface)'s row for it.
+
+#### The CSV sibling
+
+```
+GET /api/hatch/reports/consumption.csv?from=&to=&type=&sort=&offsetMinutes=&statusId=&projectId=
+```
+
+**The whole filter, as a file a spreadsheet opens** rather than a JSON read a
+program caps — the same `from`, `to`, `type`, `sort`, `offsetMinutes`,
+`statusId` and `projectId`, parsed and refused the same way and in the same
+order (bound, offset, type, sort, status, project), sharing
+`ConsumptionReport.Fold` with the JSON route rather than folding twice. There
+is **no `limit` parameter on this route at all** — one given on the JSON
+route caps `rows`; given here, there is no `limit` to give, so it is ignored
+with no code written to ignore it.
+
+It answers `consumption-<from date>-<to date>.csv` (the resolved `from`/`to`,
+UTC, as `yyyy-MM-dd`) with `Content-Type: text/csv; charset=utf-8` and
+`Content-Disposition: attachment`, the same `File(bytes, contentType,
+fileName)` call `/attachments/{id}` makes. The body is UTF-8 with a
+byte-order mark, a header row, CRLF line ends and RFC 4180 quoting (a field
+holding a comma, a quote, a CR or an LF is quoted and its own quotes
+doubled), one row per issue in the sort — **uncapped**, unlike the JSON
+route's `rows`. Columns, in order:
+
+```
+key, title, type, project, statusId, parentKey, sessions, errors,
+inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
+totalTokens, costUsd, unpricedSessions, runnerMs, firstSessionAt, lastSessionAt
+```
+
+`costUsd` is empty, not `0`, on a row with nothing priced — the same
+cost-sort sentinel the JSON route's `cost` sort reads off `UnpricedSessions ==
+Sessions`. `parentKey` is empty on a root. Instants are ISO 8601 in UTC.
+
+It has no page and no CLI subcommand of its own; `hatch api`'s passthrough
+prints any body verbatim regardless of content-type, so a script reaches it
+the same way it reaches the JSON route:
+
+```
+hatch api GET /api/hatch/reports/consumption.csv?from=2026-08-01&to=2026-09-01
+```
 
 ### The activity report
 

@@ -285,6 +285,10 @@ public class AdminSurfaceTests
         // reads: a script reads this as readily as a page would.
         "ReportsController.GetConsumption",
 
+        // The same filter, uncapped, as a CSV a spreadsheet opens - sharing
+        // the JSON route's parsing and its fold, cut the same way.
+        "ReportsController.GetConsumptionCsv",
+
         // My own Claude headroom, off my own runners' heartbeats. Key-accepting
         // like the rest of the module and guarded for the same reason the
         // board is: what it says is how much room is left to work tonight,
@@ -919,6 +923,7 @@ public class AdminSurfaceTests
         "ReportsController.GetActivityReport",
         "ReportsController.GetChangelogReport",
         "ReportsController.GetConsumption",
+        "ReportsController.GetConsumptionCsv",
         "ReportsController.GetCumulativeFlow",
         "ReportsController.GetFlow",
         "ReportsController.GetTimeline",
