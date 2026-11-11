@@ -27,7 +27,7 @@ Postgres. So for a repository that declares a toolchain in
 steps ([what a repository needs](the-runner#what-a-repository-needs)), and it
 still takes breakdown, analysis and review. The runner that *can* build such a
 repository is the one built from the project's own image
-([HA-1874](/apps/hatch/issues/HA-1874)), which Compose starts with the
+([HA-1874](/issues/HA-1874)), which Compose starts with the
 `runner-image` profile ([starting it from a named image](#starting-it-from-a-named-image)). A container whose operator bakes in its own
 toolchain declares it with `HATCH_HAS` ([the runner](the-runner#has)).
 
@@ -396,7 +396,7 @@ workspace**.
 ## Building on it
 
 A project image extends this image rather than reproducing it
-([HA-1874](/apps/hatch/issues/HA-1874)). What it can count on staying put:
+([HA-1874](/issues/HA-1874)). What it can count on staying put:
 
 - **A Debian-family base.** The `hatch` binary is a glibc build, so an Alpine
   (musl) base would leave an image whose binary cannot start.
@@ -432,7 +432,7 @@ so the `apt-get update` here is the derived image's own.
 
 A derived image changes none of the contract above and only adds packages.
 It is also not the same thing as a project image `hatch image build` bakes
-([HA-1874](/apps/hatch/issues/HA-1874)): neither this image nor a plain `FROM`
+([HA-1874](/issues/HA-1874)): neither this image nor a plain `FROM`
 of it sets `HATCH_IMAGE`, so a runner inside either advertises no image -
 [the runner](the-runner#image) says what one does once it is built that way.
 

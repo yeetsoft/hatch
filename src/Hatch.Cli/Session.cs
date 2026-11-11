@@ -41,7 +41,14 @@ public sealed record SessionRequest(
 }
 
 /// <param name="Output">Everything the CLI wrote, on a quiet run. Empty on a streamed one, which was rendered as it arrived.</param>
-public sealed record SessionResult(int ExitCode, string Output);
+/// <param name="Stderr">The last lines the CLI wrote to its standard error, raw. Null reads as none.</param>
+/// <param name="Stray">The last lines of its standard output that were not a JSON object - what a CLI says when it dies before it streams anything. Null reads as none.</param>
+public sealed record SessionResult(
+    int ExitCode, string Output, IReadOnlyList<string>? Stderr = null, IReadOnlyList<string>? Stray = null)
+{
+    public IReadOnlyList<string> Stderr { get; init; } = Stderr ?? [];
+    public IReadOnlyList<string> Stray { get; init; } = Stray ?? [];
+}
 
 /// <summary>
 /// The spawn, behind an interface so that everything around it - the claim, the

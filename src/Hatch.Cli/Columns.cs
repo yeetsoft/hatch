@@ -67,6 +67,25 @@ public static class Columns
     }
 
     /// <summary>
+    /// The review column, found by what is true of the board and not by a name: the column immediately left
+    /// of the first terminal one, or the rightmost on a board with none, stepping back over any protected
+    /// columns in that run. Deferred columns are not on the board. Null where nothing is left.
+    /// </summary>
+    /// <remarks>
+    /// Keep in step with <c>Columns.AwaitingReview</c> in <c>Hatch.Api</c>, which this is a port of - the CLI
+    /// cannot reference that assembly, and a runner that filed into a column the board did not call review
+    /// would leave work where nothing looks at it.
+    /// </remarks>
+    public static StatusDto? AwaitingReview(IEnumerable<StatusDto> statuses)
+    {
+        var board = statuses.Where(s => !s.IsDeferred).OrderBy(s => s.SortOrder).ThenBy(s => s.Id).ToList();
+        var terminal = board.FindIndex(s => s.IsTerminal);
+        var at = terminal < 0 ? board.Count - 1 : terminal - 1;
+        while (at >= 0 && board[at].IsProtected) at--;
+        return at >= 0 ? board[at] : null;
+    }
+
+    /// <summary>
     /// The calendar day a timestamp falls on, in the reader's zone.
     /// </summary>
     /// <remarks>

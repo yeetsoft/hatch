@@ -998,6 +998,151 @@ public sealed class IncrementTests
         await claim.ReleaseAsync();
     }
 
+    // ---- HA-2287: what the CLI said when a session never started ----
+
+    private const string LimitSentence = "You've hit your limit · resets 3pm";
+    private const string RefusalSentence = "API Error: Fable 5.1 requires usage credits. Switch to another model to continue.";
+
+    /// <summary>
+    /// An increment whose session writes nothing to stdout and exits 0, with
+    /// <paramref name="stderr"/> as everything it said, on a ticket that stays
+    /// where it was found. <paramref name="letGo"/> is how many in a row went
+    /// before it.
+    /// </summary>
+    private static async Task<(IncrementReport Report, Harness H)> NeverStartedAsync(
+        IReadOnlyList<string> stderr, int letGo = 0, FakeAdapter? adapter = null, string model = "opus")
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(0, "", Stderr: stderr));
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+
+        var runtime = adapter is null ? h.Runtime : h.Runtime with { Adapter = adapter };
+        var report = await runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: letGo), h.Root, model, "high", quiet: false, claim, default);
+
+        await claim.ReleaseAsync(report.ReleaseOutcome);
+        return (report, h);
+    }
+
+    private static string CommentBody(Harness h) =>
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")).Read<CommentCreateRequest>().Body;
+
+    [Fact]
+    public async Task A_session_that_never_started_keeps_what_the_cli_said_and_the_comment_carries_it()
+    {
+        var (report, h) = await NeverStartedAsync(["boom"]);
+        using var _ = h;
+
+        Assert.False(report.Started);
+        Assert.Equal("boom", report.Kept);
+        Assert.Equal("boom", report.KeptLast);
+        Assert.True(report.LetGo);
+
+        var body = CommentBody(h);
+        Assert.Contains("the session ended before it started", body, StringComparison.Ordinal);
+        Assert.Contains("The CLI said:\n\n```\nboom\n```", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("without moving it", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_usage_limit_on_stderr_is_recognised_as_when_it_is_in_a_result_event()
+    {
+        var (report, h) = await NeverStartedAsync([LimitSentence]);
+        using var _ = h;
+
+        Assert.False(report.Started);
+        Assert.True(report.UsageLimited);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+    }
+
+    [Fact]
+    public async Task A_model_refusal_on_stderr_is_released_unservable()
+    {
+        var (report, h) = await NeverStartedAsync([RefusalSentence], model: "fable");
+        using var _ = h;
+
+        Assert.True(report.Unservable);
+        Assert.Equal(ClaimOutcomes.Unservable, report.ReleaseOutcome);
+    }
+
+    [Fact]
+    public async Task What_a_session_that_never_started_said_is_what_the_recogniser_is_asked_about_on_exit_zero()
+    {
+        var adapter = new FakeAdapter();
+        var (_, h) = await NeverStartedAsync(["boom"], adapter: adapter);
+        using var _ = h;
+
+        Assert.Equal("boom", adapter.LimitAskedAbout);
+    }
+
+    [Fact]
+    public async Task What_the_cli_said_is_scrubbed_before_it_reaches_a_comment()
+    {
+        var stderr = new List<string> { "using hatch_ak_abc123 to call home" };
+        stderr.AddRange(Enumerable.Range(1, 41).Select(i => $"line {i}"));
+        stderr.Add(new string('x', 2000));
+
+        var (report, h) = await NeverStartedAsync(stderr);
+        using var _ = h;
+
+        var body = CommentBody(h);
+        Assert.DoesNotContain("hatch_ak_abc123", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("line 1\n", body, StringComparison.Ordinal);
+        Assert.Contains("line 3", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(new string('x', 201), body, StringComparison.Ordinal);
+        Assert.Equal(40, report.Kept.Split('\n').Length);
+    }
+
+    [Fact]
+    public async Task A_session_that_started_keeps_nothing_extra_whatever_its_stderr_said()
+    {
+        using var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke(Fixtures.Init());
+            return Task.FromResult(new SessionResult(0, "", Stderr: ["warning: something"]));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+        var report = await h.Runtime.Increment().RunAsync(
+            Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
+
+        Assert.True(report.Started);
+        Assert.Equal("", report.Kept);
+        Assert.Equal("", report.KeptLast);
+        Assert.DoesNotContain("warning: something", CommentBody(h), StringComparison.Ordinal);
+
+        await claim.ReleaseAsync();
+    }
+
+    [Fact]
+    public async Task The_second_stall_in_a_row_carries_what_the_cli_said_and_the_tally_quotes_its_last_line()
+    {
+        var (report, h) = await NeverStartedAsync(["first", "boom"], letGo: 1);
+        using var _ = h;
+
+        Assert.Equal("flagged", report.Flag);
+        Assert.Contains("The CLI said:\n\n```\nfirst\nboom\n```", CommentBody(h), StringComparison.Ordinal);
+        Assert.EndsWith(" - the CLI said \"boom\"", report.Outcome, StringComparison.Ordinal);
+    }
+
     private static RunnerOmissionDto Omitting(string runner, string? reason = "needs a GPU") =>
         new(runner, reason, runner, DateTimeOffset.UnixEpoch, null);
 

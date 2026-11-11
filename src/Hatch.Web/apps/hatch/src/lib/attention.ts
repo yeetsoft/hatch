@@ -46,6 +46,10 @@ export type AttentionTone = 'rest' | 'asking';
  * with no code has no pull request to merge and no pre-approval to close it,
  * so every row is a person's to close.
  *
+ * `contributionsHeld` counts for the same reason: a contribution in review
+ * with a conflict or a red build, in a project that has not asked runners to
+ * work those, waits for a person.
+ *
  * `deadlocked` counts for the same reason: nothing dispatches into a ring, so
  * every row is a person's to break.
  *
@@ -79,6 +83,7 @@ export function attentionCount(attention: Attention | null): number {
     (attention.approvedHeld?.length ?? 0) +
     (attention.landingHeld?.length ?? 0) +
     (attention.noCodeHeld?.length ?? 0) +
+    (attention.contributionsHeld?.length ?? 0) +
     (attention.deadlocked?.length ?? 0) +
     (attention.waitingOnARunner?.length ?? 0) +
     (attention.runnerCapacity?.filter((r) => r.takers.length === 0).length ?? 0) +
@@ -268,6 +273,9 @@ export const landingHeldEmptyWords = (): string => 'Nothing landed has stopped s
 /** The empty state of the "Finished with no code" section. */
 export const noCodeHeldEmptyWords = (): string => 'Nothing finished with no code is waiting on you.';
 
+/** The empty state of the "Contributions runners will not work" section. */
+export const contributionsHeldEmptyWords = (): string => 'No contribution in review is waiting on you.';
+
 /** The empty state of the "Deadlocked" section. */
 export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
 
@@ -428,7 +436,7 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
  * One row count per Human section, in the panel's own order, for
  * `groupCollapsed` to fold over: trunk builds, backup, stalled merge trains,
  * deadlocked, questions, stalled, reviews, approved-held, landing-held,
- * no-code-held, runner capacity, waiting on a runner.
+ * no-code-held, contributions-held, runner capacity, waiting on a runner.
  *
  * `backup` is a single fact rather than a list - one row when it is not
  * null, none when it is. `reviews` counts at least one row whenever
@@ -437,7 +445,7 @@ export function groupCollapsed(sectionRowCounts: number[]): boolean {
  * would.
  */
 export function humanSectionRowCounts(attention: Attention | null): number[] {
-  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  if (attention === null) return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   return [
     (attention.trunkBuilds ?? []).length,
     attention.backup ? 1 : 0,
@@ -449,6 +457,7 @@ export function humanSectionRowCounts(attention: Attention | null): number[] {
     (attention.approvedHeld ?? []).length,
     (attention.landingHeld ?? []).length,
     (attention.noCodeHeld ?? []).length,
+    (attention.contributionsHeld ?? []).length,
     (attention.runnerCapacity ?? []).length,
     (attention.waitingOnARunner ?? []).length,
   ];

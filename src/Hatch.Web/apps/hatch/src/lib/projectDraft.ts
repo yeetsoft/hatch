@@ -15,6 +15,7 @@ import type {
   ProjectCheckApprovesMergeWriteRequest,
   OnePullRequestPolicy,
   ProjectNoCodeClosesWriteRequest,
+  ProjectRunnersWorkContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectLandingWriteRequest,
   ProjectPatchRequest,
@@ -43,6 +44,7 @@ export interface ProjectDraft {
     storiesOnEpics: boolean;
     checkApprovesMerge: boolean;
     noCodeCloses: boolean;
+    runnersWorkContributions: boolean;
     onePullRequestPolicy: OnePullRequestPolicy;
     runnerTags: string[];
     reflectionCadenceDays: number | null;
@@ -64,6 +66,7 @@ export interface ProjectDraft {
   storiesOnEpics: boolean;
   checkApprovesMerge: boolean;
   noCodeCloses: boolean;
+  runnersWorkContributions: boolean;
   onePullRequestPolicy: OnePullRequestPolicy;
   runnerTags: string;
   /** Held as text, so a blank box reads as off rather than as 0. */
@@ -102,6 +105,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
       storiesOnEpics: project.storiesOnEpics,
       checkApprovesMerge: project.checkApprovesMerge,
       noCodeCloses: project.noCodeCloses,
+      runnersWorkContributions: project.runnersWorkContributions,
       onePullRequestPolicy: project.onePullRequestPolicy,
       runnerTags,
       reflectionCadenceDays: project.reflectionCadenceDays,
@@ -123,6 +127,7 @@ export function openProjectDraft(project: Project): ProjectDraft {
     storiesOnEpics: project.storiesOnEpics,
     checkApprovesMerge: project.checkApprovesMerge,
     noCodeCloses: project.noCodeCloses,
+    runnersWorkContributions: project.runnersWorkContributions,
     onePullRequestPolicy: project.onePullRequestPolicy,
     runnerTags: runnerTagsDraft(runnerTags),
     reflectionCadenceDays: project.reflectionCadenceDays === null ? '' : String(project.reflectionCadenceDays),
@@ -193,6 +198,13 @@ export function projectCheckApprovesMergeDiff(draft: ProjectDraft): ProjectCheck
 /** The no-code-closes flag, or null when it was not changed. */
 export function projectNoCodeClosesDiff(draft: ProjectDraft): ProjectNoCodeClosesWriteRequest | null {
   return draft.noCodeCloses !== draft.known.noCodeCloses ? { noCodeCloses: draft.noCodeCloses } : null;
+}
+
+/** Whether runners work a contribution's branch, or null when it was not changed. */
+export function projectRunnersWorkContributionsDiff(draft: ProjectDraft): ProjectRunnersWorkContributionsWriteRequest | null {
+  return draft.runnersWorkContributions !== draft.known.runnersWorkContributions
+    ? { runnersWorkContributions: draft.runnersWorkContributions }
+    : null;
 }
 
 /** The one-pull-request policy, or null when it was not changed. Its own route

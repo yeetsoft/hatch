@@ -25,6 +25,13 @@ public sealed class CodexStreamReaderTests
         reader.Reads.Select(r => (r.Path, r.Count));
 
     [Fact]
+    public void ThreadStarted_MarksTheRunStarted_AndAPlainLineDoesNot()
+    {
+        Assert.False(Play("gpt-5-codex", "not json at all").Facts.Started);
+        Assert.True(Play("gpt-5-codex", Fixtures.CodexThreadStarted()).Facts.Started);
+    }
+
+    [Fact]
     public void ACommandExecution_OfHatchApi_CountsItsEndpointWithoutTheQuery()
     {
         var reader = Reader(Fixtures.CodexItemStarted("command_execution", command: "hatch api GET /api/hatch/issues?parentKey=HA-1"));

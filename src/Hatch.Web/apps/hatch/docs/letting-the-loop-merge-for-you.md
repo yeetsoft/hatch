@@ -88,6 +88,13 @@ ticket that declared (`hatch pr --none`) from review to Done on the next pass,
 with no person and no session. Off, only a pre-approved declared ticket is
 carried, and the rest wait for a person. The merge setting does not do this.
 
+A third flag beside those two, **Runners work contributions**, decides whether
+a runner may push to a contribution's branch - resolving its conflicts, fixing
+its failing build - or leaves a contribution in review for a person. It is off
+by default, so no runner pushes to somebody else's branch unless an owner opted
+in; while it is off, such a contribution is listed under **Contributions
+runners will not work** in the attention panel.
+
 **4. `HATCH_GH_TOKEN`.** The same `.env` beside `compose.yaml` as *Putting a
 front door on it*, above it on this page. Compose turns it into `GH_TOKEN`
 for `gh`, and without it the runner's own entrypoint already says so once:

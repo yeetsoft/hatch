@@ -16,7 +16,7 @@ rather than repeated here.
 The generic image carries `hatch`, `git`, the agent CLIs and nothing of any
 toolchain, so it can serve any project and builds none of them. A project image
 is `FROM` it plus the repository's declared dependencies
-([HA-1874](/apps/hatch/issues/HA-1874)), so a machine needs Docker and nothing
+([HA-1874](/issues/HA-1874)), so a machine needs Docker and nothing
 else installed to work that repository's tickets.
 
 It also changes who can be dispatched. The board folds a runner whose machine

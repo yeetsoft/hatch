@@ -258,7 +258,7 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
 
     /// <summary>A fresh context with tracing on and <c>PageError</c> recorded from before the first navigation, then the board's address.</summary>
     public Task OpenBoardAsync(Deadline deadline, string baseUrl) =>
-        OpenAsync(deadline, baseUrl, "/apps/hatch/");
+        OpenAsync(deadline, baseUrl, "/");
 
     /// <summary>
     /// A fresh context - the launch profile's device, or 1280x800 with none -
@@ -292,9 +292,9 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         });
     }
 
-    /// <summary>Any path under <c>/apps/hatch/</c>, in the context <see cref="OpenBoardAsync"/> or <see cref="OpenAsync"/> already opened.</summary>
+    /// <summary>Any path under the board's own root, in the context <see cref="OpenBoardAsync"/> or <see cref="OpenAsync"/> already opened.</summary>
     public Task GoToAsync(Deadline deadline, string path) =>
-        deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/apps/hatch/" + path.TrimStart('/')));
+        deadline.BoundAsync($"going to {path}", () => page!.GotoAsync("/" + path.TrimStart('/')));
 
     /// <summary>The running host's services, for a case that seeds its own rows once <see cref="StartHostAsync"/> has returned.</summary>
     public IServiceProvider Services => factory!.Services;
