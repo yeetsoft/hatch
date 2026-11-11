@@ -606,6 +606,8 @@ namespace Hatch.Api.Modules.Hatch.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Actor", "At");
+
                     b.HasIndex("At", "Id");
 
                     b.HasIndex("IssueId", "At");

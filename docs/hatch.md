@@ -3709,6 +3709,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
+| `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable). Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, or an unknown `projectId` — see [the activity report](#the-activity-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
 | `/runners/{name}` | POST | The legacy heartbeat - the CLI no longer calls it, and beats `POST /runners/sessions` instead, named by its key alone; this route stays for old CLIs. Says what this process is, answers with what it has been asked to do. The name is a character off the cast list, escaped — a slash in it stays `%2F`. `where` (`host:/path/to/checkout`) rides beside it; a name already the *live* runner at a different `where` is refused with `409` |
 | `/runners/{name}` | PATCH | **Person only** — plain `[RequireRole(User)]`. `{ state?, under?, maxRuns?, maxSpend?, maxTokens?, maxTokensPerHour?, untilAt? }`, all strings, the bulk rule throughout. An agent that could raise its own `--max-spend` could raise its own budget |
@@ -4526,7 +4527,9 @@ nav between **Plan** and **Agents**, and an index at `/reports` with one card
 per report, each stating the question it answers. There are three reports with
 a card each: the Timeline, the Cumulative flow and the
 [Changelog](#the-changelog-report). **One further read, the [flow](#the-flow),
-has no page and no index card** — it is for a program, not a person at a screen. A
+has no page and no index card** — it is for a program, not a person at a screen — and
+neither has [the activity report](#the-activity-report), one actor's events in a
+range, which has no page or card yet. A
 new report with a page is one more entry in that index and a route; neither
 report gets a nav entry of its own, and the index card stays the only way in.
 
@@ -4890,6 +4893,51 @@ It has a page and an index card, but **no CLI subcommand** (`hatch changelog`
 is the older feed, not this report); a script reaches the same answer with
 `hatch api GET /api/hatch/reports/changelog?...`, which is the
 [API surface](#api-surface)'s row for it.
+
+### The activity report
+
+```
+GET /api/hatch/reports/activity?actor=&from=&to=&projectId=
+```
+
+**What did one actor do, in a range?** The trail every other report folds
+(`IssueEvents`) read by who wrote it: one actor's events as counts by kind, a
+rundown of the issues touched, and the newest rows. It has no page, no index
+card and no CLI subcommand yet — a script reaches it with
+`hatch api GET /api/hatch/reports/activity?...`. The route is open to a person
+or to a key.
+
+`actor` is required and matched **exactly**, untrimmed, against the event's
+own `Actor`. A name no live person or key answers to still answers, with
+nothing in it: the trail outlives the row it names. `from` and `to` are
+instants, defaulting to the **fourteen days ending now** — the same window as
+[the changelog report](#the-changelog-report) — with `from` clamped forward to
+the first event ever written. `projectId` is repeatable and narrows to events
+whose issue is in one of those projects.
+
+The `400`s come in this order: a missing or blank `actor` (`an actor is
+required`); an unparseable or inverted bound, with the same sentences as the
+[timeline](#the-timeline)'s; and a `projectId` naming no project (`there is no
+project 9999`), found with one query for all of them rather than one per id.
+
+It answers `{ actor, from, to, total, kinds, issues, events, truncated }`:
+
+- `actor`, `from` and `to` are the request as the server resolved it.
+- `total` is every event in range, after the project narrowing.
+- `kinds` is `[{ kind, count }]`, most first, then by name.
+- `issues` is `[{ issue, first, last, count, kinds }]`, one per issue touched,
+  `issue` a card, latest `last` first (the issue's id breaking a tie).
+- `events` is the rows the activity feed lists, newest
+  first (`at`, then `id`, descending), **at most 500** — `ActivityController`'s
+  own cap — with `truncated` `true` when more existed.
+
+`total`, `kinds` and `issues` cover **every event in range**, whatever the cap
+cut from `events`. The window is half-open, `[from, to)`, the same as the
+flow's. The arithmetic is `ActivityReport.Fold`, a pure fold over light rows
+with no payload; the payload is read in a second query for only the rows
+listed, so a busy runner never drags every `jsonb` across. An index on
+`IssueEvents (Actor, At)` is what keeps the first query from reading the whole
+trail.
 
 ## The overnight
 

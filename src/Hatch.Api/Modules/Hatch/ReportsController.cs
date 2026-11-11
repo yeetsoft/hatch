@@ -544,6 +544,86 @@ public class ReportsController(
     }
 
     /// <summary>
+    /// One actor's events over a range, as counts by kind, a rundown per issue
+    /// touched, and the newest rows - wires <see cref="ActivityReport.Fold"/> to
+    /// the database and decorates the issues with cards.
+    /// </summary>
+    /// <param name="actor">The actor, matched exactly - untrimmed - against the event's own; required.</param>
+    /// <param name="from">The start of the range; fourteen days before <paramref name="to"/> when absent.</param>
+    /// <param name="to">The end of the range; now when absent.</param>
+    /// <param name="projectId">Narrows to events whose issue is in one of these projects, repeatable; every project when absent or empty.</param>
+    /// <remarks>
+    /// A name no live row answers to still answers, empty: the trail outlives
+    /// the person or key it names. The counts and the issue rundown cover every
+    /// event in range; only the rows are capped, at <see cref="ActivityController.MaxEvents"/>,
+    /// and a payload is read for only the rows listed.
+    /// </remarks>
+    [HttpGet("activity")]
+    public async Task<ActionResult<ActivityReportDto>> GetActivityReport(
+        [FromQuery] string? actor, [FromQuery] string? from, [FromQuery] string? to,
+        [FromQuery] List<int>? projectId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(actor))
+            return BadRequest("an actor is required");
+
+        var now = time.GetUtcNow();
+
+        if (RangeBounds.Resolve(from, to, now, DefaultChangelogRange, out var start, out var end) is { } refusal)
+            return BadRequest(refusal);
+
+        var ids = (projectId ?? []).Distinct().ToList();
+        if (ids.Count > 0)
+        {
+            var known = await db.Projects.AsNoTracking()
+                .Where(p => ids.Contains(p.Id))
+                .Select(p => p.Id)
+                .ToListAsync(ct);
+            var missing = ids.Where(id => !known.Contains(id)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"there is no project {string.Join(", ", missing)}");
+        }
+
+        var first = await db.IssueEvents.AsNoTracking().MinAsync(e => (DateTimeOffset?)e.At, ct);
+        start = RangeBounds.ClampStart(start, end, first);
+
+        var rows = await db.IssueEvents.AsNoTracking()
+            .Where(e => e.Actor == actor && e.At >= start && e.At < end)
+            .Select(e => new ActivityReport.Row(e.Id, e.IssueId, e.Issue!.ProjectId, e.Kind, e.At))
+            .ToListAsync(ct);
+
+        var result = ActivityReport.Fold(rows, ids, ActivityController.MaxEvents);
+
+        var listed = result.Events.Select(e => e.Id).ToList();
+        var payloads = listed.Count == 0
+            ? new Dictionary<long, string?>()
+            : await db.IssueEvents.AsNoTracking()
+                .Where(e => listed.Contains(e.Id))
+                .Select(e => new { e.Id, e.Payload })
+                .ToDictionaryAsync(e => e.Id, e => e.Payload, ct);
+
+        var issueIds = result.Issues.Select(i => i.IssueId).ToHashSet();
+        var (cards, _) = await LoadCardsAsync(issueIds, now, ct, withTree: false);
+
+        ActivityKindCountDto[] KindsOf(IReadOnlyList<ActivityReport.KindCount> kinds) =>
+            kinds.Select(k => new ActivityKindCountDto(k.Kind, k.Count)).ToArray();
+
+        return new ActivityReportDto(
+            actor, start, end, result.Total,
+            KindsOf(result.Kinds),
+            result.Issues
+                .Where(i => cards.ContainsKey(i.IssueId))
+                .Select(i => new ActivityIssueDto(cards[i.IssueId], i.First, i.Last, i.Count, KindsOf(i.Kinds)))
+                .ToList(),
+            result.Events
+                .Where(e => cards.ContainsKey(e.IssueId))
+                .Select(e => new ActivityEventDto(
+                    e.Id, cards[e.IssueId].Key, actor, e.Kind,
+                    IssueEventPayload.Parse(payloads.GetValueOrDefault(e.Id)), e.At))
+                .ToList(),
+            result.Truncated);
+    }
+
+    /// <summary>
     /// The nearest epic above <paramref name="issueId"/>, walking <c>ParentId</c>
     /// through <paramref name="byId"/> - dictionary lookups only, never a query
     /// per step, unlike <see cref="IssuesController.ResolveParentAsync"/>'s own
@@ -568,16 +648,17 @@ public class ReportsController(
     /// <see cref="Rollup.Tree.DescendantCount"/> reads them against - the
     /// decoration <see cref="GetTimeline"/> and <see cref="GetChangelogReport"/>
     /// both want. Empty/<c>null</c> with no ids, so a caller never queries for
-    /// nothing.
+    /// nothing. <c>withTree: false</c> skips the rollup load for a caller that
+    /// reads no count off it; the tree is then <c>null</c>.
     /// </summary>
     private async Task<(Dictionary<long, IssueCardDto> Cards, Rollup.Tree? Tree)> LoadCardsAsync(
-        HashSet<long> ids, DateTimeOffset now, CancellationToken ct)
+        HashSet<long> ids, DateTimeOffset now, CancellationToken ct, bool withTree = true)
     {
         var cards = new Dictionary<long, IssueCardDto>();
         if (ids.Count == 0) return (cards, null);
 
         var priorities = await PriorityTree.ForAsync(db, ct);
-        var tree = await Rollup.LoadAsync(db, ct);
+        var tree = withTree ? await Rollup.LoadAsync(db, ct) : null;
 
         var issues = await db.Issues.AsNoTracking()
             .Where(i => ids.Contains(i.Id))
