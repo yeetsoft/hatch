@@ -2019,9 +2019,12 @@ pull request, and the board does not wait for one:
   panel lists it and the close hop carries it, and neither reads a landing.
   Nothing is recorded by `hatch landed` for work that changed nothing.
 
-The prompt a runner is given tells a session whose work changed nothing to
-declare it with `hatch pr --none` and to push no empty branch; the issue page
-shows the declaration and its reason.
+The prompt a runner is given tells a session whose work changed nothing, and
+whose destination is review or a column to its right, to declare it with
+`hatch pr --none` and to push no empty branch. One bound left of review is
+told there is no pull request to open and nothing to declare, and to say what
+it found in the comment instead - there is no review column there to declare
+into. Either way the issue page shows the declaration and its reason.
 
 ### WIP
 
