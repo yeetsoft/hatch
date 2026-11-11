@@ -37,7 +37,7 @@ public class AuthMiddlewareTests
     [InlineData("/health/ready")]
     [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
-    [InlineData("/apps/auth/")]
+    [InlineData("/auth/")]
     [InlineData("/.well-known/assetlinks.json")]
     public async Task ExemptPathsAreServedAndNeverEvenReadTheCookie(string path)
     {
@@ -63,7 +63,7 @@ public class AuthMiddlewareTests
         Assert.False(served);
         Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
         Assert.Equal(
-            "/apps/auth/?r=%2Fapps%2Ffamily%2Fstorage%2Fc%2FABC123%3Fref%3Dlabel",
+            "/auth/?r=%2Fapps%2Ffamily%2Fstorage%2Fc%2FABC123%3Fref%3Dlabel",
             context.Response.Headers.Location.ToString());
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
     }
@@ -83,7 +83,7 @@ public class AuthMiddlewareTests
 
         Assert.False(served);
         Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
-        Assert.Equal("/apps/auth/?r=%2Fplan", context.Response.Headers.Location.ToString());
+        Assert.Equal("/auth/?r=%2Fplan", context.Response.Headers.Location.ToString());
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class AuthMiddlewareTests
         var (context, _) = await Run(request);
 
         Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
-        Assert.Equal("/apps/auth/", context.Response.Headers.Location.ToString());
+        Assert.Equal("/auth/", context.Response.Headers.Location.ToString());
     }
 
     [Fact]

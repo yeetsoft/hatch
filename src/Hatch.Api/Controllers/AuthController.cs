@@ -92,7 +92,7 @@ public class AuthController(
                 // Absolute here, and *only* here. Traefik resolves a redirect
                 // from this endpoint against its own request to it, so the
                 // relative form the in-process middleware returns would reach
-                // the browser as http://api.<ns>.svc.cluster.local:8080/apps/auth/
+                // the browser as http://api.<ns>.svc.cluster.local:8080/auth/
                 // - unreachable from the LAN, and a wall that looks like it is
                 // working right up until the sign-in page fails to load. The
                 // origin is rebuilt from the forwarded headers, so kiosk. still

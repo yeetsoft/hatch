@@ -28,18 +28,20 @@ public class AuthGateTests
     [InlineData("/api/vm-console-logs")]
     [InlineData("/api/kiosk/provisioning-info")]
     [InlineData("/api/sun-events")]
-    [InlineData("/apps/auth/")]
-    [InlineData("/apps/auth/r/K3M9P2QT")]
-    [InlineData("/apps/auth/assets/index-BGJobmXl.js")]
+    [InlineData("/auth/")]
+    [InlineData("/auth/r/K3M9P2QT")]
+    [InlineData("/auth/assets/index-BGJobmXl.js")]
     [InlineData("/api/auth/verify")]
     [InlineData("/api/auth/redeem")]
     [InlineData("/api/auth/google/start")]
     [InlineData("/api/auth/google/callback")]
-    // The short alias, the form a person is told over the phone. Program.cs
-    // redirects it into the shell, and the caller following it has no grant
-    // yet by definition.
+    // The bare form, the one a person is told over the phone. Program.cs
+    // redirects it to the slash, and the caller following it has no grant yet
+    // by definition.
     [InlineData("/auth")]
-    [InlineData("/auth/")]
+    // Anything the shell mounts under /auth is exempt with it - it is the
+    // shell's own address, not an alias - a later phase's /auth/grants too.
+    [InlineData("/auth/grants")]
     // Android's own Digital Asset Links verifier, which holds no cookie at all.
     [InlineData("/.well-known/assetlinks.json")]
     // Casing is the proxy's to normalize, not ours to depend on.
@@ -71,10 +73,11 @@ public class AuthGateTests
     [InlineData("/api/auth/grants")]
     [InlineData("/api/auth/googlex")]
     [InlineData("/apps/authoring/")]
-    // The alias is exempt exactly, so nothing a later phase mounts under it
-    // inherits the exemption.
-    [InlineData("/auth/grants")]
+    // /auth is matched by whole segment, so a sibling that merely starts with
+    // the letters does not inherit the exemption.
     [InlineData("/authors")]
+    // The retired address is a redirect, not a mount, and is no longer exempt.
+    [InlineData("/apps/auth/")]
     // The asset links route is exempt exactly too, so nothing else under
     // .well-known inherits it.
     [InlineData("/.well-known/anything-else")]

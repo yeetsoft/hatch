@@ -89,7 +89,7 @@ public static class AuthChallenge
     /// Traefik never hands the browser what that endpoint writes. It resolves a
     /// redirect from the auth server against its *own* request to that server,
     /// so a relative Location leaves the cluster as
-    /// <c>http://api.&lt;ns&gt;.svc.cluster.local:8080/apps/auth/</c> - an
+    /// <c>http://api.&lt;ns&gt;.svc.cluster.local:8080/auth/</c> - an
     /// in-cluster address nothing on the LAN can reach, which presents as the
     /// wall working (a 302, on time, carrying the right ?r=) and the sign-in
     /// page never loading. An absolute Location is passed through untouched.
@@ -147,7 +147,7 @@ public static class AuthChallenge
     /// get wrong beyond re-checking the same shape.
     ///
     /// It is also why the redirect is relative on the wire: a request to
-    /// kiosk.&lt;domain&gt; bounces to kiosk.&lt;domain&gt;/apps/auth/, not to
+    /// kiosk.&lt;domain&gt; bounces to kiosk.&lt;domain&gt;/auth/, not to
     /// home., and the cookie's Domain attribute makes the resulting grant work
     /// on both anyway.
     /// </summary>

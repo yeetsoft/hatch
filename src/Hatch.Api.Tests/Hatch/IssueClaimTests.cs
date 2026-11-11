@@ -1404,6 +1404,22 @@ public class IssueClaimTests
     }
 
     [SkippableFact]
+    public async Task AReleaseWithAbandonedOutcome_RecordsItOnTheEvent()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync();
+        var token = await h.TakeAsync(issue);
+
+        // The loop that ran the increment died and the next one in its checkout
+        // let go of the claim for it - neither a drop nor work.
+        Assert.IsType<NoContentResult>(await h.Claims.ReleaseClaim(issue, token, ClaimOutcomes.Abandoned, default));
+
+        var released = (await h.EventsAsync(issue)).Single(e => e.Kind == EfHatchIssueEvent.ClaimReleased);
+        Assert.Equal(ClaimOutcomes.Abandoned, released.Payload!.Value.GetProperty("outcome").GetString());
+        Assert.Null((await h.RowAsync(issue)).ClaimToken);
+    }
+
+    [SkippableFact]
     public async Task AnOutcomeThatIsNeitherValue_Is400()
     {
         await using var h = await NewAsync();
@@ -1411,7 +1427,7 @@ public class IssueClaimTests
         var token = await h.TakeAsync(issue);
 
         Assert.Equal(
-            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", \"preempted\", \"recused\", \"unservable\", or nothing at all",
+            "\"quit\" is not an outcome - it is \"dropped\", \"worked\", \"preempted\", \"recused\", \"unservable\", \"abandoned\", or nothing at all",
             BadRequest(await h.Claims.ReleaseClaim(issue, token, "quit", default)));
 
         // Refused before anything was touched.

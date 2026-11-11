@@ -128,7 +128,7 @@ public class AdminAppMiddlewareTests
     [InlineData("/api/hatch/issues")]
     [InlineData("/health/ready")]
     [InlineData("/media/Beatles/Revolver/01.flac")]
-    [InlineData("/apps/auth/")]
+    [InlineData("/auth/")]
     [InlineData("/auth")]
     [InlineData("/.well-known/assetlinks.json")]
     // Case, the same rule the exemption list itself matches by.

@@ -225,6 +225,26 @@ run](the-runner#when-it-will-not-run).
   which is not a stall: [when it will not
   run](the-runner#when-it-will-not-run).
 
+## A session is still running in the checkout after the loop died
+
+- **The loop was killed or its window closed mid-increment.** The agent it
+  spawned does not go with it. Start `hatch go-to-work` in the same checkout:
+  once it holds the lock it ends the leftover session and its process tree,
+  releases the ticket's claim as `abandoned`, comments once on the ticket
+  (with the resume command, when the session had said its id) and says so on
+  the terminal: [a loop that died](one-increment-and-the-loop#a-loop-that-died).
+  Nothing needs clearing by hand.
+- **It said the record belongs to another board.** The checkout was last
+  served by a loop pointed at a different Hatch. The record is left as it is;
+  start the loop against that board, or delete the `hatch-session-*.json` file
+  in the system's temporary directory yourself.
+- **The session is still there afterwards.** Only the agent's own process
+  tree is ended, and only where the pid still starts when the record says. A
+  tool the agent had already orphaned, after the agent itself had exited, has
+  no record to find it by - stop it yourself.
+- **`hatch work` does not clean up.** It writes and clears its own record but
+  never reads another's; use `go-to-work`.
+
 ## A ticket stalls on a missing toolchain
 
 - **The repository builds with tools the runner's machine lacks, and nothing
