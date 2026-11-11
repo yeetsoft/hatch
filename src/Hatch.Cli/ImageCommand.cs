@@ -86,7 +86,7 @@ public sealed record ImageCommand(Terminal Say)
         "usage: hatch image <dockerfile|build> ...",
         "",
         "  hatch image dockerfile [--base <image>]",
-        "  hatch image build [--base <image>] [--image <name>] [--platform <list>]",
+        "  hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]",
         "",
         "  hatch image dockerfile   print the Dockerfile this checkout's",
         "                              .hatch/dependencies.json renders to",
@@ -109,7 +109,14 @@ public sealed record ImageCommand(Terminal Say)
         "  --platform <list> (build) is a comma list of os/arch, such as linux/arm64.",
         "  Without it the platforms are read off the base image itself; where they",
         "  cannot be read, the build is refused - pass --platform. A classic local image",
-        "  store cannot hold a list of more than one: name one platform.",
+        "  store cannot hold a list of more than one: name one platform, or add --push.",
+        "",
+        "  --push (build) pushes the image once it is built, under the name the build",
+        "  resolved. A registry that refuses a name three segments deep (Docker Hub)",
+        "  is tried once more under <registry>/<owner>/<repo>-hatch-runner, and the",
+        "  line says which name the image reached. Only a rejection of the name itself",
+        "  retries: a refusal of the login or the network fails with the tool's output.",
+        "  With more than one platform, build and push are one step.",
         "",
         "  build runs docker, or podman where there is no docker, from the repository",
         "  root, so .hatch/runner.Dockerfile's COPY lines resolve against the checkout.",
@@ -150,12 +157,19 @@ public sealed record ImageCommand(Terminal Say)
     private int Build(string[] args)
     {
         var flags = new Dictionary<string, string>();
+        var push = false;
         for (var i = 1; i < args.Length; i++)
         {
+            if (args[i] == "--push" && !push)
+            {
+                push = true;
+                continue;
+            }
+
             // A value that is itself a flag is a flag missing its value, and would reach the tool as an option.
             if (args[i] is not ("--base" or "--image" or "--platform") || i + 1 >= args.Length
                 || args[i + 1].StartsWith('-') || !flags.TryAdd(args[i], args[++i]))
-                return Usage.Refuse(Say, "image build takes only --base <image>, --image <name> and --platform <list>, each once", ImageUsage);
+                return Usage.Refuse(Say, "image build takes only --base <image>, --image <name>, --platform <list> and --push, each once", ImageUsage);
         }
 
         var (text, baseImage, exit) = Render(flags.GetValueOrDefault("--base"));
@@ -214,19 +228,131 @@ public sealed record ImageCommand(Terminal Say)
             platforms = string.Join(',', read);
         }
 
+        if (push && platforms.Contains(','))
+            return PushWith(tool, image, (name, _) => BuildAndPush(tool, text, platforms, name));
+
         var (code, _) = Tool(new ToolCall(
             tool, ["build", "-f", "-", "--platform", platforms, "-t", image, "."], text, Root, Say.Line));
         if (code != 0)
         {
             Say.Complain($"hatch: {tool} build failed");
             if (platforms.Contains(','))
-                Say.Complain($"hatch: {platforms} is more than one platform, which {tool} cannot load into the local image store - name one with --platform");
+                Say.Complain($"hatch: {platforms} is more than one platform, which {tool} cannot load into the local image store - name one with --platform, or add --push to build and push it in one step");
             return 1;
         }
 
         Say.Line($"hatch: built {image} for {platforms}");
-        return 0;
+        return push ? PushWith(tool, image, (name, nested) => PushBuilt(tool, name, nested)) : 0;
     }
+
+    /// <summary>One attempt at getting an image to the registry under <c>name</c>: whether it did, what the tool said, and the step that failed.</summary>
+    private delegate (bool Pushed, string Output, string Label) Attempt(string name, string? nested);
+
+    /// <summary>
+    /// Pushes <paramref name="nested"/>; when the registry refuses the name itself, once more under its flat form.
+    /// Two attempts at most, and the second's failure is final.
+    /// </summary>
+    private int PushWith(string tool, string nested, Attempt attempt)
+    {
+        var (pushed, output, label) = attempt(nested, null);
+        if (pushed)
+        {
+            Say.Line($"hatch: pushed {nested}");
+            return 0;
+        }
+
+        var flat = FlatName(nested);
+        if (flat is not null && NameRejected(output))
+        {
+            (pushed, _, label) = attempt(flat, nested);
+            if (pushed)
+            {
+                Say.Line($"hatch: pushed {flat} (the registry rejected {nested})");
+                return 0;
+            }
+        }
+
+        Say.Complain($"hatch: {label} failed");
+        return 1;
+    }
+
+    /// <summary>A built image's push; on the retry it is first tagged with the flat name, so nothing is rebuilt.</summary>
+    private (bool, string, string) PushBuilt(string tool, string name, string? nested)
+    {
+        if (nested is not null)
+        {
+            var (tagged, tagOutput) = Tool(new ToolCall(tool, ["tag", nested, name], null, Root, Say.Line));
+            if (tagged != 0) return (false, tagOutput, $"{tool} tag");
+        }
+
+        var (exit, output) = Tool(new ToolCall(tool, ["push", name], null, Root, Say.Line));
+        return (exit == 0, output, $"{tool} push");
+    }
+
+    /// <summary>
+    /// Build and push in one step, since a manifest list cannot be loaded into the classic local store.
+    /// docker's buildx pushes as it builds; podman builds a manifest and pushes it all.
+    /// </summary>
+    private (bool, string, string) BuildAndPush(string tool, string text, string platforms, string name)
+    {
+        if (tool == "docker")
+        {
+            var (exit, output) = Tool(new ToolCall(
+                tool, ["buildx", "build", "-f", "-", "--platform", platforms, "-t", name, "--push", "."], text, Root, Say.Line));
+            return (exit == 0, output, "docker buildx build --push");
+        }
+
+        // A manifest left by an earlier run would take this run's images in as well. Its exit is ignored, and so is
+        // its output: that there was none to remove is not news.
+        Tool(new ToolCall(tool, ["manifest", "rm", name], null, Root, null));
+
+        var (built, buildOutput) = Tool(new ToolCall(
+            tool, ["build", "-f", "-", "--platform", platforms, "--manifest", name, "."], text, Root, Say.Line));
+        if (built != 0) return (false, buildOutput, "podman build");
+
+        var (sent, sentOutput) = Tool(new ToolCall(
+            tool, ["manifest", "push", "--all", name, $"docker://{name}"], null, Root, Say.Line));
+        return (sent == 0, sentOutput, "podman manifest push");
+    }
+
+    private const string FlatTail = "-" + ImageLeaf;
+
+    /// <summary>
+    /// The name a registry that nests only two deep takes: <c>&lt;registry&gt;/&lt;owner&gt;/&lt;repo&gt;/hatch-runner</c>
+    /// as <c>&lt;registry&gt;/&lt;owner&gt;/&lt;repo&gt;-hatch-runner</c>. Null for any other shape - a name of the
+    /// operator's own has no flat form to guess at.
+    /// </summary>
+    internal static string? FlatName(string nested)
+    {
+        const string tail = "/" + ImageLeaf;
+        if (!nested.EndsWith(tail, StringComparison.Ordinal)) return null;
+
+        var head = nested[..^tail.Length];
+        var parts = head.Split('/');
+        return parts.Length >= 3 && parts.All(part => part.Length > 0) ? head + FlatTail : null;
+    }
+
+    /// <summary>What a registry or tool says when it is the login or the network that failed. Checked first, and it wins.</summary>
+    private static readonly string[] NotTheName =
+    [
+        "unauthorized", "denied", "authentication required", "forbidden", "no such host",
+        "timeout", "timed out", "connection refused", "i/o timeout",
+    ];
+
+    /// <summary>What a registry or tool says of a repository name it will not take.</summary>
+    private static readonly string[] TheName =
+    [
+        "invalid reference format", "invalid repository name", "repository name must be", "name invalid",
+        "NAME_INVALID", "repository name not valid", "invalid repository",
+    ];
+
+    /// <summary>
+    /// Whether a failed push's output reads as the registry refusing the name, rather than the login or the
+    /// network. Anything that is neither is not a reason to try another name.
+    /// </summary>
+    internal static bool NameRejected(string output) =>
+        !NotTheName.Any(phrase => output.Contains(phrase, StringComparison.OrdinalIgnoreCase))
+        && TheName.Any(phrase => output.Contains(phrase, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// The Dockerfile text and the base it starts from, or the exit code after saying why there is none.
