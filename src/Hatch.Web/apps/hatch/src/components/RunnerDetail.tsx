@@ -1,20 +1,23 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Badge, Button, Card, EmptyState, PageHeader, Text } from '@hatch/ui';
+import { patchRunner } from '../api/client';
 import { useRunnersOutlet } from './RunnersLayout';
-import { lastUsedLabel, liveSessions, sessionsByStart } from '../lib/runners';
+import { RunnerBoundsForm } from './RunnerBoundsForm';
+import { RunnerSettingsForm } from './RunnerSettingsForm';
+import { isRetired, lastUsedLabel, liveSessions, runnerActionable, sessionsByStart } from '../lib/runners';
+import { saveRunner } from '../lib/saveRunner';
 import { usePhone } from '../lib/viewport';
 import { RecentSessions } from './RecentSessions';
 import { SessionBlock } from './SessionBlock';
-import type { Runner } from '../types';
+import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
 
 /** The detail's two sessions cards - "Live sessions" and "Recent sessions" in
     docs/runners-page-design.md - shared between the phone and desk branches
     of `RunnerDetail` so they are written once. A retired runner draws no
     live blocks: its row's own badge already says so, and a replaced key's
     sessions are not this screen's to show as live. */
-function SessionsCards({ runner, now }: { runner: Runner; now: Date }) {
-  const live = Boolean(runner.retiredAt) ? [] : liveSessions(runner, now);
+function SessionsCards({ runner, live, now }: { runner: Runner; live: RunnerSession[]; now: Date }) {
   const hosts = new Set(live.map((session) => session.host).filter((host): host is string => host !== null));
 
   return (
@@ -41,6 +44,55 @@ function SessionsCards({ runner, now }: { runner: Runner; now: Date }) {
       </Card>
 
       <RecentSessions runner={runner} now={now} />
+    </>
+  );
+}
+
+/**
+ * The detail's two editable cards - "What it may work" and "Bounds" in
+ * docs/runners-page-design.md - each with its own save and its own refusal.
+ *
+ * Its own component because `RunnerDetail` returns early, before a hook could
+ * go. One refusal per card, and a save sets only its own, so one card's save
+ * never clears what the other is showing. The forms are keyed by runner so a
+ * draft never carries over from one runner to the next.
+ *
+ * Editable is `canControl` - already true for an admin and for a wall that is
+ * off - on a runner that is neither revoked nor retired.
+ */
+function RunnerConfigCards({
+  runner,
+  live,
+  reload,
+}: {
+  runner: Runner;
+  live: RunnerSession[];
+  reload: () => Promise<void>;
+}) {
+  const [settingsRefusal, setSettingsRefusal] = useState<string | null>(null);
+  const [boundsRefusal, setBoundsRefusal] = useState<string | null>(null);
+  const editable = runner.canControl && runnerActionable(runner) && !isRetired(runner);
+
+  const save = (request: RunnerPatchRequest) => saveRunner(runner.name, request, { patch: patchRunner, reload });
+
+  return (
+    <>
+      <RunnerSettingsForm
+        key={`settings:${runner.name}`}
+        runner={runner}
+        live={live}
+        editable={editable}
+        refusal={settingsRefusal}
+        onSave={async (request) => setSettingsRefusal(await save(request))}
+      />
+      <RunnerBoundsForm
+        key={`bounds:${runner.name}`}
+        runner={runner}
+        live={live}
+        editable={editable}
+        refusal={boundsRefusal}
+        onSave={async (request) => setBoundsRefusal(await save(request))}
+      />
     </>
   );
 }
@@ -82,7 +134,7 @@ export function IdentityCard({ runner, actions, refusal }: { runner: Runner; act
     layout". */
 export function RunnerDetail() {
   const { name } = useParams();
-  const { runners } = useRunnersOutlet();
+  const { runners, reload } = useRunnersOutlet();
   const phone = usePhone();
   const now = new Date();
 
@@ -102,6 +154,10 @@ export function RunnerDetail() {
       />
     );
   }
+
+  // A retired runner draws no live blocks: its row's own badge already says
+  // so, and a replaced key's sessions are not this screen's to show as live.
+  const live = isRetired(runner) ? [] : liveSessions(runner, now);
 
   // Two badges, two fixes: Behind is a binary older than the board's
   // (restart it against a newer deploy), Rebuild one older than its own
@@ -123,7 +179,8 @@ export function RunnerDetail() {
         </Button>
         <PageHeader title={name} actions={actions} level={1} />
         <IdentityCard runner={runner} />
-        <SessionsCards runner={runner} now={now} />
+        <RunnerConfigCards runner={runner} live={live} reload={reload} />
+        <SessionsCards runner={runner} live={live} now={now} />
       </>
     );
   }
@@ -132,7 +189,8 @@ export function RunnerDetail() {
     <>
       <PageHeader title={name} actions={actions} level={2} />
       <IdentityCard runner={runner} />
-      <SessionsCards runner={runner} now={now} />
+      <RunnerConfigCards runner={runner} live={live} reload={reload} />
+      <SessionsCards runner={runner} live={live} now={now} />
     </>
   );
 }
