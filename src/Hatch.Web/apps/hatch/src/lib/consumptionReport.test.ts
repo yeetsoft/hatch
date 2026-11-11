@@ -7,6 +7,8 @@ import {
   TABLE_LIMIT,
   TYPE,
   capWords,
+  consumptionCsvHref,
+  consumptionFilterQuery,
   emptiness,
   humanDuration,
   readSearch,
@@ -20,6 +22,7 @@ import {
   withSort,
   withStatusId,
   withType,
+  type ConsumptionFilterQuery,
 } from './consumptionReport';
 import { MEASURE } from './leaderboard';
 import { UNPRICED_TITLE } from './workLog';
@@ -167,6 +170,65 @@ describe('status', () => {
 
   it('writes nothing for every column', () => {
     expect(withStatusId(query('status=3&type=all'), null).toString()).toBe('type=all');
+  });
+});
+
+describe('consumptionFilterQuery', () => {
+  const full: ConsumptionFilterQuery = {
+    from: '2026-10-01T00:00:00.000Z',
+    to: '2026-11-01T00:00:00.000Z',
+    projectId: [3, 5],
+    statusId: [7],
+    type: 'story',
+    sort: 'cost',
+    offsetMinutes: -300,
+  };
+
+  it('sends every field, repeating projectId and statusId once per id', () => {
+    expect(consumptionFilterQuery(full).toString()).toBe(
+      'from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+        '&projectId=3&projectId=5&statusId=7&type=story&sort=cost&offsetMinutes=-300',
+    );
+  });
+
+  it('leaves off an empty from/to, an absent type/sort, and empty id lists', () => {
+    expect(
+      consumptionFilterQuery({
+        from: '',
+        to: null,
+        projectId: [],
+        statusId: [],
+        type: null,
+        sort: null,
+        offsetMinutes: 0,
+      }).toString(),
+    ).toBe('offsetMinutes=0');
+  });
+
+  it('always sends offsetMinutes', () => {
+    expect(consumptionFilterQuery({ offsetMinutes: 60 }).toString()).toBe('offsetMinutes=60');
+  });
+});
+
+describe('consumptionCsvHref', () => {
+  it('points at the CSV route with the filter query', () => {
+    const query: ConsumptionFilterQuery = { type: 'bug', sort: 'tokens', offsetMinutes: 0 };
+
+    expect(consumptionCsvHref(query)).toBe(
+      `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`,
+    );
+  });
+
+  it('builds its query from the same function the JSON read uses', () => {
+    const query: ConsumptionFilterQuery = {
+      from: '2026-10-01T00:00:00.000Z',
+      projectId: [1, 2],
+      statusId: [9],
+      offsetMinutes: -60,
+    };
+    const href = consumptionCsvHref(query);
+
+    expect(href.split('?')[1]).toBe(consumptionFilterQuery(query).toString());
   });
 });
 
