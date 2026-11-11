@@ -366,7 +366,9 @@ jobs:
   # Proves the image `publish.yml` builds after every merge to main actually
   # builds, and that gh - the thing src/Hatch.Cli/Forge.cs shells out to
   # inside it - is really on PATH and runs, on a PR rather than only after one
-  # lands.
+  # lands. It also proves a derived image inherits the runner: one apt-get
+  # install on top of it keeps the entrypoint, the user, the environment and
+  # /etc/hatch.
   hatch-runner-image:
     timeout-minutes: 15
     runs-on: ubuntu-latest
@@ -379,6 +381,37 @@ jobs:
 
       - name: gh is on PATH and runs
         run: docker run --rm --entrypoint gh hatch-runner:ci --version
+
+      # These two Dockerfile lines are the ones the docs page "The container
+      # runner" shows under "Building on it", and must stay in step with it.
+      # jq because the base deliberately carries none.
+      - name: Build an image derived from it
+        run: |
+          docker build -t hatch-runner-derived:ci - <<'EOF'
+          FROM hatch-runner:ci
+          RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+          EOF
+
+      - name: The derived image runs hatch, gh and what it added
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint hatch hatch-runner-derived:ci --help > /dev/null
+          docker run --rm --entrypoint gh hatch-runner-derived:ci --version
+          docker run --rm --entrypoint jq hatch-runner-derived:ci --version
+
+      - name: The derived image keeps the contract
+        run: |
+          set -euo pipefail
+          image=hatch-runner-derived:ci
+          entrypoint=$(docker inspect --format '{{json .Config.Entrypoint}}' "$image")
+          [ "$entrypoint" = '["/entrypoint.sh"]' ] || { echo "entrypoint is $entrypoint, want [\"/entrypoint.sh\"]" >&2; exit 1; }
+          user=$(docker inspect --format '{{.Config.User}}' "$image")
+          case "$user" in ''|root) ;; *) echo "user is $user, want root" >&2; exit 1 ;; esac
+          env=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image")
+          for pair in IS_SANDBOX=1 HATCH_ROOT=/checkout HATCH_WORKSPACE=/workspace; do
+            grep -qxF "$pair" <<<"$env" || { echo "env $pair is missing" >&2; exit 1; }
+          done
+          docker run --rm --entrypoint test "$image" -d /etc/hatch || { echo "/etc/hatch is missing" >&2; exit 1; }
 
   # One job that depends on every other, so a merge gate has exactly one
   # check to name instead of one per job (and one per matrix leg).
