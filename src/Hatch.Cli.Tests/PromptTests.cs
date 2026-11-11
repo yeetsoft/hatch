@@ -27,6 +27,7 @@ public sealed class PromptTests
         Assert.Contains("**Title:** `AER-12 ` and then", prompt, StringComparison.Ordinal);
         Assert.Contains("\n[AER-12](https://hatch.example.test/apps/hatch/issues/AER-12)\n", prompt, StringComparison.Ordinal);
         Assert.Contains("`hatch pr AER-12 <url>`", prompt, StringComparison.Ordinal);
+        Assert.Contains("`hatch pr` also writes the ticket's chain into the pull request's body", prompt, StringComparison.Ordinal);
         Assert.Contains("Never write a relative link.", prompt, StringComparison.Ordinal);
     }
 

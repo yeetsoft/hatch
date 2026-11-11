@@ -29,10 +29,14 @@ public sealed class CliHarness : IDisposable
         Cli = new Cli(new Board(_client), Say, In, settings, "test:/checkout")
         {
             Clock = clock ?? TimeProvider.System,
+            Forge = Forge.For,
         };
     }
 
     public Cli Cli { get; }
+
+    /// <summary>The forge every command here is given, so no test runs a real <c>gh</c>.</summary>
+    public FakeForge Forge { get; } = new();
 
     public Board Board => Cli.Board;
 

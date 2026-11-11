@@ -928,6 +928,7 @@ public static class Prompt
                 : "No link to the ticket is available, so the line is the bare key. Do not make a link up, and never write a relative one.",
             "",
             $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
+            "`hatch pr` also writes the ticket's chain into the pull request's body, for a board that receives it.",
             "",
             .. offersNoCode ? NoCodeDeclaration(key) : NothingToDeclare(key),
         ];

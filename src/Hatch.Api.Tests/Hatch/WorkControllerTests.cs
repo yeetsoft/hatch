@@ -11267,6 +11267,53 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task PushbackWork_ARecordedBranchIsNamedWhenItIsNotOnOrigin()
+    {
+        var h = await NewAsync();
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+        var issue = await h.FileAsync("task", "from outside", approved.Id);
+        await h.SetPullRequestAsync(issue, "https://example.com/o/r/pull/1");
+        h.Db.Contributions.Add(new EfHatchContribution
+        {
+            IssueId = issue.Id, PullRequestUrl = "https://example.com/o/r/pull/1", HeadBranch = "ar-77-something",
+            AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+        });
+        await h.Db.SaveChangesAsync();
+        await h.VerdictAsync(issue, MergeVerdicts.None);
+
+        var result = await h.Work.PushbackWork(
+            Key(issue), new PullRequestPushbackRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+
+        Assert.Equal(
+            "its recorded branch `ar-77-something` is not on origin",
+            Assert.IsType<ConflictObjectResult>(result.Result).Value);
+    }
+
+    [Fact]
+    public async Task Review_NoBranchIsFolded_NamingTheRecordedBranchWhereAContributionHasOne()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "from outside", h.Review, rank: 1024);
+        var ours = await h.FileAsync("story", "ours", h.Review, rank: 2048);
+        h.Db.Contributions.Add(new EfHatchContribution
+        {
+            IssueId = issue.Id, HeadBranch = "ar-77-something",
+            AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+        });
+        await h.Db.SaveChangesAsync();
+        await h.VerdictAsync(issue, MergeVerdicts.None);
+        await h.VerdictAsync(ours, MergeVerdicts.None);
+
+        var rows = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key, e => e.Blocked);
+
+        Assert.Equal("its recorded branch `ar-77-something` is not on origin", rows[Key(issue)]);
+        Assert.Equal("no branch on origin is named for it", rows[Key(ours)]);
+    }
+
+    [Fact]
     public async Task PushbackWork_RefusesWhenTheJudgeReadsPending()
     {
         var h = await NewAsync();
@@ -14942,7 +14989,7 @@ public class WorkControllerTests
             Keys = keys,
             Sessions = sessions,
             Work = new WorkController(
-                db, actors, claims ?? TestClaims.With(), time, Options.Create(new AppsOptions { PublicBaseUrl = publicBaseUrl }),
+                db, actors, claims ?? TestClaims.With(), time, Options.Create(new HatchOptions { PublicBaseUrl = publicBaseUrl }),
                 new RankService(db), caller, runners, keys, sessions),
             Board = new BoardController(db, actors, TestClaims.With(), time, TestClaims.DoneHorizon()),
             Statuses = new StatusesController(db, caller, time, NullLogger<StatusesController>.Instance),

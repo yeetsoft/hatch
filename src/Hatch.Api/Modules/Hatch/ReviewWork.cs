@@ -82,9 +82,19 @@ public static class ReviewWork
     public static bool HeldContribution(bool runnersWork, string? contributionPullRequestUrl, Judgement judged) =>
         !runnersWork && contributionPullRequestUrl is not null && judged.Fold is null;
 
+    /// <summary>
+    /// Why a row has no branch on origin: none is named for its key, or, where its
+    /// contribution recorded a head branch, that branch is not there.
+    /// </summary>
+    internal static string NoBranchOnOrigin(string? recordedBranch) =>
+        recordedBranch is { Length: > 0 } branch
+            ? $"its recorded branch `{branch}` is not on origin"
+            : "no branch on origin is named for it";
+
     public static Judgement Judge(
-        EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds) =>
-        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds);
+        EfHatchIssue issue, IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
+        string? recordedBranch = null) =>
+        Judge(issue.NoCode, issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(), merges, builds, recordedBranch);
 
     /// <summary>
     /// The judgement from the facts alone, for a caller that has projected rows
@@ -93,7 +103,8 @@ public static class ReviewWork
     /// </summary>
     public static Judgement Judge(
         string? noCode, IReadOnlyList<EfHatchProjectRepository> bound,
-        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds)
+        IReadOnlyList<EfHatchMergeCheck> merges, IReadOnlyList<EfHatchBuildCheck> builds,
+        string? recordedBranch = null)
     {
         if (NoCode.Declared(noCode)) return Fold(NoCode.Sentence);
 
@@ -110,7 +121,7 @@ public static class ReviewWork
             return Fold("more than one branch on origin is named for it - delete the ones that are not its branch");
 
         if (counted.All(v => v.Verdict == MergeVerdicts.None))
-            return Fold("no branch on origin is named for it");
+            return Fold(NoBranchOnOrigin(recordedBranch));
 
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;

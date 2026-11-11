@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -16,14 +17,13 @@ public record AssetLinkTarget(
 /// <summary>
 /// Android's Digital Asset Links statement list for this install - the file
 /// Android's own verifier fetches, unauthenticated, to decide which app may
-/// open this install's links without the user granting it by hand. Platform
-/// config, alongside the module seam the same way AppsController is, and
-/// gated the same way: no role, because the caller is Android itself rather
-/// than a signed-in person.
+/// open this install's links without the user granting it by hand. Gated with
+/// no role, because the caller is Android itself rather than a signed-in
+/// person.
 /// </summary>
 [ApiController]
 [Route("/.well-known/assetlinks.json")]
-public class AssetLinksController(IOptions<AppsOptions> options) : ControllerBase
+public class AssetLinksController(IOptions<HatchOptions> options) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]

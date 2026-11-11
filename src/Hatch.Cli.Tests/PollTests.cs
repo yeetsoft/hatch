@@ -1942,4 +1942,92 @@ public sealed class PollTests
         Assert.Empty(rig.H.Wire.To("PUT", Put("AER-1")));
         Assert.Equal(1, rig.Count("check"));
     }
+
+    // ---- A contribution's recorded branch ----
+
+    private const string Recorded = "ar-77-something";
+
+    private static Verdict CleanOn(string branch, string sha) =>
+        new(MergeVerdicts.Clean, "main", Trunk, branch, sha, [], true);
+
+    [Fact]
+    public async Task A_row_with_a_recorded_branch_is_checked_and_built_on_that_branch_whatever_its_key()
+    {
+        using var rig = new Rig().Board(Fixtures.ReviewOn("HA-2300", Recorded));
+        rig.Keeps("HA-2300", Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", sha: Tip));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: (Recorded, Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "HA-2300")] = CleanOn(Recorded, Tip);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Contains($"check {rig.H.Root} HA-2300 {Recorded}", rig.H.Workspace.Calls);
+
+        var merge = Assert.Single(rig.H.Wire.To("PUT", Put("HA-2300"))).Read<MergeCheckRequest>();
+        Assert.Equal(MergeVerdicts.Clean, merge.Verdict);
+        Assert.Equal(Recorded, merge.Branch);
+        Assert.Equal(Tip, merge.BranchSha);
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+        var build = Assert.Single(rig.H.Wire.To("PUT", PutBuild("HA-2300"))).Read<BuildCheckRequest>();
+        Assert.Equal(Recorded, build.Branch);
+        Assert.Equal(Tip, build.Sha);
+    }
+
+    [Fact]
+    public async Task A_branch_named_for_the_key_is_ignored_when_a_recorded_one_is_given()
+    {
+        using var rig = new Rig().Board(Fixtures.ReviewOn("HA-2300", Recorded));
+        rig.Keeps("HA-2300", Fixtures.Build(BuildVerdicts.Passed, "example.test/repo", sha: Tip));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(null, ("ha-2300-other", Moved), (Recorded, Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "HA-2300")] = CleanOn(Recorded, Tip);
+        rig.H.Forge.Answer = Read(BuildVerdicts.Passed);
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"{rig.H.Root} {Tip}"], rig.H.Forge.Reads);
+        Assert.Equal(Recorded, Assert.Single(rig.H.Wire.To("PUT", PutBuild("HA-2300"))).Read<BuildCheckRequest>().Branch);
+    }
+
+    [Fact]
+    public async Task A_recorded_branch_that_is_not_on_origin_is_reported_none_and_no_build_is_read()
+    {
+        using var rig = new Rig().Board(Fixtures.ReviewOn("HA-2300", Recorded));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("ha-2300-other", Moved));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "HA-2300")] = None();
+
+        await rig.RunAsync();
+
+        Assert.Contains($"check {rig.H.Root} HA-2300 {Recorded}", rig.H.Workspace.Calls);
+        Assert.Equal(MergeVerdicts.None, Assert.Single(rig.H.Wire.To("PUT", Put("HA-2300"))).Read<MergeCheckRequest>().Verdict);
+        Assert.Empty(rig.H.Forge.Reads);
+    }
+
+    [Fact]
+    public async Task A_stored_verdict_on_the_recorded_branch_whose_shas_match_costs_no_fetch()
+    {
+        var stored = Fixtures.MergeCheck(MergeVerdicts.Clean, "main", "example.test/repo", holdsTrunk: true) with
+        {
+            Remote = "https://example.test/repo.git", TrunkSha = Trunk, Branch = Recorded, BranchSha = Tip,
+        };
+        using var rig = new Rig().Board(Fixtures.ReviewOn("HA-2300", Recorded, stored));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: (Recorded, Tip));
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"heads {rig.H.Root}"], rig.H.Workspace.Calls);
+        Assert.Empty(rig.H.Wire.To("PUT", Put("HA-2300")));
+    }
+
+    [Fact]
+    public async Task A_row_with_no_recorded_branch_is_checked_on_a_branch_named_for_its_key_as_before()
+    {
+        using var rig = new Rig().Board(Fixtures.Review("AER-1"));
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("aer-1-thing", Tip));
+        rig.H.Workspace.Verdicts[(rig.H.Root, "AER-1")] = Clean();
+
+        await rig.RunAsync();
+
+        Assert.Equal([$"heads {rig.H.Root}", $"fetch {rig.H.Root}", $"check {rig.H.Root} AER-1"], rig.H.Workspace.Calls);
+    }
 }

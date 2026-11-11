@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,
-    IOptions<AppsOptions> apps, RankService ranks, ICallerIdentity caller, Runners runners,
+    IOptions<HatchOptions> hatchOptions, RankService ranks, ICallerIdentity caller, Runners runners,
     IAuthService? keys = null, RunnerSessions? sessions = null) : ControllerBase
 {
     private readonly Dispatch _dispatch = new(db, actors, claims, time, keys, sessions, runners);
@@ -542,7 +542,7 @@ public class WorkController(
                 verdicts.TryGetValue(i.Id, out var mv) ? mv : [],
                 builds.TryGetValue(i.Id, out var bv) ? bv : [],
                 i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(),
-                pullRequestHeadSince: i.PullRequestHeadSince));
+                pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: recordedBranches.GetValueOrDefault(i.Id)));
             var marked = merging.Where(i => i.BroughtCurrentAt is not null).Select(i => i.Id).ToList();
             var statusChanges = await BroughtCurrent.LatestStatusChangesAsync(db, marked, ct);
             trainSlots = Dispatch.Train(merging, judged, effective, verdicts, statusChanges);
@@ -556,7 +556,7 @@ public class WorkController(
                 ? MergeWork.Judge(
                     i.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
                     merged, built, i.PullRequestClosedAt, i.Project!.ChecksRequired, i.PullRequestMergeState, i.PullRequestHeadSha, time.GetUtcNow(), review.Name,
-                    pullRequestHeadSince: i.PullRequestHeadSince)
+                    pullRequestHeadSince: i.PullRequestHeadSince, recordedBranch: recordedBranches.GetValueOrDefault(i.Id))
                 : (MergeWork.Judgement?)null;
             var landed = landing.Contains(i) ? landings.GetValueOrDefault(i.Id, []) : null;
             var landingWork = landed is null
@@ -1142,6 +1142,7 @@ public class WorkController(
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();
 
         var issue = await db.Issues.Include(i => i.Project).ThenInclude(p => p!.Repositories)
+            .Include(i => i.Contribution)
             .WithKey(projectKey, number).FirstOrDefaultAsync(ct);
         if (issue is null) return NotFound();
 
@@ -1173,7 +1174,7 @@ public class WorkController(
         var judgement = MergeWork.Judge(
             issue.Project!.Repositories.OrderBy(r => r.SortOrder).ToList(),
             merges, builds, issue.PullRequestClosedAt, issue.Project!.ChecksRequired, issue.PullRequestMergeState, issue.PullRequestHeadSha, now, review.Name,
-            pullRequestHeadSince: issue.PullRequestHeadSince);
+            pullRequestHeadSince: issue.PullRequestHeadSince, recordedBranch: issue.Contribution?.HeadBranch);
 
         if (judgement.Kind != WorkKinds.Pushback) return Conflict(judgement.Sentence);
 
@@ -1673,7 +1674,7 @@ public class WorkController(
     /// fills it in.
     /// </summary>
     private string? IssueUrl(string key) =>
-        AppsOptions.NormalizeBaseUrl(apps.Value.PublicBaseUrl) is { } origin
+        HatchOptions.NormalizeBaseUrl(hatchOptions.Value.PublicBaseUrl) is { } origin
             ? $"{origin}/apps/hatch/issues/{key}"
             : null;
 

@@ -386,8 +386,8 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Leave</c> hands back as the verdict on origin's branch, per checkout.</summary>
     public Dictionary<string, Verdict?> FoundFor { get; } = [];
 
-    /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced.</summary>
-    public List<(string Path, string Key, bool Sync)> Left { get; } = [];
+    /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced and the recorded branch it was given.</summary>
+    public List<(string Path, string Key, bool Sync, string? RecordedBranch)> Left { get; } = [];
 
     /// <summary>What each <c>Enter</c> was given as the answer to a which-branch question.</summary>
     public List<string?> Answers { get; } = [];
@@ -465,10 +465,10 @@ public sealed class FakeWorkspace
             return owner.PresenceFor.GetValueOrDefault((path, key));
         }
 
-        public Leaving Leave(string key, bool syncPullRequest)
+        public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null)
         {
             owner.Calls.Add($"leave {path}");
-            owner.Left.Add((path, key, syncPullRequest));
+            owner.Left.Add((path, key, syncPullRequest, recordedBranch));
             return new Leaving(path, [.. owner.LeaveNotes], owner.FoundFor.GetValueOrDefault(path));
         }
 
@@ -490,15 +490,15 @@ public sealed class FakeWorkspace
             return (sha, owner.OnTrunkFor.GetValueOrDefault((path, sha)));
         }
 
-        public Verdict? Check(string key, string? playbookFilePath = null)
+        public Verdict? Check(string key, string? playbookFilePath = null, string? recordedBranch = null)
         {
-            owner.Calls.Add($"check {path} {key}");
+            owner.Calls.Add($"check {path} {key}{(recordedBranch is null ? "" : $" {recordedBranch}")}");
             return owner.Verdicts.GetValueOrDefault((path, key));
         }
 
-        public Synced Sync(string key)
+        public Synced Sync(string key, string? recordedBranch = null)
         {
-            owner.Calls.Add($"sync {path} {key}");
+            owner.Calls.Add($"sync {path} {key}{(recordedBranch is null ? "" : $" {recordedBranch}")}");
             return owner.SyncedFor.GetValueOrDefault((path, key), new Synced(SyncOutcome.Current));
         }
 
@@ -599,6 +599,21 @@ public sealed class FakeForge
     /// <summary>What a merge of one pull request's url answers.</summary>
     public Dictionary<string, MergeAnswer> MergeFor { get; } = [];
 
+    /// <summary>The body each pull request holds, by url. A url with none reads as empty; a successful edit stores here.</summary>
+    public Dictionary<string, string> Bodies { get; } = [];
+
+    /// <summary>Every body read asked for, by url, in order.</summary>
+    public List<string> BodyReads { get; } = [];
+
+    /// <summary>Every body edit asked for, in order.</summary>
+    public List<(string Path, string Url, string Body)> BodyEdits { get; } = [];
+
+    /// <summary>When set, what every body read answers instead of the stored body.</summary>
+    public PullRequestBodyAnswer? BodyAnswer { get; set; }
+
+    /// <summary>When set, what every body edit answers instead of storing the body.</summary>
+    public BodyEditAnswer? EditAnswer { get; set; }
+
     /// <summary>Every update asked for, with the number and sha it carried, in order.</summary>
     public List<(string Path, long Number, string Sha)> UpdateCalls { get; } = [];
 
@@ -666,6 +681,21 @@ public sealed class FakeForge
         {
             owner.MergeCalls.Add((path, url, sha));
             return Task.FromResult(owner.MergeFor.GetValueOrDefault(url, owner.MergeAnswer));
+        }
+
+        public Task<PullRequestBodyAnswer> ReadBodyAsync(string url, CancellationToken ct)
+        {
+            owner.BodyReads.Add(url);
+            return Task.FromResult(owner.BodyAnswer ?? new PullRequestBodyAnswer(owner.Bodies.GetValueOrDefault(url, ""), null));
+        }
+
+        public Task<BodyEditAnswer> EditBodyAsync(string url, string body, CancellationToken ct)
+        {
+            owner.BodyEdits.Add((path, url, body));
+            if (owner.EditAnswer is { } answer) return Task.FromResult(answer);
+
+            owner.Bodies[url] = body;
+            return Task.FromResult(new BodyEditAnswer(true, null));
         }
 
         public Task<UpdateAnswer> UpdateAsync(long number, string sha, CancellationToken ct)
