@@ -914,7 +914,7 @@ through the gate that was supposed to stop it.
 ### Issue
 
 `EfHatchIssue` — `ProjectId`, `Number`, `Type`, `Title`, `Description`,
-`StatusId`, `ParentId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
+`StatusId`, `ParentId`, `FiledFromId`, `Rank`, `ReadyAt`/`ReadyAtHasTime`,
 `DueAt`/`DueAtHasTime`, `PullRequestUrl`, `PullRequestMergeState`,
 `PullRequestReviewDecision`, `PullRequestHeadSha`, `PullRequestHeadSince`,
 `PullRequestReadAt`,
@@ -931,6 +931,21 @@ cycle, and be a legal type — epic→epic or reflection, reflection→epic,
 story→epic or reflection, task→story, bug, epic or reflection, bug→epic, story
 or reflection. A reflection with children answers [the hop](#the-hop) and [an
 epic's own limit](#an-epics-own-limit) exactly the way an epic does.
+
+**An issue records the issue it was filed from.** `FiledFromId` is a nullable
+foreign key to another issue, `SetNull` on delete and indexed: the issue whose
+session filed this one. It is provenance and nothing else - no dispatch, hold,
+order, rollup or merge gate reads it, so an issue filed from an open issue is
+dispatched exactly as one filed from nothing, which is what separates it from a
+[dependency](#dependency). It may name an issue in another project, as a
+dependency may: a reflection files its tracker gaps in whichever project is
+flagged `bindsTracker`. Set at creation with `filedFromKey`, or changed after
+with `PATCH`/bulk, where `""` clears it, as for `parentKey`. Refused with a `400`
+saying which when the key names no issue or the issue itself; there is no cycle
+walk. A change writes a `filed_from_changed` event on the issue that changed and
+on no other; a create writes none, and neither does deleting the source. A
+project move leaves it alone. The issue read carries `filedFromKey` and
+`filedKeys`, the issues filed from this one in key order.
 
 `Description` is markdown, stored exactly as typed and rendered by the client
 (`marked` + `dompurify`, the pair the docs app already bundles). What the
@@ -3052,7 +3067,10 @@ column; an event written before the ids were added carries names only, so a
 reader must not assume them; the hop flags - `express`, `pulled`, `merged`,
 ... - ride beside them unchanged; a move the [check](#check) apply made carries
 `verdict` and `playbookId` there too),
-`parent_changed`, `ready_changed`, `due_changed`, `pull_request_changed`,
+`parent_changed`, `filed_from_changed` (the issue it was
+[filed from](#issue) changed - payload `{ from, to }`, display keys, either
+null, on the issue that changed alone), `ready_changed`, `due_changed`,
+`pull_request_changed`,
 `no_code_changed` (an issue's [no-code declaration](#finished-with-no-code) was
 set, cleared by hand, or cleared by a move left of review - payload `{ from, to }`,
 with `moved` naming the column on the last), `no_code_set_aside` (a branch or a
@@ -3618,8 +3636,8 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/wip` | GET | `{ statusIds, slices }` — the flagged columns that are neither deferred nor terminal, in board order, and `slices`: always two entries, `{ types, limit }` for `story,bug` then `epic`, `limit` null where no row is held |
 | `/wip` | PUT | **Person only** — plain `[RequireRole(User)]`, checked again in the action. `{ limit?, epicLimit?, statusIds? }`, the bulk rule throughout: `limit` and `epicLimit` are each a string (`""` clears the slice, a whole number of one or more sets it, and each is validated before anything is touched — a good field beside a bad one changes neither), `statusIds` is the whole section (`[]` clears it) and refuses a column that does not exist, or one that is deferred or terminal. Re-sending what is held writes nothing |
 | `/board` | GET | Statuses plus every issue, ordered by `(StatusId, Priority desc, Rank, Id)`. Never filtered — the browser folds not-yet-ready cards away; the server hands over all of them — except the one card the server itself withholds: a terminal card whose `ClosedAt` is older than `doneHorizonHours` (48 by default, off at `0`) is not handed over at all, and `doneHorizonHours` on the DTO says what that horizon is; stories the horizon withheld whose epic is still on the board are handed over in `pastHorizon` instead, as ordinary cards, so a client can count them; `issues` is unchanged — and `wip`: `{ statusIds, slices }`, `slices` the same two entries as `/wip`'s read but each with `load` and `claimedInbound` too, `null` only where no column is flagged (see [WIP](#wip)) |
-| `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, ANDed, all optional |
-| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
+| `/issues` | GET, POST | GET filters on `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`, `text`, `filedFromKey` (`""` finds the issues filed from nothing), ANDed, all optional; POST takes `filedFromKey` |
+| `/issues/bulk` | POST | `keys` plus any of `type`, `statusId`, `parentKey`, `filedFromKey`, `readyAt`, `dueAt`. No `wipOverride` — a full [WIP](#wip) section or [an epic at its own limit](#an-epics-own-limit) is a per-key failure, named in `failures`; `projectId` with `moveDescendants` moves the batch the same way — see [Moving between projects](#moving-between-projects) — `400` on an unknown project, `403` from a key, a live claim anywhere in the moving set a per-key failure rather than a whole-request refusal; the response gains `rekeyed: [{ from, to }]`, additive and empty when no project was named |
 | `/issues/{key}` | GET, PATCH, DELETE | PATCH writes one event per changed field; `""` clears a parent, a date or the pull request URL; `wipOverride` — see [WIP](#wip) — moves a full section or a full epic anyway, `409` (`WipRefusalDto`, carrying the epic's own numbers when it is the epic's limit) otherwise, `403` from a key; `projectId` with `moveDescendants` moves it to another project — see [Moving between projects](#moving-between-projects) — re-keying it and (by default) everything below it; `400` on an unknown project, `403` from a key, `409` naming any issue in the moving set holding a live claim |
 | `/issues/{key}/move` | POST | `{ statusId, afterKey?, beforeKey?, fromStatusId?, wipOverride? }` — the server computes the rank. A card no longer in `fromStatusId` is a 409 and nothing is written; a move into a full [WIP](#wip) section or past [an epic's own limit](#an-epics-own-limit) is the same (`409` carrying the epic's own numbers when it is the epic's), unless `wipOverride` is set (person only - `403` from a key). **A key is refused with `409` while the issue's live claim is a [check](#check)'s** — *"<KEY>'s live claim is a check's - a session judges here, it does not move the ticket"* — before anything else is read, a reorder inside one column included; a person's move is not |
 | `/issues/{key}/comments` | GET, POST | POST carries the kind (a note, `question`, `answer`, `message` or — though only the apply has a reason to — `verdict`), the `answersId`, and a question's options; every comment carries `deliveredAt` and `deliveredTo` |

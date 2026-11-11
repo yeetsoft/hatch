@@ -366,6 +366,189 @@ public class IssuesControllerTests
         Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).ParentKey);
     }
 
+    // ---- Filed from ----
+
+    [Fact]
+    public async Task AnIssueFiledFromAnother_RecordsItAndTheSourceListsIt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "a gap found while working", filedFromKey: "AER-1");
+
+        var filed = Value(await h.Issues.GetIssue("AER-2", default));
+        var source = Value(await h.Issues.GetIssue("AER-1", default));
+
+        Assert.Equal("AER-1", filed.FiledFromKey);
+        Assert.Empty(filed.FiledKeys);
+        Assert.Null(source.FiledFromKey);
+        Assert.Equal(["AER-2"], source.FiledKeys);
+        Assert.Null(filed.ParentKey);
+        // Born in the one save: a create writes no change event of its own.
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync("AER-2")).Kind);
+    }
+
+    [Fact]
+    public async Task FiledKeys_AreInKeyOrderAcrossProjects()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "an ops gap", projectId: h.OtherProjectId, filedFromKey: "AER-1");
+        await h.CreateAsync("task", "a second", filedFromKey: "AER-1");
+        await h.CreateAsync("task", "a third", filedFromKey: "AER-1");
+
+        Assert.Equal(["AER-2", "AER-3", "OPS-1"], Value(await h.Issues.GetIssue("AER-1", default)).FiledKeys);
+        Assert.Equal("AER-1", Value(await h.Issues.GetIssue("OPS-1", default)).FiledFromKey);
+    }
+
+    [Fact]
+    public async Task FilingFromAnIssueThatIsNotThere_IsRefusedWithAReason()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+
+        var created = await h.Issues.CreateIssue(
+            new IssueCreateRequest(h.ProjectId, "task", "two", null, null, null, null, FiledFromKey: "AER-99"), default);
+        var patched = await h.Issues.PatchIssue("AER-1", Patch(filedFromKey: "AER-99"), default);
+        var malformed = await h.Issues.PatchIssue("AER-1", Patch(filedFromKey: "banana"), default);
+
+        Assert.Equal("400: there is no AER-99", Reason(created.Result));
+        Assert.Equal("400: there is no AER-99", Reason(patched.Result));
+        Assert.Contains("is not an issue key", Reason(malformed.Result));
+        Assert.Single(await h.EventsAsync("AER-1"));
+    }
+
+    [Fact]
+    public async Task AnIssue_CannotBeFiledFromItself()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("task", "one");
+
+        var result = await h.Issues.PatchIssue("AER-1", Patch(filedFromKey: "AER-1"), default);
+
+        Assert.Equal("400: an issue cannot be filed from itself", Reason(result.Result));
+        Assert.Null(Value(await h.Issues.GetIssue("AER-1", default)).FiledFromKey);
+    }
+
+    [Fact]
+    public async Task APatchSetsChangesAndClearsTheSource_AndAnAbsentOneLeavesIt()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "one");
+        await h.CreateAsync("epic", "two");
+        await h.CreateAsync("task", "the gap");
+
+        Value(await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: "AER-1"), default));
+        Assert.Equal("AER-1", Value(await h.Issues.GetIssue("AER-3", default)).FiledFromKey);
+
+        Value(await h.Issues.PatchIssue("AER-3", Patch(title: "the same gap"), default));
+        Assert.Equal("AER-1", Value(await h.Issues.GetIssue("AER-3", default)).FiledFromKey);
+
+        Value(await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: "AER-2"), default));
+        Assert.Equal("AER-2", Value(await h.Issues.GetIssue("AER-3", default)).FiledFromKey);
+        Assert.Empty(Value(await h.Issues.GetIssue("AER-1", default)).FiledKeys);
+
+        Value(await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: ""), default));
+        Assert.Null(Value(await h.Issues.GetIssue("AER-3", default)).FiledFromKey);
+        Assert.Empty(Value(await h.Issues.GetIssue("AER-2", default)).FiledKeys);
+    }
+
+    [Fact]
+    public async Task AFiledFromChange_WritesOneEventOnTheIssueThatChangedAndOnNoOther()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "one");
+        await h.CreateAsync("epic", "two");
+        await h.CreateAsync("task", "the gap");
+
+        await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: "AER-1"), default);
+        await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: "AER-1"), default);
+        await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: "AER-2"), default);
+        await h.Issues.PatchIssue("AER-3", Patch(filedFromKey: ""), default);
+
+        var events = (await h.EventsAsync("AER-3")).Where(e => e.Kind == EfHatchIssueEvent.FiledFromChanged)
+            .Select(e => (From: e.Payload!.Value.GetProperty("from"), To: e.Payload!.Value.GetProperty("to"))).Reverse().ToList();
+
+        Assert.Equal(3, events.Count);
+        Assert.Equal(JsonValueKind.Null, events[0].From.ValueKind);
+        Assert.Equal("AER-1", events[0].To.GetString());
+        Assert.Equal("AER-1", events[1].From.GetString());
+        Assert.Equal("AER-2", events[1].To.GetString());
+        Assert.Equal("AER-2", events[2].From.GetString());
+        Assert.Equal(JsonValueKind.Null, events[2].To.ValueKind);
+
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync("AER-1")).Kind);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync("AER-2")).Kind);
+    }
+
+    [Fact]
+    public async Task ABulkEdit_FilesEveryIssueItNamesFromTheSource_AndReportsAnUnknownOneAsAFailure()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "one");
+        await h.CreateAsync("task", "two");
+
+        var result = Value(await h.Issues.BulkEdit(Bulk(["AER-2", "AER-3"], filedFromKey: "AER-1"), default));
+
+        Assert.Equal(["AER-2", "AER-3"], result.Changed);
+        Assert.Equal(["AER-2", "AER-3"], Value(await h.Issues.GetIssue("AER-1", default)).FiledKeys);
+
+        var self = Value(await h.Issues.BulkEdit(Bulk(["AER-1", "AER-2"], filedFromKey: "AER-1"), default));
+
+        Assert.Equal(["AER-2"], self.Unchanged);
+        Assert.Equal("AER-1", self.Failures.Single().Key);
+        Assert.Contains("filed from itself", self.Failures.Single().Reason);
+
+        var unknown = await h.Issues.BulkEdit(Bulk(["AER-2"], filedFromKey: "AER-99"), default);
+        Assert.Equal("AER-2", Value(unknown).Failures.Single().Key);
+        Assert.Contains("there is no AER-99", Value(unknown).Failures.Single().Reason);
+    }
+
+    [Fact]
+    public async Task TheFilter_FindsWhatWasFiledFromAnIssue_AndCombinesWithTheOthers()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "a task", filedFromKey: "AER-1");
+        await h.CreateAsync("bug", "a bug", filedFromKey: "AER-1");
+        await h.CreateAsync("task", "unrelated");
+
+        Assert.Equal(["AER-2", "AER-3"], await h.SearchAsync(filedFromKey: "AER-1"));
+        Assert.Equal(["AER-3"], await h.SearchAsync(type: "bug", filedFromKey: "AER-1"));
+        Assert.Equal(["AER-1", "AER-4"], await h.SearchAsync(filedFromKey: ""));
+        Assert.Empty(await h.SearchAsync(filedFromKey: "AER-4"));
+
+        var unknown = await h.Issues.SearchIssues(null, null, null, null, null, null, "AER-99", default);
+        Assert.Equal("400: there is no AER-99", Reason(unknown.Result));
+    }
+
+    [Fact]
+    public async Task DeletingTheSource_LeavesWhatWasFiledFromItFiledFromNothing_WithNoEventOnThem()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "the gap", filedFromKey: "AER-1");
+
+        await h.Issues.DeleteIssue("AER-1", default);
+
+        Assert.Null(Value(await h.Issues.GetIssue("AER-2", default)).FiledFromKey);
+        Assert.Equal(EfHatchIssueEvent.Created, Assert.Single(await h.EventsAsync("AER-2")).Kind);
+    }
+
+    [Fact]
+    public async Task AProjectMove_KeepsWhatAnIssueWasFiledFrom()
+    {
+        var h = await NewAsync();
+        await h.CreateAsync("epic", "the plan");
+        await h.CreateAsync("task", "the gap", filedFromKey: "AER-1");
+
+        var moved = Value(await h.Issues.PatchIssue("AER-2", Patch(projectId: h.OtherProjectId), default));
+
+        Assert.Equal("OPS-1", moved.Key);
+        Assert.Equal("AER-1", moved.FiledFromKey);
+        Assert.Equal(["OPS-1"], Value(await h.Issues.GetIssue("AER-1", default)).FiledKeys);
+    }
+
     // ---- Priority, inherited live at read ----
 
     [Fact]
@@ -497,7 +680,7 @@ public class IssuesControllerTests
         await h.CreateAsync("story", "the story", parentKey: "AER-1");
         await h.CreateAsync("task", "a chore");
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
 
         Assert.All(cards, c =>
         {
@@ -520,7 +703,7 @@ public class IssuesControllerTests
         row.NoCodeAt = Now;
         await h.Db.SaveChangesAsync();
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
 
         Assert.Null(Assert.Single(cards, c => c.Key == story.Key).NoCode);
     }
@@ -669,7 +852,7 @@ public class IssuesControllerTests
         await h.CreateAsync("story", "the story", parentKey: "AER-1");
         await h.CreateAsync("task", "a chore");
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
 
         Assert.All(cards, c =>
         {
@@ -3695,7 +3878,7 @@ public class IssuesControllerTests
     {
         var h = await NewAsync();
 
-        var result = await h.Issues.SearchIssues(null, "epicc", null, null, null, null, default);
+        var result = await h.Issues.SearchIssues(null, "epicc", null, null, null, null, null, default);
 
         Assert.Contains("epic, reflection, story, task, bug", Reason(result.Result));
     }
@@ -3705,7 +3888,7 @@ public class IssuesControllerTests
     {
         var h = await NewAsync();
 
-        var result = await h.Issues.SearchIssues(null, null, null, null, "AER-99", null, default);
+        var result = await h.Issues.SearchIssues(null, null, null, null, "AER-99", null, null, default);
 
         Assert.Contains("there is no AER-99", Reason(result.Result));
     }
@@ -4181,7 +4364,7 @@ public class IssuesControllerTests
         Assert.Equal(TestClaims.Ttl, card.Claim.TtlSeconds);
         Assert.Equal(TestClaims.With().StallLapseSeconds, card.Claim.StallLapseSeconds);
 
-        var found = Value(await h.Issues.SearchIssues(null, null, null, null, null, "somebody is on it", default));
+        var found = Value(await h.Issues.SearchIssues(null, null, null, null, null, "somebody is on it", null, default));
         Assert.NotNull(Assert.Single(found).Claim);
     }
 
@@ -4311,10 +4494,11 @@ public class IssuesControllerTests
             string? parentKey = null,
             int? projectId = null,
             string? readyAt = null,
-            string? dueAt = null)
+            string? dueAt = null,
+            string? filedFromKey = null)
         {
             var result = await Issues.CreateIssue(
-                new IssueCreateRequest(projectId ?? ProjectId, type, title, null, parentKey, readyAt, dueAt), default);
+                new IssueCreateRequest(projectId ?? ProjectId, type, title, null, parentKey, readyAt, dueAt, FiledFromKey: filedFromKey), default);
 
             return Created(result);
         }
@@ -4404,9 +4588,10 @@ public class IssuesControllerTests
             int? statusId = null,
             string? parentKey = null,
             string? ancestorKey = null,
-            string? text = null)
+            string? text = null,
+            string? filedFromKey = null)
         {
-            var result = await Issues.SearchIssues(projectId, type, statusId, parentKey, ancestorKey, text, default);
+            var result = await Issues.SearchIssues(projectId, type, statusId, parentKey, ancestorKey, text, filedFromKey, default);
             return Value(result).Select(i => i.Key).ToList();
         }
     }
@@ -4493,8 +4678,10 @@ public class IssuesControllerTests
         string? dueAt = null,
         string? pullRequestUrl = null,
         int? projectId = null,
-        bool? moveDescendants = null) =>
-        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl, projectId, moveDescendants);
+        bool? moveDescendants = null,
+        string? filedFromKey = null) =>
+        new(title, description, type, statusId, parentKey, readyAt, dueAt, pullRequestUrl, projectId, moveDescendants,
+            FiledFromKey: filedFromKey);
 
     private static IssueBulkEditRequest Bulk(
         IReadOnlyList<string> keys,
@@ -4504,8 +4691,9 @@ public class IssuesControllerTests
         string? readyAt = null,
         string? dueAt = null,
         int? projectId = null,
-        bool? moveDescendants = null) =>
-        new(keys, type, statusId, parentKey, readyAt, dueAt, projectId, moveDescendants);
+        bool? moveDescendants = null,
+        string? filedFromKey = null) =>
+        new(keys, type, statusId, parentKey, readyAt, dueAt, projectId, moveDescendants, filedFromKey);
 
     private static T Value<T>(ActionResult<T> result) =>
         result.Value ?? throw new InvalidOperationException($"expected a value, got {Reason(result.Result)}");

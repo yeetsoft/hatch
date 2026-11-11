@@ -93,6 +93,12 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             .HasForeignKey(i => i.ParentId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        issue.HasOne(i => i.FiledFrom)
+            .WithMany(i => i.Filed)
+            .HasForeignKey(i => i.FiledFromId)
+            .OnDelete(DeleteBehavior.SetNull);
+        issue.HasIndex(i => i.FiledFromId);
+
         // Mirrors EfHatchProject.RunnerTags' own default below, for the same
         // reason: EnsureCreated must leave the same empty-array default a
         // migrated row carries.

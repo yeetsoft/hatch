@@ -209,7 +209,7 @@ public class IssuePreApprovalControllerTests
         // sent where it was sent.
         Assert.True((await h.ReadAsync(issue.Key)).Express);
 
-        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, default));
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
         Assert.True(cards.Single(c => c.Key == issue.Key).Express);
     }
 
