@@ -2282,6 +2282,42 @@ export interface WorkLogTotals {
   durationMs: number;
 }
 
+/** How the consumption report ranks its rows - mirrors the route's `sort`. Each
+    is descending: the most consumed, or the most recently active, first. */
+export type ConsumptionSort = 'activity' | 'tokens' | 'cost' | 'time';
+
+/** One issue's row in the consumption report: what it and everything beneath it
+    consumed inside the window. Mirrors ConsumptionRowDto. */
+export interface ConsumptionRow {
+  key: string;
+  title: string;
+  type: IssueType;
+  projectKey: string;
+  statusId: number;
+  /** The nearest row directly above this one, or null. Unused by the flat table. */
+  parentKey: string | null;
+  totals: WorkLogTotals;
+  firstSessionAt: string;
+  lastSessionAt: string;
+}
+
+/** What each issue of a type consumed over a window, the totals over every one
+    that matched, and the first `limit` rows. Mirrors ConsumptionReportDto less
+    its `history`, which the graph's story reads. */
+export interface ConsumptionReport {
+  from: string;
+  to: string;
+  type: IssueType | 'all';
+  sort: ConsumptionSort;
+  limit: number;
+  /** Issues with a session in the window - more than `rows` when the cap bit. */
+  matched: number;
+  totals: WorkLogTotals;
+  firstSessionAt: string | null;
+  lastSessionAt: string | null;
+  rows: ConsumptionRow[];
+}
+
 /** An issue's work log. Mirrors WorkLogDto.
 
     The asymmetry is the point: **entries are the issue's own, totals are the

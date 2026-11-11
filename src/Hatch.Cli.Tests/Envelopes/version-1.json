@@ -1,0 +1,44 @@
+{
+  "title": "AER-12 Epic: the root",
+  "read": {
+    "ok": true,
+    "envelope": {
+      "version": 1,
+      "instance": "hatch.example.com",
+      "project": "AER",
+      "chain": [
+        {
+          "key": "AER-14",
+          "title": "A task with every optional field",
+          "type": "task",
+          "description": "What this task does.",
+          "status": "In Progress",
+          "parentKey": "AER-13",
+          "url": "https://hatch.example.com/apps/hatch/issues/AER-14",
+          "truncated": false
+        },
+        {
+          "key": "AER-13",
+          "title": "A story with none of the optional fields",
+          "type": null,
+          "description": null,
+          "status": null,
+          "parentKey": null,
+          "url": null,
+          "truncated": false
+        },
+        {
+          "key": "AER-12",
+          "title": "The root epic",
+          "type": "epic",
+          "description": null,
+          "status": null,
+          "parentKey": null,
+          "url": null,
+          "truncated": false
+        }
+      ]
+    }
+  },
+  "versionZero": { "ok": false, "key": null, "instance": null }
+}

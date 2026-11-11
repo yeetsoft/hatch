@@ -41,6 +41,20 @@ describe('ReportsPage', () => {
     expect(html).toContain('href="/reports/changelog"');
   });
 
+  it('lists the Consumption report with what it answers and a link to it', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('Consumption');
+    expect(html).toContain(
+      'What each epic consumed - tokens, notional dollars and runner time - and how that is trending.',
+    );
+    expect(html).toContain('href="/reports/consumption"');
+  });
+
   it('lists the Activity report with what it answers and a link to it', () => {
     const html = renderToStaticMarkup(
       <MemoryRouter>

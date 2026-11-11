@@ -3875,6 +3875,14 @@ input.hatch-inline-title-input {
   cursor: pointer;
 }
 
+/* The consumption report's Type cell. The glyph is drawn for the corner of a
+   card, so in a cell it is put back in the flow. */
+.hatch-consumption-type .hatch-type-glyph {
+  position: static;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .hatch-leaderboard-sort:hover {
   color: var(--primary);
 }
