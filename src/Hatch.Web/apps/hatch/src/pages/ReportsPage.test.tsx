@@ -40,4 +40,16 @@ describe('ReportsPage', () => {
     expect(html).toContain('What landed in each day, week or month, at the level a stakeholder reads.');
     expect(html).toContain('href="/reports/changelog"');
   });
+
+  it('lists the Activity report with what it answers and a link to it', () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter>
+        <ReportsPage />
+      </MemoryRouter>,
+    );
+
+    expect(html).toContain('Activity');
+    expect(html).toContain('What one person or key did, issue by issue, over a range.');
+    expect(html).toContain('href="/reports/activity"');
+  });
 });

@@ -2,6 +2,7 @@ import { HttpError, refusalSentence } from '../lib/errors';
 import { handledRefusal } from '../lib/signIn';
 import type {
   ActivityPage,
+  ActivityReport,
   CreateRunnerRequest,
   AssigneeDirectory,
   AssigneeRequest,
@@ -832,6 +833,25 @@ export interface CumulativeFlowQuery {
   /** Narrows the read to these projects' issues; every project when null,
       undefined or empty. */
   project?: string[] | null;
+}
+
+/** One actor's events over a range. `actor` is always sent, exactly as given
+    (`URLSearchParams` does the encoding); `from` and `to` only when set, so the
+    server's own fourteen days stand; `projectId` is repeated once per id. */
+export const getActivityReport = (query: ActivityReportQuery) => {
+  const params = new URLSearchParams();
+  params.set('actor', query.actor);
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  for (const id of query.projectId ?? []) params.append('projectId', String(id));
+  return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
+};
+
+export interface ActivityReportQuery {
+  actor: string;
+  from?: string | null;
+  to?: string | null;
+  projectId?: number[] | null;
 }
 
 /** Closed epics bucketed over a window. Each parameter is set only when it
