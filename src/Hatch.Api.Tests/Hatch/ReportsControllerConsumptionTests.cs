@@ -55,6 +55,9 @@ public class ReportsControllerConsumptionTests
     private static string Refusal<T>(ActionResult<T> result) =>
         Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result.Result).Value);
 
+    private static string Refusal(IActionResult result) =>
+        Assert.IsType<string>(Assert.IsType<BadRequestObjectResult>(result).Value);
+
     private static async Task<EfHatchIssue> AddIssueAsync(
         Harness h, string type, int statusId, long? parentId = null, int? projectId = null)
     {
@@ -284,5 +287,141 @@ public class ReportsControllerConsumptionTests
             .Single();
 
         Assert.True(guard.AcceptKey);
+    }
+
+    // ---- GetConsumptionCsv ----
+
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
+
+    private static async Task<FileContentResult> CsvOf(Harness h,
+        string? from = null, string? to = null, string? type = null, string? sort = null,
+        int offsetMinutes = 0, List<int>? statusId = null, List<int>? projectId = null) =>
+        Assert.IsType<FileContentResult>(await h.Reports.GetConsumptionCsv(
+            from, to, type, sort, offsetMinutes, statusId, projectId, ct: default));
+
+    [Theory]
+    [InlineData("yesterday-ish", null)]
+    [InlineData(null, "not a date")]
+    public async Task Csv_AnUnparseableBound_IsRefused_NamingIt(string? from, string? to)
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(from, to, null, null, ct: default);
+
+        Assert.Equal(RangeBounds.NotAnInstant(from ?? to), Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnInvertedRange_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(
+            Now.ToString("o"), Now.AddDays(-1).ToString("o"), null, null, ct: default);
+
+        Assert.Equal("a range ends before it begins", Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnOffsetOutOfRange_IsRefused_BeforeAnUnknownType()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(null, null, "saga", null, offsetMinutes: 1441, ct: default);
+
+        Assert.Equal("an offset from UTC is minutes between -1440 and 1440 - not 1441", Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnUnknownType_IsRefused_NamingTheChoices()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(null, null, "saga", null, ct: default);
+
+        Assert.Equal($"a type is {string.Join(", ", EfHatchIssue.Types)} or all - not \"saga\"", Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnUnknownSort_IsRefused_NamingTheChoices()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(null, null, null, "cheapest", ct: default);
+
+        Assert.Equal("a sort is activity, tokens, cost or time - not \"cheapest\"", Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnUnknownStatusId_IsRefused_BeforeAnUnknownProjectId()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(
+            null, null, null, null, statusId: [999_999], projectId: [999_999], ct: default);
+
+        Assert.Equal("there is no column 999999", Refusal(result));
+    }
+
+    [Fact]
+    public async Task Csv_AnUnknownProjectId_IsRefused()
+    {
+        var h = await NewAsync();
+
+        var result = await h.Reports.GetConsumptionCsv(null, null, null, null, projectId: [999_999], ct: default);
+
+        Assert.Equal("there is no project 999999", Refusal(result));
+    }
+
+    [Fact]
+    public void Csv_HasNoLimitParameter()
+    {
+        Assert.Null(typeof(ReportsController).GetMethod(nameof(ReportsController.GetConsumptionCsv))!
+            .GetParameters().FirstOrDefault(p => p.Name == "limit"));
+    }
+
+    [Fact]
+    public async Task Csv_AnswersTheContentTypeAndTheFileName()
+    {
+        var h = await NewAsync();
+
+        var file = await CsvOf(h, from: "2026-09-01", to: "2026-09-05");
+
+        Assert.Equal("text/csv; charset=utf-8", file.ContentType);
+        Assert.Equal("consumption-2026-09-01-2026-09-05.csv", file.FileDownloadName);
+    }
+
+    [Fact]
+    public async Task Csv_OpensWithTheUtf8Bom()
+    {
+        var h = await NewAsync();
+        var epic = await AddIssueAsync(h, "epic", h.StatusId);
+        await SpendAsync(h, epic.Id, Now.AddDays(-1));
+
+        var file = await CsvOf(h);
+
+        Assert.Equal(Utf8Bom, file.FileContents.Take(3));
+    }
+
+    [Fact]
+    public async Task Csv_ListsEveryRow_PastTheJsonRoutesDefaultCap()
+    {
+        var h = await NewAsync();
+
+        for (var i = 0; i < 150; i++)
+        {
+            var epic = await AddIssueAsync(h, "epic", h.StatusId);
+            await SpendAsync(h, epic.Id, Now.AddDays(-1));
+        }
+
+        var file = await CsvOf(h);
+        var body = System.Text.Encoding.UTF8.GetString(file.FileContents.Skip(3).ToArray());
+        var records = body.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal(151, records.Length);
+
+        var capped = Value(await h.Reports.GetConsumption(null, null, null, null, limit: 1, ct: default));
+        Assert.Equal(1, capped.Rows.Count);
+        Assert.Equal(150, capped.Matched);
     }
 }
