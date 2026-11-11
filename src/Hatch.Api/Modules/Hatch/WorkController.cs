@@ -1523,6 +1523,7 @@ public class WorkController(
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
             && rowTo is not null && rowTo.Id == review?.Id;
+        var offersNoCode = rowTo is null ? (bool?)null : rowTo.IsTerminal || rowTo.IsDeferred || Columns.AtOrPastReview(statuses, rowTo.Id);
 
         int? nextBriefLimit = null;
         if (kind == WorkKinds.Advance && !hopped && rowTo is not null && children.Count == 0
@@ -1586,7 +1587,8 @@ public class WorkController(
             implementationStatus?.Name,
             match?.File is null ? null : new PlaybookFileReferenceDto(match.File.Path, match.File.Canonical, match.File.Trunk, match.File.Sha, match.File.Hash),
             asksReleaseNote,
-            nextBriefLimit);
+            nextBriefLimit,
+            offersNoCode);
     }
 
     /// <summary>

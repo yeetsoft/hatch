@@ -91,7 +91,8 @@ public static class Fixtures
         bool asksReleaseNote = false,
         int? nextBriefLimit = null,
         int? quietLimitSeconds = null,
-        int? maxRunSeconds = null) =>
+        int? maxRunSeconds = null,
+        bool? offersNoCode = null) =>
         new(
             Issue: issue ?? Issue(key),
             FromStatus: Status(3, from),
@@ -116,7 +117,8 @@ public static class Fixtures
             Landing: landing,
             PlaybookFile: playbookFile,
             AsksReleaseNote: asksReleaseNote,
-            NextBriefLimit: nextBriefLimit);
+            NextBriefLimit: nextBriefLimit,
+            OffersNoCode: offersNoCode);
 
     /// <summary>The dispatch of an issue in review whose branch conflicts: review to itself, with the board's verdict on it.</summary>
     public static WorkDto ConflictWork(

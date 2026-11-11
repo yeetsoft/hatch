@@ -2409,6 +2409,15 @@ public record IssueDreamsWriteRequest(IReadOnlyList<long> DreamIds);
 /// row has none, where the dispatch is not a plain advance, or where the
 /// issue has children (their briefs are the children's).
 /// </param>
+/// <param name="OffersNoCode">
+/// True where this dispatch's destination is <c>Columns.AwaitingReview</c>
+/// or a column to its right, or is terminal or deferred - where a session
+/// that changed nothing may declare it with <c>hatch pr --none</c>. False
+/// where the destination stands left of review, so there is no review
+/// column to declare into. Null on a client too old to read it, because
+/// the CLI has no access to <c>Columns.cs</c> to compute it itself (see
+/// <see cref="FailStatusName"/>'s own param for the same reasoning).
+/// </param>
 public record WorkDto(
     IssueDto Issue,
     StatusDto FromStatus,
@@ -2437,7 +2446,8 @@ public record WorkDto(
     string? FailStatusName = null,
     PlaybookFileReferenceDto? PlaybookFile = null,
     bool AsksReleaseNote = false,
-    int? NextBriefLimit = null);
+    int? NextBriefLimit = null,
+    bool? OffersNoCode = null);
 
 /// <summary>
 /// The two numbers a send-back for an over-long brief carried, and whether

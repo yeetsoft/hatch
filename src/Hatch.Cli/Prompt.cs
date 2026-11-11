@@ -210,7 +210,8 @@ public static class Prompt
             isCheck: work.Playbook?.IsCheck == true, failStatus: work.FailStatusName,
             trunkLanding: trunkLanding,
             asksReleaseNote: work.AsksReleaseNote, issueType: issue.Type,
-            startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites));
+            startsHere: BoundForImplementation(work), deniesGitWrites: deniesGitWrites,
+            offersNoCode: work.OffersNoCode ?? true));
         return string.Join('\n', lines);
     }
 
@@ -557,7 +558,7 @@ public static class Prompt
         string preApproval, string? sharedStory = null, bool sharesPullRequest = false,
         bool isCheck = false, string? failStatus = null, bool trunkLanding = false,
         bool asksReleaseNote = false, string? issueType = null, bool startsHere = false,
-        bool deniesGitWrites = false) =>
+        bool deniesGitWrites = false, bool offersNoCode = true) =>
     [
         "## Reaching Hatch",
         "",
@@ -613,8 +614,8 @@ public static class Prompt
         }),
         ..(deniesGitWrites ? NoPullRequest(key)
             : trunkLanding ? Landing(key)
-            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null)
-            : SharedPullRequest(key, sharedStory, to)),
+            : sharedStory is null ? PullRequest(key, issueUrl, sharesPullRequest ? issueType ?? "story" : null, offersNoCode)
+            : SharedPullRequest(key, sharedStory, to, offersNoCode)),
         "## When you cannot decide",
         "",
         "Some things are not yours to choose: a product call, a name that will be",
@@ -819,7 +820,7 @@ public static class Prompt
     /// What a task on its story's branch is told in place of the pull request
     /// section: not to open one, and why. The story's closeout is what opens it.
     /// </summary>
-    private static string[] SharedPullRequest(string key, string story, string to) =>
+    private static string[] SharedPullRequest(string key, string story, string to, bool offersNoCode = true) =>
     [
         "## No pull request from this ticket",
         "",
@@ -829,7 +830,7 @@ public static class Prompt
         $"branch above, then move {key} to \"{to}\": it waits there, with nothing of its own to",
         "merge, until the story's pull request does.",
         "",
-        .. NoCodeDeclaration(key),
+        .. offersNoCode ? NoCodeDeclaration(key) : NothingToDeclare(key),
     ];
 
     /// <summary>
@@ -888,7 +889,7 @@ public static class Prompt
     /// is only ever an absolute http(s) one; without it the first line is the
     /// bare key, and the session is told not to make a link up.
     /// </summary>
-    private static string[] PullRequest(string key, string? issueUrl, string? sharedType = null)
+    private static string[] PullRequest(string key, string? issueUrl, string? sharedType = null, bool offersNoCode = true)
     {
         var linked = Uri.TryCreate(issueUrl, UriKind.Absolute, out var url)
             && url.Scheme is "http" or "https";
@@ -928,7 +929,7 @@ public static class Prompt
             "",
             $"Afterwards, record it on the ticket with `hatch pr {key} <url>`.",
             "",
-            .. NoCodeDeclaration(key),
+            .. offersNoCode ? NoCodeDeclaration(key) : NothingToDeclare(key),
         ];
     }
 
@@ -948,6 +949,23 @@ public static class Prompt
         "```",
         $"hatch pr {key} --none \"<one line: what this increment produced, and where it is>\"",
         "```",
+        "",
+        "Do not push an empty branch to stand in for one: a branch with nothing on it is a",
+        "branch the board has to second-guess.",
+        "",
+    ];
+
+    /// <summary>
+    /// What a session on an increment bound left of review is told in place of
+    /// <see cref="NoCodeDeclaration"/>: there is no review column to declare
+    /// into, so say what was found in the comment instead of running
+    /// <c>hatch pr --none</c>.
+    /// </summary>
+    private static string[] NothingToDeclare(string key) =>
+    [
+        "If this increment changed nothing in the tree, there is no pull request to open for",
+        $"{key} and nothing to declare: the declaration is for an increment that ends in review,",
+        "and this one does not. Say what it found in the comment instead.",
         "",
         "Do not push an empty branch to stand in for one: a branch with nothing on it is a",
         "branch the board has to second-guess.",
