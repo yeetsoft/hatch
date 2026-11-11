@@ -171,6 +171,22 @@ public static partial class UsageReport
         return 0;
     }
 
+    /// <summary>
+    /// The result line's own price, out of the same lines - null where there
+    /// is no result line at all, the same "nothing to report" reading
+    /// <see cref="Turns"/> gives that case.
+    /// </summary>
+    public static decimal? Cost(IEnumerable<string> lines)
+    {
+        foreach (var e in Objects(lines))
+        {
+            if (Text(e, "type") != "result") continue;
+            return Decimal(e, "total_cost_usd");
+        }
+
+        return null;
+    }
+
     private static UsageWindow? Limit(JsonElement limit)
     {
         var (window, fallback) = Text(limit, "kind") switch
@@ -256,6 +272,12 @@ public static partial class UsageReport
     private static double? Double(JsonElement e, string name) =>
         e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
+            ? number
+            : null;
+
+    private static decimal? Decimal(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var value) &&
+        value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)
             ? number
             : null;
 }
