@@ -362,6 +362,14 @@ internal sealed class E2eHarness(string name) : IAsyncDisposable
         deadline.BoundAsync(phase, () => page!.EvaluateAsync<T>(script, arg));
 
     /// <summary>
+    /// A CDP session on the open page, for a case that needs an emulation knob
+    /// Playwright's own API does not expose - CPU throttling, to widen a race
+    /// that only shows under real contention.
+    /// </summary>
+    public Task<ICDPSession> NewCdpSessionAsync(Deadline deadline) =>
+        deadline.BoundAsync("opening a CDP session", () => context!.NewCDPSessionAsync(page!));
+
+    /// <summary>
     /// Runs <paramref name="script"/> in the page against the first element matching
     /// <paramref name="selector"/> - found by Playwright's own selector engine, which
     /// knows <c>:has()</c> and <c>:text-is()</c> where a page script's own
