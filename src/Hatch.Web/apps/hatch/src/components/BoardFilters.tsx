@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
 import { DEFAULT_FILTER, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
-import type { CardFilter } from '../lib/filter';
+import type { CardFilter, ContributionChoice } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
 import { TypesFacet } from './TypesFacet';
@@ -105,6 +105,21 @@ export function BoardFilters({
       >
         Needs me
       </button>
+
+      {/* Contributions are cards that came from outside - see lib/contribution.ts.
+          A choice of three rather than a switch: alone is for reviewing what
+          has come in, hidden is for the day the board should be the house's own. */}
+      <Facet
+        label="Contributions"
+        lit={filter.contributions !== 'all'}
+        value={filter.contributions}
+        options={[
+          { value: 'all', text: 'With everything', short: 'All' },
+          { value: 'only', text: 'Alone', short: 'Only' },
+          { value: 'hidden', text: 'Hidden' },
+        ]}
+        onChange={(contributions) => onChange({ ...filter, contributions: contributions as ContributionChoice })}
+      />
 
       {/* Assignee is the rarely used filter, so on the desktop row it sits behind
           "…" (MoreFilters) to keep the row on one line. The phone row has the

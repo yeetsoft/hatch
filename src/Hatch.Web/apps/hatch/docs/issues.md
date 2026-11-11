@@ -237,6 +237,34 @@ and its board card carry it as `contribution`, and `GET /issues` can ask whether
 a pull request or an originating key is already here with `pullRequestUrl`, or
 `originInstance` and `originKey`.
 
+### How it reads on the board and the issue page
+
+An issue with a record wears a **contribution mark** on its board card and in
+the issue page's header: an arrow pointing in at a bracket, drawn as an open
+stroke, so it still reads in a greyscale render. It sits beside the type glyph
+and never replaces it, so a mirrored epic is an epic and a contribution at once,
+on any type. A card with no record wears nothing new.
+
+Beside the mark is the **origin badge**: the originating key and the instance's
+host where the record has them (`AER-12 · hatch.example.org`), the key alone
+where it has no instance, otherwise `@login`. Where the record's instance is an
+`http` or `https` address the host is a link to it; any other value is shown as
+text. The link is only an address, and Hatch never fetches it. The record keeps
+no origin issue URL, so the link goes to the instance and not to the issue.
+
+The issue page's **Origin** section lists the issue's mirrored ancestors, root
+first, each with its key, type, title and origin badge, read from the parents'
+own records. It is left out where no ancestor has a record, and an ancestor past
+the board's done horizon is not listed.
+
+A move of a contribution into a column that merges pull requests asks first, in
+the browser: dropping its card, pressing that column on the peek's status
+picker, or pressing it on the issue page's status bar shows a confirm naming the
+origin and saying that merging it merges someone else's branch. **Leave it**
+sends nothing; **Move it** moves it. Any other move, and any move of an issue
+with no record, asks nothing new. [`hatch move`](cli-reference#move) refuses the
+same move unless it is given `--contribution`. The Bulk edit page does not ask.
+
 ## Runner tags
 
 A ticket's own say over which runner may work it — a project may

@@ -881,6 +881,102 @@ public sealed class IssueCommandsTests
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
     }
 
+    // ---- a contribution moving into a column that merges pull requests ----
+
+    private static BoardDto AMergingBoard(bool contribution, bool protectedMerge = false) =>
+        new(
+            [
+                Fixtures.Status(2, "To Do"),
+                Fixtures.Status(3, "In Progress"),
+                Fixtures.Status(7, "Merging") with { MergesPullRequest = true, IsProtected = protectedMerge },
+            ],
+            [
+                Fixtures.Card("AER-12") with
+                {
+                    Contribution = contribution
+                        ? new ContributionDto(null, null, "octocat", "NONE", DateTimeOffset.UnixEpoch, "runner")
+                        : null,
+                },
+            ]);
+
+    [Fact]
+    public async Task A_contribution_into_a_merging_column_is_refused_in_one_line_and_nothing_is_written()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
+
+        Assert.Contains("AER-12 is a contribution", h.Complained);
+        Assert.Contains("--contribution", h.Complained);
+        Assert.Single(h.Complained.TrimEnd().Split('\n'));
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
+    [Theory]
+    [InlineData("AER-12", "merging", "--contribution")]
+    [InlineData("--contribution", "AER-12", "merging")]
+    public async Task The_contribution_flag_moves_it_from_any_position(string a, string b, string c)
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync([a, b, c], default));
+
+        Assert.Equal(7, h.Wire.To("POST", "/api/hatch/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
+        Assert.Equal("AER-12 -> merging", h.Said);
+    }
+
+    [Fact]
+    public async Task An_issue_that_is_not_a_contribution_moves_into_a_merging_column_with_no_flag()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: false));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
+    [Fact]
+    public async Task A_contribution_into_a_column_that_does_not_merge_needs_no_flag()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
+        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+
+        Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "in progress"], default));
+
+        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
+    [Fact]
+    public async Task A_protected_merging_column_is_refused_as_protected_even_with_the_flag()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true, protectedMerge: true));
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging", "--contribution"], default));
+
+        Assert.Contains("is a protected column - only its approvers move a ticket there", h.Complained);
+        Assert.DoesNotContain("contribution", h.Complained);
+        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+    }
+
+    [Fact]
+    public async Task A_protected_merging_column_is_refused_as_protected_not_as_a_contribution()
+    {
+        using var h = new CliHarness();
+        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true, protectedMerge: true));
+
+        Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
+
+        Assert.Contains("is a protected column - only its approvers move a ticket there", h.Complained);
+        Assert.DoesNotContain("is a contribution", h.Complained);
+    }
+
     [Fact]
     public async Task Moving_to_a_column_nobody_has_names_the_ones_there_are()
     {

@@ -50,13 +50,17 @@ public sealed class IssueCommands(Cli cli)
 
     public static readonly string[] MoveUsage =
     [
-        "usage: hatch move AER-12 <column>",
+        "usage: hatch move AER-12 <column> [--contribution]",
         "",
         "  Into any non-terminal, non-protected column, found by its name on the",
         "  letters and digits alone. A terminal column is refused: only the",
         "  operator decides that something shipped. A protected column is",
         "  refused too: only its approvers move work there, in the browser",
         "  (CLAUDE.md).",
+        "",
+        "  A contribution - an issue with a record that it came from outside -",
+        "  is refused a column that merges pull requests, because that merges",
+        "  someone else's branch. --contribution says that is meant.",
     ];
 
     public static readonly string[] CommentUsage =
@@ -313,9 +317,13 @@ public sealed class IssueCommands(Cli cli)
     public async Task<int> MoveAsync(string[] args, CancellationToken ct)
     {
         if (Usage.Wanted(args)) return Usage.Print(cli.Say, MoveUsage);
-        if (args.Length != 2) return Usage.Refuse(cli.Say, "move takes one issue key and one column", MoveUsage);
 
-        var (key, want) = (args[0], args[1]);
+        // In any position, like the other commands' flags: it is not a key or a column.
+        var positional = args.Where(a => a != "--contribution").ToArray();
+        var contribution = positional.Length != args.Length;
+        if (positional.Length != 2) return Usage.Refuse(cli.Say, "move takes one issue key and one column", MoveUsage);
+
+        var (key, want) = (positional[0], positional[1]);
 
         var board = await cli.Board.BoardAsync(ct);
         if (board is null) return 1;
@@ -344,6 +352,17 @@ public sealed class IssueCommands(Cli cli)
         {
             cli.Say.Complain(
                 $"hatch: \"{want}\" is a protected column - only its approvers move a ticket there (CLAUDE.md)");
+            return 1;
+        }
+
+        // After the refusals above, so a protected column is refused exactly as it was. The
+        // browser asks this question as a confirm; there is no one here to ask, so the flag is the answer.
+        if (column.MergesPullRequest && !contribution
+            && board.Issues.FirstOrDefault(i => string.Equals(i.Key, key, StringComparison.OrdinalIgnoreCase))
+                is { Contribution: not null })
+        {
+            cli.Say.Complain(
+                $"hatch: {key} is a contribution, and \"{want}\" merges its pull request - pass --contribution to move it anyway");
             return 1;
         }
 
