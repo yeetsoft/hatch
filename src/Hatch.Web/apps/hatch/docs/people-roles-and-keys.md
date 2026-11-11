@@ -20,8 +20,8 @@ is up with `HATCH_AUTH`. It is off until they turn it on.
   off. Until it is set, Hatch uses the account name of whoever started it, and
   failing that, `friend`. A caller with no key is that local person, never a
   program - a runner is named by its key or not at all. A program is still
-  refused the writes only a person may make. **Users** and **API keys** are
-  not in the nav, because with no wall nobody holds a role.
+  refused the writes only a person may make. **Users** is not
+  in the nav, because with no wall nobody holds a role.
 - **On.** People sign in with Google. A request that carries no credential is
   refused.
 
@@ -38,7 +38,7 @@ Users**: `pending`, `user` or `admin`.
   see the board."
 - **`user`** reaches every route on the board.
 - **`admin`** reaches what a user does and adds the operator's own controls:
-  people, sessions, API keys and the core settings. With the wall up, an
+  people, sessions, runner keys and the core settings. With the wall up, an
   admin also controls every runner, not only the ones that work for them.
 
 The first `admin` is the first new Google identity to sign in while no admin
@@ -106,7 +106,8 @@ name, that HA-1937 retires.
   **Owner** ("Whose tickets this key's `--mine` will reach"), then **Create**.
   The secret is shown once, on the page, beside the two `hatch config`
   commands it needs next, and the response is sent `no-store`, so it is never
-  shown again. A name already held, by a key revoked or not, is refused.
+  shown again. A name already held, by a key revoked or not, is refused. An
+  admin can change the owner later, on the runner's Identity card.
 - **Replacing a secret.** An admin rotates a runner with
   `POST /api/hatch/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a

@@ -235,7 +235,7 @@ runner.
 - `--mine` shows what a `--mine` pass would take and folds past everything
   else, naming whose it is. *Mine* means the caller's own: tickets assigned to
   the person the calling key belongs to, or to the key itself. Whose tickets a
-  key's `--mine` reaches is set by an admin on the API Keys page, never by the
+  key's `--mine` reaches is set by an admin on the Runners page, never by the
   key ([People, roles and keys](people-roles-and-keys)).
 
 A row's marker says where the pass puts it:
