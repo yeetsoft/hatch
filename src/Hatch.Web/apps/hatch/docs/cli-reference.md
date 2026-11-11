@@ -169,6 +169,9 @@ saying why, when this moves the pointer; see
 
 ### image
 
+[Project runner images](project-runner-images) follows the chain this command
+is one link of, end to end.
+
 ```
 hatch image dockerfile [--base <image>] [--repo <path>]... [--all]
 hatch image build [--base <image>] [--image <name>] [--platform <list>] [--push]
