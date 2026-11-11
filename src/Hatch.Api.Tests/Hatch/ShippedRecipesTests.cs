@@ -76,10 +76,9 @@ RUN curl -fsSL --retry-all-errors --retry 60 --retry-delay 5 --retry-max-time 30
 """.ReplaceLineEndings("\n") + "\n";
 
     private static readonly string Pwsh = """
-# pwsh: PowerShell from its GitHub release tarball into /opt/microsoft/powershell/<major>. A major means the newest release, which GitHub's releases/latest redirect names without a token; a full version names its own tag. DOTNET_SYSTEM_GLOBALIZATION_INVARIANT keeps the base free of ICU.
+# pwsh: PowerShell from its GitHub release tarball into /opt/microsoft/powershell/<major>. A major means the newest release, which GitHub's releases/latest redirect names without a token; a full version names its own tag. pwsh does not need ICU, but `ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` would set it for every dotnet process in the final image, not just this one - breaking culture-aware code the image is built to run (HA-2283). A wrapper sets it for pwsh alone.
 ARG PWSH_VERSION=7
 ARG TARGETARCH
-ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 RUN case "$TARGETARCH" in \
       amd64) arch=x64 ;; \
       arm64) arch=arm64 ;; \
@@ -98,7 +97,8 @@ RUN case "$TARGETARCH" in \
  && tar -xzf /tmp/pwsh.tar.gz -C /opt/microsoft/powershell/$major --no-same-owner \
  && rm /tmp/pwsh.tar.gz \
  && chmod +x /opt/microsoft/powershell/$major/pwsh \
- && ln -s /opt/microsoft/powershell/$major/pwsh /usr/local/bin/pwsh
+ && printf '#!/bin/sh\nexec env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "/opt/microsoft/powershell/%s/pwsh" "$@"\n' "$major" > /usr/local/bin/pwsh \
+ && chmod +x /usr/local/bin/pwsh
 """.ReplaceLineEndings("\n") + "\n";
 
     private static readonly string Playwright = """

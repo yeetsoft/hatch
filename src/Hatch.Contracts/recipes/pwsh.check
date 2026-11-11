@@ -1,1 +1,3 @@
 pwsh --version
+# The invariant-globalization switch is pwsh's alone (HA-2283); set image-wide it breaks every other dotnet process.
+[ -z "${DOTNET_SYSTEM_GLOBALIZATION_INVARIANT:-}" ]
