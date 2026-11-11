@@ -88,8 +88,23 @@ const GROUPS: ColorGroup[] = [
   },
   {
     title: 'Fixed',
-    note: 'Black in both themes. It is the absence of picture, not a surface, so it does not follow the palette.',
-    tokens: [{ name: '--letterbox', use: 'Behind a video or image whose aspect is not the frame’s' }],
+    note: 'Black in both themes, or white regardless of theme - neither follows the palette.',
+    tokens: [
+      { name: '--letterbox', use: 'Behind a video or image whose aspect is not the frame’s' },
+      { name: '--on-series', use: 'The series band label, on :root only' },
+    ],
+  },
+  {
+    title: 'Usage ramp',
+    note: 'Three bands, low/mid/high, the same order the battery and the usage bars draw from. Dark lifts the red: today’s --danger is 2.8:1 on the dark --card, too faint for this fill.',
+    tokens: [
+      { name: '--ramp-low', use: 'Plenty left' },
+      { name: '--on-ramp-low', use: 'Ink on --ramp-low' },
+      { name: '--ramp-mid', use: 'Over half spent' },
+      { name: '--on-ramp-mid', use: 'Ink on --ramp-mid' },
+      { name: '--ramp-high', use: 'Nearly spent' },
+      { name: '--on-ramp-high', use: 'Ink on --ramp-high' },
+    ],
   },
   {
     title: 'Console',

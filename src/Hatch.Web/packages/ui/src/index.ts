@@ -30,6 +30,7 @@ export {
   HATCH_MARK_BODY,
   HATCH_MARK_GRADIENT,
   HATCH_ICON_GRADIENT,
+  HATCH_MARK_BOUNDS,
   hatchMarkSvg,
   hatchIconSvg,
 } from './brand/hatchMark';

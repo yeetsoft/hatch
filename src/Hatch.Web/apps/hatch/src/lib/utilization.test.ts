@@ -17,7 +17,6 @@ import {
   usageVars,
   worstRow,
 } from './utilization';
-import { luminance } from '@hatch/ui';
 import type { Utilization, UtilizationLimit } from '../types';
 
 const NOW = new Date('2026-09-07T08:00:00Z');
@@ -189,46 +188,39 @@ describe('sessionLimit', () => {
 
 describe('rampColor', () => {
   it.each([
-    [0, '#1fd65f'],
-    [49, '#1fd65f'],
-    [50, '#f2c500'],
-    [79, '#f2c500'],
-    [80, '#d32f2f'],
-    [100, '#d32f2f'],
+    [0, 'var(--ramp-low)'],
+    [49, 'var(--ramp-low)'],
+    [50, 'var(--ramp-mid)'],
+    [79, 'var(--ramp-mid)'],
+    [80, 'var(--ramp-high)'],
+    [100, 'var(--ramp-high)'],
   ])('is %i%% -> %s', (percent, color) => {
     expect(rampColor(percent)).toBe(color);
   });
 
   it('rounds to the whole percent the badge shows before it picks a band', () => {
-    expect(rampColor(49.4)).toBe('#1fd65f');
-    expect(rampColor(49.6)).toBe('#f2c500');
-    expect(rampColor(79.6)).toBe('#d32f2f');
+    expect(rampColor(49.4)).toBe('var(--ramp-low)');
+    expect(rampColor(49.6)).toBe('var(--ramp-mid)');
+    expect(rampColor(79.6)).toBe('var(--ramp-high)');
   });
 
   it('clamps below 0 and above 100 rather than extrapolating past the ends', () => {
-    expect(rampColor(-10)).toBe('#1fd65f');
-    expect(rampColor(160)).toBe('#d32f2f');
+    expect(rampColor(-10)).toBe('var(--ramp-low)');
+    expect(rampColor(160)).toBe('var(--ramp-high)');
   });
 });
 
 describe('rampInk', () => {
-  it('measures at least 4.5:1 against every colour the ramp can give', () => {
-    for (let percent = 0; percent <= 100; percent++) {
-      const color = rampColor(percent);
-      const ink = rampInk(color);
-      const l = luminance(color);
-      const inkLuminance = ink === '#ffffff' ? 1 : 0;
-      const [hi, lo] = inkLuminance >= l ? [inkLuminance, l] : [l, inkLuminance];
-      const ratio = (hi + 0.05) / (lo + 0.05);
-
-      expect(ratio).toBeGreaterThanOrEqual(4.5);
-    }
+  it('pairs with the same tone as rampColor, so tokens.test.ts is the one place contrast is measured', () => {
+    expect(rampInk(0)).toBe('var(--on-ramp-low)');
+    expect(rampInk(60)).toBe('var(--on-ramp-mid)');
+    expect(rampInk(90)).toBe('var(--on-ramp-high)');
   });
 });
 
 describe('usageVars', () => {
   it('hands the stylesheet the ramp colour and its ink', () => {
-    expect(usageVars(0)).toEqual({ '--usage-color': '#1fd65f', '--usage-ink': rampInk('#1fd65f') });
+    expect(usageVars(0)).toEqual({ '--usage-color': 'var(--ramp-low)', '--usage-ink': 'var(--on-ramp-low)' });
   });
 });
 

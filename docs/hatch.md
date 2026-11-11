@@ -3709,7 +3709,7 @@ AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-
 | `/reports/cumulative-flow` | GET | How many issues sat in each board column over time, read off the same status history as the timeline; a terminal column baselines at zero at the window start and counts only what closed inside it. Also cut by project (`projects`/`projectCounts`), agreeing with `columns`/`counts` on the total at every point. `from`, `to` (default: the 90 days ending now), `project` (repeatable). Open to a key. `400` for an unparseable or inverted bound, or an unknown `project` key — see [the cumulative flow](#the-cumulative-flow) |
 | `/reports/flow` | GET | How work moved through the board in a range: per column how many issues entered, left and dwelled, with median and p90 dwell and how many stand there at the end; and the window's drops, hops, send-backs, questions and sessions, as counts and durations with no per-issue rows. `from`, `to` (default: the 90 days ending now), `projectId`, `type`. Open to a key. `400` for an unparseable or inverted bound and for an unknown `type` or `projectId` — see [the flow](#the-flow) |
 | `/reports/changelog` | GET | Closed top-level epics, bucketed over a range rather than split by day, each bucket's epics aligned to the reader's own clock. `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `bucket` (`hour`, `day`, `week` or `month`; default `day`), `offsetMinutes` (minutes east of UTC, default `0`), `level` (`epic` only, for now), `loose` (`true`/`false`, case-insensitive; closed bugs and parentless stories, with `priority`, at `level=epic`). Open to a key. `400` for an unparseable or inverted bound, an `offsetMinutes` outside -1440..1440, an unrecognised `bucket`, a `level` other than `epic`, an unparseable `loose`, or an unknown `projectId` — see [the changelog report](#the-changelog-report) |
-| `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable). Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, or an unknown `projectId` — see [the activity report](#the-activity-report) |
+| `/reports/activity` | GET | One actor's events in a range, as counts by kind, a per-issue rundown and the newest 500 rows. `actor` (required, matched exactly), `from`, `to` (default: the 14 days ending now), `projectId` (repeatable), `offsetMinutes`, `gap`, `lead`, `window` — also the rate of work as a `series`, the bracketed `sessions` and their `estimate`. Open to a key. `400` for a blank `actor`, an unparseable or inverted bound, an out-of-range `offsetMinutes`, `gap`, `lead` or `window`, or an unknown `projectId` — see [the activity report](#the-activity-report) |
 | `/reports/consumption` | GET | What each issue matching the filter — and everything beneath it — consumed in a window: tokens, notional USD and runner time, plus a time series for a graph. `from`, `to` (default: the 90 days ending now), `type` (one of the five types, or `all`; default `epic`), `sort` (`activity`, `tokens`, `cost` or `time`; default `activity`), `limit` (1-500, default 100, caps the rows only), `offsetMinutes`, `statusId` (repeatable), `projectId` (repeatable). Open to a key. `400`s in order: bound, offset, type, sort, limit, an unknown `statusId` or `projectId` — see [the consumption report](#the-consumption-report) |
 | `/reports/consumption.csv` | GET | The same filter, with no `limit` at all — every matching row as a CSV a spreadsheet opens. Same `from`, `to`, `type`, `sort`, `offsetMinutes`, `statusId`, `projectId`; the same `400`s, in the same order, minus the limit step. Open to a key — see [the consumption report](#the-consumption-report) |
 | `/runners` | GET | Every runner heard from lately, most recent first — see [runners on the board](#runners-on-the-board) |
@@ -5028,19 +5028,29 @@ and the trail bracketed into working sessions with a rough length each. The
 page is `/reports/activity`, a card on the Reports index and no nav entry of
 its own: an actor picker (people first, then keys, each by name), the window
 controls at two weeks and the project control within the tab's scope, a
-headline, a rundown row per issue and the trail beneath, the newest 500
-events with a line saying the listing is cut when `truncated`. The URL
-carries `actor`, `project` and `from`/`to`/`range`; with no `actor` the page
+headline, then the rate of work over time drawn from `series` — one bar per
+bucket, oldest first, with the rolling mean as a line through them and an
+**Events** / **Estimated hours** control that rescales the whole graph — a
+rundown row per issue and the trail beneath, the newest 500 events with a
+line saying the listing is cut when `truncated`. The graph names its axis
+from the answer (the bucket size, the window's two ends in the reader's clock,
+`estimate.windowDays`), says what the line is under it, and has a number field
+for the rolling mean's `window`; the page always sends the reader's
+`offsetMinutes`, so a daily bucket is the reader's day. The URL carries
+`actor`, `project`, `from`/`to`/`range`, `measure` (`events` or `hours`;
+anything else reads as `events`) and `window` (1 to 90; anything else is left
+to the server's own); changing `measure` does not read again, changing `window`
+does. With no `actor` the page
 opens on the signed-in person when the directory lists them, and writes that
 name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
-revoked key's trail still reads. The page writes nothing, and draws neither
-the rate of work nor the bracketed sessions — those are stories of their
-own. `hatch activity [--actor <name>] [--days <n>] [--before <instant>]
-[--project <KEY>] [--json]` prints the rundown as markdown, with `--actor`
-defaulting to the key's owner; it renders neither the series nor the
-sessions, which `hatch api GET /api/hatch/reports/activity?...` still
-reaches. The route is open to a person or to a key.
+revoked key's trail still reads. The page writes nothing to the board, and does not
+yet draw the bracketed sessions — that is a story of its own. `hatch activity
+[--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]`
+prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
+renders neither the series nor the sessions, which `hatch api GET
+/api/hatch/reports/activity?...` still reaches. The route is open to a person or
+to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
 own `Actor`. A name no live person or key answers to still answers, with
