@@ -4700,6 +4700,11 @@ public class RunnersControllerTests
     {
         var connectionString = await ConnectAsync();
         var h = await NewAsync(program: true, connectionString: connectionString);
+        h.CoreDb.ApiKeys.Add(new EfApiKey
+        {
+            Id = h.Caller.Key!.Id, Name = h.Caller.Key.Name, Hash = h.Caller.Key.Hash, Prefix = h.Caller.Key.Prefix, CreatedAt = Now,
+        });
+        await h.CoreDb.SaveChangesAsync();
 
         await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Fresh: true, Where: Runner, Image: "ghcr.io/o/r/hatch-runner:abc123"));
 
