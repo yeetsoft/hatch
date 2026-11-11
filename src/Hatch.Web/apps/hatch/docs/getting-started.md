@@ -200,6 +200,8 @@ that carries them, at `ghcr.io/<owner>/<repo>/hatch-runner`, built from
 --profile runner-image up -d`, with the checkout mounted, as
 [starting it from a named image](the-container-runner#starting-it-from-a-named-image)
 describes. `<owner>` is whoever publishes the image you pull.
+[Project runner images](project-runner-images) has the whole chain, from the
+declaration to keeping the image current.
 
 ## What to read next
 
