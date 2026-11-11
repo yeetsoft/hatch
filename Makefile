@@ -1,5 +1,5 @@
 # What a build of this repository needs - make, dotnet 10, node 22, pwsh 7,
-# Playwright's browsers, PostgreSQL 18 and docker (with compose) - is declared in
+# Playwright's browsers and docker (with compose) - is declared in
 # .hatch/dependencies.json, which the board reads to decide which runners may
 # work development steps here. A tool or version this file starts needing
 # moves there in the same change.
@@ -136,15 +136,6 @@ publish-hatch:
 test-api-db: db
 	HATCH_TEST_DATABASE_URL="Host=localhost;Port=5432;Database=hatch_test;Username=user;Password=password" \
 		dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP)
-
-# `test-api-db` without Docker: scripts/test-pg.sh starts a throwaway Postgres
-# from the server binaries the `postgres` dependency installs, runs the suite
-# against it and removes it. Use this inside a project image (a container with
-# only the checkout mounted has no Docker socket, so no `make db`); use
-# `test-api-db` on a laptop with Docker. The server is a scratch cluster on its
-# own port, never the database `make db` serves the app from.
-test-api-local-db:
-	./scripts/test-pg.sh dotnet test ./src/Hatch.Api.Tests/Hatch.Api.Tests.csproj $(API_TEST_CLAMP)
 
 # Installs what the e2e cases in src/Hatch.Api.Tests need to drive a real
 # browser: Chromium and WebKit, into Playwright's own per-user cache
