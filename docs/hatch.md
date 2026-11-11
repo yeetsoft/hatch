@@ -5044,7 +5044,11 @@ does. With no `actor` the page
 opens on the signed-in person when the directory lists them, and writes that
 name into the URL, so a pasted link never opens on whoever pastes it. An
 `actor` the directory does not list is still sent as given, so a link to a
-revoked key's trail still reads. The page writes nothing to the board, and does not
+revoked key's trail still reads. Past eight weeks a **Calendar** view is
+offered beside **Bars**: one cell a day, Monday-to-Sunday columns, shaded by
+the same chosen measure and the same `peak` as the bars, so the two never
+disagree; the URL carries `view=calendar`, read as `bars` at eight weeks or
+under or on anything else. The page writes nothing to the board, and does not
 yet draw the bracketed sessions — that is a story of its own. There is no CLI subcommand yet — a script reaches the read with `hatch
 api GET /api/hatch/reports/activity?...`. The route is open to a person or
 to a key.
