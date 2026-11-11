@@ -94,7 +94,8 @@ is the whole vocabulary. It states values and paints nothing.
 | Accents | `--primary`, `--danger`, `--success`, `--warn`, each with a `-bg` wash and a `-ink` | Four meanings, not four colors. `--warn` is amber rather than orange so it is not mistaken for `--danger` at a glance down a column |
 | On-accent | `--on-accent`, `--on-accent-wash` | Ink laid *on* an accent fill. It flips with the theme: the dark accents are light blues and corals, and white on them is a ~2.2:1 label nobody can read |
 | Chrome | `--chrome`, `--chrome-end`, `--on-chrome`, `--on-chrome-wash`, `--chrome-glow` | The bar's own ground: dark in dark mode, where the accents are light, so its ink is light in *both* themes. `--on-accent` stays the ink of an accent fill, including a tone chip that happens to sit on the bar |
-| Series | `--series-1` … `--series-8` | The categorical ramp, fixed order, CVD-validated. Not a ramp to improvise on |
+| Usage ramp | `--ramp-low`, `--ramp-mid`, `--ramp-high`, each with an `--on-ramp-*` ink | The budget battery and the usage bars: low/mid/high, the bands `apps/hatch/src/lib/utilization.ts` draws from. Authored per theme like the flow-viz tokens - dark lifts the red, since today's `--danger` is 2.8:1 on the dark `--card` |
+| Series | `--series-1` … `--series-8`, plus `--on-series` | The categorical ramp, fixed order, CVD-validated. Not a ramp to improvise on. `--on-series` is the band label, fixed white on `:root` alone, like `--console*` |
 | Letterbox | `--letterbox` | Black in both themes — it is the absence of picture, not a surface |
 | Motion & elevation | `--transition`, `--shadow`, `--overlay` | Calm: nothing moves unless a person moved it |
 | Scheme | `color-scheme` | Set alongside the palette in every guard. This is what keeps a native `<select>` popup from arriving white in a dark app |
@@ -350,6 +351,11 @@ file. That one file is the geometry's only source: `npm run icons` in
 and the PWA icon set from it, and `brandAssets.test.ts` refuses a drift
 between them. The bar is painted from the chrome tokens, not from
 `--primary`: its own ground diverges from the accent fill the buttons use.
+`<HatchMark>` also takes a `gradient` prop, off by default, that paints the
+egg from `--primary` to `--chrome-end` instead of `currentColor` - the one
+coloured egg licensed inside an app document, the auth app's sign-in page.
+The favicons and icon set stay literal, since they are SVG files fetched
+outside any document, where no token is in scope.
 
 `width` picks how far it runs: `measure` caps it at `--measure` and centres it,
 which every app but hatch leaves at its default. The hatch app passes `full`,
@@ -525,6 +531,13 @@ The properties above stop holding if any of these is done:
 
 - **A literal color, radius, type size or spacing value in an app's CSS.** The
   first one is free and invisible; the tenth is a design pass that has to grep.
+  For colour, `apps/hatch/src/lib/literalColours.test.ts` is that grep, made
+  permanent: it walks every `.css`/`.ts`/`.tsx` file under `apps` and
+  `packages` (test files and `tokens.css` itself excepted) and fails
+  `make test-web`, naming the file and line, on a literal hex, `rgb()` or
+  `hsl()` colour. Its allowlist - the handful of literals that are meant to be
+  there, such as an SVG generated outside any document - sits at the top of
+  that file, each entry a reason.
 - **A token defined only inside a media query.** It vanishes in the other theme
   and nothing says so.
 - **The two dark blocks in `tokens.css` drifting apart.** They are the same

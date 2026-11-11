@@ -356,9 +356,9 @@ describe('getActivityReport', () => {
     return (fetchMock.mock.calls[0] as unknown[])[0];
   };
 
-  it('sends the actor and gap/lead alone when nothing else is set', async () => {
-    expect(await urlOf({ actor: 'Ada', gap: 30, lead: 15 })).toBe(
-      '/api/hatch/reports/activity?actor=Ada&gap=30&lead=15',
+  it('sends the actor, offset and gap/lead alone when nothing else is set', async () => {
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).toBe(
+      '/api/hatch/reports/activity?actor=Ada&offsetMinutes=0&gap=30&lead=15',
     );
   });
 
@@ -368,20 +368,37 @@ describe('getActivityReport', () => {
       from: '2026-10-01T00:00:00.000Z',
       to: '2026-11-01T00:00:00.000Z',
       projectId: [3, 5],
+      offsetMinutes: -300,
+      window: 7,
       gap: 45,
       lead: 20,
     });
 
     expect(url).toBe(
       '/api/hatch/reports/activity?actor=Ada&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
-        '&projectId=3&projectId=5&gap=45&lead=20',
+        '&projectId=3&projectId=5&offsetMinutes=-300&window=7&gap=45&lead=20',
     );
   });
 
-  it('encodes an actor with spaces and an ampersand, and leaves off empty from/to/projectId', async () => {
+  it('encodes an actor with spaces and an ampersand, and leaves off empty fields', async () => {
     expect(
-      await urlOf({ actor: 'Rall & Co runner', from: '', to: null, projectId: [], gap: 30, lead: 15 }),
-    ).toBe('/api/hatch/reports/activity?actor=Rall+%26+Co+runner&gap=30&lead=15');
+      await urlOf({
+        actor: 'Rall & Co runner',
+        from: '',
+        to: null,
+        projectId: [],
+        offsetMinutes: 60,
+        window: null,
+        gap: 30,
+        lead: 15,
+      }),
+    ).toBe('/api/hatch/reports/activity?actor=Rall+%26+Co+runner&offsetMinutes=60&gap=30&lead=15');
+  });
+
+  it('always sends the offset, and the window only when set', async () => {
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 330, gap: 30, lead: 15 })).toContain('offsetMinutes=330');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).not.toContain('window');
+    expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, window: 3, gap: 30, lead: 15 })).toContain('&window=3');
   });
 });
 

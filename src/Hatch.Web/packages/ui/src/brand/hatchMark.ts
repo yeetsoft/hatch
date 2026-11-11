@@ -33,14 +33,17 @@ export const HATCH_MARK_BODY =
     the egg's top-left to its bottom-right at the bar's own 135deg. The blue
     end is the accent's rather than the bar's, a step brighter, so the egg
     pops on a white page where the bar's own ground would sit a little heavy.
-    Literals rather than custom properties because an SVG file is fetched
-    outside any document, where no token is in scope; tokens.css is what
-    these are kept in step with. */
+    Literals here because this file generates the favicons, the root logo and
+    the icon set - SVG assets fetched outside any document, where no token is
+    in scope - and tokens.css is what these are kept in step with.
+    <HatchMark gradient> (../components/HatchMark.tsx) draws inside a document
+    and reads the tokens directly, so it needs no literal of its own. */
 export const HATCH_MARK_GRADIENT: readonly [string, string] = ['#0066cc', '#4b2fc4'];
 
 /** The icon tile's ground: --chrome to --chrome-end, the bar's exact
     gradient, so the home-screen icon and the bar above the board are one
-    colour. The white egg is knocked out of it. */
+    colour. The white egg is knocked out of it. Literal for the same reason
+    HATCH_MARK_GRADIENT is: the icon set is generated outside any document. */
 export const HATCH_ICON_GRADIENT: readonly [string, string] = ['#0052a3', '#4b2fc4'];
 
 /** The egg's own box (the body's extent; the lifted cap rises to y=5). A

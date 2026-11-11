@@ -192,6 +192,24 @@
   --flow-other: #7f1d1d;
   --on-flow-other: #ffffff;
 
+  /* The budget battery and the usage bars - three bands, low/mid/high, same
+     order as RAMP in apps/hatch/src/lib/utilization.ts. Contrast is WCAG,
+     ink on its fill:
+       --on-ramp-low   10.8:1 light, 10.8:1 dark
+       --on-ramp-mid   12.8:1 light, 12.8:1 dark
+       --on-ramp-high   5.0:1 light,  7.6:1 dark
+     Light is admin's existing colours, carried across unchanged. Dark low
+     and mid are restated identically, since both already clear 4.5:1 on the
+     dark --card; dark high is authored, not flipped: today's --danger red
+     is 2.8:1 on the dark --card, so dark high is the house's dark danger
+     instead, with black ink in light and black ink in dark alike. */
+  --ramp-low: #1fd65f;
+  --on-ramp-low: #000000;
+  --ramp-mid: #f2c500;
+  --on-ramp-mid: #000000;
+  --ramp-high: #d32f2f;
+  --on-ramp-high: #ffffff;
+
   /* Ink laid ON an accent fill - a primary button's label, the app header.
      It flips with the theme rather than being `white` forever: the dark
      accents are light blues and corals, and white on them is a ~2.2:1 label
@@ -249,6 +267,13 @@
   --series-7: #4a3aa7;
   --series-8: #e34948;
 
+  /* The gallery's series band label. Fixed like --console*, so declared here
+     and in neither dark block - the series are fixed, so is their label.
+     White on fill ranges 2.2-8.6:1 in light and 3.1-4.9:1 in dark, below
+     4.5:1 on some fills in both themes exactly as today: a gallery index
+     numeral. */
+  --on-series: #ffffff;
+
   /* -------------------------------------------------------------------------
      6. Motion and elevation. Calm: nothing moves unless a person moved it. */
   --transition: 200ms ease;
@@ -301,6 +326,13 @@
     --on-flow-person: #1a1a1a;
     --flow-other: #a8566a;
     --on-flow-other: #ffffff;
+
+    --ramp-low: #1fd65f;
+    --on-ramp-low: #000000;
+    --ramp-mid: #f2c500;
+    --on-ramp-mid: #000000;
+    --ramp-high: #ff6b6b;
+    --on-ramp-high: #000000;
 
     --on-accent: #1a1a1a;
     --on-accent-wash: rgba(0, 0, 0, 0.18);
@@ -357,6 +389,13 @@
   --on-flow-person: #1a1a1a;
   --flow-other: #a8566a;
   --on-flow-other: #ffffff;
+
+  --ramp-low: #1fd65f;
+  --on-ramp-low: #000000;
+  --ramp-mid: #f2c500;
+  --on-ramp-mid: #000000;
+  --ramp-high: #ff6b6b;
+  --on-ramp-high: #000000;
 
   --on-accent: #1a1a1a;
   --on-accent-wash: rgba(0, 0, 0, 0.18);

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, EmptyState, Field, PageHeader, Table } from '@hatch/ui';
 import { getActivityReport, getAssignees, getProjects } from '../api/client';
+import { ActivityGraph } from '../components/ActivityGraph';
 import { Facet } from '../components/Facet';
 import { ProjectsFacet } from '../components/ProjectsFacet';
 import { ReportWindowControls } from '../components/ReportWindowControls';
@@ -27,6 +28,15 @@ import {
   withGap,
   withLead,
 } from '../lib/activity';
+import {
+  MEASURE,
+  WINDOW,
+  parseMeasure,
+  parseWindow,
+  withMeasure,
+  withWindow,
+  type ActivityMeasure,
+} from '../lib/activityGraph';
 import { describe } from '../lib/events';
 import { noProjectWords, reportProjects, withProjects } from '../lib/timeline';
 import { useLoaded } from '../lib/useLoaded';
@@ -41,6 +51,12 @@ interface ActivityReportBodyProps {
   /** `null` when the read was not made: nobody chosen, or no project. */
   report: ActivityReport | null;
   offsetMinutes: number;
+  /** Which of the graph's two measures is drawn. */
+  measure: ActivityMeasure;
+  /** The rolling window the URL names, or `null` for the server's own. */
+  windowDays: number | null;
+  onMeasure: (measure: ActivityMeasure) => void;
+  onWindow: (days: number) => void;
   /** Pinned by tests; the page passes none and gets the reader's. */
   locale?: string;
   /** The Gap/Lead controls, a slot rather than drawn here: this body has a
@@ -49,15 +65,19 @@ interface ActivityReportBodyProps {
 }
 
 /**
- * What the activity report draws, once it has loaded: the headline, a row per
- * issue touched, and the trail beneath as evidence. An empty range is a
- * sentence and not an empty table. Pure of the load and the URL, so a test can
- * render it from props.
+ * What the activity report draws, once it has loaded: the headline, the rate of
+ * work over time, a row per issue touched, and the trail beneath as evidence.
+ * An empty range is a sentence and not an empty table. Pure of the load and the
+ * URL, so a test can render it from props.
  */
 export function ActivityReportBody({
   actor,
   report,
   offsetMinutes,
+  measure,
+  windowDays,
+  onMeasure,
+  onWindow,
   locale,
   sessionControls,
 }: ActivityReportBodyProps) {
@@ -70,6 +90,16 @@ export function ActivityReportBody({
       <p>
         <strong>{headlineWords(report)}</strong>
       </p>
+
+      <h2>Over time</h2>
+      <ActivityGraph
+        report={report}
+        measure={measure}
+        onMeasure={onMeasure}
+        windowDays={windowDays ?? report.estimate.windowDays}
+        onWindow={onWindow}
+        locale={locale}
+      />
 
       <h2>Rundown</h2>
       <Card flush>
@@ -181,9 +211,10 @@ const REPORT_ANSWERS = 'What one person or key did, issue by issue, over a range
  * What one actor did over a range, issue by issue, with the trail beneath.
  *
  * Everything a pasted link needs is in the URL: `actor` (a name), `project`
- * (repeated keys), and the window's `from`/`to`/`range`. With no `actor` the
- * page opens on the signed-in person - and writes that name into the URL, so
- * the link does not open on whoever pastes it. An actor the directory does not
+ * (repeated keys), the window's `from`/`to`/`range`, and the graph's `measure`
+ * (`events` or `hours`) and rolling `window` (days, 1 to 90). With no `actor`
+ * the page opens on the signed-in person - and writes that name into the URL,
+ * so the link does not open on whoever pastes it. An actor the directory does not
  * list is still read, as given: the trail outlives the key it names. Nothing
  * here writes to the board.
  */
@@ -194,12 +225,17 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
 
   const search = params.toString();
 
+  /* What the read depends on: the address without `measure`. Both measures are
+     in the one answer, so pressing a button must not fetch it again - and
+     `search` itself changes with the press. */
+  const readSearch = withMeasure(params, 'events').toString();
+
   const load = useCallback(async (): Promise<ActivityReportView> => {
     /* The read waits on the directory and the project list rather than going
        out beside them: the URL may name no actor, and holds project keys where
        the read takes ids. */
     const [directory, projects] = await Promise.all([getAssignees(), getProjects()]);
-    const query = new URLSearchParams(search);
+    const query = new URLSearchParams(readSearch);
     const { actor } = resolveActor(query, directory);
     const { chosen, narrowed } = reportProjects(query, projects, keys);
 
@@ -212,12 +248,14 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
       from,
       to,
       projectId: narrowed?.map((p) => p.id),
+      offsetMinutes,
+      window: parseWindow(query.get(WINDOW)),
       gap: resolveGap(query),
       lead: resolveLead(query),
     });
 
     return { report, directory, projects };
-  }, [from, to, search, keys]);
+  }, [from, to, offsetMinutes, readSearch, keys]);
 
   const { data, error } = useLoaded<ActivityReportView>(load);
 
@@ -265,6 +303,14 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
   useEffect(() => {
     if (defaulted !== null) setParams(withActor(new URLSearchParams(search), defaulted), { replace: true });
   }, [defaulted, search, setParams]);
+
+  function chooseMeasure(measure: ActivityMeasure) {
+    setParams(withMeasure(params, measure), { replace: true });
+  }
+
+  function chooseWindow(days: number) {
+    setParams(withWindow(params, days), { replace: true });
+  }
 
   function chooseProjects(picked: string[]) {
     const { offered } = reportProjects(params, data?.projects ?? [], keys);
@@ -353,6 +399,10 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
         actor={actor}
         report={data.report}
         offsetMinutes={offsetMinutes}
+        measure={parseMeasure(params.get(MEASURE))}
+        windowDays={parseWindow(params.get(WINDOW))}
+        onMeasure={chooseMeasure}
+        onWindow={chooseWindow}
         sessionControls={sessionControls}
       />
     </div>

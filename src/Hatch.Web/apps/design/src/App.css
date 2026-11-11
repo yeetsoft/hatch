@@ -616,10 +616,11 @@
   justify-content: center;
 }
 
-/* White regardless of theme: it labels the band's own fill, and those eight
-   fills do not change enough between themes to want two answers. */
+/* --on-series: white regardless of theme, since it labels the band's own
+   fill and those eight fills do not change enough between themes to want
+   two answers. */
 .series-band-label {
-  color: #ffffff;
+  color: var(--on-series);
   font-size: var(--t-micro);
   font-weight: 600;
 }

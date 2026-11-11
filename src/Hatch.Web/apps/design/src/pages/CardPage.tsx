@@ -92,7 +92,7 @@ export function CardPage() {
 
       <GallerySection
         title="On both grounds"
-        note="A card is --card on --bg. In dark that is #2d2d2d on #1a1a1a, a step of about 5% lightness plus the hairline — check both here, because a card that vanishes into the page in one theme is the failure this pairing has."
+        note="A card is --card on --bg, a step of about 5% lightness plus the hairline in both themes — check both here, because a card that vanishes into the page in one theme is the failure this pairing has."
       >
         <div className="ground-row">
           <div className="ground">
