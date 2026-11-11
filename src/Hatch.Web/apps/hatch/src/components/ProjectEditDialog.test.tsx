@@ -47,6 +47,9 @@ function project(overrides: Partial<Project>): Project {
     noCodeCloses: false,
     noCodeClosesBy: null,
     noCodeClosesAt: null,
+    runnersWorkContributions: false,
+    runnersWorkContributionsBy: null,
+    runnersWorkContributionsAt: null,
     onePullRequestPolicy: 'optional',
     onePullRequestPolicyBy: null,
     onePullRequestPolicyAt: null,
@@ -305,6 +308,48 @@ describe('ProjectEditDialog', () => {
 
     expect(html).toContain('A no-code declaration does not close the ticket');
     expect(html).not.toContain('A ticket that declared it finished with no code is carried');
+  });
+
+  it('shows an owner the runners-work-contributions checkbox and its hint', () => {
+    const html = render(project({ canAdminister: true }));
+
+    expect(html).toContain('Runners work contributions');
+    expect(html).toContain('Lets runners resolve conflicts and fix failing builds on a contribution');
+  });
+
+  it('shows an owner who set the runners-work-contributions flag, and when', () => {
+    const html = render(
+      project({
+        canAdminister: true,
+        runnersWorkContributions: true,
+        runnersWorkContributionsBy: 'Dana',
+        runnersWorkContributionsAt: '2026-03-09T00:00:00Z',
+      }),
+    );
+
+    expect(html).toContain(`set by Dana on ${new Date('2026-03-09T00:00:00Z').toLocaleDateString()}`);
+  });
+
+  it('shows an owner no set-by line when the runners-work-contributions flag has never been written', () => {
+    const html = render(
+      project({ canAdminister: true, runnersWorkContributionsBy: null, runnersWorkContributionsAt: null }),
+    );
+
+    expect(html).not.toContain('set by');
+  });
+
+  it('shows anyone else a sentence, and no control, where runners work contributions', () => {
+    const html = render(project({ canAdminister: false, runnersWorkContributions: true }));
+
+    expect(html).toContain('Runners work contributions');
+    expect(html).not.toContain('Lets runners resolve conflicts and fix failing builds');
+  });
+
+  it('shows anyone else a sentence where runners do not work contributions', () => {
+    const html = render(project({ canAdminister: false, runnersWorkContributions: false }));
+
+    expect(html).toContain('Runners do not work contributions');
+    expect(html).not.toContain('Lets runners resolve conflicts and fix failing builds');
   });
 
   it('shows an owner the Board heading and the stories-on-epics checkbox', () => {

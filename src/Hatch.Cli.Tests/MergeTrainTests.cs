@@ -9,7 +9,7 @@ namespace Hatch.Cli.Tests;
 /// the order and the count of the calls and not what git or <c>gh</c> does with
 /// them.
 /// </summary>
-public sealed class MergeTrainTests
+public sealed partial class MergeTrainTests
 {
     private const string Review = "/api/hatch/work/review";
     private const int Interval = 60;
@@ -41,6 +41,11 @@ public sealed class MergeTrainTests
         public Rig Board(params ReviewCheckDto[] rows)
         {
             H.Wire.Json("GET", Review, rows);
+
+            // The outside pull request half asks which project binds a checkout's repository; a board that
+            // binds nothing says so, and the half has nothing to file. Tests about it Replace these.
+            H.Wire.Json("GET", "/api/hatch/trunk-builds", Array.Empty<TrunkBuildDto>());
+            H.Wire.Json("GET", "/api/hatch/projects", Array.Empty<ProjectDto>());
             foreach (var row in rows) H.Wire.Json("PUT", Put(row.Key), Fixtures.MergeCheck());
             H.Runtime.Readout.SetDrives(rows.Select(r => r.ProjectKey).Distinct().ToList());
             return this;
@@ -802,6 +807,37 @@ public sealed class MergeTrainTests
         Assert.Contains("hatch: AER-1 branch brought current with main", rig.H.Say.Said);
         var mark = Assert.Single(rig.H.Wire.To("PUT", BroughtCurrentPath("AER-1"))).Read<BroughtCurrentRequest>();
         Assert.Equal(new BroughtCurrentRequest("main", Trunk, "test:/checkout"), mark);
+    }
+
+    [Fact]
+    public async Task A_contributions_row_is_updated_at_its_recorded_branchs_sha_with_no_branch_named_for_its_key()
+    {
+        using var rig = new Rig().Board(UpdateRow("HA-2300", "ar-77-something") with { Branch = "ar-77-something" });
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("ar-77-something", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip, Number: 7);
+        rig.H.Forge.UpdateAnswer = new(UpdateOutcomes.Updated, null);
+        rig.H.Wire.Json("POST", Comments("HA-2300"), Fixtures.Comment());
+        rig.H.Wire.Reply("PUT", BroughtCurrentPath("HA-2300"), HttpStatusCode.NoContent);
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, 7L, Tip)], rig.H.Forge.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task A_contributions_row_is_merged_at_its_recorded_branchs_sha_with_no_branch_named_for_its_key()
+    {
+        using var rig = new Rig().Board(MergeRow("HA-2300", "ar-77-something", PrUrl) with { Branch = "ar-77-something" });
+        rig.H.Workspace.HeadsFor[rig.H.Root] = Heads(branches: ("ar-77-something", Tip));
+        rig.H.Forge.PullRequestAnswer = new(PullRequestStates.Open, null, HeadSha: Tip);
+        rig.H.Forge.MergeAnswer = new(true, null);
+        rig.H.Wire.Json("POST", Merged("HA-2300"), Fixtures.Issue("HA-2300") with { StatusId = 4 });
+        rig.H.Wire.Json("GET", Statuses, new[] { Fixtures.Status(4, "Done") });
+        rig.H.Wire.Json("POST", Comments("HA-2300"), Fixtures.Comment());
+
+        await rig.RunAsync();
+
+        Assert.Equal([(rig.H.Root, PrUrl, Tip)], rig.H.Forge.MergeCalls);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Modules.Hatch;
+using Hatch.Api.Tests.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,8 @@ public class ReportsControllerActivityTests
         public required ReportsController Reports { get; init; }
         public required int ProjectId { get; init; }
         public required int StatusId { get; init; }
+        public required StubActorDirectory Actors { get; init; }
+        public required StubAuthService Keys { get; init; }
     }
 
     private static async Task<Harness> NewAsync()
@@ -36,11 +39,16 @@ public class ReportsControllerActivityTests
         db.Add(status);
         await db.SaveChangesAsync();
 
+        var actors = new StubActorDirectory();
+        var keys = new StubAuthService();
+
         return new Harness
         {
             Db = db,
+            Actors = actors,
+            Keys = keys,
             Reports = new ReportsController(
-                db, new StubActorDirectory(), TestClaims.With(), new FakeTimeProvider(Now)),
+                db, actors, TestClaims.With(), new FakeTimeProvider(Now), keys),
             ProjectId = project.Id,
             StatusId = status.Id,
         };
@@ -81,6 +89,26 @@ public class ReportsControllerActivityTests
         h.Db.IssueEvents.Add(new EfHatchIssueEvent
         {
             IssueId = issueId, Actor = actor, Kind = kind, Payload = payload, At = at,
+        });
+        await h.Db.SaveChangesAsync();
+    }
+
+    /// <summary>A person with one key, the key's events typed under its own name.</summary>
+    private static Guid APersonWithAKey(Harness h, string person, string key)
+    {
+        var owner = h.Actors.AddPerson(person);
+        h.Keys.Keys.Add(new EfApiKey
+        {
+            Name = key, Prefix = "hatch_ak_xxxx", Hash = [1], CreatedAt = Now, OwnerPersonId = owner.Id,
+        });
+        return owner.Id;
+    }
+
+    private static async Task SessionAsync(Harness h, long issueId, DateTimeOffset from, DateTimeOffset to)
+    {
+        h.Db.WorkLog.Add(new EfHatchWorkLogEntry
+        {
+            IssueId = issueId, SessionId = Guid.NewGuid().ToString(), StartedAt = from, EndedAt = to, DurationMs = 1, CreatedAt = to,
         });
         await h.Db.SaveChangesAsync();
     }
@@ -209,6 +237,79 @@ public class ReportsControllerActivityTests
         Assert.Empty(dto.Issues);
         Assert.Empty(dto.Events);
         Assert.False(dto.Truncated);
+    }
+
+    // ---- Include my keys ----
+
+    [Fact]
+    public async Task IncludeKeys_CountsOnlyWhatAHandTypedUnderThePersonsKey_MarkedViaKey()
+    {
+        var h = await NewAsync();
+        APersonWithAKey(h, "ann", "ann-laptop");
+        var issue = await AddIssueAsync(h);
+        var other = await AddIssueAsync(h);
+        var day = Now.AddDays(-2);
+
+        await EventAsync(h, issue.Id, "ann", day);
+        // The loop's night: a claim, work inside it, a session recorded after.
+        await EventAsync(h, issue.Id, "ann-laptop", day.AddHours(1), "claim_taken");
+        await EventAsync(h, issue.Id, "ann-laptop", day.AddHours(2), "status_changed");
+        await EventAsync(h, issue.Id, "ann-laptop", day.AddHours(3), "claim_released");
+        await SessionAsync(h, issue.Id, day.AddHours(1), day.AddHours(3));
+        // A hand: after the release, outside the session.
+        await EventAsync(h, issue.Id, "ann-laptop", day.AddHours(5), "commented");
+        // A hand on an issue the loop never touched.
+        await EventAsync(h, other.Id, "ann-laptop", day.AddHours(6), "dependency_added");
+        // Somebody else's key.
+        await EventAsync(h, other.Id, "bob-laptop", day.AddHours(7), "commented");
+
+        var without = Value(await h.Reports.GetActivityReport("ann", null, null, null, ct: default));
+        var with = Value(await h.Reports.GetActivityReport("ann", null, null, null, includeKeys: true, ct: default));
+
+        Assert.Equal(1, without.Total);
+        Assert.All(without.Events, e => Assert.Null(e.ViaKey));
+
+        Assert.Equal(3, with.Total);
+        Assert.Equal(2, with.Events.Count(e => e.ViaKey == "ann-laptop"));
+        Assert.All(with.Events, e => Assert.Equal("ann", e.Actor));
+        Assert.Equal(2, with.Issues.Count);
+        Assert.NotEmpty(with.Sessions);
+        Assert.Equal(3, with.Series.Sum(p => p.Events));
+    }
+
+    [Fact]
+    public async Task IncludeKeys_WhenTheActorIsAKey_ChangesNothing()
+    {
+        var h = await NewAsync();
+        APersonWithAKey(h, "ann", "ann-laptop");
+        var issue = await AddIssueAsync(h);
+        await EventAsync(h, issue.Id, "ann-laptop", Now.AddDays(-1), "commented");
+
+        var dto = Value(await h.Reports.GetActivityReport(
+            "ann-laptop", null, null, null, includeKeys: true, ct: default));
+
+        Assert.Equal(1, dto.Total);
+        Assert.All(dto.Events, e => Assert.Null(e.ViaKey));
+    }
+
+    [Fact]
+    public async Task IncludeKeys_StillCapsTheRows_AndSaysTruncated()
+    {
+        var h = await NewAsync();
+        APersonWithAKey(h, "ann", "ann-laptop");
+        var issue = await AddIssueAsync(h);
+        for (var i = 0; i < ActivityController.MaxEvents + 1; i++)
+            h.Db.IssueEvents.Add(new EfHatchIssueEvent
+            {
+                IssueId = issue.Id, Actor = "ann-laptop", Kind = "commented", At = Now.AddDays(-2).AddSeconds(i),
+            });
+        await h.Db.SaveChangesAsync();
+
+        var dto = Value(await h.Reports.GetActivityReport("ann", null, null, null, includeKeys: true, ct: default));
+
+        Assert.True(dto.Truncated);
+        Assert.Equal(ActivityController.MaxEvents, dto.Events.Count);
+        Assert.Equal(ActivityController.MaxEvents + 1, dto.Total);
     }
 
     [Fact]

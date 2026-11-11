@@ -252,7 +252,7 @@ public sealed class Lifecycle(Runtime runtime)
 
             foreach (var (path, baseBranch) in chosen.Resets)
             {
-                var left = runtime.Workspace(path, baseBranch).Leave(branchKey, pullRequest);
+                var left = runtime.Workspace(path, baseBranch).Leave(branchKey, pullRequest, Branches.RecordedFor(work));
                 var where = chosen.Resets.Count > 1 ? $"{Path.GetFileName(path.TrimEnd('/', '\\'))}: " : "";
                 lines.AddRange(left.Notes.Select(n => $"- {where}{n}"));
 
@@ -573,9 +573,9 @@ public sealed class Lifecycle(Runtime runtime)
             var stored = merges.FirstOrDefault(c => canonical is not null ? c.Canonical == canonical : c.Remote == remote)
                 ?? (work.Repositories.Count == 0 ? merges.FirstOrDefault() : null);
 
-            if (heads.BranchFor(key, stored) is not { } branch)
+            if (heads.BranchFor(key, stored, Branches.RecordedFor(work)) is not { } branch)
             {
-                var candidates = heads.Candidates(key);
+                var candidates = heads.Candidates(key, Branches.RecordedFor(work));
                 runtime.Say.Complain(candidates.Count > 1
                     ? $"hatch: {key} has {candidates.Count} branches on origin in {name} ({string.Join(", ", candidates)}) and its merge check names none of them, so its build was not read"
                     : $"hatch: {key} - origin's branch for it could not be read in {name}, so its build was not checked");
@@ -676,7 +676,7 @@ public sealed class Lifecycle(Runtime runtime)
                 continue;
             }
 
-            if (workspace.Check(key) is not { } verdict)
+            if (workspace.Check(key, recordedBranch: Branches.RecordedFor(work)) is not { } verdict)
             {
                 unknown = true;
                 continue;

@@ -190,6 +190,28 @@ public static class Branches
     }
 
     /// <summary>
+    /// Whether a branch is named for an issue of any of these projects: <c>&lt;key&gt;-&lt;digits&gt;</c>, then
+    /// the end or a hyphen. Built on <see cref="Names"/>, so the hyphen anchoring is the one rule - <c>ha-31-x</c>
+    /// is HA's, and <c>hax-3</c> and <c>ha-x</c> are not.
+    /// </summary>
+    public static bool BelongsToProject(string branch, IEnumerable<string> projectKeys)
+    {
+        foreach (var project in projectKeys)
+        {
+            var prefix = project.ToLowerInvariant() + "-";
+            if (!branch.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var digits = 0;
+            while (prefix.Length + digits < branch.Length && char.IsAsciiDigit(branch[prefix.Length + digits])) digits++;
+            if (digits == 0) continue;
+
+            if (Names(branch, $"{project}-{branch.Substring(prefix.Length, digits)}")) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// <c>ha-31-deterministic-lifecycle-elements</c>: the key, then the title
     /// as words. Cut at a word, and never ending in a hyphen.
     /// </summary>
@@ -261,6 +283,14 @@ public static class Branches
     /// </summary>
     public static bool IsShared(WorkDto work) =>
         work.BranchKey is { Length: > 0 } key && !key.Equals(work.Issue.Key, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The head branch the issue's contribution recorded, which stands in for a
+    /// branch named for the key - the issue's own record only: a task on its
+    /// story's shared branch checks the story's branch, whatever it has recorded.
+    /// </summary>
+    public static string? RecordedFor(WorkDto work) =>
+        IsShared(work) ? null : work.Issue.Contribution?.HeadBranch is { Length: > 0 } head ? head : null;
 
     /// <summary>The key every git call for this dispatch names its branch by - the issue's own, unless it shares.</summary>
     public static string KeyOf(WorkDto work) => IsShared(work) ? work.BranchKey! : work.Issue.Key;

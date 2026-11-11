@@ -225,6 +225,28 @@ public sealed class ActivityCommandTests
     }
 
     [Fact]
+    public async Task Include_keys_asks_the_endpoint_for_the_actors_keys_too()
+    {
+        using var h = AHarness();
+        h.Wire.Json("GET", Route, AReport(0, [], []));
+
+        Assert.Equal(0, await new ActivityCommand(h.Cli).RunAsync(["--actor", "riker", "--include-keys"], default));
+
+        Assert.EndsWith("&includeKeys=true", Query(h));
+    }
+
+    [Fact]
+    public async Task Without_include_keys_the_query_does_not_mention_it()
+    {
+        using var h = AHarness();
+        h.Wire.Json("GET", Route, AReport(0, [], []));
+
+        Assert.Equal(0, await new ActivityCommand(h.Cli).RunAsync(["--actor", "riker"], default));
+
+        Assert.DoesNotContain("includeKeys", Query(h));
+    }
+
+    [Fact]
     public async Task A_project_key_nobody_has_is_refused_by_name_and_the_activity_is_never_asked()
     {
         using var h = AHarness();

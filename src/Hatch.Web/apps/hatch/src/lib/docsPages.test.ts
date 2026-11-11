@@ -22,7 +22,7 @@ describe('the pages split out of hatch-at-home.md', () => {
 });
 
 describe('the links retargeted when the document was split', () => {
-  const cli = '/apps/hatch/docs/one-increment-and-the-loop';
+  const cli = '/docs/one-increment-and-the-loop';
   const gettingStarted = renderDocs(docPage(DOC_PAGES, 'getting-started')!.body).html;
 
   it.each([
@@ -61,7 +61,7 @@ describe('hatch-at-home.md, the pointer', () => {
   });
 
   it('points at the docs and at the CLAUDE.md block page', () => {
-    expect(source).toContain('/apps/hatch/docs/');
+    expect(source).toContain('/docs/');
     expect(source).toContain('the-claudemd-block');
   });
 

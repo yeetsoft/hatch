@@ -31,7 +31,8 @@ public static class MergeWork
         string? mergeStateSha,
         DateTimeOffset now,
         string? reviewColumn = null,
-        DateTimeOffset? pullRequestHeadSince = null)
+        DateTimeOffset? pullRequestHeadSince = null,
+        string? recordedBranch = null)
     {
         if (pullRequestClosedAt is not null)
             return Hold("its pull request was closed without merging");
@@ -51,7 +52,7 @@ public static class MergeWork
             return Hold("more than one branch on origin is named for it - delete the ones that are not its branch");
 
         if (counted.All(v => v.Verdict == MergeVerdicts.None))
-            return Hold("no branch on origin is named for it");
+            return Hold(ReviewWork.NoBranchOnOrigin(recordedBranch));
 
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;

@@ -130,14 +130,16 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// <c>activity</c> draws no series and no sessions, so the route's own defaults do.
     /// </summary>
     public Task<ActivityReportDto?> ActivityAsync(
-        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, CancellationToken ct) =>
-        Client.GetAsync<ActivityReportDto>(ActivityPath(actor, from, to, projectId), ct);
+        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, bool includeKeys, CancellationToken ct) =>
+        Client.GetAsync<ActivityReportDto>(ActivityPath(actor, from, to, projectId, includeKeys), ct);
 
     /// <summary>The query string <see cref="ActivityAsync"/> sends - named out so a raw <c>--json</c> read can send the same one.</summary>
-    public static string ActivityPath(string actor, DateTimeOffset from, DateTimeOffset to, int? projectId)
+    public static string ActivityPath(
+        string actor, DateTimeOffset from, DateTimeOffset to, int? projectId, bool includeKeys = false)
     {
         var projectQ = projectId is { } id ? $"&projectId={id}" : "";
-        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}";
+        var keysQ = includeKeys ? "&includeKeys=true" : "";
+        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}{keysQ}";
     }
 
     private static string Instant(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
@@ -531,6 +533,29 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<IReadOnlyList<IssueCardDto>> UnderAsync(string ancestorKey, CancellationToken ct) =>
         await Client.GetAsync<List<IssueCardDto>>(
             $"/api/hatch/issues?ancestorKey={Uri.EscapeDataString(ancestorKey)}", ct) ?? [];
+
+    /// <summary>The issues that record <paramref name="url"/> as their pull request, or as their contribution's - at most one, but a list, as the route is.</summary>
+    public async Task<IReadOnlyList<IssueCardDto>> PullRequestRecordedAsync(string url, CancellationToken ct) =>
+        await Client.GetAsync<List<IssueCardDto>>(
+            $"/api/hatch/issues?pullRequestUrl={Uri.EscapeDataString(url)}", ct) ?? [];
+
+    /// <summary>
+    /// Records that an issue came from outside - see <see cref="ContributionRequest"/>. A <c>409</c> is not a
+    /// fault, the same as <see cref="MergedAsync"/> documents: somebody else holds this pull request, or this
+    /// issue holds another, and the caller says so and walks on rather than treating it as a refusal.
+    /// </summary>
+    public async Task<(IssueDto? Issue, string? Conflict)> ContributionAsync(
+        string key, ContributionRequest request, CancellationToken ct)
+    {
+        var path = $"/api/hatch/issues/{key}/contribution";
+        var answer = await Client.Send(HttpMethod.Put, path, request, ct);
+
+        if (answer.Conflict) return (null, answer.Sentence);
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
+        if (answer.Body.Trim().Length == 0) return (null, null);
+
+        return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
+    }
 
     public Task<CommentDto?> CommentAsync(string key, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>($"/api/hatch/issues/{key}/comments", new CommentCreateRequest(body), ct);

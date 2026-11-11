@@ -386,8 +386,8 @@ public sealed class FakeWorkspace
     /// <summary>What <c>Leave</c> hands back as the verdict on origin's branch, per checkout.</summary>
     public Dictionary<string, Verdict?> FoundFor { get; } = [];
 
-    /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced.</summary>
-    public List<(string Path, string Key, bool Sync)> Left { get; } = [];
+    /// <summary>Each <c>Leave</c>, with whether the pull request was to be synced and the recorded branch it was given.</summary>
+    public List<(string Path, string Key, bool Sync, string? RecordedBranch)> Left { get; } = [];
 
     /// <summary>What each <c>Enter</c> was given as the answer to a which-branch question.</summary>
     public List<string?> Answers { get; } = [];
@@ -465,10 +465,10 @@ public sealed class FakeWorkspace
             return owner.PresenceFor.GetValueOrDefault((path, key));
         }
 
-        public Leaving Leave(string key, bool syncPullRequest)
+        public Leaving Leave(string key, bool syncPullRequest, string? recordedBranch = null)
         {
             owner.Calls.Add($"leave {path}");
-            owner.Left.Add((path, key, syncPullRequest));
+            owner.Left.Add((path, key, syncPullRequest, recordedBranch));
             return new Leaving(path, [.. owner.LeaveNotes], owner.FoundFor.GetValueOrDefault(path));
         }
 
@@ -490,15 +490,15 @@ public sealed class FakeWorkspace
             return (sha, owner.OnTrunkFor.GetValueOrDefault((path, sha)));
         }
 
-        public Verdict? Check(string key, string? playbookFilePath = null)
+        public Verdict? Check(string key, string? playbookFilePath = null, string? recordedBranch = null)
         {
-            owner.Calls.Add($"check {path} {key}");
+            owner.Calls.Add($"check {path} {key}{(recordedBranch is null ? "" : $" {recordedBranch}")}");
             return owner.Verdicts.GetValueOrDefault((path, key));
         }
 
-        public Synced Sync(string key)
+        public Synced Sync(string key, string? recordedBranch = null)
         {
-            owner.Calls.Add($"sync {path} {key}");
+            owner.Calls.Add($"sync {path} {key}{(recordedBranch is null ? "" : $" {recordedBranch}")}");
             return owner.SyncedFor.GetValueOrDefault((path, key), new Synced(SyncOutcome.Current));
         }
 
@@ -590,6 +590,15 @@ public sealed class FakeForge
 
     private readonly Dictionary<string, int> _pullRequestCalls = [];
 
+    /// <summary>Every author association asked for, as <c>path number</c>, in order.</summary>
+    public List<string> AssociationReads { get; } = [];
+
+    /// <summary>What every author association read answers, unless <see cref="AssociationFor"/> says otherwise.</summary>
+    public AssociationAnswer AssociationAnswer { get; set; } = new("MEMBER", null);
+
+    /// <summary>What the association read of one pull request's number answers.</summary>
+    public Dictionary<long, AssociationAnswer> AssociationFor { get; } = [];
+
     /// <summary>Every merge asked for, with the sha it carried, in order.</summary>
     public List<(string Path, string Url, string Sha)> MergeCalls { get; } = [];
 
@@ -675,6 +684,12 @@ public sealed class FakeForge
         {
             owner.PullRequestListReads.Add(path);
             return Task.FromResult(owner.PullRequestList);
+        }
+
+        public Task<AssociationAnswer> ReadAssociationAsync(long number, CancellationToken ct)
+        {
+            owner.AssociationReads.Add($"{path} {number}");
+            return Task.FromResult(owner.AssociationFor.GetValueOrDefault(number, owner.AssociationAnswer));
         }
 
         public Task<MergeAnswer> MergeAsync(string url, string sha, CancellationToken ct)

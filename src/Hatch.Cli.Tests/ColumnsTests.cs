@@ -70,4 +70,55 @@ public sealed class ColumnsTests
             "no column called \"elsewhere\" - there is To Do, Done",
             Columns.Missing(Board("To Do", "Done"), "elsewhere"));
     }
+
+    [Fact]
+    public void AwaitingReview_IsTheColumnLeftOfTheFirstTerminalOne()
+    {
+        var statuses = new List<StatusDto>
+        {
+            Fixtures.Status(4, "Done", terminal: true), Fixtures.Status(1, "Backlog"), Fixtures.Status(3, "In Review"),
+            Fixtures.Status(2, "In Progress"),
+        };
+
+        Assert.Equal("In Review", Columns.AwaitingReview(statuses)?.Name);
+    }
+
+    [Fact]
+    public void AwaitingReview_StepsLeftOverProtectedColumns_AndOverNothingElse()
+    {
+        var statuses = new List<StatusDto>
+        {
+            Fixtures.Status(1, "Backlog"), Fixtures.Status(2, "In Review"),
+            Fixtures.Status(3, "Approved") with { IsProtected = true },
+            Fixtures.Status(4, "Merging") with { IsProtected = true },
+            Fixtures.Status(5, "Done", terminal: true),
+        };
+
+        Assert.Equal("In Review", Columns.AwaitingReview(statuses)?.Name);
+    }
+
+    [Fact]
+    public void AwaitingReview_LeavesDeferredColumnsOffTheBoard()
+    {
+        var statuses = new List<StatusDto>
+        {
+            Fixtures.Status(1, "Backlog"), Fixtures.Status(2, "In Review"), Fixtures.Status(3, "Parked", deferred: true),
+            Fixtures.Status(4, "Done", terminal: true),
+        };
+
+        Assert.Equal("In Review", Columns.AwaitingReview(statuses)?.Name);
+    }
+
+    [Fact]
+    public void AwaitingReview_IsTheRightmostColumn_WhereNoneIsTerminal()
+    {
+        Assert.Equal("In Review", Columns.AwaitingReview(Board("Backlog", "In Progress", "In Review"))?.Name);
+    }
+
+    [Fact]
+    public void AwaitingReview_IsNull_WhereNothingIsLeftOfTheTerminalColumn()
+    {
+        Assert.Null(Columns.AwaitingReview([Fixtures.Status(1, "Done", terminal: true)]));
+        Assert.Null(Columns.AwaitingReview([]));
+    }
 }

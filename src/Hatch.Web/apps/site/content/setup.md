@@ -810,13 +810,13 @@ time the board answers with HTTP 200, and `waiting` if it never did. In each,
 macOS and Linux, and Git Bash on Windows:
 
 ```
-up=0; for i in $(seq 1 18); do code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:<port>/apps/hatch/); [ "$code" = 200 ] && { up=1; break; }; sleep 5; done; [ "$up" = 1 ] && echo up || echo waiting
+up=0; for i in $(seq 1 18); do code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:<port>/); [ "$code" = 200 ] && { up=1; break; }; sleep 5; done; [ "$up" = 1 ] && echo up || echo waiting
 ```
 
 Windows PowerShell:
 
 ```
-$up = $false; for ($i = 0; $i -lt 18; $i++) { $c = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://localhost:<port>/apps/hatch/).StatusCode } catch { 0 }; if ($c -eq 200) { $up = $true; break }; Start-Sleep 5 }; if ($up) { 'up' } else { 'waiting' }
+$up = $false; for ($i = 0; $i -lt 18; $i++) { $c = try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 http://localhost:<port>/).StatusCode } catch { 0 }; if ($c -eq 200) { $up = $true; break }; Start-Sleep 5 }; if ($up) { 'up' } else { 'waiting' }
 ```
 
 If a slice prints `waiting`, run another, until ten minutes have passed in

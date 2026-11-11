@@ -69,6 +69,7 @@ import type {
   ProjectStoriesOnEpicsWriteRequest,
   ProjectCheckApprovesMergeWriteRequest,
   ProjectNoCodeClosesWriteRequest,
+  ProjectRunnersWorkContributionsWriteRequest,
   ProjectOnePrPolicyWriteRequest,
   ProjectRepoSourcedWriteRequest,
   ProjectRepository,
@@ -178,6 +179,9 @@ export const putProjectCheckApprovesMerge = (id: number, request: ProjectCheckAp
 /** Sets whether a no-code declaration closes the ticket. */
 export const putProjectNoCodeCloses = (id: number, request: ProjectNoCodeClosesWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/no-code-closes`, { method: 'PUT', ...asJson(request) });
+/** Sets whether runners work a contribution's branch. */
+export const putProjectRunnersWorkContributions = (id: number, request: ProjectRunnersWorkContributionsWriteRequest) =>
+  fetchJson<Project>(`/api/hatch/projects/${id}/runners-work-contributions`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
   fetchJson<Project>(`/api/hatch/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });
@@ -842,7 +846,7 @@ export interface CumulativeFlowQuery {
     server's own fourteen days stand; `projectId` is repeated once per id.
     `offsetMinutes` is always sent, so daily buckets align to the reader's
     midnight and not UTC's; `window` only when set, so the server's own default
-    stands. */
+    stands; `includeKeys` only when true. */
 export const getActivityReport = (query: ActivityReportQuery) => {
   const params = new URLSearchParams();
   params.set('actor', query.actor);
@@ -853,6 +857,7 @@ export const getActivityReport = (query: ActivityReportQuery) => {
   if (query.window != null) params.set('window', String(query.window));
   params.set('gap', String(query.gap));
   params.set('lead', String(query.lead));
+  if (query.includeKeys === true) params.set('includeKeys', 'true');
   return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
 };
 
@@ -871,6 +876,8 @@ export interface ActivityReportQuery {
   /** Minutes added to every session's estimated length - always resolved by
       the caller. */
   lead: number;
+  /** Also count what a hand typed under the actor's own keys; sent only when true. */
+  includeKeys?: boolean;
 }
 
 /** Closed epics bucketed over a window. Each parameter is set only when it

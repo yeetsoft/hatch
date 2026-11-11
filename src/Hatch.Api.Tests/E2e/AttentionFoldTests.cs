@@ -73,7 +73,7 @@ public class AttentionFoldTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", context => StubAttention(context, busy));
+            await harness.OpenAsync(deadline, baseUrl, "/", context => StubAttention(context, busy));
             await harness.WaitForTopBarAsync(deadline);
 
             await harness.ClickAsync(deadline, E2eHarness.AttentionSelector);

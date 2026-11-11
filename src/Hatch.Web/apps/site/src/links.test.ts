@@ -5,17 +5,12 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { APP_BASENAME } from '../../hatch/src/lib/basename'
+import { isBoardPath } from '../../hatch/src/lib/basename'
 import { PENDING_PAGES } from '../vite-plugin-docs'
 import { buildSite } from './testing/buildSite'
 import { attr, attrValues, hrefs, ids, tagsOf, withoutComments } from './testing/html'
 
 type Site = Awaited<ReturnType<typeof buildSite>>
-
-// README.md: this app is static output on its own host, not served by Hatch.Api -
-// so a docs link into the hatch app itself (left alone by resolveDocHref) names a
-// file on a different host's build, never this one's.
-const OTHER_APP = `${APP_BASENAME}/`
 
 let site: Site
 
@@ -23,10 +18,14 @@ beforeAll(async () => {
   site = await buildSite()
 })
 
-/** A root-relative ref that names a file this build writes: not another app's,
-    and not a page HA-663 has yet to write. */
+/** A root-relative ref that names a file this build writes: not another app's
+    (this app is static output on its own host, not served by Hatch.Api - a
+    board-app link, left alone by resolveDocHref, names a file on a different
+    host's build, never this one's; docs/ is excluded from that check rather
+    than from this one, since it is this site's own route too, resolved by
+    docHref), and not a page HA-663 has yet to write. */
 function isOwnFile(ref: string): boolean {
-  if (ref.startsWith(OTHER_APP)) return false
+  if (!ref.startsWith('/docs/') && isBoardPath(ref)) return false
   const slug = ref.match(/^\/docs\/([a-z0-9-]+)\//)?.[1]
   return slug === undefined || !PENDING_PAGES.has(slug)
 }

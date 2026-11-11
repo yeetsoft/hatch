@@ -70,7 +70,7 @@ public class NoCodeFieldTests(ITestOutputHelper output)
             var (clean, withPullRequest) = await deadline.BoundAsync("filing two tasks", () => FileTwoTasksAsync(baseUrl));
 
             // (1) Save a reason on the ticket with no pull request.
-            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/issues/{clean}");
+            await harness.OpenAsync(deadline, baseUrl, $"/issues/{clean}");
             await harness.WaitForVisibleAsync(deadline, ".hatch-issue-page");
             await harness.ClickAsync(deadline, Toggle);
             await harness.WaitForVisibleAsync(deadline, Field);

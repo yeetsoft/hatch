@@ -458,6 +458,19 @@ wait for a runner that offers fable` or `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`. A server too old to send the list
 prints nothing extra.
 
+Run inside a checkout of a bound repository, with neither `--mine` nor an
+ancestor key, `queue` then lists each open pull request there that no issue
+records and that the project's driver would pass over rather than file as an
+issue in review, one line each, and why: `pull request #50 (<url>) is not
+filed - it is a draft`. The reasons are too young (under ten minutes), a draft,
+a fork, a branch named for an issue of any project on the board, a base other
+than the bound one, and an author who is not a member, owner or collaborator
+([the merge train](review-pull-requests-and-the-merge-train#the-merge-train)
+has the filing itself). They print after the empty-board sentence too. It is
+best effort and files nothing: a board or a forge that will not say prints
+nothing extra, and it reads the author's relationship to the repository only
+for a pull request that passes every other check.
+
 `queue` asks the board which live runners could take each clear row right
 now - `next` and `work` do not - so a row's own line can end with a second
 clause in parentheses: `only host:/a can take this` when just one runner
@@ -487,7 +500,7 @@ Reports.
 ### activity
 
 ```
-hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--json]
+hatch activity [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]
 ```
 
 One actor's rundown, as markdown, for pasting into a check-in somewhere else:
@@ -506,6 +519,10 @@ sessions.
 - `--before <instant>` moves the window back to end at that instant, such as
   `2026-09-12T17:00:00Z`; one that is not an instant is refused. Now by default.
 - `--project <KEY>` narrows it to one project, and refuses a key nobody has.
+- `--include-keys` also counts what a hand typed under the keys the actor owns,
+  when the actor is a person. It is a heuristic: an event under the key counts
+  unless a work-log session of that issue spans it or the key holds an unreleased
+  claim on it, in which case it is taken as the loop's.
 - `--json` prints the endpoint's own answer and nothing else.
 
 ### runners

@@ -88,7 +88,7 @@ public class IssueScopeNoticeTests(ITestOutputHelper output)
             var insideProject = ProjectOf(inside);
 
             // Out of scope: the tab is scoped to the other project.
-            var path = $"/apps/hatch/issues/{outside}?scope={insideProject}";
+            var path = $"/issues/{outside}?scope={insideProject}";
             await harness.OpenAsync(deadline, baseUrl, path);
             await harness.WaitForVisibleAsync(deadline, ".hatch-issue-page");
             await harness.WaitForVisibleAsync(deadline, Notice);
