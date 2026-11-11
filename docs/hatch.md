@@ -299,7 +299,7 @@ query string intact (`Program.cs`).
 **The installed app.** `manifest.webmanifest`
 (`src/Hatch.Web/apps/hatch/public/manifest.webmanifest`) scopes itself to the
 whole origin, `/`, and starts there too, because sign-in lives outside it
-(`/apps/auth/`) and because a ticket link copied out of the installed app
+(`/auth/`) and because a ticket link copied out of the installed app
 carries no prefix at all — a narrower scope would open behind a browser bar
 instead of staying in the installed app's own window. There is no service worker: Hatch's deploy story
 depends on the browser revalidating `index.html` on every load, and a
@@ -333,12 +333,15 @@ having in one place.
 [`HatchContext`](../src/Hatch.Api/Modules/Hatch/HatchContext.cs) owns its own
 migration history, applied from its own
 [`Modules/Hatch/Migrations/`](../src/Hatch.Api/Modules/Hatch/Migrations/)
-folder against its own `__EFMigrationsHistory` rows - distinct from the
-unrelated `AppDbContext`'s home-automation migrations at
-[`Migrations/`](../src/Hatch.Api/Migrations/). `Program.cs` calls
-`MigrateAsync` once per registered module context, `HatchContext` included, in
-a loop (`Program.cs:384-387`), only in migrate mode, ahead of any serving
-replica.
+folder against its own `__EFMigrationsHistory` rows - distinct from the core
+`AppDbContext`'s migrations at [`Migrations/`](../src/Hatch.Api/Migrations/),
+which are the `public` schema's: the home-automation tables, and the migration
+that dropped the retired Gather, Photos, Quill and Storage schemas and their
+two Immich settings (`DropFamilyAppSchemas`). `Program.cs` calls `MigrateAsync`
+on `AppDbContext`, then once per registered module context - `HatchContext`
+is the only one - in a loop, only in migrate mode, ahead of any serving
+replica. The loop stays for when a second module exists; a by-name call would
+be a second way to do the same thing.
 
 EF Core's `MigrateAsync` reads `__EFMigrationsHistory` - one row per applied
 `MigrationId` - and applies every migration in its assembly whose
@@ -353,7 +356,7 @@ branches that both touch
 [`HatchContextModelSnapshot.cs`](../src/Hatch.Api/Modules/Hatch/Migrations/HatchContextModelSnapshot.cs)
 produce a real merge or semantic conflict there - caught today by
 `ModelSnapshotTests.TheModelHasNoChangesItsSnapshotDoesNotKnowAbout`
-(`Hatch.Api.Tests/Modules/ModelSnapshotTests.cs:37`), which fails the moment a
+(`Hatch.Api.Tests/Modules/ModelSnapshotTests.cs`), which fails the moment a
 context's live model and its stored snapshot disagree, the same way HA-150's
 `HasDefaultValue` on `Playbooks.Shape` once did.
 
@@ -2356,9 +2359,9 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked`, `preempted`, `recused` or `unservable` — absent
+an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable` or `abandoned` — absent
 is accepted exactly as it always has been, which covers the pick's own
-release, a restart, and an older CLI, and a value that is none of the five is
+release, a restart, and an older CLI, and a value that is none of the six is
 `400`. It is read only where a token is given: the operator's tokenless
 clobber names no increment to have an outcome. The `claim_released` event
 carries it, and it is what `letGo` counts (see [Comment, question and
@@ -2369,7 +2372,7 @@ what it pushed lands as its own comment, not as a dropped increment.
 `recused` is skipped the other way: it *stops* the count exactly as `worked`
 does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
-raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work.
+raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -3941,7 +3944,7 @@ agent. All three are what the *container* runner's entrypoint
 `GET /api/hatch/settings/credentials/{agent}` (`/settings/claude-token`
 still answers too, for an older container). An install whose runners all run
 on somebody's own machine needs none of this. All three are stored the way
-the Immich key and the Anthropic key already are: obfuscated at rest,
+the Anthropic key already is: obfuscated at rest,
 redacted on read, never leaving the API — and, like every other credential in
 Hatch, each is the operator's own to supply ([`docs/ethos.md`](ethos.md)).
 
@@ -7882,8 +7885,9 @@ heartbeat, and the heartbeat is the runner's own — it is sent by the process
 holding the lease, not by anything the board has to run. And a run that dies
 mid-increment leaves a row nothing may touch for exactly one TTL, after which
 the next pass takes it with no operator action — and the lock it left behind is
-cleared by the next loop in that checkout, so a `kill -9` needs nobody to tidy
-up after it.
+cleared by the next loop in that checkout — which also ends the session it left
+running and releases the claim, see *A loop that died* below — so a `kill -9`
+needs nobody to tidy up after it.
 
 Running two loops on one machine, each in its own checkout, is walked
 through in [Several runners on one machine](../src/Hatch.Web/apps/hatch/docs/the-runner.md#several-runners-on-one-machine).
@@ -7896,6 +7900,30 @@ review](#checking-the-branches-in-review). It is not a step of a pass and holds
 no claim; it is what keeps the board's verdicts on those branches current, so
 that the queue below can tell a conflict from a branch that merges cleanly. A
 runner that is paused polls nothing.
+
+**A loop that died.** A loop that dies mid-increment — a crash, a closed
+window — leaves two things behind: the agent it spawned, still running in the
+checkout, and a claim that lapses on its own a lease later. While a session
+runs, the increment keeps a small record of it beside the loop's lock, under
+the system's temporary directory and named for the checkout, never in the tree
+or the night state: the agent's pid and when that process started, the ticket
+key and claim token, and the Hatch base the claim was taken against, with the
+session's id added once the stream has said it. The release deletes it on every
+outcome, and so does the loop's way out. The next `go-to-work` in that checkout
+reads it straight after taking the checkout's lock — so no live loop holds it —
+and before its own first heartbeat and claim. A pid that is still running **and**
+whose start time matches the record's is the session the dead loop left: its
+whole process tree is killed and waited for. A pid that is gone, or whose start
+time differs (the number was reused), is left alone. Then the loop releases the
+claim with `outcome=abandoned`. A `204` means the claim was still that token's
+and is now released, and gets one comment saying a loop died, the session was
+ended and the claim released, with the agent's resume command where the record
+had a session id; a `409` or `404` means the claim had already lapsed, been
+taken or been cleared, and gets no comment. The record is deleted either way,
+and one terminal line says what was done. A record whose Hatch base is not this
+loop's belongs to a checkout pointed at another board: it is reported and left.
+Only the loop cleans up: `hatch work` writes and clears its own record and never
+reads another's.
 
 One pass, from the board to the release:
 

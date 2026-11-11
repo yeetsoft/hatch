@@ -1,9 +1,5 @@
 using Hatch.Api.Ef;
-using Hatch.Api.Modules.Gather;
 using Hatch.Api.Modules.Hatch;
-using Hatch.Api.Modules.Photos;
-using Hatch.Api.Modules.Quill;
-using Hatch.Api.Modules.Storage;
 using Hatch.Api.Modules;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -106,12 +102,7 @@ internal static class MinimalDatabases
             .AddInMemoryCollection(new Dictionary<string, string?> { ["ConnectionStrings:Hatch"] = hatch })
             .Build();
 
-        var services = new ServiceCollection()
-            .AddStorageModule(configuration)
-            .AddGatherModule(configuration)
-            .AddPhotosModule(configuration)
-            .AddQuillModule(configuration)
-            .AddHatchModule(configuration);
+        var services = new ServiceCollection().AddHatchModule(configuration);
         await using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
 

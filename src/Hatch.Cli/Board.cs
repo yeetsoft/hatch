@@ -534,6 +534,20 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         await Client.GetAsync<List<IssueCardDto>>(
             $"/api/hatch/issues?ancestorKey={Uri.EscapeDataString(ancestorKey)}", ct) ?? [];
 
+    /// <summary>
+    /// Releases a claim a dead loop left, by the token it recorded, as
+    /// <see cref="ClaimOutcomes.Abandoned"/>. The status is the answer, not an
+    /// error: <c>204</c> is a claim that was still that token's and is now
+    /// released, and <c>409</c> or <c>404</c> one that had lapsed, been taken,
+    /// or been cleared already. Null is a board that did not answer.
+    /// </summary>
+    public async Task<System.Net.HttpStatusCode?> ReleaseAbandonedAsync(string key, Guid token, CancellationToken ct)
+    {
+        var answer = await Client.Send(
+            HttpMethod.Delete, $"/api/hatch/issues/{key}/claim?token={token}&outcome={ClaimOutcomes.Abandoned}", null, ct);
+        return answer.Status;
+    }
+
     /// <summary>The issues that record <paramref name="url"/> as their pull request, or as their contribution's - at most one, but a list, as the route is.</summary>
     public async Task<IReadOnlyList<IssueCardDto>> PullRequestRecordedAsync(string url, CancellationToken ct) =>
         await Client.GetAsync<List<IssueCardDto>>(

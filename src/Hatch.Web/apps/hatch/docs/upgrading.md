@@ -49,8 +49,8 @@ A sha tag is a version you chose: it names one build and stays that build.
 serving, it does the following on every start (`Program.cs`), in this order:
 
 1. Applies the core schema's migrations.
-2. Applies each module context's migrations, one after another, logging
-   `Migrating module context {Context}` for each.
+2. Applies the module context's migrations (Hatch's own, in the `hatch`
+   schema), logging `Migrating module context {Context}`.
 3. Seeds the device mappings.
 4. Applies the Home Assistant connection, if one is configured.
 5. Says what the wall needs: whether an Administrator has to be made, and how.
@@ -68,7 +68,7 @@ docker compose logs migrate
 
 These lines mean it worked:
 
-- `Migrating module context …`, once for each module context.
+- `Migrating module context …`, once.
 - `No Home Assistant connection is configured; none applied.` or
   `Applying the Home Assistant connection at …`, whichever is true of your
   install.
@@ -114,6 +114,23 @@ older code still does.
 If the older API fails against the newer schema, put the data back too:
 restore the backup taken before the upgrade, as described under
 [Restoring](backup-restore-and-replication#restoring).
+
+## What an upgrade drops
+
+Hatch no longer carries the Gather, Photos, Quill and Storage apps. The
+migration that removes them drops, with everything in them:
+
+- the four Postgres schemas `gather`, `photos`, `quill` and `storage`;
+- the `ImmichBaseUrl` and `ImmichApiKey` rows in the site settings, which only
+  Photos read.
+
+An install that never ran those apps has none of the four, and the migration
+finds nothing to drop. One that did loses their data the moment `migrate`
+runs, and rolling the images back does not bring it back: the older migration
+history is still there, but the tables are not. If anything in them is worth
+keeping, dump it first with
+[the by-hand `pg_dump`](backup-restore-and-replication#doing-it-by-hand-instead),
+before you pull.
 
 ## Settings renamed from `Apps__*`
 

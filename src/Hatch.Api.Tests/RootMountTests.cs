@@ -83,6 +83,64 @@ public class RootMountTests(RootMountFixture fixture) : IClassFixture<RootMountF
         Assert.DoesNotContain("//", response.Headers.Location?.OriginalString);
     }
 
+    /// <summary>
+    /// HA-2249: the sign-in shell answers at <c>/auth/</c>, its own mount; the
+    /// old <c>/apps/auth</c> address, and the bare <c>/auth</c>, redirect there
+    /// permanently with the query string - and so the return address - intact.
+    /// </summary>
+    [SkippableTheory]
+    [InlineData("/apps/auth", "/auth/")]
+    [InlineData("/apps/auth/", "/auth/")]
+    [InlineData("/apps/auth/?r=%2Fplan", "/auth/?r=%2Fplan")]
+    [InlineData("/apps/auth/?r=%2Fissues%2FAER-12", "/auth/?r=%2Fissues%2FAER-12")]
+    [InlineData("/apps/auth/r/K3M9P2QT", "/auth/r/K3M9P2QT")]
+    [InlineData("/apps/auth/assets/shell-ABC123.js", "/auth/assets/shell-ABC123.js")]
+    [InlineData("/auth", "/auth/")]
+    [InlineData("/auth?r=%2Fplan", "/auth/?r=%2Fplan")]
+    public async Task TheOldSignInAddressRedirectsPermanently_QueryStringIntact(string from, string to)
+    {
+        fixture.SkipIfUnavailable();
+        var response = await fixture.NoRedirectClient.GetAsync(from);
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
+        Assert.Equal(to, response.Headers.Location?.OriginalString);
+    }
+
+    /// <summary>The captured sub-path follows a literal `/auth/`, so a leading slash in it cannot become a `//` host.</summary>
+    [SkippableFact]
+    public async Task ATraversalInsideTheOldSignInPrefixNeverStartsADoubleSlash()
+    {
+        fixture.SkipIfUnavailable();
+        var response = await fixture.NoRedirectClient.GetAsync("/apps/auth//x.example");
+
+        Assert.Equal(HttpStatusCode.MovedPermanently, response.StatusCode);
+        Assert.StartsWith("/auth/", response.Headers.Location?.OriginalString);
+    }
+
+    [SkippableTheory]
+    [InlineData("/auth/")]
+    [InlineData("/auth/r/K3M9P2QT")]
+    public async Task TheSignInShellServesItsOwnIndexAtItsMount(string path)
+    {
+        fixture.SkipIfUnavailable();
+        var response = await fixture.Client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("the sign-in shell's index.html", await response.Content.ReadAsStringAsync());
+        Assert.Equal("no-cache", response.Headers.CacheControl?.ToString());
+    }
+
+    [SkippableFact]
+    public async Task ASignInShellAssetIsServedImmutableFromItsMount()
+    {
+        fixture.SkipIfUnavailable();
+        var response = await fixture.Client.GetAsync("/auth/assets/shell-ABC123.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("// shell", await response.Content.ReadAsStringAsync());
+        Assert.Contains("immutable", response.Headers.CacheControl?.ToString());
+    }
+
     [SkippableFact]
     public async Task TheRunnerBinaryIsUnreachableThroughTheBoardsMount()
     {
@@ -173,7 +231,8 @@ public sealed class RootMountFixture : IAsyncLifetime
     /// <summary>
     /// A fresh scratch content root, named for this run so parallel runs
     /// never collide: a scratch wwwroot/apps/hatch (index.html, a hashed
-    /// asset, the manifest) and wwwroot/hatch-runner (the one binary
+    /// asset, the manifest), wwwroot/apps/auth (the sign-in shell's index.html
+    /// and a hashed asset) and wwwroot/hatch-runner (the one binary
     /// RunnerController serves).
     /// </summary>
     private static string WriteContentRoot()
@@ -189,6 +248,11 @@ public sealed class RootMountFixture : IAsyncLifetime
             Path.Combine(board, "manifest.webmanifest"),
             """{"name":"Hatch","id":"/","start_url":"/","scope":"/"}""");
         File.WriteAllText(Path.Combine(root, "wwwroot", "hatch-runner", "win-x64", "hatch.exe"), "not a real binary");
+
+        var signIn = Path.Combine(root, "wwwroot", "apps", "auth");
+        Directory.CreateDirectory(Path.Combine(signIn, "assets"));
+        File.WriteAllText(Path.Combine(signIn, "index.html"), "the sign-in shell's index.html");
+        File.WriteAllText(Path.Combine(signIn, "assets", "shell-ABC123.js"), "// shell");
 
         return root;
     }
