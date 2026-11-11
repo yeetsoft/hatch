@@ -88,7 +88,7 @@ public class DreamsScopeTests(ITestOutputHelper output)
             string[] scopedIds = [ids["DRA"], ids["DRB"]];
 
             // Scoped to two of three: the list holds the two and the loose one, and each chooser offers the two.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/dreams?scope=DRA,DRB");
+            await harness.OpenAsync(deadline, baseUrl, "/dreams?scope=DRA,DRB");
             await harness.WaitForVisibleAsync(deadline, ".hatch-dream-composer");
             await harness.ClickAsync(deadline, "details.hatch-dream-weave summary");
             var scoped = await ReadAsync(harness, deadline, "scoped", profileName, DreamOf("DRA"), DreamOf("DRB"), LooseDream);

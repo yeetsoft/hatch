@@ -44,9 +44,6 @@ public class AuthController(
     private const string ForwardedProto = "X-Forwarded-Proto";
     private const string ForwardedUri = "X-Forwarded-Uri";
 
-    /// <summary>Any relative URI resolves against this and nothing leaves it - it exists only so <see cref="Uri"/> will do a server's path normalization for us.</summary>
-    private static readonly Uri ForwardedBase = new("http://forwarded.invalid", UriKind.Absolute);
-
     private readonly AuthOptions options = options.Value;
 
     /// <summary>
@@ -68,7 +65,7 @@ public class AuthController(
         // moment those headers stopped arriving, because /api/auth/verify is
         // itself on the allow-list - a gate that opens when it breaks is worse
         // than no gate, because it looks like one.
-        var path = ForwardedPath(forwardedUri);
+        var path = AuthChallenge.CanonicalPath(forwardedUri);
 
         var decision = await gate.EvaluateAsync(
             path,
@@ -316,22 +313,6 @@ public class AuthController(
     /// many.
     /// </summary>
     private Task<EfAuthGrant?> CurrentGrantAsync(CancellationToken ct) => caller.GrantAsync(ct);
-
-    /// <summary>
-    /// The path the origin server will actually serve, from the URI Traefik
-    /// forwarded. Uri does the percent-decoding and the dot-segment collapsing
-    /// in one pass and in a server's order, which is what closes the gap the
-    /// allow-list would otherwise leave: /media/%2e%2e/apps/admin is exempt if
-    /// you only look at its prefix, and is /apps/admin by the time Kestrel
-    /// serves it.
-    /// </summary>
-    private static PathString ForwardedPath(string? forwardedUri)
-    {
-        if (string.IsNullOrEmpty(forwardedUri) || forwardedUri[0] != '/') return "/";
-        if (!Uri.TryCreate(ForwardedBase, forwardedUri, out var absolute)) return "/";
-
-        return PathString.FromUriComponent(absolute);
-    }
 
     /// <summary>
     /// A label is free text an admin typed, and this one is about to become a

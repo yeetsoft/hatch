@@ -1,45 +1,48 @@
 import { describe, expect, it } from 'vitest';
-import { APP_BASENAME, fullHref, hrefWithin, routerBasename } from './basename';
+import { APP_BASENAME, fullHref, hrefWithin, isBoardPath, routerBasename } from './basename';
 
 describe('routerBasename', () => {
-  it('is the prefix when served under it on the house hostname', () => {
-    expect(routerBasename('/apps/hatch/')).toBe(APP_BASENAME);
-    expect(routerBasename('/apps/hatch')).toBe(APP_BASENAME);
-    expect(routerBasename('/apps/hatch/issues/AER-12')).toBe(APP_BASENAME);
-  });
-
-  it('is the root on the hatch hostname, where the rewrite is invisible', () => {
+  it('is always the root, whatever the pathname', () => {
     expect(routerBasename('/')).toBe('/');
     expect(routerBasename('/issues/AER-12')).toBe('/');
-    expect(routerBasename('/import')).toBe('/');
-  });
-
-  it('matches by segment, so a neighbouring app is not mistaken for this one', () => {
+    expect(routerBasename('/apps/hatch/')).toBe('/');
     expect(routerBasename('/apps/hatchery/')).toBe('/');
-    expect(routerBasename('/apps/admin/')).toBe('/');
   });
 });
 
 describe('hrefWithin', () => {
-  it('names the prefix on the house hostname, where a raw anchor would otherwise miss it', () => {
-    expect(hrefWithin(APP_BASENAME, '/issues/AER-12')).toBe('/apps/hatch/issues/AER-12');
-  });
-
-  it('changes nothing on the hatch hostname', () => {
+  it('changes nothing - the only basename there is now is the root', () => {
+    expect(hrefWithin(APP_BASENAME, '/issues/AER-12')).toBe('/issues/AER-12');
     expect(hrefWithin('/', '/issues/AER-12')).toBe('/issues/AER-12');
   });
 });
 
 describe('fullHref', () => {
-  it('is origin plus path on the hatch hostname, where the pathname carries no app prefix', () => {
+  it('is origin plus path, regardless of what the pathname carries', () => {
     expect(fullHref('https://hatch.example', '/issues/HA-446', '/issues/HA-446')).toBe(
       'https://hatch.example/issues/HA-446'
     );
+    expect(fullHref('https://home.example', '/apps/hatch/issues/HA-446', '/issues/HA-446')).toBe(
+      'https://home.example/issues/HA-446'
+    );
+  });
+});
+
+describe('isBoardPath', () => {
+  it('is true for the root and for every route App.tsx mounts', () => {
+    expect(isBoardPath('/')).toBe(true);
+    expect(isBoardPath('/plan')).toBe(true);
+    expect(isBoardPath('/issues/AER-12')).toBe(true);
+    expect(isBoardPath('/issues/AER-12?x=1')).toBe(true);
+    expect(isBoardPath('/issues/AER-12#x')).toBe(true);
+    expect(isBoardPath('/docs/getting-started')).toBe(true);
   });
 
-  it('is origin plus the app-prefixed href on the house hostname', () => {
-    expect(fullHref('https://home.example', '/apps/hatch/issues/HA-446', '/issues/HA-446')).toBe(
-      'https://home.example/apps/hatch/issues/HA-446'
-    );
+  it('is false for a path with no segment this app owns', () => {
+    expect(isBoardPath('/apps/hatch')).toBe(false);
+    expect(isBoardPath('/apps/hatchery/x')).toBe(false);
+    expect(isBoardPath('https://cli.github.com/')).toBe(false);
+    expect(isBoardPath('//example.com/plan')).toBe(false);
+    expect(isBoardPath('')).toBe(false);
   });
 });

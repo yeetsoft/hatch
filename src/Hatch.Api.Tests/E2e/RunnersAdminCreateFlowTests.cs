@@ -45,7 +45,7 @@ public class RunnersAdminCreateFlowTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/runners", StubMe);
+            await harness.OpenAsync(deadline, baseUrl, "/runners", StubMe);
             await harness.WaitForVisibleAsync(deadline, ".hatch-page-header__actions button:text-is(\"Create runner\")");
 
             await harness.ClickAsync(deadline, ".hatch-page-header__actions button:text-is(\"Create runner\")");

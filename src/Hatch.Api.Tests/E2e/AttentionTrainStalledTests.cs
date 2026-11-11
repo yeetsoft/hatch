@@ -69,7 +69,7 @@ public class AttentionTrainStalledTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/", context => StubAttention(context, stalled));
+            await harness.OpenAsync(deadline, baseUrl, "/", context => StubAttention(context, stalled));
             await harness.WaitForTopBarAsync(deadline);
 
             await harness.WaitForVisibleAsync(deadline, $"{E2eHarness.AttentionSelector}.hatch-attention-rest .hatch-attention-word:text-is(\"Clear\")");

@@ -102,7 +102,7 @@ with its wall off.
 
 ## Your first project
 
-Open **Manage → Projects** ([`/apps/hatch/projects`](/apps/hatch/projects)). The
+Open **Manage → Projects** ([`/projects`](/projects)). The
 **New project** card asks for two things:
 
 - **Key** — two to six characters, e.g. `HOME`. It is what every issue number is
@@ -152,7 +152,7 @@ after it — is the first decision that is yours;
 The board is a board; the **runner** is what works the tickets. It is one
 binary, and it runs on your machine.
 
-**Agents → Get the runner** ([`/apps/hatch/runner`](/apps/hatch/runner)) detects
+**Agents → Get the runner** ([`/runner`](/runner)) detects
 your platform, offers the matching download, and prints the revision it was
 built from. Put the file on your `PATH` as `hatch` (`hatch.exe` on Windows). On
 macOS and Linux it needs marking executable first:

@@ -85,7 +85,7 @@ public class AttachmentListTests
             var baseUrl = await harness.StartHostAsync(deadline);
             var (key, image1Id, pdfId, image2Id) = await SeedIssueAsync(harness.Services);
 
-            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/issues/{key}");
+            await harness.OpenAsync(deadline, baseUrl, $"/issues/{key}");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, DescriptionSection);
             await harness.WaitForFunctionAsync(deadline, "waiting for the four attachment rows", RowCountScript, 4);
@@ -156,7 +156,7 @@ public class AttachmentListTests
             var baseUrl = await harness.StartHostAsync(deadline);
             var (key, _, pdfId, _) = await SeedIssueAsync(harness.Services);
 
-            await harness.OpenAsync(deadline, baseUrl, $"/apps/hatch/issues/{key}");
+            await harness.OpenAsync(deadline, baseUrl, $"/issues/{key}");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, DescriptionSection);
             await harness.WaitForFunctionAsync(deadline, "waiting for the four attachment rows", RowCountScript, 4);

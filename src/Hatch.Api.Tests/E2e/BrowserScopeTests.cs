@@ -75,7 +75,7 @@ public class BrowserScopeTests(ITestOutputHelper output)
             await deadline.BoundAsync("filing two cards", () => FileCardsAsync(baseUrl));
 
             // 1. A tab opened scoped to one project draws that project's card alone.
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/?scope=BCA");
+            await harness.OpenAsync(deadline, baseUrl, "/?scope=BCA");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForFirstColumnAsync(deadline);
             await AssertScopedBoardAsync(harness, deadline, "scoped board", scopedControl);

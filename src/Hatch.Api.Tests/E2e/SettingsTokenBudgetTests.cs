@@ -137,7 +137,7 @@ public class SettingsTokenBudgetTests(ITestOutputHelper output)
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/settings", context => StubSettings(context, me));
+            await harness.OpenAsync(deadline, baseUrl, "/settings", context => StubSettings(context, me));
             await harness.WaitForVisibleAsync(deadline, "h2.hatch-section-title:has-text(\"Runner token budget\")");
 
             // The card sits below the first screenful, and a screenshot is the viewport only. Evaluated rather than
