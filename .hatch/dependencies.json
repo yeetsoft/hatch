@@ -5,6 +5,7 @@
     { "id": "node", "version": "22" },
     { "id": "pwsh", "version": "7" },
     "playwright-browsers",
+    { "id": "postgres", "version": "18" },
     "docker"
   ]
 }

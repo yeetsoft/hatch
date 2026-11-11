@@ -46,6 +46,34 @@ troubleshooting — is the board's own **Docs**, in the top bar, at
 http://localhost:8080/apps/hatch/docs/, with the pages' source in
 [`src/Hatch.Web/apps/hatch/docs/`](src/Hatch.Web/apps/hatch/docs/).
 
+## Hatch builds itself in a container
+
+This repository has a project image: the generic runner image with what
+`make build`, `make test-api` and `make test-web` need on top of it - the .NET
+SDK, Node, PowerShell 7, Playwright's browsers and PostgreSQL 18, as
+[`.hatch/dependencies.json`](.hatch/dependencies.json) declares them.
+[`hatch-runner-image.yml`](.github/workflows/hatch-runner-image.yml) builds it
+on every push to the trunk that touches `.hatch/` and publishes it, for amd64
+and arm64, at `ghcr.io/<owner>/<repo>/hatch-runner`, tagged `latest` and with
+the commit sha. It needs the repository variable `HATCH_RUNNER_BASE_IMAGE` set
+to the generic runner image this project builds on, such as
+`ghcr.io/<owner>/hatch-runner:latest`.
+
+To start a runner from it, with the checkout mounted and nothing else:
+
+```
+HATCH_RUNNER_IMAGE=ghcr.io/<owner>/<repo>/hatch-runner:latest \
+HATCH_CHECKOUT=/path/to/your/checkout \
+HATCH_GIT_NAME="Your Name" \
+HATCH_GIT_EMAIL=you@example.org \
+docker compose --profile runner-image up -d
+```
+
+Inside it there is no Docker socket, so the Postgres-backed API tests run with
+`make test-api-local-db`, which starts a throwaway server and removes it
+afterwards. The rest of the variables are in
+[the container runner](src/Hatch.Web/apps/hatch/docs/the-container-runner.md#starting-it-from-a-named-image).
+
 ## Get an agent working tickets
 
 ```

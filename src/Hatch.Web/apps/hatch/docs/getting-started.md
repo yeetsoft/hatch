@@ -191,6 +191,16 @@ its board is in [the runner](the-runner).
 A second loop on the same machine is walked through in [several runners on one
 machine](the-runner#several-runners-on-one-machine).
 
+**This repository has a project image.** A runner that works Hatch's own
+tickets does not need .NET, Node, PowerShell, Playwright's browsers or
+PostgreSQL installed on your machine: Hatch's repository publishes an image
+that carries them, at `ghcr.io/<owner>/<repo>/hatch-runner`, built from
+`.hatch/dependencies.json` on the trunk. Start a container from it with
+`HATCH_RUNNER_IMAGE=ghcr.io/<owner>/<repo>/hatch-runner:latest docker compose
+--profile runner-image up -d`, with the checkout mounted, as
+[starting it from a named image](the-container-runner#starting-it-from-a-named-image)
+describes. `<owner>` is whoever publishes the image you pull.
+
 ## What to read next
 
 - [Welcome](welcome), for what Hatch is and the one rule behind it, if you want that first.
