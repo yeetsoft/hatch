@@ -6802,7 +6802,7 @@ Every one of the ten either edits the tree or judges it:
 | Breakdown → Backlog | `epic` | breakdown (epic) | judges |
 | Breakdown → Backlog | `story` | breakdown (story) | judges |
 | Breakdown → Backlog | `task,bug` | breakdown (task/bug) | judges |
-| Breakdown → Backlog | `reflection` | breakdown (reflection) | judges |
+| Breakdown → Review | `reflection` | breakdown (reflection) | judges |
 | To Do → In Progress | `epic` | epic-start | judges |
 | To Do → In Progress | `''` (any type) | analysis | judges |
 | In Progress → In Review | `''`, shape `leaf` | implementation | **edits** |
@@ -6824,28 +6824,39 @@ playbook](#check), paired with denied tools, takes the write tools away.
 `RewordReflectionPlaybook` (20261021180000) rewrites the row's `DefaultPrompt`
 alone, only where it still reads the stock text byte for byte, as
 `RewordImplementationPlaybook` does: `Prompt` and `UpdatedAt` are left
-untouched, so an operator's own wording survives. The report it asks for has
-eight sections, in order: Window; What ran and what it cost; Where the time
-went; Findings; Recommendations; Hypotheses read; Hypotheses filed; What
-reflection could not see. The stock prompt also files an instrumentation gap
-that lies in the tracker itself, rather than in the project reflected on, as
-an issue with no parent in whichever project `GET /api/hatch/projects` flags
-`"bindsTracker": true` (see [Project](#project)), leaving it in the report as
-prose instead where none is flagged. A hypothesis is an issue filed under the reflection
-with a `readyAt` on its read-after date and a `## Hypothesis` block of four
-lines: the metric, the baseline (its window and value), the change (what moves,
-and the key of the issue carrying it) and the read-after date. A later
-reflection finds earlier ones with `GET /api/hatch/issues?type=reflection&projectId=`
-and then each reflection's children by `parentKey`, and reads those whose block
-date has passed, skipping any already commented confirmed or refuted. It
-measures an after window as long as the baseline, ending on the read-after
-date, and gives each a verdict: *confirmed*, *refuted*, or *unreadable* — the
-metric is no longer produced, or the window is too thin to say. The verdict is
-commented on the hypothesis issue, which is what lets the next reflection skip
-it. A refuted hypothesis whose change landed as code gets an issue under the
-reflection to revert or amend it; a confirmed one is reported and left for a
-person to close. `Hypotheses read` is never left out: with no earlier
-reflection, or none due, it reads `None` and says why.
+untouched, so an operator's own wording survives. `ReflectionFilesByLinkEndsInReview`
+(20261111093343) rewords it again the same way, and separately retargets the
+row's `ToStatusId` from Backlog to the review column, measured the way
+`SeedConflictPlaybook` measures it, only where the row is still exactly on
+`Breakdown` → `Backlog` for `reflection` - routing alone says an operator has
+not moved it. The report it asks for has eight sections, in order: Window;
+What ran and what it cost; Where the time went; Findings; Recommendations;
+Hypotheses read; Hypotheses filed; What reflection could not see. The stock
+prompt also files an instrumentation gap that lies in the tracker itself,
+rather than in the project reflected on, as an issue with `filedFromKey` set
+to the reflection and no parent in whichever project
+`GET /api/hatch/projects` flags `"bindsTracker": true` (see
+[Project](#project)), leaving it in the report as prose instead where none is
+flagged. A hypothesis is an issue filed with `filedFromKey` set to the
+reflection and no parent, a `readyAt` on its read-after date, a dependency
+edge (`hatch depends <hypothesis key> <key>`) on the issue its `Change` line
+names, and two sections in its description: the `## Hypothesis` block of
+four lines - the metric, the baseline (its window and value), the change
+(what moves, and the key of the issue carrying it) and the read-after date -
+and a `## How to read it` section naming the comparison, the verdict rule
+and a no-code declaration, so the session dispatched to it on its own date
+can measure it without the reflection. A later reflection finds earlier ones
+with `GET /api/hatch/issues?type=reflection&projectId=` and then each one's
+filed issues with `GET /api/hatch/issues?filedFromKey=`, reports the verdict
+already commented on any it finds, and measures only one whose read-after
+date has passed and carries no verdict itself - the same way: an after
+window as long as the baseline, ending on the read-after date, through the
+same folds, called *confirmed*, *refuted* or *unreadable* — the metric is no
+longer produced, or the window is too thin to say — and commented on the
+hypothesis issue. A refuted hypothesis whose change landed as code gets an
+issue filed with `filedFromKey` set to the hypothesis to revert or amend it.
+`Hypotheses read` is never left out: with no earlier reflection, or none due,
+it reads `None` and says why.
 
 `MoveReflectionChildrenToFiledFrom` (20261111084455) moves what earlier
 reflections filed under themselves to the shape that replaces it. Every issue
