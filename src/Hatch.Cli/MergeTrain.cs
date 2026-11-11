@@ -25,6 +25,7 @@ public sealed class MergeTrain : IAsyncDisposable
     private readonly Dictionary<(string Path, string Key), string> _seenBuild = [];
     private readonly HashSet<string> _seenClosed = [];
     private HashSet<string> _saidBefore = [];
+    private readonly OutsideFiler _filer = new();
 
     // The sentence a 409 from the merged route came back with, per issue: the
     // last tick's, and the one being built. One 409 is the race the walk-on
@@ -76,7 +77,7 @@ public sealed class MergeTrain : IAsyncDisposable
     }
 
     /// <summary>
-    /// Takes the pull request, head build, merge, update, pushback and landing
+    /// Takes the pull request, outside pull request, head build, merge, update, pushback and landing
     /// halves in that order, against what is in review right now. Nothing it does throws
     /// out: a cause that persists across calls is said once and not every
     /// call.
@@ -147,7 +148,12 @@ public sealed class MergeTrain : IAsyncDisposable
         // below it: keyed on the issue rather than the checkout, since
         // PullRequestUrl is one field on one issue however many repositories
         // its project binds.
-        await ReadPullRequestsAsync(runtime, complain, review, ct);
+        var lists = new Dictionary<string, PullRequestListAnswer>();
+        await ReadPullRequestsAsync(runtime, complain, review, lists, ct);
+
+        // Right after it, so the list it read is the list this one files from: one read of a
+        // path a tick. Only the project's driver files, and nothing here throws out of the tick.
+        await FileOutsidePullRequestsAsync(runtime, complain, review, lists, ct);
 
         // Before the merge half, and on this clock rather than the poll's: the
         // poll waits on a runner between sessions, and a head whose build
@@ -235,10 +241,10 @@ public sealed class MergeTrain : IAsyncDisposable
     /// record and the open put stay the driver's.
     /// </remarks>
     private async Task ReadPullRequestsAsync(
-        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review, CancellationToken ct)
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review,
+        Dictionary<string, PullRequestListAnswer> lists, CancellationToken ct)
     {
         var failed = new HashSet<string>();
-        var lists = new Dictionary<string, PullRequestListAnswer>();
         try
         {
             foreach (var issue in review)
@@ -345,6 +351,26 @@ public sealed class MergeTrain : IAsyncDisposable
         catch (Exception e) when (e is not OperationCanceledException)
         {
             complain($"hatch: could not read pull requests - {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The outside pull request half: an open pull request on a repository this runner drives that no
+    /// issue records is filed as an issue in review - see <see cref="OutsideFiler"/>. The outer try/catch
+    /// keeps anything unanticipated here from propagating into <see cref="TickAsync"/> and aborting the
+    /// halves that run after it.
+    /// </summary>
+    private async Task FileOutsidePullRequestsAsync(
+        Runtime runtime, Action<string> complain, IReadOnlyList<ReviewCheckDto> review,
+        Dictionary<string, PullRequestListAnswer> lists, CancellationToken ct)
+    {
+        try
+        {
+            await _filer.FileAsync(runtime, complain, review, lists, ct);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            complain($"hatch: could not file outside pull requests - {e.Message}");
         }
     }
 

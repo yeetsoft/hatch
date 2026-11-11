@@ -6,7 +6,7 @@ import type { ResolvedTheme, ThemeChoice } from './themeStore';
    them. They are re-exported here because this is where the app-facing theme
    types have always been imported from. */
 export type { ThemeChoice, ResolvedTheme } from './themeStore';
-export { THEME_STORAGE_KEY, DARK_QUERY, isThemeChoice } from './themeStore';
+export { THEME_STORAGE_KEY, PALETTE_STORAGE_KEY, DARK_QUERY, isThemeChoice } from './themeStore';
 
 export interface ThemeContextValue {
   /** The stored choice, including `auto`. This is what a toggle renders. */
@@ -14,6 +14,9 @@ export interface ThemeContextValue {
   /** The theme actually on screen. This is what a component branches on. */
   resolved: ResolvedTheme;
   setChoice: (choice: ThemeChoice) => void;
+  /** The stored palette seed, or `null` for the house palette. */
+  palette: string | null;
+  setPalette: (seed: string | null) => void;
 }
 
 /* Undefined rather than a default value: a component reading the theme outside

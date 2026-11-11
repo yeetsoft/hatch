@@ -13,9 +13,9 @@ namespace Hatch.Api.Services.Auth;
 /// things. A grant token is read by a browser and nothing else, so it is 256
 /// bits of base64url and as long as it likes. An invite code is read aloud
 /// across a room and typed on a tablet's soft keyboard, so it is eight
-/// Crockford characters - the same alphabet and the same fold-on-parse rules as
-/// <see cref="Hatch.Api.Modules.Storage.CrateCode"/>, for the same reason: a
-/// character a person can mistake is a character that sends them nowhere. An
+/// Crockford characters - the Crockford base-32 alphabet, which drops the
+/// letters people mistake for digits and folds them on parse, for the reason
+/// that a character a person can mistake is a character that sends them nowhere. An
 /// API key is read by a program out of a file, so it optimises for a third
 /// thing again: being unmistakable on sight, which is what the
 /// <c>hatch_ak_</c> prefix buys.
