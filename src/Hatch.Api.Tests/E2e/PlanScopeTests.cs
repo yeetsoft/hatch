@@ -76,7 +76,7 @@ public class PlanScopeTests(ITestOutputHelper output)
 
             // Scoped to two of three: the picker offers the two, and none chosen draws both.
             await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/plan?scope=PLA,PLB");
-            var scoped = await ReadAsync(harness, deadline, "scoped", profileName, EpicTitle("PLA"), EpicTitle("PLB"));
+            var scoped = await ReadAsync(harness, deadline, "scoped", profileName, [EpicTitle("PLA"), EpicTitle("PLB")], [EpicTitle("PLC")]);
             Assert.Equal(["", "PLA", "PLB"], Strings(scoped, "options"));
             Assert.Equal("All in scope", scoped.GetProperty("empty").GetString());
             Assert.Equal([EpicTitle("PLA"), EpicTitle("PLB")], Strings(scoped, "epics"));
@@ -85,19 +85,19 @@ public class PlanScopeTests(ITestOutputHelper output)
             // Picking one draws that project alone.
             await harness.SelectOptionAsync(deadline, ".hatch-plan-picker select", "PLB");
             await harness.WaitForHiddenAsync(deadline, $".hatch-plan-title:text-is(\"{EpicTitle("PLA")}\")");
-            var picked = await ReadAsync(harness, deadline, "picked", profileName, EpicTitle("PLB"));
+            var picked = await ReadAsync(harness, deadline, "picked", profileName, [EpicTitle("PLB")], []);
             Assert.Equal([EpicTitle("PLB")], Strings(picked, "epics"));
 
             // A project the scope does not offer is dropped from the address, and reads as none chosen.
             await harness.GoToAsync(deadline, "plan?scope=PLA,PLB&project=PLC");
             await harness.WaitForFunctionAsync(deadline, "waiting for the param to go", "() => !location.search.includes('project=')");
-            var dropped = await ReadAsync(harness, deadline, "dropped", profileName, EpicTitle("PLA"), EpicTitle("PLB"));
+            var dropped = await ReadAsync(harness, deadline, "dropped", profileName, [EpicTitle("PLA"), EpicTitle("PLB")], [EpicTitle("PLC")]);
             Assert.DoesNotContain("project", dropped.GetProperty("search").GetString());
             Assert.Equal([EpicTitle("PLA"), EpicTitle("PLB")], Strings(dropped, "epics"));
 
             // No scope: nothing changes.
             await harness.GoToAsync(deadline, "plan");
-            var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, EpicTitle("PLA"), EpicTitle("PLB"), EpicTitle("PLC"));
+            var unscoped = await ReadAsync(harness, deadline, "unscoped", profileName, [EpicTitle("PLA"), EpicTitle("PLB"), EpicTitle("PLC")], []);
             Assert.Equal(["", "PLA", "PLB", "PLC"], Strings(unscoped, "options"));
             Assert.Equal("All projects", unscoped.GetProperty("empty").GetString());
             Assert.Equal([EpicTitle("PLA"), EpicTitle("PLB"), EpicTitle("PLC")], Strings(unscoped, "epics"));
@@ -125,11 +125,18 @@ public class PlanScopeTests(ITestOutputHelper output)
             read.GetProperty("scrollWidth").GetDouble() <= read.GetProperty("innerWidth").GetDouble() + 0.5,
             $"the page scrolls sideways: {read}");
 
-    /// <summary>Waits for every epic named to be drawn, then reads the page and saves the look.</summary>
-    private async Task<JsonElement> ReadAsync(E2eHarness harness, Deadline deadline, string label, string profileName, params string[] epics)
+    /// <summary>
+    /// Waits for every epic named to be drawn and every one in <paramref name="absent"/> to be gone,
+    /// then reads the page and saves the look. The absent ones are waited on so the read is of the
+    /// final state rather than a race with it.
+    /// </summary>
+    private async Task<JsonElement> ReadAsync(E2eHarness harness, Deadline deadline, string label, string profileName, string[] epics, string[] absent)
     {
         foreach (var epic in epics)
             await harness.WaitForVisibleAsync(deadline, $".hatch-plan-title:text-is(\"{epic}\")");
+
+        foreach (var epic in absent)
+            await harness.WaitForHiddenAsync(deadline, $".hatch-plan-title:text-is(\"{epic}\")");
 
         var read = await harness.EvaluateAsync<JsonElement>(deadline, $"reading the {label} plan", ReadScript);
         output.WriteLine($"{profileName} {label}: {read}");
