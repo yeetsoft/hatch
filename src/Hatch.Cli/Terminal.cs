@@ -32,6 +32,18 @@ public class Terminal
         }
     }
 
+    /// <summary>Text exactly as given, with no newline added - for output whose bytes are the product.</summary>
+    public virtual void Write(string text)
+    {
+        try
+        {
+            lock (_gate) Console.Out.Write(text);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
     /// <summary>What went wrong. Standard error, so a redirected log keeps the two apart.</summary>
     public virtual void Complain(string line)
     {
@@ -300,6 +312,11 @@ public sealed class Transcript : Terminal
     public override void Line(string line)
     {
         lock (_gate) _said.Add(line);
+    }
+
+    public override void Write(string text)
+    {
+        lock (_gate) _said.Add(text);
     }
 
     public override void Complain(string line)

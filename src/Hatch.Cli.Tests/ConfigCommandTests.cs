@@ -2563,6 +2563,90 @@ public sealed class ConfigCommandTests : IDisposable
         Assert.Contains($"HATCH_CLAUDE_BIN:  /opt/claude-user  ({ConfigPath})", Said);
     }
 
+    // ---- --runner-base-image ----
+
+    [Fact]
+    public async Task Runner_base_image_writes_it_and_keeps_the_rest()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://kept", "HATCH_HAS=node"]);
+        var environment = new Dictionary<string, string?>(StringComparer.Ordinal);
+
+        Assert.Equal(0, await Command(new Replies(), environment).RunAsync(["--runner-base-image", " debian:bookworm "], default));
+
+        var written = File.ReadAllLines(ConfigPath);
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=debian:bookworm", written);
+        Assert.Contains("HATCH_BASE=https://kept", written);
+        Assert.Contains("HATCH_HAS=node", written);
+        Assert.Equal("debian:bookworm", environment["HATCH_RUNNER_BASE_IMAGE"]);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("debian bookworm")]
+    [InlineData("debian\nRUN x")]
+    public async Task Runner_base_image_with_a_space_or_nothing_is_refused_and_nothing_is_written(string image)
+    {
+        Assert.Equal(1, await Command(new Replies()).RunAsync(["--runner-base-image", image], default));
+
+        Assert.Contains("a runner base image is one word", Complained);
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Origin_has_and_the_interactive_rewrite_keep_the_runner_base_image()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
+        File.WriteAllLines(ConfigPath, ["HATCH_BASE=https://old", "HATCH_RUNNER_BASE_IMAGE=debian:bookworm"]);
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--origin", "https://new"], default));
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=debian:bookworm", File.ReadAllLines(ConfigPath));
+
+        Assert.Equal(0, await Command(new Replies()).RunAsync(["--has", "node"], default));
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=debian:bookworm", File.ReadAllLines(ConfigPath));
+
+        var input = new Replies("", "", "", "");
+        Assert.Equal(0, await Command(input).RunAsync([], default));
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=debian:bookworm", File.ReadAllLines(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Here_origin_and_has_keep_the_checkouts_own_runner_base_image()
+    {
+        var (root, checkoutEnv) = HereCheckout("HATCH_RUNNER_BASE_IMAGE=ubuntu:24.04");
+
+        Assert.Equal(0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--origin", "https://hatch.example"], default));
+        Assert.Equal(0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--has", "node"], default));
+
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=ubuntu:24.04", File.ReadAllLines(checkoutEnv));
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Here_and_profile_runner_base_image_write_their_own_file_and_leave_the_per_user_file_untouched()
+    {
+        var (root, checkoutEnv) = HereCheckout();
+        Assert.Equal(0, await Command(new Replies(), root: root, checkoutEnv: checkoutEnv).RunAsync(["--here", "--runner-base-image", "ubuntu:24.04"], default));
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=ubuntu:24.04", File.ReadAllLines(checkoutEnv));
+
+        var profilePath = Profile("HATCH_RUNNER_BASE_IMAGE=alpine:3");
+        Assert.Equal(0, await Command(new Replies(), profileName: "work", profilePath: profilePath).RunAsync(["--origin", "https://hatch.example"], default));
+        Assert.Contains("HATCH_RUNNER_BASE_IMAGE=alpine:3", File.ReadAllLines(profilePath));
+
+        Assert.False(File.Exists(ConfigPath));
+    }
+
+    [Fact]
+    public async Task Show_says_where_the_runner_base_image_came_from()
+    {
+        await Command(new Replies()).RunAsync(["--runner-base-image", "debian:bookworm"], default);
+
+        await Command(new Replies()).RunAsync(["--show"], default);
+
+        Assert.Contains($"HATCH_RUNNER_BASE_IMAGE:", Said);
+        Assert.Contains($"debian:bookworm  ({ConfigPath})", Said);
+    }
+
     public void Dispose()
     {
         try

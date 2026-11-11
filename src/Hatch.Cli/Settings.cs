@@ -30,7 +30,7 @@ public sealed partial record Settings
     [
         "HATCH_BASE", "HATCH_KEY", "HATCH_CLAUDE_BIN", "HATCH_CLAUDE_TOOLS", "HATCH_CODEX_BIN", "HATCH_GROK_BIN", "HATCH_OLLAMA_HOST",
         "HATCH_OLLAMA_TIERS", "HATCH_AGENT", "HATCH_BASE_BRANCH", "HATCH_REPOS",
-        "HATCH_WORKSPACE", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS",
+        "HATCH_WORKSPACE", "HATCH_LOG", "HATCH_DANGEROUS", "HATCH_MODELS", "HATCH_HAS", "HATCH_RUNNER_BASE_IMAGE",
     ];
 
     /// <summary>The names that belong to a board rather than a machine - decision 4. Everything else in FileNames is machine-bound and still folds from the per-user file under a profile.</summary>

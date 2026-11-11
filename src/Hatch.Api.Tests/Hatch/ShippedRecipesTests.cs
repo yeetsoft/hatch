@@ -142,7 +142,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void MakeRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("make", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("make", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Make, text);
@@ -152,7 +152,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void DockerRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("docker", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("docker", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Docker, text);
@@ -164,7 +164,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [InlineData("docker")]
     public void ARecipeWithNoVersionRefusesAPin(string id)
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency(id, "1")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency(id, "1")]);
 
         Assert.Null(text);
         Assert.Equal($"`{id}` installs whatever its package provides - declare it without a version", problem);
@@ -173,7 +173,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void NodeRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("node", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("node", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Node, text);
@@ -183,7 +183,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void DotnetRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("dotnet", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("dotnet", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Dotnet, text);
@@ -193,7 +193,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void PwshRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("pwsh", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("pwsh", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Pwsh, text);
@@ -203,7 +203,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void ADeclaredNodeVersionChangesOnlyItsDefault()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("node", "20")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("node", "20")]);
 
         Assert.Null(problem);
         Assert.Equal(Node.Replace("ARG NODE_VERSION=22", "ARG NODE_VERSION=20"), text);
@@ -212,7 +212,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void ADeclaredDotnetVersionChangesOnlyItsDefault()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("dotnet", "9.0")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("dotnet", "9.0")]);
 
         Assert.Null(problem);
         Assert.Equal(Dotnet.Replace("ARG DOTNET_VERSION=10.0", "ARG DOTNET_VERSION=9.0"), text);
@@ -221,7 +221,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void ADeclaredPwshVersionChangesOnlyItsDefault()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("pwsh", "7.4.6")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("pwsh", "7.4.6")]);
 
         Assert.Null(problem);
         Assert.Equal(Pwsh.Replace("ARG PWSH_VERSION=7", "ARG PWSH_VERSION=7.4.6"), text);
@@ -247,7 +247,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void PlaywrightBrowsersRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
 
         Assert.Null(problem);
         Assert.Equal(DependencyRecipes.Recipe("node") + Playwright, text);
@@ -257,7 +257,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
     [Fact]
     public void PostgresRendersExactlyItsFragment()
     {
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", null)]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", null)]);
 
         Assert.Null(problem);
         Assert.Equal(Postgres, text);
@@ -270,7 +270,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
         var expected = Playwright.Replace("ARG PLAYWRIGHT_VERSION=1.63.0", "ARG PLAYWRIGHT_VERSION=1.50.0");
         Assert.NotEqual(Playwright, expected);
 
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", "1.50.0")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", "1.50.0")]);
 
         Assert.Null(problem);
         Assert.Equal(DependencyRecipes.Recipe("node") + expected, text);
@@ -282,7 +282,7 @@ RUN major=${POSTGRES_VERSION%%.*} \
         var expected = Postgres.Replace("ARG POSTGRES_VERSION=17", "ARG POSTGRES_VERSION=16");
         Assert.NotEqual(Postgres, expected);
 
-        var (text, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", "16")]);
+        var (text, _, problem) = DependencyRecipes.Render([new DeclaredDependency("postgres", "16")]);
 
         Assert.Null(problem);
         Assert.Equal(expected, text);
@@ -293,8 +293,8 @@ RUN major=${POSTGRES_VERSION%%.*} \
     {
         var expected = DependencyRecipes.Recipe("node") + Playwright;
 
-        var (alone, aloneProblem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
-        var (both, bothProblem) = DependencyRecipes.Render([
+        var (alone, _, aloneProblem) = DependencyRecipes.Render([new DeclaredDependency("playwright-browsers", null)]);
+        var (both, _, bothProblem) = DependencyRecipes.Render([
             new DeclaredDependency("playwright-browsers", null),
             new DeclaredDependency("node", null)]);
 
@@ -348,9 +348,9 @@ RUN major=${POSTGRES_VERSION%%.*} \
         var forward = Dependencies.Default.Rows.Select(row => new DeclaredDependency(row.Id, null)).ToList();
         var reversed = Enumerable.Reverse(forward).ToList();
 
-        var (first, firstProblem) = DependencyRecipes.Render(forward);
-        var (second, secondProblem) = DependencyRecipes.Render(forward);
-        var (fromReversed, reversedProblem) = DependencyRecipes.Render(reversed);
+        var (first, _, firstProblem) = DependencyRecipes.Render(forward);
+        var (second, _, secondProblem) = DependencyRecipes.Render(forward);
+        var (fromReversed, _, reversedProblem) = DependencyRecipes.Render(reversed);
 
         Assert.Null(firstProblem);
         Assert.Null(secondProblem);

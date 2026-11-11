@@ -71,6 +71,38 @@ public static class DependencyDeclaration
         }
     }
 
+    /// <summary>
+    /// The inverse of <see cref="Parse"/>: the compact one-line file text, an entry with no version a bare id
+    /// string and one with a version an <c>{"id","version"}</c> object, in the order given, no trailing newline.
+    /// </summary>
+    public static string Serialize(IReadOnlyList<DeclaredDependency> dependencies)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteStartArray("dependencies");
+            foreach (var entry in dependencies)
+            {
+                if (entry.Version is null)
+                {
+                    writer.WriteStringValue(entry.Id);
+                    continue;
+                }
+
+                writer.WriteStartObject();
+                writer.WriteString("id", entry.Id);
+                writer.WriteString("version", entry.Version);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
     private static (IReadOnlyList<DeclaredDependency>? Dependencies, string? Problem) ParseRoot(
         JsonElement root, Dependencies known)
     {

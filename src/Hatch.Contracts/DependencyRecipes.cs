@@ -49,10 +49,15 @@ public static class DependencyRecipes
         return reader.ReadToEnd();
     }
 
-    public static (string? Dockerfile, string? Problem) Render(IReadOnlyList<DeclaredDependency> set) =>
+    /// <summary>
+    /// The Dockerfile text for <paramref name="set"/> closed over its requirements, and that closed set in id
+    /// order - what the text installs - or the one sentence saying why not.
+    /// </summary>
+    public static (string? Dockerfile, IReadOnlyList<DeclaredDependency>? Resolved, string? Problem) Render(
+        IReadOnlyList<DeclaredDependency> set) =>
         Render(set, Embedded.Value, Dependencies.Default);
 
-    internal static (string? Dockerfile, string? Problem) Render(
+    internal static (string? Dockerfile, IReadOnlyList<DeclaredDependency>? Resolved, string? Problem) Render(
         IReadOnlyList<DeclaredDependency> set, IReadOnlyDictionary<string, string> recipes, Dependencies known)
     {
         // Render is public and takes any list, so nothing Parse checked is taken as read:
@@ -60,7 +65,7 @@ public static class DependencyRecipes
         foreach (var entry in set)
         {
             var problem = known.IdProblem(entry.Id) ?? DependencyVersion.Problem(entry.Version);
-            if (problem is not null) return (null, problem);
+            if (problem is not null) return (null, null, problem);
         }
 
         var versions = new SortedDictionary<string, string?>(StringComparer.Ordinal);
@@ -70,7 +75,7 @@ public static class DependencyRecipes
                 .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
             if (pinned.Count > 1)
-                return (null, $"`{group.Key}` is declared at {pinned[0]} and at {pinned[1]} - a recipe installs one version");
+                return (null, null, $"`{group.Key}` is declared at {pinned[0]} and at {pinned[1]} - a recipe installs one version");
 
             versions[group.Key] = pinned.Count == 1 ? pinned[0] : null;
         }
@@ -85,12 +90,12 @@ public static class DependencyRecipes
         foreach (var (id, version) in versions)
         {
             if (!recipes.TryGetValue(id, out var recipe))
-                return (null, $"`{id}` is on the master list but ships no install recipe");
+                return (null, null, $"`{id}` is on the master list but ships no install recipe - a repository declaring it stays on host runners");
 
             if (version is not null)
             {
                 if (!VersionLine.IsMatch(recipe))
-                    return (null, $"`{id}` installs whatever its package provides - declare it without a version");
+                    return (null, null, $"`{id}` installs whatever its package provides - declare it without a version");
 
                 recipe = VersionLine.Replace(recipe, match => match.Groups[1].Value + version, 1);
             }
@@ -98,6 +103,6 @@ public static class DependencyRecipes
             text.Append(recipe);
         }
 
-        return (text.ToString(), null);
+        return (text.ToString(), versions.Select(pair => new DeclaredDependency(pair.Key, pair.Value)).ToList(), null);
     }
 }

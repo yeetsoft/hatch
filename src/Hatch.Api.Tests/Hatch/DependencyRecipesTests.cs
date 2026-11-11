@@ -24,7 +24,7 @@ public class DependencyRecipesTests
         ["docker"] = Docker,
     };
 
-    private static (string? Dockerfile, string? Problem) Render(params DeclaredDependency[] set) =>
+    private static (string? Dockerfile, IReadOnlyList<DeclaredDependency>? Resolved, string? Problem) Render(params DeclaredDependency[] set) =>
         DependencyRecipes.Render(set, Fixture, Dependencies.Default);
 
     private static DeclaredDependency Dep(string id, string? version = null) => new(id, version);
@@ -32,7 +32,7 @@ public class DependencyRecipesTests
     [Fact]
     public void InstallsInIdOrderWhateverTheInputOrder()
     {
-        var (text, problem) = Render(Dep("node"), Dep("make"), Dep("dotnet"), Dep("docker"));
+        var (text, _, problem) = Render(Dep("node"), Dep("make"), Dep("dotnet"), Dep("docker"));
 
         Assert.Null(problem);
         Assert.Equal(Docker + Dotnet + Make + Node, text);
@@ -48,15 +48,17 @@ public class DependencyRecipesTests
         var shuffled = Render(set.Reverse().ToArray());
 
         Assert.Null(first.Problem);
-        Assert.Equal(first, second);
-        Assert.Equal(first, shuffled);
+        Assert.Equal(first.Dockerfile, second.Dockerfile);
+        Assert.Equal(first.Dockerfile, shuffled.Dockerfile);
+        Assert.Equal(first.Resolved, second.Resolved);
+        Assert.Equal(first.Resolved, shuffled.Resolved);
     }
 
     [Fact]
     public void TheSameVersionTwiceIsOneEntry()
     {
-        var (twice, _) = Render(Dep("dotnet", "8"), Dep("dotnet", "8"));
-        var (once, _) = Render(Dep("dotnet", "8"));
+        var (twice, _, _) = Render(Dep("dotnet", "8"), Dep("dotnet", "8"));
+        var (once, _, _) = Render(Dep("dotnet", "8"));
 
         Assert.Equal(once, twice);
     }
@@ -64,8 +66,8 @@ public class DependencyRecipesTests
     [Fact]
     public void ABareEntryAndAVersionedOneKeepTheVersion()
     {
-        var (bareFirst, _) = Render(Dep("dotnet"), Dep("dotnet", "8"));
-        var (bareLast, _) = Render(Dep("dotnet", "8"), Dep("dotnet"));
+        var (bareFirst, _, _) = Render(Dep("dotnet"), Dep("dotnet", "8"));
+        var (bareLast, _, _) = Render(Dep("dotnet", "8"), Dep("dotnet"));
 
         Assert.Equal(Render(Dep("dotnet", "8")).Dockerfile, bareFirst);
         Assert.Equal(bareFirst, bareLast);
@@ -75,8 +77,8 @@ public class DependencyRecipesTests
     [Fact]
     public void TwoDifferentVersionsRefuseWithTheSameSentenceInEitherOrder()
     {
-        var (dockerfile, problem) = Render(Dep("dotnet", "10"), Dep("dotnet", "8"));
-        var (_, reversed) = Render(Dep("dotnet", "8"), Dep("dotnet", "10"));
+        var (dockerfile, _, problem) = Render(Dep("dotnet", "10"), Dep("dotnet", "8"));
+        var (_, _, reversed) = Render(Dep("dotnet", "8"), Dep("dotnet", "10"));
 
         Assert.Null(dockerfile);
         Assert.Equal("`dotnet` is declared at 10 and at 8 - a recipe installs one version", problem);
@@ -86,7 +88,7 @@ public class DependencyRecipesTests
     [Fact]
     public void ClosureAddsNodeOnceBeneathTheRecipeThatNeedsIt()
     {
-        var (text, problem) = Render(Dep("playwright-browsers"));
+        var (text, _, problem) = Render(Dep("playwright-browsers"));
 
         Assert.Null(problem);
         Assert.Equal(Node + Browsers, text);
@@ -95,7 +97,7 @@ public class DependencyRecipesTests
     [Fact]
     public void ClosureAddsNothingWhenNodeIsDeclaredAndKeepsItsVersion()
     {
-        var (text, problem) = Render(Dep("playwright-browsers"), Dep("node", "20"));
+        var (text, _, problem) = Render(Dep("playwright-browsers"), Dep("node", "20"));
 
         Assert.Null(problem);
         Assert.Equal(1, text!.Split("# node\n").Length - 1);
@@ -105,7 +107,7 @@ public class DependencyRecipesTests
     [Fact]
     public void AVersionReplacesOnlyTheVersionLine()
     {
-        var (text, problem) = Render(Dep("node", "20.11"));
+        var (text, _, problem) = Render(Dep("node", "20.11"));
 
         Assert.Null(problem);
         Assert.Equal(Node.Replace("NODE_VERSION=22", "NODE_VERSION=20.11"), text);
@@ -115,7 +117,7 @@ public class DependencyRecipesTests
     [Fact]
     public void AVersionOnARecipeWithNoVersionArgRefuses()
     {
-        var (dockerfile, problem) = Render(Dep("make", "4"));
+        var (dockerfile, _, problem) = Render(Dep("make", "4"));
 
         Assert.Null(dockerfile);
         Assert.Equal("`make` installs whatever its package provides - declare it without a version", problem);
@@ -124,7 +126,7 @@ public class DependencyRecipesTests
     [Fact]
     public void AnUnknownIdRefusesWithTheIdRulesSentence()
     {
-        var (dockerfile, problem) = Render(Dep("x"));
+        var (dockerfile, _, problem) = Render(Dep("x"));
 
         Assert.Null(dockerfile);
         Assert.Equal(Dependencies.Default.IdProblem("x"), problem);
@@ -137,7 +139,7 @@ public class DependencyRecipesTests
     [InlineData("10\nRUN x")]
     public void AnInvalidVersionRefusesAndIsNeverSpliced(string version)
     {
-        var (dockerfile, problem) = Render(Dep("node", version));
+        var (dockerfile, _, problem) = Render(Dep("node", version));
 
         Assert.Null(dockerfile);
         Assert.Equal(DependencyVersion.Problem(version), problem);
@@ -146,22 +148,48 @@ public class DependencyRecipesTests
     [Fact]
     public void AKnownIdWithoutARecipeRefuses()
     {
-        var (dockerfile, problem) = Render(Dep("pwsh"));
+        var (dockerfile, _, problem) = Render(Dep("pwsh"));
 
         Assert.Null(dockerfile);
-        Assert.Equal("`pwsh` is on the master list but ships no install recipe", problem);
+        Assert.Equal("`pwsh` is on the master list but ships no install recipe - a repository declaring it stays on host runners", problem);
     }
 
     [Fact]
     public void AnEmptySetRendersNothing()
     {
-        Assert.Equal(("", (string?)null), Render());
+        var (dockerfile, resolved, problem) = Render();
+
+        Assert.Equal("", dockerfile);
+        Assert.Empty(resolved!);
+        Assert.Null(problem);
     }
 
     [Fact]
     public void TheEmbeddedLookupIsNullForAnIdWithNoRecipeAndAnEmptySetRendersNothing()
     {
         Assert.Null(DependencyRecipes.Recipe("no-such"));
-        Assert.Equal(("", (string?)null), DependencyRecipes.Render([]));
+        var (dockerfile, resolved, problem) = DependencyRecipes.Render([]);
+
+        Assert.Equal("", dockerfile);
+        Assert.Empty(resolved!);
+        Assert.Null(problem);
+    }
+
+    [Fact]
+    public void TheResolvedSetIsTheDeclaredSetClosedOverRequirementsInIdOrder()
+    {
+        var (_, resolved, _) = Render(Dep("playwright-browsers"), Dep("make"), Dep("dotnet", "10"));
+
+        Assert.Equal(
+            [Dep("dotnet", "10"), Dep("make"), Dep("node"), Dep("playwright-browsers")],
+            resolved);
+    }
+
+    [Fact]
+    public void AProblemHasNoResolvedSet()
+    {
+        var (_, resolved, _) = Render(Dep("pwsh"));
+
+        Assert.Null(resolved);
     }
 }

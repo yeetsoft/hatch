@@ -30,6 +30,7 @@ without the flag.
 |---|---|---|
 | `config` | No | No: it writes local files only |
 | `use` | No | No: it writes local files only |
+| `image` | Yes | No |
 | `standby` | Yes | No: it registers or forgets a login item on this machine |
 | `board` | No | No |
 | `next` | No | No |
@@ -76,7 +77,8 @@ ticket's history says who did what without anybody being asked to record it.
 ```
 hatch config [--show | --origin <origin> | --key <key>
               | --repo <path>... | --workspace <dir> | --models <model>...
-              | --has <entry>... | --log on|<dir>|off | --dangerous on|off]
+              | --has <entry>... | --runner-base-image <image>
+              | --log on|<dir>|off | --dangerous on|off]
              [--here | --profile <name>]
 ```
 
@@ -128,6 +130,10 @@ needs a key either way. Never put it in a repository.
   trimmed, lowercased and deduplicated. One it does not know, or a comma inside
   one (`--has dotnet,node`), is refused, naming it, with nothing written
   ([the runner](the-runner#has)).
+- `--runner-base-image <image>` writes `HATCH_RUNNER_BASE_IMAGE`, the image
+  [`hatch image dockerfile`](#image) starts from when `--base` is not given.
+  Written alone, everything else as it was. An image with a space or line break
+  in it is refused with nothing written.
 - `--here` writes this checkout's `scripts/.env` instead of the per-user file,
   for every write above. The checkout's git must already ignore the file.
   Refused outside a checkout or combined with `--show`.
@@ -160,6 +166,42 @@ It touches no ticket and no column, so it writes nothing to the board.
 A running `go-to-work` that follows the active profile restarts, or stops
 saying why, when this moves the pointer; see
 [Restarts](one-increment-and-the-loop#restarts).
+
+### image
+
+```
+hatch image dockerfile [--base <image>]
+```
+
+Prints the Dockerfile this checkout's `.hatch/dependencies.json` renders to. It
+reads the checkout and the machine-bound settings and makes no board call, so it
+works with nothing configured; it needs no Docker either.
+
+The text, in order:
+
+1. `FROM <base>`.
+2. Each declared dependency's install recipe, in id order. What a recipe requires
+   is installed too, so `playwright-browsers` brings `node` in bare.
+3. `.hatch/runner.Dockerfile`, byte for byte, only when the repository has one. A
+   file with no final newline is followed by one `\n`, which is not part of it.
+4. The resolved set, in the declaration's own shape (an id string, or an object
+   with `id` and `version`), written to `/etc/hatch/dependencies.json` and
+   carried as the image label `hatch.dependencies`.
+
+The same declaration renders the same bytes, however its entries are ordered.
+
+- `--base <image>` is the image to start from. It wins over
+  `HATCH_RUNNER_BASE_IMAGE`, which `hatch config --runner-base-image <image>`
+  writes; with neither, the command says so, naming both. An image is one word.
+
+The baked block runs after `runner.Dockerfile` and writes under `/etc`, so a
+`runner.Dockerfile` must leave the user as root. The heredoc needs BuildKit.
+
+It refuses, in one sentence, when the checkout has no `.hatch/dependencies.json`
+(naming the path), when the file is not a valid declaration, and when a declared
+dependency ships no install recipe - that repository stays on host runners.
+
+It touches no ticket and no column, so it writes nothing to the board.
 
 ### standby
 
