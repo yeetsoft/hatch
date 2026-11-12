@@ -79,7 +79,7 @@ export function settle(known: Known, asked: string[], found: Attachment[]): Know
     indentation (a list item, a blockquote) when the reference opens that
     line - again never produced by `attachmentMarkdown` itself. */
 export function removeAttachmentLinks(markdown: string, id: string): string {
-  const path = `/api/hatch/(?:images|attachments)/${id}`;
+  const path = `/api/(?:images|attachments)/${id}`;
   const pattern = new RegExp(`!?\\[(?:\\\\.|[^\\]\\n])*\\]\\(${path}\\)|${path}`, 'gi');
 
   const lines = markdown.split('\n').flatMap((line) => {

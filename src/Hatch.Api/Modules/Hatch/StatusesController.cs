@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// of power <see cref="PutRepositories"/> guards over there.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/statuses")]
+[Route("api/statuses")]
 public class StatusesController(HatchContext db, ICallerIdentity caller, TimeProvider time, ILogger<StatusesController> logger) : ControllerBase
 {
     /// <summary>

@@ -10,7 +10,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/reports/flow</c>: the whole trail loaded, folded by
+/// <c>GET /api/reports/flow</c>: the whole trail loaded, folded by
 /// <see cref="FlowReport"/> and answered as a <see cref="FlowDto"/>, wired
 /// against the in-memory database.
 /// </summary>

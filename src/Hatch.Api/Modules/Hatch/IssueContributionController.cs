@@ -18,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// way in.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueContributionController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

@@ -98,7 +98,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
         var who = takers ? "&takers=true" : "";
         return await Client.GetAsync<List<QueueEntryDto>>(
-            $"/api/hatch/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{Declare(checkouts, clones)}", ct) ?? [];
+            $"/api/work/queue?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{who}{Declare(checkouts, clones)}", ct) ?? [];
     }
 
     /// <summary>
@@ -112,7 +112,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     {
         var parts = DeclareParts(checkouts);
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
-        return await Client.GetAsync<List<ReviewCheckDto>>($"/api/hatch/work/review{query}", ct) ?? [];
+        return await Client.GetAsync<List<ReviewCheckDto>>($"/api/work/review{query}", ct) ?? [];
     }
 
     /// <summary>
@@ -129,11 +129,11 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     {
         var beforeQ = string.IsNullOrEmpty(before) ? "" : $"&before={Uri.EscapeDataString(before)}";
         var projectQ = projectId is { } id ? $"&projectId={id}" : "";
-        return $"/api/hatch/changelog?days={days}{beforeQ}{projectQ}";
+        return $"/api/changelog?days={days}{beforeQ}{projectQ}";
     }
 
     /// <summary>
-    /// One actor's rundown over a window, per <c>GET /api/hatch/reports/activity</c>.
+    /// One actor's rundown over a window, per <c>GET /api/reports/activity</c>.
     /// <c>offsetMinutes</c>, <c>gap</c>, <c>lead</c> and <c>window</c> are never sent:
     /// <c>activity</c> draws no series and no sessions, so the route's own defaults do.
     /// </summary>
@@ -147,14 +147,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     {
         var projectQ = projectId is { } id ? $"&projectId={id}" : "";
         var keysQ = includeKeys ? "&includeKeys=true" : "";
-        return $"/api/hatch/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}{keysQ}";
+        return $"/api/reports/activity?actor={Uri.EscapeDataString(actor)}&from={Instant(from)}&to={Instant(to)}{projectQ}{keysQ}";
     }
 
     private static string Instant(DateTimeOffset at) => at.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>Every project in the house - what <c>--project &lt;KEY&gt;</c> resolves a key against, since the changelog route itself takes only an id.</summary>
     public async Task<IReadOnlyList<ProjectDto>> ProjectsAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<ProjectDto>>("/api/hatch/projects", ct) ?? [];
+        await Client.GetAsync<List<ProjectDto>>("/api/projects", ct) ?? [];
 
     /// <summary>
     /// Every runner that has spoken to this Hatch lately, for a person to look
@@ -163,11 +163,11 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// what that means.
     /// </summary>
     public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners?live=true", ct) ?? [];
+        await Client.GetAsync<List<RunnerDto>>("/api/runners?live=true", ct) ?? [];
 
-    /// <summary>One named runner, whole - <c>GET /api/hatch/runners/{name}</c>.</summary>
+    /// <summary>One named runner, whole - <c>GET /api/runners/{name}</c>.</summary>
     public Task<RunnerDto?> RunnerAsync(string name, CancellationToken ct) =>
-        Client.GetAsync<RunnerDto>($"/api/hatch/runners/{Uri.EscapeDataString(name)}", ct);
+        Client.GetAsync<RunnerDto>($"/api/runners/{Uri.EscapeDataString(name)}", ct);
 
     /// <summary>
     /// Replaces the models a runner's key refuses, whole - see
@@ -177,16 +177,16 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public Task<RunnerDto?> WriteRefusedModelsAsync(string name, IReadOnlyList<string> models, CancellationToken ct) =>
         Client.WriteAsync<RunnerDto>(
-            HttpMethod.Put, $"/api/hatch/runners/{Uri.EscapeDataString(name)}/refused-models",
+            HttpMethod.Put, $"/api/runners/{Uri.EscapeDataString(name)}/refused-models",
             new RunnerRefusedModelsWriteRequest(models), ct);
 
-    /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
-    public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);
+    /// <summary>Who this call is - a key or a runner - per <c>/api/me</c>.</summary>
+    public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/me", ct);
 
     /// <summary>A cast-list name nothing has claimed yet, for <c>hatch config</c>'s mint prompt to offer as a default.</summary>
     public async Task<string> SuggestRunnerNameAsync(CancellationToken ct)
     {
-        var path = "/api/hatch/runners/suggest-name";
+        var path = "/api/runners/suggest-name";
         var answer = await Client.Send(HttpMethod.Get, path, null, ct);
         if (!answer.Ok) throw new HatchException(Client.Refusal(answer, path), answer.Status);
 
@@ -203,7 +203,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public async Task<(RunnerMintedDto? Minted, string? Taken)> CreateRunnerAsync(string name, CancellationToken ct)
     {
-        var path = "/api/hatch/runners";
+        var path = "/api/runners";
         var answer = await Client.Send(HttpMethod.Post, path, new CreateRunnerRequest(name), ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
@@ -213,7 +213,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     }
 
     /// <summary>What the Attention panel draws, so a terminal reading the same list cannot disagree with it.</summary>
-    public Task<AttentionDto?> AttentionAsync(CancellationToken ct) => Client.GetAsync<AttentionDto>("/api/hatch/attention", ct);
+    public Task<AttentionDto?> AttentionAsync(CancellationToken ct) => Client.GetAsync<AttentionDto>("/api/attention", ct);
 
     /// <summary>
     /// A verdict on one issue's branch in one repository - see
@@ -221,7 +221,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// runner has it; the board canonicalises it.
     /// </summary>
     public Task<MergeCheckDto?> MergeCheckAsync(string key, MergeCheckRequest request, CancellationToken ct) =>
-        Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/merge-check", request, ct);
+        Client.WriteAsync<MergeCheckDto>(HttpMethod.Put, $"/api/issues/{key}/merge-check", request, ct);
 
     /// <summary>
     /// What the forge says of an issue's still-open pull request - see
@@ -231,7 +231,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// route from one that refused this write.
     /// </summary>
     public Task PullRequestStateAsync(string key, PullRequestStateRequest request, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/pull-request-state", request, ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/pull-request-state", request, ct);
 
     /// <summary>
     /// That this runner brought an issue's branch current with the trunk - see
@@ -241,7 +241,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// route from one that refused this write.
     /// </summary>
     public Task BroughtCurrentAsync(string key, BroughtCurrentRequest request, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/brought-current", request, ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/brought-current", request, ct);
 
     /// <summary>
     /// What the build on the tip of one issue's branch came to in one repository -
@@ -249,7 +249,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// runner has it; the board canonicalises it.
     /// </summary>
     public Task<BuildCheckDto?> BuildCheckAsync(string key, BuildCheckRequest request, CancellationToken ct) =>
-        Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/build-check", request, ct);
+        Client.WriteAsync<BuildCheckDto>(HttpMethod.Put, $"/api/issues/{key}/build-check", request, ct);
 
     /// <summary>
     /// What one repository now holds for an issue's branch - see
@@ -257,7 +257,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// runner has it; the board canonicalises it.
     /// </summary>
     public Task<LandingDto?> LandedAsync(string key, LandingWriteRequest request, CancellationToken ct) =>
-        Client.WriteAsync<LandingDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/landing", request, ct);
+        Client.WriteAsync<LandingDto>(HttpMethod.Put, $"/api/issues/{key}/landing", request, ct);
 
     /// <summary>
     /// Every trunk verdict the board holds, read once per poll and matched
@@ -265,7 +265,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// no issue to ride the verdict in on the way the branch checks do.
     /// </summary>
     public async Task<IReadOnlyList<TrunkBuildDto>> TrunkBuildsAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<TrunkBuildDto>>("/api/hatch/trunk-builds", ct) ?? [];
+        await Client.GetAsync<List<TrunkBuildDto>>("/api/trunk-builds", ct) ?? [];
 
     /// <summary>
     /// What the build on the tip of one repository's trunk came to - see
@@ -273,7 +273,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// runner has it; the board canonicalises it.
     /// </summary>
     public Task<TrunkBuildDto?> TrunkBuildAsync(TrunkBuildRequest request, CancellationToken ct) =>
-        Client.WriteAsync<TrunkBuildDto>(HttpMethod.Put, "/api/hatch/trunk-builds", request, ct);
+        Client.WriteAsync<TrunkBuildDto>(HttpMethod.Put, "/api/trunk-builds", request, ct);
 
     /// <summary>
     /// Every playbook file verdict the board holds, and the path it is reading
@@ -281,7 +281,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// same as <see cref="TrunkBuildsAsync"/>.
     /// </summary>
     public async Task<PlaybookFilesDto> PlaybookFilesAsync(CancellationToken ct) =>
-        await Client.GetAsync<PlaybookFilesDto>("/api/hatch/playbook-files", ct) ?? new PlaybookFilesDto("", []);
+        await Client.GetAsync<PlaybookFilesDto>("/api/playbook-files", ct) ?? new PlaybookFilesDto("", []);
 
     /// <summary>
     /// What one repository's trunk now holds for the playbook file path - see
@@ -289,7 +289,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// runner has it; the board canonicalises it.
     /// </summary>
     public Task<PlaybookFileDto?> PlaybookFileAsync(PlaybookFileRequest request, CancellationToken ct) =>
-        Client.WriteAsync<PlaybookFileDto>(HttpMethod.Put, "/api/hatch/playbook-files", request, ct);
+        Client.WriteAsync<PlaybookFileDto>(HttpMethod.Put, "/api/playbook-files", request, ct);
 
     /// <summary>
     /// Every dependency file verdict the board holds, and the path it is
@@ -297,7 +297,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// checkout, the same as <see cref="PlaybookFilesAsync"/>.
     /// </summary>
     public async Task<DependencyFilesDto> DependencyFilesAsync(CancellationToken ct) =>
-        await Client.GetAsync<DependencyFilesDto>("/api/hatch/dependency-files", ct) ?? new DependencyFilesDto("", []);
+        await Client.GetAsync<DependencyFilesDto>("/api/dependency-files", ct) ?? new DependencyFilesDto("", []);
 
     /// <summary>
     /// What one repository's trunk now holds for the dependency file path -
@@ -305,7 +305,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// this runner has it; the board canonicalises it.
     /// </summary>
     public Task<DependencyFileDto?> DependencyFileAsync(DependencyFileRequest request, CancellationToken ct) =>
-        Client.WriteAsync<DependencyFileDto>(HttpMethod.Put, "/api/hatch/dependency-files", request, ct);
+        Client.WriteAsync<DependencyFileDto>(HttpMethod.Put, "/api/dependency-files", request, ct);
 
     /// <summary>
     /// Files the bug HA-95's button would have filed for this trunk build. A
@@ -315,7 +315,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// second.
     /// </summary>
     public Task<IssueDto?> TrunkBuildBugAsync(long id, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Post, $"/api/hatch/trunk-builds/{id}/bug", null, ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Post, $"/api/trunk-builds/{id}/bug", null, ct);
 
     /// <summary>
     /// The dispatch for one named issue.
@@ -337,7 +337,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         parts.AddRange(DangerousParts());
 
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
-        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/hatch/work/{key}{query}", ct));
+        return WithIssueUrl(await Client.GetAsync<WorkDto>($"/api/work/{key}{query}", ct));
     }
 
     /// <summary>
@@ -353,10 +353,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         var parts = DeclareParts(checkouts, clones);
         parts.AddRange(TagParts());
         var query = parts.Count == 0 ? "" : $"?{string.Join('&', parts)}";
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/hop{query}", null, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/hop{query}", null, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/hop"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/hop"));
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
@@ -374,9 +374,9 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     {
         var parts = DeclareParts(checkouts, clones);
         parts.Add($"heldToken={heldToken}");
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/verdict?{string.Join('&', parts)}", null, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/verdict?{string.Join('&', parts)}", null, ct);
         if (answer.Status == System.Net.HttpStatusCode.NotFound) return null;
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/verdict"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/verdict"));
         if (answer.Body.Trim().Length == 0) return null;
         return System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto);
     }
@@ -391,10 +391,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<(IssueDto? Issue, string? WalkOn)> MergedAsync(
         string key, PullRequestMergedRequest request, CancellationToken ct)
     {
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/merged", request, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/merged", request, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/merged"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/merged"));
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
@@ -412,10 +412,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<(IssueDto? Issue, string? WalkOn)> ClosedAsync(
         string key, PullRequestClosedRequest request, CancellationToken ct)
     {
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/closed", request, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/closed", request, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/closed"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/closed"));
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
@@ -431,10 +431,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<(IssueDto? Issue, string? WalkOn)> PushbackAsync(
         string key, PullRequestPushbackRequest request, CancellationToken ct)
     {
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/pushback", request, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/pushback", request, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/pushback"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/pushback"));
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
@@ -452,10 +452,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public async Task<(IssueDto? Issue, string? WalkOn)> LandWorkAsync(string key, CancellationToken ct)
     {
-        var answer = await Client.Send(HttpMethod.Post, $"/api/hatch/work/{key}/landed", null, ct);
+        var answer = await Client.Send(HttpMethod.Post, $"/api/work/{key}/landed", null, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
-        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/hatch/work/{key}/landed"));
+        if (!answer.Ok) throw new HatchException(Client.Refusal(answer, $"/api/work/{key}/landed"));
         if (answer.Body.Trim().Length == 0) return (null, null);
 
         return (System.Text.Json.JsonSerializer.Deserialize(answer.Body, HatchJson.Default.IssueDto), null);
@@ -480,7 +480,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
         var narrowed = mine ? "&mine=true" : "";
         var asking = string.IsNullOrEmpty(runner) ? "" : $"&runner={Uri.EscapeDataString(runner)}";
         return WithIssueUrl(await Client.GetAsync<WorkDto>(
-            $"/api/hatch/work/next?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct));
+            $"/api/work/next?offsetMinutes={offsetMinutes}{scope}{narrowed}{asking}{Declare(checkouts, clones)}", ct));
     }
 
     /// <summary>
@@ -547,15 +547,15 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<IReadOnlyList<QuestionDto>> QuestionsAsync(string? key, bool open, CancellationToken ct)
     {
         var path = string.IsNullOrEmpty(key)
-            ? $"/api/hatch/questions?open={open.ToString().ToLowerInvariant()}"
-            : $"/api/hatch/issues/{key}/questions?open={open.ToString().ToLowerInvariant()}";
+            ? $"/api/questions?open={open.ToString().ToLowerInvariant()}"
+            : $"/api/issues/{key}/questions?open={open.ToString().ToLowerInvariant()}";
 
         return await Client.GetAsync<List<QuestionDto>>(path, ct) ?? [];
     }
 
     public async Task<IReadOnlyList<IssueCardDto>> UnderAsync(string ancestorKey, CancellationToken ct) =>
         await Client.GetAsync<List<IssueCardDto>>(
-            $"/api/hatch/issues?ancestorKey={Uri.EscapeDataString(ancestorKey)}", ct) ?? [];
+            $"/api/issues?ancestorKey={Uri.EscapeDataString(ancestorKey)}", ct) ?? [];
 
     /// <summary>
     /// Releases a claim a dead loop left, by the token it recorded, as
@@ -567,20 +567,20 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<System.Net.HttpStatusCode?> ReleaseAbandonedAsync(string key, Guid token, CancellationToken ct)
     {
         var answer = await Client.Send(
-            HttpMethod.Delete, $"/api/hatch/issues/{key}/claim?token={token}&outcome={ClaimOutcomes.Abandoned}", null, ct);
+            HttpMethod.Delete, $"/api/issues/{key}/claim?token={token}&outcome={ClaimOutcomes.Abandoned}", null, ct);
         return answer.Status;
     }
 
     /// <summary>The issues that record <paramref name="url"/> as their pull request, or as their contribution's - at most one, but a list, as the route is.</summary>
     public async Task<IReadOnlyList<IssueCardDto>> PullRequestRecordedAsync(string url, CancellationToken ct) =>
         await Client.GetAsync<List<IssueCardDto>>(
-            $"/api/hatch/issues?pullRequestUrl={Uri.EscapeDataString(url)}", ct) ?? [];
+            $"/api/issues?pullRequestUrl={Uri.EscapeDataString(url)}", ct) ?? [];
 
     /// <summary>The issue in <paramref name="projectId"/> whose contribution already names <paramref name="key"/> on <paramref name="instance"/> as its origin - at most one, but a list, as the route is.</summary>
     public async Task<IReadOnlyList<IssueCardDto>> OriginRecordedAsync(
         int projectId, string instance, string key, CancellationToken ct) =>
         await Client.GetAsync<List<IssueCardDto>>(
-            $"/api/hatch/issues?projectId={projectId}&originInstance={Uri.EscapeDataString(instance)}"
+            $"/api/issues?projectId={projectId}&originInstance={Uri.EscapeDataString(instance)}"
             + $"&originKey={Uri.EscapeDataString(key)}", ct) ?? [];
 
     /// <summary>
@@ -591,7 +591,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<(IssueDto? Issue, string? Conflict)> ContributionAsync(
         string key, ContributionRequest request, CancellationToken ct)
     {
-        var path = $"/api/hatch/issues/{key}/contribution";
+        var path = $"/api/issues/{key}/contribution";
         var answer = await Client.Send(HttpMethod.Put, path, request, ct);
 
         if (answer.Conflict) return (null, answer.Sentence);
@@ -602,26 +602,26 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     }
 
     public Task<CommentDto?> CommentAsync(string key, string body, CancellationToken ct) =>
-        Client.PostAsync<CommentDto>($"/api/hatch/issues/{key}/comments", new CommentCreateRequest(body), ct);
+        Client.PostAsync<CommentDto>($"/api/issues/{key}/comments", new CommentCreateRequest(body), ct);
 
     /// <summary>A dream added to the Dream Board; the server sets its author.</summary>
     public Task<DreamDto?> AddDreamAsync(DreamCreateRequest request, CancellationToken ct) =>
-        Client.PostAsync<DreamDto>("/api/hatch/dreams", request, ct);
+        Client.PostAsync<DreamDto>("/api/dreams", request, ct);
 
     /// <summary>A new issue - the runner's own filer, for the one case nothing short of it covers: a hard-limited session that is gone before it can file anything itself.</summary>
     public Task<IssueDto?> CreateIssueAsync(IssueCreateRequest request, CancellationToken ct) =>
-        Client.PostAsync<IssueDto>("/api/hatch/issues", request, ct);
+        Client.PostAsync<IssueDto>("/api/issues", request, ct);
 
     public Task<CommentDto?> AskAsync(
         string key, string body, IReadOnlyList<QuestionOptionDto> options, CancellationToken ct) =>
         Client.PostAsync<CommentDto>(
-            $"/api/hatch/issues/{key}/comments",
+            $"/api/issues/{key}/comments",
             new CommentCreateRequest(body, Kind: "question", Options: options.Count > 0 ? options : null),
             ct);
 
     /// <summary>A check session's own verdict on the issue it was looking at - see <see cref="VerdictCreateRequest"/>. The endpoint answers 204, so there is nothing to read back.</summary>
     public Task RecordVerdictAsync(string key, string verdict, string? findings, CancellationToken ct) =>
-        Client.PostAsync<object>($"/api/hatch/issues/{key}/verdicts", new VerdictCreateRequest(verdict, findings), ct);
+        Client.PostAsync<object>($"/api/issues/{key}/verdicts", new VerdictCreateRequest(verdict, findings), ct);
 
     /// <summary>
     /// Marks the issue stalled - an increment saying it left the ticket where it
@@ -629,7 +629,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// is what answers it.
     /// </summary>
     public Task<IssueDto?> StallAsync(string key, string why, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/stall", new StallRequest(why), ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/stall", new StallRequest(why), ct);
 
     /// <summary>
     /// Marks messages to the agent read, and answers with the ones this call
@@ -639,58 +639,58 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<IReadOnlyList<CommentDto>> DeliverMessagesAsync(
         string key, IReadOnlyList<long>? ids, CancellationToken ct) =>
         await Client.PostAsync<List<CommentDto>>(
-            $"/api/hatch/issues/{key}/messages/deliver", new MessageDeliverRequest(ids), ct) ?? [];
+            $"/api/issues/{key}/messages/deliver", new MessageDeliverRequest(ids), ct) ?? [];
 
     public Task<WorkLogEntryDto?> WorkLogAsync(string key, WorkLogEntryRequest entry, CancellationToken ct) =>
-        Client.PostAsync<WorkLogEntryDto>($"/api/hatch/issues/{key}/work-log", entry, ct);
+        Client.PostAsync<WorkLogEntryDto>($"/api/issues/{key}/work-log", entry, ct);
 
     // ---- The conversational half, which used to be jq over curl ----
 
     /// <summary>The columns and every card on them, in the board's own order.</summary>
     public Task<BoardDto?> BoardAsync(CancellationToken ct) =>
-        Client.GetAsync<BoardDto>("/api/hatch/board", ct);
+        Client.GetAsync<BoardDto>("/api/board", ct);
 
     /// <summary>The columns alone, which is what <c>show</c> needs to name one.</summary>
     public async Task<IReadOnlyList<StatusDto>> StatusesAsync(CancellationToken ct) =>
-        await Client.GetAsync<List<StatusDto>>("/api/hatch/statuses", ct) ?? [];
+        await Client.GetAsync<List<StatusDto>>("/api/statuses", ct) ?? [];
 
     /// <summary>One issue, whole: the brief, its edges and where it is.</summary>
     public Task<IssueDto?> IssueAsync(string key, CancellationToken ct) =>
-        Client.GetAsync<IssueDto>($"/api/hatch/issues/{key}", ct);
+        Client.GetAsync<IssueDto>($"/api/issues/{key}", ct);
 
     public async Task<IReadOnlyList<CommentDto>> CommentsAsync(string key, CancellationToken ct) =>
-        await Client.GetAsync<List<CommentDto>>($"/api/hatch/issues/{key}/comments", ct) ?? [];
+        await Client.GetAsync<List<CommentDto>>($"/api/issues/{key}/comments", ct) ?? [];
 
     /// <summary>Into a column. The board decides the rank; nothing here has an opinion about it.</summary>
     public Task<IssueDto?> MoveAsync(string key, int statusId, CancellationToken ct) =>
-        Client.PostAsync<IssueDto>($"/api/hatch/issues/{key}/move", new IssueMoveRequest(statusId, null, null), ct);
+        Client.PostAsync<IssueDto>($"/api/issues/{key}/move", new IssueMoveRequest(statusId, null, null), ct);
 
     /// <summary>One field at a time, which is all the CLI ever edits.</summary>
     public Task<IssueDto?> PatchAsync(string key, IssuePatchRequest patch, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Patch, $"/api/hatch/issues/{key}", patch, ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Patch, $"/api/issues/{key}", patch, ct);
 
     /// <summary><paramref name="key"/> waits on <paramref name="dependsOnKey"/>.</summary>
     public Task<IssueDto?> DependAsync(string key, string dependsOnKey, CancellationToken ct) =>
         Client.PostAsync<IssueDto>(
-            $"/api/hatch/issues/{key}/dependencies", new IssueDependencyRequest(dependsOnKey), ct);
+            $"/api/issues/{key}/dependencies", new IssueDependencyRequest(dependsOnKey), ct);
 
     /// <summary>...no longer.</summary>
     public Task<IssueDto?> UndependAsync(string key, string dependsOnKey, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(
-            HttpMethod.Delete, $"/api/hatch/issues/{key}/dependencies/{dependsOnKey}", null, ct);
+            HttpMethod.Delete, $"/api/issues/{key}/dependencies/{dependsOnKey}", null, ct);
 
     /// <summary>A story's own say over whether its tasks share one branch and one pull request: <c>on</c>, <c>off</c> or <c>inherit</c>.</summary>
     public Task<IssueDto?> SetOnePrAsync(string key, string value, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/one-pr", new OnePrRequest(value), ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/one-pr", new OnePrRequest(value), ct);
 
     /// <summary>Flags the issue as dangerous to run, with the reason; an empty reason clears it.</summary>
     public Task<IssueDto?> SetDangerousAsync(string key, string reason, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/dangerous", new DangerousRequest(reason), ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/dangerous", new DangerousRequest(reason), ct);
 
     /// <summary>Omits a runner from the issue, with the reason; the answer is the issue with its omitted runners as they now stand.</summary>
     public Task<IssueDto?> OmitRunnerAsync(string key, string runner, string reason, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(
-            HttpMethod.Put, $"/api/hatch/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}", new OmitRunnerRequest(reason), ct);
+            HttpMethod.Put, $"/api/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}", new OmitRunnerRequest(reason), ct);
 
     /// <summary>
     /// Lifts the issue's own omission of a runner. Not <c>WriteAsync</c>:
@@ -701,7 +701,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public async Task<(IssueDto? Issue, string? Refusal)> LiftOmissionAsync(string key, string runner, CancellationToken ct)
     {
-        var path = $"/api/hatch/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}";
+        var path = $"/api/issues/{key}/omitted-runners/{Uri.EscapeDataString(runner)}";
         var answer = await Client.Send(HttpMethod.Delete, path, null, ct);
 
         if (answer.Status == System.Net.HttpStatusCode.NotFound && answer.Body.Trim().Length > 0) return (null, answer.Sentence);
@@ -713,18 +713,18 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
 
     /// <summary>Declares the issue finished with no code, with the reason; an empty reason clears the declaration.</summary>
     public Task<IssueDto?> SetNoCodeAsync(string key, string reason, CancellationToken ct) =>
-        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/hatch/issues/{key}/no-code", new NoCodeRequest(reason), ct);
+        Client.WriteAsync<IssueDto>(HttpMethod.Put, $"/api/issues/{key}/no-code", new NoCodeRequest(reason), ct);
 
     /// <summary>The release note a session wrote for the issue, written under the claim the runner holds.</summary>
     public Task<IssueDto?> ReleaseNoteAsync(string key, string note, Guid heldToken, CancellationToken ct) =>
         Client.WriteAsync<IssueDto>(
-            HttpMethod.Put, $"/api/hatch/issues/{key}/release-note?heldToken={heldToken}",
+            HttpMethod.Put, $"/api/issues/{key}/release-note?heldToken={heldToken}",
             new ReleaseNoteRequest(note), ct);
 
     /// <summary>An answer to a question, which is a comment that names the one it answers.</summary>
     public Task<CommentDto?> AnswerAsync(string key, long questionId, string body, CancellationToken ct) =>
         Client.PostAsync<CommentDto>(
-            $"/api/hatch/issues/{key}/comments",
+            $"/api/issues/{key}/comments",
             new CommentCreateRequest(body, Kind: "answer", AnswersId: questionId),
             ct);
 }

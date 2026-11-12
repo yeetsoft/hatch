@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// three verbs share nothing with it but the key lookup.
 /// </summary>
 [ApiController]
-[Route("api/hatch/issues/{key}")]
+[Route("api/issues/{key}")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueThreadController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

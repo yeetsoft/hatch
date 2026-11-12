@@ -32,7 +32,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// fields.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssuePlaybookController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time,
     ModelFamilies? families = null) : ControllerBase

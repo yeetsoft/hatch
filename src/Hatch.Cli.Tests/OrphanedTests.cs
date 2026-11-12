@@ -7,8 +7,8 @@ public sealed class OrphanedTests
 {
     private static readonly Guid Token = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly DateTime Started = new(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
-    private const string Release = "/api/hatch/issues/AER-1/claim";
-    private const string Comments = "/api/hatch/issues/AER-1/comments";
+    private const string Release = "/api/issues/AER-1/claim";
+    private const string Comments = "/api/issues/AER-1/comments";
 
     private static void Leave(Harness h, string? sessionId = "sess-1", string board = "https://hatch.example", int pid = 4242) =>
         new SessionRecord(pid, Started.Ticks, "AER-1", Token, DateTimeOffset.UnixEpoch, board, sessionId)

@@ -6,7 +6,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class DangerousCommandTests
 {
-    private const string Route = "/api/hatch/issues/AER-5/dangerous";
+    private const string Route = "/api/issues/AER-5/dangerous";
 
     private static IssueDto Flagged(string reason) =>
         Fixtures.Issue("AER-5") with { Dangerous = reason, DangerousOwn = reason };
@@ -15,7 +15,7 @@ public sealed class DangerousCommandTests
     public async Task One_argument_reads_it_and_puts_nothing()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-5", Flagged("load tests the node"));
+        h.Wire.Json("GET", "/api/issues/AER-5", Flagged("load tests the node"));
 
         Assert.Equal(0, await new DangerousCommand(h.Cli).RunAsync(["AER-5"], default));
 
@@ -27,7 +27,7 @@ public sealed class DangerousCommandTests
     public async Task Reading_an_unflagged_issue_says_so()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-5", Fixtures.Issue("AER-5"));
+        h.Wire.Json("GET", "/api/issues/AER-5", Fixtures.Issue("AER-5"));
 
         Assert.Equal(0, await new DangerousCommand(h.Cli).RunAsync(["AER-5"], default));
 

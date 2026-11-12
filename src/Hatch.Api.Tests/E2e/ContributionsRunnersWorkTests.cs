@@ -120,13 +120,13 @@ public class ContributionsRunnersWorkTests(ITestOutputHelper output)
 
             using (var http = new HttpClient { BaseAddress = new Uri(baseUrl) })
             {
-                using var response = await http.PostAsJsonAsync("/api/hatch/projects", new ProjectCreateRequest("OWN", "Project OWN"));
-                Assert.True(response.IsSuccessStatusCode, $"POST /api/hatch/projects answered {(int)response.StatusCode}");
+                using var response = await http.PostAsJsonAsync("/api/projects", new ProjectCreateRequest("OWN", "Project OWN"));
+                Assert.True(response.IsSuccessStatusCode, $"POST /api/projects answered {(int)response.StatusCode}");
             }
 
             var puts = new List<string>();
             await harness.OpenAsync(deadline, baseUrl, "/projects", context => context.RouteAsync(
-                "**/api/hatch/projects/*/runners-work-contributions", route =>
+                "**/api/projects/*/runners-work-contributions", route =>
                 {
                     lock (puts) puts.Add($"{route.Request.Method} {route.Request.PostData}");
                     return route.ContinueAsync();
@@ -192,7 +192,7 @@ public class ContributionsRunnersWorkTests(ITestOutputHelper output)
             Conflicts: [],
             ContributionsHeld: [Mirrored, Local]);
 
-        return context.RouteAsync("**/api/hatch/attention", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/attention", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(attention, Web),

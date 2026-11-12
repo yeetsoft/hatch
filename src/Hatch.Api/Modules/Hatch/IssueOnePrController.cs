@@ -37,7 +37,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <c>inherit</c> is never refused by the policy.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueOnePrController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

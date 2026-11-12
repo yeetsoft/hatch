@@ -10,27 +10,27 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class LifecycleTests
 {
-    private const string Queue = "/api/hatch/work/queue";
+    private const string Queue = "/api/work/queue";
 
     private static void Board(Harness h, string key = "AER-1", WorkDto? work = null, string? pullRequest = null,
         HttpStatusCode comments = HttpStatusCode.OK, bool taken = false, IReadOnlyList<LandingDto>? landings = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        if (taken) h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.Conflict, "\"this claim was taken over\"");
-        else h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", work ?? Fixtures.Work(key, from: "In Review"));
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/comments", comments, comments == HttpStatusCode.OK
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        if (taken) h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.Conflict, "\"this claim was taken over\"");
+        else h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{key}", work ?? Fixtures.Work(key, from: "In Review"));
+        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", $"/api/issues/{key}/comments", comments, comments == HttpStatusCode.OK
             ? System.Text.Json.JsonSerializer.Serialize(Fixtures.Comment(), Fixtures.Json) : "\"no\"");
     }
 
     /// <summary>What the runner wrote about the tree - and not the stall guard, which a fixture board that never moves the ticket also triggers.</summary>
     private static List<CommentCreateRequest> Tidied(Harness h) =>
-        h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>())
+        h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>())
             .Where(c => c.Body.StartsWith("The runner tidied", StringComparison.Ordinal)).ToList();
 
     private static BranchEntry On(string path, string branch = "aer-1-thing", MergeOutcome merge = MergeOutcome.Clean,
@@ -64,7 +64,7 @@ public sealed class LifecycleTests
         // The release is the last thing: the ticket is still the runner's to
         // write on while the tree is put right.
         var last = h.Wire.Calls[^1];
-        Assert.Equal("DELETE /api/hatch/issues/AER-1/claim", last.Route);
+        Assert.Equal("DELETE /api/issues/AER-1/claim", last.Route);
     }
 
     [Fact]
@@ -142,13 +142,13 @@ public sealed class LifecycleTests
 
         Assert.Empty(h.Sessions.Spawned);
 
-        var asked = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")).Read<CommentCreateRequest>();
+        var asked = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments")).Read<CommentCreateRequest>();
         Assert.Equal("question", asked.Kind);
         Assert.Equal("Which branch should AER-1 continue on?", asked.Body);
         Assert.Equal(["aer-1-a", "aer-1-b"], asked.Options!.Select(o => o.Label));
 
         // Given back, and the tree is put back on the trunk.
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains($"return {h.Root}", h.Workspace.Calls);
     }
 
@@ -213,7 +213,7 @@ public sealed class LifecycleTests
             [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
             h.Workspace.Calls);
 
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments);
         Assert.Contains("out of Claude usage", comment.Body, StringComparison.Ordinal);
         Assert.Contains("resume at 7:40pm", comment.Body, StringComparison.Ordinal);
@@ -240,7 +240,7 @@ public sealed class LifecycleTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var comment = Assert.Single(
-            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+            h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
     }
 
@@ -267,7 +267,7 @@ public sealed class LifecycleTests
         Board(h);
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
-        h.Wire.Replace("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+        h.Wire.Replace("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
             Fixtures.Preempted("AER-9", "Trunk is down"));
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -278,7 +278,7 @@ public sealed class LifecycleTests
             [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
             h.Workspace.Calls);
 
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments);
         Assert.Contains("preempted by [AER-9](https://hatch.example/issues/AER-9) - Trunk is down", comment.Body, StringComparison.Ordinal);
         Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
@@ -298,14 +298,14 @@ public sealed class LifecycleTests
         Board(h);
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
-        h.Wire.Replace("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+        h.Wire.Replace("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
             Fixtures.Preempted("AER-9", "Trunk is down"));
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var comment = Assert.Single(
-            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+            h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
     }
 
@@ -325,7 +325,7 @@ public sealed class LifecycleTests
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
         h.Workspace.DiffStatFor[h.Root] = "file.cs | 2 ++";
-        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
+        h.Wire.Json("POST", "/api/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
             onLine?.Invoke(Fixtures.Init());
@@ -345,7 +345,7 @@ public sealed class LifecycleTests
             [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}", $"diff {h.Root}"],
             h.Workspace.Calls);
 
-        var filed = Assert.Single(h.Wire.To("POST", "/api/hatch/issues")).Read<IssueCreateRequest>();
+        var filed = Assert.Single(h.Wire.To("POST", "/api/issues")).Read<IssueCreateRequest>();
         Assert.Equal("task", filed.Type);
         Assert.Equal("AER-1", filed.ParentKey);
         Assert.Equal("Continue: A ticket", filed.Title);
@@ -357,7 +357,7 @@ public sealed class LifecycleTests
         // The run also crosses the ordinary (1x) budget on its way to the hard
         // limit, so the soft clamp's own comment lands too - untouched by this
         // task, and not the one under test here.
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
         Assert.Contains("7.5M tokens", comment.Body, StringComparison.Ordinal);
         Assert.Contains("aer-1-thing was pushed, now at abc1234", comment.Body, StringComparison.Ordinal);
@@ -375,7 +375,7 @@ public sealed class LifecycleTests
             { Playbook = Fixtures.Playbook(budget: 5) });
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Nothing, null, null, null);
-        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
+        h.Wire.Json("POST", "/api/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-1"));
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
             onLine?.Invoke(Fixtures.Init());
@@ -385,7 +385,7 @@ public sealed class LifecycleTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
         Assert.Contains("Filed AER-2 to continue", comment.Body, StringComparison.Ordinal);
@@ -401,7 +401,7 @@ public sealed class LifecycleTests
             { Playbook = Fixtures.Playbook(budget: 5) });
         h.Workspace.Entry = (path, _) => On(path);
         h.Workspace.PushFor[h.Root] = new LimitPushed(LimitPush.Pushed, "aer-1-thing", "abc1234", null);
-        h.Wire.Json("POST", "/api/hatch/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-0"));
+        h.Wire.Json("POST", "/api/issues", Fixtures.Issue("AER-2", title: "Continue: A ticket", parentKey: "AER-0"));
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
             onLine?.Invoke(Fixtures.Init());
@@ -411,7 +411,7 @@ public sealed class LifecycleTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        var filed = Assert.Single(h.Wire.To("POST", "/api/hatch/issues")).Read<IssueCreateRequest>();
+        var filed = Assert.Single(h.Wire.To("POST", "/api/issues")).Read<IssueCreateRequest>();
         Assert.Equal("AER-0", filed.ParentKey);
     }
 
@@ -434,9 +434,9 @@ public sealed class LifecycleTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues"));
 
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments, c => c.Body.Contains("hit its hard limit", StringComparison.Ordinal));
         Assert.Contains("could not be filed", comment.Body, StringComparison.Ordinal);
     }
@@ -468,7 +468,7 @@ public sealed class LifecycleTests
             [$"prepare {h.Root}", $"enter {h.Root}", $"push {h.Root}", $"leave {h.Root}"],
             h.Workspace.Calls);
 
-        var comments = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        var comments = h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
         var comment = Assert.Single(comments);
         Assert.Contains("fable", comment.Body, StringComparison.Ordinal);
         Assert.Contains("no longer offers", comment.Body, StringComparison.Ordinal);
@@ -501,7 +501,7 @@ public sealed class LifecycleTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var comment = Assert.Single(
-            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+            h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
         Assert.Contains("until", comment.Body, StringComparison.Ordinal);
         Assert.DoesNotContain("for the rest of this run", comment.Body);
     }
@@ -524,7 +524,7 @@ public sealed class LifecycleTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var comment = Assert.Single(
-            h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
+            h.Wire.To("POST", "/api/issues/AER-1/comments").Select(c => c.Read<CommentCreateRequest>()));
         Assert.Contains("nothing to push", comment.Body, StringComparison.Ordinal);
     }
 
@@ -586,7 +586,7 @@ public sealed class LifecycleTests
     {
         using var h = new Harness();
         Board(h);
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("PUT", "/api/issues/AER-1/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor[h.Root] = Found(MergeVerdicts.Clean);
         var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
 
@@ -601,7 +601,7 @@ public sealed class LifecycleTests
     {
         using var h = new Harness();
         Board(h, pullRequest: "https://forge.example/pulls/1");
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("PUT", "/api/issues/AER-1/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor[h.Root] = Found(MergeVerdicts.Clean);
         var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);
 
@@ -715,7 +715,7 @@ public sealed class LifecycleTests
     public async Task A_dry_run_on_a_trunk_landing_project_says_so_and_changes_nothing()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", landing: Landings.Trunk));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", landing: Landings.Trunk));
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
 
@@ -748,7 +748,7 @@ public sealed class LifecycleTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Complained, l => l.Contains("could not be left tidy, or the ticket told"));
     }
 
@@ -778,14 +778,14 @@ public sealed class LifecycleTests
         Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default));
 
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
     public async Task A_dry_run_prints_the_branch_it_would_start_on_and_changes_nothing()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
         h.Workspace.Entry = (path, _) => On(path, merge: MergeOutcome.Clean);
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync(["AER-1", "--dry-run"], default));
@@ -803,14 +803,14 @@ public sealed class LifecycleTests
     private static Verdict Found(string kind = MergeVerdicts.Conflicted) =>
         new(kind, "main", new string('a', 40), "aer-1-thing", new string('b', 40), kind == MergeVerdicts.Conflicted ? ["a.txt"] : []);
 
-    private static List<Call> Verdicts(Harness h) => [.. h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check")];
+    private static List<Call> Verdicts(Harness h) => [.. h.Wire.To("PUT", "/api/issues/AER-1/merge-check")];
 
     [Fact]
     public async Task What_leaving_found_is_put_under_the_checkouts_remote()
     {
         using var h = new Harness();
         Board(h, pullRequest: "https://forge.example/pulls/1");
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("PUT", "/api/issues/AER-1/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor[h.Root] = Found();
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
@@ -829,7 +829,7 @@ public sealed class LifecycleTests
         var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
         var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: false, matchedRemote: "https://example.test/two.git");
         Board(h, work: Fixtures.Work("AER-1", from: "In Review", repositories: [one, two]), pullRequest: "https://forge.example/pulls/1");
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("PUT", "/api/issues/AER-1/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor["/checkouts/two"] = Found();
 
         var runtime = h.Runtime with
@@ -866,7 +866,7 @@ public sealed class LifecycleTests
     {
         using var h = new Harness();
         Board(h, pullRequest: "https://forge.example/pulls/1");
-        h.Wire.Reply("PUT", "/api/hatch/issues/AER-1/merge-check", HttpStatusCode.BadRequest, "\"no\"");
+        h.Wire.Reply("PUT", "/api/issues/AER-1/merge-check", HttpStatusCode.BadRequest, "\"no\"");
         h.Workspace.FoundFor[h.Root] = Found();
         h.Workspace.LeaveNotes.Add("something was left");
 
@@ -882,7 +882,7 @@ public sealed class LifecycleTests
     {
         using var h = new Harness();
         Board(h, pullRequest: "https://forge.example/pulls/1", taken: true);
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("PUT", "/api/issues/AER-1/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor[h.Root] = Found();
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -934,7 +934,7 @@ public sealed class LifecycleTests
             ]);
 
         h.Wire.Reply(
-            "PUT", "/api/hatch/issues/AER-1/merge-check", put,
+            "PUT", "/api/issues/AER-1/merge-check", put,
             put == HttpStatusCode.OK ? System.Text.Json.JsonSerializer.Serialize(Fixtures.MergeCheck(), Fixtures.Json) : "\"no\"");
         return (new Lifecycle(runtime), chosen, Fixtures.ConflictWork("AER-1"));
     }
@@ -955,7 +955,7 @@ public sealed class LifecycleTests
         Assert.Equal(["/checkouts/two"], found.Conflicts.Select(c => c.Path));
         Assert.Equal(["a.txt"], found.Files);
 
-        var puts = h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check").Select(c => c.Read<MergeCheckRequest>()).ToList();
+        var puts = h.Wire.To("PUT", "/api/issues/AER-1/merge-check").Select(c => c.Read<MergeCheckRequest>()).ToList();
         Assert.Equal(["https://example.test/one.git", "https://example.test/two.git"], puts.Select(p => p.Remote));
     }
 
@@ -981,7 +981,7 @@ public sealed class LifecycleTests
 
         Assert.True(found.Unknown);
         Assert.Single(found.Verdicts);
-        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check"));
+        Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/merge-check"));
     }
 
     [Fact]
@@ -1016,7 +1016,7 @@ public sealed class LifecycleTests
             ],
             h.Workspace.Calls);
         Assert.Empty(found.Conflicts);
-        Assert.Equal(2, h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check").Count);
+        Assert.Equal(2, h.Wire.To("PUT", "/api/issues/AER-1/merge-check").Count);
     }
 
     [Fact]
@@ -1031,7 +1031,7 @@ public sealed class LifecycleTests
 
         Assert.True(found.Unknown);
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("check", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/merge-check"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/merge-check"));
     }
 
     // ---- The build recheck and its judgement ----
@@ -1050,7 +1050,7 @@ public sealed class LifecycleTests
         var one = Fixtures.Repository("https://example.test/one.git", "example.test/one", primary: true, matchedRemote: "https://example.test/one.git");
         var two = Fixtures.Repository("https://example.test/two.git", "example.test/two", primary: false, matchedRemote: "https://example.test/two.git");
 
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/build-check", Fixtures.Build());
+        h.Wire.Json("PUT", "/api/issues/AER-1/build-check", Fixtures.Build());
         foreach (var path in new[] { "/checkouts/one", "/checkouts/two" }) h.Workspace.HeadsFor[path] = HeadsAt(BuildTip);
 
         return (lifecycle, chosen, Fixtures.BuildWork("AER-1", builds, [one, two]));
@@ -1080,7 +1080,7 @@ public sealed class LifecycleTests
         Assert.Equal("/checkouts/two", repo.Path);
         Assert.Equal("boom", Assert.Single(repo.Failing).Excerpt);
 
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>();
+        var put = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/build-check")).Read<BuildCheckRequest>();
         Assert.Equal("https://example.test/two.git", put.Remote);
         Assert.False(put.PushedByIncrement);
     }
@@ -1109,7 +1109,7 @@ public sealed class LifecycleTests
         await lifecycle.RecheckBuildAsync(Recorded(work), chosen, default);
 
         Assert.Equal(["/checkouts/one " + PushedTip], h.Forge.Reads);
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>();
+        var put = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/build-check")).Read<BuildCheckRequest>();
         Assert.Equal(PushedTip, put.Sha);
     }
 
@@ -1165,7 +1165,7 @@ public sealed class LifecycleTests
 
         Assert.Empty(found.StillFailing);
         Assert.False(found.Unknown);
-        Assert.Equal(PushedTip, Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check")).Read<BuildCheckRequest>().Sha);
+        Assert.Equal(PushedTip, Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/build-check")).Read<BuildCheckRequest>().Sha);
         Assert.Empty(h.Forge.Logs);
     }
 
@@ -1183,7 +1183,7 @@ public sealed class LifecycleTests
 
         Assert.True(found.Unknown);
         Assert.Empty(h.Forge.Reads);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/build-check"));
 
         var line = Assert.Single(h.Say.Complained);
         Assert.Contains("aer-1-other", line);
@@ -1225,16 +1225,16 @@ public sealed class LifecycleTests
             Fixtures.Build(BuildVerdicts.Failed, "example.test/two"));
         h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
         var found = await lifecycle.RecheckBuildAsync(work, chosen, default);
-        h.Wire.Replace("PUT", "/api/hatch/issues/AER-1/build-check", HttpStatusCode.OK,
+        h.Wire.Replace("PUT", "/api/issues/AER-1/build-check", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(Fixtures.Build(BuildVerdicts.Pending), Fixtures.Json));
-        var before = h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check").Count;
+        var before = h.Wire.To("PUT", "/api/issues/AER-1/build-check").Count;
 
         h.Workspace.HeadsFor["/checkouts/one"] = HeadsAt(PushedTip);
         var judged = await lifecycle.JudgeBuildAsync("AER-1", found, chosen, default);
 
         Assert.True(judged.Pushed);
         Assert.False(judged.Unknown);
-        var marked = h.Wire.To("PUT", "/api/hatch/issues/AER-1/build-check").Skip(before).Select(c => c.Read<BuildCheckRequest>()).ToList();
+        var marked = h.Wire.To("PUT", "/api/issues/AER-1/build-check").Skip(before).Select(c => c.Read<BuildCheckRequest>()).ToList();
         var mark = Assert.Single(marked);
         Assert.Equal("https://example.test/one.git", mark.Remote);
         Assert.Equal(PushedTip, mark.Sha);
@@ -1291,7 +1291,7 @@ public sealed class LifecycleTests
     public async Task A_build_recheck_for_a_project_that_binds_nothing_takes_any_failed_verdict_as_the_standing_checkouts()
     {
         using var h = new Harness();
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/build-check", Fixtures.Build());
+        h.Wire.Json("PUT", "/api/issues/AER-1/build-check", Fixtures.Build());
         h.Workspace.HeadsFor[h.Root] = HeadsAt(BuildTip);
         h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Failed, [new FailingCheck("api", null)]), null);
         var chosen = new Checkouts.Choice(h.Root, [], [(h.Root, null)], []);

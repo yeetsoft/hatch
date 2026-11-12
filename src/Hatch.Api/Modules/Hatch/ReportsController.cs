@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// loads the rows, asks the fold, and decorates what it answers with cards.
 /// </summary>
 [ApiController]
-[Route("api/hatch/reports")]
+[Route("api/reports")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ReportsController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,

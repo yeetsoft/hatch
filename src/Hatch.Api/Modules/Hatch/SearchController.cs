@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// is no caller identity here, only the actor directory and claims the cards need.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/search")]
+[Route("api/search")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class SearchController(
     HatchContext db,

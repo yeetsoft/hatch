@@ -74,7 +74,7 @@ dispatches it.
 
 `hatch queue` prints every issue a pass would look at and why — each row with
 its sentence, or nothing where the issue is clear. It is `GET
-/api/hatch/work/queue` underneath, and it is where to look first when a ticket
+/api/work/queue` underneath, and it is where to look first when a ticket
 you expected to move has not.
 
 ## When an increment does nothing

@@ -8,7 +8,7 @@ export function message(err: unknown): string {
  * nothing worth reading.
  *
  * Hatch's refusals are written to be read: "AER still has 3 issues in it",
- * "a story hangs under an epic, not a task". Reporting "DELETE /api/hatch/…
+ * "a story hangs under an epic, not a task". Reporting "DELETE /api/…
  * failed: 409" instead throws away the only sentence that says what to do
  * about it.
  *

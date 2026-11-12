@@ -676,7 +676,7 @@ public sealed class PromptTests
         Assert.Contains(
             "an agent that could widen its own instructions and its own budget is a loop",
             section, StringComparison.Ordinal);
-        Assert.Contains("hatch api POST /api/hatch/playbook-proposals", section, StringComparison.Ordinal);
+        Assert.Contains("hatch api POST /api/playbook-proposals", section, StringComparison.Ordinal);
         Assert.Contains("\"issueKey\": \"AER-12\"", section, StringComparison.Ordinal);
         Assert.Contains("Say on AER-12 that it was proposed, and stop.", section, StringComparison.Ordinal);
         Assert.Contains("A person applies it on the", section, StringComparison.Ordinal);

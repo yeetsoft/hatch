@@ -142,17 +142,17 @@ public class NoCodeFieldTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("NCF", "NCF"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("NCF", "NCF"));
         var keys = new List<string>();
         foreach (var title in new[] { "A task with nothing recorded", "A task with a pull request" })
         {
             var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, "task", title, null, null, null, null));
+                http, "/api/issues", new(project.Id, "task", title, null, null, null, null));
             keys.Add(issue.Key);
         }
 
         using var patched = await http.PatchAsJsonAsync(
-            $"/api/hatch/issues/{keys[1]}", new { pullRequestUrl = "https://example.com/pull/1" }, Web);
+            $"/api/issues/{keys[1]}", new { pullRequestUrl = "https://example.com/pull/1" }, Web);
         Assert.True(patched.IsSuccessStatusCode, $"PATCH answered {(int)patched.StatusCode}: {await patched.Content.ReadAsStringAsync()}");
 
         return (keys[0], keys[1]);

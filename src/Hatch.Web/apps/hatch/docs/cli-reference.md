@@ -94,7 +94,7 @@ creates the runner on the Runners page; then `hatch config --key <key>`. A loop
 needs a key either way. Never put it in a repository.
 
 - `--show` says what is set and which layer each value came from, including an
-  `identity:` line naming who `/api/hatch/me` says the caller is - printed as
+  `identity:` line naming who `/api/me` says the caller is - printed as
   `<unreachable>` rather than failing when the origin is unset or does not
   answer - and `has:`/`missing:`, plus an `<id> via:` line for each tool the
   shell or `PATH` answered, detected quietly and merged with `HATCH_HAS`.
@@ -599,7 +599,7 @@ call with no key is refused: `hatch: a refusal is a key's - run \`hatch
 config\` to create one.` With no argument it prints the held models one per
 line, or `This runner refuses no model.` where it holds none. With one or more
 models it reads the held list, adds each, and sends the whole list with `PUT
-/api/hatch/runners/{name}/refused-models`; `--lift <model>...` does the same
+/api/runners/{name}/refused-models`; `--lift <model>...` does the same
 but takes each off instead. Both print the list as it now stands once
 written. Each model is its own argument - a comma inside one is refused the
 way `config --models` refuses it - and a model the shared normaliser refuses
@@ -937,13 +937,13 @@ With nothing open it prints `hatch: nothing is waiting on an answer` instead.
 hatch api <METHOD> <path> [<json body>]
 ```
 
-The escape hatch: any route under `/api/hatch/`, for what no other command
+The escape hatch: any route under `/api/`, for what no other command
 reaches. It takes the method, the path and an optional JSON body, and prints the
 answer as it arrives.
 
 ```
-hatch api GET /api/hatch/issues?statusId=2
-hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
+hatch api GET /api/issues?statusId=2
+hatch api PATCH /api/issues/AER-12 '{"dueAt":"2026-10-01"}'
 ```
 
 - The method is upper-cased, and a path missing its leading `/` has one added.

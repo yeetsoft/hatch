@@ -26,7 +26,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// repaints from one response instead of composing the new state itself.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/dependencies")]
+[Route("api/issues/{key}/dependencies")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueDependenciesController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase

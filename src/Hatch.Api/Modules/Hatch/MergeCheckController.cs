@@ -31,7 +31,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// same rule twice.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/merge-check")]
+[Route("api/issues/{key}/merge-check")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class MergeCheckController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase

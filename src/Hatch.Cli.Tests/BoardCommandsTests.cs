@@ -35,7 +35,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_is_every_column_and_what_is_on_it_with_the_terminal_one_marked()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2), Card("AER-2", 2), Card("AER-3", 3)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
@@ -83,7 +83,7 @@ public sealed class BoardCommandsTests
         int load, int limit, int claimedInbound, string line)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(limit, load, claimedInbound)));
+        h.Wire.Json("GET", "/api/board", WithWip(WipBoard(limit, load, claimedInbound)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
@@ -95,7 +95,7 @@ public sealed class BoardCommandsTests
     public async Task TwoLimitedSlices_PrintTwoLines()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(5, 3, 0, epicLimit: 2, epicLoad: 2)));
+        h.Wire.Json("GET", "/api/board", WithWip(WipBoard(5, 3, 0, epicLimit: 2, epicLoad: 2)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
@@ -112,7 +112,7 @@ public sealed class BoardCommandsTests
     public async Task NoLimitedSlices_PrintsNoWipLine()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", WithWip(WipBoard(null, 3, 0, epicLimit: null, epicLoad: 1)));
+        h.Wire.Json("GET", "/api/board", WithWip(WipBoard(null, 3, 0, epicLimit: null, epicLoad: 1)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
 
@@ -133,7 +133,7 @@ public sealed class BoardCommandsTests
     public async Task A_column_is_found_by_its_letters_and_digits_however_it_is_typed(string typed)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([typed], default));
         Assert.Contains("AER-1", h.Said);
@@ -143,7 +143,7 @@ public sealed class BoardCommandsTests
     public async Task Next_with_no_column_named_means_todo()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-9", 3), Card("AER-1", 2)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-9", 3), Card("AER-1", 2)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title", h.Said);
@@ -153,7 +153,7 @@ public sealed class BoardCommandsTests
     public async Task A_due_date_is_printed_beside_the_card()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, dueAt: "2026-10-01")));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, dueAt: "2026-10-01")));
 
         await new BoardCommands(h.Cli).NextAsync([], default);
         Assert.Equal("AER-1  [task]  AER-1's title  (due 2026-10-01)", h.Said);
@@ -163,7 +163,7 @@ public sealed class BoardCommandsTests
     public async Task A_column_nobody_has_is_refused_by_naming_the_ones_there_are()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+        h.Wire.Json("GET", "/api/board", ABoard());
 
         Assert.Equal(1, await new BoardCommands(h.Cli).NextAsync(["nonsense"], default));
         Assert.Contains("no column called \"nonsense\"", h.Complained);
@@ -180,7 +180,7 @@ public sealed class BoardCommandsTests
     public async Task An_empty_column_is_two_rather_than_one()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 3)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 3)));
 
         Assert.Equal(2, await new BoardCommands(h.Cli).NextAsync(["todo"], default));
         Assert.Contains("nothing workable in \"todo\"", h.Complained);
@@ -197,7 +197,7 @@ public sealed class BoardCommandsTests
         var clock = new FrozenClock(new DateTimeOffset(2026, 9, 8, 11, 0, 0, TimeSpan.FromHours(-5)));
         using var h = new CliHarness(clock: clock);
 
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, readyAt: "2026-09-09"),
             Card("AER-2", 2, readyAt: "2026-09-08"),
             Card("AER-3", 2)));
@@ -214,7 +214,7 @@ public sealed class BoardCommandsTests
         var clock = new FrozenClock(new DateTimeOffset(2026, 9, 8, 22, 0, 0, TimeSpan.FromHours(-5)));
         using var h = new CliHarness(clock: clock);
 
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, readyAt: "2026-09-08T23:30:00-05:00")));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, readyAt: "2026-09-08T23:30:00-05:00")));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Contains("AER-1", h.Said);
@@ -224,7 +224,7 @@ public sealed class BoardCommandsTests
     public async Task A_dispatch_with_no_link_gets_one_from_the_origin_the_runner_reached()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", noLink: true));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", noLink: true));
 
         var work = await h.Board.WorkAsync([], "AER-1", null, default);
 
@@ -235,7 +235,7 @@ public sealed class BoardCommandsTests
     public async Task A_link_the_server_wrote_is_passed_through_untouched()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", issueUrl: "https://home.example.com/issues/AER-1"));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", issueUrl: "https://home.example.com/issues/AER-1"));
 
         var work = await h.Board.WorkAsync([], "AER-1", null, default);
 
@@ -251,7 +251,7 @@ public sealed class BoardCommandsTests
     public async Task An_empty_queue_is_a_sentence_and_not_a_blank_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         Assert.Equal(0, await new BoardCommands(h.Cli).QueueAsync([], default));
         Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
@@ -261,63 +261,63 @@ public sealed class BoardCommandsTests
     public async Task An_empty_queue_under_an_epic_says_which_epic()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await new BoardCommands(h.Cli).QueueAsync(["AER-1"], default);
         Assert.Equal("hatch: nothing under AER-1 is on the dispatcher's path", h.Said);
-        Assert.Contains("ancestorKey=AER-1", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query);
+        Assert.Contains("ancestorKey=AER-1", h.Wire.To("GET", "/api/work/queue").Single().Query);
     }
 
     [Fact]
     public async Task Mine_is_sent_on_the_queue_read()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await new BoardCommands(h.Cli).QueueAsync(["--mine"], default);
 
         Assert.Equal("hatch: nothing of yours is on the dispatcher's path", h.Said);
-        Assert.Contains("mine=true", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+        Assert.Contains("mine=true", h.Wire.To("GET", "/api/work/queue").Single().Query, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task The_queue_read_names_the_runner_with_its_characters_escaped()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
-        Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+        Assert.Contains("runner=test%3A%2Fcheckout", h.Wire.To("GET", "/api/work/queue").Single().Query, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task Without_a_runner_name_neither_read_sends_one()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/work/next", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/next", Fixtures.Work("AER-1"));
 
         await h.Board.QueueAsync([], null, 0, default);
         await h.Board.NextAsync([], null, 0, default);
         await h.Board.QueueAsync([], null, 0, default, runner: "");
         await h.Board.NextAsync([], null, 0, default, runner: "");
 
-        Assert.All(h.Wire.To("GET", "/api/hatch/work/queue"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
-        Assert.All(h.Wire.To("GET", "/api/hatch/work/next"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
-        Assert.Equal(4, h.Wire.Calls.Count(c => c.Path.StartsWith("/api/hatch/work/", StringComparison.Ordinal)));
+        Assert.All(h.Wire.To("GET", "/api/work/queue"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
+        Assert.All(h.Wire.To("GET", "/api/work/next"), c => Assert.DoesNotContain("runner=", c.Query, StringComparison.Ordinal));
+        Assert.Equal(4, h.Wire.Calls.Count(c => c.Path.StartsWith("/api/work/", StringComparison.Ordinal)));
     }
 
     [Fact]
     public async Task Mine_and_an_ancestor_key_combine()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await new BoardCommands(h.Cli).QueueAsync(["--mine", "AER-1"], default);
 
         Assert.Equal("hatch: nothing of yours under AER-1 is on the dispatcher's path", h.Said);
-        var query = h.Wire.To("GET", "/api/hatch/work/queue").Single().Query;
+        var query = h.Wire.To("GET", "/api/work/queue").Single().Query;
         Assert.Contains("mine=true", query, StringComparison.Ordinal);
         Assert.Contains("ancestorKey=AER-1", query, StringComparison.Ordinal);
     }
@@ -330,7 +330,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_pads_its_columns_to_what_is_actually_in_them()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
@@ -361,13 +361,13 @@ public sealed class BoardCommandsTests
     public async Task The_queue_closes_with_one_line_per_distinct_missing_thing()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "In Review"), null),
         });
-        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        h.Wire.Json("GET", "/api/attention", Attention(
         [
             new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner offers fable"),
             new WaitingOnARunnerDto("AER-3", "AER-3's title", "task", "In Progress", "no live runner offers fable"),
@@ -387,13 +387,13 @@ public sealed class BoardCommandsTests
     public async Task A_single_missing_thing_is_singular()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "In Review"), null),
         });
-        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        h.Wire.Json("GET", "/api/attention", Attention(
         [
             new WaitingOnARunnerDto("AER-2", "AER-2's title", "task", "In Progress", "no live runner has pwsh 7"),
         ]));
@@ -414,13 +414,13 @@ public sealed class BoardCommandsTests
     public async Task No_waiting_entries_prints_the_rows_only(bool fieldOmitted)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "In Review"), null),
         });
-        h.Wire.Json("GET", "/api/hatch/attention", Attention(fieldOmitted ? null : []));
+        h.Wire.Json("GET", "/api/attention", Attention(fieldOmitted ? null : []));
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -431,13 +431,13 @@ public sealed class BoardCommandsTests
     public async Task An_attention_route_too_old_to_answer_prints_the_rows_only()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "In Review"), null),
         });
-        // /api/hatch/attention is left unscripted: the wire answers 404, as an
+        // /api/attention is left unscripted: the wire answers 404, as an
         // older Hatch or a transient failure would too.
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
@@ -449,13 +449,13 @@ public sealed class BoardCommandsTests
     public async Task Narrowed_by_an_ancestor_key_the_footer_counts_only_what_the_rows_show()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
                 Fixtures.Status(4, "In Review"), null),
         });
-        h.Wire.Json("GET", "/api/hatch/attention", Attention(
+        h.Wire.Json("GET", "/api/attention", Attention(
         [
             new WaitingOnARunnerDto("AER-1", "AER-1's title", "task", "In Progress", "no live runner offers fable"),
             new WaitingOnARunnerDto("AER-9", "AER-9's title", "task", "In Progress", "no live runner offers fable"),
@@ -480,7 +480,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         const string sentence = "AER-7 is worked only by a runner advertising macos and xcode - this runner advertises linux";
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-1", type: "task"), Fixtures.Status(3, "In Progress"),
@@ -509,7 +509,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         const string sentence = "AER-5 needs dotnet 10 (acme/repo's .hatch/dependencies.json) - this runner has dotnet 8";
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-5", type: "task"), Fixtures.Status(3, "In Progress"),
@@ -537,7 +537,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         const string sentence = "AER-4 in Todo runs on fable - this runner's claude does not offer it";
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-4", type: "task"), Fixtures.Status(3, "In Progress"),
@@ -557,7 +557,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_declares_models_and_agent_only_where_given_them_and_reads_them_afresh()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await h.Board.QueueAsync([], null, 0, default);
         IReadOnlyList<string> offered = ["haiku", "sonnet"];
@@ -567,7 +567,7 @@ public sealed class BoardCommandsTests
         offered = ["haiku"];
         await h.Board.QueueAsync([], null, 0, default);
 
-        var reads = h.Wire.To("GET", "/api/hatch/work/queue");
+        var reads = h.Wire.To("GET", "/api/work/queue");
         Assert.DoesNotContain("model=", reads[0].Query, StringComparison.Ordinal);
         Assert.DoesNotContain("agent=", reads[0].Query, StringComparison.Ordinal);
         Assert.Contains("model=haiku&model=sonnet&agent=claude", reads[1].Query, StringComparison.Ordinal);
@@ -583,7 +583,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         const string sentence = "AER-3 is in project AER - this runner is bound to FIL";
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-3", type: "story"), Fixtures.Status(3, "In Progress"),
@@ -608,7 +608,7 @@ public sealed class BoardCommandsTests
             "git@example.com:o/r.git", "example.com/o/r", "develop", new string('a', 40), MergeVerdicts.Conflicted,
             "aer-7", new string('b', 40), ["src/A.cs"], false, DateTimeOffset.UnixEpoch, "host:/checkout", "somebody");
         var review = Fixtures.Status(4, "In Review");
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(
                 Fixtures.Issue("AER-7") with { MergeChecks = [conflicted with { Verdict = MergeVerdicts.Clean }, conflicted] },
@@ -641,7 +641,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_prints_the_deferred_columns_after_the_lanes()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", new BoardDto(
+        h.Wire.Json("GET", "/api/board", new BoardDto(
             [
                 Fixtures.Status(1, "Backlog"),
                 Fixtures.Status(5, "Shelved", deferred: true),
@@ -668,7 +668,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_expedited()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, expedited: true), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
@@ -689,7 +689,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_emergency()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, priority: PriorityLevels.EmergencyName), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
@@ -709,7 +709,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_economy()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, priority: PriorityLevels.EconomyName), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
@@ -729,7 +729,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_low()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, priority: PriorityLevels.LowName), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
@@ -749,7 +749,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_paused()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, priority: PriorityLevels.PausedName), Card("AER-2", 2), Card("AER-3", 3)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).BoardAsync([], default));
@@ -768,7 +768,7 @@ public sealed class BoardCommandsTests
     public async Task Next_skipsAColumnWhoseOnlyReadyCardIsPaused()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.PausedName)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.PausedName)));
 
         Assert.Equal(2, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Contains("nothing workable in \"todo\"", h.Complained);
@@ -778,7 +778,7 @@ public sealed class BoardCommandsTests
     public async Task Next_marks_the_card_it_prints_when_somebody_expedited_it()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, expedited: true)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, expedited: true)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (expedited)", h.Said);
@@ -788,7 +788,7 @@ public sealed class BoardCommandsTests
     public async Task Next_marks_the_card_it_prints_when_it_is_emergency()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.EmergencyName)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.EmergencyName)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (emergency)", h.Said);
@@ -798,7 +798,7 @@ public sealed class BoardCommandsTests
     public async Task Next_marks_the_card_it_prints_when_it_is_low()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.LowName)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, priority: PriorityLevels.LowName)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (low)", h.Said);
@@ -808,7 +808,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_its_expedited_rows_and_keeps_the_rest_in_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.Row("AER-7", expedited: true),
             Fixtures.Row("AER-1", blocked: "it waits on AER-7"),
@@ -828,7 +828,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_emergency_above_expedited_with_its_own_doubled_marker()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
             Fixtures.Row("AER-7", expedited: true),
@@ -850,7 +850,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_a_paused_row_with_its_own_doubled_marker()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.Row("AER-9", priority: PriorityLevels.PausedName, blocked: "paused - a person set it aside, and nothing picks it up until they set it back"),
             Fixtures.Row("AER-7", expedited: true),
@@ -875,7 +875,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_draws_no_marker_column_when_nothing_is_expedited()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1") });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1") });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -886,7 +886,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_an_economy_row_with_its_own_marker()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
             Fixtures.Row("AER-5", priority: PriorityLevels.EconomyName),
@@ -908,7 +908,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_a_low_row_with_its_own_marker()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.Row("AER-9", priority: PriorityLevels.EmergencyName),
             Fixtures.Row("AER-5", priority: PriorityLevels.LowName),
@@ -932,7 +932,7 @@ public sealed class BoardCommandsTests
     public async Task The_board_says_how_many_of_a_column_are_express()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(
+        h.Wire.Json("GET", "/api/board", ABoard(
             Card("AER-1", 2, express: true), Card("AER-2", 2),
             Card("AER-4", 2, preApproval: PreApprovalLevels.PreApprovedName), Card("AER-3", 3)));
 
@@ -952,7 +952,7 @@ public sealed class BoardCommandsTests
     public async Task Next_marks_the_card_it_prints_when_it_is_express()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, express: true)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, express: true)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (express)", h.Said);
@@ -962,7 +962,7 @@ public sealed class BoardCommandsTests
     public async Task Next_marks_the_card_it_prints_when_it_is_preapproved()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard(Card("AER-1", 2, preApproval: PreApprovalLevels.PreApprovedName)));
+        h.Wire.Json("GET", "/api/board", ABoard(Card("AER-1", 2, preApproval: PreApprovalLevels.PreApprovedName)));
 
         Assert.Equal(0, await new BoardCommands(h.Cli).NextAsync([], default));
         Assert.Equal("AER-1  [task]  AER-1's title  (pre-approved)", h.Said);
@@ -972,7 +972,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_a_hop_row_with_no_session()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -983,7 +983,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_a_pulled_row_with_no_session()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Parent) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Parent) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -994,7 +994,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_an_epic_row_with_no_session()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Epic) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Epic) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -1006,7 +1006,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/work/queue",
+            "GET", "/api/work/queue",
             new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86") });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
@@ -1018,7 +1018,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_an_approve_row_with_no_session()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -1029,7 +1029,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_marks_a_close_row_with_no_session()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Close) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Close) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -1040,7 +1040,7 @@ public sealed class BoardCommandsTests
     public async Task The_queue_falls_back_to_the_raw_kind_rather_than_express()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: "some-future-kind") });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", hop: true, hopKind: "some-future-kind") });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
@@ -1056,7 +1056,7 @@ public sealed class BoardCommandsTests
     public async Task A_conflict_row_says_it_is_resolving_conflicts_with_the_trunk_and_draws_no_arrow()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.ConflictRow("AER-14", trunk: "develop", "a.txt"),
             Fixtures.Row("AER-2"),
@@ -1078,7 +1078,7 @@ public sealed class BoardCommandsTests
     {
         using var h = new CliHarness();
         var row = Fixtures.BuildRow("AER-15", "api", "CI");
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             row with
             {
@@ -1109,7 +1109,7 @@ public sealed class BoardCommandsTests
     public async Task A_folded_row_in_review_prints_the_reason_and_not_the_conflict_words()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             Fixtures.ConflictRow("AER-14") with { Blocked = "its branch merges cleanly with main - nothing for an agent to do" },
         });
@@ -1125,7 +1125,7 @@ public sealed class BoardCommandsTests
     public async Task A_row_with_nowhere_to_go_prints_a_question_mark_rather_than_an_empty_arrow()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[]
+        h.Wire.Json("GET", "/api/work/queue", new[]
         {
             new QueueEntryDto(Fixtures.Issue("AER-1"), Fixtures.Status(3, "In Progress"), null, null),
         });
@@ -1183,7 +1183,7 @@ public sealed class BoardCommandsTests
     public async Task A_refusal_from_the_origin_is_the_sentence_the_origin_wrote()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", "/api/hatch/board", HttpStatusCode.BadRequest, "\"AER-1 is in another project\"");
+        h.Wire.Reply("GET", "/api/board", HttpStatusCode.BadRequest, "\"AER-1 is in another project\"");
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
             () => new BoardCommands(h.Cli).BoardAsync([], default));
@@ -1292,11 +1292,11 @@ public sealed class BoardCommandsTests
     public async Task The_queue_command_asks_for_the_takers()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", new[] { Fixtures.Row("AER-1", takers: ["host:/a"]) });
+        h.Wire.Json("GET", "/api/work/queue", new[] { Fixtures.Row("AER-1", takers: ["host:/a"]) });
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
-        Assert.Contains("takers=true", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+        Assert.Contains("takers=true", h.Wire.To("GET", "/api/work/queue").Single().Query, StringComparison.Ordinal);
         Assert.Equal("AER-1  [task]  In Progress  -> In Review  (only host:/a can take this)", h.Said);
     }
 
@@ -1304,11 +1304,11 @@ public sealed class BoardCommandsTests
     public async Task A_queue_read_that_is_not_the_queue_command_does_not_ask_for_the_takers()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await h.Board.QueueAsync([], null, 0, default);
 
-        Assert.DoesNotContain("takers=", h.Wire.To("GET", "/api/hatch/work/queue").Single().Query, StringComparison.Ordinal);
+        Assert.DoesNotContain("takers=", h.Wire.To("GET", "/api/work/queue").Single().Query, StringComparison.Ordinal);
     }
 
     // ---- The outside pull requests a queue read says are passed over ----
@@ -1328,15 +1328,15 @@ public sealed class BoardCommandsTests
             PullRequestList = new(new Dictionary<string, PullRequestAnswer> { [OutsideUrl] = Draft() }, null),
         };
 
-        h.Wire.Json("GET", "/api/hatch/work/queue", queue);
-        h.Wire.Json("GET", "/api/hatch/trunk-builds", new[] { Fixtures.TrunkBuild() });
-        h.Wire.Json("GET", "/api/hatch/projects", new[]
+        h.Wire.Json("GET", "/api/work/queue", queue);
+        h.Wire.Json("GET", "/api/trunk-builds", new[] { Fixtures.TrunkBuild() });
+        h.Wire.Json("GET", "/api/projects", new[]
         {
             new ProjectDto(
                 1, "AER", "Aerie", 0, DateTimeOffset.UnixEpoch, null, null,
                 [new ProjectRepositoryDto("https://example.test/repo.git", Fixtures.MergeCanonical, null)], null, [], false, false),
         });
-        h.Wire.Json("GET", "/api/hatch/issues", Array.Empty<IssueCardDto>());
+        h.Wire.Json("GET", "/api/issues", Array.Empty<IssueCardDto>());
 
         var cli = h.Cli with
         {
@@ -1379,7 +1379,7 @@ public sealed class BoardCommandsTests
     {
         var (h, _, cli) = InACheckout();
         using var _ = h;
-        h.Wire.Replace("GET", "/api/hatch/issues", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Card("AER-9") }, Fixtures.Json));
+        h.Wire.Replace("GET", "/api/issues", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Card("AER-9") }, Fixtures.Json));
 
         await new BoardCommands(cli).QueueAsync([], default);
 
@@ -1419,7 +1419,7 @@ public sealed class BoardCommandsTests
     {
         var (h, _, cli) = InACheckout();
         using var _ = h;
-        h.Wire.Replace("GET", "/api/hatch/trunk-builds", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Replace("GET", "/api/trunk-builds", HttpStatusCode.InternalServerError, "boom");
 
         Assert.Equal(0, await new BoardCommands(cli).QueueAsync([], default));
         Assert.Equal("hatch: nothing on the board is on the dispatcher's path", h.Said);
@@ -1440,11 +1440,11 @@ public sealed class BoardCommandsTests
     public async Task A_queue_run_outside_any_checkout_asks_nothing_about_pull_requests()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/queue", Array.Empty<QueueEntryDto>());
+        h.Wire.Json("GET", "/api/work/queue", Array.Empty<QueueEntryDto>());
 
         await new BoardCommands(h.Cli).QueueAsync([], default);
 
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/trunk-builds"));
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/projects"));
+        Assert.Empty(h.Wire.To("GET", "/api/trunk-builds"));
+        Assert.Empty(h.Wire.To("GET", "/api/projects"));
     }
 }

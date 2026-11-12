@@ -11,7 +11,7 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// A controller of its own rather than a third action on
 /// <see cref="IssueThreadController"/>, which is routed at
-/// <c>api/hatch/issues/{key}</c> and is about one issue - the same argument
+/// <c>api/issues/{key}</c> and is about one issue - the same argument
 /// <see cref="WorkLogController"/> makes for sitting apart from
 /// <c>IssueWorkLogController</c>.
 /// </summary>
@@ -20,7 +20,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// open to an administrator and to a <c>hatch</c> key alike.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/activity")]
+[Route("api/activity")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ActivityController(HatchContext db) : ControllerBase
 {
