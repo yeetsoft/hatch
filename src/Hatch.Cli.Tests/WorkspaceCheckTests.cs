@@ -369,6 +369,32 @@ public sealed class WorkspaceCheckTests : RepoFixture
     }
 
     [Fact]
+    public void A_branch_that_changes_the_dependency_file_reports_its_path_and_content_with_no_path_asked_for()
+    {
+        Publish("ha-31-thing", ".hatch/dependencies.json", "{\"dependencies\":[\"postgres\"]}");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31")!;
+
+        Assert.Equal(".hatch/dependencies.json", verdict.DependencyFilePath);
+        Assert.Equal("{\"dependencies\":[\"postgres\"]}", verdict.DependencyFileContent);
+    }
+
+    [Fact]
+    public void A_branch_that_does_not_change_the_dependency_file_reports_null_for_both()
+    {
+        Publish("ha-31-thing", "other.txt", "changed");
+        var ws = Ws();
+        ws.Fetch();
+
+        var verdict = ws.Check("HA-31")!;
+
+        Assert.Null(verdict.DependencyFilePath);
+        Assert.Null(verdict.DependencyFileContent);
+    }
+
+    [Fact]
     public void A_recorded_branch_is_checked_whatever_the_key_and_a_key_named_branch_is_ignored()
     {
         Publish("ar-77-something", "x.txt", "x");

@@ -1680,6 +1680,12 @@ public class EfHatchMergeCheck
     /// <summary>See <see cref="MergeCheckRequest.PlaybookFilePath"/>. Null for <c>none</c> and <c>ambiguous</c>, and on a verdict stored before this field existed.</summary>
     [MaxLength(MaxRefLength)] public string? PlaybookFilePath { get; set; }
 
+    /// <summary>See <see cref="MergeCheckRequest.DependencyFilePath"/>. Null for <c>none</c> and <c>ambiguous</c>, and on a verdict stored before this field existed.</summary>
+    [MaxLength(MaxRefLength)] public string? DependencyFilePath { get; set; }
+
+    /// <summary>See <see cref="MergeCheckRequest.DependencyFileContent"/>.</summary>
+    [MaxLength(DependencyDeclaration.MaxReportedContentLength)] public string? DependencyFileContent { get; set; }
+
     /// <summary>When the board took it. The board's clock, not the runner's, so verdicts from two machines are ordered by one.</summary>
     public required DateTimeOffset CheckedAt { get; set; }
 

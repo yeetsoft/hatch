@@ -32,7 +32,8 @@ public static class MergeWork
         DateTimeOffset now,
         string? reviewColumn = null,
         DateTimeOffset? pullRequestHeadSince = null,
-        string? recordedBranch = null)
+        string? recordedBranch = null,
+        string? fleetLacks = null)
     {
         if (pullRequestClosedAt is not null)
             return Hold("its pull request was closed without merging");
@@ -57,10 +58,19 @@ public static class MergeWork
         var clean = counted.Where(v => v.Verdict == MergeVerdicts.Clean).ToList();
         var trunk = clean[0].Trunk;
 
-        Judgement MergeOr(string sentence) =>
-            clean.FirstOrDefault(m => m.PlaybookFilePath is not null) is { PlaybookFilePath: { } path }
-                ? Hold($"its pull request changes {path} - a person merges it on the forge after reading it")
-                : new Judgement(WorkKinds.Merge, sentence);
+        Judgement MergeOr(string sentence)
+        {
+            if (clean.FirstOrDefault(m => m.PlaybookFilePath is not null) is { PlaybookFilePath: { } path })
+                return Hold($"its pull request changes {path} - a person merges it on the forge after reading it");
+
+            if (clean.FirstOrDefault(m => m.DependencyFilePath is not null) is { DependencyFilePath: { } dependencyPath })
+            {
+                var why = $"its pull request changes {dependencyPath} - a person merges it on the forge after reading it";
+                return Hold(fleetLacks is null ? why : $"{why} - {fleetLacks}");
+            }
+
+            return new Judgement(WorkKinds.Merge, sentence);
+        }
 
         // The builds that are about the branch as the merge check read it. A
         // repository with no build verdict at all is not in either list: it

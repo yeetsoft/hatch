@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Hatch.Cli;
 
 /// <summary>
@@ -73,13 +75,17 @@ public sealed record RemoteHeads(string Trunk, IReadOnlyDictionary<string, strin
 /// <param name="BranchSha">Full. Null for the two verdicts that are not about one branch.</param>
 /// <param name="HoldsTrunk">See <see cref="MergeCheckRequest.HoldsTrunk"/>.</param>
 /// <param name="PlaybookFilePath">See <see cref="MergeCheckRequest.PlaybookFilePath"/>.</param>
+/// <param name="DependencyFilePath">See <see cref="MergeCheckRequest.DependencyFilePath"/>.</param>
+/// <param name="DependencyFileContent">See <see cref="MergeCheckRequest.DependencyFileContent"/>.</param>
 public sealed record Verdict(
     string Kind, string Trunk, string TrunkSha, string? Branch, string? BranchSha, IReadOnlyList<string> Files,
-    bool? HoldsTrunk = null, string? PlaybookFilePath = null)
+    bool? HoldsTrunk = null, string? PlaybookFilePath = null, string? DependencyFilePath = null,
+    string? DependencyFileContent = null)
 {
     /// <summary>The wire form, under the remote as this runner spells it.</summary>
     public MergeCheckRequest ToRequest(string remote, string runner) =>
-        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner, HoldsTrunk, PlaybookFilePath);
+        new(remote, Trunk, TrunkSha, Kind, Branch, BranchSha, Files, runner, HoldsTrunk, PlaybookFilePath,
+            DependencyFilePath, DependencyFileContent);
 
     /// <summary>
     /// The one line the terminal says when a verdict changes: <c>HA-12 conflicts
@@ -228,19 +234,23 @@ public sealed partial class Workspace
         var branchRef = $"refs/remotes/origin/{branch}";
         if (FullSha(branchRef) is not { } branchSha) return null;
 
+        var changedPlaybookFile = ChangedFile(trunkSha, branchSha, playbookFilePath);
+        var changedDependencyFile = ChangedFile(trunkSha, branchSha, DependencyDeclaration.Path);
+        var dependencyFileContent = changedDependencyFile is null ? null : DependencyFileContentAt(branch);
+
         // The trunk already in the branch is a clean merge by definition, and
         // says so without asking for the merge - the test Sync makes, so the
         // two cannot disagree about which branches need a merge commit.
         if (Git("merge-base", "--is-ancestor", trunkRef, branchRef).Ok)
             return new Verdict(
                 MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], true,
-                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
+                changedPlaybookFile, changedDependencyFile, dependencyFileContent);
 
         var merge = Git("merge-tree", "--write-tree", "--name-only", trunkRef, branchRef);
         if (merge.Ok)
             return new Verdict(
                 MergeVerdicts.Clean, trunk, trunkSha, branch, branchSha, [], false,
-                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
+                changedPlaybookFile, changedDependencyFile, dependencyFileContent);
 
         // Exit 1 is a conflict and the only exit that says so. A conflict with
         // no file named would be refused by the board and is not one to guess
@@ -252,7 +262,7 @@ public sealed partial class Workspace
             ? null
             : new Verdict(
                 MergeVerdicts.Conflicted, trunk, trunkSha, branch, branchSha, files, false,
-                ChangedPlaybookFile(trunkSha, branchSha, playbookFilePath));
+                changedPlaybookFile, changedDependencyFile, dependencyFileContent);
     }
 
     private string? FullSha(string reference)
@@ -268,7 +278,30 @@ public sealed partial class Workspace
     /// caller and not the branch's own content decides whether anything is
     /// reported.
     /// </summary>
-    private string? ChangedPlaybookFile(string trunkSha, string branchSha, string? path) =>
+    private string? ChangedFile(string trunkSha, string branchSha, string? path) =>
         path is not null && Git("diff", "--name-only", trunkSha, branchSha, "--", path).Out.Trim().Length > 0
             ? path : null;
+
+    /// <summary>
+    /// The branch's own blob at <see cref="DependencyDeclaration.Path"/>, as
+    /// text - null when it could not be read, is not valid UTF-8, or is over
+    /// <see cref="DependencyDeclaration.MaxReportedContentLength"/>, so the
+    /// board still learns the path changed without a blob it would have to
+    /// cap itself.
+    /// </summary>
+    private string? DependencyFileContentAt(string branch)
+    {
+        var blob = ReadBlob(branch, DependencyDeclaration.Path);
+        if (blob.Outcome != BlobOutcome.Found || blob.Content is not { } bytes) return null;
+        if (bytes.Length > DependencyDeclaration.MaxReportedContentLength) return null;
+
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return null;
+        }
+    }
 }

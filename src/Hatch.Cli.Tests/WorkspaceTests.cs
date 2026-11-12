@@ -57,7 +57,9 @@ public abstract class RepoFixture : IDisposable
         if (reset) G(_other, "checkout", "--quiet", "-B", branch, "origin/main");
         else G(_other, "checkout", "--quiet", "-B", branch, $"origin/{branch}");
 
-        File.WriteAllText(Path.Combine(_other, file), content);
+        var full = Path.Combine(_other, file);
+        if (Path.GetDirectoryName(full) is { Length: > 0 } dir) Directory.CreateDirectory(dir);
+        File.WriteAllText(full, content);
         Commit(_other, $"Change {file}");
         G(_other, "push", "--quiet", "origin", branch);
     }

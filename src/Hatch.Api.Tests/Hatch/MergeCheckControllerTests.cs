@@ -68,6 +68,19 @@ public class MergeCheckControllerTests
     }
 
     [Fact]
+    public async Task DependencyFilePathAndContent_RoundTripOnAKeptVerdict()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(
+            issue, Clean() with { DependencyFilePath = ".hatch/dependencies.json", DependencyFileContent = "{\"dependencies\":[\"postgres\"]}" }));
+
+        Assert.Equal(".hatch/dependencies.json", kept.DependencyFilePath);
+        Assert.Equal("{\"dependencies\":[\"postgres\"]}", kept.DependencyFileContent);
+    }
+
+    [Fact]
     public async Task AConflictedVerdict_NamesItsFiles()
     {
         var h = await NewAsync();
@@ -96,6 +109,26 @@ public class MergeCheckControllerTests
         Assert.Null(kept.BranchSha);
         Assert.Empty(kept.Files);
         Assert.Null(kept.HoldsTrunk);
+    }
+
+    [Theory]
+    [InlineData(MergeVerdicts.None)]
+    [InlineData(MergeVerdicts.Ambiguous)]
+    public async Task NoneAndAmbiguous_CarryNoDependencyFilePathOrContent(string verdict)
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var kept = Value(await h.PutAsync(
+            issue,
+            Clean() with
+            {
+                Verdict = verdict, DependencyFilePath = ".hatch/dependencies.json",
+                DependencyFileContent = "{\"dependencies\":[\"postgres\"]}",
+            }));
+
+        Assert.Null(kept.DependencyFilePath);
+        Assert.Null(kept.DependencyFileContent);
     }
 
     // ---- Every refusal ----
@@ -169,6 +202,37 @@ public class MergeCheckControllerTests
         Assert.Contains("runner", Reason(await h.PutAsync(issue, Clean() with { Runner = " " })));
         Assert.Contains("at most", Reason(await h.PutAsync(
             issue, Clean() with { Runner = new string('r', ClaimRequest.MaxRunnerLength + 1) })));
+    }
+
+    [Fact]
+    public async Task ADependencyFilePathOverTheLimit_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var reason = Reason(await h.PutAsync(
+            issue, Clean() with { DependencyFilePath = new string('p', EfHatchMergeCheck.MaxRefLength + 1) }));
+
+        Assert.Contains("at most", reason);
+        Assert.Empty(await h.Db.MergeChecks.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ADependencyFileContentOverTheLimit_IsRefused()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+
+        var reason = Reason(await h.PutAsync(
+            issue,
+            Clean() with
+            {
+                DependencyFilePath = ".hatch/dependencies.json",
+                DependencyFileContent = new string('c', DependencyDeclaration.MaxReportedContentLength + 1),
+            }));
+
+        Assert.Contains("at most", reason);
+        Assert.Empty(await h.Db.MergeChecks.ToListAsync());
     }
 
     [Fact]
@@ -369,6 +433,21 @@ public class MergeCheckControllerTests
 
         Assert.Single(await h.EventsAsync(issue.Key));
         Assert.Equal(".hatch/playbooks.yaml", (await h.Db.MergeChecks.SingleAsync()).PlaybookFilePath);
+    }
+
+    [Fact]
+    public async Task DependencyFilePathAlone_WritesNoEvent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync();
+        await h.PutAsync(issue, Clean());
+
+        await h.PutAsync(issue, Clean() with { DependencyFilePath = ".hatch/dependencies.json", DependencyFileContent = "{}" });
+
+        Assert.Single(await h.EventsAsync(issue.Key));
+        var row = await h.Db.MergeChecks.SingleAsync();
+        Assert.Equal(".hatch/dependencies.json", row.DependencyFilePath);
+        Assert.Equal("{}", row.DependencyFileContent);
     }
 
     // ---- What every issue carries ----

@@ -51,6 +51,7 @@ const review = (over: Partial<Review> = {}): Review => ({
   holdsTrunk: null,
   trunk: null,
   playbookFilePath: null,
+  dependencyFilePath: null,
   ...over,
 });
 

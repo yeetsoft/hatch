@@ -502,6 +502,19 @@ move into the implementation column, and never breakdown or analysis, which read
 a repository and do not build it. A runner that falls short is folded with the
 sentence quoted under [Has](#has).
 
+**What a branch's own edit holds.** The merge check a runner takes on a
+branch also reports whether that branch's diff touches `.hatch/dependencies.json`
+on the repository, the same way it reports a change to `.hatch/playbooks.yaml`
+— and the train never merges either kind of pull request, whatever its
+pre-approval: [the merge train](review-pull-requests-and-the-merge-train#the-merge-train)
+holds it for a person to read and merge on the forge. Unlike the gate above,
+this is not about the trunk's own declaration or what a runner offers — a
+branch that only raises a version, or asks for an id no live runner
+advertises yet, holds the same as one that drops a dependency outright. The
+**Approved, not merging** row for one of these names the path, and, when the
+live fleet lacks what the branch's edit asks for, says so on the end of its
+own sentence.
+
 **When no live runner meets it.** The fold stays: a declaration nobody can meet
 is held, not lifted, so a runner that lacks a tool is never handed a build it
 cannot run. What changes is who is told. The project's rows are listed under

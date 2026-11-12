@@ -226,6 +226,7 @@ describe('IssueSubheader', () => {
           runner: 'box:/work/repo',
           checkedBy: 'runner',
           playbookFilePath: '.hatch/playbooks.yaml',
+          dependencyFilePath: null,
         },
       ],
     });

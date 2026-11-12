@@ -714,7 +714,7 @@ not narrow the route, the action body does.
 | Method | Path | What it does |
 |---|---|---|
 | POST | `/issues/{key}/verdicts` | Records a check session's pass/fail about the issue, under its live claim |
-| PUT | `/issues/{key}/merge-check` | Replaces the stored verdict for the issue's branch against one repository's trunk |
+| PUT | `/issues/{key}/merge-check` | Replaces the stored verdict for the issue's branch against one repository's trunk, and whether its diff changes `.hatch/playbooks.yaml` or `.hatch/dependencies.json` - either holds the merge train for a person, see [the merge train](review-pull-requests-and-the-merge-train#the-merge-train) |
 | PUT | `/issues/{key}/build-check` | Replaces the stored verdict for the build on the tip of the issue's branch in one repository |
 | PUT | `/issues/{key}/pull-request-state` | Replaces the stored mergeability, review decision and head sha for the issue's recorded pull request |
 | PUT | `/issues/{key}/brought-current` | Marks the issue as the one the train last brought current, and at which trunk sha |
