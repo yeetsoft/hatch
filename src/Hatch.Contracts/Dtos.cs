@@ -4507,7 +4507,8 @@ public record RunnerDto(
     DateTimeOffset? RetiredAt = null,
     string? SupersededBy = null,
     IReadOnlyList<string>? DrivesTold = null,
-    string? Image = null)
+    string? Image = null,
+    IReadOnlyList<string> RefusedModels = null!)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4516,6 +4517,7 @@ public record RunnerDto(
     public IReadOnlyList<string> Has { get; init; } = Has ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
     public IReadOnlyList<RunnerSessionDto> Sessions { get; init; } = Sessions ?? [];
+    public IReadOnlyList<string> RefusedModels { get; init; } = RefusedModels ?? [];
 }
 
 /// <summary>
@@ -4845,6 +4847,12 @@ public record RunnerUsageWindowDto(
 /// where there was none, or where this beat was not a <c>loop</c> beat (see
 /// <see cref="Hatch.Api.Modules.Hatch.RunnersController.Heartbeat"/>).
 /// </param>
+/// <param name="RefusedModels">
+/// The calling key's own held list, <see cref="RunnerDto.RefusedModels"/> -
+/// null for a Hatch too old to answer it, the same way <see cref="Tags"/>
+/// tells "unanswered" from "empty"; a loop that sees null leaves its own
+/// list alone rather than clearing it.
+/// </param>
 public record RunnerInstructionDto(
     string State,
     string? Under,
@@ -4858,7 +4866,8 @@ public record RunnerInstructionDto(
     long? MaxTokens = null,
     long? MaxTokensPerHour = null,
     string? RunnerName = null,
-    int? SessionId = null);
+    int? SessionId = null,
+    IReadOnlyList<string>? RefusedModels = null);
 
 /// <summary>
 /// The operator's half: keep going, pause, stop after this one - and the bounds
@@ -4888,6 +4897,14 @@ public record RunnerPatchRequest(
     IReadOnlyList<string>? Tags = null,
     string? MaxTokens = null,
     string? MaxTokensPerHour = null);
+
+/// <summary>
+/// The body of <c>PUT /runners/{name}/refused-models</c>. <paramref name="Models"/>
+/// replaces the held list whole - absent (JSON null) is a refusal, since
+/// clearing it is <c>[]</c> and not leaving the field out, unlike
+/// <see cref="RunnerPatchRequest.Tags"/>'s tri-state.
+/// </summary>
+public record RunnerRefusedModelsWriteRequest(IReadOnlyList<string>? Models);
 
 /// <summary>
 /// Sets one session's state, by its id - <see cref="RunnerPatchRequest"/>'s

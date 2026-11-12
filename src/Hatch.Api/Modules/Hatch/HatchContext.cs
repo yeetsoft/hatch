@@ -293,6 +293,7 @@ public class HatchContext(DbContextOptions<HatchContext> options) : DbContext(op
             // reason: EnsureCreated must leave the same empty-array default a
             // migrated row carries.
             e.Property(c => c.Tags).HasColumnType("jsonb").HasDefaultValue("[]");
+            e.Property(c => c.RefusedModels).HasColumnType("jsonb").HasDefaultValue("[]");
             // The same scale EfHatchRunner.MaxSpend has.
             e.Property(c => c.MaxSpend).HasPrecision(18, 2);
         });
