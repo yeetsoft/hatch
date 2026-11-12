@@ -686,6 +686,58 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// One pass answered with <paramref name="told"/> refused models, the
+    /// loop having started holding <paramref name="started"/> - the same
+    /// shape <see cref="OnePassTold"/> uses for tags.
+    /// </summary>
+    private static async Task<Harness> OnePassToldRefused(IReadOnlyList<string> started, IReadOnlyList<string>? told)
+    {
+        var h = new Harness();
+        h.Runtime.Board.Refused = started;
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/runners/sessions",
+            new RunnerInstructionDto("running", null, 1, null, null, RefusedModels: told));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_setting_a_refused_model_the_loop_started_without_says_so()
+    {
+        using var h = await OnePassToldRefused([], ["fable"]);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set refuses fable");
+        Assert.Equal(new[] { "fable" }, h.Runtime.Board.Refused);
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_refused_models_says_none()
+    {
+        using var h = await OnePassToldRefused(["fable"], []);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set refuses none");
+        Assert.Empty(h.Runtime.Board.Refused);
+    }
+
+    [Fact]
+    public async Task An_older_hatch_that_answers_no_refused_models_leaves_them_alone()
+    {
+        using var h = await OnePassToldRefused(["fable"], null);
+
+        Assert.Equal(new[] { "fable" }, h.Runtime.Board.Refused);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("refuses", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_whose_refused_models_match_the_loops_says_nothing()
+    {
+        using var h = await OnePassToldRefused(["fable"], ["fable"]);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("refuses", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

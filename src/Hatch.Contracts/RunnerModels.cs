@@ -62,6 +62,42 @@ public static class RunnerModels
         return null;
     }
 
+    /// <summary>
+    /// Whether a runner that refuses <paramref name="refused"/> refuses a move
+    /// on <paramref name="model"/>. Both sides are trimmed, and lowercased where
+    /// the result is an alias; equal after that is a match. A refused alias
+    /// also covers a pinned id whose hyphen-separated tokens include it, so
+    /// <c>opus</c> refuses <c>claude-opus-5-5</c>. A refused pinned id matches
+    /// itself only, and an alias is never refused by a pinned id. A null or
+    /// blank model, or a null or empty list, matches nothing.
+    /// </summary>
+    public static bool Refuses(IReadOnlyList<string>? refused, string? model)
+    {
+        if (refused is null || refused.Count == 0 || string.IsNullOrWhiteSpace(model)) return false;
+
+        var effective = Fold(model);
+        var effectiveIsAlias = ModelFamilies.Aliases.Contains(effective);
+        foreach (var entry in refused)
+        {
+            if (string.IsNullOrWhiteSpace(entry)) continue;
+
+            var held = Fold(entry);
+            if (string.Equals(held, effective, StringComparison.Ordinal)) return true;
+            if (ModelFamilies.Aliases.Contains(held) && !effectiveIsAlias
+                && effective.Split('-').Contains(held, StringComparer.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string Fold(string model)
+    {
+        var trimmed = model.Trim();
+        var lowered = trimmed.ToLowerInvariant();
+        return ModelFamilies.Aliases.Contains(lowered) ? lowered : trimmed;
+    }
+
     /// <summary>"an" before a vowel-initial word, "a" otherwise.</summary>
     private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
 }
