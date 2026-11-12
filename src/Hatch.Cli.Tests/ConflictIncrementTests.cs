@@ -415,8 +415,9 @@ public sealed class ConflictIncrementTests
         using var h = new Harness();
         Board(h, Fixtures.ConflictWork(Key));
         h.Workspace.Verdicts[(h.Root, Key)] = Conflicted("fresh.txt");
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.Calls.Add("spawn");
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -441,8 +442,9 @@ public sealed class ConflictIncrementTests
 
         // Conflicted before the session, clean after it: what a session that
         // resolved the merge and pushed leaves behind.
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.Verdicts[(h.Root, Key)] = Clean();
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -488,8 +490,9 @@ public sealed class ConflictIncrementTests
         using var h = new Harness();
         Board(h, Fixtures.ConflictWork(Key));
         h.Workspace.Verdicts[(h.Root, Key)] = Conflicted();
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.FetchAnswer = false;
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -535,8 +538,9 @@ public sealed class ConflictIncrementTests
         using var h = new Harness();
         Board(h, Fixtures.ConflictWork(Key));
         h.Workspace.Verdicts[(h.Root, Key)] = Conflicted("fresh.txt");
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.Verdicts[(h.Root, Key)] = Clean();
             return Task.FromResult(new SessionResult(0, ""));
         };

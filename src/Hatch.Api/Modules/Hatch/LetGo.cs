@@ -22,8 +22,8 @@ public static class LetGo
     /// <see cref="ClaimOutcomes.Worked"/> or <see cref="ClaimOutcomes.Recused"/>,
     /// a status change, a person's resume, or an answer a person wrote -
     /// whichever comes first. A release with no outcome or an outcome of
-    /// <see cref="ClaimOutcomes.Unservable"/> or <see cref="ClaimOutcomes.Abandoned"/>
-    /// (or preempted), a hold, and an
+    /// <see cref="ClaimOutcomes.Unservable"/>, <see cref="ClaimOutcomes.Abandoned"/>
+    /// or <see cref="ClaimOutcomes.Unstarted"/> (or preempted), a hold, and an
     /// answer written by a lapse, are skipped rather than counted or stopped at.
     /// </summary>
     public static int Count(IEnumerable<(string Kind, string? Payload)> eventsNewestFirst)
@@ -40,6 +40,7 @@ public static class LetGo
                 if (outcome == ClaimOutcomes.Worked || outcome == ClaimOutcomes.Recused) break;
                 if (outcome == ClaimOutcomes.Unservable) continue; // unservable: skipped over, as preempted is
                 if (outcome == ClaimOutcomes.Abandoned) continue; // abandoned: the loop died, the increment did not choose
+                if (outcome == ClaimOutcomes.Unstarted) continue; // unstarted: the agent never ran, so there was nothing to let go
                 continue; // no outcome: skipped over, neither counted nor stopped at
             }
 
@@ -90,7 +91,7 @@ public static class LetGo
     /// since that would make the drop stale. Walks the trail newest first: a
     /// release with outcome <see cref="ClaimOutcomes.Dropped"/> that names its
     /// runner is the record; the first release that is anything else (worked,
-    /// preempted, recused, unservable, no outcome), the first status change, or the first
+    /// preempted, recused, unservable, unstarted, no outcome), the first status change, or the first
     /// answer a person wrote, or the first resume, means there is none. Takes,
     /// lapses, holds, clears and comments are stepped over. A drop with no
     /// runner - one written before the payload carried it - records nothing.
