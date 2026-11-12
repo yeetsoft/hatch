@@ -59,6 +59,13 @@ public interface IAgentAdapter
     /// </summary>
     IReadOnlyList<string> Models => ModelFamilies.Aliases;
 
+    /// <summary>
+    /// The model a health check spawns: the cheapest this agent offers. The
+    /// default is the first of <see cref="Models"/>, which is how every adapter
+    /// lists its aliases.
+    /// </summary>
+    string CheapestModel => Models.FirstOrDefault() ?? "";
+
     /// <summary>The unattended spawn - stdout read by a caller, stdin closed once the prompt is written.</summary>
     ProcessStartInfo BuildHeadless(SessionRequest request);
 

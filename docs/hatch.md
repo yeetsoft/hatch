@@ -7993,6 +7993,13 @@ loop's belongs to a checkout pointed at another board: it is reported and left.
 Only the loop cleans up: `hatch work` writes and clears its own record and never
 reads another's.
 
+**A runner whose agent is not starting** does not reach the pass at all. After
+two `unstarted` increments in a row it waits out a back-off of five, fifteen,
+then sixty minutes, heartbeating and claiming nothing, and a cheap headless
+session proves the agent starts before the next pass reads the queue — see
+[what it stops for](#what-it-stops-for). It sits after the usage-limit wait, so
+an account out of usage says so first.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -9238,6 +9245,23 @@ out. The loop does not end, so there is no closing tally for it, and the wait
 records no increment, no failure and no token. One increment bigger than the
 count puts the loop over on its own until that increment ages out; the tally's
 `peak hour` line is the number to size it from.
+
+**A runner whose agent does not start** waits too. Two runs in a row that
+ended `unstarted` — the agent printed nothing before its process ended — pause
+the runner: it takes no ticket, keeps its heartbeat, spends any order sent to
+it, and says on the terminal that the agent is not starting and when it will
+check again. The first wait is five minutes. When it ends, one headless session
+on the adapter's cheapest model, asked for a single word, runs in a temporary
+directory of its own before anything is claimed: it claims nothing and touches
+no ticket, and its cost joins the night's spend and is said on the terminal. If
+it starts and answers, the runner says *the agent starts again - taking
+tickets* and the next pass claims; if not, the wait becomes fifteen minutes,
+then sixty, and stays at sixty. A run that started, whatever its exit code,
+ends the streak, and a failed one still counts toward the three failures. A
+restart mid-pause comes back paused to the same instant on the same rung, and
+the closing tally says how many runs never started and how long the runner was
+paused for it. Like the usage wait it records no increment and no failure, and
+the merge train keeps ticking through it.
 
 One thing that looks like a stop is not: **a restart**. A loop that spends the
 night improving this repository is running the version it started with, and
