@@ -130,6 +130,20 @@ Everything else is passed over, and said once per pull request per run with its 
 
 Adding the column, naming an approver and choosing the forge's own shape are covered start to finish elsewhere and not repeated here: [letting the loop merge for you](letting-the-loop-merge-for-you).
 
+## Contributions
+
+A contribution is work that came from outside the board: a pull request somebody else opened, or the mirror of an issue on another Hatch. This section is the reading order for how one gets from the forge to Done; each step is told in full where it is linked, and not again here.
+
+**What is filed, and what is passed over.** The project's elected driver files an open pull request that no issue records as a `task` in review, with the pull request, head branch, author and the forge's word for the author's association recorded on it. It passes over a pull request younger than ten minutes, a draft, a fork's, one aimed at another branch than the bound base, one from an author who is not a member, owner or collaborator, and one on a branch named for an issue of any project on the board. The full list, and `hatch queue` showing what a checkout would pass over, are in [a pull request nobody on the board knows](#a-pull-request-nobody-on-the-board-knows).
+
+**What arrives with a Hatch-made pull request.** A pull request another Hatch opened carries its issue's whole chain in its body. The filer reads it and stands the epic and story above the pull request in review as real issues, each marked a contribution with its origin and no pull request of its own, with the pull request's own ticket under the nearest. [The mirrored tree](issues#the-mirrored-tree) says how the chain is read, how a type is folded, and what a body it cannot read does; [Contribution](issues#contribution) says what the record holds.
+
+**How it is approved at the epic level.** A person reads the epic, not each diff, and pre-approves the mirrored epic once. Nothing else is a person's move after that. Each contribution under it that is clean against the trunk and green is carried into the column that merges pull requests by the approve hop, [the merge train](#the-merge-train) merges it, and the epic is closed by the close hop once every child is done. A child that is red or conflicted is not carried: it waits, and the epic stays open behind it while the others merge. [The lifecycle of a ticket](the-lifecycle-of-a-ticket) lists the hops, and [letting the loop merge for you](letting-the-loop-merge-for-you) covers pre-approval itself.
+
+**What holds by default.** A runner does not push to somebody else's branch. A contribution whose branch conflicts with the trunk or whose build failed is left in review for a person, and is listed under **Contributions runners will not work** in the attention panel ([watching the loop](watching-the-loop)). The project's **Runners work contributions** setting, off until an owner turns it on, lets a runner resolve the conflicts and fix the build on such a branch instead. Moving a contribution into the column that merges pull requests asks first in the browser, and `hatch move` refuses it without `--contribution`: merging it merges someone else's branch.
+
+`docs/hatch.md` carries the same shape for the code's side: "Contribution" under the domain model, and "The approval column".
+
 ## Landing on the trunk
 
 A project's landing setting — an owner's choice, on **Manage → Projects** — can read *on the trunk* instead of *by pull request*. A ticket in such a project never carries a pull request: review is still where its branch stops being a session's own, but there is no column to merge it into and nothing for the train to read. If a pull request is recorded on one anyway, that ticket goes back under the pull-request rules above.

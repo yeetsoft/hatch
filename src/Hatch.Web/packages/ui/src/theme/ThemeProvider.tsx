@@ -8,10 +8,10 @@ import {
   readPalette,
   watchSystemTheme,
   writeChoice,
-  writePalette,
   type ResolvedTheme,
   type ThemeChoice,
 } from './themeStore';
+import { readLastSeed, storePalette } from './randomPalette';
 
 /**
  * Resolves `auto | light | dark` and writes it to `<html data-theme>`, which is
@@ -25,6 +25,7 @@ import {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [choice, setStoredChoice] = useState<ThemeChoice>(readChoice);
   const [palette, setStoredPalette] = useState<string | null>(readPalette);
+  const [lastSeed, setLastSeed] = useState<string | null>(readLastSeed);
   const [systemDark, setSystemDark] = useState<boolean>(prefersDark);
 
   useEffect(() => {
@@ -53,12 +54,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setPalette = useCallback((next: string | null) => {
     setStoredPalette(next);
-    writePalette(next);
+    if (next !== null) setLastSeed(next);
+    storePalette(next);
   }, []);
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ choice, resolved, setChoice, palette, setPalette }),
-    [choice, resolved, setChoice, palette, setPalette],
+    () => ({ choice, resolved, setChoice, palette, lastSeed, setPalette }),
+    [choice, resolved, setChoice, palette, lastSeed, setPalette],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

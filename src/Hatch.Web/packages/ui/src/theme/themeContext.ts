@@ -16,6 +16,11 @@ export interface ThemeContextValue {
   setChoice: (choice: ThemeChoice) => void;
   /** The stored palette seed, or `null` for the house palette. */
   palette: string | null;
+  /** The last seed rolled, pasted or applied, kept while Random is off so
+      turning it back on returns the same theme. `null` before the first. */
+  lastSeed: string | null;
+  /** Applies a seed (turning Random on), or `null` for the house palette
+      (turning it off, leaving `lastSeed` alone). */
   setPalette: (seed: string | null) => void;
 }
 
