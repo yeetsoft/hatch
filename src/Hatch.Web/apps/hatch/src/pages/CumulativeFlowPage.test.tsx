@@ -42,6 +42,14 @@ describe('CumulativeFlowBody', () => {
     expect(html).not.toContain(FOOTNOTE);
   });
 
+  it('draws in actual pixels, with no server-render fallback for preserveAspectRatio', () => {
+    const html = render(answer());
+
+    expect(html).toContain('<polyline');
+    expect(html).toContain('viewBox="0 0 600 200"');
+    expect(html).not.toContain('preserveAspectRatio');
+  });
+
   it('says there is nothing to show when there are no points', () => {
     const html = render(answer({ points: [] }));
 

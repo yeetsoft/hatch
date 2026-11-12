@@ -6163,6 +6163,7 @@ button.hatch-option.chosen {
 
 .hatch-cumulative-flow-plot-wrap {
   position: relative;
+  border-bottom: 1px solid var(--line);
 }
 
 /* A 1px line is too thin to reliably press, so the hit target is wider than
@@ -6289,21 +6290,37 @@ button.hatch-option.chosen {
   font-weight: 700;
 }
 
-/* The baseline is on the container rather than in the SVG, as .hatch-spend-plot's is.
-   touch-action: pan-y leaves a vertical touch scrolling the page and a
-   horizontal one free for the drag; :focus-visible marks the plot once ←/→
-   can reach it. */
+/* The baseline is on the wrap rather than in the SVG, as .hatch-spend-plot's
+   is - here the box its own border would have grown is exactly the one the
+   ResizeObserver measures, so the viewBox stays a true 1:1 of actual pixels.
+   The height grows with the viewport up to a ceiling so the chart stays
+   readable on a tall window without running away on one; shape-rendering:
+   geometricPrecision keeps a one-pixel edge crisp rather than snapped to the
+   nearest device pixel. touch-action: pan-y leaves a vertical touch
+   scrolling the page and a horizontal one free for the drag; :focus-visible
+   marks the plot once ←/→ can reach it. */
 .hatch-cumulative-flow-plot {
   display: block;
   width: 100%;
-  height: 140px;
-  border-bottom: 1px solid var(--line);
+  height: clamp(200px, 32vh, 360px);
+  shape-rendering: geometricPrecision;
   touch-action: pan-y;
 }
 
 .hatch-cumulative-flow-plot:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: -2px;
+}
+
+/* Drawn over each band's own fill to crisp its upper edge - the page's own
+   background, so two neighbouring bands read as meeting with no seam and no
+   gap between them. */
+.hatch-cumulative-flow-edge {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 /* The header wraps at every width, not only on a phone: the Changelog's window

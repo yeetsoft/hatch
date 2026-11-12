@@ -120,15 +120,53 @@ export function bands(answer: CumulativeFlow, scale: Scale, by: ColourBy): BandP
   return series;
 }
 
-/** One band's SVG `points`, inside a pane `height` tall: the upper edge
-    left-to-right, then the lower edge back right-to-left, so the polygon
-    closes without crossing itself. */
-export function bandPolygon(band: BandPoint[], height: number): string {
-  const y = (fraction: number) => height - fraction * height;
-  const upper = band.map((p) => `${p.x},${y(p.upperFraction)}`);
-  const lower = [...band].reverse().map((p) => `${p.x},${y(p.lowerFraction)}`);
+/** `p` placed in actual pixels, `width` by `height`: `x` scaled from pane
+    units (`0..CHART_UNITS`) up to `width`, `y` from `fraction` against
+    `height`. Rounded to 2dp so the markup stays short. */
+function place(p: BandPoint, fraction: number, width: number, height: number): [number, number] {
+  const round = (n: number) => Math.round(n * 100) / 100;
 
-  return [...upper, ...lower].join(' ');
+  return [round((p.x * width) / CHART_UNITS), round(height - fraction * height)];
+}
+
+const upperEdge = (band: BandPoint[], width: number, height: number): [number, number][] =>
+  band.map((p) => place(p, p.upperFraction, width, height));
+
+/** One band's SVG `points`, drawn at `width` by `height` actual pixels: the
+    upper edge left to right, then the **baseline** back - `(last x, height)`
+    and `(first x, height)`, two points, not the band's own lower edge, so a
+    band always closes on the pane floor and neighbouring fills meet with no
+    gap between them. `''` for an empty band. */
+export function bandPolygon(band: BandPoint[], width: number, height: number): string {
+  if (band.length === 0) return '';
+
+  const upper = upperEdge(band, width, height);
+  const baseline = [place(band[band.length - 1], 0, width, height), place(band[0], 0, width, height)];
+
+  return [...upper, ...baseline].map(([x, y]) => `${x},${y}`).join(' ');
+}
+
+/** A band's upper edge alone, same string shape as `bandPolygon`, for the
+    `<polyline>` drawn over each fill to crisp its edge against its neighbour.
+    `''` for an empty band. */
+export function bandEdge(band: BandPoint[], width: number, height: number): string {
+  if (band.length === 0) return '';
+
+  return upperEdge(band, width, height)
+    .map(([x, y]) => `${x},${y}`)
+    .join(' ');
+}
+
+/** `keys` paired with the band each is drawn from, outermost first: the
+    first key (the board's first column, the top of the stack) with
+    `series`'s last band, and so down to the last key with `series`'s first -
+    `series` is bottom-up, `keys` in board order, so painting in this order
+    lets each band beneath paint over the one already drawn on top of it. */
+export function drawOrder(
+  keys: (number | string)[],
+  series: BandPoint[][],
+): { key: number | string; band: BandPoint[] }[] {
+  return keys.map((key, j) => ({ key, band: series[series.length - 1 - j] }));
 }
 
 /** The top of the scale, drawn above the bands so a shape has a size, as

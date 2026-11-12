@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bandEdge,
   bandPolygon,
   bandStyle,
   bands,
   breakdown,
   cutKeys,
+  drawOrder,
   isEmpty,
   labelFor,
   momentLabel,
@@ -122,13 +124,57 @@ describe('bands', () => {
 });
 
 describe('bandPolygon', () => {
-  it('draws the upper edge left to right and the lower edge back right to left', () => {
+  it('draws the upper edge left to right and the baseline back right to left', () => {
     const band = [
       { x: 0, lowerFraction: 0, upperFraction: 0.5 },
       { x: 100, lowerFraction: 0, upperFraction: 0.5 },
     ];
 
-    expect(bandPolygon(band, 100)).toBe('0,50 100,50 100,100 0,100');
+    expect(bandPolygon(band, 100, 100)).toBe('0,50 100,50 100,100 0,100');
+  });
+
+  it('closes on the baseline, not the band\'s own lower edge, and scales x to width', () => {
+    const band = [
+      { x: 0, lowerFraction: 0.2, upperFraction: 0.5 },
+      { x: 100, lowerFraction: 0.3, upperFraction: 0.6 },
+    ];
+
+    expect(bandPolygon(band, 200, 100)).toBe('0,50 200,40 200,100 0,100');
+  });
+
+  it('is empty for an empty band', () => {
+    expect(bandPolygon([], 100, 100)).toBe('');
+  });
+});
+
+describe('bandEdge', () => {
+  it('draws the upper edge alone, scaled to width and height', () => {
+    const band = [
+      { x: 0, lowerFraction: 0.2, upperFraction: 0.5 },
+      { x: 100, lowerFraction: 0.3, upperFraction: 0.6 },
+    ];
+
+    expect(bandEdge(band, 200, 100)).toBe('0,50 200,40');
+  });
+
+  it('is empty for an empty band', () => {
+    expect(bandEdge([], 100, 100)).toBe('');
+  });
+});
+
+describe('drawOrder', () => {
+  it('pairs the first key with the last (outermost) band, and so on down', () => {
+    const series = [
+      [{ x: 0, lowerFraction: 0, upperFraction: 0.2 }],
+      [{ x: 0, lowerFraction: 0.2, upperFraction: 0.5 }],
+      [{ x: 0, lowerFraction: 0.5, upperFraction: 1 }],
+    ];
+
+    expect(drawOrder([1, 2, 3], series)).toEqual([
+      { key: 1, band: series[2] },
+      { key: 2, band: series[1] },
+      { key: 3, band: series[0] },
+    ]);
   });
 });
 
