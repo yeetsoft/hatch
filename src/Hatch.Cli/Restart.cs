@@ -248,6 +248,30 @@ public sealed record NightState
     /// <summary>"session" or "weekly" - which window the limit behind <see cref="ExhaustedUntil"/> belongs to.</summary>
     public string? ExhaustedWindow { get; init; }
 
+    /// <summary>Runs in a row whose agent never started - carried, so a restart does not forgive them.</summary>
+    public int UnstartedStreak { get; init; }
+
+    /// <summary>Runs the night over whose agent never started.</summary>
+    public int UnstartedRuns { get; init; }
+
+    /// <summary>The instant the runner may check its agent again, or null when it is not paused for that - carried so a restart comes back paused to the same instant.</summary>
+    public DateTimeOffset? AgentDownUntil { get; init; }
+
+    /// <summary>Why the runner is paused: <see cref="Tally.NotStarting"/>.</summary>
+    public string? AgentDownKind { get; init; }
+
+    /// <summary>The last line the CLI said, already scrubbed.</summary>
+    public string? AgentDownLine { get; init; }
+
+    /// <summary>The rung of the back-off the next pause takes.</summary>
+    public int AgentDownStep { get; init; }
+
+    /// <summary>When the open pause began.</summary>
+    public DateTimeOffset? AgentDownSince { get; init; }
+
+    /// <summary>Seconds paused in spells already closed.</summary>
+    public long AgentDownSeconds { get; init; }
+
     /// <summary>
     /// What is at <paramref name="path"/>, or null - which is a fresh night.
     /// A file that is missing, unreadable or malformed reads as null rather than

@@ -245,6 +245,14 @@ public sealed class IncrementReport
     public bool Started { get; set; } = true;
 
     /// <summary>
+    /// An agent session was actually spawned for this increment, so
+    /// <see cref="Started"/> is a reading and not its default. False on the
+    /// early returns and synthesized reports, which must not end a streak of
+    /// unstarted runs on the strength of a default.
+    /// </summary>
+    public bool Spawned { get; set; }
+
+    /// <summary>
     /// What the CLI said on its way out when it never started: the last lines of
     /// its stderr and its non-stream stdout, scrubbed by <see cref="Scrub"/>.
     /// Empty on any run that started, which keeps nothing extra.
@@ -593,6 +601,7 @@ public sealed class Increment(
             // at the one place it is built, so every later reader gets clean text.
             // A run that started keeps nothing extra.
             report.Started = facts.Started;
+            report.Spawned = true;
             if (!facts.Started)
             {
                 var kept = Scrub.Lines(result.Stray.Concat(result.Stderr));

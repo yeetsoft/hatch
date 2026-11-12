@@ -11,7 +11,7 @@ public sealed class TallyTests
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
         bool quietStopped = false, bool runTimeStopped = false, bool recused = false, string? recusedReason = null,
-        bool unservable = false, bool unstarted = false) =>
+        bool unservable = false, bool unstarted = false, bool spawned = true, string keptLast = "") =>
         new()
         {
             Key = key,
@@ -42,6 +42,9 @@ public sealed class TallyTests
             Unservable = unservable,
             UnservableModel = unservable ? "fable" : null,
             Unstarted = unstarted,
+            Started = !unstarted,
+            Spawned = spawned,
+            KeptLast = keptLast,
             ReleaseOutcome = unservable ? ClaimOutcomes.Unservable : unstarted ? ClaimOutcomes.Unstarted : null,
         };
 
@@ -1383,5 +1386,186 @@ public sealed class TallyTests
         none.Record(Report(totalTokens: null));
         none.Print(quiet);
         Assert.DoesNotContain(quiet.Said, l => l.Contains("peak hour", StringComparison.Ordinal));
+    }
+
+    // ---- HA-2289: two unstarted runs in a row pause the runner ----
+
+    private static (FakeTimeProvider Clock, Tally Tally) Down()
+    {
+        var clock = new FakeTimeProvider(T0);
+        return (clock, new Tally(clock));
+    }
+
+    [Fact]
+    public void Two_unstarted_runs_in_a_row_pause_the_runner_five_minutes_out_with_what_the_cli_said()
+    {
+        var (clock, tally) = Down();
+
+        tally.Record(Report(unstarted: true, keptLast: "boom"));
+        Assert.Null(tally.AgentDownUntil);
+
+        tally.Record(Report(unstarted: true, keptLast: "boom"));
+
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(5), tally.AgentDownUntil);
+        Assert.Equal(Tally.NotStarting, tally.AgentDownKind);
+        Assert.Equal("boom", tally.AgentDownLine);
+        Assert.Equal(2, tally.UnstartedStreak);
+        Assert.Equal(2, tally.UnstartedRuns);
+    }
+
+    [Fact]
+    public void A_started_run_between_two_unstarted_ones_leaves_no_pause()
+    {
+        var (_, tally) = Down();
+
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report());
+        tally.Record(Report(unstarted: true));
+
+        Assert.Null(tally.AgentDownUntil);
+        Assert.Equal(1, tally.UnstartedStreak);
+        Assert.Equal(2, tally.UnstartedRuns);
+    }
+
+    [Fact]
+    public void A_failed_run_that_started_ends_the_streak_and_still_counts_toward_three_failures()
+    {
+        var (_, tally) = Down();
+
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(exit: 1, moved: false));
+        tally.Record(Report(unstarted: true));
+
+        Assert.Null(tally.AgentDownUntil);
+        Assert.Equal(1, tally.Fails);
+    }
+
+    [Fact]
+    public void A_report_that_never_spawned_changes_neither_the_streak_nor_the_pause()
+    {
+        var (_, tally) = Down();
+
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(spawned: false));
+        tally.Record(Report(unstarted: true));
+
+        Assert.NotNull(tally.AgentDownUntil);
+        Assert.Equal(2, tally.UnstartedStreak);
+    }
+
+    [Fact]
+    public void Failed_checks_lengthen_the_wait_to_fifteen_then_sixty_and_it_stays_there()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(unstarted: true));
+
+        var waits = new List<TimeSpan>();
+        for (var i = 0; i < 3; i++)
+        {
+            clock.Advance(TimeSpan.FromMinutes(5));
+            tally.AgentStillDown(clock.GetUtcNow(), "still down");
+            waits.Add(tally.AgentDownUntil!.Value - clock.GetUtcNow());
+        }
+
+        Assert.Equal([TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(60)], waits);
+        Assert.Equal("still down", tally.AgentDownLine);
+    }
+
+    [Fact]
+    public void A_passing_check_clears_the_pause_but_the_next_unstarted_run_takes_the_next_rung()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(unstarted: true));
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+        tally.AgentUp(clock.GetUtcNow());
+
+        Assert.Null(tally.AgentDownUntil);
+        Assert.Null(tally.AgentDownKind);
+        Assert.Null(tally.AgentDownLine);
+
+        // The agent passed the check and then failed a real run: not back to five.
+        tally.Record(Report(unstarted: true));
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(15), tally.AgentDownUntil);
+    }
+
+    [Fact]
+    public void A_run_that_started_after_a_pause_returns_the_ladder_to_its_first_rung()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(unstarted: true));
+        clock.Advance(TimeSpan.FromMinutes(5));
+        tally.AgentUp(clock.GetUtcNow());
+
+        tally.Record(Report());
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(unstarted: true));
+
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(5), tally.AgentDownUntil);
+    }
+
+    [Fact]
+    public void A_pause_survives_a_restart_to_the_same_instant_on_the_same_rung()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(unstarted: true, keptLast: "boom"));
+        tally.Record(Report(unstarted: true, keptLast: "boom"));
+        clock.Advance(TimeSpan.FromMinutes(5));
+        tally.AgentStillDown(clock.GetUtcNow(), "still down");
+        var until = tally.AgentDownUntil;
+
+        var carried = new Tally(clock, tally.ToState());
+
+        Assert.Equal(until, carried.AgentDownUntil);
+        Assert.Equal(Tally.NotStarting, carried.AgentDownKind);
+        Assert.Equal("still down", carried.AgentDownLine);
+        Assert.Equal(tally.AgentDownStep, carried.AgentDownStep);
+        Assert.Equal(2, carried.UnstartedStreak);
+        Assert.Equal(2, carried.UnstartedRuns);
+        Assert.Equal(tally.AgentDownSince, carried.AgentDownSince);
+
+        // And the rung is the same one: the next failed check is sixty.
+        carried.AgentStillDown(clock.GetUtcNow(), "again");
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(60), carried.AgentDownUntil);
+    }
+
+    [Fact]
+    public void The_tally_says_how_many_runs_never_started_and_how_long_the_runner_was_paused_for_it()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(unstarted: true));
+        tally.Record(Report(unstarted: true));
+        clock.Advance(TimeSpan.FromMinutes(5));
+        tally.AgentUp(clock.GetUtcNow());
+
+        var closed = new Transcript();
+        tally.Print(closed);
+        Assert.Contains("hatch: 2 run(s) never started their agent; paused 5m00s for it", closed.Said);
+
+        // A pause still open when the night ends counts too.
+        tally.Record(Report(unstarted: true));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        var open = new Transcript();
+        tally.Print(open);
+        Assert.Contains("hatch: 3 run(s) never started their agent; paused 15m00s for it", open.Said);
+
+        var none = new Transcript();
+        Down().Tally.Print(none);
+        Assert.DoesNotContain(none.Said, l => l.Contains("never started their agent", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_check_joins_the_spend_and_is_not_a_run()
+    {
+        var (_, tally) = Down();
+
+        tally.SpendOnCheck(new AgentCheck.Verdict(true, "", 0.02m, 500));
+
+        Assert.Equal(0, tally.Runs);
+        Assert.Equal(0.02m, tally.Spent);
+        Assert.Equal(500, tally.Tokens);
     }
 }

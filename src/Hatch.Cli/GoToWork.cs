@@ -58,6 +58,14 @@ public sealed class Tally
         ExhaustedKnown = carried?.ExhaustedKnown ?? true;
         ExhaustedAt = carried?.ExhaustedAt ?? (carried?.ExhaustedUntil is not null ? clock.GetUtcNow() : null);
         ExhaustedWindow = carried?.ExhaustedWindow;
+        UnstartedStreak = carried?.UnstartedStreak ?? 0;
+        UnstartedRuns = carried?.UnstartedRuns ?? 0;
+        AgentDownUntil = carried?.AgentDownUntil;
+        AgentDownKind = carried?.AgentDownKind;
+        AgentDownLine = carried?.AgentDownLine;
+        AgentDownStep = Math.Clamp(carried?.AgentDownStep ?? 0, 0, Ladder.Length - 1);
+        AgentDownSince = carried?.AgentDownSince;
+        AgentDownSeconds = carried?.AgentDownSeconds ?? 0;
         Fresh = carried is null;
     }
 
@@ -112,6 +120,80 @@ public sealed class Tally
 
     /// <summary>"session" or "weekly" - which window the limit behind <see cref="ExhaustedUntil"/> belongs to.</summary>
     public string? ExhaustedWindow { get; private set; }
+
+    /// <summary>The <see cref="AgentDownKind"/> of a runner whose agent starts no session.</summary>
+    public const string NotStarting = "not-starting";
+
+    /// <summary>How long each pause lasts, by rung: the first wait, then what each failed health check lengthens it to. The last rung repeats.</summary>
+    private static readonly TimeSpan[] Ladder = [TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(60)];
+
+    /// <summary>Runs in a row whose agent never started. A run that started, whatever its exit code, ends it.</summary>
+    public int UnstartedStreak { get; private set; }
+
+    /// <summary>Runs the night over whose agent never started, whether or not they paused the runner.</summary>
+    public int UnstartedRuns { get; private set; }
+
+    /// <summary>
+    /// Two runs in a row never started, and this is when the runner may check
+    /// its agent again - null on an ordinary night. Cleared by <see cref="AgentUp"/>.
+    /// </summary>
+    public DateTimeOffset? AgentDownUntil { get; private set; }
+
+    /// <summary>Why <see cref="AgentDownUntil"/> is set - <see cref="NotStarting"/>.</summary>
+    public string? AgentDownKind { get; private set; }
+
+    /// <summary>What the CLI last said, scrubbed - the line the terminal repeats while the runner waits.</summary>
+    public string? AgentDownLine { get; private set; }
+
+    /// <summary>The rung of the back-off the next pause takes.</summary>
+    public int AgentDownStep { get; private set; }
+
+    /// <summary>When the open pause began, so the tally can count a pause still running.</summary>
+    public DateTimeOffset? AgentDownSince { get; private set; }
+
+    /// <summary>Seconds spent paused in spells already closed.</summary>
+    public long AgentDownSeconds { get; private set; }
+
+    /// <summary>Starts or lengthens a pause: the wait of the current rung, then the rung moves on.</summary>
+    private void Pause(DateTimeOffset now, string? line)
+    {
+        AgentDownUntil = now + Ladder[AgentDownStep];
+        AgentDownStep = Math.Min(AgentDownStep + 1, Ladder.Length - 1);
+        AgentDownKind = NotStarting;
+        AgentDownLine = line;
+        AgentDownSince ??= now;
+    }
+
+    /// <summary>A health check found the agent still not starting: wait the next rung.</summary>
+    public void AgentStillDown(DateTimeOffset now, string why)
+    {
+        Pause(now, why);
+        _log?.Invoke($"hatch: Tally.AgentStillDown set AgentDownUntil {AgentDownUntil:O}");
+    }
+
+    /// <summary>
+    /// A health check found the agent starting. The spell closes and its time
+    /// counts, but the streak and the rung stay: an agent that passes the check
+    /// and then fails a real run goes to the next rung, not back to the first.
+    /// </summary>
+    public void AgentUp(DateTimeOffset now)
+    {
+        CloseSpell(now);
+        _log?.Invoke("hatch: Tally.AgentUp cleared AgentDownUntil");
+    }
+
+    private void CloseSpell(DateTimeOffset now)
+    {
+        if (AgentDownSince is { } since) AgentDownSeconds += Math.Max(0, (long)(now - since).TotalSeconds);
+
+        AgentDownUntil = null;
+        AgentDownKind = null;
+        AgentDownLine = null;
+        AgentDownSince = null;
+    }
+
+    /// <summary>What a health check cost, joined to the night's spend. Not a run: <c>--max-runs</c> counts increments.</summary>
+    public void SpendOnCheck(AgentCheck.Verdict verdict) => Spend(verdict.Cost, false, verdict.Tokens);
 
     /// <summary>
     /// The reset instant has passed - told rather than let expire on its own,
@@ -358,19 +440,18 @@ public sealed class Tally
         return null;
     }
 
-    /// <summary>One increment, added to the run's account.</summary>
-    public void Record(IncrementReport report)
+    /// <summary>The money and tokens of one session, added to the night's account.</summary>
+    private void Spend(decimal? cost, bool unpriced, long? tokens)
     {
-        Runs++;
-        if (report.Cost is { } cost) Spent += cost;
-        if (report.Unpriced) Unpriced++;
+        if (cost is { } spent) Spent += spent;
+        if (unpriced) Unpriced++;
 
-        // Before the usage-limit return below: those tokens were spent.
+        // Before the usage-limit return in Record: those tokens were spent.
         var now = _clock.GetUtcNow();
-        if (report.TotalTokens is { } tokens)
+        if (tokens is { } count)
         {
-            Tokens += tokens;
-            _window.Add(new TokenEntry(now, tokens));
+            Tokens += count;
+            _window.Add(new TokenEntry(now, count));
             _window.RemoveAll(e => !Live(e, now));
         }
         else Unreported++;
@@ -381,8 +462,16 @@ public sealed class Tally
 
         // Kept whether or not a cap is set, so the peak is reported on every night.
         // After the ledger write, so in a set it is the combined hour this entry joined.
-        if (report.TotalTokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
+        if (tokens is not null) PeakHour = Math.Max(PeakHour, WindowTotal(now));
+    }
 
+    /// <summary>One increment, added to the run's account.</summary>
+    public void Record(IncrementReport report)
+    {
+        Runs++;
+        Spend(report.Cost, report.Unpriced, report.TotalTokens);
+
+        var now = _clock.GetUtcNow();
         var before = ExhaustedUntil;
 
         // Set on every increment and cleared the moment one finishes without
@@ -398,6 +487,25 @@ public sealed class Tally
             var was = before is { } o ? o.ToString("O") : "none";
             var becomes = ExhaustedUntil is { } n ? n.ToString("O") : "none";
             _log?.Invoke($"hatch: Tally.Record set ExhaustedUntil {was} -> {becomes} for {report.Key}");
+        }
+
+        // Before the early returns below: an unstarted run returns from one,
+        // and a run that started must end the streak whatever else it was. Only
+        // a run that really spawned an agent is read - Started defaults true,
+        // so an early-return report must not forgive anything. Exit codes play
+        // no part: a failed run that started still counts toward Fails and
+        // nothing else here.
+        if (report.Spawned && report.Started)
+        {
+            UnstartedStreak = 0;
+            AgentDownStep = 0;
+            CloseSpell(now);
+        }
+        else if (report.Unstarted)
+        {
+            UnstartedStreak++;
+            UnstartedRuns++;
+            if (UnstartedStreak >= 2) Pause(now, report.KeptLast);
         }
 
         // A third list, because a usage limit is neither: nothing was moved,
@@ -535,6 +643,14 @@ public sealed class Tally
         ExhaustedKnown = ExhaustedKnown,
         ExhaustedAt = ExhaustedAt,
         ExhaustedWindow = ExhaustedWindow,
+        UnstartedStreak = UnstartedStreak,
+        UnstartedRuns = UnstartedRuns,
+        AgentDownUntil = AgentDownUntil,
+        AgentDownKind = AgentDownKind,
+        AgentDownLine = AgentDownLine,
+        AgentDownStep = AgentDownStep,
+        AgentDownSince = AgentDownSince,
+        AgentDownSeconds = AgentDownSeconds,
     };
 
     /// <summary>What the night has come to so far, in one line, on the way to a restart.</summary>
@@ -580,6 +696,11 @@ public sealed class Tally
         say.Lines(_stalled);
         say.Lines(_letGo);
         say.Lines(_interrupted);
+        if (UnstartedRuns > 0)
+        {
+            var open = AgentDownSince is { } since ? Math.Max(0, (long)(_clock.GetUtcNow() - since).TotalSeconds) : 0;
+            say.Line($"hatch: {UnstartedRuns} run(s) never started their agent; paused {Format.Duration(AgentDownSeconds + open)} for it");
+        }
         say.Lines(_preempted);
     }
 }
@@ -1282,6 +1403,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
         var paused = new SaidOnce();
         var exhausted = new SaidOnce();
         var throttled = new SaidOnce();
+        var agentDown = new SaidOnce();
         var printed = new Printed { At = runtime.Clock.GetUtcNow() };
         var poll = new Poll();
 
@@ -1461,6 +1583,16 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     continue;
                 }
 
+                if (tally.AgentDownUntil is { } downUntil)
+                {
+                    // Spent the same way again: an order would spawn the agent
+                    // the pause is waiting to hear start.
+                    line.Line = $"order spent - agent not starting until {UsageLimit.Clock(downUntil, known: false, runtime.Clock)}";
+                    runtime.Say.Line($"hatch: {line.Line}");
+                    printed.At = runtime.Clock.GetUtcNow();
+                    continue;
+                }
+
                 var ordered = await PassAsync(under, quiet, mine, tally, idle, busy, printed, interval, once, restart, line, ct,
                     orderedKey: ordering.Kind == RunnerOrderKinds.Work ? ordering.Key : null);
                 if (ordered == Pass.Worked) workedSinceProbe = true;
@@ -1604,6 +1736,85 @@ public sealed class GoToWorkCommand(Runtime runtime)
 
             exhausted.Clear();
             tally.ClearExhausted();
+
+            // A runner whose last two runs never started. Behind the usage
+            // wait, so an account out of usage says so first, and before the
+            // throttle: neither claims anything, and this one ends in a
+            // session of its own rather than an instant.
+            if (tally.AgentDownUntil is { } agentUntil)
+            {
+                if (now < agentUntil)
+                {
+                    idle.Clear();
+                    busy.Clear();
+                    var clock = UsageLimit.Clock(agentUntil, known: false, runtime.Clock);
+                    line.Line = $"agent not starting - checking again at {clock}";
+                    runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
+
+                    if (await SayQuietlyAsync(agentDown, now, interval, once,
+                        digest: $"agent-down:{agentUntil:O}",
+                        still: $"hatch: still waiting on {runtime.Adapter.DisplayName} - the agent is not starting, checking again at {clock}",
+                        inFull: () =>
+                        {
+                            var said = tally.AgentDownLine is { Length: > 0 } last ? $" - the CLI said \"{last}\"" : "";
+                            runtime.Say.Line($"hatch: the agent is not starting{said}");
+                            runtime.Say.Line($"hatch:   claiming nothing until a check session starts - checking again at {clock}");
+                            return Task.CompletedTask;
+                        }))
+                        printed.At = runtime.Clock.GetUtcNow();
+
+                    // A loop update may be the fix, so the wait stays current.
+                    if (SelfChanged(now, ref checkedSelfAt, restart, tally)) return true;
+
+                    if (!await NapAsync(interval, tally, ct))
+                    {
+                        await SayStoppedAsync(line, under, mine, tally, once, ct);
+                        return false;
+                    }
+
+                    Watchdog(printed);
+                    continue;
+                }
+
+                // The wait is over: one cheap session, before anything is claimed.
+                runtime.Say.Line("");
+                runtime.Say.Line($"hatch: checking whether the agent starts - one {runtime.Adapter.CheapestModel} session, claiming nothing");
+                printed.At = runtime.Clock.GetUtcNow();
+
+                AgentCheck.Verdict verdict;
+                try
+                {
+                    verdict = await AgentCheck.RunAsync(runtime.Sessions, runtime.Adapter, runtime.Settings, runtime.TempDirectory, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    await SayStoppedAsync(line, under, mine, tally, once, ct);
+                    return false;
+                }
+
+                tally.SpendOnCheck(verdict);
+                var checkCost = verdict.Cost is { } paid ? $"${Format.Money(paid)}" : "no price reported";
+                var checkTokens = verdict.Tokens is { } used ? $"{Format.Compact(used)} tokens" : "no token count reported";
+                runtime.Say.Line($"hatch:   the check cost {checkCost}, {checkTokens}");
+
+                var checkedAt = runtime.Clock.GetUtcNow();
+                if (verdict.Passed)
+                {
+                    tally.AgentUp(checkedAt);
+                    agentDown.Clear();
+                    runtime.Say.Line("hatch: the agent starts again - taking tickets");
+                    printed.At = runtime.Clock.GetUtcNow();
+                }
+                else
+                {
+                    tally.AgentStillDown(checkedAt, verdict.Why);
+                    var next = UsageLimit.Clock(tally.AgentDownUntil ?? checkedAt, known: false, runtime.Clock);
+                    runtime.Say.Line($"hatch: the agent is still not starting - {verdict.Why}");
+                    runtime.Say.Line($"hatch:   checking again at {next}");
+                    printed.At = runtime.Clock.GetUtcNow();
+                    continue;
+                }
+            }
 
             // The loop's own hourly cap, which is a wait and not a stop: it
             // records nothing, so no counter, no failure streak and no ledger

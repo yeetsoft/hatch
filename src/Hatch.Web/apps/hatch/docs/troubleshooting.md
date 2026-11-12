@@ -225,6 +225,27 @@ run](the-runner#when-it-will-not-run).
   which is not a stall: [when it will not
   run](the-runner#when-it-will-not-run).
 
+## The runner says its agent is not starting
+
+- **Two runs in a row ended before the agent printed anything.** The runner
+  stops claiming, says *the agent is not starting* with the last line the CLI
+  wrote and the time it will check again, and keeps heartbeating. Nothing is
+  wrong with the tickets: each was released untouched.
+- **Read what the CLI said.** The line is usually the cause - a login that
+  expired, a binary that moved, a config it will not read. Run the agent by
+  hand in the checkout and fix that; the next check passes by itself.
+- **It checks on a back-off.** First after five minutes, then fifteen, then
+  sixty, and sixty from there on. A check is one headless session on the
+  agent's cheapest model asked for a single word, claiming no ticket; its
+  cost is said on the terminal and joins the night's spend. When it starts
+  and answers the terminal says *the agent starts again - taking tickets*.
+- **Want it sooner.** Stop the loop and start it again by hand once the
+  agent is fixed: a fresh start carries no pause. A restart the loop asks for
+  itself carries the pause across to the same instant, so it does not skip
+  the wait. How the wait works: [stalls](one-increment-and-the-loop#stalls).
+- **How much it cost.** The closing tally says how many runs never started
+  and how long the runner was paused for it.
+
 ## A session is still running in the checkout after the loop died
 
 - **The loop was killed or its window closed mid-increment.** The agent it
