@@ -13,7 +13,7 @@ export const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
     is and the server's refusal is what the person reads. */
 export const SHRINK_ATTEMPTS = 4;
 
-export const imageUrl = (id: string) => `/api/hatch/images/${id}`;
+export const imageUrl = (id: string) => `/api/images/${id}`;
 
 export const imageMarkdown = (id: string) => `![image](${imageUrl(id)})`;
 
@@ -50,7 +50,7 @@ export function insertText(value: string, start: number, end: number, text: stri
   return { value: value.slice(0, start) + text + value.slice(end), caret: start + text.length };
 }
 
-export const attachmentUrl = (id: string) => `/api/hatch/attachments/${id}`;
+export const attachmentUrl = (id: string) => `/api/attachments/${id}`;
 
 /** Whether a drag carries at least one file, as opposed to dragged text or a
     link - both of which also populate `DataTransfer.types` but never with

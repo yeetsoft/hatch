@@ -10,9 +10,9 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class BuildIncrementTests
 {
-    private const string Queue = "/api/hatch/work/queue";
+    private const string Queue = "/api/work/queue";
     private const string Key = "AER-1";
-    private const string Put = "/api/hatch/issues/AER-1/build-check";
+    private const string Put = "/api/issues/AER-1/build-check";
 
     private static readonly string Trunk = new('a', 40);
     private static readonly string Tip = new('b', 40);
@@ -163,16 +163,16 @@ public sealed class BuildIncrementTests
         IReadOnlyList<string>? deniedTools = null)
     {
         var h = new Harness();
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("DELETE", $"/api/issues/{Key}/claim", HttpStatusCode.NoContent);
         h.Wire.Reply(
-            "POST", $"/api/hatch/issues/{Key}/claim/heartbeat",
+            "POST", $"/api/issues/{Key}/claim/heartbeat",
             lost ? HttpStatusCode.Conflict : HttpStatusCode.NoContent, lost ? "\"this claim was taken over\"" : "");
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.Work(Key, from: endsIn));
-        h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
-        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
+        h.Wire.Json("POST", $"/api/issues/{Key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/work/{Key}", Fixtures.Work(Key, from: endsIn));
+        h.Wire.Json("GET", $"/api/issues/{Key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/issues/{Key}/stall", Fixtures.Issue(Key));
 
         var (claim, _) = await Claim.TakeAsync(h.Client, Key, "test:/checkout", default, Harness.Beat);
         if (lost) h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -202,7 +202,7 @@ public sealed class BuildIncrementTests
         Assert.False(report.Stalled);
         Assert.False(report.Moved);
         Assert.Equal("fix pushed, build pending", report.Outcome);
-        Assert.Empty(h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments"));
+        Assert.Empty(h.Wire.To("POST", $"/api/issues/{Key}/comments"));
         Assert.Contains(h.Say.Said, l => l == $"hatch: {Key} fix pushed - the build on it is pending");
     }
 
@@ -218,7 +218,7 @@ public sealed class BuildIncrementTests
         Assert.Equal(["api", "CI"], report.StillFailing);
         Assert.Equal("its build still fails (api, CI), flagged", report.Outcome);
 
-        var written = h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments");
+        var written = h.Wire.To("POST", $"/api/issues/{Key}/comments");
         Assert.Single(written);
 
         var comment = written[0].Read<CommentCreateRequest>().Body;
@@ -228,7 +228,7 @@ public sealed class BuildIncrementTests
         Assert.Contains("- CI", comment, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", comment, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Contains("still fails", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
     }
 
@@ -241,7 +241,7 @@ public sealed class BuildIncrementTests
         Assert.False(report.Stalled);
         Assert.False(report.FixPushed);
         Assert.Contains("not known", report.Flag!, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments"));
+        Assert.Empty(h.Wire.To("POST", $"/api/issues/{Key}/comments"));
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public sealed class BuildIncrementTests
 
         Assert.False(report.Stalled);
         Assert.Contains("not known", report.Flag!, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments"));
+        Assert.Empty(h.Wire.To("POST", $"/api/issues/{Key}/comments"));
     }
 
     [Fact]
@@ -265,7 +265,7 @@ public sealed class BuildIncrementTests
         Assert.True(report.LostLease);
         Assert.False(called, "the judgement is a write onto a ticket that is somebody else's by now");
         Assert.False(report.FixPushed);
-        Assert.Empty(h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments"));
+        Assert.Empty(h.Wire.To("POST", $"/api/issues/{Key}/comments"));
     }
 
     [Fact]
@@ -306,22 +306,22 @@ public sealed class BuildIncrementTests
     private static void Board(Harness h, WorkDto? work = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.BuildRow(Key, "api", "CI") });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", work ?? Fixtures.BuildWork(Key));
-        h.Wire.Json("GET", $"/api/hatch/issues/{Key}", Fixtures.Issue(Key));
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{Key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{Key}", work ?? Fixtures.BuildWork(Key));
+        h.Wire.Json("GET", $"/api/issues/{Key}", Fixtures.Issue(Key));
+        h.Wire.Json("POST", $"/api/issues/{Key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{Key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/issues/{Key}/comments", Fixtures.Comment());
         h.Wire.Json("PUT", Put, Fixtures.Build());
-        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
+        h.Wire.Json("PUT", $"/api/issues/{Key}/stall", Fixtures.Issue(Key));
 
         h.Workspace.HeadsFor[h.Root] = Heads(Tip);
     }
 
     private static List<CommentCreateRequest> Stall(Harness h) =>
-        h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments").Select(c => c.Read<CommentCreateRequest>())
+        h.Wire.To("POST", $"/api/issues/{Key}/comments").Select(c => c.Read<CommentCreateRequest>())
             .Where(c => !c.Body.StartsWith("The runner tidied", StringComparison.Ordinal)).ToList();
 
     [Theory]
@@ -337,7 +337,7 @@ public sealed class BuildIncrementTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
 
         var put = Assert.Single(h.Wire.To("PUT", Put)).Read<BuildCheckRequest>();
         Assert.Equal(verdict, put.Verdict);
@@ -376,7 +376,7 @@ public sealed class BuildIncrementTests
 
         using var stop = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "600"], stop.Token);
-        await Harness.Eventually(() => h.Wire.Count("DELETE", $"/api/hatch/issues/{Key}/claim") >= 1, "the claim to go back");
+        await Harness.Eventually(() => h.Wire.Count("DELETE", $"/api/issues/{Key}/claim") >= 1, "the claim to go back");
         await Task.Delay(400);
         await stop.CancelAsync();
         await running;
@@ -398,7 +398,7 @@ public sealed class BuildIncrementTests
 
         using var stop = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "600"], stop.Token);
-        await Harness.Eventually(() => h.Wire.Count("DELETE", $"/api/hatch/issues/{Key}/claim") >= 1, "the claim to go back");
+        await Harness.Eventually(() => h.Wire.Count("DELETE", $"/api/issues/{Key}/claim") >= 1, "the claim to go back");
         await Task.Delay(400);
         await stop.CancelAsync();
         await running;
@@ -486,7 +486,7 @@ public sealed class BuildIncrementTests
         Assert.Single(written);
         Assert.Contains("- api", written[0].Body, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Contains("still fails", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         // The recheck's own verdict landed on its own route, same as always.
@@ -562,7 +562,7 @@ public sealed class BuildIncrementTests
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync([Key], default));
 
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
         Assert.Contains(h.Say.Said, l => l == $"hatch: {Key} its build is no longer failing - nothing to do");
         Assert.DoesNotContain(h.Workspace.Calls, c => c.StartsWith("enter", StringComparison.Ordinal));
     }
@@ -577,7 +577,7 @@ public sealed class BuildIncrementTests
         Assert.Equal(1, await new WorkCommand(h.Runtime).RunAsync([Key], default));
 
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
     }
 
     [Fact]
@@ -609,7 +609,7 @@ public sealed class BuildIncrementTests
     public async Task Work_dry_run_composes_the_section_from_the_boards_verdicts_and_reads_nothing()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", Fixtures.BuildWork(Key));
+        h.Wire.Json("GET", $"/api/work/{Key}", Fixtures.BuildWork(Key));
 
         Assert.Equal(0, await new WorkCommand(h.Runtime).RunAsync([Key, "--dry-run"], default));
 

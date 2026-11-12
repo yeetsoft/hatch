@@ -18,7 +18,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// trunk that has already concluded.
 /// </summary>
 [ApiController]
-[Route("api/hatch/trunk-builds")]
+[Route("api/trunk-builds")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class TrunkBuildController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

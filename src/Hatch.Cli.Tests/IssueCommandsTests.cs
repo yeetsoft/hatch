@@ -55,9 +55,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_of_each_message_whether_it_was_read_and_says_nothing_of_a_note()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[]
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", new[]
         {
             Fixtures.Comment("a note"),
             Fixtures.Message(2, "not yet"),
@@ -75,11 +75,11 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_the_header_the_edges_it_has_and_the_brief()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(
             parent: "AER-1", children: ["AER-13"], dependsOn: ["AER-11"], dependents: ["AER-14"],
             readyAt: "2026-10-01", dueAt: "2026-10-08"));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -104,9 +104,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_what_the_issue_was_filed_from_and_what_was_filed_from_it_where_they_apply()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(filedFrom: "OPS-3", filed: ["AER-20", "OPS-4"]));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(filedFrom: "OPS-3", filed: ["AER-20", "OPS-4"]));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -118,9 +118,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_neither_filed_line_for_an_issue_with_no_such_edges()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -131,9 +131,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_a_landing_without_a_confirmed_trunk_tip()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(landings: [Fixtures.Landing()]));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(landings: [Fixtures.Landing()]));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -145,9 +145,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_a_landing_confirmed_on_the_trunk_tip()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(landings: [Fixtures.Landing(containedBy: new string('b', 40))]));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(landings: [Fixtures.Landing(containedBy: new string('b', 40))]));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -159,9 +159,9 @@ public sealed class IssueCommandsTests
     public async Task Show_leaves_out_every_line_the_issue_has_nothing_for()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -183,9 +183,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_a_runner_line_while_a_claim_is_held()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -196,9 +196,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_no_runner_line_for_an_unheld_ticket()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -209,9 +209,9 @@ public sealed class IssueCommandsTests
     public async Task Show_drops_the_dash_when_the_claim_has_no_chatter()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held(null));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", Held(null));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -224,9 +224,9 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         var held = Held("reading the board");
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", held with { Claim = held.Claim! with { HeartbeatAt = Now - TimeSpan.FromMinutes(4) } });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", held with { Claim = held.Claim! with { HeartbeatAt = Now - TimeSpan.FromMinutes(4) } });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -238,8 +238,8 @@ public sealed class IssueCommandsTests
     public async Task Brief_keeps_the_runner_line()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
 
@@ -251,20 +251,20 @@ public sealed class IssueCommandsTests
             parent:   AER-1
             """.ReplaceLineEndings("\n"),
             h.Said);
-        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/issues/AER-12/comments");
     }
 
     [Fact]
     public async Task Brief_is_the_start_of_show_for_a_claimed_ticket()
     {
         using var full = new CliHarness(clock: new FrozenClock(Now));
-        full.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
-        full.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        full.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        full.Wire.Json("GET", "/api/issues/AER-12", Held("reading the board"));
+        full.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        full.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         using var brief = new CliHarness(clock: new FrozenClock(Now));
-        brief.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
-        brief.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        brief.Wire.Json("GET", "/api/issues/AER-12", Held("reading the board"));
+        brief.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         Assert.Equal(0, await new IssueCommands(full.Cli).ShowAsync(["AER-12"], default));
         Assert.Equal(0, await new IssueCommands(brief.Cli).ShowAsync(["AER-12", "--brief"], default));
@@ -277,15 +277,15 @@ public sealed class IssueCommandsTests
     public async Task Show_makes_no_request_beyond_the_ones_it_always_made()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", Held("reading the board"));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", Held("reading the board"));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
-        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/runners");
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/runners");
         Assert.Equal(
-            new[] { "/api/hatch/issues/AER-12", "/api/hatch/statuses", "/api/hatch/issues/AER-12/comments" },
+            new[] { "/api/issues/AER-12", "/api/statuses", "/api/issues/AER-12/comments" },
             h.Wire.Calls.Select(c => c.Path));
     }
 
@@ -294,10 +294,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Expedited = true, Priority = PriorityLevels.ExpeditedName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -309,10 +309,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Expedited = true, Priority = PriorityLevels.ExpeditedName, PriorityFrom = "HA-12" });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -324,10 +324,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Expedited = true, Priority = PriorityLevels.EmergencyName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -339,10 +339,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Priority = PriorityLevels.LowName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -356,10 +356,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Priority = PriorityLevels.EconomyName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -371,10 +371,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Priority = PriorityLevels.PausedName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -386,10 +386,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { Priority = PriorityLevels.PausedName, PriorityFrom = "HA-12" });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -400,9 +400,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_when_the_issue_is_express()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.ExpressName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.ExpressName });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -413,9 +413,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_when_the_issue_is_preapproved()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.PreApprovedName });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { PreApproval = PreApprovalLevels.PreApprovedName });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -427,10 +427,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { PreApproval = PreApprovalLevels.PreApprovedName, PreApprovalFrom = "HA-12" });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -442,10 +442,10 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with { RunnerTags = ["gpu"], RunnerTagsFrom = [] });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -458,7 +458,7 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with
             {
                 RunnerTags = ["gpu", "linux", "macos"],
@@ -468,8 +468,8 @@ public sealed class IssueCommandsTests
                     new RunnerTagSourceDto(RunnerTagSourceKinds.Issue, "HA-12", ["gpu"]),
                 ],
             });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -481,14 +481,14 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "GET", "/api/hatch/issues/AER-12",
+            "GET", "/api/issues/AER-12",
             AnIssue() with
             {
                 RunnerTags = ["gpu"],
                 RunnerTagsFrom = [new RunnerTagSourceDto(RunnerTagSourceKinds.Issue, "HA-12", ["gpu"])],
             });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -499,9 +499,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_the_reason_an_issue_is_flagged_dangerous()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousOwn = "load tests the node" });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousOwn = "load tests the node" });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -513,9 +513,9 @@ public sealed class IssueCommandsTests
     public async Task Show_names_the_ancestor_a_dangerous_flag_was_inherited_from()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousFrom = "HA-12" });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Dangerous = "load tests the node", DangerousFrom = "HA-12" });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -535,9 +535,9 @@ public sealed class IssueCommandsTests
     public async Task Show_lists_the_omitted_runners_naming_the_ancestor_one_came_from()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", WithOmittedRunners());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", WithOmittedRunners());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -550,9 +550,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_nothing_of_omitted_runners_when_there_are_none()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -563,24 +563,24 @@ public sealed class IssueCommandsTests
     public async Task Brief_keeps_the_omitted_runners()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", WithOmittedRunners());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12", WithOmittedRunners());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
 
         Assert.Contains("omitted runners:", h.Said);
         Assert.Contains("  Sisyphus - too slow - key-one, 5m ago", h.Said);
         Assert.Contains("  Atlas - no reason given - key-two, 3h ago (from AER-3)", h.Said);
-        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/issues/AER-12/comments");
     }
 
     [Fact]
     public async Task Show_says_how_many_stories_an_epic_may_run_at_once()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = 3 });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -591,9 +591,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_how_many_stories_a_reflection_may_run_at_once_the_same_as_an_epic()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "reflection", WipLimit = 3 });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Type = "reflection", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -604,9 +604,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_no_limit_on_an_epic_with_no_limit_set()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = null });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Type = "epic", WipLimit = null });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -618,9 +618,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_no_such_line_for_a_story_even_holding_a_stranded_value()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue() with { Type = "story", WipLimit = 3 });
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue() with { Type = "story", WipLimit = 3 });
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default));
 
@@ -643,9 +643,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_the_comments_under_a_count_of_them()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[]
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", new[]
         {
             new CommentDto(1, "hatch", "First.", "", null, null, DateTimeOffset.UnixEpoch),
             new CommentDto(2, "somebody", "Second,\nover two lines.", "", null, null, DateTimeOffset.UnixEpoch),
@@ -666,9 +666,9 @@ public sealed class IssueCommandsTests
     public async Task Show_falls_back_to_the_status_id_when_no_column_matches_it()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", Array.Empty<StatusDto>());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", Array.Empty<StatusDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
         Assert.Contains("status:   3", h.Said);
@@ -678,9 +678,9 @@ public sealed class IssueCommandsTests
     public async Task Brief_prints_the_header_alone_with_no_fetch_of_the_comments()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[] { Fixtures.Comment("a note") });
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", new[] { Fixtures.Comment("a note") });
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
 
@@ -690,15 +690,15 @@ public sealed class IssueCommandsTests
             status:   In Progress
             """.ReplaceLineEndings("\n"),
             h.Said);
-        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12/comments");
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/issues/AER-12/comments");
     }
 
     [Fact]
     public async Task Brief_with_no_comments_stubbed_prints_the_same_header_and_stops_there()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         Assert.Equal(0, await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default));
 
@@ -714,12 +714,12 @@ public sealed class IssueCommandsTests
     public async Task Brief_before_the_key_is_the_same_as_brief_after_it()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         var before = new CliHarness();
-        before.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        before.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        before.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        before.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default);
         await new IssueCommands(before.Cli).ShowAsync(["--brief", "AER-12"], default);
@@ -732,8 +732,8 @@ public sealed class IssueCommandsTests
     public async Task Brief_on_a_ticket_with_nothing_else_prints_exactly_two_lines()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12", "--brief"], default);
 
@@ -773,7 +773,7 @@ public sealed class IssueCommandsTests
     public async Task Comments_prints_exactly_the_thread_with_no_fetch_of_the_issue()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", new[]
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", new[]
         {
             new CommentDto(1, "hatch", "First.", "", null, null, DateTimeOffset.UnixEpoch),
             new CommentDto(2, "somebody", "Second,\nover two lines.", "", null, null, DateTimeOffset.UnixEpoch),
@@ -789,14 +789,14 @@ public sealed class IssueCommandsTests
             "[1970-01-01T00:00:00+00:00] somebody:\n" +
             "Second,\nover two lines.\n",
             h.Said);
-        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/hatch/issues/AER-12");
+        Assert.DoesNotContain(h.Wire.Calls, c => c.Path == "/api/issues/AER-12");
     }
 
     [Fact]
     public async Task Comments_prints_nothing_when_there_are_none()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).CommentsAsync(["AER-12"], default));
 
@@ -809,12 +809,12 @@ public sealed class IssueCommandsTests
     public async Task Start_is_move_with_the_column_already_named()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+        h.Wire.Json("GET", "/api/board", ABoard());
+        h.Wire.Json("POST", "/api/issues/AER-12/move", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).StartAsync(["AER-12"], default));
 
-        Assert.Equal(3, h.Wire.To("POST", "/api/hatch/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
+        Assert.Equal(3, h.Wire.To("POST", "/api/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
         Assert.Equal("AER-12 -> in progress", h.Said);
     }
 
@@ -822,12 +822,12 @@ public sealed class IssueCommandsTests
     public async Task Move_finds_the_column_however_it_was_typed_and_says_where_it_went()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+        h.Wire.Json("GET", "/api/board", ABoard());
+        h.Wire.Json("POST", "/api/issues/AER-12/move", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "TODO"], default));
 
-        Assert.Equal(2, h.Wire.To("POST", "/api/hatch/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
+        Assert.Equal(2, h.Wire.To("POST", "/api/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
         Assert.Equal("AER-12 -> TODO", h.Said);
     }
 
@@ -839,12 +839,12 @@ public sealed class IssueCommandsTests
     public async Task A_terminal_column_is_refused_and_nothing_is_written()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+        h.Wire.Json("GET", "/api/board", ABoard());
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "done"], default));
 
         Assert.Contains("is a terminal column - only the operator moves a ticket there", h.Complained);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     /// <summary>
@@ -856,12 +856,12 @@ public sealed class IssueCommandsTests
     public async Task A_deferred_column_is_refused_and_nothing_is_written()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+        h.Wire.Json("GET", "/api/board", ABoard());
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "shelved"], default));
 
         Assert.Contains("is a deferred column - only the operator shelves a ticket", h.Complained);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     /// <summary>
@@ -873,12 +873,12 @@ public sealed class IssueCommandsTests
     public async Task A_protected_column_is_refused_and_nothing_is_written()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+        h.Wire.Json("GET", "/api/board", ABoard());
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "approved"], default));
 
         Assert.Contains("is a protected column - only its approvers move a ticket there", h.Complained);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     // ---- a contribution moving into a column that merges pull requests ----
@@ -903,14 +903,14 @@ public sealed class IssueCommandsTests
     public async Task A_contribution_into_a_merging_column_is_refused_in_one_line_and_nothing_is_written()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: true));
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
 
         Assert.Contains("AER-12 is a contribution", h.Complained);
         Assert.Contains("--contribution", h.Complained);
         Assert.Single(h.Complained.TrimEnd().Split('\n'));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     [Theory]
@@ -919,12 +919,12 @@ public sealed class IssueCommandsTests
     public async Task The_contribution_flag_moves_it_from_any_position(string a, string b, string c)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: true));
+        h.Wire.Json("POST", "/api/issues/AER-12/move", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync([a, b, c], default));
 
-        Assert.Equal(7, h.Wire.To("POST", "/api/hatch/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
+        Assert.Equal(7, h.Wire.To("POST", "/api/issues/AER-12/move").Single().Read<IssueMoveRequest>().StatusId);
         Assert.Equal("AER-12 -> merging", h.Said);
     }
 
@@ -932,44 +932,44 @@ public sealed class IssueCommandsTests
     public async Task An_issue_that_is_not_a_contribution_moves_into_a_merging_column_with_no_flag()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: false));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: false));
+        h.Wire.Json("POST", "/api/issues/AER-12/move", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     [Fact]
     public async Task A_contribution_into_a_column_that_does_not_merge_needs_no_flag()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/move", AnIssue());
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: true));
+        h.Wire.Json("POST", "/api/issues/AER-12/move", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "in progress"], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     [Fact]
     public async Task A_protected_merging_column_is_refused_as_protected_even_with_the_flag()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true, protectedMerge: true));
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: true, protectedMerge: true));
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging", "--contribution"], default));
 
         Assert.Contains("is a protected column - only its approvers move a ticket there", h.Complained);
         Assert.DoesNotContain("contribution", h.Complained);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     [Fact]
     public async Task A_protected_merging_column_is_refused_as_protected_not_as_a_contribution()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", AMergingBoard(contribution: true, protectedMerge: true));
+        h.Wire.Json("GET", "/api/board", AMergingBoard(contribution: true, protectedMerge: true));
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "merging"], default));
 
@@ -981,7 +981,7 @@ public sealed class IssueCommandsTests
     public async Task Moving_to_a_column_nobody_has_names_the_ones_there_are()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", ABoard());
+        h.Wire.Json("GET", "/api/board", ABoard());
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "elsewhere"], default));
         Assert.Contains("no column called \"elsewhere\" - there is To Do, In Progress, Done, Shelved", h.Complained);
@@ -991,14 +991,14 @@ public sealed class IssueCommandsTests
     public async Task Moving_to_a_name_two_columns_answer_to_moves_nothing_and_names_both()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/board", new BoardDto(
+        h.Wire.Json("GET", "/api/board", new BoardDto(
             [Fixtures.Status(2, "To-Do"), Fixtures.Status(3, "ToDo"), Fixtures.Status(4, "Done", terminal: true)],
             []));
 
         Assert.Equal(1, await new IssueCommands(h.Cli).MoveAsync(["AER-12", "todo"], default));
 
         Assert.Contains("\"todo\" could be any of To-Do, ToDo", h.Complained);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-12/move"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-12/move"));
     }
 
     // ---- comment ----
@@ -1007,12 +1007,12 @@ public sealed class IssueCommandsTests
     public async Task A_comment_is_posted_whole_and_the_author_is_read_back()
     {
         using var h = new CliHarness();
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/comments",
+        h.Wire.Json("POST", "/api/issues/AER-12/comments",
             new CommentDto(7, "hatch", "sha abc123", "", null, null, DateTimeOffset.UnixEpoch));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).CommentAsync(["AER-12", "sha abc123"], default));
 
-        var sent = h.Wire.To("POST", "/api/hatch/issues/AER-12/comments").Single().Read<CommentCreateRequest>();
+        var sent = h.Wire.To("POST", "/api/issues/AER-12/comments").Single().Read<CommentCreateRequest>();
         Assert.Equal("sha abc123", sent.Body);
         Assert.Null(sent.Kind);
         Assert.Equal("commented on AER-12 as hatch", h.Said);
@@ -1028,7 +1028,7 @@ public sealed class IssueCommandsTests
     public async Task Pr_with_no_url_reads_the_one_that_is_set_and_prints_nothing_else()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(pr: "https://example.invalid/pull/1"));
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(pr: "https://example.invalid/pull/1"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12"], default));
         Assert.Equal("https://example.invalid/pull/1", h.Said);
@@ -1038,7 +1038,7 @@ public sealed class IssueCommandsTests
     public async Task Pr_on_an_issue_pointing_at_nothing_is_two_rather_than_one()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
 
         Assert.Equal(2, await new IssueCommands(h.Cli).PrAsync(["AER-12"], default));
         Assert.Contains("AER-12 points at no pull request", h.Complained);
@@ -1048,12 +1048,12 @@ public sealed class IssueCommandsTests
     public async Task Pr_with_a_url_patches_the_issue_and_reads_it_back()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", AnIssue(pr: "https://example.invalid/pull/2"));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("PATCH", "/api/issues/AER-12", AnIssue(pr: "https://example.invalid/pull/2"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", "https://example.invalid/pull/2"], default));
 
-        var sent = h.Wire.To("PATCH", "/api/hatch/issues/AER-12").Single().Read<IssuePatchRequest>();
+        var sent = h.Wire.To("PATCH", "/api/issues/AER-12").Single().Read<IssuePatchRequest>();
         Assert.Equal("https://example.invalid/pull/2", sent.PullRequestUrl);
         Assert.Null(sent.Title);
         Assert.Equal("https://example.invalid/pull/2", h.Said);
@@ -1064,14 +1064,14 @@ public sealed class IssueCommandsTests
     /// <summary>A three-deep chain, a distinctive description on each, and the columns that name their statuses.</summary>
     private static void StubChain(CliHarness h, bool parent = true, bool root = true)
     {
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress"), Fixtures.Status(1, "To Do") });
-        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", Fixtures.Issue(
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress"), Fixtures.Status(1, "To Do") });
+        h.Wire.Json("PATCH", "/api/issues/AER-12", Fixtures.Issue(
             "AER-12", "task", "The task", "task brief", parentKey: "AER-11", pullRequestUrl: PrUrl, statusId: 3));
         if (parent)
-            h.Wire.Json("GET", "/api/hatch/issues/AER-11", Fixtures.Issue(
+            h.Wire.Json("GET", "/api/issues/AER-11", Fixtures.Issue(
                 "AER-11", "story", "The story", "story brief", parentKey: "AER-10", statusId: 1));
         if (root)
-            h.Wire.Json("GET", "/api/hatch/issues/AER-10", Fixtures.Issue(
+            h.Wire.Json("GET", "/api/issues/AER-10", Fixtures.Issue(
                 "AER-10", "epic", "The epic", "epic brief", statusId: 3));
     }
 
@@ -1134,7 +1134,7 @@ public sealed class IssueCommandsTests
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
 
         Assert.Equal("hatch: AER-12 - its pull request's body was not updated with the envelope - gh is not installed", h.Complained);
-        Assert.Equal(PrUrl, h.Wire.To("PATCH", "/api/hatch/issues/AER-12").Single().Read<IssuePatchRequest>().PullRequestUrl);
+        Assert.Equal(PrUrl, h.Wire.To("PATCH", "/api/issues/AER-12").Single().Read<IssuePatchRequest>().PullRequestUrl);
         Assert.Equal(PrUrl, h.Said);
         Assert.Empty(h.Forge.BodyEdits);
     }
@@ -1171,7 +1171,7 @@ public sealed class IssueCommandsTests
     {
         using var h = new CliHarness();
         StubChain(h, root: false);
-        h.Wire.Json("GET", "/api/hatch/issues/AER-10", Fixtures.Issue("AER-10", "epic", "The epic", parentKey: "AER-12"));
+        h.Wire.Json("GET", "/api/issues/AER-10", Fixtures.Issue("AER-10", "epic", "The epic", parentKey: "AER-12"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", PrUrl], default));
 
@@ -1186,9 +1186,9 @@ public sealed class IssueCommandsTests
     public async Task Pr_read_clear_and_none_do_not_touch_the_forge(params string[] args)
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(pr: PrUrl));
-        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-12/no-code", AnIssue(noCode: "why"));
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(pr: PrUrl));
+        h.Wire.Json("PATCH", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("PUT", "/api/issues/AER-12/no-code", AnIssue(noCode: "why"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(args, default));
 
@@ -1200,11 +1200,11 @@ public sealed class IssueCommandsTests
     public async Task Clear_is_spelled_out_loud_and_sends_the_empty_string_the_api_reads_as_one()
     {
         using var h = new CliHarness();
-        h.Wire.Json("PATCH", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("PATCH", "/api/issues/AER-12", AnIssue());
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", "--clear"], default));
 
-        Assert.Equal("", h.Wire.To("PATCH", "/api/hatch/issues/AER-12").Single().Read<IssuePatchRequest>().PullRequestUrl);
+        Assert.Equal("", h.Wire.To("PATCH", "/api/issues/AER-12").Single().Read<IssuePatchRequest>().PullRequestUrl);
         Assert.Equal("AER-12 points at no pull request", h.Said);
     }
 
@@ -1226,11 +1226,11 @@ public sealed class IssueCommandsTests
     public async Task Pr_none_puts_the_reason_and_says_what_was_recorded()
     {
         using var h = new CliHarness();
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-12/no-code", AnIssue(noCode: "an investigation"));
+        h.Wire.Json("PUT", "/api/issues/AER-12/no-code", AnIssue(noCode: "an investigation"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12", "--none", "  an investigation "], default));
 
-        Assert.Equal("an investigation", h.Wire.To("PUT", "/api/hatch/issues/AER-12/no-code").Single().Read<NoCodeRequest>().Reason);
+        Assert.Equal("an investigation", h.Wire.To("PUT", "/api/issues/AER-12/no-code").Single().Read<NoCodeRequest>().Reason);
         Assert.Equal("AER-12: finished with no code - an investigation", h.Said);
     }
 
@@ -1273,7 +1273,7 @@ public sealed class IssueCommandsTests
     public async Task Pr_none_refused_by_the_server_surfaces_its_sentence()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("PUT", "/api/hatch/issues/AER-12/no-code", HttpStatusCode.Conflict,
+        h.Wire.Reply("PUT", "/api/issues/AER-12/no-code", HttpStatusCode.Conflict,
             "AER-12 has a pull request recorded - it did not finish with no code");
 
         var refused = await Assert.ThrowsAsync<HatchException>(
@@ -1287,7 +1287,7 @@ public sealed class IssueCommandsTests
     public async Task Pr_on_a_declared_issue_with_no_url_reads_back_the_declaration()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(noCode: "an investigation"));
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(noCode: "an investigation"));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).PrAsync(["AER-12"], default));
         Assert.Equal("AER-12: finished with no code - an investigation", h.Said);
@@ -1297,9 +1297,9 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_the_declaration_of_an_issue_finished_with_no_code()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(noCode: "an investigation"));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(noCode: "an investigation"));
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -1310,12 +1310,12 @@ public sealed class IssueCommandsTests
     public async Task Show_prints_where_a_contribution_came_from_who_by_and_when_it_was_filed()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(contribution: new ContributionDto(
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(contribution: new ContributionDto(
             "https://forge.example/o/r/pull/7", "feature/thing", "octocat", "FIRST_TIME_CONTRIBUTOR",
             DateTimeOffset.Parse("2026-11-11T12:34:56+00:00"), "runner-1",
             "https://hatch.example", "OTH", "OTH-4")));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -1328,11 +1328,11 @@ public sealed class IssueCommandsTests
     public async Task Show_leaves_out_the_clauses_a_contribution_holds_nothing_for()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(contribution: new ContributionDto(
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(contribution: new ContributionDto(
             "https://forge.example/o/r/pull/7", null, "octocat", "NONE",
             DateTimeOffset.Parse("2026-11-11T12:34:56+00:00"), "runner-1")));
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -1344,9 +1344,9 @@ public sealed class IssueCommandsTests
     public async Task Show_says_nothing_of_a_contribution_where_there_is_no_record()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
-        h.Wire.Json("GET", "/api/hatch/statuses", new[] { Fixtures.Status(3, "In Progress") });
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12/comments", Array.Empty<CommentDto>());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/statuses", new[] { Fixtures.Status(3, "In Progress") });
+        h.Wire.Json("GET", "/api/issues/AER-12/comments", Array.Empty<CommentDto>());
 
         await new IssueCommands(h.Cli).ShowAsync(["AER-12"], default);
 
@@ -1359,11 +1359,11 @@ public sealed class IssueCommandsTests
     public async Task Verdict_pass_posts_the_word_alone()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-12/verdicts", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-12/verdicts", HttpStatusCode.NoContent);
 
         Assert.Equal(0, await new IssueCommands(h.Cli).VerdictAsync(["AER-12", "pass"], default));
 
-        var sent = h.Wire.To("POST", "/api/hatch/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
+        var sent = h.Wire.To("POST", "/api/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
         Assert.Equal("pass", sent.Verdict);
         Assert.Null(sent.Findings);
         Assert.Equal("recorded pass on AER-12", h.Said);
@@ -1373,11 +1373,11 @@ public sealed class IssueCommandsTests
     public async Task Verdict_fail_with_findings_posts_both()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-12/verdicts", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-12/verdicts", HttpStatusCode.NoContent);
 
         Assert.Equal(0, await new IssueCommands(h.Cli).VerdictAsync(["AER-12", "fail", "the build is red"], default));
 
-        var sent = h.Wire.To("POST", "/api/hatch/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
+        var sent = h.Wire.To("POST", "/api/issues/AER-12/verdicts").Single().Read<VerdictCreateRequest>();
         Assert.Equal("fail", sent.Verdict);
         Assert.Equal("the build is red", sent.Findings);
         Assert.Equal("recorded fail on AER-12", h.Said);
@@ -1399,7 +1399,7 @@ public sealed class IssueCommandsTests
     public async Task A_missing_issue_is_the_404_the_server_wrote()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", "/api/hatch/issues/AER-99", HttpStatusCode.NotFound);
+        h.Wire.Reply("GET", "/api/issues/AER-99", HttpStatusCode.NotFound);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
             () => new IssueCommands(h.Cli).ShowAsync(["AER-99"], default));
@@ -1442,11 +1442,11 @@ public sealed class IssueCommandsTests
     public async Task A_comment_body_that_looks_like_a_flag_is_still_a_comment()
     {
         using var h = new CliHarness();
-        h.Wire.Json("POST", "/api/hatch/issues/AER-12/comments",
+        h.Wire.Json("POST", "/api/issues/AER-12/comments",
             new CommentDto(1, "hatch", "--help", "", null, null, DateTimeOffset.UnixEpoch));
 
         Assert.Equal(0, await new IssueCommands(h.Cli).CommentAsync(["AER-12", "--help"], default));
-        Assert.Equal("--help", h.Wire.To("POST", "/api/hatch/issues/AER-12/comments").Single()
+        Assert.Equal("--help", h.Wire.To("POST", "/api/issues/AER-12/comments").Single()
             .Read<CommentCreateRequest>().Body);
     }
 }

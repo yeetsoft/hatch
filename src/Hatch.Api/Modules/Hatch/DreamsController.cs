@@ -12,7 +12,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// No page reads this yet - see HA-1723.
 /// </summary>
 [ApiController]
-[Route("api/hatch/dreams")]
+[Route("api/dreams")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {
@@ -144,7 +144,7 @@ public class DreamsController(HatchContext db, ICallerIdentity caller, TimeProvi
         await db.SaveChangesAsync(ct);
 
         var dto = new DreamDto(dream.Id, dream.Body, dream.Author, dream.Source, dream.ProjectId, projectKey, dream.CreatedAt, dream.UpdatedAt, WovenInto: []);
-        return Created($"/api/hatch/dreams/{dream.Id}", dto);
+        return Created($"/api/dreams/{dream.Id}", dto);
     }
 
     [HttpPatch("{id:long}")]

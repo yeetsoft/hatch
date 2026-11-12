@@ -140,61 +140,61 @@ const seg = (key: string) => encodeURIComponent(key);
 
 // ---- Board ----
 
-export const getBoard = () => fetchJson<Board>('/api/hatch/board');
+export const getBoard = () => fetchJson<Board>('/api/board');
 
 // ---- Projects ----
 
-export const getProjects = () => fetchJson<Project[]>('/api/hatch/projects');
+export const getProjects = () => fetchJson<Project[]>('/api/projects');
 export const createProject = (request: ProjectCreateRequest) =>
-  fetchJson<Project>('/api/hatch/projects', { method: 'POST', ...asJson(request) });
+  fetchJson<Project>('/api/projects', { method: 'POST', ...asJson(request) });
 export const patchProject = (id: number, request: ProjectPatchRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}`, { method: 'PATCH', ...asJson(request) });
 export const deleteProject = (id: number) =>
-  fetchJson<void>(`/api/hatch/projects/${id}`, { method: 'DELETE' });
+  fetchJson<void>(`/api/projects/${id}`, { method: 'DELETE' });
 export const putProjectRepositories = (id: number, request: ProjectRepositoryWriteRequest[]) =>
-  fetchJson<ProjectRepository[]>(`/api/hatch/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
+  fetchJson<ProjectRepository[]>(`/api/projects/${id}/repositories`, { method: 'PUT', ...asJson(request) });
 export const putProjectLanding = (id: number, request: ProjectLandingWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/landing`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/landing`, { method: 'PUT', ...asJson(request) });
 export const putProjectPlaybooksSource = (id: number, request: ProjectRepoSourcedWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/playbooks-source`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/playbooks-source`, { method: 'PUT', ...asJson(request) });
 export const putProjectReflection = (id: number, cadenceDays: number | null) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/reflection`, { method: 'PUT', ...asJson({ cadenceDays }) });
+  fetchJson<Project>(`/api/projects/${id}/reflection`, { method: 'PUT', ...asJson({ cadenceDays }) });
 /** Files the reflection the dialog's *Reflect now* button asks for, or
     answers the one already filed - see ProjectsController.PostReflect.
     Owner-only, same gate as putProjectLanding. */
 export const fileProjectReflection = (id: number) =>
-  fetchJson<Issue>(`/api/hatch/projects/${id}/reflect`, { method: 'POST' });
+  fetchJson<Issue>(`/api/projects/${id}/reflect`, { method: 'POST' });
 export const putProjectRunnerTags = (id: number, request: ProjectRunnerTagsWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a project binds the tracker's own repository, taking the flag
     from whichever project had it - see ProjectsController.PutBindsTracker. */
 export const putProjectBindsTracker = (id: number, request: ProjectBindsTrackerWriteRequest) =>
-  fetchJson<ProjectBindsTrackerResponse>(`/api/hatch/projects/${id}/binds-tracker`, { method: 'PUT', ...asJson(request) });
+  fetchJson<ProjectBindsTrackerResponse>(`/api/projects/${id}/binds-tracker`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a project's board shows stories on their epics. */
 export const putProjectStoriesOnEpics = (id: number, request: ProjectStoriesOnEpicsWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/stories-on-epics`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/stories-on-epics`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a green check on a pull request approves its merge. */
 export const putProjectCheckApprovesMerge = (id: number, request: ProjectCheckApprovesMergeWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/check-approves-merge`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/check-approves-merge`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a no-code declaration closes the ticket. */
 export const putProjectNoCodeCloses = (id: number, request: ProjectNoCodeClosesWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/no-code-closes`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/no-code-closes`, { method: 'PUT', ...asJson(request) });
 /** Sets whether runners work a contribution's branch. */
 export const putProjectRunnersWorkContributions = (id: number, request: ProjectRunnersWorkContributionsWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/runners-work-contributions`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/runners-work-contributions`, { method: 'PUT', ...asJson(request) });
 /** Sets whether a ticket's work must land in one pull request. */
 export const putProjectOnePrPolicy = (id: number, request: ProjectOnePrPolicyWriteRequest) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Project>(`/api/projects/${id}/one-pr-policy`, { method: 'PUT', ...asJson(request) });
 export const putProjectMember =(id: number, personId: string, role: string) =>
-  fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
+  fetchJson<ProjectMember[]>(`/api/projects/${id}/members/${seg(personId)}`, { method: 'PUT', ...asJson({ role }) });
 export const deleteProjectMember = (id: number, personId: string) =>
-  fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/members/${seg(personId)}`, { method: 'DELETE' });
+  fetchJson<ProjectMember[]>(`/api/projects/${id}/members/${seg(personId)}`, { method: 'DELETE' });
 export const claimProject = (id: number) =>
-  fetchJson<ProjectMember[]>(`/api/hatch/projects/${id}/claim`, { method: 'POST' });
+  fetchJson<ProjectMember[]>(`/api/projects/${id}/claim`, { method: 'POST' });
 export const putProjectLogo = (id: number, blob: Blob) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'PUT', body: blob });
+  fetchJson<Project>(`/api/projects/${id}/logo`, { method: 'PUT', body: blob });
 export const deleteProjectLogo = (id: number) =>
-  fetchJson<Project>(`/api/hatch/projects/${id}/logo`, { method: 'DELETE' });
+  fetchJson<Project>(`/api/projects/${id}/logo`, { method: 'DELETE' });
 
 // ---- Attachments ----
 
@@ -203,41 +203,41 @@ export const deleteProjectLogo = (id: number) =>
 export const uploadAttachment = (blob: Blob, fileName: string) => {
   const form = new FormData();
   form.append('file', blob, fileName);
-  return fetchJson<Attachment>('/api/hatch/attachments', { method: 'POST', body: form });
+  return fetchJson<Attachment>('/api/attachments', { method: 'POST', body: form });
 };
 
 /** The attachments among `ids` that still exist, in the order asked. Ids are
     guids, so no encoding. The route caps at 100 ids and drops any unknown or
     duplicate id from the answer. */
 export const getAttachments = (ids: string[]) =>
-  fetchJson<Attachment[]>(`/api/hatch/attachments?ids=${ids.join(',')}`);
+  fetchJson<Attachment[]>(`/api/attachments?ids=${ids.join(',')}`);
 
 export const deleteAttachment = (id: string) =>
-  fetchJson<void>(`/api/hatch/attachments/${id}`, { method: 'DELETE' });
+  fetchJson<void>(`/api/attachments/${id}`, { method: 'DELETE' });
 
 // ---- Statuses ----
 
-export const getStatuses = () => fetchJson<Status[]>('/api/hatch/statuses');
+export const getStatuses = () => fetchJson<Status[]>('/api/statuses');
 export const createStatus = (request: StatusCreateRequest) =>
-  fetchJson<Status>('/api/hatch/statuses', { method: 'POST', ...asJson(request) });
+  fetchJson<Status>('/api/statuses', { method: 'POST', ...asJson(request) });
 export const patchStatus = (id: number, request: StatusPatchRequest) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Status>(`/api/statuses/${id}`, { method: 'PATCH', ...asJson(request) });
 export const deleteStatus = (id: number) =>
-  fetchJson<void>(`/api/hatch/statuses/${id}`, { method: 'DELETE' });
+  fetchJson<void>(`/api/statuses/${id}`, { method: 'DELETE' });
 
 /** Which columns are work in progress, and how much of one slice of the board
     may sit across them at once. Its own route because a key must not write it
     - see WipController. */
-export const getWip = () => fetchJson<WipSection>('/api/hatch/wip');
+export const getWip = () => fetchJson<WipSection>('/api/wip');
 export const putWip = (request: WipSectionRequest) =>
-  fetchJson<WipSection>('/api/hatch/wip', { method: 'PUT', ...asJson(request) });
+  fetchJson<WipSection>('/api/wip', { method: 'PUT', ...asJson(request) });
 
 /** Which columns an express issue is carried past with no session. Its own
     route rather than a field on the patch, and for the same reason the
     express issue flag has one: writing it is closed to an API key - see
     StatusesController.PutExpressSkips. */
 export const setExpressSkips = (id: number, expressSkips: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/express-skips`, {
+  fetchJson<Status>(`/api/statuses/${id}/express-skips`, {
     method: 'PUT',
     ...asJson({ expressSkips }),
   });
@@ -247,7 +247,7 @@ export const setExpressSkips = (id: number, expressSkips: boolean) =>
     route for the same reason ExpressSkips has one: writing it is closed to an
     API key - see StatusesController.PutParentPulls. */
 export const setParentPulls = (id: number, parentPulls: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/parent-pulls`, {
+  fetchJson<Status>(`/api/statuses/${id}/parent-pulls`, {
     method: 'PUT',
     ...asJson({ parentPulls }),
   });
@@ -256,7 +256,7 @@ export const setParentPulls = (id: number, parentPulls: boolean) =>
     leftmost one. Its own route for the same reason ParentPulls has one:
     writing it is closed to an API key - see StatusesController.PutAgentFiles. */
 export const setAgentFiles = (id: number, agentFiles: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/agent-files`, {
+  fetchJson<Status>(`/api/statuses/${id}/agent-files`, {
     method: 'PUT',
     ...asJson({ agentFiles }),
   });
@@ -265,7 +265,7 @@ export const setAgentFiles = (id: number, agentFiles: boolean) =>
     reason AgentFiles has one: writing it is closed to an API key - see
     StatusesController.PutImplementation. */
 export const setImplementation = (id: number, isImplementation: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/implementation`, {
+  fetchJson<Status>(`/api/statuses/${id}/implementation`, {
     method: 'PUT',
     ...asJson({ isImplementation }),
   });
@@ -274,18 +274,18 @@ export const setImplementation = (id: number, isImplementation: boolean) =>
     project, never a key. Its own route for the reason the other four flag
     routes have one - see StatusesController.PutProtected. */
 export const setProtected = (id: number, on: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/protected`, { method: 'PUT', ...asJson({ on }) });
+  fetchJson<Status>(`/api/statuses/${id}/protected`, { method: 'PUT', ...asJson({ on }) });
 
 /** Whether the runner merges an issue's pull request once it stands here,
     current and green, with no session. Requires Protected - see
     StatusesController.PutMergesPullRequest. */
 export const setMergesPullRequest = (id: number, on: boolean) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/merges-pull-request`, { method: 'PUT', ...asJson({ on }) });
+  fetchJson<Status>(`/api/statuses/${id}/merges-pull-request`, { method: 'PUT', ...asJson({ on }) });
 
 /** Replaces the runner tags a column requires; `[]` clears them. A person, not
     a key, writes it - see StatusesController.PutRunnerTags. */
 export const setStatusRunnerTags = (id: number, request: StatusRunnerTagsWriteRequest) =>
-  fetchJson<Status>(`/api/hatch/statuses/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Status>(`/api/statuses/${id}/runner-tags`, { method: 'PUT', ...asJson(request) });
 
 // ---- Issues ----
 
@@ -295,22 +295,22 @@ export const setStatusRunnerTags = (id: number, request: StatusRunnerTagsWriteRe
 // refused for one, which is why they exist only on this page and never in a
 // script. See PlaybooksController.
 
-export const getPlaybooks = () => fetchJson<Playbook[]>('/api/hatch/playbooks');
-export const getPlaybookProposals = () => fetchJson<PlaybookProposal[]>('/api/hatch/playbook-proposals');
+export const getPlaybooks = () => fetchJson<Playbook[]>('/api/playbooks');
+export const getPlaybookProposals = () => fetchJson<PlaybookProposal[]>('/api/playbook-proposals');
 export const approveAllPlaybookProposals = (proposalIds: number[]) =>
-  fetchJson<PlaybookProposalApproveResult>('/api/hatch/playbook-proposals/approve-all', { method: 'POST', ...asJson({ proposalIds }) });
+  fetchJson<PlaybookProposalApproveResult>('/api/playbook-proposals/approve-all', { method: 'POST', ...asJson({ proposalIds }) });
 export const rejectAllPlaybookProposals = (proposalIds: number[]) =>
-  fetchJson<PlaybookProposalRejectResult>('/api/hatch/playbook-proposals/reject-all', { method: 'POST', ...asJson({ proposalIds }) });
+  fetchJson<PlaybookProposalRejectResult>('/api/playbook-proposals/reject-all', { method: 'POST', ...asJson({ proposalIds }) });
 export const createPlaybook = (request: PlaybookCreateRequest) =>
-  fetchJson<Playbook>('/api/hatch/playbooks', { method: 'POST', body: JSON.stringify(request) });
+  fetchJson<Playbook>('/api/playbooks', { method: 'POST', body: JSON.stringify(request) });
 export const patchPlaybook = (id: number, request: PlaybookPatchRequest) =>
-  fetchJson<Playbook>(`/api/hatch/playbooks/${id}`, { method: 'PATCH', body: JSON.stringify(request) });
+  fetchJson<Playbook>(`/api/playbooks/${id}`, { method: 'PATCH', body: JSON.stringify(request) });
 export const deletePlaybook = (id: number) =>
-  fetchJson<void>(`/api/hatch/playbooks/${id}`, { method: 'DELETE' });
+  fetchJson<void>(`/api/playbooks/${id}`, { method: 'DELETE' });
 
-export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/hatch/playbook-files');
+export const getPlaybookFiles = () => fetchJson<PlaybookFilesDto>('/api/playbook-files');
 
-export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatch/dependency-files');
+export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/dependency-files');
 
 // ---- Runners ----
 //
@@ -323,49 +323,49 @@ export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatc
 // There is no heartbeat here. A browser is not a runner, and the only caller
 // that could ever post one is the loop itself.
 
-export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners?live=true');
+export const getRunners = () => fetchJson<Runner[]>('/api/runners?live=true');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
-  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Runner>(`/api/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
 export const putRunnerRefusedModels = (name: string, models: string[]) =>
-  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/refused-models`, { method: 'PUT', ...asJson({ models }) });
+  fetchJson<Runner>(`/api/runners/${seg(name)}/refused-models`, { method: 'PUT', ...asJson({ models }) });
 export const orderRunner = (name: string, request: RunnerOrderRequest) =>
-  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/order`, { method: 'POST', ...asJson(request) });
+  fetchJson<Runner>(`/api/runners/${seg(name)}/order`, { method: 'POST', ...asJson(request) });
 export const withdrawOrder = (name: string) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/order`, { method: 'DELETE' });
+  fetchJson<void>(`/api/runners/${seg(name)}/order`, { method: 'DELETE' });
 
 // The runners page's own calls. Admin only, except the reads and the per-session
 // writes a person owns - the controller decides, and a 403 is its answer.
 
 /** Every runner, revoked and gone ones too: no `live` flag, unlike `getRunners`. */
-export const getAllRunners = () => fetchJson<Runner[]>('/api/hatch/runners');
+export const getAllRunners = () => fetchJson<Runner[]>('/api/runners');
 /** A name nobody has taken, answered as a bare string. */
-export const suggestRunnerName = () => fetchJson<string>('/api/hatch/runners/suggest-name');
+export const suggestRunnerName = () => fetchJson<string>('/api/runners/suggest-name');
 /** The response carries the secret, once. */
 export const createRunner = (request: CreateRunnerRequest) =>
-  fetchJson<RunnerMinted>('/api/hatch/runners', { method: 'POST', ...asJson(request) });
+  fetchJson<RunnerMinted>('/api/runners', { method: 'POST', ...asJson(request) });
 /** Replaces the runner's secret; the new one is in the response, once. */
 export const rotateRunner = (name: string) =>
-  fetchJson<RunnerMinted>(`/api/hatch/runners/${seg(name)}/rotate`, { method: 'POST' });
+  fetchJson<RunnerMinted>(`/api/runners/${seg(name)}/rotate`, { method: 'POST' });
 export const revokeRunner = (name: string) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/revoke`, { method: 'POST' });
+  fetchJson<void>(`/api/runners/${seg(name)}/revoke`, { method: 'POST' });
 /** Changes or clears whose tickets a runner's `--mine` reaches. */
 export const setRunnerOwner = (name: string, personId: string | null) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/owner`, { method: 'PUT', ...asJson({ personId }) });
+  fetchJson<void>(`/api/runners/${seg(name)}/owner`, { method: 'PUT', ...asJson({ personId }) });
 export const patchRunnerSession = (name: string, id: number, request: RunnerSessionPatchRequest) =>
-  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/sessions/${id}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Runner>(`/api/runners/${seg(name)}/sessions/${id}`, { method: 'PATCH', ...asJson(request) });
 export const orderRunnerSession = (name: string, id: number, request: RunnerOrderRequest) =>
-  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/sessions/${id}/order`, { method: 'POST', ...asJson(request) });
+  fetchJson<Runner>(`/api/runners/${seg(name)}/sessions/${id}/order`, { method: 'POST', ...asJson(request) });
 export const withdrawSessionOrder = (name: string, id: number) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/sessions/${id}/order`, { method: 'DELETE' });
+  fetchJson<void>(`/api/runners/${seg(name)}/sessions/${id}/order`, { method: 'DELETE' });
 export const pauseAllSessions = (name: string) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/pause-all`, { method: 'POST' });
+  fetchJson<void>(`/api/runners/${seg(name)}/pause-all`, { method: 'POST' });
 export const stopAllSessions = (name: string) =>
-  fetchJson<void>(`/api/hatch/runners/${seg(name)}/stop-all`, { method: 'POST' });
+  fetchJson<void>(`/api/runners/${seg(name)}/stop-all`, { method: 'POST' });
 
-export const getIssue = (key: string) => fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`);
+export const getIssue = (key: string) => fetchJson<Issue>(`/api/issues/${seg(key)}`);
 
 export const getIssueQuestions = (key: string) =>
-  fetchJson<Question[]>(`/api/hatch/issues/${seg(key)}/questions`);
+  fetchJson<Question[]>(`/api/issues/${seg(key)}/questions`);
 
 /** The issues a filter finds, as cards. An absent field is left off the query
     string entirely - an empty `parentKey` means "no parent" to the server, so
@@ -379,31 +379,31 @@ export const searchIssues = (filter: IssueSearch) => {
     else params.set(name, String(value));
   }
   const query = params.toString();
-  return fetchJson<IssueCard[]>(`/api/hatch/issues${query ? `?${query}` : ''}`);
+  return fetchJson<IssueCard[]>(`/api/issues${query ? `?${query}` : ''}`);
 };
 
 /** The search page's data: `params` is already built, so the page and the
     test share one builder (lib/search.ts's `searchRequest`). */
 export const getSearch = (params: URLSearchParams) =>
-  fetchJson<SearchResult>(`/api/hatch/search?${params.toString()}`);
+  fetchJson<SearchResult>(`/api/search?${params.toString()}`);
 
 export const bulkEditIssues = (request: IssueBulkEditRequest) =>
-  fetchJson<IssueBulkResult>('/api/hatch/issues/bulk', { method: 'POST', ...asJson(request) });
+  fetchJson<IssueBulkResult>('/api/issues/bulk', { method: 'POST', ...asJson(request) });
 export const createIssue = (request: IssueCreateRequest) =>
-  fetchJson<Issue>('/api/hatch/issues', { method: 'POST', ...asJson(request) });
+  fetchJson<Issue>('/api/issues', { method: 'POST', ...asJson(request) });
 export const patchIssue = (key: string, request: IssuePatchRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}`, { method: 'PATCH', ...asJson(request) });
 /** The two things an issue overrides its playbooks with. Its own route because
     setting one is closed to an API key - see IssuePlaybookController. */
 /** Everybody an issue could belong to, and who the caller is. One read, because
     the picker needs the first and **Assign to me** needs the second. */
-export const getAssignees = () => fetchJson<AssigneeDirectory>('/api/hatch/assignees');
+export const getAssignees = () => fetchJson<AssigneeDirectory>('/api/assignees');
 
 /** Give an issue to somebody, or - with both fields null - to nobody. Its own
     route rather than a field on the patch: writing one is closed to an API key,
     and that refusal is a property of the route. */
 export const setAssignee = (key: string, request: AssigneeRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/assignee`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/assignee`, {
     method: 'PUT',
     body: JSON.stringify(request),
   });
@@ -417,7 +417,7 @@ export const setAssignee = (key: string, request: AssigneeRequest) =>
     at the same card cannot move it in conflicting directions and leave the
     answer depending on which request landed second. */
 export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'emergency' | 'low' | 'economy' | 'paused') =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/priority`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/priority`, {
     method: 'PUT',
     ...asJson({ priority }),
   });
@@ -427,7 +427,7 @@ export const setPriority = (key: string, priority: 'normal' | 'expedited' | 'eme
     an API key, unlike priority and express - it decides how a story is
     branched, not what the loop reaches for - see IssueOnePrController. */
 export const setOnePr = (key: string, value: 'on' | 'off' | 'inherit') =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/one-pr`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/one-pr`, {
     method: 'PUT',
     ...asJson({ value }),
   });
@@ -436,7 +436,7 @@ export const setOnePr = (key: string, value: 'on' | 'off' | 'inherit') =>
     no field for it - see IssueReleaseNoteController. An empty string clears
     the note. */
 export const setReleaseNote = (key: string, note: string) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/release-note`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/release-note`, {
     method: 'PUT',
     ...asJson({ note }),
   });
@@ -449,32 +449,32 @@ export const setReleaseNote = (key: string, note: string) =>
     The level is sent by name rather than as a step, for the same reason
     `setPriority` sends one. */
 export const setPreApproval = (key: string, level: 'none' | 'express' | 'preapproved') =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/pre-approval`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/pre-approval`, {
     method: 'PUT',
     ...asJson({ level }),
   });
 
 export const setIssueRunnerTags = (key: string, request: IssueRunnerTagsWriteRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/runner-tags`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/runner-tags`, { method: 'PUT', ...asJson(request) });
 
 export const setIssueDangerous = (key: string, request: DangerousRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/dangerous`, { method: 'PUT', ...asJson(request) });
 
 export const setIssueNoCode = (key: string, request: NoCodeRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/no-code`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/no-code`, { method: 'PUT', ...asJson(request) });
 
 export const omitRunner = (key: string, runner: string, request: OmitRunnerRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'PUT', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'PUT', ...asJson(request) });
 
 export const liftRunnerOmission = (key: string, runner: string) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'DELETE' });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/omitted-runners/${seg(runner)}`, { method: 'DELETE' });
 
 /** Mark a ticket stalled, with why - and, through the same panel, read back
     off. On `setPriority`'s shape: the state is sent, not toggled, and the
     route is its own rather than a field on the patch. Today only the runner
     and the board write this; nothing in the browser calls it yet. */
 export const setStall = (key: string, why: string) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/stall`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/stall`, {
     method: 'PUT',
     ...asJson({ why }),
   });
@@ -482,7 +482,7 @@ export const setStall = (key: string, why: string) =>
 /** Hold a ticket for a person, or let it go - StallPanel's two buttons. On
     `setPriority`'s shape, matching HoldRequest(bool Held). */
 export const setHold = (key: string, held: boolean) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/hold`, {
+  fetchJson<Issue>(`/api/issues/${seg(key)}/hold`, {
     method: 'PUT',
     ...asJson({ held }),
   });
@@ -495,34 +495,34 @@ export const setHold = (key: string, held: boolean) =>
     There is deliberately no take and no heartbeat beside it. A person does not
     hold a lease; the only claim verb a browser gets is this one. */
 export const clearClaim = (key: string) =>
-  fetchJson<void>(`/api/hatch/issues/${seg(key)}/claim`, { method: 'DELETE' });
+  fetchJson<void>(`/api/issues/${seg(key)}/claim`, { method: 'DELETE' });
 
 export const patchIssuePlaybook = (key: string, request: IssuePlaybookRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/playbook`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/playbook`, { method: 'PATCH', ...asJson(request) });
 /** How many of an epic's stories may run at once. Its own route for
     IssuePlaybookController's reason: writing it is closed to an API key,
     because a key that could raise its own epic's ceiling could pull more of
     its own stories into progress at once - see IssueWipLimitController. */
 export const setWipLimit = (key: string, limit: string) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/wip`, { method: 'PATCH', ...asJson({ limit }) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/wip`, { method: 'PATCH', ...asJson({ limit }) });
 /** What an issue waits on. Both verbs answer with the whole issue, so the page
     repaints from one response instead of composing the new state itself, and
     there is no GET: the two lists ride the issue. */
 export const addDependency = (key: string, request: IssueDependencyRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dependencies`, { method: 'POST', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/dependencies`, { method: 'POST', ...asJson(request) });
 export const removeDependency = (key: string, dependsOnKey: string) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/dependencies/${seg(dependsOnKey)}`, { method: 'DELETE' });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/dependencies/${seg(dependsOnKey)}`, { method: 'DELETE' });
 export const deleteIssue = (key: string) =>
-  fetchJson<void>(`/api/hatch/issues/${seg(key)}`, { method: 'DELETE' });
+  fetchJson<void>(`/api/issues/${seg(key)}`, { method: 'DELETE' });
 export const moveIssue = (key: string, request: IssueMoveRequest) =>
-  fetchJson<Issue>(`/api/hatch/issues/${seg(key)}/move`, { method: 'POST', ...asJson(request) });
+  fetchJson<Issue>(`/api/issues/${seg(key)}/move`, { method: 'POST', ...asJson(request) });
 
 // ---- Progress ----
 
 /** What one subtree adds up to, and what each of its direct children adds up
     to. Server-side arithmetic on purpose: a meter re-derived here would
     disagree with the CLI the first time a column was added. See Rollup.cs. */
-export const getIssuePlan = (key: string) => fetchJson<IssueRollup>(`/api/hatch/plan/${seg(key)}`);
+export const getIssuePlan = (key: string) => fetchJson<IssueRollup>(`/api/plan/${seg(key)}`);
 
 /** Every epic in the tracker and what it adds up to, plus what hangs under no
     epic at all. Its own read rather than a corner of the board: the board is
@@ -532,7 +532,7 @@ export const getPlan = (projectId?: number | number[]) => {
   const params = new URLSearchParams();
   for (const id of ([] as number[]).concat(projectId ?? [])) params.append('projectId', String(id));
   const qs = params.toString();
-  return fetchJson<Plan>(`/api/hatch/plan${qs ? `?${qs}` : ''}`);
+  return fetchJson<Plan>(`/api/plan${qs ? `?${qs}` : ''}`);
 };
 
 // ---- Work ----
@@ -552,7 +552,7 @@ export const getPlan = (projectId?: number | number[]) => {
  */
 export const getNextWorkUnder = (ancestorKey: string) =>
   fetchJson<Work | undefined>(
-    `/api/hatch/work/next?ancestorKey=${encodeURIComponent(ancestorKey)}&offsetMinutes=${-new Date().getTimezoneOffset()}`,
+    `/api/work/next?ancestorKey=${encodeURIComponent(ancestorKey)}&offsetMinutes=${-new Date().getTimezoneOffset()}`,
   ).then((work) => work ?? null);
 
 /**
@@ -575,34 +575,34 @@ export const getQueue = (asRunner: string | null = null, takers = false) => {
   const params = new URLSearchParams({ offsetMinutes: String(-new Date().getTimezoneOffset()) });
   if (asRunner !== null) params.set('asRunner', asRunner);
   if (takers) params.set('takers', 'true');
-  return fetchJson<QueueEntry[]>(`/api/hatch/work/queue?${params.toString()}`);
+  return fetchJson<QueueEntry[]>(`/api/work/queue?${params.toString()}`);
 };
 
 // ---- Comments and events ----
 
-export const getComments = (key: string) => fetchJson<Comment[]>(`/api/hatch/issues/${seg(key)}/comments`);
+export const getComments = (key: string) => fetchJson<Comment[]>(`/api/issues/${seg(key)}/comments`);
 export const addComment = (key: string, request: CommentCreateRequest) =>
-  fetchJson<Comment>(`/api/hatch/issues/${seg(key)}/comments`, { method: 'POST', ...asJson(request) });
-export const getEvents = (key: string) => fetchJson<IssueEvent[]>(`/api/hatch/issues/${seg(key)}/events`);
+  fetchJson<Comment>(`/api/issues/${seg(key)}/comments`, { method: 'POST', ...asJson(request) });
+export const getEvents = (key: string) => fetchJson<IssueEvent[]>(`/api/issues/${seg(key)}/events`);
 
 // ---- Dreams ----
 
 /** A page of dreams: `params` is already built, so the page and the test
     share one builder (lib/dreams.ts's `dreamsRequest`). */
 export const getDreams = (params: URLSearchParams) =>
-  fetchJson<DreamsPage>(`/api/hatch/dreams?${params.toString()}`);
+  fetchJson<DreamsPage>(`/api/dreams?${params.toString()}`);
 export const addDream = (request: DreamCreateRequest) =>
-  fetchJson<Dream>('/api/hatch/dreams', { method: 'POST', ...asJson(request) });
+  fetchJson<Dream>('/api/dreams', { method: 'POST', ...asJson(request) });
 export const patchDream = (id: number, request: DreamPatchRequest) =>
-  fetchJson<Dream>(`/api/hatch/dreams/${id}`, { method: 'PATCH', ...asJson(request) });
+  fetchJson<Dream>(`/api/dreams/${id}`, { method: 'PATCH', ...asJson(request) });
 export const deleteDream = (id: number) =>
-  fetchJson<void>(`/api/hatch/dreams/${id}`, { method: 'DELETE' });
-export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`);
+  fetchJson<void>(`/api/dreams/${id}`, { method: 'DELETE' });
+export const getIssueDreams = (key: string) => fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`);
 export const putIssueDreams = (key: string, dreamIds: number[]) =>
-  fetchJson<Dream[]>(`/api/hatch/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
+  fetchJson<Dream[]>(`/api/issues/${seg(key)}/dreams`, { method: 'PUT', ...asJson({ dreamIds }) });
 /** Files the epic a weave press asks for - see DreamWeaveController.PostWeave. */
 export const weaveDreams = (request: DreamWeaveRequest) =>
-  fetchJson<Issue>('/api/hatch/dreams/weave', { method: 'POST', ...asJson(request) });
+  fetchJson<Issue>('/api/dreams/weave', { method: 'POST', ...asJson(request) });
 
 /** The trail across every issue, newest first, a page at a time. `limit` is
     left at the server's own default when absent. */
@@ -620,7 +620,7 @@ export const getActivity = ({
   if (offset !== undefined) params.set('offset', String(offset));
   for (const id of projectId ?? []) params.append('projectId', String(id));
   const query = params.toString();
-  return fetchJson<ActivityPage>(`/api/hatch/activity${query ? `?${query}` : ''}`);
+  return fetchJson<ActivityPage>(`/api/activity${query ? `?${query}` : ''}`);
 };
 
 // ---- The importer ----
@@ -631,7 +631,7 @@ export const getActivity = ({
 export const previewImport = (files: File[]) => {
   const form = new FormData();
   for (const file of files) form.append('files', file, file.name);
-  return fetchJson<ParsedEpic[]>('/api/hatch/import/preview', { method: 'POST', body: form });
+  return fetchJson<ParsedEpic[]>('/api/import/preview', { method: 'POST', body: form });
 };
 
 /** The same look for a plan that was pasted rather than uploaded. Plain JSON:
@@ -639,10 +639,10 @@ export const previewImport = (files: File[]) => {
     one epic, which the page wraps in the array the upload path returns so that
     both roads meet at the same preview and the same import. */
 export const previewText = (request: PastedPlan) =>
-  fetchJson<ParsedEpic>('/api/hatch/import/preview-text', { method: 'POST', ...asJson(request) });
+  fetchJson<ParsedEpic>('/api/import/preview-text', { method: 'POST', ...asJson(request) });
 
 export const runImport = (request: ImportRequest) =>
-  fetchJson<ImportResult>('/api/hatch/import', { method: 'POST', ...asJson(request) });
+  fetchJson<ImportResult>('/api/import', { method: 'POST', ...asJson(request) });
 
 // ---- The battery ----
 
@@ -657,7 +657,7 @@ export const runImport = (request: ImportRequest) =>
  * battery here, and the component draws nothing at all.
  */
 export const getUtilization = () =>
-  fetchJson<Utilization | undefined>('/api/hatch/utilization').then((reading) => reading ?? null);
+  fetchJson<Utilization | undefined>('/api/utilization').then((reading) => reading ?? null);
 
 // ---- What is waiting on a person ----
 
@@ -669,13 +669,13 @@ export const getUtilization = () =>
  * lit control whose panel is empty - the one failure a widget like this does
  * not recover from, because after it happens twice nobody reads it again.
  */
-export const getAttention = () => fetchJson<Attention>('/api/hatch/attention');
+export const getAttention = () => fetchJson<Attention>('/api/attention');
 
 /** Files the bug a failing trunk row's *File a bug* button asks for, or answers
     the one already filed - see TrunkBuildBugController. Person-only: a key is
     refused `403`, because the bug it files is expedited. */
 export const fileTrunkBuildBug = (id: number, request?: TrunkBuildBugRequest) =>
-  fetchJson<Issue>(`/api/hatch/trunk-builds/${id}/bug`, { method: 'POST', ...(request ? asJson(request) : {}) });
+  fetchJson<Issue>(`/api/trunk-builds/${id}/bug`, { method: 'POST', ...(request ? asJson(request) : {}) });
 
 // ---- Who is sitting here ----
 
@@ -686,7 +686,7 @@ export const fileTrunkBuildBug = (id: number, request?: TrunkBuildBugRequest) =>
  * the question does not arise and the bar draws nothing at all - the same
  * shape `getUtilization` takes and for the same reason.
  */
-export const getMe = () => fetchJson<Me | undefined>('/api/hatch/me').then((me) => me ?? null);
+export const getMe = () => fetchJson<Me | undefined>('/api/me').then((me) => me ?? null);
 
 /** Ends the grant and clears the cookie; the caller navigates to sign in. */
 export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'POST' });
@@ -698,16 +698,16 @@ export const signOut = () => fetchJson<void>('/api/auth/sign-out', { method: 'PO
 // other is the name every event a browser writes is signed with. See
 // Hatch.Api.Modules.Hatch.SettingsController.
 
-export const getHatchSettings = () => fetchJson<HatchSettings>('/api/hatch/settings');
+export const getHatchSettings = () => fetchJson<HatchSettings>('/api/settings');
 
 /** Answers with the settings as they now read, so a save needs no reload. */
 export const putHatchSettings = (request: HatchSettingsWriteRequest) =>
-  fetchJson<HatchSettings>('/api/hatch/settings', { method: 'PUT', ...asJson(request) });
+  fetchJson<HatchSettings>('/api/settings', { method: 'PUT', ...asJson(request) });
 
 // ---- Backups ----
 
-export const getBackup = () => fetchJson<BackupStatus>('/api/hatch/backup');
-export const runBackup = () => fetchJson<BackupStatus>('/api/hatch/backup/run', { method: 'POST' });
+export const getBackup = () => fetchJson<BackupStatus>('/api/backup');
+export const runBackup = () => fetchJson<BackupStatus>('/api/backup/run', { method: 'POST' });
 
 // ---- The runner ----
 //
@@ -719,7 +719,7 @@ export const runBackup = () => fetchJson<BackupStatus>('/api/hatch/backup/run', 
 // browser. See Hatch.Api.Modules.Hatch.RunnerController.
 
 /** Which platforms this image can hand out, and the revision all of them were built from. */
-export const getRunner = () => fetchJson<RunnerDownloads>('/api/hatch/runner');
+export const getRunner = () => fetchJson<RunnerDownloads>('/api/runner');
 
 // ---- The work log ----
 
@@ -734,7 +734,7 @@ export const getRunner = () => fetchJson<RunnerDownloads>('/api/hatch/runner');
  * of a function that could is the client half of the same statement. Do not add
  * one for symmetry.
  */
-export const getWorkLog = (key: string) => fetchJson<WorkLog>(`/api/hatch/issues/${seg(key)}/work-log`);
+export const getWorkLog = (key: string) => fetchJson<WorkLog>(`/api/issues/${seg(key)}/work-log`);
 
 /** What a range of the log holds, ranked - and what that whole range cost.
 
@@ -754,7 +754,7 @@ export const getWorkLogSessions = (query: WorkLogSessionQuery) => {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
   for (const id of projectId ?? []) params.append('projectId', String(id));
-  return fetchJson<WorkLogSessions>(`/api/hatch/work-log/sessions?${params.toString()}`);
+  return fetchJson<WorkLogSessions>(`/api/work-log/sessions?${params.toString()}`);
 };
 
 /** The same rows, folded along a time axis - one bucket per bar.
@@ -771,7 +771,7 @@ export const getWorkLogHistory = (query: WorkLogHistoryQuery) => {
     if (value !== null && value !== undefined) params.set(name, String(value));
   }
   for (const id of projectId ?? []) params.append('projectId', String(id));
-  return fetchJson<WorkLogHistory>(`/api/hatch/work-log/history?${params.toString()}`);
+  return fetchJson<WorkLogHistory>(`/api/work-log/history?${params.toString()}`);
 };
 
 export interface WorkLogHistoryQuery {
@@ -803,7 +803,7 @@ export const getTimeline = (query: TimelineQuery) => {
     else params.set(name, String(value));
   }
   const qs = params.toString();
-  return fetchJson<Timeline>('/api/hatch/reports/timeline' + (qs ? '?' + qs : ''));
+  return fetchJson<Timeline>('/api/reports/timeline' + (qs ? '?' + qs : ''));
 };
 
 /** The timeline route's query string; it has no DTO. An unset field is left out
@@ -830,7 +830,7 @@ export const getCumulativeFlow = (query: CumulativeFlowQuery) => {
     else params.set(name, String(value));
   }
   const qs = params.toString();
-  return fetchJson<CumulativeFlow>('/api/hatch/reports/cumulative-flow' + (qs ? '?' + qs : ''));
+  return fetchJson<CumulativeFlow>('/api/reports/cumulative-flow' + (qs ? '?' + qs : ''));
 };
 
 /** The cumulative-flow route's query string; it has no DTO. An unset field is
@@ -860,7 +860,7 @@ export const getActivityReport = (query: ActivityReportQuery) => {
   params.set('gap', String(query.gap));
   params.set('lead', String(query.lead));
   if (query.includeKeys === true) params.set('includeKeys', 'true');
-  return fetchJson<ActivityReport>('/api/hatch/reports/activity?' + params.toString());
+  return fetchJson<ActivityReport>('/api/reports/activity?' + params.toString());
 };
 
 export interface ActivityReportQuery {
@@ -897,7 +897,7 @@ export const getChangelogReport = (query: ChangelogReportQuery) => {
   params.set('offsetMinutes', String(query.offsetMinutes));
   if (query.loose === true) params.set('loose', 'true');
   const qs = params.toString();
-  return fetchJson<ChangelogReport>('/api/hatch/reports/changelog' + (qs ? '?' + qs : ''));
+  return fetchJson<ChangelogReport>('/api/reports/changelog' + (qs ? '?' + qs : ''));
 };
 
 /** The changelog report route's query string. `offsetMinutes` is minutes east
@@ -919,7 +919,7 @@ export const getConsumptionReport = (query: ConsumptionReportQuery) => {
   const params = consumptionFilterQuery(query);
   params.set('limit', String(query.limit));
   const qs = params.toString();
-  return fetchJson<ConsumptionReport>('/api/hatch/reports/consumption' + (qs ? '?' + qs : ''));
+  return fetchJson<ConsumptionReport>('/api/reports/consumption' + (qs ? '?' + qs : ''));
 };
 
 /** The consumption report route's query string: `ConsumptionFilterQuery` -
@@ -943,8 +943,8 @@ export interface WorkLogSessionQuery {
 
 // ---- Overnight ----
 
-export const getOvernight = () => fetchJson<OvernightDto>('/api/hatch/overnight');
-export const markOvernightSeen = () => fetchJson<void>('/api/hatch/overnight/seen', { method: 'POST' });
+export const getOvernight = () => fetchJson<OvernightDto>('/api/overnight');
+export const markOvernightSeen = () => fetchJson<void>('/api/overnight/seen', { method: 'POST' });
 
 // ---- People ----
 //
@@ -983,7 +983,7 @@ export async function getAuthMe(): Promise<AuthMe | null> {
 
 // ---- Revision ----
 
-/** The one call in this file that reaches outside `/api/hatch/*`, deliberately:
+/** The one call in this file that reaches outside `/api/*`, deliberately:
     `/api/hatch-revision` sits on AuthGate's allow-list so it answers even to a
     caller the wall has not let in yet, which is exactly the caller that most
     needs to discover it is running a stale build. */

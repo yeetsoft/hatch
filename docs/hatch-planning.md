@@ -16,18 +16,18 @@ The canonical route table, with every verb and every refusal, is
 
 A planning session leaves the plan **on the ticket**, not in a chat log:
 
-- `PATCH /api/hatch/issues/AER-12` with a `description` carrying the acceptance
+- `PATCH /api/issues/AER-12` with a `description` carrying the acceptance
   criteria — what "done" means, in a form somebody else could check.
-- `POST /api/hatch/issues` with `parentKey: "AER-12"` for each story or task the
+- `POST /api/issues` with `parentKey: "AER-12"` for each story or task the
   work breaks into. An epic takes stories; a story takes tasks.
 - `./scripts/hatch.sh depends <waits> <waited on>` for each pair that must land
   in order. Filing them is not saying so: the loop takes siblings in whatever
   order the board puts them in, so five stories that are a sequence are a chain
   of four edges, and five that are independent get none and go in parallel over
   several nights.
-- Move it out of the drafting column: `POST /api/hatch/issues/AER-12/move` with
+- Move it out of the drafting column: `POST /api/issues/AER-12/move` with
   the `statusId` of the column that holds specified work awaiting selection
-  (**Backlog** on a stock board). `GET /api/hatch/board` names the columns.
+  (**Backlog** on a stock board). `GET /api/board` names the columns.
 
 ## The two dates
 
@@ -45,8 +45,8 @@ Both go on the same `PATCH` as the description, and either may be a date
 ## Finding tickets, and editing a lot of them at once
 
 ```
-GET  ${HATCH_BASE}/api/hatch/issues?ancestorKey=AER-12&type=task&statusId=2
-POST ${HATCH_BASE}/api/hatch/issues/bulk
+GET  ${HATCH_BASE}/api/issues?ancestorKey=AER-12&type=task&statusId=2
+POST ${HATCH_BASE}/api/issues/bulk
 ```
 
 The filters are `projectId`, `type`, `statusId`, `parentKey`, `ancestorKey`,
@@ -71,8 +71,8 @@ request, one audit timestamp, and one place to read what did not apply.
 ## Where a project stands
 
 ```
-GET  ${HATCH_BASE}/api/hatch/plan             # every epic, and what it adds up to
-GET  ${HATCH_BASE}/api/hatch/plan/AER-12      # one issue, and each of its children
+GET  ${HATCH_BASE}/api/plan             # every epic, and what it adds up to
+GET  ${HATCH_BASE}/api/plan/AER-12      # one issue, and each of its children
 ```
 
 Both count **leaves** — issues with no children — so a subtree's total is the
@@ -87,10 +87,10 @@ column), `waiting` (open questions on the issue and everything below it), and
 `slices`, one `{ statusId, count }` per column in board order with the empty
 ones left out.
 
-`/api/hatch/plan` answers with `epics` — the ones with no parent, each carrying
+`/api/plan` answers with `epics` — the ones with no parent, each carrying
 the epics beneath it, so the tree is drawn once — and `loose`, the total of
 everything hanging under no epic at all; `?projectId=` narrows both halves.
-`/api/hatch/plan/{key}` answers with the issue's own total and its direct
+`/api/plan/{key}` answers with the issue's own total and its direct
 children in rank order, each with its own; a child's `isLeaf` says whether it
 has work beneath it or is the work.
 

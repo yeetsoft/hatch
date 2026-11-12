@@ -21,7 +21,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// bulk endpoint carry nothing for it; this route is the only way in or out.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueRunnerTagsController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

@@ -2,10 +2,10 @@
 title: API reference
 section: Reference
 order: 30
-summary: Every route under /api/hatch, grouped by resource, with who may call it and what it answers.
+summary: Every route under /api, grouped by resource, with who may call it and what it answers.
 ---
 
-Every route Hatch answers lives under `/api/hatch`, JSON in and JSON out. This
+Every route Hatch answers lives under `/api`, JSON in and JSON out. This
 page groups them by resource: the board's own resources first, then the
 loop's ([`cli-reference`](cli-reference) is the easier way to make most of
 these calls; this page is for the ones it has no verb for).
@@ -23,10 +23,16 @@ never a database id. Project and column routes take an int id -
 `/projects/{id}/members/{personId}`.
 
 ```
-hatch api GET /api/hatch/issues?statusId=2
+hatch api GET /api/issues?statusId=2
 ```
 
 [`cli-reference`](cli-reference) has `hatch api` in full.
+
+**The old prefix.** Before this page's routes lived at `/api/<name>` they lived
+at `/api/hatch/<name>`. That prefix is still served in place - the same answer
+`/api/<name>` gives, with no redirect, so the key and a write's body arrive
+intact - and `/api/hatch-revision` is not part of it. [Upgrading](upgrading#the-old-apihatch-prefix) has what that means
+for an older `hatch` binary.
 
 `docs/hatch-planning.md` ships inside every Hatch image, so a session can read
 it on the machine it is working on. It carries the filing shapes in full -
@@ -1341,8 +1347,7 @@ a read with no body to reject.
 
 ## Who may call what
 
-A key reaches everything under `/api/hatch` **less the
-routes that take a person only**. A key that calls one of those gets a
+A key reaches every route of the board's own API (everything under `/api` except sign-in, `people`, `ui-logs` and the routes that take a **person only**). A key that calls one of those gets a
 `403`, and that is the gate working as designed, not a misconfiguration -
 [People, roles and keys](people-roles-and-keys#runners-and-their-keys) says the same thing
 in prose, grouped by what the route does; this list is the route-by-route

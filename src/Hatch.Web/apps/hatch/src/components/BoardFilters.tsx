@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
-import { DEFAULT_FILTER, filedByFacets, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
+import { DEFAULT_FILTER, filedByFacets, isFiltering, toggleBlocked, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter, ContributionChoice } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
@@ -10,7 +10,7 @@ import { MoreFilters, assigneeOptions } from './MoreFilters';
 import { hasMultipleProjects } from '../lib/useProjects';
 
 /**
- * What the board is showing: a search box, a project, the types, a switch and
+ * What the board is showing: a search box, a project, the types, two switches (Needs me, Blocked) and
  * an assignee and who filed (both behind "…" on a desktop), all in one look (see `.hatch-facet`). A control holding its
  * default sits at rest and one holding anything else is tinted, so the bar reads
  * as "what have I changed" and not as three-of-four-lit.
@@ -107,6 +107,18 @@ export function BoardFilters({
         onClick={() => onChange(toggleWaiting(filter))}
       >
         Needs me
+      </button>
+
+      {/* Show-only, beside Needs me: the cards the work queue says nothing
+          will move, so the list can be seen and made shorter. */}
+      <button
+        type="button"
+        className={facetClass(filter.blocked)}
+        aria-pressed={filter.blocked}
+        title="Cards no pass and no live runner will move"
+        onClick={() => onChange(toggleBlocked(filter))}
+      >
+        Blocked
       </button>
 
       {/* Contributions are cards that came from outside - see lib/contribution.ts.

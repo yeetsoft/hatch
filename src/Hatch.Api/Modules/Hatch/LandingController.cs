@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// controller reads it, not to a write that would be the same rule twice.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/landing")]
+[Route("api/issues/{key}/landing")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class LandingController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase

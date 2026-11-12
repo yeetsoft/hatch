@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// same rule written twice, in two languages, and the two would drift.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/attention")]
+[Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup) : ControllerBase
 {

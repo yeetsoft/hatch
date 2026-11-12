@@ -181,9 +181,9 @@ public class BrowserScopeTests(ITestOutputHelper output)
 
         foreach (var key in Keys)
         {
-            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new(key, key));
+            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new(key, key));
             await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, "task", Title(key), null, null, null, null));
+                http, "/api/issues", new(project.Id, "task", Title(key), null, null, null, null));
         }
     }
 

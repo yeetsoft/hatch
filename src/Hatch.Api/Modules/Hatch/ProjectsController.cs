@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// beside it.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/projects")]
+[Route("api/projects")]
 public class ProjectsController(
     HatchContext db, TimeProvider time, ICallerIdentity caller,
     IActorDirectory actors, IProjectAccess access, ILogger<ProjectsController> logger,

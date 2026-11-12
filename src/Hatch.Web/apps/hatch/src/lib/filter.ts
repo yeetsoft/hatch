@@ -12,8 +12,9 @@
 
 import { UNASSIGNED, assigneeToken, compareAssignees } from './assignee';
 import { toggleChoice } from './checklist';
+import { isBlocked } from './queue';
 import { ISSUE_TYPES } from '../types';
-import type { Assignee, IssueCard, IssueType } from '../types';
+import type { Assignee, IssueCard, IssueType, QueueEntry } from '../types';
 
 export interface CardFilter {
   /** The types to draw, in `ISSUE_TYPES` order, and may be empty. There is no
@@ -26,6 +27,10 @@ export interface CardFilter {
       is the question an operator opens the board with when the loop has stopped
       moving, and it should not depend on remembering a word to type. */
   waiting: boolean;
+  /** Only the cards the work queue says no pass and no live runner will move
+      (`isBlocked`). Needs the queue read, which the board loads while this is
+      on. Not remembered between visits. */
+  blocked: boolean;
   /** Whose cards to draw: `''` is everybody's, `UNASSIGNED` is the ones nobody
       owns, and anything else is one identity's token (lib/assignee.ts).
 
@@ -68,6 +73,7 @@ export const DEFAULT_FILTER: CardFilter = {
   types: DEFAULT_TYPES,
   query: '',
   waiting: false,
+  blocked: false,
   assignee: '',
   filedBy: null,
   project: '',
@@ -188,6 +194,7 @@ export const isFiltering = (filter: CardFilter): boolean =>
   filter.types.length < ISSUE_TYPES.length ||
   filter.query.trim() !== '' ||
   filter.waiting ||
+  filter.blocked ||
   filter.assignee !== '' ||
   filter.filedBy !== null ||
   filter.project !== '' ||
@@ -244,16 +251,22 @@ export const matchesContributions = (card: IssueCard, choice: ContributionChoice
  * the waiting, assignee, filed-by and query clauses for the group of itself and its
  * stories, each clause decided on its own. The types, project and
  * contributions clauses stay the card's own. With no stories the group is the card alone.
+ *
+ * `rows` is the work queue by issue key. The blocked clause is decided here,
+ * so it is tested here: with the switch on and no rows (the queue still
+ * loading, or its read failed) nothing passes, rather than everything.
  */
 export const matchesFilter = (
   card: IssueCard,
   filter: CardFilter,
   stories: Map<string, IssueCard[]> = new Map(),
+  rows: ReadonlyMap<string, QueueEntry> | null = null,
 ): boolean => {
   const group = [card, ...(stories.get(card.key) ?? [])];
   return (
     filter.types.includes(card.type) &&
     (!filter.waiting || group.some((c) => c.openQuestions > 0)) &&
+    (!filter.blocked || (rows !== null && group.some((c) => isBlocked(rows.get(c.key), c)))) &&
     group.some((c) => matchesAssignee(c, filter.assignee)) &&
     group.some((c) => matchesFiledBy(c, filter.filedBy)) &&
     (filter.project === '' || card.projectKey === filter.project) &&
@@ -272,7 +285,8 @@ export const filterCards = (
   cards: IssueCard[],
   filter: CardFilter,
   stories: Map<string, IssueCard[]> = new Map(),
-): IssueCard[] => cards.filter((card) => matchesFilter(card, filter, stories));
+  rows: ReadonlyMap<string, QueueEntry> | null = null,
+): IssueCard[] => cards.filter((card) => matchesFilter(card, filter, stories, rows));
 
 /**
  * The assignees the board actually has cards for, in picker order and with
@@ -333,6 +347,9 @@ export function filedBySummary(filedBy: string[] | null, offered: number): strin
 
 /** Flips the waiting switch. */
 export const toggleWaiting = (filter: CardFilter): CardFilter => ({ ...filter, waiting: !filter.waiting });
+
+/** Flips the blocked switch. */
+export const toggleBlocked = (filter: CardFilter): CardFilter => ({ ...filter, blocked: !filter.blocked });
 
 /** Adds or removes one type, which is what a list of checkboxes does to a
     filter. Unticking the only one left gives `types: []`, which draws nothing. */

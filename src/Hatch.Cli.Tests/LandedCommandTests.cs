@@ -7,13 +7,13 @@ public sealed class LandedCommandTests : RepoFixture
     public async Task Landing_a_sha_on_the_trunk_records_the_remote_sha_and_trunk()
     {
         using var h = new CliHarness();
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-12/landing", Fixtures.Landing());
+        h.Wire.Json("PUT", "/api/issues/AER-12/landing", Fixtures.Landing());
         var head = G(_work, "rev-parse", "HEAD").Trim();
 
         var code = await new IssueCommands(h.Cli).LandedAsync(["AER-12", "--repo", _work], default);
 
         Assert.Equal(0, code);
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-12/landing"));
+        var put = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-12/landing"));
         var body = put.Read<LandingWriteRequest>();
         Assert.Equal(head, body.Sha);
         Assert.Equal("main", body.Trunk);
@@ -34,6 +34,6 @@ public sealed class LandedCommandTests : RepoFixture
 
         Assert.Equal(1, code);
         Assert.Contains("is not on main here - land it first", h.Complained);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-12/landing"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-12/landing"));
     }
 }

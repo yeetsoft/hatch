@@ -1540,8 +1540,8 @@ Reference: [gh repo create](https://cli.github.com/manual/gh_repo_create),
 
 **What this is.** The runner is the program that watches the board for work
 and starts an agent on it. It is one file, `hatch`, and the person's own board
-serves it: the board lists what it has at `/api/hatch/runner` and hands over
-one build at `/api/hatch/runner/download/` followed by a platform name. That
+serves it: the board lists what it has at `/api/runner` and hands over
+one build at `/api/runner/download/` followed by a platform name. That
 name is a RID (runtime identifier), which is just the operating system and
 chip joined by a hyphen, such as `osx-arm64`. The search path, or `PATH`, is
 the list of folders a terminal looks in when a command is typed by name. The
@@ -1603,13 +1603,13 @@ whether the chosen RID is in it. Read the output, never the exit status.
 macOS and Linux:
 
 ```
-curl -fsS http://localhost:<port>/api/hatch/runner | grep -q '"rid":"<rid>"' && echo offered || echo missing
+curl -fsS http://localhost:<port>/api/runner | grep -q '"rid":"<rid>"' && echo offered || echo missing
 ```
 
 Windows PowerShell, where the RID is always `win-x64`:
 
 ```
-(Invoke-RestMethod http://localhost:<port>/api/hatch/runner).downloads.rid -contains 'win-x64'
+(Invoke-RestMethod http://localhost:<port>/api/runner).downloads.rid -contains 'win-x64'
 ```
 
 `offered` or `True` means go on. `missing` or `False` means stop and say "this
@@ -1626,7 +1626,7 @@ has fully arrived, so a failed download never leaves a broken `hatch` behind.
 macOS and Linux:
 
 ```
-mkdir -p "$HOME/.local/bin" && curl -fsSL -o "$HOME/.local/bin/hatch.new" http://localhost:<port>/api/hatch/runner/download/<rid> && chmod +x "$HOME/.local/bin/hatch.new"
+mkdir -p "$HOME/.local/bin" && curl -fsSL -o "$HOME/.local/bin/hatch.new" http://localhost:<port>/api/runner/download/<rid> && chmod +x "$HOME/.local/bin/hatch.new"
 ```
 
 On macOS only, clear the "downloaded from the internet" mark if there is one.
@@ -1646,7 +1646,7 @@ mv -f "$HOME/.local/bin/hatch.new" "$HOME/.local/bin/hatch"
 Windows PowerShell:
 
 ```
-$dir = "$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force $dir | Out-Null; Invoke-WebRequest -UseBasicParsing -OutFile "$dir\hatch.exe" http://localhost:<port>/api/hatch/runner/download/win-x64; Unblock-File "$dir\hatch.exe"
+$dir = "$env:USERPROFILE\.local\bin"; New-Item -ItemType Directory -Force $dir | Out-Null; Invoke-WebRequest -UseBasicParsing -OutFile "$dir\hatch.exe" http://localhost:<port>/api/runner/download/win-x64; Unblock-File "$dir\hatch.exe"
 ```
 
 `Unblock-File` removes the downloaded-from-the-internet mark that would make
@@ -1878,15 +1878,15 @@ them, and that can wait.
 macOS and Linux:
 
 ```
-curl -s http://localhost:<port>/api/hatch/projects
-curl -s http://localhost:<port>/api/hatch/settings | grep -o '"localPersonName":"[^"]*"'
+curl -s http://localhost:<port>/api/projects
+curl -s http://localhost:<port>/api/settings | grep -o '"localPersonName":"[^"]*"'
 ```
 
 Windows PowerShell:
 
 ```
-(Invoke-RestMethod http://localhost:<port>/api/hatch/projects).key
-(Invoke-RestMethod http://localhost:<port>/api/hatch/settings).localPersonName
+(Invoke-RestMethod http://localhost:<port>/api/projects).key
+(Invoke-RestMethod http://localhost:<port>/api/settings).localPersonName
 ```
 
 Never print the whole settings reply: it has a field for a token. Print only

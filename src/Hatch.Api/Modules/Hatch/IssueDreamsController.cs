@@ -11,7 +11,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// What an issue drew on: the dreams woven into it, read and replaced whole.
 /// </summary>
 [ApiController]
-[Route("api/hatch/issues/{key}/dreams")]
+[Route("api/issues/{key}/dreams")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueDreamsController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

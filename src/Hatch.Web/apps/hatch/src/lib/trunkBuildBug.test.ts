@@ -164,7 +164,7 @@ describe('loadBugChoices', () => {
     const result = await loadBugChoices(
       async () => BOARD,
       async () => {
-        throw new Error('GET /api/hatch/assignees failed: 500 Internal Server Error');
+        throw new Error('GET /api/assignees failed: 500 Internal Server Error');
       },
       async () => PROJECTS,
     );
@@ -187,12 +187,12 @@ describe('loadBugChoices', () => {
   it('resolves, rather than rejects, with the sentence when the columns cannot be read', async () => {
     const result = await loadBugChoices(
       async () => {
-        throw new Error('GET /api/hatch/statuses failed: 503 Service Unavailable');
+        throw new Error('GET /api/statuses failed: 503 Service Unavailable');
       },
       async () => DIRECTORY,
       async () => PROJECTS,
     );
 
-    expect(result).toEqual({ ok: false, error: 'GET /api/hatch/statuses failed: 503 Service Unavailable' });
+    expect(result).toEqual({ ok: false, error: 'GET /api/statuses failed: 503 Service Unavailable' });
   });
 });

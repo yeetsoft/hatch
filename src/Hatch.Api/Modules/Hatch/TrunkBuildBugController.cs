@@ -39,7 +39,7 @@ public class TrunkBuildBugController(
     /// the fields: they come off the project's auto-heal settings instead, and
     /// only where that project has auto-filing on.
     /// </summary>
-    [HttpPost("api/hatch/trunk-builds/{id:long}/bug")]
+    [HttpPost("api/trunk-builds/{id:long}/bug")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PostBug(long id, TrunkBuildBugRequest? request, CancellationToken ct)
     {

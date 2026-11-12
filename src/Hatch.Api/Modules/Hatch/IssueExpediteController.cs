@@ -45,7 +45,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// trail.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueExpediteController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

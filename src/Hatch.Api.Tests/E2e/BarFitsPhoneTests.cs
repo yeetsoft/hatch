@@ -191,9 +191,9 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", "A task", null, null, null, null));
+            http, "/api/issues", new(project.Id, "task", "A task", null, null, null, null));
         return issue.Key;
     }
 
@@ -229,9 +229,9 @@ public class BarFitsPhoneTests(ITestOutputHelper output)
                 i, "origin", "example/repo", "main", "0000000", now, "failing", [], now, "e2e", "e2e", null)).ToList(),
             Deadlocked: rows.Select(i => new DeadlockedDto($"E2E-{i}", "A deadlock", "task", "Waits on itself.")).ToList());
 
-        await FulfilAsync(context, "**/api/hatch/utilization", utilization);
-        await FulfilAsync(context, "**/api/hatch/overnight", overnight);
-        await FulfilAsync(context, "**/api/hatch/attention", attention);
+        await FulfilAsync(context, "**/api/utilization", utilization);
+        await FulfilAsync(context, "**/api/overnight", overnight);
+        await FulfilAsync(context, "**/api/attention", attention);
     }
 
     private static Task FulfilAsync<T>(IBrowserContext context, string pattern, T body) =>

@@ -252,7 +252,7 @@ var runnerName = readsName ? await LoopKey.NameAsync(settings, CancellationToken
 // post the name, and say nothing where there is none.
 if (runnerName is null && command is "work" or "go-to-work" or "do-my-work")
 {
-    say.Complain("hatch: could not read this key's name from /api/hatch/me - check the key with `hatch config --show`");
+    say.Complain("hatch: could not read this key's name from /api/me - check the key with `hatch config --show`");
     return 1;
 }
 
@@ -648,8 +648,8 @@ internal partial class Program
         "  hatch questions              everything waiting on an answer",
         "  hatch questions AER-12       ...or just this ticket's",
         "  hatch answer                 answer them, one at a time, here",
-        "  hatch api GET /api/hatch/issues?statusId=2",
-        "  hatch api PATCH /api/hatch/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
+        "  hatch api GET /api/issues?statusId=2",
+        "  hatch api PATCH /api/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
         "  hatch standby install        start this checkout's loop at every sign-in",
         "  hatch standby show           whether that is installed, what it runs, and whether a loop holds the checkout now",
         "  hatch standby remove         forget the login item (a loop already running is not stopped)",
