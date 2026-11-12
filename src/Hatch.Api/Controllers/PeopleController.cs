@@ -11,9 +11,9 @@ namespace Hatch.Api.Controllers;
 /// and out.
 ///
 /// Written against <see cref="AppDbContext"/> directly rather than through a
-/// service, matching <see cref="ZonesController"/>: this is admin CRUD over one
-/// table, and the only logic worth a seam - what a name may contain, what an
-/// upload may be - already has one in <see cref="PersonName"/> and
+/// service: this is admin CRUD over one table, and the only logic worth a seam
+/// - what a name may contain, what an upload may be - already has one in
+/// <see cref="PersonName"/> and
 /// <see cref="PersonPhoto"/>, where it can be tested without an HTTP request in
 /// the picture.
 ///

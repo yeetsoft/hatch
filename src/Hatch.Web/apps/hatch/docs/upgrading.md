@@ -112,18 +112,35 @@ restore the backup taken before the upgrade, as described under
 
 ## What an upgrade drops
 
-Hatch no longer carries the Gather, Photos, Quill and Storage apps. The
-migration that removes them drops, with everything in them:
+Hatch no longer carries the Gather, Photos, Quill and Storage apps, or the
+house-automation half it started as. The migrations that remove them drop,
+with everything in them:
 
 - the four Postgres schemas `gather`, `photos`, `quill` and `storage`;
 - the `ImmichBaseUrl` and `ImmichApiKey` rows in the site settings, which only
-  Photos read.
+  Photos read;
+- 21 tables: devices, their channels and camera connections (`Devices`,
+  `DeviceChannels`, `CameraConnections`); zones (`Zones`, `ZoneConfigs`);
+  readings and state history (`EnvironmentReadings`, `Measurements`,
+  `StateChanges`); routines (`Routines`, `RoutineActions`); panels (`Panels`,
+  `PanelItems`, `PanelControlBindings`); the family calendar (
+  `CalendarAccounts`, `Calendars`, `CalendarEvents`); weather and air quality
+  (`WeatherAlerts`, `AirQualitySamples`); and the command ledger (`Commands`,
+  `ControlDecisions`, `ControlOverrides`);
+- the site settings only those tables' features ever read: `Latitude`,
+  `Longitude`, `WeatherEntity`, `ComfortToleranceF`, `DefaultComfortLowF`,
+  `DefaultComfortHighF`, `OverrideBackoffMinutes`, `HomeAssistantHost`,
+  `HomeAssistantPort`, `HomeAssistantToken`, `MediaLibraryBaseUrl`,
+  `KioskWifiSsid`, `KioskWifiPassword`, `KioskWifiSecurityType`,
+  `CalendarAgendaDays`, `WeatherAlertProvider`, `AirQualityProvider`,
+  `WeatherAlertContact`, `AirQualityAlertThresholdAqi` and
+  `HazardMaxSeverityAgeHours`.
 
-An install that never ran those apps has none of the four, and the migration
-finds nothing to drop. One that did loses their data the moment `migrate`
-runs, and rolling the images back does not bring it back: the older migration
-history is still there, but the tables are not. If anything in them is worth
-keeping, dump it first with
+An install that never ran those apps, or never used the house half, has none
+of this, and the migrations find nothing to drop. One that did loses their
+data the moment `migrate` runs, and rolling the images back does not bring it
+back: the older migration history is still there, but the tables are not. If
+anything in them is worth keeping, dump it first with
 [the by-hand `pg_dump`](backup-restore-and-replication#doing-it-by-hand-instead),
 before you pull.
 

@@ -224,3 +224,35 @@ public static class AuthHash
 {
     public const int Length = 32;
 }
+
+/// <summary>
+/// One in-flight OAuth authorization, from the redirect to the provider until
+/// the callback comes back. A table rather than process memory because three
+/// API replicas share one ingress: the callback can land on a different
+/// replica than the one that started the flow.
+/// </summary>
+[Table("OAuthStates")]
+[Index(nameof(State), IsUnique = true)]
+public class EfOAuthState
+{
+    [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public Guid Id { get; set; }
+
+    /// <summary>The opaque anti-forgery value round-tripped through the provider. Single use - the callback deletes the row it matched.</summary>
+    public required string State { get; set; }
+
+    /// <summary>The PKCE verifier whose S256 challenge went out with the authorization request.</summary>
+    public required string CodeVerifier { get; set; }
+
+    /// <summary>The exact redirect URI sent to the provider, kept because the token exchange has to repeat it byte-for-byte.</summary>
+    public required string RedirectUri { get; set; }
+
+    /// <summary>Where a sign-in flow sends the browser afterwards, already checked by AuthChallenge.SafeReturnTo.</summary>
+    [MaxLength(512)]
+    public string? ReturnTo { get; set; }
+
+    public required DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Short (minutes). Expired rows are swept opportunistically when a new flow starts, rather than by a job.</summary>
+    public required DateTimeOffset ExpiresAt { get; set; }
+}
