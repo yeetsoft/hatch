@@ -260,7 +260,7 @@ const REPORT_ANSWERS = 'What one person or key did, issue by issue, over a range
 function ActivityReportReader({ keys }: { keys: string[] }) {
   const [params, setParams] = useSearchParams();
 
-  const { from, to, now, offsetMinutes, move } = useReportWindow(14);
+  const { from, to, offsetMinutes, move } = useReportWindow(14);
 
   const search = params.toString();
 
@@ -413,7 +413,7 @@ function ActivityReportReader({ keys }: { keys: string[] }) {
             <ReportWindowControls
               defaultPreset="2w"
               window={{ from, to }}
-              now={now}
+              now={new Date()}
               offsetMinutes={offsetMinutes}
               onMove={move}
             />

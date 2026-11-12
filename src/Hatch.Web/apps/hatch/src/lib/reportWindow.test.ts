@@ -18,11 +18,11 @@ const DAY_MS = 86_400_000;
 
 const params = (query: string) => new URLSearchParams(query);
 
-/** A scale `n` days wide, from a fixed start. */
-const days = (n: number) => {
+/** A scale `ms` wide, from a fixed start. */
+const widthScale = (ms: number) => {
   const from = '2026-10-01T00:00:00.000Z';
 
-  return makeScale(from, new Date(Date.parse(from) + n * DAY_MS).toISOString());
+  return makeScale(from, new Date(Date.parse(from) + ms).toISOString());
 };
 
 /** The ninety days ending at `to`, the default window's `from`. */
@@ -32,6 +32,12 @@ const ninetyBefore = (to: string) => new Date(Date.parse(to) - DEFAULT_DAYS * DA
 /** A window `count` days long ending at `to`. */
 const ending = (to: string, count: number) => ({
   from: new Date(Date.parse(to) - count * DAY_MS).toISOString(),
+  to,
+});
+
+/** A window `ms` long ending at `to`. */
+const endingMs = (to: string, ms: number) => ({
+  from: new Date(Date.parse(to) - ms).toISOString(),
   to,
 });
 
@@ -84,16 +90,31 @@ describe('resolveWindow', () => {
     expect(resolveWindow(params(query), NOW, 0)).toEqual(fallback);
   });
   it.each([
-    ['all', 36_525],
-    ['1y', 365],
-    ['2w', 14],
-    ['1w', 7],
-    ['1d', 1],
-  ])('ends at the next midnight and reaches back the preset for range=%s', (key, count) => {
+    ['all', 36_525 * DAY_MS],
+    ['1y', 365 * DAY_MS],
+    ['6m', 183 * DAY_MS],
+    ['3m', 90 * DAY_MS],
+    ['1m', 30 * DAY_MS],
+    ['2w', 14 * DAY_MS],
+    ['1w', 7 * DAY_MS],
+  ])('ends at the next midnight and reaches back the preset for range=%s', (key, ms) => {
     const window = resolveWindow(params(`range=${key}`), NOW, 0);
 
     expect(window.to).toBe('2026-10-10T00:00:00.000Z');
-    expect(window.from).toBe(new Date(Date.parse(window.to) - count * DAY_MS).toISOString());
+    expect(window.from).toBe(new Date(Date.parse(window.to) - ms).toISOString());
+  });
+
+  it.each([
+    ['1h', 3_600_000],
+    ['2h', 2 * 3_600_000],
+    ['6h', 6 * 3_600_000],
+    ['12h', 12 * 3_600_000],
+    ['1d', DAY_MS],
+  ])('ends at now and reaches back the preset for range=%s', (key, ms) => {
+    const window = resolveWindow(params(`range=${key}`), NOW, 0);
+
+    expect(window.to).toBe(NOW.toISOString());
+    expect(window.from).toBe(new Date(NOW.getTime() - ms).toISOString());
   });
 
   it('is as wide as defaultDays when no preset is named, and range still beats it', () => {
@@ -128,11 +149,15 @@ describe('resolveWindow', () => {
 
 describe('WINDOW_PRESETS', () => {
   it('has the default as its quarter', () => {
-    expect(WINDOW_PRESETS.find((preset) => preset.key === '3m')?.days).toBe(DEFAULT_DAYS);
+    expect(WINDOW_PRESETS.find((preset) => preset.key === '3m')?.ms).toBe(DEFAULT_DAYS * DAY_MS);
   });
 
-  it('is ticked by three hours, day, day, day, week, week, month, month', () => {
-    expect(WINDOW_PRESETS.map((preset) => tickUnit(days(preset.days)))).toEqual([
+  it('is ticked by ten minutes, half hour, half hour, hour, three hours, day, day, day, week, week, month, month', () => {
+    expect(WINDOW_PRESETS.map((preset) => tickUnit(widthScale(preset.ms)))).toEqual([
+      'tenMinutes',
+      'halfHour',
+      'halfHour',
+      'hour',
       'threeHours',
       'day',
       'day',
@@ -146,7 +171,7 @@ describe('WINDOW_PRESETS', () => {
 });
 
 describe('parsePreset', () => {
-  it.each(['1d', '1w', '2w', '1m', '3m', '6m', '1y', 'all'])('reads %s', (key) => {
+  it.each(['1h', '2h', '6h', '12h', '1d', '1w', '2w', '1m', '3m', '6m', '1y', 'all'])('reads %s', (key) => {
     expect(parsePreset(key)).toBe(key);
   });
 
@@ -182,15 +207,34 @@ describe('resizeWindow', () => {
   const w = ending(D, 90);
 
   it('widens backwards from a fixed end', () => {
-    expect(resizeWindow(w, 183)).toEqual({ from: before(183), to: D });
+    expect(resizeWindow(w, '6m', NOW)).toEqual({ from: before(183), to: D });
   });
 
   it('narrows backwards from a fixed end', () => {
-    expect(resizeWindow(w, 14)).toEqual({ from: before(14), to: D });
+    expect(resizeWindow(w, '2w', NOW)).toEqual({ from: before(14), to: D });
   });
 
   it('is a no-op at the current length', () => {
-    expect(resizeWindow(w, 90)).toEqual(w);
+    expect(resizeWindow(w, '3m', NOW)).toEqual(w);
+  });
+
+  it('ends a now-anchored preset at now when the fixed end is later than now', () => {
+    expect(resizeWindow(w, '1h', NOW)).toEqual({
+      from: new Date(NOW.getTime() - 3_600_000).toISOString(),
+      to: NOW.toISOString(),
+    });
+  });
+
+  it('keeps `to` for a past window moved to a now-anchored preset', () => {
+    const past = ending(before(100), 1);
+
+    expect(resizeWindow(past, '1d', NOW).to).toBe(past.to);
+  });
+
+  it('keeps a window already ending at now moved to another now-anchored preset', () => {
+    const atNow = endingMs(NOW.toISOString(), 3_600_000);
+
+    expect(resizeWindow(atNow, '1d', NOW).to).toBe(NOW.toISOString());
   });
 });
 
@@ -217,11 +261,29 @@ describe('windowEndingToday', () => {
   it('gives the midnight after when now is exactly a midnight', () => {
     expect(windowEndingToday(old, new Date(D), 0).to).toBe('2026-10-11T00:00:00.000Z');
   });
+
+  it('ends at now for a window under two days long', () => {
+    const twoHour = endingMs(before(30), 2 * 3_600_000);
+
+    expect(windowEndingToday(twoHour, NOW, 0).to).toBe(NOW.toISOString());
+  });
+
+  it('ends at the next midnight for a week-long window', () => {
+    const week = ending(before(30), 7);
+
+    expect(windowEndingToday(week, NOW, 0).to).toBe(D);
+  });
+
+  it("ends a week-long window at the reader's midnight at offset 600", () => {
+    const week = ending(before(30), 7);
+
+    expect(windowEndingToday(week, NOW, 600).to).toBe('2026-10-09T14:00:00.000Z');
+  });
 });
 
 describe('presetOf', () => {
-  it.each(WINDOW_PRESETS)('names the $key window', ({ key, days: count }) => {
-    expect(presetOf(ending(D, count))).toBe(key);
+  it.each(WINDOW_PRESETS)('names the $key window', ({ key, ms }) => {
+    expect(presetOf(endingMs(D, ms))).toBe(key);
   });
 
   it('absorbs an hour lost to DST', () => {
@@ -232,6 +294,10 @@ describe('presetOf', () => {
 
   it('is null for a width that is no preset', () => {
     expect(presetOf(ending(D, 45))).toBeNull();
+  });
+
+  it('is null for ninety minutes', () => {
+    expect(presetOf(endingMs(D, 90 * 60_000))).toBeNull();
   });
 });
 

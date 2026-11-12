@@ -246,7 +246,7 @@ const TYPE_OPTIONS: { value: ConsumptionType; text: string }[] = [
 function ConsumptionReportReader({ keys }: { keys: string[] }) {
   const [params, setParams] = useSearchParams();
 
-  const { from, to, now, offsetMinutes, move } = useReportWindow(90);
+  const { from, to, offsetMinutes, move } = useReportWindow(90);
 
   /* Without `measure`, which only rescales the graph already drawn: keyed on the
      whole string, a press of the toggle would change `load` and refetch the
@@ -330,7 +330,7 @@ function ConsumptionReportReader({ keys }: { keys: string[] }) {
             <ReportWindowControls
               defaultPreset="3m"
               window={{ from, to }}
-              now={now}
+              now={new Date()}
               offsetMinutes={offsetMinutes}
               onMove={move}
             />

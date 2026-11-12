@@ -297,12 +297,16 @@ where work waits, a done column is where it ended, and a parked one is a
 siding, so a stretch in any of the three is a gap in the drawing.
 
 The Timeline has three controls. The window - **Earlier**, **Today**, **Later**
-and a **Length**, ninety days to begin with - moves what is charted. **Project**
-(drawn only where there is more than one) and **Creator** narrow it to one
-project or one person's work. And an epic's row can be hidden: a **Hidden**
-list appears beside the controls naming each one, with **Show** beside it and **Show
-all** beneath, and what is hidden is remembered for this browser only, never
-for anybody else looking at the same board.
+and a **Length**, ninety days to begin with - moves what is charted. **Length**
+offers 1 hour, 2 hours, 6 hours, 12 hours and 24 hours before 1 week and up; the
+five short ones end at now, where a week and longer end at the next local
+midnight, and **Today** brings a window under two days long to now rather than
+to that midnight. **Project** (drawn only where there is more than one) and
+**Creator** narrow it to one project or one person's work. And an epic's row
+can be hidden: a **Hidden** list appears beside the controls naming each one,
+with **Show** beside it and **Show all** beneath, and what is hidden is
+remembered for this browser only, never for anybody else looking at the same
+board.
 
 The Changelog opens on the last two weeks, not ninety days, with the same
 window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**
