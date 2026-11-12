@@ -19,6 +19,7 @@ import { BadgePage } from './pages/BadgePage';
 import { TextPage } from './pages/TextPage';
 import { ProjectMarkPage } from './pages/ProjectMarkPage';
 import { EmptyStatePage } from './pages/EmptyStatePage';
+import { PaletteConfiguratorPage } from './pages/PaletteConfiguratorPage';
 
 export interface Section {
   /** The nav heading this section files under. Groups render in the order
@@ -68,6 +69,7 @@ export const SECTIONS: Section[] = [
   { group: 'Components', slug: 'text', title: 'Text', Page: TextPage },
   { group: 'Components', slug: 'project-mark', title: 'Project mark', Page: ProjectMarkPage },
   { group: 'Components', slug: 'empty-state', title: 'Empty state', Page: EmptyStatePage },
+  { group: 'Components', slug: 'palette-configurator', title: 'Palette configurator', Page: PaletteConfiguratorPage },
 ];
 
 /** The first section, and so where `/` and any unknown route land. */
