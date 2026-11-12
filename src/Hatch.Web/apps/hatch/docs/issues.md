@@ -232,6 +232,31 @@ issue has no pull request of its own, the record's becomes it; where it has a
 different one, the write is refused and nothing is written. The first write adds
 a `contribution_filed` event carrying the URL, branch, author and origin.
 
+### The mirrored tree
+
+A pull request a Hatch instance opens for its own issue carries that issue's
+whole chain in its body, own ticket first and root last. The outside filer
+reads it before filing: for each ancestor, root first, it looks for an issue
+this project already mirrored from the same instance and key
+(`originInstance`/`originKey`) and leaves it exactly as it is where it finds
+one, or else creates a real issue of the ancestor's own type, titled and
+described from it (`Mirrored from <instance> <key>`, then the ancestor's own
+description), gives it a contribution record naming the origin with no pull
+request, and moves it into review - so a person reads and approves the epic
+or the story, not the diff. The pull request's own ticket hangs under the
+nearest of these, and carries the pull request itself on its own record.
+
+Mirroring never refuses a pairing: `reflection` folds to `epic` since a
+reflection is a board's own cadence artefact and has no standing as anyone
+else's ancestor, and a type this board does not know folds to `task`. Where
+the type a chain gives still cannot legally hang under its natural parent
+here, the issue hangs under the nearest ancestor it can instead, and its
+description says so. A pull request whose body carries none of this - no
+envelope, or one that cannot be read - is filed as a plain, parentless
+contribution, as it always was; a reader that found an envelope but could not
+make sense of it says why in the record's own note instead of failing the
+filing.
+
 `hatch show` prints a `contribution:` line for an issue with a record, the issue
 and its board card carry it as `contribution`, and `GET /issues` can ask whether
 a pull request or an originating key is already here with `pullRequestUrl`, or
