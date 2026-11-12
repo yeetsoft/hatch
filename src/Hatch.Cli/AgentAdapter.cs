@@ -143,6 +143,9 @@ public interface IAgentAdapter
     /// <summary>Whether a session ended because this agent could not spawn the model it was asked for, read out of what it said.</summary>
     ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) => null;
 
+    /// <summary>Whether a session ended because this agent's account is signed out, read out of what it said.</summary>
+    AuthFailure.Recognised? RecogniseAuthFailure(string? said) => null;
+
     /// <summary>Asked between sessions for the account's own usage windows, or null where this agent has none to ask.</summary>
     IUsageProbe? Probe { get; }
 }

@@ -11,7 +11,8 @@ public sealed class TallyTests
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
         bool quietStopped = false, bool runTimeStopped = false, bool recused = false, string? recusedReason = null,
-        bool unservable = false, bool unstarted = false, bool spawned = true, string keptLast = "") =>
+        bool unservable = false, bool unstarted = false, bool spawned = true, string keptLast = "",
+        bool authFailed = false, string? authFailedLine = null) =>
         new()
         {
             Key = key,
@@ -42,10 +43,12 @@ public sealed class TallyTests
             Unservable = unservable,
             UnservableModel = unservable ? "fable" : null,
             Unstarted = unstarted,
-            Started = !unstarted,
-            Spawned = spawned,
+            Started = authFailed || !unstarted,
+            Spawned = authFailed || spawned,
             KeptLast = keptLast,
-            ReleaseOutcome = unservable ? ClaimOutcomes.Unservable : unstarted ? ClaimOutcomes.Unstarted : null,
+            AuthFailed = authFailed,
+            AuthFailedLine = authFailed ? authFailedLine ?? "OAuth session expired and could not be refreshed" : null,
+            ReleaseOutcome = authFailed ? ClaimOutcomes.Unstarted : unservable ? ClaimOutcomes.Unservable : unstarted ? ClaimOutcomes.Unstarted : null,
         };
 
     [Fact]
@@ -1567,5 +1570,73 @@ public sealed class TallyTests
         Assert.Equal(0, tally.Runs);
         Assert.Equal(0.02m, tally.Spent);
         Assert.Equal(500, tally.Tokens);
+    }
+
+    // ---- HA-2290: a signed-out agent pauses the runner at once ----
+
+    [Fact]
+    public void One_signed_out_run_pauses_the_runner_five_minutes_out_with_the_sentence_and_no_unstarted_streak()
+    {
+        var (clock, tally) = Down();
+
+        tally.Record(Report(authFailed: true, authFailedLine: "OAuth session expired and could not be refreshed"));
+
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(5), tally.AgentDownUntil);
+        Assert.Equal(Tally.SignedOut, tally.AgentDownKind);
+        Assert.Equal("OAuth session expired and could not be refreshed", tally.AgentDownLine);
+        Assert.Equal(0, tally.UnstartedStreak);
+        Assert.Equal(0, tally.UnstartedRuns);
+    }
+
+    [Fact]
+    public void A_signed_out_run_does_not_change_the_failure_streak()
+    {
+        var (_, tally) = Down();
+
+        tally.Record(Report(authFailed: true));
+
+        Assert.Equal(0, tally.Fails);
+    }
+
+    [Fact]
+    public void A_later_started_run_clears_a_signed_out_pause()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(authFailed: true));
+        clock.Advance(TimeSpan.FromMinutes(1));
+
+        tally.Record(Report());
+
+        Assert.Null(tally.AgentDownUntil);
+        Assert.Null(tally.AgentDownKind);
+        Assert.Null(tally.AgentDownLine);
+    }
+
+    [Fact]
+    public void A_signed_out_pause_is_listed_apart_from_unstarted_and_survives_a_restart_with_its_kind()
+    {
+        var (_, tally) = Down();
+
+        tally.Record(Report(authFailed: true, authFailedLine: "Not logged in"));
+
+        Assert.Contains(tally.ToState().Interrupted, l => l.Contains("signed-out  AER-1", StringComparison.Ordinal));
+
+        var carried = new Tally(TimeProvider.System, tally.ToState());
+        Assert.Equal(Tally.SignedOut, carried.AgentDownKind);
+        Assert.Equal("Not logged in", carried.AgentDownLine);
+    }
+
+    [Fact]
+    public void A_failed_health_check_recognised_as_signed_out_lengthens_the_wait_to_fifteen_and_keeps_the_kind()
+    {
+        var (clock, tally) = Down();
+        tally.Record(Report(authFailed: true));
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+        tally.AgentStillDown(clock.GetUtcNow(), "still signed out", Tally.SignedOut);
+
+        Assert.Equal(clock.GetUtcNow() + TimeSpan.FromMinutes(15), tally.AgentDownUntil);
+        Assert.Equal(Tally.SignedOut, tally.AgentDownKind);
+        Assert.Equal("still signed out", tally.AgentDownLine);
     }
 }

@@ -230,6 +230,9 @@ public sealed class GrokAdapter : IAgentAdapter
     // it could not spawn has been seen, the same posture UsageLimit.RecogniseGrok
     // records for its own unseen sentences. The default interface member answers
     // null until one is.
+    //
+    // Nor an auth-failure one, for the same reason: no real Grok sentence for
+    // a signed-out account has been seen either.
 
     /// <summary>
     /// The binary to spawn, which is only known once <see cref="CanSpawn"/> has
