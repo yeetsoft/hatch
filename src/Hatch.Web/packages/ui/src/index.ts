@@ -32,6 +32,7 @@ export {
   type SeedCheck,
 } from './theme/randomPalette';
 export { paletteCss } from './theme/palette/sheet';
+export { SEED_PARAM, applySharedSeed, seedFromHref, shareLink } from './theme/sharedSeed';
 export type { ThemeChoice, ResolvedTheme, ThemeContextValue } from './theme/themeContext';
 export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';

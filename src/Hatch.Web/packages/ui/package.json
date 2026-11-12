@@ -13,6 +13,7 @@
     "./tokens.css": "./src/tokens.css",
     "./base.css": "./src/base.css",
     "./themeStore": "./src/theme/themeStore.ts",
+    "./sharedSeed": "./src/theme/sharedSeed.ts",
     "./palette": "./src/theme/palette/index.ts",
     "./menuState": "./src/components/menuState.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",
