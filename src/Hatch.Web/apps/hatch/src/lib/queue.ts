@@ -96,6 +96,17 @@ export function flowBand(row: QueueEntry | undefined, card: IssueCard): { kind: 
   }
 }
 
+/** Whether the work queue says no pass and no live runner will move this
+    card: its row is for the column it is in, and is either deadlocked or
+    wears the `other` band - `flowBand` decides that, so the Blocked switch
+    and the band can never disagree on the takers rule. A deadlocked row is in
+    on its own, since it keeps its fold's `blockedKind`. Never parses the
+    sentence. */
+export function isBlocked(row: QueueEntry | undefined, card: IssueCard): boolean {
+  if (!row || row.fromStatus.id !== card.statusId) return false;
+  return row.deadlocked === true || flowBand(row, card)?.kind === 'other';
+}
+
 /** The sentence the flow-viz callout carries for a card, or null where the
     card wears no band - `flowBand` is the one place that decides a row is
     stale or absent, so a callout can never open over a card with no band.
