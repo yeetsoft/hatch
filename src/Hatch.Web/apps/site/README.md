@@ -65,7 +65,8 @@ build needs no change of its own.
 
 ## Not plumbed into Hatch.Api
 
-Unlike `apps/design` and `apps/hatch`, this app is not served by `Hatch.Api` —
+Unlike `apps/hatch` (which now holds the design gallery as a page, HA-2250),
+this app is not served by `Hatch.Api` —
 it is static output a separate host (GitHub Pages) serves directly. Of the
 five-item plumbing tax in
 [`docs/design-system-architecture.md`](../../../../docs/design-system-architecture.md),

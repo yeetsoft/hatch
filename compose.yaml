@@ -234,28 +234,9 @@ services:
       # it at all.
       HATCH_RUNNER_IMAGE: "${HATCH_RUNNER_IMAGE:-}"
 
-  # The UI Design library's gallery (src/Hatch.Web/apps/design) - every token
-  # and component in @hatch/ui, browsable on its own. Off by default, same
-  # reasoning as `runner`: this stack is Hatch's, and the gallery is a bonus
-  # for anyone touching the design system.
-  #
-  # A plain Vite dev server rather than a build, so an edit under packages/ui
-  # or apps/design hot-reloads without a rebuild - the workflow the gallery is
-  # for (see src/Hatch.Web/apps/design/README.md). `npm ci` runs on every start
-  # rather than being baked into an image, which keeps this profile free for
-  # anyone who never asks for it.
-  design:
-    image: node:22-alpine
-    profiles: ["design"]
-    working_dir: /repo/src/Hatch.Web
-    command: sh -c "npm ci && npm run dev -w apps/design -- --host 0.0.0.0 --port 5173"
-    volumes:
-      - .:/repo
-      # Anonymous volumes so the container's own installs are not shadowed by
-      # (or shadow) whatever is checked out on the host.
-      - /repo/src/Hatch.Web/node_modules
-    ports:
-      - "5173:5173"
+  # The design gallery is a page of the board now (HA-2250), so there is no
+  # service of its own here any more: the dev loop is `npm run dev -w
+  # apps/hatch`, opened at /design.
 
 networks:
   default:
