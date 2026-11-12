@@ -1,38 +1,43 @@
 import { useEffect, useState } from 'react';
 import { Button, Field, Modal } from '@hatch/ui';
-import { fileTrunkBuildBug, getAssignees, getStatuses } from '../api/client';
+import { fileTrunkBuildBug, getAssignees, getProjects, getStatuses } from '../api/client';
 import { boardColumns } from '../lib/columns';
 import { useIssueConfirmations } from '../lib/useIssueConfirmations';
-import { defaultBugFields, fileBug, loadBugChoices, type BugFields } from '../lib/trunkBuildBug';
-import { ExpressControl } from './ExpressControl';
+import { canApproveBug, defaultBugFields, fileBug, loadBugChoices, type BugFields } from '../lib/trunkBuildBug';
+import { PreApprovalControl } from './PreApprovalControl';
 import { PriorityControl } from './PriorityControl';
-import type { AssigneeDirectory, Issue, Status } from '../types';
+import type { AssigneeDirectory, Issue, Project, Status } from '../types';
 
 /**
  * *The confirm-and-file modal a failing trunk's bug asks for* - HA-406's
- * three fields (express, priority, which column), reviewed before filing
- * rather than filed outright the way `TrunkBuildRow`'s existing button
- * still does. Unreferenced by anything yet - that wiring is the next task.
+ * three fields (pre-approval, priority, which column), reviewed before
+ * filing. Pre-approval and priority share a row, as in the New issue dialog;
+ * Pre-approved is pressable for an owner or approver of `projectKey`, the
+ * project that binds the trunk, and locked for anyone else.
  *
  * Self-fetching: nothing between `NavAttention` and here carries a column
- * list or a directory down to this depth, so both are fetched once, when
- * the dialog opens, rather than threaded through every page that might open
- * it.
+ * list, a directory or the projects down to this depth, so all three are
+ * fetched once, when the dialog opens, rather than threaded through every
+ * page that might open it.
  */
 export function TrunkBuildBugDialog({
   open,
   buildId,
+  projectKey,
   onClose,
   onFiled,
 }: {
   open: boolean;
   buildId: number;
+  /** The project that binds the trunk, or null when none does. */
+  projectKey: string | null;
   onClose: () => void;
   /** Called once filing succeeds, after confirm() - TrunkBuildRow's reload(). */
   onFiled: (created: Issue) => void;
 }) {
   const [statuses, setStatuses] = useState<Status[] | null>(null);
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
+  const [projects, setProjects] = useState<Project[] | null>(null);
   const [fields, setFields] = useState<BugFields>(() => defaultBugFields(null));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -49,7 +54,7 @@ export function TrunkBuildBugDialog({
     let alive = true;
     // A failed column read lands in `error`, shown under the still-disabled
     // form, so the dialog says why it cannot file rather than sitting idle.
-    void loadBugChoices(getStatuses, getAssignees).then((loaded) => {
+    void loadBugChoices(getStatuses, getAssignees, getProjects).then((loaded) => {
       if (!alive) return;
       if (!loaded.ok) {
         setError(loaded.error);
@@ -57,6 +62,7 @@ export function TrunkBuildBugDialog({
       }
       setStatuses(loaded.statuses);
       setDirectory(loaded.directory);
+      setProjects(loaded.projects);
       setFields(defaultBugFields(loaded.statuses));
     });
     return () => {
@@ -80,27 +86,39 @@ export function TrunkBuildBugDialog({
     }
   }
 
+  const canApprove = canApproveBug(projects, projectKey);
   const columnChoices = statuses ? boardColumns(statuses).filter((s) => !s.isTerminal) : [];
 
   return (
     <Modal open={open} onClose={onClose} title="File a bug?">
       <div className="hatch-form">
-        <ExpressControl
-          express={fields.express}
-          directory={directory}
-          busy={saving}
-          onChange={(express) => setFields((f) => ({ ...f, express }))}
-        />
+        {/* Two levels, one row, as in the New issue dialog. */}
+        <div className="hatch-field-pair">
+          <Field label="Priority" as="div">
+            <PriorityControl
+              issueKey=""
+              priority={fields.priority}
+              priorityOwn={fields.priority}
+              priorityFrom={null}
+              directory={directory}
+              busy={saving}
+              onChange={(priority) => setFields((f) => ({ ...f, priority }))}
+            />
+          </Field>
 
-        <PriorityControl
-          issueKey=""
-          priority={fields.priority}
-          priorityOwn={fields.priority}
-          priorityFrom={null}
-          directory={directory}
-          busy={saving}
-          onChange={(priority) => setFields((f) => ({ ...f, priority }))}
-        />
+          <Field label="Pre-approval" as="div">
+            <PreApprovalControl
+              issueKey=""
+              preApproval={fields.preApproval}
+              preApprovalOwn={fields.preApproval}
+              preApprovalFrom={null}
+              directory={directory}
+              canApprove={canApprove}
+              busy={saving}
+              onChange={(preApproval) => setFields((f) => ({ ...f, preApproval }))}
+            />
+          </Field>
+        </div>
 
         <Field label="Column">
           <select

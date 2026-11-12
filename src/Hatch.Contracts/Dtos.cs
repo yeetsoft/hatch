@@ -4195,11 +4195,14 @@ public record TrunkBuildDto(
     int RerunCount = 0);
 
 /// <summary>
-/// The optional body of <c>POST .../trunk-builds/{id}/bug</c>. All three
+/// The optional body of <c>POST .../trunk-builds/{id}/bug</c>. All four
 /// absent means "file as this route files today" - leftmost column,
-/// expedited, not express - independently per field.
+/// expedited, not express - independently per field. <c>PreApproval</c> is
+/// <c>none</c>, <c>express</c> or <c>preapproved</c>; <c>Express</c> is the
+/// older spelling of the first two, honoured only where <c>PreApproval</c> is
+/// absent.
 /// </summary>
-public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId);
+public record TrunkBuildBugRequest(bool? Express, string? Priority, int? StatusId, string? PreApproval = null);
 
 /// <param name="Content">The blob's bytes, base64-encoded; null means the trunk has no file at this path.</param>
 /// <param name="Url">The forge link the runner reported for the path on this trunk, or null where it has none.</param>

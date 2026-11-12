@@ -173,7 +173,7 @@ export function IssuePage() {
      as `runnerNames`: one live-runners read feeds both. */
   const [pickable, setPickable] = useState<string[]>([]);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
-     single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
+     single-flag shape the pre-approval control uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
