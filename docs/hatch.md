@@ -2359,9 +2359,9 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable` or `abandoned` — absent
+an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned` or `unstarted` — absent
 is accepted exactly as it always has been, which covers the pick's own
-release, a restart, and an older CLI, and a value that is none of the six is
+release, a restart, and an older CLI, and a value that is none of the seven is
 `400`. It is read only where a token is given: the operator's tokenless
 clobber names no increment to have an outcome. The `claim_released` event
 carries it, and it is what `letGo` counts (see [Comment, question and
@@ -2372,7 +2372,7 @@ what it pushed lands as its own comment, not as a dropped increment.
 `recused` is skipped the other way: it *stops* the count exactly as `worked`
 does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
-raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there.
+raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there. `unstarted` means the session's agent never started on this runner - it printed nothing before the process ended - so the ticket was never touched; it is skipped over exactly like `unservable`, neither counted nor stopped at, because there was no increment to let go.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -8826,6 +8826,23 @@ claimed. A restart carries this, the same way it carries a usage limit's
 wait; a fresh start forgets it. The night's tally counts it as
 **interrupted**, not one of the three failures that end a night, for the same
 reason a usage limit and a preemption are not either.
+
+**Neither is a session that never started.** An agent that ends before its
+first stream event - a CLI that refused to start and said why on stderr -
+never touched the ticket, and the runner says so rather than
+calling it a stall: the claim is released `unstarted`, which `letGo` steps over,
+so it neither counts toward the ticket's let-goes nor resets them. The ticket
+gets one comment - *An unattended increment could not start its agent on this
+runner and left HA-nnn untouched* - carrying what the CLI wrote (scrubbed, and
+cut to its last lines) in a fenced block, and *It exited N.*; no resume line,
+since there is no session, no mark, and no question. A usage limit or a model
+refusal read from the same text wins, as it does for `unservable`. A `--quiet`
+run is never read this way, since quiet mode prints no `init` and so cannot
+tell a run that never started from one that crashed after real work; and a
+stop for quiet or run time, a lost lease, a put-down ticket and a skip keep
+their own verdicts. The night's tally lists it under **interrupted** as
+`unstarted`, and it neither resets nor advances the three failures that end a
+night.
 
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket

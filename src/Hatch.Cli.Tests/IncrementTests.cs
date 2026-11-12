@@ -1074,12 +1074,13 @@ public sealed class IncrementTests
     /// before it.
     /// </summary>
     private static async Task<(IncrementReport Report, Harness H)> NeverStartedAsync(
-        IReadOnlyList<string> stderr, int letGo = 0, FakeAdapter? adapter = null, string model = "opus")
+        IReadOnlyList<string> stderr, int letGo = 0, FakeAdapter? adapter = null, string model = "opus",
+        bool quiet = false, int exitCode = 0)
     {
         var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(0, "", Stderr: stderr));
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(exitCode, "", Stderr: stderr));
 
         h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
@@ -1091,7 +1092,7 @@ public sealed class IncrementTests
 
         var runtime = adapter is null ? h.Runtime : h.Runtime with { Adapter = adapter };
         var report = await runtime.Increment().RunAsync(
-            Fixtures.Work("AER-1", letGo: letGo), h.Root, model, "high", quiet: false, claim, default);
+            Fixtures.Work("AER-1", letGo: letGo), h.Root, model, "high", quiet, claim, default);
 
         await claim.ReleaseAsync(report.ReleaseOutcome);
         return (report, h);
@@ -1101,7 +1102,7 @@ public sealed class IncrementTests
         Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")).Read<CommentCreateRequest>().Body;
 
     [Fact]
-    public async Task A_session_that_never_started_keeps_what_the_cli_said_and_the_comment_carries_it()
+    public async Task A_session_that_never_started_is_released_unstarted_with_one_comment_carrying_what_the_cli_said()
     {
         var (report, h) = await NeverStartedAsync(["boom"]);
         using var _ = h;
@@ -1109,12 +1110,66 @@ public sealed class IncrementTests
         Assert.False(report.Started);
         Assert.Equal("boom", report.Kept);
         Assert.Equal("boom", report.KeptLast);
-        Assert.True(report.LetGo);
+        Assert.True(report.Unstarted);
+        Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
 
         var body = CommentBody(h);
-        Assert.Contains("the session ended before it started", body, StringComparison.Ordinal);
-        Assert.Contains("The CLI said:\n\n```\nboom\n```", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("without moving it", body, StringComparison.Ordinal);
+        Assert.Contains("could not start its agent on this runner and left AER-1 untouched", body, StringComparison.Ordinal);
+        Assert.Contains("```\nboom\n```", body, StringComparison.Ordinal);
+        Assert.EndsWith("It exited 0.", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("let it go", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("resume", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Equal("the agent never started - the CLI said \"boom\"", report.Outcome);
+    }
+
+    [Fact]
+    public async Task A_session_that_never_started_is_not_flagged_however_many_let_go_before_it()
+    {
+        var (report, h) = await NeverStartedAsync(["first", "boom"], letGo: 1);
+        using var _ = h;
+
+        Assert.True(report.Unstarted);
+        Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
+        Assert.Null(report.Flag);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Contains("```\nfirst\nboom\n```", CommentBody(h), StringComparison.Ordinal);
+        Assert.EndsWith(" - the CLI said \"boom\"", report.Outcome, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_comment_for_a_session_that_never_started_says_how_it_exited()
+    {
+        var (report, h) = await NeverStartedAsync(["boom"], exitCode: 1);
+        using var _ = h;
+
+        Assert.True(report.Unstarted);
+        Assert.EndsWith("It exited 1.", CommentBody(h), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_session_that_never_started_and_said_nothing_has_no_fence()
+    {
+        var (report, h) = await NeverStartedAsync([]);
+        using var _ = h;
+
+        Assert.True(report.Unstarted);
+        Assert.Equal("the agent never started", report.Outcome);
+        Assert.DoesNotContain("```", CommentBody(h), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_quiet_session_that_never_started_is_not_unstarted_and_keeps_the_let_go()
+    {
+        var (report, h) = await NeverStartedAsync(["boom"], quiet: true);
+        using var _ = h;
+
+        Assert.False(report.Unstarted);
+        Assert.True(report.LetGo);
+        Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
+        Assert.Contains("the session ended before it started", CommentBody(h), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1125,6 +1180,7 @@ public sealed class IncrementTests
 
         Assert.False(report.Started);
         Assert.True(report.UsageLimited);
+        Assert.False(report.Unstarted);
         Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
     }
 
@@ -1135,6 +1191,7 @@ public sealed class IncrementTests
         using var _ = h;
 
         Assert.True(report.Unservable);
+        Assert.False(report.Unstarted);
         Assert.Equal(ClaimOutcomes.Unservable, report.ReleaseOutcome);
     }
 
@@ -1197,9 +1254,9 @@ public sealed class IncrementTests
     }
 
     [Fact]
-    public async Task The_second_stall_in_a_row_carries_what_the_cli_said_and_the_tally_quotes_its_last_line()
+    public async Task The_second_stall_in_a_row_of_a_quiet_run_that_never_started_carries_what_the_cli_said_and_the_tally_quotes_its_last_line()
     {
-        var (report, h) = await NeverStartedAsync(["first", "boom"], letGo: 1);
+        var (report, h) = await NeverStartedAsync(["first", "boom"], letGo: 1, quiet: true);
         using var _ = h;
 
         Assert.Equal("flagged", report.Flag);

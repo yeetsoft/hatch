@@ -1,7 +1,7 @@
+using System.Text;
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Calendar;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
@@ -42,7 +42,7 @@ public class GoogleSignInController(
 
     private static readonly string[] Issuers = ["https://accounts.google.com", "accounts.google.com"];
 
-    /// <summary>Same allowance as the calendar flow: long enough for a first consent screen, short enough that an abandoned one is gone.</summary>
+    /// <summary>Long enough for a first consent screen, short enough that an abandoned one is gone.</summary>
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
 
     private AuthOptions Auth => options.Value;
@@ -55,7 +55,7 @@ public class GoogleSignInController(
 
         var now = time.GetUtcNow();
 
-        // Swept here rather than by a job, as the calendar flow does.
+        // Swept here rather than by a job.
         db.OAuthStates.RemoveRange(await db.OAuthStates.Where(s => s.ExpiresAt <= now).ToListAsync(ct));
 
         var redirectUri = ResolveRedirectUri(google);
@@ -99,9 +99,8 @@ public class GoogleSignInController(
         // Single use across replicas: the DELETE has to affect the row, and
         // EF raises a concurrency exception when it does not, so exactly one
         // callback is allowed to spend this authorization. Remove-and-save
-        // rather than the calendar callback's ExecuteDelete, which is the same
-        // guarantee in a form the in-memory provider these tests run on can
-        // also express.
+        // rather than ExecuteDelete, which is the same guarantee in a form the
+        // in-memory provider these tests run on can also express.
         db.OAuthStates.Remove(pending);
         try
         {
@@ -228,11 +227,25 @@ public class GoogleSignInController(
 
     private IActionResult Refuse(string error)
     {
-        var code = CalendarOAuthController.Sanitize(error);
+        var code = Sanitize(error);
         logger.LogWarning("Google sign-in refused: {Error}", code);
         return BackToSignIn(code);
     }
 
     private IActionResult BackToSignIn(string error) =>
-        Redirect(QueryHelpers.AddQueryString(Auth.SignInPath, "error", CalendarOAuthController.Sanitize(error)));
+        Redirect(QueryHelpers.AddQueryString(Auth.SignInPath, "error", Sanitize(error)));
+
+    /// <summary>
+    /// Error codes reach this controller from the query string, so they are
+    /// whatever the caller typed. Google's own are short snake_case ASCII;
+    /// clamping to that shape keeps anything else from being reflected onward
+    /// into the sign-in page's URL or a log line.
+    /// </summary>
+    private static string Sanitize(string error)
+    {
+        var clamped = new StringBuilder();
+        foreach (var c in error.Trim().Take(64))
+            clamped.Append(char.IsAsciiLetterOrDigit(c) || c is '_' or '-' or '.' ? c : '_');
+        return clamped.Length == 0 ? "unknown_error" : clamped.ToString();
+    }
 }

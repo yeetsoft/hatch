@@ -13,7 +13,7 @@ namespace Hatch.Api.Tests.Auth;
 /// is written down once - here - and the test is that the code agrees with it.
 ///
 /// It exists because the failure mode is silence. A new endpoint added to
-/// DevicesController next year is unguarded by default, which is the correct
+/// PeopleController next year is unguarded by default, which is the correct
 /// default (see RequireRoleAttribute on why this is opt-in) and also the
 /// reason nobody would notice. This turns "I did not think about it" into a
 /// red build with the action's name in it, and the fix is to think about it and
@@ -21,16 +21,13 @@ namespace Hatch.Api.Tests.Auth;
 ///
 /// The shape of the judgement, for whoever is editing those lists:
 ///
-/// - **Shaping the house is guarded. Operating it is not.** Creating a zone,
-///   importing a device, wiring a panel - guarded. Turning a lamp on, nudging a
-///   thermostat, triggering a routine, playing music - open, and it has to
-///   stay open, because the dashboard runs on a hallway tablet nobody signs in
-///   to and the whole promise is that the family never has to.
-/// - **Reads stay open, with two exceptions.** Both exceptions are inventories
-///   of credentials rather than facts about the house: the session list
-///   (AuthController.ListGrants, PeopleController.GetSessions) and the
-///   connection settings (SettingsController, DevicesController's camera
-///   connection).
+/// - **Changing who may do what is guarded.** Creating a person, setting a
+///   role, minting an invite or revoking a session - guarded. The routes that
+///   let a device become someone at all - redeem, verify, me, sign-out - stay
+///   open, because the wall's own allow-list depends on them.
+/// - **Reads stay open, with one exception.** The exception is an inventory of
+///   credentials: the session list (AuthController.ListGrants,
+///   PeopleController.GetSessions).
 /// - **Two levels, and the level is not a judgement per action.** Everything
 ///   under Modules/Hatch asks for User, with `AcceptKey = true` except the
 ///   person-only routes named in <c>PersonOnly</c>; everything else that is
@@ -77,45 +74,6 @@ public class AdminSurfaceTests
         "PeopleController.GetAll",
         "PeopleController.Get",
         "PeopleController.GetPhoto",
-
-        // The domain model: zones, devices, channels, panels, routines. Every
-        // GET on all five is open.
-        "ZonesController.Create",
-        "ZonesController.Update",
-        "ZonesController.Delete",
-        "ZonesController.PutComfort",
-        "DevicesController.Create",
-        "DevicesController.Update",
-        "DevicesController.Delete",
-        "DevicesController.AddChannel",
-        "DevicesController.UpdateChannel",
-        "DevicesController.DeleteChannel",
-        "DevicesController.RefreshOptions",
-        "DevicesController.Backfill",
-        "PanelsController.Create",
-        "PanelsController.Update",
-        "PanelsController.Delete",
-        "RoutinesController.Create",
-        "RoutinesController.Update",
-        "RoutinesController.Delete",
-
-        // Camera connection: a host, a port, a path and a username - a route
-        // straight to the camera that goes around Hatch entirely. Watching the
-        // feed is a different question, and CameraController stays open.
-        "DevicesController.GetCameraConnection",
-        "DevicesController.UpsertCameraConnection",
-        "DevicesController.DeleteCameraConnection",
-
-        // Integrations. The OAuth callback is deliberately absent: nobody
-        // arrives there by choosing to, and the single-use state row is a
-        // stronger claim than a session.
-        "CalendarOAuthController.Start",
-        "CalendarsController.RefreshCalendars",
-        "CalendarsController.Sync",
-        "CalendarsController.UpdateCalendar",
-        "CalendarsController.DeleteAccount",
-        "HomeAssistantController.FetchFromHomeAssistant",
-        "DiscoveryController.GetUnmapped",
 
         // Hatch, whole. Reads included, because the board is a list of what
         // the operator is doing and every card title on it - not a fact about
@@ -654,22 +612,13 @@ public class AdminSurfaceTests
         // a person's to press, not an agent's. See DreamWeaveController.
         "DreamWeaveController.PostWeave",
 
-        // The whole controller, reads included. See
-        // Hatch.Api.Controllers.SettingsController.
-        "SettingsController.GetAll",
-        "SettingsController.Get",
-        "SettingsController.Upsert",
-        "SettingsController.Delete",
-
         // Hatch's own two settings - the Claude subscription token and what to
         // call whoever is sitting at this machine. Cut tighter than the module
         // around it: plain [RequireAdmin], no AcceptKey, so a key is refused
         // the read as well as the write. A key that could write here could set
         // the name every event in the house is signed with, or swap the
         // credential the account's headroom is read through. See
-        // Hatch.Api.Modules.Hatch.SettingsController - a different class that
-        // shares the four names above it, which is why its actions are named
-        // for what they answer rather than Get and Put.
+        // Hatch.Api.Modules.Hatch.SettingsController.
         "SettingsController.GetHatchSettings",
         "SettingsController.PutHatchSettings",
 
@@ -706,18 +655,6 @@ public class AdminSurfaceTests
     /// </summary>
     private static readonly string[] DeliberatelyOpen =
     [
-        // Control, not configuration. The tablet in the hallway does all of
-        // these and nobody has ever signed in to it.
-        "DevicesController.SetPower",
-        "DevicesController.SetSetpoint",
-        "DevicesController.SetMode",
-        "DevicesController.TriggerScene",
-        "DevicesController.PlayMedia",
-        "PanelsController.SetPower",
-        "PanelsController.SetSetpoint",
-        "RoutinesController.Trigger",
-        "RoutinesController.TurnOff",
-
         // How a device becomes anyone at all. Gating these is the infinite
         // redirect loop the wall's own allow-list exists to avoid.
         "AuthController.Verify",
@@ -727,10 +664,6 @@ public class AdminSurfaceTests
         // sign out, and both work off the grant alone.
         "AuthController.Me",
         "AuthController.SignOutDevice",
-
-        // Where Google sends the browser back. Guarded by the single-use state
-        // row, which is a stronger claim than "an admin is holding this tab".
-        "CalendarOAuthController.Callback",
     ];
 
     [Fact]

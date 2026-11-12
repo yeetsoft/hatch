@@ -414,8 +414,9 @@ public sealed class BuildIncrementTests
         Board(h);
         h.Forge.Answer = Failed("api", "CI");
         h.Forge.Excerpts["api"] = "Failed IssueClaimTests.X\n##[error]Process completed with exit code 1.";
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.Calls.Add("spawn");
             h.Workspace.HeadsFor[h.Root] = Heads(Pushed);
             return Task.FromResult(new SessionResult(0, ""));
@@ -442,8 +443,9 @@ public sealed class BuildIncrementTests
         using var h = new Harness();
         Board(h);
         h.Forge.Answer = Failed();
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.HeadsFor[h.Root] = Heads(Pushed);
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -497,8 +499,9 @@ public sealed class BuildIncrementTests
         using var h = new Harness();
         Board(h);
         h.Forge.Answer = Failed();
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.HeadsFor[h.Root] = null;
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -533,8 +536,9 @@ public sealed class BuildIncrementTests
         };
         foreach (var path in new[] { "/checkouts/one", "/checkouts/two" }) h.Workspace.HeadsFor[path] = Heads(Tip);
         h.Forge.Reading = (path, _) => Failed(path.EndsWith("one", StringComparison.Ordinal) ? "api" : "web");
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.HeadsFor["/checkouts/two"] = Heads(Pushed);
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -583,8 +587,9 @@ public sealed class BuildIncrementTests
         Board(h);
         h.Forge.Answer = Failed("api");
         h.Forge.Excerpts["api"] = "fresh failure";
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.HeadsFor[h.Root] = Heads(Pushed);
             return Task.FromResult(new SessionResult(0, ""));
         };
