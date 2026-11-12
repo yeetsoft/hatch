@@ -324,6 +324,27 @@ public class ThemeConfiguratorKeyboardTests(ITestOutputHelper output)
             "sel => document.activeElement && document.activeElement.matches(sel) ? 'the gear trigger' : (document.activeElement ? document.activeElement.tagName.toLowerCase() + ' ' + (document.activeElement.getAttribute('aria-label') ?? document.activeElement.textContent.trim().slice(0, 30)) : 'nothing')",
             E2eHarness.GearSelector);
         output.WriteLine($"{label}: focus is on {active}");
+        if (active != "the gear trigger")
+        {
+            var where = await harness.EvaluateAsync<string>(deadline, "describing where focus went", """
+                () => {
+                  const a = document.activeElement;
+                  const trigger = document.querySelector('.hatch-menu__trigger[aria-expanded]');
+                  const panel = a && a.closest('.hatch-menu__panel');
+                  const box = a ? a.getBoundingClientRect() : null;
+                  return JSON.stringify({
+                    active: a ? a.outerHTML.slice(0, 120) : null,
+                    visibility: a ? getComputedStyle(a).visibility : null,
+                    panelVisibility: panel ? getComputedStyle(panel).visibility : null,
+                    panelClass: panel ? panel.className : null,
+                    gearExpanded: document.querySelector('header.hatch-topbar button[aria-label="Settings and theme"]')?.getAttribute('aria-expanded'),
+                    focusVisibleMatches: a ? a.matches(':focus') : null,
+                    box: box ? [box.x, box.y, box.width, box.height] : null,
+                  });
+                }
+                """);
+            output.WriteLine($"{label}: {where}");
+        }
         Assert.Equal("the gear trigger", active);
     }
 
