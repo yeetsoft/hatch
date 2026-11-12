@@ -745,6 +745,11 @@
   transition: transform var(--transition);
 }
 
+.hatch-status-pill-lg .hatch-status-pill-caret {
+  width: 16px;
+  height: 16px;
+}
+
 .hatch-status-pill-press[aria-expanded='true'] .hatch-status-pill-caret {
   transform: rotate(180deg);
 }
@@ -2047,12 +2052,14 @@ button.hatch-card-stories:focus-visible {
   flex-wrap: wrap;
 }
 
-/* The status picker's band, on a line of its own under the meta row: flex-basis
-   100% forces the wrap regardless of what else sits in the row before it, and
-   order puts it after every chip whatever their own order. The same wash,
-   leading edge and radius as the issue page's status bar (.hatch-status-bar),
-   at a tighter padding for the peek's smaller frame. */
-.hatch-peek-status {
+/* The status picker's band, on a line of its own under the peek's meta row or
+   the issue page's status bar: flex-basis 100% forces the wrap regardless of
+   what else sits in the row before it, and order puts it after every chip
+   whatever their own order. The same wash, leading edge and radius as the
+   issue page's status bar (.hatch-status-bar), at a tighter padding for the
+   peek's smaller frame. Inside that bar it draws no box of its own (see
+   `.hatch-status-bar .hatch-status-band`). */
+.hatch-status-band {
   flex-basis: 100%;
   order: 1;
   display: flex;
@@ -2075,7 +2082,7 @@ button.hatch-card-stories:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hatch-peek-status {
+  .hatch-status-band {
     animation: none;
   }
 }
@@ -2322,7 +2329,7 @@ button.hatch-chip {
 }
 
 /* The conflict chip's file list, dropped to its own line under the button
-   that opens it - flex-basis: 100% is the same trick .hatch-peek-status
+   that opens it - flex-basis: 100% is the same trick .hatch-status-band
    uses. */
 .hatch-chip-files {
   flex-basis: 100%;
@@ -2773,8 +2780,8 @@ button.hatch-chip {
 .hatch-status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-5);
+  justify-content: flex-start;
+  gap: var(--sp-3);
   flex-wrap: wrap;
   padding: var(--sp-4) var(--sp-5);
   background: color-mix(in srgb, var(--status-color) 10%, var(--card));
@@ -2783,10 +2790,12 @@ button.hatch-chip {
   border-radius: var(--r);
 }
 
-.hatch-status-bar-now {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
+/* The bar already has the wash and the edge, so the picker's band opens onto
+   it without a second box. */
+.hatch-status-bar .hatch-status-band {
+  background: none;
+  border: 0;
+  padding: 0;
 }
 
 .hatch-status-bar-label {
@@ -5310,7 +5319,7 @@ input.hatch-inline-title-input {
 }
 
 /* The band under the pill: the same wash, leading edge and radius as the
-   status picker's (.hatch-peek-status, App.css:1044) and the issue page's
+   status picker's (.hatch-status-band, App.css:1044) and the issue page's
    status bar (.hatch-status-bar, App.css:1458), coloured by the effective
    level's own class rather than a per-instance variable - priority has no
    arbitrary colour the way a board column does. */
@@ -6150,6 +6159,26 @@ button.hatch-option.chosen {
   bottom: 0;
   width: 0;
   border-left: 1px solid var(--danger);
+  pointer-events: none;
+}
+
+/* A ruler that frames a window when dragged across. Its own modifier, since the
+   Timeline's ruler shares the base rule and is not draggable. `pan-y` leaves
+   vertical scroll to the touch and takes the horizontal drag for the brush. */
+.hatch-timeline-ruler--brushable {
+  cursor: col-resize;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* The drag in progress, over the ruler and the plot: a child of the track, which
+   holds both, so top and bottom reach the whole of it. */
+.hatch-timeline-brush {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--primary-bg);
+  opacity: 0.5;
   pointer-events: none;
 }
 
@@ -9527,4 +9556,26 @@ button.hatch-option.chosen {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
+}
+
+/* The Palette board section above the three layouts: <PaletteBoard> at the fixed
+   seed, one per block. The board paints its own ground; this only sets the two
+   side by side, wrapping rather than shrinking so each holds its own width. */
+.design-pc-boards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.design-pc-board-block {
+  flex: 1 1 22rem;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.design-pc-board-block-label {
+  color: var(--muted);
+  font-size: var(--t-label);
 }

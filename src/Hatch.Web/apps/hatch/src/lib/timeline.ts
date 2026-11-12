@@ -24,6 +24,7 @@
 import type { Project, Status, Timeline, TimelineEntry, TimelineSegment } from '../types';
 import { statusVars } from './color';
 import { dayLabel } from './leaderboard';
+import type { ReportWindow } from './reportWindow';
 import { projectsInScope } from './scope';
 
 /** x is percent of the pane, so the scale is resolution-free and the component
@@ -295,6 +296,49 @@ export function todayX(scale: Scale, now: Date): number | null {
   const t = now.getTime();
 
   return t >= scale.from && t < scale.to ? xOf(scale, t) : null;
+}
+
+/** How far a drag must travel to be a brush rather than a click: 8px, and never
+    less than a minute - the server's finest step, so a narrower span would round
+    to nothing anyway. On any scale a reader can see, the 8px is what binds. */
+const BRUSH_MIN_PX = 8;
+
+/** The window a drag across the ruler frames, or null when the drag is a click.
+    `x1` and `x2` are px from the ruler's left, in either order, and `width` is
+    the ruler's px width. Each end is clamped to the ruler, mapped onto the
+    scale and rounded to the whole minute - a URL should not carry seconds -
+    then clamped to the scale again, so rounding cannot step outside it. */
+export function brushWindow(scale: Scale, x1: number, x2: number, width: number): ReportWindow | null {
+  if (!(width > 0)) return null;
+
+  const span = scale.to - scale.from;
+  const clamp = (x: number) => Math.min(width, Math.max(0, x));
+  const lo = clamp(Math.min(x1, x2));
+  const hi = clamp(Math.max(x1, x2));
+
+  // Measured in px first and converted once, so a drag of exactly the minimum
+  // is the minimum and not a rounding error short of it.
+  if (((hi - lo) / width) * span < Math.max((BRUSH_MIN_PX / width) * span, MINUTE_MS)) return null;
+
+  const snap = (x: number) =>
+    Math.min(scale.to, Math.max(scale.from, Math.round((scale.from + (x / width) * span) / MINUTE_MS) * MINUTE_MS));
+  const from = snap(lo);
+  const to = snap(hi);
+
+  if (to <= from) return null;
+
+  return { from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+}
+
+/** The highlight of a drag across the ruler, as percent of the pane: ordered,
+    and clamped to the ruler. */
+export function brushBox(x1: number, x2: number, width: number): { left: number; width: number } {
+  if (!(width > 0)) return { left: 0, width: 0 };
+
+  const clamp = (x: number) => Math.min(100, Math.max(0, (x / width) * 100));
+  const [a, b] = [clamp(x1), clamp(x2)].sort((m, n) => m - n);
+
+  return { left: a, width: b - a };
 }
 
 /** The `issue.key` of the synthetic entry the server answers for work under no
