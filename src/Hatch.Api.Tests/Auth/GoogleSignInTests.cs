@@ -5,7 +5,6 @@ using Hatch.Api.Models.People;
 using Hatch.Api.Controllers;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Calendar;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
@@ -604,7 +603,7 @@ public class GoogleSignInTests
     /// <summary>Google as the callback sees it: the real URL builder, and whatever token the test sets.</summary>
     private sealed class FakeGoogle : IGoogleOAuthService
     {
-        private readonly GoogleOAuthService real = new(null!, null!, TimeProvider.System, NullLogger<GoogleOAuthService>.Instance);
+        private readonly GoogleOAuthService real = new(null!, TimeProvider.System, NullLogger<GoogleOAuthService>.Instance);
 
         public string? IdToken { get; set; }
 
@@ -615,14 +614,8 @@ public class GoogleSignInTests
 
         public (string Code, string Verifier, string RedirectUri, string ClientId, string Secret)? LastExchange { get; private set; }
 
-        public string BuildAuthorizationUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
-            real.BuildAuthorizationUrl(clientId, redirectUri, state, codeChallenge);
-
         public string BuildSignInUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
             real.BuildSignInUrl(clientId, redirectUri, state, codeChallenge);
-
-        public Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct) =>
-            throw new NotSupportedException("The sign-in flow must use the explicit-client overload.");
 
         public Task<GoogleTokenResult> ExchangeCodeAsync(
             string code, string codeVerifier, string redirectUri, string clientId, string clientSecret, CancellationToken ct)
@@ -631,9 +624,5 @@ public class GoogleSignInTests
             LastExchange = (code, codeVerifier, redirectUri, clientId, clientSecret);
             return Task.FromResult(Result ?? GoogleTokenResult.Ok(new GoogleTokens("access", null, Now.AddHours(1), IdToken)));
         }
-
-        public Task<GoogleTokenResult> RefreshAsync(string refreshToken, CancellationToken ct) => throw new NotSupportedException();
-
-        public Task<bool> RevokeAsync(string token, CancellationToken ct) => throw new NotSupportedException();
     }
 }

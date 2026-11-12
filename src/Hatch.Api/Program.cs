@@ -2,21 +2,11 @@ using Hatch.Api.Common;
 using Hatch.Api.Controllers;
 using Hatch.Api.Ef;
 using Hatch.Api.Jobs;
-using Hatch.Api.Models.Environment;
 using Hatch.Api.Modules;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Calendar;
-using Hatch.Api.Services.ClimateControl;
-using Hatch.Api.Services.Dashboard;
-using Hatch.Api.Services.DeviceMapping;
-using Hatch.Api.Services.Hazards;
-using Hatch.Api.Services.Media;
-using Hatch.Api.Services.Panels;
-using Hatch.Api.Services.Routines;
-using HADotNet.Core;
-using HADotNet.Core.Clients;
+using Hatch.Api.Services.Settings;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
@@ -54,18 +44,15 @@ if (!builder.Environment.IsDevelopment())
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// .env.json is optional now that ha_host/ha_port/ha_token live in SiteSettings
-// (see DeviceMappingSeeder.SeedHomeAssistantConnectionAsync, which imports it
-// once on first run if present). Kept around as a generic ISecrets source for
-// local dev; production instead injects HA_HOST/HA_PORT/HA_TOKEN as environment
-// variables (see compose.prod.yml), which the environment config provider below
-// picks up under the same case-insensitive keys.
+// .env.json is optional: a generic ISecrets source for operator secrets in local
+// dev (docs/ethos.md). Production injects the same keys as environment
+// variables, which the environment config provider picks up under the same
+// case-insensitive names.
 builder.Configuration.AddJsonFile(".env.json", optional: true);
 builder.Services.AddSingleton<ISecrets>(new EnvSecrets(builder.Configuration));
 
-// Pooled factory so services that fan out concurrent DB work (e.g.
-// DashboardService's Task.WhenAll of zones + weather) can each create their
-// own short-lived context instead of racing on one shared scoped instance,
+// Pooled factory so services that fan out concurrent DB work can each create
+// their own short-lived context instead of racing on one shared scoped instance,
 // which throws "A second operation was started on this context..." under
 // concurrent load. Scoped AppDbContext is still available (resolved from the
 // same pool) for services that only ever touch the DB sequentially.
@@ -73,16 +60,8 @@ builder.Services.AddPooledDbContextFactory<AppDbContext>(o =>
 {
     o.UseNpgsql(builder.Configuration.GetConnectionString("Hatch"));
 
-    // EF Core logs SaveChangesFailed at Error level via its own diagnostics
-    // source before the exception ever reaches a caller's catch block, so
-    // ChannelHistoryWriter's handling of expected unique-key violations
-    // (duplicate measurements/state changes) doesn't stop it from flooding
-    // the logs. Downgrade it to Debug; genuine failures still throw and are
-    // logged by the caller.
     o.ConfigureWarnings(w =>
     {
-        w.Log((CoreEventId.SaveChangesFailed, LogLevel.Debug));
-
         // In migrate mode only. The first command EF issues against an empty
         // database is a SELECT from __EFMigrationsHistory, which does not
         // exist yet - one Error-level line per context, before a single
@@ -126,33 +105,11 @@ builder.Services.AddQuartzHostedService(opt =>
 {
     opt.WaitForJobsToComplete = false;
 });
-// AddQuartz only registers ISchedulerFactory; JobsInit and DevicesController
-// need IScheduler directly, and GetScheduler() returns the same underlying
+// AddQuartz only registers ISchedulerFactory; JobsInit
+// needs IScheduler directly, and GetScheduler() returns the same underlying
 // instance AddQuartzHostedService starts, so this stays in sync with it.
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<ISchedulerFactory>().GetScheduler().GetAwaiter().GetResult());
-
-// HADotNet - ClientFactory is static, process-local state (see
-// HomeAssistantClientFactoryGate), so unlike the DB rows behind it, each api
-// replica has to initialize its own. Every registration below runs the gate
-// first; it no-ops after the first successful ApplyAsync on this process.
-builder.Services.AddSingleton<HomeAssistantClientFactoryGate>();
-AddHaClient<EntityClient>();
-AddHaClient<HistoryClient>();
-AddHaClient<StatesClient>();
-AddHaClient<ServiceClient>();
-AddHaClient<DiscoveryClient>();
-AddHaClient<TemplateClient>();
-
-void AddHaClient<TClient>() where TClient : BaseClient =>
-    builder.Services.AddTransient(sp =>
-    {
-        sp.GetRequiredService<HomeAssistantClientFactoryGate>().EnsureInitialized(sp);
-        return ClientFactory.GetClient<TClient>();
-    });
-
-// Services
-builder.Services.AddTransient<IEnvironmentService, EnvironmentService>();
 
 // The build's own git identity, and what Flux has reconciled from it
 // (docs/plans/version.md). Singletons: the first is immutable for the life of
@@ -160,78 +117,15 @@ builder.Services.AddTransient<IEnvironmentService, EnvironmentService>();
 builder.Services.AddSingleton<IHatchRevision, HatchRevision>();
 builder.Services.AddSingleton<IFluxRevisionReader, FluxRevisionReader>();
 
-// Dashboard data services
-builder.Services.AddSingleton<IForecastService, ForecastService>();
 builder.Services.AddSingleton<ISiteSettingsService, SiteSettingsService>();
-builder.Services.AddScoped<IZoneService, ZoneService>();
-builder.Services.AddScoped<IRoutineService, RoutineService>();
-// The tier above routines: a tile that opens a sub-UI of controls - see
-// PanelService and docs/kiosk-architecture.md.
-builder.Services.AddScoped<IPanelService, PanelService>();
-// The kiosk's camera button row - see CameraDirectory and
-// docs/camera-devices-architecture.md.
-builder.Services.AddScoped<ICameraDirectory, CameraDirectory>();
-builder.Services.AddTransient<IHomeAssistantStateReader, HomeAssistantStateReader>();
-builder.Services.AddScoped<IWeatherService, WeatherService>();
-builder.Services.AddScoped<IDashboardService, DashboardService>();
-builder.Services.AddScoped<IDeviceMappingSeeder, DeviceMappingSeeder>();
-builder.Services.AddScoped<IDiscoveryService, DiscoveryService>();
-builder.Services.AddScoped<IChannelHistoryWriter, ChannelHistoryWriter>();
-builder.Services.AddScoped<IHomeAssistantConnectionManager, HomeAssistantConnectionManager>();
-builder.Services.AddTransient<IHomeAssistantCommandService, HomeAssistantCommandService>();
 
-// In-memory motion state, and the seam every reaction to motion hangs off.
-// Singleton because the state is the process's, and because the WebSocket
-// listener below and a kiosk's SSE connection have to be looking at the same
-// one - see docs/camera-devices-architecture.md.
-builder.Services.AddSingleton<IMotionEventDispatcher, MotionEventDispatcher>();
-
-// One WebSocket subscription to HA's state_changed stream per api replica, not
-// one per cluster - see HomeAssistantEventListener for why every replica needs
-// its own. Never starts in the migrate Job: that branch returns before the host
-// runs, so no hosted service in this file starts there.
-builder.Services.AddHostedService<HomeAssistantEventListener>();
-
-// Every write to HA goes through IClimateCommandService, which ledgers it -
-// nothing else should be resolving IHomeAssistantCommandService directly (see
-// docs/climate-brain-architecture.md Phase 1).
-builder.Services.AddScoped<IClimateCommandService, ClimateCommandService>();
-
-// Family calendar (docs/kiosk-architecture.md). One named client covers every
-// host Google answers on - accounts.google.com and oauth2.googleapis.com for
-// OAuth, www.googleapis.com for the Calendar API - so it carries no
-// BaseAddress and the services call absolute URLs. The explicit timeout is the
-// fail-soft convention: a slow Google leaves the calendar stale, it never
-// stalls a request.
+// Signing in with Google. One named client covers every host Google answers on
+// - accounts.google.com and oauth2.googleapis.com - so it carries no
+// BaseAddress and the service calls absolute URLs. The explicit timeout is the
+// fail-soft convention: a slow Google leaves the person at the sign-in page
+// with an error, it never stalls a request.
 builder.Services.AddHttpClient(GoogleOAuthService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<IGoogleOAuthService, GoogleOAuthService>();
-builder.Services.AddScoped<IGoogleTokenProvider, GoogleTokenProvider>();
-builder.Services.AddScoped<IGoogleCalendarClient, GoogleCalendarClient>();
-builder.Services.AddScoped<ICalendarDiscoveryService, CalendarDiscoveryService>();
-builder.Services.AddScoped<ICalendarSyncService, CalendarSyncService>();
-builder.Services.AddScoped<ICalendarAgendaService, CalendarAgendaService>();
-
-// Outdoor hazards (docs/kiosk-architecture.md). Providers are registered
-// against their interface rather than their own type: the resolver takes the
-// whole IEnumerable and picks by Name, so adding a country's provider is one
-// more line here and nothing else. Singletons because the resolver is one, and
-// because a provider holds nothing per-request - only the client factory and
-// the settings snapshot, which is itself a singleton.
-//
-// One 10-second client per half, each named for its role rather than its
-// vendor so a second country's provider shares it. The explicit timeout is the
-// fail-soft convention: a slow api.weather.gov leaves the hazard panel stale,
-// it never stalls the sync job behind it.
-builder.Services.AddHttpClient(NwsAlertProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddHttpClient(OpenMeteoAirQualityProvider.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddSingleton<IWeatherAlertProvider, NwsAlertProvider>();
-builder.Services.AddSingleton<IAirQualityProvider, OpenMeteoAirQualityProvider>();
-builder.Services.AddSingleton<IHazardProviderResolver, HazardProviderResolver>();
-
-// Scoped, unlike the providers: both of these hold a DbContext for the length
-// of one sync or one request.
-builder.Services.AddScoped<IHazardSyncService, HazardSyncService>();
-builder.Services.AddScoped<IHazardService, HazardService>();
 
 // Auth (docs/auth-architecture.md). AuthMiddleware and AuthController both run
 // unconditionally, and both no-op or allow until Auth:Enabled becomes true -
@@ -294,36 +188,7 @@ builder.Services.AddRateLimiter(limiter =>
 });
 
 // Jobs
-builder.Services.AddTransient<IAppJob, SampleChannels>();
-builder.Services.AddTransient<IAppJob, ReconcileCommands>();
-builder.Services.AddTransient<IAppJob, SyncCalendarEvents>();
-builder.Services.AddTransient<IAppJob, SyncOutdoorHazards>();
-builder.Services.AddTransient<BackfillChannelHistory>();
 builder.Services.AddTransient<JobsInit>();
-
-// Reaches the `files` peer (kiosk APK + signature checksum) - see
-// KioskProvisioningController. "http://files/" is correct in both
-// deployments today (the internal `edge` Docker network in compose.prod.yml,
-// and the k8s Service named `files` in this pod's own namespace) but only by
-// coincidence of both calling it "files"; KioskFiles:BaseAddress overrides it
-// so a rename on either side doesn't become a silent 404.
-var kioskFilesBaseAddress = builder.Configuration["KioskFiles:BaseAddress"] ?? "http://files/";
-builder.Services.AddHttpClient("KioskFiles", c => c.BaseAddress = new Uri(kioskFilesBaseAddress));
-
-builder.Services.Configure<MediaLibraryOptions>(builder.Configuration.GetSection(MediaLibraryOptions.SectionName));
-
-// Where camera video comes from - see CameraStreamOptions and
-// CameraController. Deploy-time config rather than a SiteSetting, so the host
-// the API relays kiosk video from is fixed by how Hatch is installed.
-builder.Services.Configure<CameraStreamOptions>(builder.Configuration.GetSection(CameraStreamOptions.SectionName));
-
-// The control channel to go2rtc, separate from the relay socket CameraController
-// opens: this one is a short PUT that registers a camera's stream just before
-// it is watched. Timeout is deliberately small - go2rtc answers a
-// registration without touching the camera, so a slow answer means go2rtc
-// itself is wedged, and the viewer is waiting on this before any video moves.
-builder.Services.AddHttpClient(Go2RtcStreamRegistrar.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(5));
-builder.Services.AddSingleton<IGo2RtcStreamRegistrar, Go2RtcStreamRegistrar>();
 
 // API / HTTP
 
@@ -379,22 +244,6 @@ if (migrateMode)
         await moduleDb.Database.MigrateAsync();
     }
 
-    var seeder = scope.ServiceProvider.GetRequiredService<IDeviceMappingSeeder>();
-    await seeder.SeedAsync();
-
-    // Resolved before it is applied only so the run can say which of the two
-    // things it did. ApplyAsync returns without a word when nothing is
-    // configured, and a step that leaves no trace either way is a step nobody
-    // can tell ran. HomeAssistantConnection.ToString is redacted for exactly
-    // this kind of line.
-    var haConnection = scope.ServiceProvider.GetRequiredService<IHomeAssistantConnectionManager>();
-    if (await haConnection.ResolveAsync(CancellationToken.None) is { } resolved)
-        app.Logger.LogInformation("Applying the Home Assistant connection at {Connection}.", resolved);
-    else
-        app.Logger.LogInformation("No Home Assistant connection is configured; none applied.");
-
-    await haConnection.ApplyAsync(CancellationToken.None);
-
     // The chicken-and-egg: only an Admin can promote a person, and every
     // person sign-in creates is Pending. So the first person to sign in on an
     // install with no Admin becomes one (GoogleSignInController), and this
@@ -418,7 +267,6 @@ using (var scope = app.Services.CreateScope())
 {
     var init = scope.ServiceProvider.GetRequiredService<JobsInit>();
     await init.WireUpJobs();
-    await init.WireUpTriggerableJob<BackfillChannelHistory>(BackfillChannelHistory.Name, BackfillChannelHistory.Group);
 }
 
 // A clean stop frees this node's cluster row. Attached here rather than through
@@ -443,7 +291,7 @@ if (app.Environment.IsDevelopment())
 // assigned at startup and can't be pinned as a KnownProxy. Clearing
 // KnownNetworks/KnownProxies trusts X-Forwarded-For from whatever peer
 // connects, which on either deployment is only ever that one proxy. Without
-// this, RemoteIpAddress (used by UiLogsController/VmConsoleLogsController for
+// this, RemoteIpAddress (used by UiLogsController for
 // actor telemetry) would just be the proxy's own container/pod IP for every
 // request.
 var forwardedHeadersOptions = new ForwardedHeadersOptions
@@ -534,13 +382,6 @@ app.UseMiddleware<AdminAppMiddleware>();
 // AuthController is already resolved by the time this runs.
 app.UseRateLimiter();
 
-// Camera video (CameraController, docs/camera-devices-architecture.md). After
-// the wall for the same reason the static file handlers are: an upgrade request
-// that skipped it would be a camera feed served to anyone who asked. Inert for
-// every other request - this only inspects the upgrade headers - so its cost to
-// the rest of the API is a branch.
-app.UseWebSockets();
-
 // What the /apps mount, the board's own mount, the sign-in shell's mount and
 // the fallbacks below all serve through, so the three rules below are written
 // once: .webmanifest
@@ -617,30 +458,6 @@ if (Directory.Exists(authPath))
     var authOptions = BoardFileOptions(authShell);
     authOptions.RequestPath = "/auth";
     app.UseStaticFiles(authOptions);
-}
-
-// Media library (read-only music share, served so Sonos speakers can stream
-// from it - see docs/media-library.md and DevicesController.PlayMedia). Off
-// unless MediaLibrary:RootPath is configured; a configured-but-missing path is
-// a deployment mistake worth a startup warning rather than silence, since the
-// only other symptom is every play command 404ing at the speaker.
-var mediaLibrary = app.Services.GetRequiredService<IOptions<MediaLibraryOptions>>().Value;
-if (!string.IsNullOrWhiteSpace(mediaLibrary.RootPath))
-{
-    if (Directory.Exists(mediaLibrary.RootPath))
-    {
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new PhysicalFileProvider(mediaLibrary.RootPath),
-            RequestPath = mediaLibrary.RequestPath,
-            ContentTypeProvider = MediaContentTypes.CreateProvider(),
-        });
-        app.Logger.LogInformation("Serving media library {RootPath} at {RequestPath}", mediaLibrary.RootPath, mediaLibrary.RequestPath);
-    }
-    else
-    {
-        app.Logger.LogWarning("MediaLibrary:RootPath {RootPath} does not exist - media library not served", mediaLibrary.RootPath);
-    }
 }
 
 app.UseAuthorization();

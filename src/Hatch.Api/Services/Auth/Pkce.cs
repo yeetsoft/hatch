@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace Hatch.Api.Services.Calendar;
+namespace Hatch.Api.Services.Auth;
 
 /// <summary>
 /// The two random values an authorization request carries: the PKCE

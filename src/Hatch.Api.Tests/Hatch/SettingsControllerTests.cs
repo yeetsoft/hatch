@@ -4,7 +4,7 @@ using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 using Hatch.Api.Tests.Auth;
 using Hatch.Contracts;
 using Microsoft.AspNetCore.Http;

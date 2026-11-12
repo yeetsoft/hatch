@@ -2,7 +2,6 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Media;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -437,7 +436,6 @@ public class ApiKeyTests
     private static AuthGate NewGate(IAuthService auth) =>
         new(auth,
             Options.Create(new AuthOptions { Enabled = true }),
-            Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
             NullLogger<AuthGate>.Instance);
 
     private static RoleGate NewRoleGate(EfApiKey? key = null, EfAuthGrant? grant = null) =>
