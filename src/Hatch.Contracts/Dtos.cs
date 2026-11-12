@@ -3040,7 +3040,7 @@ public record TimelineDto(
     int Unresolved);
 
 /// <summary>One instant on the cumulative flow's grid, and how many issues sat in each column, and in each project, then.</summary>
-/// <param name="At">The grid point, in <see cref="CumulativeFlowDto.Step"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
+/// <param name="At">The grid point, in <see cref="CumulativeFlowDto.StepMinutes"/>-sized intervals from <see cref="CumulativeFlowDto.From"/>.</param>
 /// <param name="Counts">Parallel to <see cref="CumulativeFlowDto.Columns"/>: how many issues sat in each column at <paramref name="At"/>. A terminal column counts only what closed inside the window, so it starts at zero at the grid's first point rather than at whatever it already held.</param>
 /// <param name="ProjectCounts">Parallel to <see cref="CumulativeFlowDto.Projects"/>: how many issues sat in each project at <paramref name="At"/>, cut from the same stretches as <paramref name="Counts"/> and so summing to the same total.</param>
 public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Counts, IReadOnlyList<int> ProjectCounts);
@@ -3051,7 +3051,7 @@ public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Count
 /// </summary>
 /// <param name="From">The start of the range the grid covers, clamped forward to the first issue's creation and never past <see cref="To"/>.</param>
 /// <param name="To">The end of the range the answer covers, as resolved.</param>
-/// <param name="Step">The grid's bucket size: <c>hour</c>, <c>day</c> or <c>week</c>.</param>
+/// <param name="StepMinutes">The grid's bucket size in minutes: the finest of 1, 5, 15, 30, 60, 180, 360, 720, 1440 or 10080 that fits the point budget.</param>
 /// <param name="Columns">The board's columns, in board order, deferred columns excluded — parallel to each point's <see cref="CumulativeFlowPointDto.Counts"/>.</param>
 /// <param name="Projects">The project keys in scope, in <c>/api/hatch/projects</c>'s own order — parallel to each point's <see cref="CumulativeFlowPointDto.ProjectCounts"/>.</param>
 /// <param name="Points">One per grid step, oldest first.</param>
@@ -3059,7 +3059,7 @@ public record CumulativeFlowPointDto(DateTimeOffset At, IReadOnlyList<int> Count
 public record CumulativeFlowDto(
     DateTimeOffset From,
     DateTimeOffset To,
-    string Step,
+    int StepMinutes,
     IReadOnlyList<int> Columns,
     IReadOnlyList<string> Projects,
     IReadOnlyList<CumulativeFlowPointDto> Points,

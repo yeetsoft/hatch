@@ -207,7 +207,7 @@ public class ReportsController(
         return new CumulativeFlowDto(
             result.From,
             result.To,
-            result.Step,
+            result.StepMinutes,
             result.Columns,
             result.Projects,
             result.Points.Select(p => new CumulativeFlowPointDto(p.At, p.Counts, p.ProjectCounts)).ToList(),
