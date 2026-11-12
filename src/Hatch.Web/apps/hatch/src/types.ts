@@ -2744,6 +2744,10 @@ export interface Runner {
   retiredAt?: string | null;
   /** The name of the row that superseded this one, or null for a row that is not retired. */
   supersededBy?: string | null;
+  /** The models this key refuses to be told to run, held on its config row -
+      from PUT /runners/{name}/refused-models, never from a heartbeat. Empty,
+      never null. Mirrors RunnerDto.RefusedModels. */
+  refusedModels: string[];
 }
 
 /** One session beneath a runner: one `go-to-work` loop, so two checkouts

@@ -449,6 +449,12 @@ public class AdminSurfaceTests
         "RunnersController.SessionHeartbeat",
         "RunnersController.EndSession",
         "RunnersController.PatchRunner",
+
+        // A refusal only narrows what a runner is told to run, never raises
+        // a bound the way every other field on PatchRunner does - so it is
+        // key-accepting, the one write on this controller a key may take on
+        // its own name. See RunnersController.PutRefusedModels.
+        "RunnersController.PutRefusedModels",
         "RunnersController.PostRunnerOrder",
         "RunnersController.DeleteRunnerOrder",
         "RunnersController.PatchRunnerSession",
@@ -860,6 +866,7 @@ public class AdminSurfaceTests
         "RunnersController.Heartbeat",
         "RunnersController.SessionHeartbeat",
         "RunnersController.EndSession",
+        "RunnersController.PutRefusedModels",
         "SearchController.GetSearch",
         "SettingsController.GetClaudeToken",
         "SettingsController.GetCredential",

@@ -483,7 +483,8 @@ public class RunnersController(
 
                 // A row born on this very beat has never been ordered.
                 return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), null,
-                    defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+                    defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
+                    with { RefusedModels = await RefusedFromKeyAsync(ct) };
             }
             catch (DbUpdateException)
             {
@@ -518,7 +519,22 @@ public class RunnersController(
         await db.SaveChangesAsync(ct);
 
         return Runners.Instruct(row, forName, (await TrainDriversAsync(runner, now, ct)).GetValueOrDefault(row.Name, []), order,
-            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour);
+            defaultMaxTokens: site.RunnerDefaultMaxTokens, defaultMaxTokensPerHour: site.RunnerDefaultMaxTokensPerHour)
+            with { RefusedModels = await RefusedFromKeyAsync(ct) };
+    }
+
+    /// <summary>
+    /// The calling key's own held refusals, for <see cref="RunnerInstructionDto.RefusedModels"/>
+    /// on this route - <c>null</c> for a caller with no key, since nothing on
+    /// the board is its to hold, and <c>[]</c> for a key with no config row
+    /// yet, the same way <see cref="RefusedModels"/> on the read answers.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> RefusedFromKeyAsync(CancellationToken ct)
+    {
+        if (await caller.ApiKeyAsync(ct) is not { } key) return null;
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        return config is null ? [] : RunnerTagColumn.Read(config.RefusedModels).Order(StringComparer.Ordinal).ToArray();
     }
 
     /// <summary>
@@ -921,6 +937,85 @@ public class RunnersController(
             new Runner(aggregate.Key, config ?? aggregate.Config, beatRow, aggregate.Sessions),
             await runners.HeldAsync(db, claims, now, ct), await runners.DriversAsync(db, keys, now, ct),
             wallEnabled, callerPerson, await siteSettings.GetAsync(ct), now, ct);
+    }
+
+    /// <summary>
+    /// Replaces the models a runner's key refuses, whole. The one write on
+    /// this controller a key may take on itself: a refusal only narrows what a
+    /// runner will be told to run, never widens its own budget the way every
+    /// other field <see cref="PatchRunner"/> guards does - so letting a key
+    /// hold its own list is not the hole <see cref="NotAPerson"/> exists to
+    /// close.
+    /// </summary>
+    /// <remarks>
+    /// A person who can control the row may write it too, same as every other
+    /// bound - <see cref="CanControl"/>. A key naming a runner that is not its
+    /// own is refused, since a key with no owner otherwise reads as
+    /// everybody's to control.
+    /// </remarks>
+    [HttpPut("{name}/refused-models")]
+    [RequireRole(PersonRole.User, AcceptKey = true)]
+    public async Task<ActionResult<RunnerDto>> PutRefusedModels(
+        string name, [FromBody] RunnerRefusedModelsWriteRequest? request, CancellationToken ct)
+    {
+        if (Named(name) is not { } runner) return BadRequest(NameRefusal);
+
+        var aggregate = (await Runner.JoinAsync(db, keys, ct)).FirstOrDefault(r => string.Equals(r.Name, runner, StringComparison.Ordinal));
+        if (aggregate?.Key is not { } key) return NotFound();
+
+        var now = time.GetUtcNow();
+        if (!key.IsLive(now)) return Conflict($"{runner}'s key is revoked");
+
+        var wallEnabled = auth.Value.Enabled;
+        if (await caller.ApiKeyAsync(ct) is { } callerKey)
+        {
+            if (!string.Equals(callerKey.Name, runner, StringComparison.Ordinal))
+            {
+                var forName = key.OwnerPersonId is { } forId
+                    ? (await actors.ResolveAsync(ActorKind.Person, forId, ct))?.Name ?? key.Name
+                    : key.Name;
+                return new ObjectResult($"{runner} is {forName}'s runner - a key may write only its own")
+                    { StatusCode = StatusCodes.Status403Forbidden };
+            }
+        }
+        else
+        {
+            var callerPerson = wallEnabled ? await caller.PersonAsync(ct) : null;
+            if (!CanControl(key.OwnerPersonId, wallEnabled, callerPerson))
+                return await ControlRefusalAsync(runner, key.OwnerPersonId, ct);
+        }
+
+        if (request?.Models is null) return BadRequest("models is required - send [] to clear");
+
+        var agent = aggregate.Beat?.Agent;
+        if (string.IsNullOrWhiteSpace(agent))
+        {
+            agent = aggregate.Sessions?
+                .Where(s => sessions.IsLive(s, now))
+                .OrderBy(s => s.Id)
+                .FirstOrDefault()?.Agent;
+        }
+
+        if (RunnerModels.Normalise(request.Models, agent, out var models) is { } modelsRefusal) return BadRequest(modelsRefusal);
+
+        var written = RunnerTagColumn.Write(models);
+        var config = await db.RunnerConfigs.FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        if ((config is null && models.Count == 0) || config?.RefusedModels == written)
+        {
+            // Nothing held, nothing sent, or exactly what is already held -
+            // a no-op writes nothing and leaves UpdatedAt alone.
+        }
+        else
+        {
+            if (config is null)
+                db.RunnerConfigs.Add(config = new EfHatchRunnerConfig { ApiKeyId = key.Id, UpdatedAt = now });
+
+            config.RefusedModels = written;
+            config.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return await AnswerAsync(runner, ct);
     }
 
     /// <summary>

@@ -1564,6 +1564,12 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<long?>("MaxTokensPerHour")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("RefusedModels")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
                     b.Property<string>("Tags")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

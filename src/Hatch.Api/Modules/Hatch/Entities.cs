@@ -3685,6 +3685,15 @@ public class EfHatchRunnerConfig
     /// </summary>
     public string Tags { get; set; } = "[]";
 
+    /// <summary>
+    /// The models this key has refused, as a jsonb array in the order they
+    /// were written - normalised by <see cref="Hatch.Contracts.RunnerModels.Normalise"/>
+    /// before a refusal ever reaches this column, the same way <see cref="Tags"/>
+    /// goes through <see cref="Hatch.Contracts.RunnerTags"/>. Empty, not null.
+    /// A refusal is a key's own, never the keyless beat's or a session's.
+    /// </summary>
+    public string RefusedModels { get; set; } = "[]";
+
     /// <summary>The epic to stay inside, or null for the whole board, as <see cref="EfHatchRunner.Under"/>.</summary>
     [MaxLength(EfHatchRunner.MaxUnderLength)]
     public string? Under { get; set; }

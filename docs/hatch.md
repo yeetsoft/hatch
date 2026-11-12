@@ -9442,6 +9442,22 @@ runner that has none. `hatch work`'s own one-off heartbeat carries none of
 this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
+**Refused models are a key's alone, and a key may write its own.** `PUT
+/api/hatch/runners/{name}/refused-models` holds the list of models this
+runner's key will not be told to run — replaced whole, never a delta, and
+normalised against whatever agent the row's beat or a live session last
+reported (a pinned id of a different agent is refused; the check is skipped
+where none is known). A person who can control the row may write it, the same
+as every other bound — but so may the key itself, the one write on this
+controller a key may take on its own name: a refusal only narrows what a
+runner will be told to run, never raises a bound the way every other field
+here does, so a key holding its own list is not the hole that gate exists to
+close. A key naming another runner is refused. The list rides every
+heartbeat back as `refusedModels`, on both heartbeat routes, so a loop
+restarting reads the board's current list rather than the one a process
+started with; an older Hatch answers with none. Nothing reads the column to
+dispatch work yet — that is its own story.
+
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
 heartbeat beside `remotes` and `agent`, the same way `models` and `has` do
