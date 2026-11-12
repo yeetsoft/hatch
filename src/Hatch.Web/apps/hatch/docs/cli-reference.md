@@ -347,6 +347,10 @@ the checkout mounted - the base image carries `hatch`, so the run downloads
 nothing from the board and needs no network path to it - and then builds and
 pushes the rendered Dockerfile with `docker/build-push-action`, for
 `linux/amd64,linux/arm64`, tagged `latest` and the commit sha.
+The build also passes `--build-arg HATCH_IMAGE=<name>:<sha>`, baked into the pushed
+image the same way [`build`](#build) bakes it for its own `--build-arg`, so a
+runner started from the pushed image reports one on [`runners`](#runners)'s
+`image` field.
 
 [`build --push`](#build) is the other way to build and push the same image:
 anyone with Docker runs it, from a laptop, a runner host, or a CI that is not

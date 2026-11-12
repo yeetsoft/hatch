@@ -1143,6 +1143,7 @@ public sealed class ImageCommandTests : IDisposable
                       context: .
                       file: ./Dockerfile.rendered
                       platforms: linux/amd64,linux/arm64
+                      build-args: HATCH_IMAGE=${{ steps.image.outputs.name }}:${{ github.sha }}
                       push: true
                       tags: ${{ steps.meta.outputs.tags }}
                       labels: ${{ steps.meta.outputs.labels }}
