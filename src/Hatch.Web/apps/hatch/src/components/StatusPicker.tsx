@@ -3,21 +3,23 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { statusVars } from '../lib/color';
 import { landingFocus } from '../lib/columns';
 import { StatusSteps } from './StatusSteps';
+import type { StatusPillSize } from './StatusPill';
 import type { Status } from '../types';
 
 /**
- * The peek's status pill, and the band it opens onto: the board's own way to
- * move a card without closing the dialog and dragging it.
+ * The status pill, and the band it opens onto: the way to move an issue from
+ * the board's peek or from the issue page without closing the dialog and
+ * dragging it, or scrolling to a form.
  *
  * The pill wears the same classes `StatusPill` draws, plus a caret and the
  * chrome that makes it a button - so at rest it is pixel for pixel the pill
- * that was there before. Pressed, a band unfolds under it holding `StatusSteps`
- * in miniature - the issue page's own column list, so the two screens can never
- * disagree about what is offered.
+ * that would otherwise be there. Pressed, a band unfolds under it holding
+ * `StatusSteps`, so the two screens can never disagree about what is offered.
+ * The peek draws it at `sm`, the issue page's status bar at `lg`.
  *
- * `open` is its only state. The caller mounts this with `key={card.key}`, so
- * opening the peek on a different card always starts folded rather than
- * carrying the last card's band open or its last refusal into view.
+ * `open` is its only state. The caller mounts this with `key={issue.key}`, so
+ * opening a different issue always starts folded rather than carrying the last
+ * one's band open or its last refusal into view.
  *
  * A press folds the band, returns focus to the pill, and only then calls
  * `onMove` - so the repaint the caller triggers never fights a band still
@@ -30,7 +32,8 @@ export function StatusPicker({
   issueKey,
   status,
   statuses,
-  busy,
+  busy = false,
+  size = 'sm',
   onMove,
   blocked,
 }: {
@@ -40,8 +43,10 @@ export function StatusPicker({
   /** Every column, deferred ones included - `board.statuses`. */
   statuses: Status[];
   /** A move for this card is already out: the pill cannot be pressed again
-      until the server has answered it. */
-  busy: boolean;
+      until the server has answered it. A page that reloads on completion has
+      no such flag to pass. */
+  busy?: boolean;
+  size?: StatusPillSize;
   onMove: (statusId: number) => void;
   /** Why a move into this column is refused, or null where it is allowed.
       Forwarded to StatusSteps untouched. */
@@ -89,7 +94,7 @@ export function StatusPicker({
       <button
         ref={buttonRef}
         type="button"
-        className="hatch-status-pill hatch-status-pill-sm hatch-status-pill-press"
+        className={`hatch-status-pill hatch-status-pill-${size} hatch-status-pill-press`}
         style={statusVars(status.color)}
         aria-expanded={open}
         aria-controls={bandId}
@@ -107,7 +112,7 @@ export function StatusPicker({
       </button>
 
       {open && (
-        <div id={bandId} className="hatch-peek-status" style={statusVars(status.color)} onKeyDown={onEscape}>
+        <div id={bandId} className="hatch-status-band" style={statusVars(status.color)} onKeyDown={onEscape}>
           <span className="hatch-status-bar-label">Move to</span>
           <StatusSteps statuses={statuses} statusId={status.id} onMove={handleMove} focus={landing} blocked={blocked} />
         </div>
