@@ -300,6 +300,9 @@ key's owner is in [people, roles and keys](people-roles-and-keys).
    it running.
 5. **Usage-limit wait.** A runner whose account ran out of usage takes
    nothing until it resets, obeying every bound and Ctrl-C meanwhile.
+   A runner whose last two runs never started their agent waits the same
+   way - five minutes, then fifteen, then sixty - and claims again only after
+   a cheap session starts and answers ([Stalls](#stalls)).
 6. **Review poll.** On the interval, pull requests in review are read for a
    failing build or a conflict, which become work of their own.
 7. **Pick and claim.** The first issue the dispatcher clears, folding past
@@ -354,6 +357,18 @@ A session whose agent never started - the CLI ended before its first stream
 event - is released `unstarted`: one comment carrying what the CLI wrote and
 how it exited, no stall, mark or question, and neither counted nor resetting
 the ticket's let-goes. A `--quiet` run is not read this way.
+
+Two of these in a row pause the runner. It claims nothing and says on the
+terminal that the agent is not starting and when it will check again: five
+minutes first, then fifteen, then sixty if the check keeps failing. When a wait
+ends, one headless session on the agent's cheapest model is asked for a single
+word, in a temporary directory, with no ticket claimed. If it starts and
+answers, the terminal says *the agent starts again - taking tickets* and the
+next pass claims; its cost joins the night's spend and is said too. A run that
+started, whatever its exit code, ends the streak. The closing tally says how
+many runs never started and how long the runner was paused for it; a restart
+mid-pause comes back paused to the same instant. What to do about it is in
+[troubleshooting](troubleshooting#the-runner-says-its-agent-is-not-starting).
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
 
 Losing the lease is the one exception that cuts the other way: a takeover or

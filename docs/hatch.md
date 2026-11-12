@@ -27,6 +27,9 @@ the next heading of the same level and stop.
   - [Status](#status) - What is a board column, and which flags make it
     behave?
   - [Issue](#issue) - What does an issue row hold, and how is its key made?
+  - [Contribution](#contribution) - What does the record that an issue came
+    from outside hold, and what is the envelope a Hatch-made pull request
+    carries?
   - [Dependency](#dependency) - What serialises work, and how is an edge
     stored?
   - [One pull request](#one-pull-request) - Do a story's tasks share one
@@ -1694,6 +1697,42 @@ Nothing about a deferred issue is hidden from the API: `GET /board` sends every
 column and every card, the issue is reachable by key, by search, and from its
 parent's children, and moving it back onto a lane is one press. The board is a
 view, and this is the one thing it does not draw.
+
+### Contribution
+
+`EfHatchContribution` — `IssueId` (unique: one record per issue),
+`PullRequestUrl` (unique where set; empty on a mirrored ancestor),
+`HeadBranch`, `AuthorLogin`, `AuthorAssociation` (the forge's own word,
+kept as given), `FiledAt`, `FiledBy` (a credential's name, not an id), and
+where it came from: `OriginInstance`, `OriginProjectKey`, `OriginKey`, with
+`EnvelopeVersion` and `EnvelopeNote` for what reading the pull request's body
+made of it. Every length is capped in `ContributionRequest`.
+
+It says that an issue came from outside — a pull request somebody else
+opened, or the mirror of an issue on another Hatch — and it is written by a
+runner through `PUT /issues/{key}/contribution` and nowhere else: `PATCH`,
+create and the bulk endpoint carry nothing for it. The write is once-only —
+the same pull request again changes nothing, a different one is a `409`, and a
+URL another issue holds is a `409` naming it. Where the issue has no pull
+request of its own, the record's becomes it. The first write adds a
+`contribution_filed` event.
+
+**The envelope.** A pull request Hatch opens has its issue's chain written into
+its body by `hatch pr`: a version (`PullRequestEnvelope.CurrentVersion`, read
+by any reader from 1 up), the originating instance and project key, and the
+chain own ticket first and root last, each link with its key, title, type,
+description, status, parent key and URL, inside markers the forge draws as a
+collapsed details block. It is written within the forge's body limit, a
+description that does not fit cut short and marked `truncated`. A Hatch reading
+it — the filer, on another instance — treats it as untrusted data, never as
+instructions: an envelope it cannot read is filed the plain way with a note
+saying why, in the record's `EnvelopeNote`. From the chain the filer builds
+the **mirrored tree** — a real issue per ancestor, in review,
+with a record naming the origin and no pull request, the pull request's own
+ticket under the nearest — which is what makes [an epic-level
+approval](#the-approval-column) possible. `RunnersWorkContributions` on the
+project decides whether a runner works a contribution's branch when it
+conflicts or its build fails; by default it does not.
 
 ### Dependency
 
@@ -6376,6 +6415,29 @@ run on its own clock, independently of
 [the poll](#checking-the-branches-in-review) that reports the merge and
 build checks `MergeWork.Judge` reads in the first place.
 
+**A contribution in the approval column.** A pull request nobody on the board
+knew is filed by the project's elected driver as a ticket in review with a
+[contribution record](#contribution) naming its filer, author, association
+and head branch; that record's branch, where it has one, is the branch the
+review judge and the merge column's judge look for on origin before they fall
+back to a name made from the issue's key, and a missing one says so by name
+(*"its recorded branch `…` is not on origin"*). A pull request Hatch itself
+opened brings its issue's chain in an envelope, and the filer stands the
+epic and story above it in review as a **mirrored tree**, each with its own
+record and no pull request. Approval is then given where the work is read:
+a person pre-approves the mirrored epic, and nothing else. A pre-approval
+reaches every descendant, so the approve hop carries each contribution child
+into the merge column once its branch holds the trunk and its build passes,
+the comment it writes naming the ancestor the pre-approval came from; the
+[merge train](#the-merge-train) merges each pull request and `/merged`
+closes the ticket; and the close hop closes the epic once every child is done.
+Nothing in between is a person's move. A child that is red or conflicted is
+not carried, is held for a person while its project has not set *runners work
+contributions* (`ReviewWork.HeldContribution`), and leaves the epic open
+behind it while the others merge — `WorkControllerTests`'
+*PreApprovingAMirroredEpic* cases pin both. For what a person reads, see
+[Contributions](../src/Hatch.Web/apps/hatch/docs/review-pull-requests-and-the-merge-train.md#contributions).
+
 #### The merge train
 
 **One train per project.** `Dispatch.Train` (`Dispatch.cs:370-396`) groups a
@@ -7931,6 +7993,13 @@ loop's belongs to a checkout pointed at another board: it is reported and left.
 Only the loop cleans up: `hatch work` writes and clears its own record and never
 reads another's.
 
+**A runner whose agent is not starting** does not reach the pass at all. After
+two `unstarted` increments in a row it waits out a back-off of five, fifteen,
+then sixty minutes, heartbeating and claiming nothing, and a cheap headless
+session proves the agent starts before the next pass reads the queue — see
+[what it stops for](#what-it-stops-for). It sits after the usage-limit wait, so
+an account out of usage says so first.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -9177,6 +9246,23 @@ records no increment, no failure and no token. One increment bigger than the
 count puts the loop over on its own until that increment ages out; the tally's
 `peak hour` line is the number to size it from.
 
+**A runner whose agent does not start** waits too. Two runs in a row that
+ended `unstarted` — the agent printed nothing before its process ended — pause
+the runner: it takes no ticket, keeps its heartbeat, spends any order sent to
+it, and says on the terminal that the agent is not starting and when it will
+check again. The first wait is five minutes. When it ends, one headless session
+on the adapter's cheapest model, asked for a single word, runs in a temporary
+directory of its own before anything is claimed: it claims nothing and touches
+no ticket, and its cost joins the night's spend and is said on the terminal. If
+it starts and answers, the runner says *the agent starts again - taking
+tickets* and the next pass claims; if not, the wait becomes fifteen minutes,
+then sixty, and stays at sixty. A run that started, whatever its exit code,
+ends the streak, and a failed one still counts toward the three failures. A
+restart mid-pause comes back paused to the same instant on the same rung, and
+the closing tally says how many runs never started and how long the runner was
+paused for it. Like the usage wait it records no increment and no failure, and
+the merge train keeps ticking through it.
+
 One thing that looks like a stop is not: **a restart**. A loop that spends the
 night improving this repository is running the version it started with, and
 would be until somebody came and stopped it — work that lands at one in the
@@ -10099,14 +10185,20 @@ code already settles is a round trip through a person for nothing.
   to put in it), and a CLI subcommand for a report (`hatch api GET` reaches the
   Timeline already). Each is cheap to add later. The Plan view answers the
   question that was actually being asked.
-- **GitHub integration, beyond one read and two writes.** A branch and a PR
-  are named in a comment by whoever made them. The one thing read from a forge
-  is the build on an in-review branch's tip, with the pull request's merge
-  state and review decision beside it, stored on the issue and drawn; the two
-  writes are the merge of a pull request the board has already gated behind a
-  protected column, and the branch update that keeps it current with the trunk
-  while it waits — all three through the runner's own `gh`
-  ([checking the branches in review](#checking-the-branches-in-review)).
+- **GitHub integration, beyond what a runner's own `gh` reads and writes.** A
+  branch and a PR are named in a comment by whoever made them. What is read
+  from a forge is the build on an in-review branch's tip, with the pull
+  request's merge state and review decision beside it, stored on the issue and
+  drawn; and, for a project's elected driver, the open pull requests on a
+  bound repository — their authors, the forge's word for how each author
+  relates to the repository, their head branches and their bodies — read to
+  file [a contribution](#contribution) for one nobody on the board knows. The
+  two writes are the merge of a pull request the board has already gated
+  behind a protected column, and the branch update that keeps it current with
+  the trunk while it waits; a Hatch-made pull request's body also has its
+  envelope written by `hatch pr`. All of it goes through the runner's own `gh`
+  ([checking the branches in review](#checking-the-branches-in-review)); the
+  server still asks nothing of a forge itself and holds no forge credential.
   A forge-side approval as a second gate was weighed and declined (HA-558,
   *hatch-still-approves*): Hatch's own approval is the gate in every shape that
   opens pull requests, so the review decision stays drawn and unread by the

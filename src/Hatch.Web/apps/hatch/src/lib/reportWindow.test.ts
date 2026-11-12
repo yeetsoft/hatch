@@ -131,9 +131,9 @@ describe('WINDOW_PRESETS', () => {
     expect(WINDOW_PRESETS.find((preset) => preset.key === '3m')?.days).toBe(DEFAULT_DAYS);
   });
 
-  it('is ticked by hour, day, day, day, week, week, month, month', () => {
+  it('is ticked by three hours, day, day, day, week, week, month, month', () => {
     expect(WINDOW_PRESETS.map((preset) => tickUnit(days(preset.days)))).toEqual([
-      'hour',
+      'threeHours',
       'day',
       'day',
       'day',

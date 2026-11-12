@@ -2503,6 +2503,168 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
     }
 
+    // ---- HA-2289: two unstarted runs in a row pause the runner ----
+
+    /// <summary>The wires an unstarted increment writes to: the comment it leaves and the stall it declines.</summary>
+    private static void UnstartedWires(Harness h, string key = "AER-1")
+    {
+        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/stall", Fixtures.Issue(key));
+    }
+
+    /// <summary>
+    /// A carried night one minute into a pause, on the second rung - what the
+    /// loop would have written had a restart come between a failed check and the
+    /// next one.
+    /// </summary>
+    private static NightState PausedAt(DateTimeOffset start) => new()
+    {
+        UnstartedStreak = 2,
+        UnstartedRuns = 2,
+        AgentDownUntil = start.AddMinutes(1),
+        AgentDownKind = Tally.NotStarting,
+        AgentDownLine = "boom",
+        AgentDownStep = 1,
+        AgentDownSince = start,
+    };
+
+    private static bool IsCheck(SessionRequest request) => request.Prompt == AgentCheck.Prompt;
+
+    /// <summary>Steps a fake clock until <paramref name="until"/> holds - a small step, so a five-minute pause is not crossed by accident.</summary>
+    private static async Task DriveUntilAsync(FakeTimeProvider clock, TimeSpan step, Func<bool> until, string what, int withinMs = 10_000)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (!until())
+        {
+            Assert.True(watch.ElapsedMilliseconds < withinMs, $"waited {withinMs}ms for {what}, and it did not happen");
+            clock.Advance(step);
+            await Task.Delay(5);
+        }
+    }
+
+    [Fact]
+    public async Task Two_unstarted_runs_leave_the_loop_waiting_and_claiming_nothing_with_the_check_time_on_the_terminal()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        UnstartedWires(h);
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(0, "", Stderr: ["boom"]));
+
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromMilliseconds(100),
+            () => h.Say.Said.Any(l => l.Contains("claiming nothing until a check session starts", StringComparison.Ordinal)),
+            "the sentence the pause is said with");
+
+        var claimed = Claims(h).Length;
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await Task.Delay(50);
+
+        cts.Cancel();
+        await running;
+
+        // Two runs, then nothing: neither a third claim nor a check before the wait is over.
+        Assert.Equal(2, claimed);
+        Assert.Equal(2, Claims(h).Length);
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.DoesNotContain(h.Sessions.Spawned, IsCheck);
+        Assert.Contains(h.Say.Said, l => l == "hatch: the agent is not starting - the CLI said \"boom\"");
+        Assert.Contains(h.Say.Said, l => l.Contains("claiming nothing until a check session starts - checking again at ", StringComparison.Ordinal));
+        Assert.Contains(h.Say.Said, l => l.StartsWith("hatch: 2 run(s) never started their agent; paused ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_carried_pause_that_is_due_checks_once_and_the_next_pass_claims_when_the_agent_starts()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, PausedAt(start));
+
+        var normal = h.Sessions.Behaviour;
+        h.Sessions.Behaviour = (request, onLine, ct) =>
+            IsCheck(request) ? Task.FromResult(new SessionResult(0, Fixtures.Result())) : normal(request, onLine, ct);
+
+        var clock = new FakeTimeProvider(start);
+        var run = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--max-runs", "1", "--restart-after", "0"], default);
+        await DriveAsync(clock, run, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(0, await run);
+
+        // The check first, and it claimed nothing; then the one ordinary run.
+        Assert.Equal(2, h.Sessions.Spawned.Count);
+        Assert.True(IsCheck(h.Sessions.Spawned[0]));
+        Assert.False(IsCheck(h.Sessions.Spawned[1]));
+        Assert.Single(Claims(h));
+        Assert.Equal("haiku", h.Sessions.Spawned[0].Model);
+
+        var said = h.Say.Said.ToList();
+        Assert.Contains(said, l => l.StartsWith("hatch: checking whether the agent starts", StringComparison.Ordinal));
+        Assert.Contains(said, l => l.StartsWith("hatch:   the check cost $", StringComparison.Ordinal));
+        Assert.Contains("hatch: the agent starts again - taking tickets", said);
+    }
+
+    [Fact]
+    public async Task A_check_that_keeps_failing_is_repeated_at_fifteen_minutes_and_then_at_sixty()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, PausedAt(start));
+
+        var clock = new FakeTimeProvider(start);
+        var checks = new List<DateTimeOffset>();
+        h.Sessions.Behaviour = (request, _, _) =>
+        {
+            Assert.True(IsCheck(request), "something other than the check was spawned");
+            lock (checks) checks.Add(clock.GetUtcNow());
+            return Task.FromResult(new SessionResult(0, "", Stderr: ["still down"]));
+        };
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromMinutes(1), () => { lock (checks) return checks.Count >= 3; }, "three checks", withinMs: 20_000);
+
+        cts.Cancel();
+        await running;
+
+        Assert.InRange(checks[1] - checks[0], TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(17));
+        Assert.InRange(checks[2] - checks[1], TimeSpan.FromMinutes(60), TimeSpan.FromMinutes(62));
+        Assert.Empty(Claims(h));
+        Assert.Contains(h.Say.Said, l => l == "hatch: the agent is still not starting - the agent never started - the CLI said \"still down\"");
+    }
+
+    [Fact]
+    public async Task A_loop_with_its_agent_not_starting_spends_an_order_with_a_sentence_and_claims_nothing()
+    {
+        using var h = new Harness();
+        OneTicket(h, "AER-2");
+        Carrying(h, PausedAt(DateTimeOffset.UtcNow) with { AgentDownUntil = DateTimeOffset.UtcNow.AddDays(1) });
+        Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), maxTokensPerHour: 200_000);
+
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised).RunAsync(["--interval", "3600"], cts.Token);
+
+        await Harness.Eventually(
+            () => h.Say.Said.Any(l => l.Contains("order spent - agent not starting until", StringComparison.Ordinal)),
+            "the sentence the order was spent with");
+
+        cts.Cancel();
+        await running;
+
+        Assert.Empty(Claims(h));
+        Assert.Empty(h.Sessions.Spawned);
+    }
+
     // ---- HA-1685: over --max-tokens-per-hour the loop waits, it does not stop ----
 
     [Fact]

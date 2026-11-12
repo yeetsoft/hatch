@@ -76,8 +76,8 @@ describe('xOf', () => {
 
 describe('tickUnit', () => {
   it.each([
-    [1, 'hour'],
-    [2, 'hour'],
+    [1, 'threeHours'],
+    [2, 'threeHours'],
     [3, 'day'],
     [7, 'day'],
     [31, 'day'],
@@ -89,10 +89,32 @@ describe('tickUnit', () => {
   });
 });
 
+describe('tickUnit under two days', () => {
+  const MIN = 60_000;
+  const span = (ms: number) =>
+    makeScale('2026-10-28T10:00:00.000Z', new Date(Date.parse('2026-10-28T10:00:00.000Z') + ms).toISOString());
+
+  it.each([
+    [59 * MIN, 'tenMinutes'],
+    [60 * MIN, 'tenMinutes'],
+    [61 * MIN, 'halfHour'],
+    [3 * 60 * MIN, 'halfHour'],
+    [6 * 60 * MIN, 'halfHour'],
+    [6 * 60 * MIN + MIN, 'hour'],
+    [12 * 60 * MIN, 'hour'],
+    [12 * 60 * MIN + MIN, 'threeHours'],
+    [2 * DAY_MS, 'threeHours'],
+    [2 * DAY_MS + 1, 'day'],
+    [3 * DAY_MS, 'day'],
+  ] as const)('is %i ms -> %s', (ms, unit) => {
+    expect(tickUnit(span(ms))).toBe(unit);
+  });
+});
+
 describe('ticks', () => {
   const at = (iso: string) => Date.parse(iso);
 
-  describe('by hour', () => {
+  describe('by three hours', () => {
     const scale = makeScale('2026-10-28T00:00:00.000Z', '2026-10-29T00:00:00.000Z');
 
     it('has one tick per three hours, ends included, with the date on the first and on every midnight', () => {
@@ -110,14 +132,14 @@ describe('ticks', () => {
         '29 Oct 00:00',
       ]);
       expect(result.map((t) => t.x)).toEqual(Array.from({ length: 9 }, (_, i) => i * 12.5));
-      expect(result.every((t) => t.unit === 'hour')).toBe(true);
+      expect(result.every((t) => t.unit === 'threeHours')).toBe(true);
     });
 
     it("lands on the reader's three-hour marks at offset 600", () => {
       const result = ticks(scale, 600, LOCALE);
 
       // The first mark at or after 10:00 local on the 28th is 12:00, 2 h in.
-      expect(result[0]).toEqual({ x: (2 / 24) * 100, label: '28 Oct 12:00', unit: 'hour' });
+      expect(result[0]).toEqual({ x: (2 / 24) * 100, label: '28 Oct 12:00', unit: 'threeHours' });
       expect(result.map((t) => t.label)).toEqual([
         '28 Oct 12:00',
         '15:00',
@@ -129,6 +151,83 @@ describe('ticks', () => {
         '09:00',
       ]);
       expect(result[1].x - result[0].x).toBeCloseTo(12.5, 10);
+    });
+  });
+
+  describe('by ten minutes', () => {
+    const scale = makeScale('2026-10-28T10:00:00.000Z', '2026-10-28T11:00:00.000Z');
+
+    it('has seven ticks ten minutes apart, ends included, with the date on the first', () => {
+      const result = ticks(scale, 0, LOCALE);
+
+      expect(result.map((t) => t.label)).toEqual([
+        '28 Oct 10:00',
+        '10:10',
+        '10:20',
+        '10:30',
+        '10:40',
+        '10:50',
+        '11:00',
+      ]);
+      result.forEach((t, i) => expect(t.x).toBeCloseTo((i * 100) / 6, 10));
+      expect(result.every((t) => t.unit === 'tenMinutes')).toBe(true);
+    });
+
+    it("lands on the reader's marks at +05:30", () => {
+      const result = ticks(scale, 330, LOCALE);
+
+      expect(result).toHaveLength(7);
+      expect(result[0].label).toBe('28 Oct 15:30');
+      expect(result[0].x).toBe(0);
+      expect(result[6].label).toBe('16:30');
+      expect(result[6].x).toBe(100);
+    });
+  });
+
+  describe('by half hour', () => {
+    const scale = makeScale('2026-10-28T21:00:00.000Z', '2026-10-29T03:00:00.000Z');
+
+    it('has thirteen ticks, with the date on the first and at the midnight only', () => {
+      const result = ticks(scale, 0, LOCALE);
+
+      expect(result.map((t) => t.label)).toEqual([
+        '28 Oct 21:00',
+        '21:30',
+        '22:00',
+        '22:30',
+        '23:00',
+        '23:30',
+        '29 Oct 00:00',
+        '00:30',
+        '01:00',
+        '01:30',
+        '02:00',
+        '02:30',
+        '03:00',
+      ]);
+      expect(result.every((t) => t.unit === 'halfHour')).toBe(true);
+    });
+
+    it("lands on the reader's marks at offset 600", () => {
+      const result = ticks(scale, 600, LOCALE);
+
+      // 21:00Z is 07:00 the next morning at +10:00.
+      expect(result[0].label).toBe('29 Oct 07:00');
+      expect(result[0].x).toBe(0);
+    });
+  });
+
+  describe('by hour', () => {
+    const scale = makeScale('2026-10-28T22:00:00.000Z', '2026-10-29T10:00:00.000Z');
+
+    it('has thirteen ticks, with the date on the first and on the midnight', () => {
+      const result = ticks(scale, 0, LOCALE);
+
+      expect(result).toHaveLength(13);
+      expect(result[0].label).toBe('28 Oct 22:00');
+      expect(result[2].label).toBe('29 Oct 00:00');
+      expect(result.filter((t) => /Oct/.test(t.label))).toHaveLength(2);
+      expect(result.every((t) => t.unit === 'hour')).toBe(true);
     });
   });
 
