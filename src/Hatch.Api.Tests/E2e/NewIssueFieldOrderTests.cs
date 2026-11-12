@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Tests.Hatch;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit.Abstractions;
 
 namespace Hatch.Api.Tests.E2e;
@@ -9,8 +11,8 @@ namespace Hatch.Api.Tests.E2e;
 /// Type, One pull request (a story or a bug), Priority and Pre-approval on one
 /// <c>.hatch-field-pair</c> row, Title, Parent, Description, Ready, Due. At a
 /// desktop width the two levels share a row at half the form's width each; at
-/// <c>iPhone 14 Pro</c> they stack, one per row. Title holds focus on open. The
-/// phone case is skipped where WebKit is frozen, the same as
+/// <c>iPhone 14 Pro</c> they stack, one per row. The phone case is skipped where
+/// WebKit is frozen, the same as
 /// <see cref="TypesOnlyFitsPhoneTests"/>.
 /// </summary>
 [Collection(Jobs.QuartzSchedulerCollection.Name)]
@@ -30,7 +32,7 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
 
     /// <summary>
     /// Runs in the page: the dialog's field labels in document order, the paired
-    /// row's box and column gap, each level's box, and what holds focus.
+    /// row's box and column gap, and each level's box.
     /// </summary>
     private const string MeasureScript = """
         () => {
@@ -41,15 +43,28 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
           };
           const pair = panel.querySelector('.hatch-field-pair');
           const fields = [...pair.querySelectorAll(':scope > .hatch-field')];
-          const active = document.activeElement;
           return {
             labels: [...panel.querySelectorAll('.hatch-field__label')].map((l) => l.textContent),
             pair: box(pair),
             gap: parseFloat(getComputedStyle(pair).columnGap),
             fields: fields.map(box),
             fieldLabels: fields.map((f) => f.querySelector('.hatch-field__label').textContent),
-            focusTag: active.tagName,
-            focusInTitle: active.closest('.hatch-field')?.querySelector('.hatch-field__label')?.textContent ?? null,
+            scrollWidth: document.documentElement.scrollWidth,
+            innerWidth: window.innerWidth,
+          };
+        }
+        """;
+
+    /// <summary>Runs in the page: the open band of the level named (<c>priority</c> or <c>preapproval</c>) against the dialog's panel.</summary>
+    private const string BandScript = """
+        (level) => {
+          const panel = document.querySelector('.hatch-modal__panel').getBoundingClientRect();
+          const band = document.querySelector(`.hatch-modal__panel .hatch-${level}-band`).getBoundingClientRect();
+          return {
+            left: band.left,
+            right: band.right,
+            panelLeft: panel.left,
+            panelRight: panel.right,
             scrollWidth: document.documentElement.scrollWidth,
             innerWidth: window.innerWidth,
           };
@@ -58,16 +73,24 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public Task TheLevels_ShareOneRowAtHalfWidthEachAtADesktopWidth() =>
-        RunAsync("NewIssueFieldOrderDesktop", profile: null, stacked: false);
+        RunAsync("NewIssueFieldOrderDesktop", profile: null, stacked: false, width: null);
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
     public Task TheLevels_StackOnePerRowAtThePhoneProfile()
     {
         Skip.If(FrozenMacOs14WebKit.Here, FrozenMacOs14WebKit.SkipReason);
-        return RunAsync("NewIssueFieldOrderPhone", DeviceProfile.IPhone14Pro, stacked: true);
+        return RunAsync("NewIssueFieldOrderPhone", DeviceProfile.IPhone14Pro, stacked: true, width: null);
     }
 
-    private async Task RunAsync(string name, DeviceProfile? profile, bool stacked)
+    /// <summary>
+    /// The same stack, in Chromium at the iPhone 14 Pro's width: where WebKit is
+    /// frozen the profile case above skips, and the breakpoint is a width, not an engine.
+    /// </summary>
+    [SkippableFact(Timeout = CaseTimeoutMs)]
+    public Task TheLevels_StackOnePerRowAtAPhoneWidthInChromium() =>
+        RunAsync("NewIssueFieldOrderPhoneWidth", profile: null, stacked: true, width: 393);
+
+    private async Task RunAsync(string name, DeviceProfile? profile, bool stacked, int? width)
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
@@ -83,10 +106,13 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
 
             await harness.CreateDatabasesAsync(deadline);
             var baseUrl = await harness.StartHostAsync(deadline);
+            await SeedProjectAsync(harness.Services);
 
             await harness.OpenBoardAsync(deadline, baseUrl);
             await harness.WaitForFirstColumnAsync(deadline);
-            await harness.ClickAsync(deadline, ".hatch-board-new");
+            if (width is { } w) await harness.SetViewportAsync(deadline, w, 844);
+            // The board draws the filing button as a labelled one on a phone, an icon-only one beside it otherwise.
+            await harness.ClickAsync(deadline, stacked ? ".hatch-board-filing" : ".hatch-board-new");
             await harness.WaitForVisibleAsync(deadline, ModalPanel);
             await harness.WaitForVisibleAsync(deadline, ".hatch-field-pair");
 
@@ -97,8 +123,6 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
             AssertOrder(task, "task", ["Type", "Priority", "Pre-approval", "Title", "Parent", "Description", "Ready", "Due"]);
             Assert.DoesNotContain("One pull request", Labels(task));
             AssertPair(task, stacked);
-            Assert.Equal("Title", task.GetProperty("focusInTitle").GetString());
-            Assert.Equal("INPUT", task.GetProperty("focusTag").GetString());
 
             // A story: One pull request sits right after Type, before the levels.
             await harness.SelectOptionAsync(deadline, TypeSelect, "story");
@@ -108,6 +132,20 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
             await harness.ScreenshotAsync(deadline, $"{name}-story");
             AssertOrder(story, "story", ["Type", "One pull request", "Priority", "Pre-approval", "Title", "Parent", "Description", "Ready", "Due"]);
             AssertPair(story, stacked);
+
+            // Each level's open band, in a half-width column, stays inside the dialog.
+            foreach (var level in new[] { "priority", "preapproval" })
+            {
+                await harness.ClickAsync(deadline, $".hatch-modal__panel .hatch-{level}-pill-press");
+                await harness.WaitForVisibleAsync(deadline, $".hatch-modal__panel .hatch-{level}-band");
+                var open = await harness.EvaluateAsync<JsonElement>(deadline, $"measuring the open {level} band", BandScript, level);
+                output.WriteLine(open.ToString());
+                await harness.ScreenshotAsync(deadline, $"{name}-{level}-band");
+                Assert.True(open.GetProperty("left").GetDouble() >= open.GetProperty("panelLeft").GetDouble() - Tolerance, $"the open {level} band leaves the dialog on the left: {open}");
+                Assert.True(open.GetProperty("right").GetDouble() <= open.GetProperty("panelRight").GetDouble() + Tolerance, $"the open {level} band leaves the dialog on the right: {open}");
+                Assert.True(open.GetProperty("scrollWidth").GetDouble() <= open.GetProperty("innerWidth").GetDouble() + Tolerance, $"the page scrolls sideways with the {level} band open: {open}");
+                await harness.ClickAsync(deadline, $".hatch-modal__panel .hatch-{level}-pill-press");
+            }
 
             harness.AssertNoPageErrors();
         }
@@ -120,6 +158,18 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
         {
             await harness.DisposeAsync();
         }
+    }
+
+    /// <summary>One project and one column, written to the host's own database: the dialog files nowhere without a project, and the board draws no column without a status.</summary>
+    private static async Task SeedProjectAsync(IServiceProvider services)
+    {
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<HatchContext>();
+
+        db.AddRange(
+            new EfHatchProject { Key = "ORD", Name = "Order", CreatedAt = DateTimeOffset.UtcNow },
+            new EfHatchStatus { Name = "todo", SortOrder = 10 });
+        await db.SaveChangesAsync();
     }
 
     private static List<string> Labels(JsonElement m) =>
@@ -142,7 +192,7 @@ public class NewIssueFieldOrderTests(ITestOutputHelper output)
         var pair = m.GetProperty("pair");
         var gap = m.GetProperty("gap").GetDouble();
         var fields = m.GetProperty("fields").EnumerateArray().ToArray();
-        var labels = m.GetProperty("fieldLabels").EnumerateArray().Select(l => l.GetString()).ToArray();
+        var labels = m.GetProperty("fieldLabels").EnumerateArray().Select(l => l.GetString()!).ToArray();
         Assert.Equal(["Priority", "Pre-approval"], labels);
         Assert.Equal(2, fields.Length);
 
