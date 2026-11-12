@@ -312,6 +312,48 @@ describe('NewIssueDialog', () => {
   });
 });
 
+describe('NewIssueDialog field order', () => {
+  function opened() {
+    stubStorage();
+    return renderToStaticMarkup(
+      dialog({
+        open: true,
+        projects: [PROJECT],
+        candidates: [],
+        defaultProjectKey: '',
+        directory: directory(),
+        onClose: noop,
+        onCreated: noop,
+      }),
+    );
+  }
+
+  const label = (text: string) => `hatch-field__label">${text}<`;
+
+  it('runs Type, Priority, Pre-approval, Title, Parent, Description, Ready, Due', () => {
+    const html = opened();
+
+    const at = ['Type', 'Priority', 'Pre-approval', 'Title', 'Parent', 'Description', 'Ready', 'Due'].map((text) =>
+      html.indexOf(label(text)),
+    );
+
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+  });
+
+  it('puts Priority and Pre-approval in one paired row, ahead of Title', () => {
+    const html = opened();
+
+    const pair = html.indexOf('hatch-field-pair"');
+    const between = html.slice(pair, html.indexOf(label('Title')));
+
+    expect(pair).toBeGreaterThan(html.indexOf(label('Type')));
+    expect(pair).toBeLessThan(html.indexOf(label('Priority')));
+    expect(between).toContain(label('Priority'));
+    expect(between).toContain(label('Pre-approval'));
+  });
+});
+
 describe('OnePrField', () => {
   it('shows the enforced line and no steps for a story under an enforced project', () => {
     const html = renderToStaticMarkup(
