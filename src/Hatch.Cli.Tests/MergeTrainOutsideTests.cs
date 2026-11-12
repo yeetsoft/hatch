@@ -68,6 +68,78 @@ public sealed partial class MergeTrainTests
     private static IssueCreateRequest Filed(Rig rig) =>
         Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
 
+    // ---- The mirrored chain a Hatch-made pull request's envelope carries ----
+
+    private const string Instance = "https://hatch.example.test";
+
+    private static PullRequestEnvelopeIssue Chained(
+        string key, string title, string? type = null, string? description = null, bool truncated = false) =>
+        new(key, title, type, description, null, null, null, truncated);
+
+    /// <summary>An outside pull request whose body carries an envelope - <paramref name="chainOwnFirst"/> is the pull request's own ticket first, root last, as the wire format is.</summary>
+    private static PullRequestAnswer Enveloped(
+        IReadOnlyList<PullRequestEnvelopeIssue> chainOwnFirst, int version = PullRequestEnvelope.CurrentVersion,
+        string? instance = Instance, PullRequestAnswer? basis = null)
+    {
+        var pr = basis ?? Outsider();
+        var envelope = new PullRequestEnvelope(version, instance, null, chainOwnFirst);
+        return pr with { Body = PullRequestEnvelopeWriter.Replace(pr.Body ?? "", envelope) };
+    }
+
+    /// <summary>
+    /// A board like <see cref="Outside"/>'s, but one where every <c>POST</c> to <see cref="Issues"/> mints the
+    /// next number and wires up that issue's own contribution, move and comments route - since mirroring a
+    /// chain creates more than one issue for a single pull request. <paramref name="foundByOrigin"/> answers
+    /// the find-by-origin read for the origin keys it names, as if an earlier pull request had already
+    /// mirrored them; every other origin key is not found.
+    /// </summary>
+    private static Rig Mirror(
+        PullRequestAnswer pr, int firstNumber = 50, IReadOnlyDictionary<string, IssueCardDto>? foundByOrigin = null)
+    {
+        var rig = new Rig().Board();
+        var wire = rig.H.Wire;
+        var next = firstNumber;
+        var found = foundByOrigin ?? new Dictionary<string, IssueCardDto>();
+
+        wire.Replace("GET", TrunkBuilds, HttpStatusCode.OK, AsJson(new[] { Fixtures.TrunkBuild() }));
+        wire.Replace("GET", Projects, HttpStatusCode.OK, AsJson(new[] { AProject(1, "AER", Fixtures.MergeCanonical) }));
+        wire.Replace("GET", Statuses, HttpStatusCode.OK, AsJson(new[]
+        {
+            Fixtures.Status(1, "Backlog"), Fixtures.Status(3, "In Progress"), Fixtures.Status(4, "In Review"),
+            Fixtures.Status(5, "Done", terminal: true),
+        }));
+
+        wire.Serve("GET", Issues, call =>
+        {
+            if (call.Query.Contains("pullRequestUrl=", StringComparison.Ordinal)) return "[]";
+
+            foreach (var (originKey, card) in found)
+            {
+                if (call.Query.Contains($"originKey={Uri.EscapeDataString(originKey)}", StringComparison.Ordinal))
+                    return AsJson(new[] { card });
+            }
+
+            return "[]";
+        });
+
+        wire.Serve("POST", Issues, call =>
+        {
+            var request = call.Read<IssueCreateRequest>();
+            var key = $"AER-{next++}";
+            var issue = Fixtures.Issue(key, type: request.Type, title: request.Title, parentKey: request.ParentKey, statusId: 1);
+
+            wire.Json("PUT", $"/api/hatch/issues/{key}/contribution", issue);
+            wire.Json("POST", $"/api/hatch/issues/{key}/move", issue with { StatusId = 4 });
+            wire.Json("POST", $"/api/hatch/issues/{key}/comments", new CommentDto(1, "me", "x", "comment", null, null, DateTimeOffset.UnixEpoch));
+
+            return AsJson(issue);
+        });
+
+        rig.H.Runtime.Readout.SetDrives(["AER"]);
+        rig.H.Forge.PullRequestList = new(new Dictionary<string, PullRequestAnswer> { [OutsideUrl] = pr }, null);
+        return rig;
+    }
+
     private static ContributionRequest Recorded(Rig rig) =>
         Assert.Single(rig.H.Wire.To("PUT", Contribution)).Read<ContributionRequest>();
 
@@ -433,5 +505,240 @@ public sealed partial class MergeTrainTests
 
         Assert.Equal(["hatch: could not read pull requests in checkout - gh is not installed"], rig.H.Say.Complained);
         Assert.Empty(rig.H.Wire.To("POST", Issues));
+    }
+
+    // ---- The mirrored chain: an envelope hangs the pull request's issue under copies of its ancestors ----
+
+    [Fact]
+    public async Task A_chain_of_an_epic_a_story_and_a_task_mirrors_as_three_issues_in_review()
+    {
+        var chain = new[]
+        {
+            Chained("HA-3", "The task", "task"),
+            Chained("HA-2", "The story", "story"),
+            Chained("HA-1", "The epic", "epic"),
+        };
+        using var rig = Mirror(Enveloped(chain));
+
+        await rig.RunAsync();
+
+        var order = rig.H.Wire.Calls.Where(c => c.Method != "GET").Select(c => c.Route).ToList();
+        Assert.Equal(
+            [
+                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-50/contribution", "POST /api/hatch/issues/AER-50/move",
+                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-51/contribution", "POST /api/hatch/issues/AER-51/move",
+                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-52/contribution", "POST /api/hatch/issues/AER-52/move",
+            ],
+            order);
+
+        var created = rig.H.Wire.To("POST", Issues).Select(c => c.Read<IssueCreateRequest>()).ToList();
+        Assert.Equal("epic", created[0].Type);
+        Assert.Equal("The epic", created[0].Title);
+        Assert.Null(created[0].ParentKey);
+        Assert.Equal("story", created[1].Type);
+        Assert.Equal("The story", created[1].Title);
+        Assert.Equal("AER-50", created[1].ParentKey);
+        Assert.Equal("task", created[2].Type);
+        Assert.Equal("The task", created[2].Title);
+        Assert.Equal("AER-51", created[2].ParentKey);
+
+        var epicRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        Assert.Null(epicRecord.PullRequestUrl);
+        Assert.Equal(Instance, epicRecord.OriginInstance);
+        Assert.Equal("HA", epicRecord.OriginProjectKey);
+        Assert.Equal("HA-1", epicRecord.OriginKey);
+
+        var storyRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-51/contribution")).Read<ContributionRequest>();
+        Assert.Null(storyRecord.PullRequestUrl);
+        Assert.Equal("HA-2", storyRecord.OriginKey);
+
+        var taskRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-52/contribution")).Read<ContributionRequest>();
+        Assert.Equal(OutsideUrl, taskRecord.PullRequestUrl);
+        Assert.Equal("HA-3", taskRecord.OriginKey);
+        Assert.Equal(1, taskRecord.EnvelopeVersion);
+    }
+
+    [Fact]
+    public async Task A_second_pull_request_under_the_same_story_joins_it_and_creates_nothing_for_the_ancestors()
+    {
+        var found = new Dictionary<string, IssueCardDto>
+        {
+            ["HA-1"] = Fixtures.Card("AER-10", type: "epic"),
+            ["HA-2"] = Fixtures.Card("AER-11", type: "story"),
+        };
+        var chain = new[]
+        {
+            Chained("HA-4", "Second task", "task"),
+            Chained("HA-2", "The story", "story"),
+            Chained("HA-1", "The epic", "epic"),
+        };
+        using var rig = Mirror(Enveloped(chain), foundByOrigin: found);
+
+        await rig.RunAsync();
+
+        var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
+        Assert.Equal("task", created.Type);
+        Assert.Equal("AER-11", created.ParentKey);
+        Assert.Empty(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-10/contribution"));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-10/move"));
+        Assert.Empty(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-11/contribution"));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-11/move"));
+    }
+
+    [Fact]
+    public async Task An_illegal_pairing_folds_to_the_nearest_legal_ancestor_and_the_description_says_so()
+    {
+        var chain = new[]
+        {
+            Chained("HA-4", "Own", "task"),
+            Chained("HA-3", "The bug", "bug"),
+            Chained("HA-2", "The task", "task"),
+            Chained("HA-1", "The epic", "epic"),
+        };
+        using var rig = Mirror(Enveloped(chain));
+
+        await rig.RunAsync();
+
+        var created = rig.H.Wire.To("POST", Issues).Select(c => c.Read<IssueCreateRequest>()).ToList();
+        Assert.Equal("epic", created[0].Type);
+        Assert.Equal("task", created[1].Type);
+        Assert.Equal("AER-50", created[1].ParentKey);
+        Assert.Equal("bug", created[2].Type);
+        Assert.Equal("AER-50", created[2].ParentKey);
+        Assert.Contains("Hangs under AER-50 rather than AER-51", created[2].Description, StringComparison.Ordinal);
+        Assert.Contains("a bug does not hang under a task here", created[2].Description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_malformed_envelope_files_plain_with_the_note()
+    {
+        var pr = Outsider(body: $"{PullRequestEnvelopeMarkers.Start}\nnot json\n{PullRequestEnvelopeMarkers.End}");
+        using var rig = Mirror(pr);
+
+        await rig.RunAsync();
+
+        var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
+        Assert.Equal("task", created.Type);
+        Assert.Null(created.ParentKey);
+
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        Assert.Null(record.OriginInstance);
+        Assert.Null(record.OriginKey);
+        Assert.NotNull(record.EnvelopeNote);
+    }
+
+    [Fact]
+    public async Task Version_zero_records_the_origin_and_parents_nothing()
+    {
+        using var rig = Mirror(Outsider(
+            title: "HA-12 Something", body: "[HA-12](https://other.example/apps/hatch/issues/HA-12)\n\nrest"));
+
+        await rig.RunAsync();
+
+        var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
+        Assert.Equal("task", created.Type);
+        Assert.Null(created.ParentKey);
+
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        Assert.Equal("HA-12", record.OriginKey);
+        Assert.Equal("HA", record.OriginProjectKey);
+        Assert.Equal(0, record.EnvelopeVersion);
+        Assert.Null(record.EnvelopeNote);
+    }
+
+    [Fact]
+    public async Task An_envelope_with_no_instance_is_unreadable_and_files_plain_with_a_note()
+    {
+        var envelope = new PullRequestEnvelope(1, null, null, [Chained("HA-1", "Own")]);
+        var pr = Outsider() with { Body = PullRequestEnvelopeWriter.Replace("", envelope) };
+        using var rig = Mirror(pr);
+
+        await rig.RunAsync();
+
+        var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
+        Assert.Equal("task", created.Type);
+
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        Assert.Null(record.OriginInstance);
+        Assert.NotNull(record.EnvelopeNote);
+    }
+
+    [Fact]
+    public async Task A_key_longer_than_the_board_can_record_is_unreadable_and_files_plain_with_a_note()
+    {
+        var longKey = "HA-" + new string('1', 40);
+        var envelope = new PullRequestEnvelope(1, Instance, null, [Chained(longKey, "Own")]);
+        var pr = Outsider() with { Body = PullRequestEnvelopeWriter.Replace("", envelope) };
+        using var rig = Mirror(pr);
+
+        await rig.RunAsync();
+
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        Assert.Null(record.OriginKey);
+        Assert.NotNull(record.EnvelopeNote);
+    }
+
+    [Fact]
+    public async Task A_reflection_root_mirrors_as_an_epic()
+    {
+        var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The cadence", "reflection") };
+        using var rig = Mirror(Enveloped(chain));
+
+        await rig.RunAsync();
+
+        var created = rig.H.Wire.To("POST", Issues).Select(c => c.Read<IssueCreateRequest>()).ToList();
+        Assert.Equal("epic", created[0].Type);
+    }
+
+    [Fact]
+    public async Task A_type_this_board_does_not_know_mirrors_as_a_task()
+    {
+        var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "Something else") };
+        using var rig = Mirror(Enveloped(chain));
+
+        await rig.RunAsync();
+
+        var created = rig.H.Wire.To("POST", Issues).Select(c => c.Read<IssueCreateRequest>()).ToList();
+        Assert.Equal("task", created[0].Type);
+    }
+
+    [Fact]
+    public async Task An_ancestor_whose_record_fails_is_resumed_without_a_second_create_for_it()
+    {
+        var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The epic", "epic") };
+        using var rig = Mirror(Enveloped(chain));
+        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.InternalServerError, "boom");
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", Issues));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
+        Assert.Single(rig.H.Say.Complained);
+
+        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.OK, AsJson(Fixtures.Issue("AER-50", statusId: 1)));
+        await rig.Later().RunAsync();
+
+        var posts = rig.H.Wire.To("POST", Issues);
+        Assert.Equal(2, posts.Count);
+        var own = posts[1].Read<IssueCreateRequest>();
+        Assert.Equal("AER-50", own.ParentKey);
+        Assert.Equal(2, rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution").Count);
+        Assert.Single(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
+        Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-51/contribution"));
+    }
+
+    [Fact]
+    public async Task A_409_on_an_ancestors_record_is_walked_on()
+    {
+        var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The epic", "epic") };
+        using var rig = Mirror(Enveloped(chain));
+        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.Conflict, "already recorded");
+
+        await rig.RunAsync();
+
+        Assert.Single(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
+        var posts = rig.H.Wire.To("POST", Issues);
+        Assert.Equal(2, posts.Count);
+        Assert.Equal("AER-50", posts[1].Read<IssueCreateRequest>().ParentKey);
     }
 }
