@@ -9500,3 +9500,25 @@ button.hatch-option.chosen {
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
+
+/* The Palette board section above the three layouts: <PaletteBoard> at the fixed
+   seed, one per block. The board paints its own ground; this only sets the two
+   side by side, wrapping rather than shrinking so each holds its own width. */
+.design-pc-boards {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.design-pc-board-block {
+  flex: 1 1 22rem;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.design-pc-board-block-label {
+  color: var(--muted);
+  font-size: var(--t-label);
+}

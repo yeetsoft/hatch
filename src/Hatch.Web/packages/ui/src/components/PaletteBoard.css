@@ -1,0 +1,194 @@
+/* <PaletteBoard>'s own ground and layout: the console ground it is read against, the groups of specimens, the
+   legends, and the contrast table. It paints no scanline - that belongs to the panel the board sits in.
+
+   Every colour here is a console token, or --warn for a row under its floor. The candidate palette's own colours
+   are set inline by the component, since they are the thing being shown and no stylesheet can name them.
+   --warn is the one token that moves with the theme: light --warn is a hair under 4.5:1 on --console, so a row
+   under its floor is carried by its words and its weight, and the colour only backs them.
+
+   Nothing moves: no transition, no animation. */
+
+.hatch-palette-board {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r);
+  background: var(--console);
+  color: var(--on-console);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+}
+
+.hatch-palette-board-group {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.hatch-palette-board-group h3 {
+  margin: 0;
+  font-size: var(--t-micro);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--console-dim);
+}
+
+/* Specimens wrap, so the board holds at the panel's 720px and at phone width. */
+.hatch-palette-board-specimen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-palette-board-sheet,
+.hatch-palette-board-card,
+.hatch-palette-board-fill,
+.hatch-palette-board-on-card,
+.hatch-palette-board-chrome,
+.hatch-palette-board-flow {
+  border-radius: var(--r-in);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.hatch-palette-board-sheet {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+
+.hatch-palette-board-card {
+  display: grid;
+  gap: var(--sp-1);
+  border: 1px solid;
+}
+
+.hatch-palette-board-rule {
+  display: block;
+  height: 1px;
+}
+
+.hatch-palette-board-accent {
+  flex: 1 1 8rem;
+  display: grid;
+  gap: var(--sp-1);
+  align-content: start;
+  min-width: 0;
+}
+
+.hatch-palette-board-fill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.hatch-palette-board-wash-chip {
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-chip);
+}
+
+.hatch-palette-board-backing {
+  border-radius: var(--r-in);
+}
+
+.hatch-palette-board-chrome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.hatch-palette-board-flow {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.hatch-palette-board-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hatch-palette-board-legend li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'chip name'
+    'chip value';
+  column-gap: var(--sp-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.hatch-palette-board-chip {
+  grid-area: chip;
+  display: block;
+  width: var(--sp-5);
+  height: var(--sp-5);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-chip);
+  overflow: hidden;
+}
+
+.hatch-palette-board-chip > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hatch-palette-board-legend code {
+  grid-area: name;
+  font-family: inherit;
+}
+
+.hatch-palette-board-legend li > span:last-child {
+  grid-area: value;
+  color: var(--console-dim);
+  overflow-wrap: anywhere;
+}
+
+.hatch-palette-board-readout {
+  overflow-x: auto;
+}
+
+.hatch-palette-board-readout table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.hatch-palette-board-readout caption {
+  padding-bottom: var(--sp-2);
+  text-align: left;
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--console-dim);
+}
+
+.hatch-palette-board-readout th,
+.hatch-palette-board-readout td {
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
+  border-bottom: 1px solid var(--console-line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.hatch-palette-board-readout th {
+  font-weight: 400;
+  color: var(--console-dim);
+}
+
+.hatch-palette-board-readout tr[data-state='clears'] td {
+  color: var(--console-glow);
+}
+
+.hatch-palette-board-readout tr[data-state='under'] td {
+  color: var(--warn);
+  font-weight: 600;
+}
