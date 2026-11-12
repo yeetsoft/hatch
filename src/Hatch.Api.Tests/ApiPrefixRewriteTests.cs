@@ -1,4 +1,6 @@
 using Hatch.Api.Common;
+using Hatch.Api.Services.Auth;
+using Hatch.Contracts;
 using Hatch.Api.Tests.Hatch;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Rewrite;
@@ -6,6 +8,8 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hatch.Api.Tests;
 
@@ -109,24 +113,33 @@ public class ApiPrefixRewriteTests(RootMountFixture fixture) : IClassFixture<Roo
     }
 
     /// <summary>
-    /// The regression itself: a key sent to the old prefix reaches the wall.
-    /// A key that does not verify is refused at either address - which it
-    /// could only be if the header arrived - where a keyless call reads as the
-    /// local person.
+    /// The regression itself: a key sent to the old prefix arrives with the
+    /// request. <c>/me</c> answers <c>kind: key</c> and the key's own name only
+    /// when it read the bearer header - the same answer at either address -
+    /// where a redirect would have dropped the header and answered the local
+    /// person instead.
     /// </summary>
-    [SkippableTheory]
-    [InlineData("/api/hatch/me")]
-    [InlineData("/api/me")]
-    public async Task AKeySentToEitherPrefixReachesTheWall(string path)
+    [SkippableFact]
+    public async Task AKeySentToTheOldPrefixIsReadAsThatKey()
     {
         fixture.SkipIfUnavailable();
-        var keyless = await fixture.NoRedirectClient.GetAsync(path);
-        using var request = new HttpRequestMessage(HttpMethod.Get, path);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "hatch_ak_not-a-real-key");
-        var keyed = await fixture.NoRedirectClient.SendAsync(request);
+        var name = $"rewrite-{Guid.NewGuid():N}";
+        ApiKeyCreated? created;
+        using (var scope = fixture.Services.CreateScope())
+            created = await scope.ServiceProvider.GetRequiredService<IAuthService>().CreateApiKeyAsync(name, null, default);
+        Assert.NotNull(created);
 
-        Assert.Equal(HttpStatusCode.OK, keyless.StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, keyed.StatusCode);
+        foreach (var path in new[] { "/api/hatch/me", "/api/me" })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", created.Secret);
+            var response = await fixture.NoRedirectClient.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var me = await response.Content.ReadFromJsonAsync<MeDto>();
+            Assert.Equal("key", me?.Kind);
+            Assert.Equal(name, me?.Name);
+        }
     }
 
     [SkippableTheory]
