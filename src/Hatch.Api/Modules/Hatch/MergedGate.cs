@@ -1,7 +1,7 @@
 namespace Hatch.Api.Modules.Hatch;
 
 /// <summary>
-/// The board's refusals of <c>POST /api/hatch/work/{key}/merged</c>, as one
+/// The board's refusals of <c>POST /api/work/{key}/merged</c>, as one
 /// function of board state - so the route and the queue's train note say the
 /// same sentence, and a refusal that repeats can be read off without making
 /// the write.

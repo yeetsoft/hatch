@@ -16,8 +16,10 @@ import {
   slots,
 } from '../lib/cumulativeFlow';
 import type { ColourBy, PinAction } from '../lib/cumulativeFlow';
-import { CHART_UNITS, ticks, todayX, xOf, type Scale } from '../lib/timeline';
+import type { ReportWindow } from '../lib/reportWindow';
+import { CHART_UNITS, todayX, xOf, type Scale } from '../lib/timeline';
 import { CumulativeFlowPin } from './CumulativeFlowPin';
+import { TimeRuler } from './TimeRuler';
 import type { CumulativeFlow, Project, Status } from '../types';
 
 /** The hover card's own footprint, matching its CSS `width` exactly - a fixed
@@ -49,6 +51,7 @@ export function CumulativeFlowChart({
   offsetMinutes,
   now,
   locale,
+  onFrame,
 }: {
   answer: CumulativeFlow;
   statuses: Status[];
@@ -58,6 +61,8 @@ export function CumulativeFlowChart({
   offsetMinutes: number;
   now: Date;
   locale?: string;
+  /** A span dragged across the ruler: the window to move to. */
+  onFrame: (window: ReportWindow) => void;
 }) {
   const keys = cutKeys(answer, by);
   const series = bands(answer, scale, by);
@@ -165,13 +170,7 @@ export function CumulativeFlowChart({
       <div className="hatch-cumulative-flow-body">
         <div className="hatch-timeline-pane">
           <div className="hatch-timeline-track">
-            <div className="hatch-timeline-ruler">
-              {ticks(scale, offsetMinutes, locale).map((tick) => (
-                <span key={tick.x} className="hatch-timeline-tick" style={{ left: `${tick.x}%` }}>
-                  {tick.label}
-                </span>
-              ))}
-            </div>
+            <TimeRuler scale={scale} offsetMinutes={offsetMinutes} locale={locale} onFrame={onFrame} />
 
             <div className="hatch-cumulative-flow-plot-wrap">
               <svg

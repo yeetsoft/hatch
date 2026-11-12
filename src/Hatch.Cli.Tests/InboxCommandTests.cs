@@ -10,7 +10,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class InboxCommandTests : IDisposable
 {
-    private const string Deliver = "/api/hatch/issues/AER-1/messages/deliver";
+    private const string Deliver = "/api/issues/AER-1/messages/deliver";
 
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 3, 0, 0, TimeSpan.Zero);
 

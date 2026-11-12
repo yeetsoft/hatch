@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// duplicated key (docs/hatch.md, "Issue numbering").
 /// </summary>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssuesController(
     HatchContext db,

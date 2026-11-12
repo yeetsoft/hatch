@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="IssueDto"/> carries the field.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueWipLimitController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

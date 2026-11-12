@@ -17,7 +17,7 @@ public static class PlaybookWrites
 {
     /// <summary>What a refused caller is told, and where to go instead.</summary>
     public const string Sentence =
-        "a playbook is changed by a person at the browser - a session proposes the change instead: POST /api/hatch/playbook-proposals";
+        "a playbook is changed by a person at the browser - a session proposes the change instead: POST /api/playbook-proposals";
 
     /// <summary>The refusal for a caller that is not a person at a browser, or null for one that is.</summary>
     public static async Task<ObjectResult?> Refusal(ICallerIdentity caller, HttpRequest request, CancellationToken ct)

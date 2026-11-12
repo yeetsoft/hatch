@@ -368,7 +368,7 @@ describe('QueueModal', () => {
     expect(html).not.toMatch(/<button[^>]*disabled/);
   });
 
-  it('offers every runner GET /api/hatch/runners returned, as options', () => {
+  it('offers every runner GET /api/runners returned, as options', () => {
     const html = render('ready', [], null, [], () => {}, null, [runner({ name: 'Jeff Winger' }), runner({ name: 'Britta Perry' })]);
 
     expect(html).toContain('>Jeff Winger<');

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// The half of <c>GET /api/hatch/reports/flow</c> that reads an event's
+/// The half of <c>GET /api/reports/flow</c> that reads an event's
 /// <c>jsonb</c> payload - the lapse prefilter - which EF's in-memory provider
 /// runs as a plain C# <c>Contains</c> and Postgres refuses outright
 /// (<c>operator does not exist: jsonb ~~ unknown</c>). The rest of the report

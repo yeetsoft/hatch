@@ -28,12 +28,12 @@ public class QuestionsController(HatchContext db) : ControllerBase
     /// outside a terminal column. False for all of them, answers and obviated
     /// ones included, which is what a reader catching up on decisions wants.
     /// </param>
-    [HttpGet("/api/hatch/questions")]
+    [HttpGet("/api/questions")]
     public async Task<ActionResult<IReadOnlyList<QuestionDto>>> GetQuestions([FromQuery] bool open = true, CancellationToken ct = default) =>
         await Questions.ProjectAsync(db, Source(open), ct);
 
     /// <summary>The same list, for one issue.</summary>
-    [HttpGet("/api/hatch/issues/{key}/questions")]
+    [HttpGet("/api/issues/{key}/questions")]
     public async Task<ActionResult<IReadOnlyList<QuestionDto>>> GetIssueQuestions(string key, [FromQuery] bool open = true, CancellationToken ct = default)
     {
         if (!IssueKey.TryParse(key, out var projectKey, out var number)) return NotFound();

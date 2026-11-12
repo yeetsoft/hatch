@@ -18,6 +18,7 @@
     "./menuState": "./src/components/menuState.ts",
     "./dialMath": "./src/components/dialMath.ts",
     "./readoutMath": "./src/components/readoutMath.ts",
+    "./modalFocus": "./src/components/modalFocus.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",
     "./calloutSubject": "./src/components/calloutSubject.ts",
     "./standalone/topbar": "./src/standalone/topbar.ts"

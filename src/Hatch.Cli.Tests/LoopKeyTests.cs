@@ -4,7 +4,7 @@ namespace Hatch.Cli.Tests;
 
 /// <summary>
 /// What a loop needs of its key: that there is one to refuse without, and the
-/// name <c>GET /api/hatch/me</c> reads off it.
+/// name <c>GET /api/me</c> reads off it.
 /// </summary>
 public sealed class LoopKeyTests
 {
@@ -91,10 +91,10 @@ public sealed class LoopKeyTests
     public async Task With_a_key_the_name_is_the_one_me_answers()
     {
         using var wire = new Wire();
-        wire.Json("GET", "/api/hatch/me", new MeDto("key", "Riker", null, true, false, false));
+        wire.Json("GET", "/api/me", new MeDto("key", "Riker", null, true, false, false));
 
         Assert.Equal("Riker", await LoopKey.NameAsync(Keyed(), default, wire));
-        Assert.Single(wire.To("GET", "/api/hatch/me"));
+        Assert.Single(wire.To("GET", "/api/me"));
         Assert.Single(wire.Calls);
     }
 
@@ -102,7 +102,7 @@ public sealed class LoopKeyTests
     public async Task A_caller_that_is_not_a_key_has_no_name_to_run_as()
     {
         using var wire = new Wire();
-        wire.Json("GET", "/api/hatch/me", new MeDto("local", "Somebody", null, true, false, false));
+        wire.Json("GET", "/api/me", new MeDto("local", "Somebody", null, true, false, false));
 
         Assert.Null(await LoopKey.NameAsync(Keyed(), default, wire));
     }
@@ -111,7 +111,7 @@ public sealed class LoopKeyTests
     public async Task A_failed_read_has_no_name_either()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/me", HttpStatusCode.InternalServerError);
+        wire.Reply("GET", "/api/me", HttpStatusCode.InternalServerError);
 
         Assert.Null(await LoopKey.NameAsync(Keyed(), default, wire));
     }

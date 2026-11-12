@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/reports/changelog</c>: closed top-level epics, bucketed by
+/// <c>GET /api/reports/changelog</c>: closed top-level epics, bucketed by
 /// <see cref="ChangelogReport.Fold"/> and decorated with cards, wired against
 /// the in-memory database.
 /// </summary>

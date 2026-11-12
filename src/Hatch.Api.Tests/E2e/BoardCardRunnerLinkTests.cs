@@ -46,16 +46,16 @@ public class BoardCardRunnerLinkTests(ITestOutputHelper output)
             var baseUrl = await harness.StartHostAsync(deadline);
 
             using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("REND", "Render Checks"));
+            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("REND", "Render Checks"));
             var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, "task", "Render check task", null, null, null, null));
+                http, "/api/issues", new(project.Id, "task", "Render check task", null, null, null, null));
 
-            var secret = await PostForSecretAsync(http, "/api/hatch/runners", new CreateRunnerRequest(RunnerName));
+            var secret = await PostForSecretAsync(http, "/api/runners", new CreateRunnerRequest(RunnerName));
             using var runnerHttp = new HttpClient { BaseAddress = new Uri(baseUrl) };
             runnerHttp.DefaultRequestHeaders.Authorization = new("Bearer", secret);
             await PostAsync<RunnerHeartbeatRequest, RunnerInstructionDto>(
-                runnerHttp, "/api/hatch/runners/sessions", new(Kind: "loop", Where: "click-test-host:/code/hatch", Host: "click-test-host"));
-            await PostAsync<ClaimRequest, ClaimTakenDto>(runnerHttp, $"/api/hatch/issues/{issue.Key}/claim", new("click-test-host:/code/hatch"));
+                runnerHttp, "/api/runners/sessions", new(Kind: "loop", Where: "click-test-host:/code/hatch", Host: "click-test-host"));
+            await PostAsync<ClaimRequest, ClaimTakenDto>(runnerHttp, $"/api/issues/{issue.Key}/claim", new("click-test-host:/code/hatch"));
 
             await harness.OpenBoardAsync(deadline, baseUrl);
             await harness.WaitForVisibleAsync(deadline, ".hatch-card-claim[role=link]");

@@ -65,7 +65,7 @@ public class PlaybooksUnreachableRowTests(ITestOutputHelper output)
             var baseUrl = await harness.StartHostAsync(deadline);
 
             using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-            var board = await http.GetFromJsonAsync<BoardDto>("/api/hatch/board", Web);
+            var board = await http.GetFromJsonAsync<BoardDto>("/api/board", Web);
             var columns = board!.Statuses.Where(s => !s.IsDeferred && !s.IsTerminal).OrderBy(s => s.SortOrder).ToList();
             Assert.True(columns.Count >= 3, $"The board has {columns.Count} live columns; the case needs three to draw two moves between them.");
 
@@ -145,13 +145,13 @@ public class PlaybooksUnreachableRowTests(ITestOutputHelper output)
                     CheckedBy: "e2e-runner"),
             ]);
 
-        await context.RouteAsync("**/api/hatch/playbooks", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/playbooks", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(playbooks, Web),
         }));
 
-        await context.RouteAsync("**/api/hatch/playbook-files", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/playbook-files", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(files, Web),

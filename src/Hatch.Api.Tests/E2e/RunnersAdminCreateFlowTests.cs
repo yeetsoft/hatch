@@ -9,9 +9,9 @@ namespace Hatch.Api.Tests.E2e;
 /// <summary>
 /// HA-2159: the one Runners page state a local browser session never draws on
 /// its own - the admin's create flow through the secret panel -
-/// rendered by stubbing <c>/api/hatch/me</c>, the way
+/// rendered by stubbing <c>/api/me</c>, the way
 /// <c>SettingsTokenBudgetTests</c> renders its own admin card. The
-/// <c>POST /api/hatch/runners</c> the dialog makes is real; only the caller's
+/// <c>POST /api/runners</c> the dialog makes is real; only the caller's
 /// own identity is stubbed.
 ///
 /// <para>The dialog's own <c>getAuthMe</c> call, defaulting Owner to the
@@ -74,7 +74,7 @@ public class RunnersAdminCreateFlowTests(ITestOutputHelper output)
 
     private static async Task StubMe(IBrowserContext context)
     {
-        await context.RouteAsync("**/api/hatch/me", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/me", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(new MeDto("person", "Admin", "admin", true, true, false), Web),

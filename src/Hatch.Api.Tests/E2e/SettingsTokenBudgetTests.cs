@@ -11,7 +11,7 @@ namespace Hatch.Api.Tests.E2e;
 /// HA-1704: the Settings page's Runner token budget card, rendered by a real
 /// browser for each of the three callers it treats differently - an admin, a
 /// person with a role who is not an admin, and the wall off - from stubbed
-/// settings and a stubbed <c>/api/hatch/me</c>.
+/// settings and a stubbed <c>/api/me</c>.
 ///
 /// <para>The admin's card is edited and saved, and the figures read back from
 /// the fields; the non-admin's is read-only text; the wall-off's is editable
@@ -163,18 +163,18 @@ public class SettingsTokenBudgetTests(ITestOutputHelper output)
     /// <summary>
     /// The settings read answers <see cref="Seeded"/> and the write answers
     /// <see cref="Saved"/> whatever it was sent, so what the fields show after a
-    /// save is what the page did with the answer; <c>/api/hatch/me</c> answers
+    /// save is what the page did with the answer; <c>/api/me</c> answers
     /// the caller the case is about.
     /// </summary>
     private static async Task StubSettings(IBrowserContext context, MeDto me)
     {
-        await context.RouteAsync("**/api/hatch/settings", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/settings", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(route.Request.Method == "PUT" ? Saved : Seeded, Web),
         }));
 
-        await context.RouteAsync("**/api/hatch/me", route => route.FulfillAsync(new()
+        await context.RouteAsync("**/api/me", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(me, Web),

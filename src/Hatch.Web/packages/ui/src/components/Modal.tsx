@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { panelTakesFocus } from './modalFocus';
 import './Modal.css';
 
 export type ModalWidth = 'default' | 'narrow';
@@ -37,6 +38,9 @@ export interface ModalProps {
  * - **Focus goes into it when it opens and comes back when it closes.** Admin's
  *   version left focus on whatever button opened it, so a keyboard user pressed
  *   Tab and walked the page *behind* the scrim.
+ * - **A child that took focus on open keeps it.** React applies a child's
+ *   `autoFocus` at commit, before this component's effect, so the panel steps
+ *   in only when focus is not already inside it.
  * - **Escape is bound to the document, not to the window**, so it still fires
  *   from inside an input in the panel.
  * - **It can pin its actions.** `footer` puts a row under the body instead of
@@ -66,6 +70,13 @@ export interface ModalProps {
  * at the same z-index and paints on top — and both panels' `keydown`
  * listeners fire on the same event before either close commits, so without
  * this check one Escape would close both.
+ *
+ * The opener is recorded during render, not in the effect: by the time the
+ * effect runs an `autoFocus` child has already taken focus, and the effect
+ * would record that child rather than the button that opened the dialog. The
+ * ref write is safe under StrictMode's double render, since the second pass
+ * finds `wasOpenRef` already set. A server render has no `document` and no effect,
+ * so it records nothing.
  */
 export function Modal({ open, onClose, title, children, footer, width = 'default' }: ModalProps) {
   const titleId = useId();
@@ -74,13 +85,18 @@ export function Modal({ open, onClose, title, children, footer, width = 'default
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  const wasOpenRef = useRef(false);
+  if (open && !wasOpenRef.current && typeof document !== 'undefined') openerRef.current = document.activeElement;
+  wasOpenRef.current = open;
+
   useEffect(() => {
     if (!open) return;
 
-    openerRef.current = document.activeElement;
     // The panel itself, rather than the first control in it: a dialog that
-    // lands on "Delete" is a dialog that deletes on Enter.
-    panelRef.current?.focus();
+    // lands on "Delete" is a dialog that deletes on Enter. A child that took
+    // focus on open (an `autoFocus` field) keeps it.
+    const panel = panelRef.current;
+    if (panel && panelTakesFocus(panel, document.activeElement)) panel.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;

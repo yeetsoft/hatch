@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/overnight</c> and <c>POST /api/hatch/overnight/seen</c>,
+/// <c>GET /api/overnight</c> and <c>POST /api/overnight/seen</c>,
 /// wired against the in-memory database - the two queries and the
 /// <see cref="Rollup"/> call that feed <see cref="Overnight.NewestNight"/>,
 /// which <see cref="OvernightTests"/> already pins on its own, plus the

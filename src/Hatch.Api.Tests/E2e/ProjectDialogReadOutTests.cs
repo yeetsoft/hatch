@@ -15,7 +15,7 @@ namespace Hatch.Api.Tests.E2e;
 ///
 /// <para>A non-owner is <c>project.canAdminister === false</c>, true only for
 /// a caller with an Owner row in <c>ProjectMembers</c>. Filing a project
-/// through <c>POST /api/hatch/projects</c> makes the caller its owner, and the
+/// through <c>POST /api/projects</c> makes the caller its owner, and the
 /// last owner cannot be removed, so the API cannot make one: the rows are
 /// seeded straight into <see cref="HatchContext"/> with no member row at all.
 /// Such a row also draws a Claim button beside Edit; this case ignores it.</para>
@@ -57,7 +57,7 @@ public class ProjectDialogReadOutTests(ITestOutputHelper output)
     private const string ScrollIntoViewScript = "(el) => { el.scrollIntoView({ block: 'center' }); return true; }";
 
     private const string StatusesLoadedScript =
-        "() => performance.getEntriesByType('resource').some(e => e.name.includes('/api/hatch/statuses'))";
+        "() => performance.getEntriesByType('resource').some(e => e.name.includes('/api/statuses'))";
 
     private const string TwoFramesScript =
         "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))";
@@ -298,8 +298,8 @@ public class ProjectDialogReadOutTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        using var response = await http.PostAsJsonAsync("/api/hatch/projects", new ProjectCreateRequest(key, $"Project {key}"));
+        using var response = await http.PostAsJsonAsync("/api/projects", new ProjectCreateRequest(key, $"Project {key}"));
         var text = await response.Content.ReadAsStringAsync();
-        Assert.True(response.IsSuccessStatusCode, $"POST /api/hatch/projects answered {(int)response.StatusCode}: {text}");
+        Assert.True(response.IsSuccessStatusCode, $"POST /api/projects answered {(int)response.StatusCode}: {text}");
     }
 }

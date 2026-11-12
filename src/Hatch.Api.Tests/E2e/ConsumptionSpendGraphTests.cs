@@ -92,7 +92,7 @@ public class ConsumptionSpendGraphTests(ITestOutputHelper output)
             var reads = 0;
             harness.Page!.Request += (_, request) =>
             {
-                if (request.Url.Contains("/api/hatch/reports/consumption")) Interlocked.Increment(ref reads);
+                if (request.Url.Contains("/api/reports/consumption")) Interlocked.Increment(ref reads);
             };
             await harness.ClickAsync(deadline, ".hatch-spend-measure:text-is(\"Notional USD\")");
             await harness.WaitForVisibleAsync(deadline, $"{Caption}:text-matches(\"notional USD\")");
@@ -163,9 +163,9 @@ public class ConsumptionSpendGraphTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("CNS", "CNS"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("CNS", "CNS"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "epic", "An epic that consumed something", null, null, null, null));
+            http, "/api/issues", new(project.Id, "epic", "An epic that consumed something", null, null, null, null));
 
         return issue.Key;
     }
