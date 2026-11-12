@@ -3,7 +3,6 @@ using Hatch.Api.Controllers;
 using Hatch.Api.Ef;
 using Hatch.Api.Models.Auth;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +27,6 @@ public class AuthControllerTests
 
     [Theory]
     [InlineData("/health/ready")]
-    [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
     [InlineData("/auth/r/K3M9P2QT")]
     public async Task VerifyAllowsAnExemptOriginalPath(string uri)
@@ -54,9 +52,9 @@ public class AuthControllerTests
     [Theory]
     // Both spellings of the traversal, because Traefik forwards the raw URI and
     // Kestrel will have collapsed it by the time anything is served.
-    [InlineData("/media/../apps/admin")]
-    [InlineData("/media/%2e%2e/apps/admin")]
-    [InlineData("/media/./../apps/admin")]
+    [InlineData("/auth/../apps/admin")]
+    [InlineData("/auth/%2e%2e/apps/admin")]
+    [InlineData("/auth/./../apps/admin")]
     public async Task VerifyJudgesThePathTheOriginServerWillActuallyServe(string uri)
     {
         var controller = NewController(out var context);
@@ -567,7 +565,6 @@ public class AuthControllerTests
         var gate = new AuthGate(
             auth,
             options,
-            Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
             NullLogger<AuthGate>.Instance);
 
         var httpContext = new DefaultHttpContext();

@@ -169,10 +169,7 @@ ones below; to set one, add it under `environment:` for `api` in a
   - `/api/hatch-revision`, which commit this replica runs. The caller who
     most needs it is a stale tab about to be refused, so it is answered to
     everyone.
-  - `/api/ui-logs`, `/api/vm-console-logs`, `/api/kiosk/provisioning-info`
-    and `/api/sun-events`, which callers with no cookie reach.
-  - The media library's configured `RequestPath`, `/media` unless changed
-    (`Services/Media/MediaLibraryOptions.cs:30`).
+  - `/api/ui-logs`, which callers with no cookie reach.
 
   Every refusal logs the Warning `Auth refused {Reason} for {Host}{Path} from
   {ClientIp}` (`AuthGate.cs:303-305`). Read it with `docker compose logs api`.

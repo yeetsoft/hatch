@@ -1,4 +1,4 @@
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 
 namespace Hatch.Api.Modules.Hatch;
 

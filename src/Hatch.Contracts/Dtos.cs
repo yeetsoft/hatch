@@ -865,8 +865,15 @@ public static class ClaimOutcomes
     /// </summary>
     public const string Abandoned = "abandoned";
 
+    /// <summary>
+    /// The runner could not start the session's agent at all - it printed no
+    /// <c>init</c> - so the ticket was left untouched. Not a drop and not
+    /// work, so <c>LetGo</c> steps over it as over <see cref="Unservable"/>.
+    /// </summary>
+    public const string Unstarted = "unstarted";
+
     public static bool IsValid(string outcome) =>
-        outcome is Dropped or Worked or Preempted or Recused or Unservable or Abandoned;
+        outcome is Dropped or Worked or Preempted or Recused or Unservable or Abandoned or Unstarted;
 }
 
 /// <summary>

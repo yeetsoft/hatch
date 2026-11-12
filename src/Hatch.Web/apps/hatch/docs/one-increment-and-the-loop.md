@@ -349,6 +349,11 @@ the account cannot spawn, or a skip with `k`: none counts toward a stall or
 toward the three failed increments below, and a refused session is released
 `unservable`, with no stall, mark or question. A session stopped by a hard
 limit published what it left.
+
+A session whose agent never started - the CLI ended before its first stream
+event - is released `unstarted`: one comment carrying what the CLI wrote and
+how it exited, no stall, mark or question, and neither counted nor resetting
+the ticket's let-goes. A `--quiet` run is not read this way.
 [Flow, WIP and the battery](flow-wip-and-the-battery) has the numbers.
 
 Losing the lease is the one exception that cuts the other way: a takeover or

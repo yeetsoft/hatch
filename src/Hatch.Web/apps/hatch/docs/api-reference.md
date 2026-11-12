@@ -676,12 +676,13 @@ cap its playbook set - `this claim ran past its 60-minute limit`), `expired` (it
 lapsed), `cleared` (no token on the claim) or `taken` (somebody else's
 token); a take's own `409`s are unchanged, bare sentences. The `DELETE`
 carries an optional `token` (the one the claim was taken with), an optional
-`outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned` - and an optional
+`outcome` - one of `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned`, `unstarted` - and an optional
 `reason` - `quiet` or `run-time` - both read only alongside a token, and `reason`
 written into the event only beside an `outcome`. `abandoned` is what a
 starting loop sends for the claim its dead predecessor left (a crash, a closed
 window): it is skipped over by `letGo`, neither counted nor resetting the
-count. Releasing a claim that
+count. `unstarted` is what a runner sends when the session's agent never started
+(no stream event before the process ended): skipped over the same way. Releasing a claim that
 holds nothing, or releasing twice, is a `204` that writes nothing either
 way.
 

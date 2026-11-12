@@ -1071,6 +1071,19 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   bound to repositories this runner has no checkout of.
 - **`hatch: could not reach <origin> for 90s - ...`** See [when a call
   fails](cli-reference#when-a-call-fails).
+- **The agent never started** (the CLI wrote something and ended before its
+  first stream event):
+  - the increment ends released `unstarted`, which the board's let-go count
+    steps over;
+  - the terminal's tally lists it as
+    `hatch:   unstarted  HA-12  the agent never started - the CLI said "..."`
+    (the quoted last line is left off where the CLI wrote nothing);
+  - the ticket gets one comment, *"An unattended increment could not start its
+    agent on this runner and left HA-12 untouched."*, then what the CLI wrote in
+    a fenced block and *"It exited N."*;
+  - it is **not a stall**: no let-go comment, no mark, no question, and not
+    one of the three failed increments - it neither resets nor advances them.
+    A `--quiet` run is never read this way.
 - **`hatch: {model} is off this runner's list until {clock}`** (or `for the
   rest of this run`):
   - the increment ends released `unservable` - the model is one the account

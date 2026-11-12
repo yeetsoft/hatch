@@ -40,6 +40,31 @@ public static class LetGo
             $"An unattended increment left {key} where it found it and let it go: {why}.",
             sessionId, "There is no session to resume: the run ended before it said what its id was.", ct, kept);
 
+    /// <summary>
+    /// The session's agent never started on this runner - the CLI said
+    /// something and exited before its first stream event - so the ticket was
+    /// not touched at all. Not a let-go, and not a stall: the comment is the
+    /// whole record, and what the CLI wrote is what a person needs to fix the
+    /// runner. No resume line, since there is no session. Best-effort, as
+    /// <see cref="WriteAsync"/>.
+    /// </summary>
+    public static async Task UnstartedAsync(
+        Board board, Terminal say, string key, string kept, int exitCode, CancellationToken ct)
+    {
+        var body = $"An unattended increment could not start its agent on this runner and left {key} untouched.";
+        if (kept.Length > 0) body += "\n\n" + Scrub.Fence(kept);
+        body += $"\n\nIt exited {exitCode}.";
+
+        try
+        {
+            await board.CommentAsync(key, body, ct);
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            say.Complain($"hatch: {key} could not be told its agent never started - {e.Message}");
+        }
+    }
+
     private static async Task WriteAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string opening, string? sessionId,
         string noSession, CancellationToken ct, string? kept = null)
