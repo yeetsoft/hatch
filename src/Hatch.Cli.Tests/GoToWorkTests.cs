@@ -2688,6 +2688,76 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
     }
 
+    // ---- HA-2290: a signed-out agent pauses the loop at once ----
+
+    [Fact]
+    public async Task A_signed_out_run_pauses_the_loop_at_once_with_one_run_not_two()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        UnstartedWires(h);
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "", Stderr: ["Not logged in"]));
+
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromMilliseconds(100),
+            () => h.Say.Said.Any(l => l.Contains("sign in on this machine", StringComparison.Ordinal)),
+            "the sign-in sentence");
+
+        var claimed = Claims(h).Length;
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await Task.Delay(50);
+
+        cts.Cancel();
+        await running;
+
+        // One run is enough to pause - no second one waited for, the way an
+        // unstarted run's streak is.
+        Assert.Equal(1, claimed);
+        Assert.Equal(1, Claims(h).Length);
+        Assert.Equal(1, h.Sessions.Spawned.Count);
+        Assert.Contains(h.Say.Said, l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine");
+        Assert.Contains(h.Say.Said, l => l.Contains("claiming nothing until a check session starts - checking again at ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_signed_out_pause_says_so_in_full_once_then_quietly_while_it_waits()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, PausedAt(start) with
+        {
+            AgentDownKind = Tally.SignedOut,
+            AgentDownLine = "Not logged in",
+            AgentDownUntil = start.AddMinutes(20),
+        });
+
+        var clock = new FakeTimeProvider(start);
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(30),
+            () => h.Say.Said.Any(l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine"),
+            "the in-full sign-in sentence");
+
+        await DriveUntilAsync(clock, TimeSpan.FromMinutes(1),
+            () => h.Say.Said.Any(l => l.StartsWith("hatch: still waiting on", StringComparison.Ordinal)
+                && l.Contains("the agent is signed out", StringComparison.Ordinal)),
+            "the quiet repeat", withinMs: 20_000);
+
+        cts.Cancel();
+        await running;
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine");
+        Assert.Empty(Claims(h));
+    }
+
     // ---- HA-1685: over --max-tokens-per-hour the loop waits, it does not stop ----
 
     [Fact]

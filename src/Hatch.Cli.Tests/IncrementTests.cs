@@ -1264,6 +1264,101 @@ public sealed class IncrementTests
         Assert.EndsWith(" - the CLI said \"boom\"", report.Outcome, StringComparison.Ordinal);
     }
 
+    // ---- HA-2290: a signed-out agent pauses the runner at once ----
+
+    private const string ClaudeSignedOutSentence = "Failed to authenticate: OAuth session expired and could not be refreshed";
+
+    /// <summary>
+    /// An increment whose session started - a result event arrived - and that
+    /// result was an error naming <paramref name="text"/>, on a ticket that
+    /// stays where it was found.
+    /// </summary>
+    private static async Task<(IncrementReport Report, Harness H)> AuthFailedMidStreamAsync(
+        string text, int letGo = 0, FakeAdapter? adapter = null)
+    {
+        var h = new Harness();
+        var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
+
+        h.Sessions.Behaviour = (_, onLine, _) =>
+        {
+            onLine?.Invoke($"FAKE-ERROR-RESULT fake-session-1|{text}");
+            return Task.FromResult(new SessionResult(1, "", Stderr: []));
+        };
+
+        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
+        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+            new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
+        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+
+        var report = await (h.Runtime with { Adapter = adapter ?? new FakeAdapter() }).Increment().RunAsync(
+            Fixtures.Work("AER-1", letGo: letGo), h.Root, "opus", "high", quiet: false, claim, default);
+
+        await claim.ReleaseAsync(report.ReleaseOutcome);
+        return (report, h);
+    }
+
+    [Fact]
+    public async Task A_result_event_naming_a_sign_in_failure_pauses_the_ticket_at_once_with_one_comment()
+    {
+        var (report, h) = await AuthFailedMidStreamAsync(ClaudeSignedOutSentence);
+        using var _ = h;
+
+        Assert.True(report.AuthFailed);
+        Assert.False(report.Unstarted);
+        Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
+        Assert.False(report.LetGo);
+        Assert.Null(report.Flag);
+        Assert.Equal(ClaudeSignedOutSentence, report.AuthFailedLine);
+
+        var body = CommentBody(h);
+        Assert.Contains("signed out", body, StringComparison.Ordinal);
+        Assert.Contains("needs signing in again", body, StringComparison.Ordinal);
+        Assert.Contains(ClaudeSignedOutSentence, body, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+    }
+
+    [Fact]
+    public async Task A_sign_in_failure_on_stderr_with_no_stream_event_pauses_the_ticket_the_same_way()
+    {
+        var (report, h) = await NeverStartedAsync(["Not logged in"], exitCode: 1);
+        using var _ = h;
+
+        Assert.True(report.AuthFailed);
+        Assert.False(report.Unstarted);
+        Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
+        Assert.False(report.LetGo);
+
+        var body = CommentBody(h);
+        Assert.Contains("signed out", body, StringComparison.Ordinal);
+        Assert.Contains("needs signing in again", body, StringComparison.Ordinal);
+        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+    }
+
+    [Fact]
+    public async Task A_usage_limit_wins_over_a_sign_in_failure()
+    {
+        var adapter = new FakeAdapter { Limit = new UsageLimit.Recognised(DateTimeOffset.UtcNow.AddHours(1), true, "session") };
+        var (report, h) = await NeverStartedAsync(["Not logged in"], adapter: adapter);
+        using var _ = h;
+
+        Assert.True(report.UsageLimited);
+        Assert.False(report.AuthFailed);
+    }
+
+    [Fact]
+    public async Task A_model_refusal_wins_over_a_sign_in_failure()
+    {
+        var adapter = new FakeAdapter { ModelRefused = new ModelRefusal.Recognised("Fable 5.1", null) };
+        var (report, h) = await NeverStartedAsync(["Not logged in"], adapter: adapter, model: "fable");
+        using var _ = h;
+
+        Assert.True(report.Unservable);
+        Assert.False(report.AuthFailed);
+    }
+
     private static RunnerOmissionDto Omitting(string runner, string? reason = "needs a GPU") =>
         new(runner, reason, runner, DateTimeOffset.UnixEpoch, null);
 

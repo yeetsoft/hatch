@@ -8011,6 +8011,16 @@ session proves the agent starts before the next pass reads the queue — see
 [what it stops for](#what-it-stops-for). It sits after the usage-limit wait, so
 an account out of usage says so first.
 
+**A runner whose agent is signed out** pauses the same way, but after the very
+first increment that ends on one — an expired OAuth session, a rejected key, a
+prompt to log in again — rather than waiting for a second. The ticket it held
+goes back to the board untouched and with one comment, not a let-go and not a
+stall: the agent needs a person to sign in again, and nothing about the
+increment's own run counts against it. The back-off ladder, the cheap check
+and the terminal's sentence are the same as the not-starting wait; a check
+that starts and answers is read as a sign-in, whatever reason it had paused
+for.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -8105,10 +8115,11 @@ One pass, from the board to the release:
    so the runner keeps what the CLI itself wrote: the last 40 lines of its
    standard error and of its standard output that were not stream events,
    scrubbed of `hatch_ak_…` keys, other API keys and `Bearer` values, and
-   capped at 200 characters a line. The usage-limit and model-refusal
-   recognisers read those lines whatever the exit code, and the let-go and
-   stall comments carry them in a code block, as does the closing tally line
-   for a stall (its last line). A session that streamed keeps nothing extra.
+   capped at 200 characters a line. The usage-limit, model-refusal and
+   sign-in recognisers read those lines whatever the exit code, and the
+   let-go and stall comments carry them in a code block, as does the closing
+   tally line for a stall (its last line). A session that streamed keeps
+   nothing extra.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and

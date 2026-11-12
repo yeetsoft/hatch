@@ -260,6 +260,21 @@ public sealed class FakeAdapter : IAgentAdapter
     public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefused;
 
+    /// <summary>What <see cref="RecogniseAuthFailure"/> was last asked about.</summary>
+    public string? AuthAskedAbout { get; private set; }
+
+    /// <summary>
+    /// Delegates to the real <see cref="AuthFailure.Claude"/> patterns, rather
+    /// than answering a settable property the way <see cref="ModelRefused"/>
+    /// does - so the increment is exercised against the real recogniser, not
+    /// a fake's own say-so.
+    /// </summary>
+    public AuthFailure.Recognised? RecogniseAuthFailure(string? said)
+    {
+        AuthAskedAbout = said;
+        return AuthFailure.Claude(said);
+    }
+
     /// <summary>Where <see cref="OutputLastMessagePath"/> answers from - null unless a test sets it.</summary>
     public string? OutputLastMessageFile { get; set; }
 
@@ -274,6 +289,16 @@ public sealed class FakeAdapter : IAgentAdapter
 internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resumeCommand, IReadOnlyList<UsageWindow> usage) : IAgentStreamReader
 {
     private const string Prefix = "FAKE-RESULT ";
+
+    /// <summary>
+    /// <c>FAKE-ERROR-RESULT sessionId|text</c> - a session that started (a
+    /// result counts as started, same as a real one) and ended with an
+    /// errored result, carrying <c>text</c> as both the result's own text and
+    /// its summary. A second, narrower format from the plain one above
+    /// because most tests want <c>IsError: false</c> and no readers of this
+    /// one care about turns, cost or duration.
+    /// </summary>
+    private const string ErrorPrefix = "FAKE-ERROR-RESULT ";
 
     public long TokensSoFar => 0;
 
@@ -291,6 +316,30 @@ internal sealed class FakeStreamReader(RunFacts facts, Func<string, string> resu
 
     public IEnumerable<string> Read(string raw)
     {
+        if (raw.StartsWith(ErrorPrefix, StringComparison.Ordinal))
+        {
+            var errorFields = raw[ErrorPrefix.Length..].Split('|');
+            var errorSessionId = errorFields[0];
+            var text = errorFields[1];
+
+            facts.SessionId = errorSessionId;
+            facts.ResultText = text;
+            facts.Result = new WorkLogEntryRequest(
+                SessionId: errorSessionId,
+                StartedAt: default,
+                EndedAt: default,
+                DurationMs: 0,
+                Title: null,
+                Summary: text,
+                IsError: true,
+                Turns: 0,
+                CostUsd: null,
+                Models: null);
+
+            yield return $"fake-agent: ended with an error - {text}";
+            yield break;
+        }
+
         if (!raw.StartsWith(Prefix, StringComparison.Ordinal)) yield break;
 
         var fields = raw[Prefix.Length..].Split('|');
