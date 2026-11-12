@@ -157,14 +157,29 @@ export function xOf(scale: Scale, instant: string | number): number {
   return Math.min(CHART_UNITS, Math.max(0, x));
 }
 
-export type TickUnit = 'hour' | 'day' | 'week' | 'month';
+export type TickUnit = 'tenMinutes' | 'halfHour' | 'hour' | 'threeHours' | 'day' | 'week' | 'month';
 
-/** How coarse the ticks are: three hours each up to two days wide, a day each
+const HOUR_MS = 3_600_000;
+
+/** The step of every unit finer than a day, in milliseconds. */
+const STEP_MS: Partial<Record<TickUnit, number>> = {
+  tenMinutes: 10 * MINUTE_MS,
+  halfHour: 30 * MINUTE_MS,
+  hour: HOUR_MS,
+  threeHours: 3 * HOUR_MS,
+};
+
+/** How coarse the ticks are: ten minutes each up to an hour wide, half an hour
+    up to six hours, an hour up to twelve, three hours up to two days, a day each
     up to a month, a week each up to half a year, a month each beyond. */
 export function tickUnit(scale: Scale): TickUnit {
-  const days = (scale.to - scale.from) / DAY_MS;
+  const width = scale.to - scale.from;
+  const days = width / DAY_MS;
 
-  if (days <= 2) return 'hour';
+  if (width <= HOUR_MS) return 'tenMinutes';
+  if (width <= 6 * HOUR_MS) return 'halfHour';
+  if (width <= 12 * HOUR_MS) return 'hour';
+  if (days <= 2) return 'threeHours';
   if (days <= 31) return 'day';
   if (days <= 183) return 'week';
 
@@ -197,8 +212,9 @@ function boundaries(unit: TickUnit, start: number, end: number): number[] {
     return out;
   }
 
-  if (unit === 'hour') {
-    const step = 3 * 3_600_000;
+  const fine = STEP_MS[unit];
+  if (fine) {
+    const step = fine;
     let at = Math.ceil(start / step) * step;
     for (; at <= end; at += step) out.push(at);
 
@@ -221,7 +237,8 @@ function boundaries(unit: TickUnit, start: number, end: number): number[] {
  *
  * Only boundaries inside `[from, to]` are returned, both ends included. Labels:
  *
- * - `hour` - `15:00`, with the short month and day beside it on the first tick
+ * - `tenMinutes`, `halfHour`, `hour` and `threeHours` - `15:00`, with the short month and
+ *   day beside it on the first tick
  *   and on every midnight, so the eye always has a date to hang the times on;
  * - `day` - the day number, with the short month on the first tick and on every
  *   1st, so the eye always has a month to hang the numbers on;
@@ -247,10 +264,10 @@ export function ticks(scale: Scale, offsetMinutes: number, locale?: string): Tic
     const date = new Date(shifted);
     let label: string;
 
-    if (unit === 'hour') {
+    if (STEP_MS[unit]) {
       const time = formatTime(shifted, { hour: '2-digit', minute: '2-digit' });
       label =
-        first || date.getUTCHours() === 0
+        first || (date.getUTCHours() === 0 && date.getUTCMinutes() === 0)
           ? `${format(shifted, { day: 'numeric', month: 'short' })} ${time}`
           : time;
     } else if (unit === 'day') {
