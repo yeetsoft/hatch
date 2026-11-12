@@ -25,7 +25,7 @@ namespace Hatch.Api.Common;
 /// </summary>
 public sealed partial class ApiPrefixRedirectRule : IRule
 {
-    [GeneratedRegex(@"^/api/hatch/+([^/\].*)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^/api/hatch/+([^/\\].*)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex OldPrefix();
 
     public void ApplyRule(RewriteContext context)

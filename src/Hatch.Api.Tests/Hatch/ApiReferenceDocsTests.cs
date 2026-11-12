@@ -1,3 +1,4 @@
+using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using System.Reflection;
@@ -45,13 +46,18 @@ public partial class ApiReferenceDocsTests
         Assert.True(rows.Count > 100, $"The parse of {Page} found {rows.Count} rows, too few to be the whole page.");
     }
 
-    /// <summary>Every <c>METHOD /path</c> the actions expose, the <c>/api</c> prefix stripped.</summary>
+    /// <summary>
+    /// Every <c>METHOD /path</c> the Hatch module's actions expose, the <c>/api</c>
+    /// prefix stripped. Auth, people, ui-logs and hatch-revision answer under
+    /// <c>/api</c> too, but belong to other modules and have their own pages.
+    /// </summary>
     private static HashSet<string> Routes()
     {
         var routes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var controllers = typeof(Program).Assembly.GetTypes()
-            .Where(t => t is { IsAbstract: false, IsPublic: true } && typeof(ControllerBase).IsAssignableFrom(t));
+            .Where(t => t is { IsAbstract: false, IsPublic: true } && typeof(ControllerBase).IsAssignableFrom(t)
+                && t.Namespace == typeof(AssigneeController).Namespace);
 
         foreach (var controller in controllers)
         {
@@ -67,7 +73,6 @@ public partial class ApiReferenceDocsTests
                 {
                     var path = Normalise(Combine(prefix, attribute.Template));
 
-                    // A bare "/api/hatch-revision" shares the text but not the segment.
                     if (path != Prefix && !path.StartsWith(Prefix + "/", StringComparison.OrdinalIgnoreCase)) continue;
 
                     var rest = path[Prefix.Length..];

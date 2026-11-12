@@ -10,7 +10,7 @@ export { attachmentUrl } from './descriptionImage';
 export type Known = ReadonlyMap<string, Attachment | null>;
 
 const ATTACHMENT_ID_PATTERN =
-  /\/api\/hatch\/(?:images|attachments)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+  /\/api\/(?:images|attachments)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
 
 /** Every attachment id linked anywhere in `markdown`, lower-cased and in
     order of first appearance - a regex scan over the rendered path, not a
