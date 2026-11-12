@@ -74,7 +74,6 @@ public class AuthCookieTests
         var gate = new AuthGate(
             auth,
             Microsoft.Extensions.Options.Options.Create(new AuthOptions { Enabled = true, CookieDomain = ".example.com" }),
-            Microsoft.Extensions.Options.Options.Create(new global::Hatch.Api.Services.Media.MediaLibraryOptions { RequestPath = "/media" }),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthGate>.Instance);
 
         var decision = await gate.EvaluateAsync("/apps/family/", "home.example.com", ["stale", "good"], bearer: null, "10.0.0.7", CancellationToken.None);

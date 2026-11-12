@@ -51,9 +51,7 @@ serving, it does the following on every start (`Program.cs`), in this order:
 1. Applies the core schema's migrations.
 2. Applies the module context's migrations (Hatch's own, in the `hatch`
    schema), logging `Migrating module context {Context}`.
-3. Seeds the device mappings.
-4. Applies the Home Assistant connection, if one is configured.
-5. Says what the wall needs: whether an Administrator has to be made, and how.
+3. Says what the wall needs: whether an Administrator has to be made, and how.
 
 Then it exits. `api` is gated on it: `compose.yaml` makes `api` depend on
 `migrate` with `condition: service_completed_successfully`, so `api` starts
@@ -69,9 +67,6 @@ docker compose logs migrate
 These lines mean it worked:
 
 - `Migrating module context …`, once.
-- `No Home Assistant connection is configured; none applied.` or
-  `Applying the Home Assistant connection at …`, whichever is true of your
-  install.
 - One line about the wall, and which one depends on how the wall is set:
   - Wall off: `Auth is disabled, so there is no wall to get through and no Administrator is needed.`
   - Wall on and nobody is an Administrator yet, a warning: `No Administrator exists yet. The next person to sign in with Google becomes the Administrator.`

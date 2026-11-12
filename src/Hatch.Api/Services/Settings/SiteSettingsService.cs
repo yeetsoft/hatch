@@ -3,28 +3,15 @@ using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Microsoft.EntityFrameworkCore;
 
-namespace Hatch.Api.Services.DeviceMapping;
+namespace Hatch.Api.Services.Settings;
 
-/// <summary>Typed snapshot of the SiteSetting table, with the same defaults DashboardOptions used to carry.</summary>
+/// <summary>Typed snapshot of the SiteSetting table.</summary>
 public record SiteSettingsSnapshot(
     string TimeZone,
-    double Latitude,
-    double Longitude,
     string? WeatherEntity,
-    decimal ComfortToleranceF,
-    decimal DefaultComfortLowF,
-    decimal DefaultComfortHighF,
-    string? MediaLibraryBaseUrl,
-    int OverrideBackoffMinutes,
     string? GoogleClientId,
     string? GoogleClientSecret,
     string? GoogleOAuthRedirectUri,
-    int CalendarAgendaDays,
-    string WeatherAlertProvider,
-    string AirQualityProvider,
-    string? WeatherAlertContact,
-    int AirQualityAlertThresholdAqi,
-    int HazardMaxSeverityAgeHours,
     string? AnthropicApiKey,
     string? ClaudeSubscriptionToken,
     string? CodexApiKey,
@@ -46,9 +33,8 @@ public interface ISiteSettingsService
 }
 
 /// <summary>
-/// Replaces IOptions&lt;DashboardOptions&gt; as the read side of the dashboard's
-/// scalar settings (docs/device-architecture.md Phase 5) - SettingsController
-/// is still the write side, CRUDing EfSiteSetting directly.
+/// The read side of the site's scalar settings - SettingsController is the
+/// write side, CRUDing EfSiteSetting directly.
 ///
 /// Cached, and invalidated two ways because neither alone is enough. The
 /// controller calls <see cref="Invalidate"/> on every write, which covers the
@@ -89,39 +75,12 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
 
             var snapshot = new SiteSettingsSnapshot(
                 TimeZone: values.GetValueOrDefault(SiteSettingKeys.TimeZone, "America/New_York"),
-                Latitude: ParseDouble(values, SiteSettingKeys.Latitude, 40.7128),
-                Longitude: ParseDouble(values, SiteSettingKeys.Longitude, -74.0060),
                 WeatherEntity: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.WeatherEntity)),
-                ComfortToleranceF: ParseDecimal(values, SiteSettingKeys.ComfortToleranceF, 2m),
-                DefaultComfortLowF: ParseDecimal(values, SiteSettingKeys.DefaultComfortLowF, 68m),
-                DefaultComfortHighF: ParseDecimal(values, SiteSettingKeys.DefaultComfortHighF, 72m),
-                MediaLibraryBaseUrl: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.MediaLibraryBaseUrl)),
-                // Two hours: long enough that someone who reached for the
-                // thermostat gets the evening they wanted, short enough that a
-                // one-off adjustment doesn't silently disable the controller
-                // for the rest of the week.
-                OverrideBackoffMinutes: ParseInt(values, SiteSettingKeys.OverrideBackoffMinutes, 120),
                 GoogleClientId: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleClientId)),
                 // The read side has to hand back something usable, so the
-                // client secret is deobfuscated here - the same trade
-                // KioskProvisioningController makes with the Wi-Fi password.
+                // client secret is deobfuscated here.
                 GoogleClientSecret: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.GoogleClientSecret)),
                 GoogleOAuthRedirectUri: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.GoogleOAuthRedirectUri)),
-                // Today plus tomorrow: the window the kiosk agenda is sized for.
-                CalendarAgendaDays: ParseInt(values, SiteSettingKeys.CalendarAgendaDays, 2),
-                // Both providers are keyless, so they can default to on: an
-                // operator who never opens the settings page still gets alerts.
-                // HazardProviderResolver decides what an unknown name means -
-                // the snapshot only reports what was typed.
-                WeatherAlertProvider: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.WeatherAlertProvider)) ?? HazardProviders.Nws,
-                AirQualityProvider: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.AirQualityProvider)) ?? HazardProviders.OpenMeteo,
-                WeatherAlertContact: NullIfEmpty(values.GetValueOrDefault(SiteSettingKeys.WeatherAlertContact)),
-                // 101 is the bottom of "Unhealthy for Sensitive Groups". Below
-                // it the air is fine and the banner would be furniture.
-                AirQualityAlertThresholdAqi: ParseInt(values, SiteSettingKeys.AirQualityAlertThresholdAqi, 101),
-                // Two days, matching the agenda half of the kiosk: a warning
-                // that starts Thursday is not what a Tuesday glance is for.
-                HazardMaxSeverityAgeHours: ParseInt(values, SiteSettingKeys.HazardMaxSeverityAgeHours, 48),
                 // Deobfuscated for the same reason as the Google secret above:
                 // the game module has to hand it to an SDK, not display it.
                 AnthropicApiKey: Deobfuscated(values.GetValueOrDefault(SiteSettingKeys.AnthropicApiKey)),
@@ -160,23 +119,8 @@ public class SiteSettingsService(IDbContextFactory<AppDbContext> dbFactory, Time
     /// </summary>
     private static string? Deobfuscated(string? value) => SecretProtector.Unprotect(value);
 
-    private static decimal ParseDecimal(IReadOnlyDictionary<string, string> values, string key, decimal fallback) =>
-        values.TryGetValue(key, out var raw) && decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : fallback;
-
-    private static int ParseInt(IReadOnlyDictionary<string, string> values, string key, int fallback) =>
-        values.TryGetValue(key, out var raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : fallback;
-
     private static long? ParseTokens(IReadOnlyDictionary<string, string> values, string key) =>
         values.TryGetValue(key, out var raw) && long.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1
             ? parsed
             : null;
-
-    private static double ParseDouble(IReadOnlyDictionary<string, string> values, string key, double fallback) =>
-        values.TryGetValue(key, out var raw) && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : fallback;
 }

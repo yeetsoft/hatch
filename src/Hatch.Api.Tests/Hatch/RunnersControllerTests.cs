@@ -6,7 +6,7 @@ using Hatch.Api.Models.Auth;
 using Hatch.Api.Modules.Hatch;
 using Hatch.Api.Services;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
