@@ -33,18 +33,20 @@ Each row opens that runner's detail, and has three lines:
   on) when more than one session is live, and a `revoked` badge when it is.
 - What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
   several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
-  `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Gone - last seen
-  …`, or `Not started`. The full line is its tooltip.
+  `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Agent not
+  starting until … - <what it said>`, `Agent needs signing in - <what it
+  said>`, `Gone - last seen …`, or `Not started`. The full line is its tooltip.
 - Its owner, or `no owner`, then the machine it runs on - or `{n} machines` when
   its live sessions are on several.
 
 **The glyph** is the runner's most urgent state among its live sessions, ranked
-gone, out of usage, throttled, paused or stopping, working, idle, none. Its shape
-carries the state, so colour is never the only signal:
+gone, agent down, out of usage, throttled, paused or stopping, working, idle,
+none. Its shape carries the state, so colour is never the only signal:
 
 | State | Shape |
 | --- | --- |
 | Gone | ring with a diagonal slash, red |
+| Agent down | ring with an exclamation mark, red |
 | Out of usage | solid disc with a bar cut out, red |
 | Throttled | half-filled disc, amber |
 | Paused, stopping | two vertical bars, blue |
@@ -61,11 +63,14 @@ A session is live when it has not ended and has been heard from within the
 runner's silence limit. Silence beats everything else: a runner that has stopped
 answering reads `Gone` whatever it was last asked to do. Silence is ninety
 seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
-zero or less is not believed, and ninety stands. `Over 200k tokens/hour until
-3:40am` ranks below `Gone` and `Out of usage` and above `Paused`. It means the
-loop is waiting out its hourly token cap and resumes by itself when the time
-passes. A runner that holds no hourly cap reads `Over its hourly token cap until
-…`.
+zero or less is not believed, and ninety stands. `Agent not starting until …`
+and `Agent needs signing in` rank below `Gone` and above `Out of usage`: the
+agent itself, not the account, is the problem, and a runner stuck here is left
+out of the board's peer set and is never elected driver until the check passes.
+`Over 200k tokens/hour until 3:40am` ranks below `Gone`, `Agent down` and `Out
+of usage` and above `Paused`. It means the loop is waiting out its hourly token
+cap and resumes by itself when the time passes. A runner that holds no hourly
+cap reads `Over its hourly token cap until …`.
 
 Runners with a live session come first, then the rest, each group by the most
 recent time it was heard from and then by name. Revoked runners sit last, in a
@@ -88,12 +93,20 @@ thing, and either, both or neither can be true of one runner; a session started
 outside a checkout holding Hatch's source never shows **Rebuild**. A failed save
 in this card says so inside it.
 
-**What it may work.** **Tags** (one per line; empty is any runner) and **Under**
+**What it may work.** **Tags** (one per line; empty is any runner), **Under**
 (an epic to stay inside, like `AER-930`; empty is the whole board, and a link
-beside it opens the ticket), saved together with **Save settings**, or undone with
-**Revert**. The loop adopts a changed list on its very next heartbeat, saying so
-once - `hatch: the board set --tag ...`, or `--tag off` for none. Tags are set
-only here, or by a `PATCH` on the runner; the CLI never sends them.
+beside it opens the ticket) and **Refuses models** (one per line, like `fable`
+or `claude-opus-5`; empty refuses none), saved together with **Save settings**,
+or undone with **Revert**. The loop adopts a changed tag list on its very next
+heartbeat, saying so once - `hatch: the board set --tag ...`, or `--tag off`
+for none. A refused model binds sooner: on the board's very next dispatch read,
+not the next heartbeat. An entry that is neither an alias nor a pinned id of
+an agent this runner can run is refused in the card, before anything is sent.
+Tags are set only here, or by a `PATCH` on the runner; the CLI never sends
+them. The refused models are the exception: the CLI has its own door to the
+same route, in the [CLI reference](cli-reference). A runner that refuses
+models says so on its row in the list, as `refuses fable`, and a caller who
+cannot edit reads `Refuses:` beside `Tags:` and `Under:`.
 
 Beneath them, **Declared by its sessions** is read-only: **Projects** is every
 project any live session was started with (every project when none), and whether
@@ -297,12 +310,16 @@ where work waits, a done column is where it ended, and a parked one is a
 siding, so a stretch in any of the three is a gap in the drawing.
 
 The Timeline has three controls. The window - **Earlier**, **Today**, **Later**
-and a **Length**, ninety days to begin with - moves what is charted. **Project**
-(drawn only where there is more than one) and **Creator** narrow it to one
-project or one person's work. And an epic's row can be hidden: a **Hidden**
-list appears beside the controls naming each one, with **Show** beside it and **Show
-all** beneath, and what is hidden is remembered for this browser only, never
-for anybody else looking at the same board.
+and a **Length**, ninety days to begin with - moves what is charted. **Length**
+offers 1 hour, 2 hours, 6 hours, 12 hours and 24 hours before 1 week and up; the
+five short ones end at now, where a week and longer end at the next local
+midnight, and **Today** brings a window under two days long to now rather than
+to that midnight. **Project** (drawn only where there is more than one) and
+**Creator** narrow it to one project or one person's work. And an epic's row
+can be hidden: a **Hidden** list appears beside the controls naming each one,
+with **Show** beside it and **Show all** beneath, and what is hidden is
+remembered for this browser only, never for anybody else looking at the same
+board.
 
 The Changelog opens on the last two weeks, not ninety days, with the same
 window controls - **Earlier**, **Today**, **Later** and a **Length**. **Projects**

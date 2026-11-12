@@ -1704,6 +1704,137 @@ public class AttentionControllerTests : IDisposable
         Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
     }
 
+    // ---- A runner that refuses the model does not offer it ----
+
+    /// <summary>A live runner whose key refuses <paramref name="refused"/>: the key, its config row and its beat, the join a pass reads.</summary>
+    private static async Task RefusingRunnerAsync(
+        Harness h, string name, string[] refused, string[]? models = null, string? agent = null, string[]? has = null)
+    {
+        var key = await h.AddKeyAsync(name);
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = key.Id, RefusedModels = RunnerTagColumn.Write(refused), UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+        await h.RunnerAsync(name, null, models: models, agent: agent, has: has);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ListsAMoveEveryLiveRunnerRefuses_UntilOneDoesNot()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        var issue = await h.FileAsync("task", "needs fable", h.Todo);
+        await RefusingRunnerAsync(h, "refuses-one", ["fable"]);
+        await RefusingRunnerAsync(h, "refuses-two", ["fable", "opus"]);
+
+        // Neither declared a model: the refusal alone is what folds the row.
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(new WaitingOnARunnerDto(Key(issue), "needs fable", "task", "todo", "no live runner offers fable"), row);
+
+        await RefusingRunnerAsync(h, "refuses-another-model", ["opus"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ARunnerThatOffersTheModelButRefusesIt_DoesNotOfferIt()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+        await RefusingRunnerAsync(h, "offers-and-refuses", ["fable"], models: ["sonnet", "fable"], agent: "claude");
+        await h.RunnerAsync("lacks-it", null, models: ["sonnet"], agent: "claude");
+
+        Assert.Equal(
+            "no live runner offers fable",
+            Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!).Missing);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ARunnerThatNeverDeclaredModelsAndRefusesNothing_IsNeverCountedAsLackingThem()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        await h.FileAsync("task", "needs fable", h.Todo);
+        await RefusingRunnerAsync(h, "refuses", ["fable"]);
+        await h.RunnerAsync("unprofiled", null);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_AnAliasRefusalCoversAPinnedIdOfThatAlias()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "claude-opus-5-5");
+        var issue = await h.FileAsync("task", "pinned to opus", h.Todo);
+        await RefusingRunnerAsync(h, "refuses", ["opus"], agent: "claude");
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+        Assert.Equal(Key(issue), row.Key);
+        Assert.Equal("no live runner offers claude-opus-5-5", row.Missing);
+
+        // The wrong agent still keeps the sentence it has always had.
+        await h.RunnerAsync("codex-box", null, models: ["haiku"], agent: "codex");
+        Assert.Equal(
+            "no live runner offers claude-opus-5-5",
+            Assert.Single(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!).Missing);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ASplitFleetWithARefusalListsNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "fable");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs both", h.Todo);
+
+        // One runner has the tool but refuses the model, the other offers the model but lacks the tool.
+        await RefusingRunnerAsync(h, "tool", ["fable"], has: ["pwsh@7"]);
+        await h.RunnerAsync("model", null, models: ["fable"], agent: "claude", has: ["dotnet@10"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_ARefusingRunnerIsNotATaker_AndItsReasonIsTheRefusalSentence()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var issue = await h.FileAsync("task", "one", h.InProgress);
+        await RefusingRunnerAsync(h, "host-a", ["sonnet"]);
+        await h.RunnerAsync("host-b", null);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Equal(["host-b"], row.Takers);
+        Assert.Equal(
+            [new RunnerReasonDto("host-a", ModelFamilies.Refused(Key(issue), "in progress", "sonnet", "host-a"))],
+            row.Reasons);
+    }
+
+    [Fact]
+    public async Task RunnerCapacity_EveryRunnerRefusing_ListsNoTakerAndBothReasons()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var issue = await h.FileAsync("task", "one", h.InProgress);
+        await RefusingRunnerAsync(h, "host-a", ["sonnet"]);
+        await RefusingRunnerAsync(h, "host-b", ["claude-sonnet-5-5", "sonnet"]);
+
+        var row = Assert.Single(Value(await h.Attention.GetAttention(default)).RunnerCapacity!);
+
+        Assert.Empty(row.Takers);
+        Assert.Equal(
+            [
+                new RunnerReasonDto("host-a", ModelFamilies.Refused(Key(issue), "in progress", "sonnet", "host-a")),
+                new RunnerReasonDto("host-b", ModelFamilies.Refused(Key(issue), "in progress", "sonnet", "host-b")),
+            ],
+            row.Reasons);
+    }
+
     // ---- A session-only peer, and a beat beside a session of one key (HA-2036) ----
 
     [Fact]

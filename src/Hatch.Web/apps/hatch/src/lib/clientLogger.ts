@@ -50,7 +50,7 @@ const MAX_QUEUE = 25;
 const sessionId = window.__uiLogSessionId ?? crypto.randomUUID();
 // Unlike sessionId, this survives across page loads/reboots (persisted in
 // localStorage) so the same physical device's lines correlate over time -
-// e.g. telling kiosk tablets apart in OpenSearch even when they share an IP.
+// e.g. telling devices apart in OpenSearch even when they share an IP.
 const deviceId = getOrCreateDeviceId();
 const staticMetadata = collectStaticMetadata();
 

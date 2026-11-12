@@ -124,6 +124,9 @@ public sealed class Tally
     /// <summary>The <see cref="AgentDownKind"/> of a runner whose agent starts no session.</summary>
     public const string NotStarting = "not-starting";
 
+    /// <summary>The <see cref="AgentDownKind"/> of a runner whose agent is signed out of its account.</summary>
+    public const string SignedOut = "signed-out";
+
     /// <summary>How long each pause lasts, by rung: the first wait, then what each failed health check lengthens it to. The last rung repeats.</summary>
     private static readonly TimeSpan[] Ladder = [TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(60)];
 
@@ -139,7 +142,7 @@ public sealed class Tally
     /// </summary>
     public DateTimeOffset? AgentDownUntil { get; private set; }
 
-    /// <summary>Why <see cref="AgentDownUntil"/> is set - <see cref="NotStarting"/>.</summary>
+    /// <summary>Why <see cref="AgentDownUntil"/> is set - <see cref="NotStarting"/> or <see cref="SignedOut"/>.</summary>
     public string? AgentDownKind { get; private set; }
 
     /// <summary>What the CLI last said, scrubbed - the line the terminal repeats while the runner waits.</summary>
@@ -155,19 +158,23 @@ public sealed class Tally
     public long AgentDownSeconds { get; private set; }
 
     /// <summary>Starts or lengthens a pause: the wait of the current rung, then the rung moves on.</summary>
-    private void Pause(DateTimeOffset now, string? line)
+    private void Pause(DateTimeOffset now, string? line, string kind = NotStarting)
     {
         AgentDownUntil = now + Ladder[AgentDownStep];
         AgentDownStep = Math.Min(AgentDownStep + 1, Ladder.Length - 1);
-        AgentDownKind = NotStarting;
+        AgentDownKind = kind;
         AgentDownLine = line;
         AgentDownSince ??= now;
     }
 
-    /// <summary>A health check found the agent still not starting: wait the next rung.</summary>
-    public void AgentStillDown(DateTimeOffset now, string why)
+    /// <summary>
+    /// A health check found the agent still not starting, or still signed out
+    /// - <paramref name="kind"/> says which, and is what the terminal and the
+    /// board read back while the runner waits.
+    /// </summary>
+    public void AgentStillDown(DateTimeOffset now, string why, string kind = NotStarting)
     {
-        Pause(now, why);
+        Pause(now, why, kind);
         _log?.Invoke($"hatch: Tally.AgentStillDown set AgentDownUntil {AgentDownUntil:O}");
     }
 
@@ -495,7 +502,18 @@ public sealed class Tally
         // so an early-return report must not forgive anything. Exit codes play
         // no part: a failed run that started still counts toward Fails and
         // nothing else here.
-        if (report.Spawned && report.Started)
+        //
+        // A signed-out agent is checked first, ahead of Spawned && Started: a
+        // sign-out partway through a stream still has Started true, and
+        // tested after that branch would close the very pause it needs to
+        // open. One run is enough - no second one waited for, the way an
+        // unstarted run's streak is - so this pauses the runner at once.
+        if (report.AuthFailed)
+        {
+            UnstartedStreak = 0;
+            Pause(now, report.AuthFailedLine, SignedOut);
+        }
+        else if (report.Spawned && report.Started)
         {
             UnstartedStreak = 0;
             AgentDownStep = 0;
@@ -536,6 +554,17 @@ public sealed class Tally
         if (report.Unstarted)
         {
             _interrupted.Add($"hatch:   unstarted  {report.Key}  {report.Outcome}");
+            return;
+        }
+
+        // And for an agent signed out of its account: the ticket is clean
+        // and waiting for a runner that can sign in, so this is listed apart
+        // from both the failure streak and the unstarted count - the pause
+        // above already decided what happens next, and neither needs this
+        // run counted a second time.
+        if (report.AuthFailed)
+        {
+            _interrupted.Add($"hatch:   signed-out  {report.Key}  {report.Outcome}");
             return;
         }
 
@@ -1587,7 +1616,9 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 {
                     // Spent the same way again: an order would spawn the agent
                     // the pause is waiting to hear start.
-                    line.Line = $"order spent - agent not starting until {UsageLimit.Clock(downUntil, known: false, runtime.Clock)}";
+                    line.Line = tally.AgentDownKind == Tally.SignedOut
+                        ? $"order spent - agent signed out until {UsageLimit.Clock(downUntil, known: false, runtime.Clock)}"
+                        : $"order spent - agent not starting until {UsageLimit.Clock(downUntil, known: false, runtime.Clock)}";
                     runtime.Say.Line($"hatch: {line.Line}");
                     printed.At = runtime.Clock.GetUtcNow();
                     continue;
@@ -1737,28 +1768,41 @@ public sealed class GoToWorkCommand(Runtime runtime)
             exhausted.Clear();
             tally.ClearExhausted();
 
-            // A runner whose last two runs never started. Behind the usage
-            // wait, so an account out of usage says so first, and before the
-            // throttle: neither claims anything, and this one ends in a
-            // session of its own rather than an instant.
+            // A runner whose last two runs never started, or whose last run
+            // ended on a signed-out agent. Behind the usage wait, so an
+            // account out of usage says so first, and before the throttle:
+            // neither claims anything, and this one ends in a session of its
+            // own rather than an instant.
             if (tally.AgentDownUntil is { } agentUntil)
             {
+                var signedOut = tally.AgentDownKind == Tally.SignedOut;
+
                 if (now < agentUntil)
                 {
                     idle.Clear();
                     busy.Clear();
                     var clock = UsageLimit.Clock(agentUntil, known: false, runtime.Clock);
-                    line.Line = $"agent not starting - checking again at {clock}";
+                    line.Line = signedOut ? $"agent signed out - checking again at {clock}" : $"agent not starting - checking again at {clock}";
                     runtime.Readout.SetIdle(line.Line, now.AddSeconds(interval));
 
                     if (await SayQuietlyAsync(agentDown, now, interval, once,
-                        digest: $"agent-down:{agentUntil:O}",
-                        still: $"hatch: still waiting on {runtime.Adapter.DisplayName} - the agent is not starting, checking again at {clock}",
+                        digest: $"agent-down:{agentUntil:O}:{tally.AgentDownKind}",
+                        still: signedOut
+                            ? $"hatch: still waiting on {runtime.Adapter.DisplayName} - the agent is signed out, checking again at {clock}"
+                            : $"hatch: still waiting on {runtime.Adapter.DisplayName} - the agent is not starting, checking again at {clock}",
                         inFull: () =>
                         {
-                            var said = tally.AgentDownLine is { Length: > 0 } last ? $" - the CLI said \"{last}\"" : "";
-                            runtime.Say.Line($"hatch: the agent is not starting{said}");
-                            runtime.Say.Line($"hatch:   claiming nothing until a check session starts - checking again at {clock}");
+                            if (signedOut)
+                            {
+                                runtime.Say.Line($"hatch: the agent is signed out ({tally.AgentDownLine}) - sign in on this machine");
+                                runtime.Say.Line($"hatch:   claiming nothing until a check session starts - checking again at {clock}");
+                            }
+                            else
+                            {
+                                var said = tally.AgentDownLine is { Length: > 0 } last ? $" - the CLI said \"{last}\"" : "";
+                                runtime.Say.Line($"hatch: the agent is not starting{said}");
+                                runtime.Say.Line($"hatch:   claiming nothing until a check session starts - checking again at {clock}");
+                            }
                             return Task.CompletedTask;
                         }))
                         printed.At = runtime.Clock.GetUtcNow();
@@ -1807,9 +1851,17 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 }
                 else
                 {
-                    tally.AgentStillDown(checkedAt, verdict.Why);
+                    // A check that fails because the agent is still signed out
+                    // reads that from its own result the same way an increment
+                    // does; a check that fails for any other reason is read as
+                    // not-starting, even coming off a signed-out pause - the
+                    // kind a check actually finds always wins.
+                    var kind = runtime.Adapter.RecogniseAuthFailure(verdict.Why) is not null ? Tally.SignedOut : Tally.NotStarting;
+                    tally.AgentStillDown(checkedAt, verdict.Why, kind);
                     var next = UsageLimit.Clock(tally.AgentDownUntil ?? checkedAt, known: false, runtime.Clock);
-                    runtime.Say.Line($"hatch: the agent is still not starting - {verdict.Why}");
+                    runtime.Say.Line(kind == Tally.SignedOut
+                        ? $"hatch: the agent is still signed out - {verdict.Why}"
+                        : $"hatch: the agent is still not starting - {verdict.Why}");
                     runtime.Say.Line($"hatch:   checking again at {next}");
                     printed.At = runtime.Clock.GetUtcNow();
                     continue;
@@ -2034,6 +2086,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SourceSequence: source?.Sequence,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
+                // Null on a once beat - the API has no kind guard on this one,
+                // so a once run (which shares the loop's own row name) sending
+                // false would clear the loop's own pause out from under it.
+                AgentDown: once ? null : tally.AgentDownUntil is not null,
+                AgentDownUntil: once ? null : tally.AgentDownUntil,
+                AgentDownKind: once ? null : tally.AgentDownKind,
+                AgentDownLine: once ? null : tally.AgentDownLine,
                 // Read here rather than carried from the last pass, so the beat
                 // at the top of a pass is never one pass behind the window.
                 ThrottledUntil: tally.ThrottledUntil(runtime.Clock.GetUtcNow()),
@@ -2145,10 +2204,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// folds in is the effective cap and not only the row's own. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
-    /// null bound means cleared. Dangerous and the project list are never read
-    /// back at all - only the tags and the six bounds (<c>--under</c>,
-    /// <c>--max-runs</c>, <c>--max-spend</c>, <c>--max-tokens</c>,
-    /// <c>--max-tokens-per-hour</c>, <c>--until</c>) are.
+    /// null bound means cleared. The refused models follow the tags' own
+    /// rule - a null list leaves <see cref="Board.Refused"/> alone, and a
+    /// changed one is held and said once, the board's own list never
+    /// subtracted from <c>model=</c> since the board folds it. Dangerous and
+    /// the project list are never read back at all - only the tags, the
+    /// refused models and the six bounds (<c>--under</c>, <c>--max-runs</c>,
+    /// <c>--max-spend</c>, <c>--max-tokens</c>, <c>--max-tokens-per-hour</c>,
+    /// <c>--until</c>) are.
     /// </remarks>
     private string? Fold(RunnerInstructionDto told, Tally tally, string? under)
     {
@@ -2170,6 +2233,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
             runtime.Board.Tags = tags;
+        }
+
+        if (told.RefusedModels is { } refused && !refused.SequenceEqual(runtime.Board.Refused))
+        {
+            moved.Add($"refuses {(refused.Count > 0 ? string.Join(",", refused) : "none")}");
+            runtime.Board.Refused = refused;
         }
 
         if (moved.Count > 0) runtime.Say.Line($"hatch: the board set {string.Join(", ", moved)}");

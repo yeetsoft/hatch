@@ -1,7 +1,7 @@
 # Hatch, from source, on one computer. This is the standard way to run this
 # install locally: `docker compose up -d`, then open
-# http://localhost:8080/apps/hatch/. See the board's own Docs, in the nav, at
-# /apps/hatch/docs/ (source in src/Hatch.Web/apps/hatch/docs/) for the full
+# http://localhost:8080/. See the board's own Docs, in the nav, at
+# /docs/ (source in src/Hatch.Web/apps/hatch/docs/) for the full
 # walkthrough.
 #
 # Every ${HATCH_*} below is read from the shell, or from a `.env` beside this

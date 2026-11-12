@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { readFlowBoard } from './flowViz';
+import { describe, expect, it, vi } from 'vitest';
+import { getBoard, getQueue } from '../api/client';
+import { getFlowBoard, readFlowBoard } from './flowViz';
 import type { Board, QueueEntry } from '../types';
+
+vi.mock('../api/client', () => ({ getBoard: vi.fn(), getQueue: vi.fn() }));
 
 const board: Board = { statuses: [], issues: [] };
 const queue: QueueEntry[] = [];
@@ -35,5 +38,16 @@ describe('readFlowBoard', () => {
         () => Promise.resolve(queue),
       ),
     ).rejects.toThrow('the board refused');
+  });
+});
+
+describe('getFlowBoard', () => {
+  it('reads the queue with no runner, with takers', async () => {
+    vi.mocked(getBoard).mockResolvedValueOnce(board);
+    vi.mocked(getQueue).mockResolvedValueOnce(queue);
+
+    await getFlowBoard();
+
+    expect(getQueue).toHaveBeenCalledWith(null, true);
   });
 });

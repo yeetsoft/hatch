@@ -153,7 +153,7 @@ name, that HA-1937 retires.
 ## 401 and 403
 
 Two refusals a program meets at `/api`, and they say different things. Browser
-navigation to `/apps/hatch` on a walled Hatch does not meet either: it is sent
+navigation to the board on a walled Hatch does not meet either: it is sent
 to sign-in instead.
 
 - **A `401` is the wall.** Either a key was sent and refused — never minted,

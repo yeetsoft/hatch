@@ -61,7 +61,7 @@ public class UiLogsControllerTests
         // still carries the device - and not a reason to refuse the batch.
         var (controller, logger) = NewController(GrantFor(person: null));
 
-        controller.Post([Entry("kiosk", "Page loaded")]);
+        controller.Post([Entry("device", "Page loaded")]);
 
         var line = Assert.Single(logger.Lines);
         Assert.Null(line["PersonId"]);

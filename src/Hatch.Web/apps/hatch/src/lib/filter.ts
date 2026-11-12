@@ -33,6 +33,13 @@ export interface CardFilter {
       holds a string and the three states have to be told apart - and "nobody"
       is a choice somebody makes, not the absence of one. */
   assignee: string;
+  /** Who filed the cards to draw, matched against `IssueCard.createdBy` - a
+      person's name or a key's. `null` is everyone, the default and unlit; an
+      array is exactly these names, and `[]` is none, which leaves the board
+      blank on purpose as Types' None does. A list holding every name on offer
+      is `null` (`filedByChange`, `scrubbedFiledBy`), so "all" has one spelling.
+      Not remembered between visits, as the assignee is not. */
+  filedBy: string[] | null;
   /** Which project's cards to draw, by key - `''` is every project's. The
       URL's project wins when the URL names one; absent, it is this browser's
       last choice (`readBoardProject`/`initialProject`, below) - a pasted link
@@ -62,6 +69,7 @@ export const DEFAULT_FILTER: CardFilter = {
   query: '',
   waiting: false,
   assignee: '',
+  filedBy: null,
   project: '',
   contributions: 'all',
 };
@@ -181,6 +189,7 @@ export const isFiltering = (filter: CardFilter): boolean =>
   filter.query.trim() !== '' ||
   filter.waiting ||
   filter.assignee !== '' ||
+  filter.filedBy !== null ||
   filter.project !== '' ||
   filter.contributions !== 'all';
 
@@ -219,6 +228,11 @@ export const matchesAssignee = (card: IssueCard, assignee: string): boolean => {
   return card.assignee !== null && assigneeToken(card.assignee) === assignee;
 };
 
+/** Whether a card was filed by one of the names chosen. `null` matches
+    everything; `[]` matches nothing. */
+export const matchesFiledBy = (card: IssueCard, filedBy: string[] | null): boolean =>
+  filedBy === null || filedBy.includes(card.createdBy);
+
 /** Whether a card is drawn under the contributions choice: *all* draws every
     card, *only* the ones with a record, *hidden* the ones without. */
 export const matchesContributions = (card: IssueCard, choice: ContributionChoice): boolean =>
@@ -227,7 +241,7 @@ export const matchesContributions = (card: IssueCard, choice: ContributionChoice
 /**
  * Whether a card passes the filter. `stories` is each epic's carried stories
  * (`storiesByEpic` from `carried()`, lib/storiesOnEpics.ts); an epic answers
- * the waiting, assignee and query clauses for the group of itself and its
+ * the waiting, assignee, filed-by and query clauses for the group of itself and its
  * stories, each clause decided on its own. The types, project and
  * contributions clauses stay the card's own. With no stories the group is the card alone.
  */
@@ -241,6 +255,7 @@ export const matchesFilter = (
     filter.types.includes(card.type) &&
     (!filter.waiting || group.some((c) => c.openQuestions > 0)) &&
     group.some((c) => matchesAssignee(c, filter.assignee)) &&
+    group.some((c) => matchesFiledBy(c, filter.filedBy)) &&
     (filter.project === '' || card.projectKey === filter.project) &&
     matchesContributions(card, filter.contributions) &&
     group.some((c) => matchesQuery(c, filter.query))
@@ -276,6 +291,44 @@ export function assigneeFacets(cards: IssueCard[]): Assignee[] {
   }
 
   return [...seen.values()].sort(compareAssignees);
+}
+
+/** Who filed the cards on the board, each with how many, sorted
+    case-insensitively. Given the whole board and not the visible cards, for the
+    reason `assigneeFacets` is: choosing a name must not shrink the list it was
+    chosen from. A card with no `createdBy` is skipped - there is no one to
+    choose. */
+export function filedByFacets(cards: IssueCard[]): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const card of cards) {
+    if (card.createdBy) counts.set(card.createdBy, (counts.get(card.createdBy) ?? 0) + 1);
+  }
+
+  return [...counts]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.name.localeCompare(b.name));
+}
+
+/** `filedBy` as the board could actually draw it, as `scrubbedProject` does for
+    a project: names no card carries any more are dropped, and a list that holds
+    every name offered - or that is left with none of its own - reads `null`,
+    since a blank board nobody chose has no cause to show. A deliberate `[]`
+    stays `[]`, unless nothing is offered at all. In `offered`'s order. */
+export function scrubbedFiledBy(filedBy: string[] | null, offered: string[]): string[] | null {
+  if (filedBy === null || offered.length === 0) return null;
+  if (filedBy.length === 0) return filedBy;
+
+  const kept = offered.filter((name) => filedBy.includes(name));
+  return kept.length === 0 || kept.length === offered.length ? null : kept;
+}
+
+/** What the Filed by control says: `All`, `None`, the one name chosen, or
+    `2 of 5`. */
+export function filedBySummary(filedBy: string[] | null, offered: number): string {
+  if (filedBy === null) return 'All';
+  if (filedBy.length === 0) return 'None';
+  if (filedBy.length === 1) return filedBy[0];
+  return `${filedBy.length} of ${offered}`;
 }
 
 /** Flips the waiting switch. */

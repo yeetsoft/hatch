@@ -47,7 +47,7 @@ public class ConsumptionDownloadCsvTests(ITestOutputHelper output)
             var key = await deadline.BoundAsync("filing an epic", () => FileAsync(baseUrl));
             await deadline.BoundAsync("logging a session", () => LogAsync(harness.Services, key));
 
-            await harness.OpenAsync(deadline, baseUrl, "/apps/hatch/reports/consumption");
+            await harness.OpenAsync(deadline, baseUrl, "/reports/consumption");
             await harness.WaitForTopBarAsync(deadline);
             await harness.WaitForVisibleAsync(deadline, "a.hatch-consumption-csv");
             output.WriteLine("screenshot: " + await harness.ScreenshotAsync(deadline, "consumption-before-download"));

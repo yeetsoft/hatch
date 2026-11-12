@@ -16,7 +16,7 @@ namespace Hatch.Api.Common;
 /// Opt-in, deliberately, and that is a statement about scope rather than a
 /// shortcut. Nothing in Hatch was gated on a person until now, and the honest
 /// version of this first step is a constraint placed where a boundary already
-/// exists - the admin app's own verbs - with everything else left exactly as
+/// exists - the operator's own verbs - with everything else left exactly as
 /// open as it was. A deny-by-default filter with an <c>[AllowAnonymous]</c>
 /// escape would have been the same amount of code and a much larger claim: it
 /// would say the household's apps have been audited for what a family member
@@ -24,7 +24,8 @@ namespace Hatch.Api.Common;
 /// audit them against (docs/auth-architecture.md, "A person is an authorization
 /// input").
 ///
-/// The refusal is a <c>403</c>, not the <c>404</c> the admin app's bundle gets.
+/// The refusal is a <c>403</c>, not the <c>404</c> the board's bundle gets when
+/// <see cref="AdminAppMiddleware"/> turns away a caller it is not served to.
 /// The two differ because what they can conceal differs: a bundle that 404s is
 /// indistinguishable from an install that never deployed one, while the
 /// entities behind these verbs are already listed by unguarded GETs, so there

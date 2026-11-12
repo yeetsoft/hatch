@@ -75,7 +75,7 @@ export function ReportWindowControls({
         options={options}
         onChange={(value) => {
           const chosen = WINDOW_PRESETS.find((p) => p.key === parsePreset(value));
-          if (chosen) onMove(resizeWindow(window, chosen.days));
+          if (chosen) onMove(resizeWindow(window, chosen, now));
         }}
       />
     </div>

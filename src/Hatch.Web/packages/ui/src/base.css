@@ -7,13 +7,13 @@
    This is a separate entry point from tokens.css because it is a different
    kind of thing. tokens.css states values and paints nothing; base.css paints,
    and an app that wanted the vocabulary without the opinions could take the
-   first and skip the second. In practice every app takes both.
+   first and skip the second. In practice both apps take both.
 
    It exists at all because of the native controls. <Field> in this package
    renders a label around a control the *app* supplies — a raw <input>, a
    <select>, a <textarea>. If the rules that make those controls look like
-   Hatch's lived in admin's stylesheet, a <Field> specimen in the gallery would
-   render a naked browser input, and a gallery that shows a component looking
+   Hatch's lived in one app's own stylesheet, a <Field> specimen in the
+   gallery would render a naked browser input, and a gallery that shows a component looking
    different from how it looks in the app is worse than no gallery.
 
    What is deliberately NOT here:

@@ -9,7 +9,7 @@ describe('handledRefusal', () => {
     // `leaving` is module state, so each test needs a fresh module.
     vi.resetModules();
     replace.mockReset();
-    vi.stubGlobal('location', { pathname: '/apps/hatch/', search: '', replace });
+    vi.stubGlobal('location', { pathname: '/', search: '', replace });
   });
 
   const load = async () => (await import('./signIn')).handledRefusal;
@@ -49,12 +49,12 @@ describe('handledRefusal', () => {
 describe('signInHref', () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.stubGlobal('location', { pathname: '/apps/hatch/board', search: '?x=1', replace: vi.fn() });
+    vi.stubGlobal('location', { pathname: '/board', search: '?x=1', replace: vi.fn() });
   });
 
   it('carries where the browser is now, so redemption lands back here', async () => {
     const { signInHref } = await import('./signIn');
 
-    expect(signInHref()).toBe('/auth/?r=%2Fapps%2Fhatch%2Fboard%3Fx%3D1');
+    expect(signInHref()).toBe('/auth/?r=%2Fboard%3Fx%3D1');
   });
 });

@@ -1,6 +1,7 @@
 /* The wire shapes, mirroring src/Hatch.Contracts/Dtos.cs.
 
-   Hand-written rather than generated, like every other app here. The one rule
+   Hand-written rather than generated, like every other hand-written mirror in
+   this app (lib/activity.ts, lib/attention.ts, and the rest). The one rule
    that keeps that honest: a field added there and not here is invisible, so
    these records are the place to look first when a value arrives undefined. */
 
@@ -2694,6 +2695,15 @@ export interface Runner {
       expects to reset - a fact it reports about itself, never a person's to
       set. Null on an ordinary runner, or one that has since cleared it. */
   exhaustedUntil: string | null;
+  /** This runner's own agent is not starting, or is signed out, and this is
+      when it expects to be checked again - a fact it reports about itself,
+      never a person's to set. Null on an ordinary runner, or one that has
+      since cleared it. Optional so a stub that predates it still compiles. */
+  agentDownUntil?: string | null;
+  /** One of `'not-starting'` or `'signed-out'`, read only while `agentDownUntil` is set. */
+  agentDownKind?: string | null;
+  /** What the agent said, read only while `agentDownUntil` is set. */
+  agentDownLine?: string | null;
   /** The owner's name, via the server's actor directory - null for a runner belonging to nobody. */
   for: string | null;
   /** Whether this caller's PATCH would succeed - judged the same way the server's own gate judges it. */
@@ -2774,6 +2784,9 @@ export interface RunnerSession {
   exhaustedUntil: string | null;
   throttledUntil: string | null;
   /** Everything below mirrors the rest of RunnerSessionDto; optional so a stub that predates it still compiles. */
+  agentDownUntil?: string | null;
+  agentDownKind?: string | null;
+  agentDownLine?: string | null;
   lineAt?: string | null;
   under?: string | null;
   maxRuns?: number | null;

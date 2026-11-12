@@ -358,6 +358,12 @@ event - is released `unstarted`: one comment carrying what the CLI wrote and
 how it exited, no stall, mark or question, and neither counted nor resetting
 the ticket's let-goes. A `--quiet` run is not read this way.
 
+A session that ended because its agent is signed out - an expired OAuth
+session, a rejected key, a prompt to log in again - is read the same way
+whether or not the agent ever started a stream, and pauses the runner at once
+rather than waiting for a second run: one comment saying the agent needs
+signing in again, carrying the sentence it was recognised from.
+
 Two of these in a row pause the runner. It claims nothing and says on the
 terminal that the agent is not starting and when it will check again: five
 minutes first, then fifteen, then sixty if the check keeps failing. When a wait

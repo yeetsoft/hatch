@@ -15,12 +15,13 @@
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
+import { refusedModelsDraft, refusedModelsRequest } from './runnerModels';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
 import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
 
-/** The seven states a row can be in, in the order they are decided. */
-export type RunnerActivity = 'gone' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
+/** The eight states a row can be in, in the order they are decided. */
+export type RunnerActivity = 'gone' | 'agent-down' | 'exhausted' | 'throttled' | 'paused' | 'stopping' | 'working' | 'idle';
 
 /** The Max spend field's hint, naming the one thing the cap cannot do: bind an
     agent whose session reports no price at all. */
@@ -49,7 +50,7 @@ export const MAX_SPEND_HINT =
  * watching wants to see.
  */
 export function runnerActivity(runner: Runner, now: Date): RunnerActivity {
-  return factsActivity(runner, now);
+  return factsActivity(runnerFacts(runner), now);
 }
 
 /** The facts the rule above is decided from. A runner row and one of its
@@ -63,6 +64,9 @@ interface ActivityFacts {
   state: Runner['state'];
   claimKey: string | null;
   maxTokensPerHour: number | null;
+  agentDownUntil: string | null;
+  agentDownKind: string | null;
+  agentDownLine: string | null;
 }
 
 function factsActivity(facts: ActivityFacts, now: Date): RunnerActivity {
@@ -72,6 +76,7 @@ function factsActivity(facts: ActivityFacts, now: Date): RunnerActivity {
   // answer: it is a row whose age cannot be told, not a row that is fine.
   if (Number.isNaN(beat) || now.getTime() - beat > facts.goneAfterSeconds * 1000) return 'gone';
 
+  if (facts.agentDownUntil !== null && Date.parse(facts.agentDownUntil) > now.getTime()) return 'agent-down';
   if (facts.exhaustedUntil !== null && Date.parse(facts.exhaustedUntil) > now.getTime()) return 'exhausted';
   if (facts.throttledUntil !== null && Date.parse(facts.throttledUntil) > now.getTime()) return 'throttled';
   if (facts.state === 'paused') return 'paused';
@@ -85,6 +90,12 @@ function factsWords(facts: ActivityFacts, now: Date): string {
   switch (activity) {
     case 'gone':
       return 'Gone';
+    case 'agent-down': {
+      const said = facts.agentDownLine ? ` - ${facts.agentDownLine}` : '';
+      if (facts.agentDownKind === 'signed-out') return `Agent needs signing in${said}`;
+      const words = resetClockWords(new Date(facts.agentDownUntil as string), now);
+      return `Agent not starting until ${words ?? 'an unknown time'}${said}`;
+    }
     case 'exhausted': {
       const words = resetClockWords(new Date(facts.exhaustedUntil as string), now);
       return `Out of usage until ${words ?? 'an unknown time'}`;
@@ -113,7 +124,7 @@ function factsParts(facts: ActivityFacts, now: Date): { words: string; claimKey:
 
 /** The same, as the words on the row. */
 export function activityWords(runner: Runner, now: Date): string {
-  return factsWords(runner, now);
+  return factsWords(runnerFacts(runner), now);
 }
 
 /** `activityWords` split into the badge's words and the key beside it, for a
@@ -121,8 +132,24 @@ export function activityWords(runner: Runner, now: Date): string {
     only a working row carries one, the same split `runnerStrip` already
     makes. */
 export function activityParts(runner: Runner, now: Date): { words: string; claimKey: string | null } {
-  return factsParts(runner, now);
+  return factsParts(runnerFacts(runner), now);
 }
+
+/** A runner row's own facts, its optional agent-down fields normalised to
+    null - a stub that predates them reads as a runner that has never been
+    down, rather than `undefined` leaking into the comparisons above. */
+const runnerFacts = (runner: Runner): ActivityFacts => ({
+  lastSeenAt: runner.lastSeenAt,
+  goneAfterSeconds: runner.goneAfterSeconds,
+  exhaustedUntil: runner.exhaustedUntil,
+  throttledUntil: runner.throttledUntil,
+  state: runner.state,
+  claimKey: runner.claimKey,
+  maxTokensPerHour: runner.maxTokensPerHour,
+  agentDownUntil: runner.agentDownUntil ?? null,
+  agentDownKind: runner.agentDownKind ?? null,
+  agentDownLine: runner.agentDownLine ?? null,
+});
 
 /** A session's facts judged against its runner's own horizon and cap: the
     session carries its own heartbeat, claim and exhaustion, the runner carries
@@ -135,6 +162,9 @@ const sessionFacts = (session: RunnerSession, runner: Runner): ActivityFacts => 
   state: session.state,
   claimKey: session.claimKey,
   maxTokensPerHour: runner.maxTokensPerHour,
+  agentDownUntil: session.agentDownUntil ?? null,
+  agentDownKind: session.agentDownKind ?? null,
+  agentDownLine: session.agentDownLine ?? null,
 });
 
 /** What one session is doing, decided by the same rule as its runner's row. */
@@ -196,6 +226,7 @@ export const ACTIVITY_TONES: Record<RunnerActivity, 'muted' | 'success' | 'dange
   paused: 'primary',
   exhausted: 'danger',
   throttled: 'danger',
+  'agent-down': 'danger',
   gone: 'danger',
   idle: 'muted',
 };
@@ -252,7 +283,8 @@ export type RunnerGlyphState = RunnerActivity | 'none';
 /** How the glyph states rank against each other, highest first: gone beats
     everything, and a runner with no session at all outranks nothing. */
 const RANK: Record<RunnerGlyphState, number> = {
-  gone: 6,
+  gone: 7,
+  'agent-down': 6,
   exhausted: 5,
   throttled: 4,
   paused: 3,
@@ -318,6 +350,7 @@ export function rowSecondLine(runner: Runner, now: Date): string {
     case 'stopping':
     case 'throttled':
     case 'exhausted':
+    case 'agent-down':
       return sessionParts(speakingSession(runner, now) as RunnerSession, runner, now).words;
     case 'gone':
       return `Gone - last seen ${agoPhrase(runnerLastSeen(runner), now)}`;
@@ -345,6 +378,9 @@ export function rowThirdLine(runner: Runner, now: Date): string {
 
   if (images.length === 1) parts.push(images[0]);
   else if (images.length > 1) parts.push(`${images.length} images`);
+
+  const refused = refusedLabel(runner);
+  if (refused) parts.push(refused);
 
   return parts.join(' · ');
 }
@@ -489,6 +525,11 @@ export function dangerousLabel(runner: Runner): string | null {
 /** A runner's models, joined - or null where it has reported none. The `models ` prefix is deliberate, the same reason as `projectsLabel`: a bare list beside an agent name reads as nothing. */
 export function modelsLabel(runner: Runner): string | null {
   return runner.models.length === 0 ? null : `models ${runner.models.join(', ')}`;
+}
+
+/** The models a runner refuses, as the row says it - or null where it refuses none. The `refuses ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an owner reads as nothing. */
+export function refusedLabel(runner: Runner): string | null {
+  return runner.refusedModels.length === 0 ? null : `refuses ${runner.refusedModels.join(', ')}`;
 }
 
 /** A runner's dependencies, joined - or null where it has reported none. The `has ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an agent name reads as nothing. Each entry is `id` or `id@version`; the `@` becomes a space, since the version is a fact about the id, not part of it. */
@@ -685,24 +726,42 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
 export interface RunnerSettings {
   tags: string;
   under: string;
+  refusedModels: string;
 }
 
 /** What a row's tags and under look like in the form that edits them. */
 export function settingsOf(runner: Runner): RunnerSettings {
-  return { tags: runnerTagsDraft(runner.tags), under: runner.under ?? '' };
+  return {
+    tags: runnerTagsDraft(runner.tags),
+    under: runner.under ?? '',
+    refusedModels: refusedModelsDraft(runner.refusedModels),
+  };
 }
 
 /** Whether the settings form is holding anything the row is not. */
 export function settingsChanged(draft: RunnerSettings, runner: Runner): boolean {
   return (
-    draft.under.trim() !== (runner.under ?? '').trim() || !sameTags(runnerTagsRequest(draft.tags), runner.tags)
+    draft.under.trim() !== (runner.under ?? '').trim() ||
+    !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
+    !sameTags(refusedModelsRequest(draft.refusedModels), runner.refusedModels)
   );
 }
 
-/** The settings form as a request: exactly `tags` and `under`, so saving it
-    leaves every ceiling alone. */
-export function settingsRequest(draft: RunnerSettings): RunnerPatchRequest {
-  return { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() };
+/** The settings form as two requests' worth: the `PATCH` body, exactly `tags`
+    and `under` so saving leaves every ceiling alone, and the refused models,
+    which have a route of their own - `RunnerPatchRequest` carries no such
+    field, on purpose. */
+export interface RunnerSettingsRequest {
+  patch: RunnerPatchRequest;
+  refusedModels: string[];
+}
+
+/** The settings form as its requests. */
+export function settingsRequest(draft: RunnerSettings): RunnerSettingsRequest {
+  return {
+    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() },
+    refusedModels: refusedModelsRequest(draft.refusedModels),
+  };
 }
 
 /** The bounds card's five ceilings, as `RunnerBounds` holds them. */

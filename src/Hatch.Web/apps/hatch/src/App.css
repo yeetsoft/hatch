@@ -1653,6 +1653,26 @@ button.hatch-card-stories:focus-visible {
   fill: currentColor;
 }
 
+/* On the phone Filed by sits after Assignee, mid-row, and a panel anchored at
+   its trigger would run off the right edge. Anchored to the Filters block it
+   starts at the left gutter and opens under the last row, as wide as the menu's
+   own viewport cap allows. */
+.hatch-board-filters-more {
+  position: relative;
+}
+
+.hatch-board-filters-more .hatch-menu:has(> button[aria-label='Filed by']) {
+  position: static;
+}
+
+/* A heading over each group in the "…" popover. */
+.hatch-more-filters-title {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 @media (max-width: 40rem) {
   .hatch-board-search {
     flex: 1 1 auto;
@@ -1851,6 +1871,19 @@ button.hatch-card-stories:focus-visible {
 
 .hatch-types-name {
   text-transform: capitalize;
+}
+
+.hatch-types-panel[aria-label='Filed by'] {
+  max-width: 22rem;
+}
+
+/* A name somebody gave is shown as it was given, not capitalised like a type. */
+.hatch-types-panel[aria-label='Filed by'] .hatch-types-name {
+  text-transform: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hatch-types-count {
@@ -7651,7 +7684,8 @@ button.hatch-option.chosen {
 }
 
 .hatch-runner-glyph--gone,
-.hatch-runner-glyph--exhausted {
+.hatch-runner-glyph--exhausted,
+.hatch-runner-glyph--agent-down {
   color: var(--danger);
 }
 
@@ -8380,6 +8414,9 @@ button.hatch-option.chosen {
   /* The fixed sizes of the specimen ornaments, for the same reason. */
   --chip: 56px;
   --box: 72px;
+  /* The configurator panel's own fixed width, Modal's 720px - a layout
+     dimension, not a spacing rung. */
+  --pc-panel: 720px;
 
   flex: 1;
   min-height: 0;
@@ -9138,4 +9175,347 @@ button.hatch-option.chosen {
 .design-callout-corner--bottom-right {
   bottom: var(--sp-4);
   right: var(--sp-4);
+}
+
+/* ---------------------------------------------------------------------------
+   Palette configurator: three arrangements of one set of parts, drawn on the
+   console ground - see .hatch-omni, whose scanline recipe this copies. Every
+   colour inside a panel is one the derived Palette object carries, set
+   inline by the page (literalColours.test.ts does not read JSX style
+   objects); only the ground itself - --console and its fixed siblings - is a
+   token, since the ground is the gallery's own chrome and not part of either
+   derived block. */
+
+/* Wraps rather than shrinks: each panel stays the modal's own 720px so it is
+   judged at the size the build will actually use. Narrower than one panel
+   plus its gap, the pair scrolls sideways instead of clipping - the same
+   trade a table makes at phone width, rather than Modal's, since a panel
+   fixed at 720px has no narrow rule of its own to fall back on. */
+.design-pc-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  overflow-x: auto;
+}
+
+.design-pc-panel {
+  flex: none;
+  width: var(--pc-panel);
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  color: var(--on-console);
+  font-family: var(--mono);
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--on-console) 3%, transparent) 2px 3px),
+    var(--console);
+}
+
+.design-pc-head {
+  grid-area: head;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--console-line);
+}
+
+.design-pc-head-title {
+  font-weight: 600;
+}
+
+.design-pc-head-block {
+  color: var(--console-dim);
+  font-size: var(--t-label);
+}
+
+.design-pc-area-board {
+  grid-area: board;
+}
+
+.design-pc-area-contrast {
+  grid-area: contrast;
+  min-width: 0;
+}
+
+.design-pc-area-dial {
+  grid-area: dial;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.design-pc-area-sliders {
+  grid-area: sliders;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.design-pc-area-seed {
+  grid-area: seed;
+}
+
+.design-pc-area-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+}
+
+/* Board across the top, dial and sliders in a row beneath it, seed and
+   actions in a foot. */
+.design-pc-panel--instrument {
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    'head head'
+    'board board'
+    'dial sliders'
+    'contrast contrast'
+    'seed actions';
+}
+
+/* Input on the left - dial above its sliders - output on the right - board
+   above the readout. */
+.design-pc-panel--split {
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  grid-template-areas:
+    'head head'
+    'dial board'
+    'sliders contrast'
+    'seed actions';
+}
+
+/* One column, read straight down: board, dial, readout, sliders, then the
+   foot - the console's own idiom. */
+.design-pc-panel--strip {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    'head'
+    'board'
+    'dial'
+    'contrast'
+    'sliders'
+    'seed'
+    'actions';
+}
+
+.design-pc-panel--strip .design-pc-board-row {
+  justify-content: center;
+}
+
+.design-pc-panel--strip .design-pc-area-actions {
+  border-top: 1px solid var(--console-line);
+  padding-top: var(--sp-3);
+}
+
+.design-pc-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.design-pc-board-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.design-pc-paper {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-in);
+  font-size: var(--t-label);
+}
+
+.design-pc-paper-ink {
+  opacity: 0.8;
+}
+
+.design-pc-accent {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.design-pc-accent-fill {
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--r-in) var(--r-in) 0 0;
+  font-size: var(--t-label);
+  font-weight: 600;
+}
+
+.design-pc-accent-wash {
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: 0 0 var(--r-in) var(--r-in);
+  font-size: var(--t-micro);
+}
+
+.design-pc-chrome {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-in);
+  font-size: var(--t-label);
+}
+
+.design-pc-flow {
+  flex: 1;
+  min-width: 80px;
+  padding: var(--sp-1-5) var(--sp-3);
+  border-radius: var(--r-in);
+  font-size: var(--t-label);
+  text-align: center;
+}
+
+.design-pc-contrast {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-micro);
+}
+
+.design-pc-contrast-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 1px 0;
+  color: var(--console-dim);
+}
+
+.design-pc-contrast-row.is-lit {
+  color: var(--on-console);
+}
+
+.design-pc-contrast-pair {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-pc-contrast-ratio {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.design-pc-contrast-floor {
+  flex: none;
+}
+
+.design-pc-contrast-verdict {
+  flex: none;
+  min-width: 4ch;
+}
+
+.design-pc-dial {
+  width: 160px;
+  height: 160px;
+}
+
+.design-pc-dial-ring {
+  fill: none;
+  stroke: var(--console-line);
+  stroke-width: 1;
+}
+
+.design-pc-dial-mark {
+  stroke: var(--console);
+  stroke-width: 1;
+}
+
+.design-pc-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.design-pc-slider-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--t-micro);
+  color: var(--console-dim);
+}
+
+.design-pc-slider-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.design-pc-slider-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 20px;
+}
+
+.design-pc-slider-band {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--console-glow) 35%, transparent);
+  pointer-events: none;
+}
+
+.design-pc-slider-input {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--console-glow);
+}
+
+.design-pc-seed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.design-pc-seed-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-1-5) var(--sp-2);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--on-console);
+  font: inherit;
+  font-size: var(--t-label);
+}
+
+.design-pc-seed-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-ctl);
+  background: none;
+  color: var(--on-console);
+  cursor: default;
+}
+
+.design-pc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
 }

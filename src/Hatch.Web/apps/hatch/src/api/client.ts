@@ -326,6 +326,8 @@ export const getDependencyFiles = () => fetchJson<DependencyFilesDto>('/api/hatc
 export const getRunners = () => fetchJson<Runner[]>('/api/hatch/runners?live=true');
 export const patchRunner = (name: string, request: RunnerPatchRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}`, { method: 'PATCH', ...asJson(request) });
+export const putRunnerRefusedModels = (name: string, models: string[]) =>
+  fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/refused-models`, { method: 'PUT', ...asJson({ models }) });
 export const orderRunner = (name: string, request: RunnerOrderRequest) =>
   fetchJson<Runner>(`/api/hatch/runners/${seg(name)}/order`, { method: 'POST', ...asJson(request) });
 export const withdrawOrder = (name: string) =>
