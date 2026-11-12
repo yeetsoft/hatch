@@ -5163,22 +5163,28 @@ input.hatch-inline-title-input {
    `ExpediteControl`'s button drew at rest, now opening a band instead of
    cycling - see PriorityControl. Each level owns one class and one face
    (.expedited, .emergency, .low, .economy, .paused; normal takes the bare
-   rule), so adding a level is a rule here and nothing to branch on. */
+   rule), so adding a level is a rule here and nothing to branch on. The size
+   and the rest paint are shared with .hatch-preapproval-pill and kept in step
+   with it; the bare rule is the filled neutral, so the default reads as a
+   state that was chosen and ranks above low, economy and paused. */
 .hatch-priority-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--line-strong);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--ink) 40%, var(--card));
   border-radius: var(--r-pill);
-  background: none;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 14%, var(--card));
+  color: var(--ink);
   font: inherit;
-  font-size: var(--t-label);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.hatch-priority-pill:hover:not(:disabled) {
+.hatch-priority-pill:hover:not(:disabled, .expedited, .emergency, .low, .economy, .paused) {
   border-color: var(--primary);
   color: var(--primary);
 }
@@ -5250,27 +5256,25 @@ input.hatch-inline-title-input {
    why its ticket was reached first - see IssueExpediteController. */
 .hatch-priority-said {
   color: var(--muted);
-  font-size: var(--t-label);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .hatch-priority-said.expedited {
   color: var(--primary-ink);
-  font-weight: 600;
 }
 
 .hatch-priority-said.emergency {
   color: var(--danger-ink);
-  font-weight: 600;
 }
 
 .hatch-priority-said.low {
   color: color-mix(in srgb, var(--muted) 60%, var(--ink));
-  font-weight: 600;
 }
 
 .hatch-priority-said.economy {
   color: var(--muted);
-  font-weight: 600;
 }
 
 .hatch-priority-said.paused {
@@ -5539,22 +5543,27 @@ input.hatch-inline-title-input {
    PreApprovalControl. Express takes --success, the hue `.hatch-express`
    already spends; preapproved goes one shade stronger, the same "second
    intensity of one hue" idiom `.hatch-priority-pill.low`/`.economy` use for
-   --muted, since there is no fourth accent token to spend on a third level. */
+   --muted, since there is no fourth accent token to spend on a third level.
+   The size and the rest paint are shared with .hatch-priority-pill and kept in
+   step with it; the bare rule (none) is the filled neutral. */
 .hatch-preapproval-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--line-strong);
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--ink) 40%, var(--card));
   border-radius: var(--r-pill);
-  background: none;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 14%, var(--card));
+  color: var(--ink);
   font: inherit;
-  font-size: var(--t-label);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.hatch-preapproval-pill:hover:not(:disabled) {
+.hatch-preapproval-pill:hover:not(:disabled, .express, .preapproved) {
   border-color: var(--success);
   color: var(--success);
 }
@@ -5607,17 +5616,17 @@ input.hatch-inline-title-input {
    why its ticket was reached first - see IssuePreApprovalController. */
 .hatch-preapproval-said {
   color: var(--muted);
-  font-size: var(--t-label);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .hatch-preapproval-said.express {
   color: var(--success-ink);
-  font-weight: 600;
 }
 
 .hatch-preapproval-said.preapproved {
   color: color-mix(in srgb, var(--success) 70%, var(--ink));
-  font-weight: 600;
 }
 
 /* The band under the pill - `.hatch-priority-band` (App.css:3450-3493),
