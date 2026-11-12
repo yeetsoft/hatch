@@ -2798,6 +2798,21 @@ button.hatch-chip {
   padding: 0;
 }
 
+/* Priority and Pre-approval sit in the same row, and keep their own box and
+   level colour when opened. Without an order their bands, being later siblings
+   of the pill that opened them, would draw between it and the next pill rather
+   than under the row, as the status band does. */
+.hatch-status-bar .hatch-priority-band,
+.hatch-status-bar .hatch-preapproval-band {
+  order: 1;
+}
+
+/* A key-holder's words, at the size of the pills they stand in for. */
+.hatch-status-bar .hatch-priority-said,
+.hatch-status-bar .hatch-preapproval-said {
+  font-size: var(--t-subhead);
+}
+
 .hatch-status-bar-label {
   font-size: var(--t-label);
   font-weight: 700;
@@ -5270,6 +5285,18 @@ input.hatch-inline-title-input {
   transform: rotate(180deg);
 }
 
+/* The issue page's status bar, where it sits beside `.hatch-status-pill-lg`
+   and so is drawn at its size. */
+.hatch-priority-pill-lg {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-subhead);
+}
+
+.hatch-priority-pill-lg .hatch-priority-pill-caret {
+  width: 16px;
+  height: 16px;
+}
+
 /* What a reader who may not press it sees instead: the state as a word. An
    agent holding this page is refused the write and is still entitled to know
    why its ticket was reached first - see IssueExpediteController. */
@@ -5586,6 +5613,17 @@ input.hatch-inline-title-input {
 
 .hatch-preapproval-pill-press[aria-expanded='true'] .hatch-preapproval-pill-caret {
   transform: rotate(180deg);
+}
+
+/* `.hatch-priority-pill-lg`, renamed. */
+.hatch-preapproval-pill-lg {
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--t-subhead);
+}
+
+.hatch-preapproval-pill-lg .hatch-preapproval-pill-caret {
+  width: 16px;
+  height: 16px;
 }
 
 /* What a reader who may not press it sees instead: the state as a word. An

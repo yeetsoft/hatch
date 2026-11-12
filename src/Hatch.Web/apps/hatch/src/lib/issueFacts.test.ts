@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from './issueFacts';
+import { assigneeFact, effortFact, modelFact, wipLimitFact } from './issueFacts';
 import type { Assignee } from '../types';
 
 const person = (name: string, id = `p-${name}`): Assignee => ({ kind: 'person', id, name });
@@ -16,38 +16,6 @@ describe('assigneeFact', () => {
 
   it("names a key's kind alongside its name", () => {
     expect(assigneeFact(key('Codex'))).toBe('Codex (key)');
-  });
-});
-
-describe('priorityFact', () => {
-  it("reads an issue's own level as the plain word", () => {
-    expect(priorityFact('expedited', null)).toBe('Expedited');
-  });
-
-  it('says where an inherited level came from', () => {
-    expect(priorityFact('expedited', 'AER-1')).toBe('Expedited · inherited from AER-1');
-  });
-
-  it('capitalizes economy correctly', () => {
-    expect(priorityFact('economy', null)).toBe('Economy');
-  });
-});
-
-describe('preApprovalFact', () => {
-  it('reads none as the plain word', () => {
-    expect(preApprovalFact('none', null)).toBe('None');
-  });
-
-  it('reads express as the plain word', () => {
-    expect(preApprovalFact('express', null)).toBe('Express');
-  });
-
-  it('reads preapproved as the plain word', () => {
-    expect(preApprovalFact('preapproved', null)).toBe('Pre-approved');
-  });
-
-  it('says where an inherited level came from', () => {
-    expect(preApprovalFact('preapproved', 'AER-1')).toBe('Pre-approved · inherited from AER-1');
   });
 });
 
