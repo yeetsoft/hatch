@@ -187,7 +187,13 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             with { OwnerPersonId = runner.OwnerPersonId };
 
         if (runner.Config is { } tagged)
-            dto = dto with { Tags = RunnerTagColumn.Read(tagged.Tags).Order(StringComparer.Ordinal).ToArray() };
+        {
+            dto = dto with
+            {
+                Tags = RunnerTagColumn.Read(tagged.Tags).Order(StringComparer.Ordinal).ToArray(),
+                RefusedModels = RunnerTagColumn.Read(tagged.RefusedModels).Order(StringComparer.Ordinal).ToArray(),
+            };
+        }
 
         if (runner.Key is { } key)
         {

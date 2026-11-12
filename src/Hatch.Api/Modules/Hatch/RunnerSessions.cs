@@ -210,6 +210,7 @@ public sealed class RunnerSessions(Runners runners)
     {
         var bounds = Effective(ceiling, session, siteMaxTokens, siteMaxTokensPerHour);
         var tags = ceiling is not null ? RunnerTagColumn.Read(ceiling.Tags).Order(StringComparer.Ordinal).ToArray() : [];
+        var refusedModels = ceiling is not null ? RunnerTagColumn.Read(ceiling.RefusedModels).Order(StringComparer.Ordinal).ToArray() : [];
 
         return new RunnerInstructionDto(
             session.State, bounds.Under, bounds.MaxRuns.Value, bounds.MaxSpend.Value, bounds.UntilAt.Value, forName,
@@ -219,7 +220,8 @@ public sealed class RunnerSessions(Runners runners)
             MaxTokens: bounds.MaxTokens.Value,
             MaxTokensPerHour: bounds.MaxTokensPerHour.Value,
             RunnerName: runnerName,
-            SessionId: session.Id);
+            SessionId: session.Id,
+            RefusedModels: refusedModels);
     }
 
     /// <summary>

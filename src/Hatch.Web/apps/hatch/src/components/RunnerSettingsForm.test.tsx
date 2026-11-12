@@ -28,6 +28,7 @@ const runner = (over: Partial<Runner> = {}): Runner => ({
   projects: [],
   refusesDangerous: false,
   models: [],
+  refusedModels: [],
   has: [],
   drives: [],
   clones: null,

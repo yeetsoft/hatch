@@ -3211,6 +3211,10 @@ public class RunnersControllerTests
         Assert.NotNull(patch);
         Assert.False(patch.AcceptKey);
 
+        // A refusal only narrows what a runner is told to run, never raises a
+        // bound - the one write on this controller a key may take on itself.
+        Assert.True(Guard(nameof(RunnersController.PutRefusedModels))!.AcceptKey);
+
         // And no class-level attribute for the PATCH to inherit a key acceptance from.
         Assert.Empty(typeof(RunnersController).GetCustomAttributes(typeof(RequireRoleAttribute), inherit: false));
     }
@@ -3779,6 +3783,299 @@ public class RunnersControllerTests
         Assert.IsType<NotFoundResult>(refusal.Result);
         Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
     }
+
+    // ---- Refused models ----
+
+    [Fact]
+    public async Task PutRefused_ByTheOwnerOfAKey_WritesTheConfigRow_AndReadsBackSortedOrdinally()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var dto = Value(await h.PutRefusedAsync(Runner, ["sonnet", "haiku"]));
+
+        Assert.Equal(["haiku", "sonnet"], dto.RefusedModels);
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        // Stored in the order given - only the answer is sorted.
+        Assert.Equal(["sonnet", "haiku"], RunnerTagColumn.Read(config.RefusedModels));
+    }
+
+    [Fact]
+    public async Task PutRefused_ByAnotherPerson_OfAKeysRunner_Is403AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["haiku"]);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("Alice", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_ByAnAdmin_OfAnotherPersonsKey_IsAllowed()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+        var alice = h.Actors.AddPerson("Alice");
+        await h.AddKeyAsync(Runner, alice.Id);
+
+        var dto = Value(await h.PutRefusedAsync(Runner, ["haiku"]));
+
+        Assert.Equal(["haiku"], dto.RefusedModels);
+    }
+
+    [Fact]
+    public async Task PutRefused_ByItsOwnKey_IsAllowed()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var key = await h.AddKeyAsync(h.Caller.Key!.Name);
+        h.Caller.Key = key;
+
+        var dto = Value(await h.PutRefusedAsync(key.Name, ["haiku"]));
+
+        Assert.Equal(["haiku"], dto.RefusedModels);
+    }
+
+    [Fact]
+    public async Task PutRefused_ByAnotherKey_Is403AndNamesWhoseRunnerItIs()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var bob = h.Actors.AddPerson("Bob");
+        await h.AddKeyAsync(Runner, bob.Id);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["haiku"]);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, ((ObjectResult)refusal.Result!).StatusCode);
+        Assert.Contains("Bob", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Contains("a key may write only its own", Reason(refusal.Result), StringComparison.Ordinal);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_OfARevokedKeysRunner_IsAConflict()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var alice = h.Actors.AddPerson("Alice");
+        var key = await h.AddKeyAsync(Runner, alice.Id);
+        await h.RevokeKeyAsync(key.Id);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["haiku"]);
+
+        Assert.IsType<ConflictObjectResult>(refusal.Result);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_OfANameNoKeyAnswersTo_Is404()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.Admin);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["haiku"]);
+
+        Assert.IsType<NotFoundResult>(refusal.Result);
+    }
+
+    [Fact]
+    public async Task PutRefused_WithAWallOff_IsAllowedByAnybody()
+    {
+        var h = await NewAsync();
+        await h.AddKeyAsync(Runner);
+
+        var dto = Value(await h.PutRefusedAsync(Runner, ["haiku"]));
+
+        Assert.Equal(["haiku"], dto.RefusedModels);
+    }
+
+    [Fact]
+    public async Task PutRefused_WithAbsentModels_Is400AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var refusal = await h.Runners.PutRefusedModels(Runner, new RunnerRefusedModelsWriteRequest(null), default);
+
+        Assert.Equal("models is required - send [] to clear", Reason(refusal.Result));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_WithNoBodyAtAll_Is400()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var refusal = await h.Runners.PutRefusedModels(Runner, null, default);
+
+        Assert.Equal("models is required - send [] to clear", Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task PutRefused_WithABlankEntry_Is400AndWritesNothing()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["haiku", " "]);
+
+        Assert.Equal("a model cannot be blank", Reason(refusal.Result));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_WithAnUnknownModel_Is400WithTheRulesSentence()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var refusal = await h.PutRefusedAsync(Runner, ["nonsense"]);
+
+        Assert.Equal(ModelFamilies.Default.Refusal("nonsense"), Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task PutRefused_WithAPinnedIdOfAnotherAgentThanTheBeats_Is400()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Agent: "claude"));
+
+        var refusal = await h.PutRefusedAsync(Runner, ["gpt-6-luna"]);
+
+        var owner = ModelFamilies.Default.AgentOf("gpt-6-luna");
+        Assert.Equal($"\"gpt-6-luna\" is {Article(owner!)} {owner} model - this runner's agent is claude", Reason(refusal.Result));
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PutRefused_WithNoReportedAgent_SkipsTheFamilyCrossCheck()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var dto = Value(await h.PutRefusedAsync(Runner, ["gpt-6-luna"]));
+
+        Assert.Equal(["gpt-6-luna"], dto.RefusedModels);
+    }
+
+    [Fact]
+    public async Task PutRefused_FallsBackToTheFirstLiveSessionsAgent_WhenTheBeatHasNone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        var key = await h.AddKeyAsync(Runner, h.PersonId);
+        var session = await h.SeedSessionAsync(key.Id, EfHatchRunner.LoopKind, where: "host:/one");
+        session.Agent = "claude";
+        await h.Db.SaveChangesAsync();
+
+        var refusal = await h.PutRefusedAsync(Runner, ["gpt-6-luna"]);
+
+        var owner = ModelFamilies.Default.AgentOf("gpt-6-luna");
+        Assert.Equal($"\"gpt-6-luna\" is {Article(owner!)} {owner} model - this runner's agent is claude", Reason(refusal.Result));
+    }
+
+    [Fact]
+    public async Task PutRefused_ResendingTheSameListInTheSameOrder_WritesNothingAndLeavesUpdatedAtAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+        await h.PutRefusedAsync(Runner, ["haiku", "sonnet"]);
+        var before = (await h.Db.RunnerConfigs.AsNoTracking().SingleAsync()).UpdatedAt;
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        var dto = Value(await h.PutRefusedAsync(Runner, ["haiku", "sonnet"]));
+
+        Assert.Equal(["haiku", "sonnet"], dto.RefusedModels);
+        Assert.Equal(before, (await h.Db.RunnerConfigs.AsNoTracking().SingleAsync()).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task PutRefused_WithADifferentOrder_IsNotANoOp_AndUpdatesUpdatedAt()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+        await h.PutRefusedAsync(Runner, ["haiku", "sonnet"]);
+        var before = (await h.Db.RunnerConfigs.AsNoTracking().SingleAsync()).UpdatedAt;
+
+        h.Time.Advance(TimeSpan.FromMinutes(5));
+        await h.PutRefusedAsync(Runner, ["sonnet", "haiku"]);
+
+        Assert.NotEqual(before, (await h.Db.RunnerConfigs.AsNoTracking().SingleAsync()).UpdatedAt);
+    }
+
+    [Fact]
+    public async Task PutRefused_WithNoHeldListAndNoneSent_CreatesNoRow()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+
+        var dto = Value(await h.PutRefusedAsync(Runner, []));
+
+        Assert.Empty(dto.RefusedModels);
+        Assert.Empty(await h.Db.RunnerConfigs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Patch_LeavesRefusedModelsAlone()
+    {
+        var h = await NewAsync(wall: true, role: PersonRole.User);
+        await h.AddKeyAsync(Runner, h.PersonId);
+        await h.PutRefusedAsync(Runner, ["haiku"]);
+
+        await h.PatchAsync(Runner, new RunnerPatchRequest(MaxRuns: "3"));
+
+        var config = await h.Db.RunnerConfigs.AsNoTracking().SingleAsync();
+        Assert.Equal(["haiku"], RunnerTagColumn.Read(config.RefusedModels));
+    }
+
+    [Fact]
+    public async Task PutRefused_RidesTheRowHeartbeatBack()
+    {
+        var h = await NewAsync(program: true, wall: true);
+        var key = await h.AddKeyAsync(h.Caller.Key!.Name);
+        h.Caller.Key = key;
+        await h.PutRefusedAsync(key.Name, ["haiku"]);
+
+        var beat = await h.BeatAsync(key.Name, new RunnerHeartbeatRequest(Kind: "loop"));
+        Assert.Equal(["haiku"], beat.RefusedModels);
+    }
+
+    // Needs Postgres: HeartbeatSessionAsync's MarkGoneAsync runs a conditional
+    // UPDATE the in-memory provider refuses - see SkippableFact's own.
+    [SkippableFact]
+    public async Task PutRefused_RidesTheSessionHeartbeatBackToo()
+    {
+        var h = await NewAsync(program: true, wall: true, connectionString: await ConnectAsync());
+        var key = await h.AddKeyAsync(h.Caller.Key!.Name);
+        h.Caller.Key = key;
+        await h.PutRefusedAsync(key.Name, ["haiku"]);
+
+        var session = Value(await h.SessionBeatAsync(new RunnerHeartbeatRequest(Kind: "loop", Where: "host:/one")));
+
+        Assert.Equal(["haiku"], session.RefusedModels);
+    }
+
+    [Fact]
+    public async Task AHeartbeat_FromACallerWithNoKey_AnswersRefusedModelsNull()
+    {
+        var h = await NewAsync();
+
+        var beat = await h.BeatAsync(Runner, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Null(beat.RefusedModels);
+    }
+
+    [Fact]
+    public async Task AHeartbeat_FromAKeyWithNoConfigRow_AnswersRefusedModelsEmpty()
+    {
+        var h = await NewAsync(program: true);
+
+        var beat = await h.BeatAsync(h.Caller.Key!.Name, new RunnerHeartbeatRequest(Kind: "loop"));
+
+        Assert.Empty(beat.RefusedModels!);
+    }
+
+    private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
 
     // ---- Revoking and handing over a runner ----
 
@@ -5241,6 +5538,9 @@ public class RunnersControllerTests
 
         public async Task<RunnerDto> PatchAsync(string name, RunnerPatchRequest request) =>
             Value(await Runners.PatchRunner(name, request, default));
+
+        public async Task<ActionResult<RunnerDto>> PutRefusedAsync(string name, IReadOnlyList<string>? models) =>
+            await Runners.PutRefusedModels(name, new RunnerRefusedModelsWriteRequest(models), default);
 
         public async Task<IActionResult> RevokeAsync(string name) => await Runners.RevokeRunner(name, default);
 
