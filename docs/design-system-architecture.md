@@ -19,8 +19,9 @@ Three things follow from it and are the rest of this document:
 - **The vocabulary** — what is a token, what is not, and why the list is closed.
 - **The day/night contract** — one stored choice, honoured by React apps and by
   pages that are not apps, resolved with no JavaScript in the common case.
-- **The gallery** — `apps/design`, where every token and component is rendered
-  in both themes and in the states an app never shows you.
+- **The gallery** — Design, a page of the board (`apps/hatch/src/design`),
+  where every token and component is rendered in both themes and in the
+  states an app never shows you.
 
 The mechanics of each consuming app live next to that app, in its own README.
 What is here is the part no single app owns.
@@ -43,7 +44,7 @@ src/Hatch.Web/
   package.json          workspaces: ["apps/*", "packages/*"]
   package-lock.json     one lockfile, hoisted
   apps/
-    design  hatch
+    hatch
   packages/
     ui                  @hatch/ui   — the vocabulary and the components
 ```
@@ -52,8 +53,7 @@ src/Hatch.Web/
 
 | App | `@hatch/ui` | Note |
 |---|---|---|
-| `design` | yes | The gallery |
-| `hatch` | yes | Adopted the bar and the tokens |
+| `hatch` | yes | Adopted the bar and the tokens; holds the gallery, Design, as a page |
 
 Both apps use the same token names (`--bg`, `--card`, `--ink`, `--muted`,
 `--line`, `--primary`…), so a future app can carry its own values under those
@@ -475,9 +475,12 @@ outside its own `<header>`.
 
 ## The gallery
 
-[`apps/design`](../src/Hatch.Web/apps/design/README.md), served at
-`/apps/design`, is every token and component rendered in both themes and in the
-states an app never shows you.
+**Design**, under Manage, is every token and component rendered in both
+themes and in the states an app never shows you. It is a page of the board
+(`apps/hatch/src/design`, [docs/the-design-gallery.md](the-design-gallery.md))
+rather than an app of its own - HA-2250 folded what used to be `apps/design`
+into it, so that the gallery, like every other page, wears the board's own
+bar and falls through to the board's own error boundary.
 
 It is a workbench, not a product surface. Its purpose is that a component built
 after it exists is developed *there* — against its own disabled, loading, error,
@@ -486,51 +489,53 @@ where only the happy path is visible.
 
 ### Adding a section
 
-One entry in [`src/sections.ts`](../src/Hatch.Web/apps/design/src/sections.ts):
+One entry in [`sections.ts`](../src/Hatch.Web/apps/hatch/src/design/sections.ts):
 
 ```ts
 { group: 'Components', slug: 'toolbar', title: 'Toolbar', Page: ToolbarPage },
 ```
 
-That puts it in the nav, on a route and behind a deep link. **Nothing else in
-the app enumerates the sections** — the nav groups are derived from the entries
-in first-appearance order, and `/` and any unknown route redirect to the first
-one. A group appears when it has something in it, rather than sitting empty in
-the nav as a promise the app cannot keep.
+That puts it on the rail, on a route and behind a deep link at
+`/design/toolbar`. **Nothing else enumerates the sections** — the rail's
+groups are derived from the entries in first-appearance order, and `/design`
+and any unknown slug redirect to the first one. A group appears when it has
+something in it, rather than sitting empty on the rail as a promise the
+gallery cannot keep.
 
 Within `Components` the order is the order a page is built — the chrome, then
 the frame, then what goes in it, then what it says — rather than alphabetical,
-so a designer reading the nav top to bottom reads it in the order the decisions
-compound.
+so a designer reading the rail top to bottom reads it in the order the
+decisions compound.
 
-A page is built from three helpers in
-[`components/Gallery.tsx`](../src/Hatch.Web/apps/design/src/components/Gallery.tsx):
-`<GalleryPage>` (title, one line saying what the group is for, the specimens),
-`<GallerySection>` (a named run, whose `note` carries **the rule the run exists
-to state** — the rule is the part a designer needs and the swatch is only the
-evidence), and `<TokenName>`/`<TokenValue>`.
+A page is built from the helpers in
+[`components/Gallery.tsx`](../src/Hatch.Web/apps/hatch/src/design/components/Gallery.tsx):
+`<GalleryPage>` (title, one line saying what the group is for, the specimens,
+rendered through `@hatch/ui`'s own `<PageHeader>`), `<GallerySection>` (a named
+run, whose `note` carries **the rule the run exists to state** — the rule is
+the part a designer needs and the swatch is only the evidence),
+`<TokenName>`/`<TokenValue>`, and `<PhoneFrame>` for a specimen shown at phone
+width — an iframe onto the gallery's own `/design/<slug>` address, which draws
+nothing while itself framed, so the frame cannot nest inside itself.
 
 ### Three rules the gallery is held to
 
 - **It reads the values the browser resolved** rather than restating them, so a
   swatch can never disagree with the token it claims to show. That is
-  [`lib/useTokenValues.ts`](../src/Hatch.Web/apps/design/src/lib/useTokenValues.ts).
+  [`lib/useTokenValues.ts`](../src/Hatch.Web/apps/hatch/src/design/lib/useTokenValues.ts).
 - **It holds no component CSS of its own.** It shows a component by rendering
-  it, never by restating its styles. The only rules in `App.css` are the
-  gallery's own chrome and the frames its specimens sit in. A gallery whose copy
-  of a component's CSS can drift from the component is a gallery that lies.
+  it, never by restating its styles. The only rules under the "Design gallery"
+  banner in `apps/hatch/src/App.css` are the gallery's own chrome and the
+  frames its specimens sit in, every one `design-`-prefixed so a gallery rule
+  can never reach a board page by accident. A gallery whose copy of a
+  component's CSS can drift from the component is a gallery that lies.
 - **The specimens are live.** The buttons press, the fields take typing, the
   modals take over the page and give focus back. A specimen that mocks its own
   behaviour is a specimen that can be wrong about it.
 
-And it wears the bar it documents, which is not decoration: the one context a
-top bar is never shown in on a specimen page is an actual app, and this is the
-app that can show both at once.
-
 ## The plumbing tax: a new app, in several places
 
 A new app under `apps/` costs edits outside its own folder, each paid once
-already by `apps/design` — the only other app to join `apps/hatch` so far — so
+already by `apps/auth` — the only other app to join `apps/hatch` so far — so
 this is a checklist rather than an estimate.
 
 1. **`src/Hatch.Api/Hatch.Api.csproj`** — an `<AppName>Source` `ItemGroup` and a
@@ -607,7 +612,7 @@ The properties above stop holding if any of these is done:
 - [`docs/ethos.md`](ethos.md) — the rule that constrains every commit, and which
   applies to gallery sample content as hard as to the apps: a `<Card>` example
   says "Living Room", never a real room in a real house, and never a real domain.
-- [`src/Hatch.Web/apps/design/README.md`](../src/Hatch.Web/apps/design/README.md)
-  — the gallery, app-side.
+- [`docs/the-design-gallery.md`](the-design-gallery.md) — the gallery, from
+  the board's own docs.
 - [`docs/runners-page-design.md`](runners-page-design.md) — the spec the Runners
   page is built to.

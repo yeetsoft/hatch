@@ -182,7 +182,7 @@ test-web:
 	bash -c 'export NVM_DIR="$$HOME/.nvm"; [ -s "$$NVM_DIR/nvm.sh" ] && \. "$$NVM_DIR/nvm.sh"; \
 	set -e; \
 	cd ./src/Hatch.Web && if [ "$$(type -t nvm)" = function ]; then nvm use; fi && npm ci; \
-	for app in auth design hatch site; do \
+	for app in auth hatch site; do \
 		echo "==> $$app"; \
 		npm run lint -w apps/$$app && npm run test --if-present -w apps/$$app && npm run build -w apps/$$app; \
 	done'

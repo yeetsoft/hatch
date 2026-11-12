@@ -58,6 +58,7 @@ export const NAV: NavEntry[] = [
       { to: '/statuses', label: 'Statuses' },
       { to: '/import', label: 'Import' },
       { to: '/bulk', label: 'Bulk edit' },
+      { to: '/design', label: 'Design' },
       // Admin only, and only where the wall gives anybody a role.
       { to: '/users', label: 'Users', adminOnly: true },
     ],
