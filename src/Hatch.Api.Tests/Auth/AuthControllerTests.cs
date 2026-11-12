@@ -67,7 +67,7 @@ public class AuthControllerTests
     public async Task VerifyRedirectsANavigationAndCarriesTheOriginalUrl()
     {
         var controller = NewController(out var context);
-        Forwarded(context, "/apps/admin/devices?tab=zones");
+        Forwarded(context, "/plan?tab=zones");
         context.Request.Headers["Sec-Fetch-Mode"] = "navigate";
 
         var result = Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
@@ -79,7 +79,7 @@ public class AuthControllerTests
         // as http://api.<ns>.svc.cluster.local:8080/auth/ - see
         // AuthChallenge.SignInLocation. ?r= stays a relative path regardless.
         Assert.Equal(
-            "https://home.example.com/auth/?r=%2Fapps%2Fadmin%2Fdevices%3Ftab%3Dzones",
+            "https://home.example.com/auth/?r=%2Fplan%3Ftab%3Dzones",
             context.Response.Headers.Location.ToString());
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
     }
@@ -87,17 +87,17 @@ public class AuthControllerTests
     [Fact]
     public async Task VerifyBouncesEachHostBackToItself()
     {
-        // The cookie's Domain attribute covers every subdomain, so the tablet
-        // enrolls on kiosk. and is done. Sending it to home. to sign in would
+        // The cookie's Domain attribute covers every subdomain, so the device
+        // enrolls on device. and is done. Sending it to home. to sign in would
         // work and would still be wrong: it is a hostname change mid-flow on a
         // device whose whole point is that nobody is operating it.
         var controller = NewController(out var context);
-        Forwarded(context, "/", host: "kiosk.example.com");
+        Forwarded(context, "/", host: "device.example.com");
         context.Request.Headers["Sec-Fetch-Mode"] = "navigate";
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "https://kiosk.example.com/auth/?r=%2F",
+            "https://device.example.com/auth/?r=%2F",
             context.Response.Headers.Location.ToString());
     }
 
@@ -113,12 +113,12 @@ public class AuthControllerTests
         // it is the classic own-goal. Outside the cookie's domain we fall back
         // to the relative form rather than emitting somebody else's origin.
         var controller = NewController(out var context);
-        Forwarded(context, "/apps/family/", host: host);
+        Forwarded(context, "/issues/AER-12", host: host);
         context.Request.Headers["Sec-Fetch-Mode"] = "navigate";
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "/auth/?r=%2Fapps%2Ffamily%2F",
+            "/auth/?r=%2Fissues%2FAER-12",
             context.Response.Headers.Location.ToString());
     }
 
@@ -128,12 +128,12 @@ public class AuthControllerTests
         // `make run`: no proxy, no cookie domain, and the relative redirect
         // this endpoint has always returned is the correct one there.
         var controller = NewController(out var context, cookieDomain: "");
-        Forwarded(context, "/apps/family/", host: "localhost:5080");
+        Forwarded(context, "/issues/AER-12", host: "localhost:5080");
         context.Request.Headers["Sec-Fetch-Mode"] = "navigate";
 
         Assert.IsType<StatusCodeResult>(await controller.Verify(CancellationToken.None));
         Assert.Equal(
-            "/auth/?r=%2Fapps%2Ffamily%2F",
+            "/auth/?r=%2Fissues%2FAER-12",
             context.Response.Headers.Location.ToString());
     }
 
@@ -206,7 +206,7 @@ public class AuthControllerTests
     public async Task VerifyUsesTheForwardedHostSoAnExemptHostStaysExempt()
     {
         var controller = NewController(out var context, exemptHosts: ["files.example.com"]);
-        Forwarded(context, "/hatch-kiosk.apk", host: "files.example.com");
+        Forwarded(context, "/firmware.bin", host: "files.example.com");
 
         Assert.IsType<NoContentResult>(await controller.Verify(CancellationToken.None));
     }

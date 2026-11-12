@@ -36,13 +36,13 @@ namespace Hatch.Api.Tests.Auth;
 ///   Two tests below hold the code to that, so a new controller cannot land
 ///   at the wrong level unnoticed.
 /// - **Hatch is the exception, and it is not really one.** It lives under
-///   Modules/ for the schema and the migration history, but it is not a family
-///   app - it is the operator's own tooling wearing a module's clothes, like
-///   the admin app is the operator's own screen. Every one of its verbs is
-///   guarded, reads included, and its bundle 404s for non-admins the same way
-///   (AdminAppMiddleware). API keys widen that (docs/hatch.md, "One
-///   gate, two lanes"): a second credential through the same gate rather than
-///   a second gate.
+///   Modules/ for the schema and the migration history, but it is not one of
+///   the household's own modules - it is the operator's own tooling wearing a
+///   module's clothes, guarded the same way any Admin-only screen is. Every
+///   one of its verbs is guarded, reads included, and its bundle 404s for
+///   non-admins the same way (AdminAppMiddleware). API keys widen that
+///   (docs/hatch.md, "One gate, two lanes"): a second credential through the
+///   same gate rather than a second gate.
 /// </summary>
 public class AdminSurfaceTests
 {
@@ -64,7 +64,7 @@ public class AdminSurfaceTests
         // People. The writes above all, because Role is set here: an
         // unguarded PUT would let any enrolled device promote itself, which
         // makes the whole boundary a formality. The reads ask for User only -
-        // the family apps render a name and a photo - and sit at the end.
+        // the board renders a name and a photo - and sit at the end.
         "PeopleController.Create",
         "PeopleController.Update",
         "PeopleController.Delete",

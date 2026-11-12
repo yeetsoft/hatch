@@ -52,7 +52,7 @@ public class AuthMiddlewareTests
     {
         // The bit that makes a printed storage-bin QR one extra tap rather than
         // a dead end.
-        var request = Request("/apps/family/storage/c/ABC123", query: "?ref=label");
+        var request = Request("/issues/AER-12", query: "?ref=label");
         request.Headers["Sec-Fetch-Mode"] = "navigate";
         request.Headers.Accept = "text/html,application/xhtml+xml";
 
@@ -61,7 +61,7 @@ public class AuthMiddlewareTests
         Assert.False(served);
         Assert.Equal(StatusCodes.Status302Found, context.Response.StatusCode);
         Assert.Equal(
-            "/auth/?r=%2Fapps%2Ffamily%2Fstorage%2Fc%2FABC123%3Fref%3Dlabel",
+            "/auth/?r=%2Fissues%2FAER-12%3Fref%3Dlabel",
             context.Response.Headers.Location.ToString());
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
     }
@@ -69,7 +69,7 @@ public class AuthMiddlewareTests
     /// <summary>
     /// The board's own paths are document requests like any other: the wall
     /// does not know they are special, which is the point of HA-2248 - there is
-    /// no /apps/hatch prefix left to carry the identification for it.
+    /// no suite prefix left to carry the identification for it.
     /// </summary>
     [Fact]
     public async Task ANavigationToABoardPathBouncesToTheSignInShellCarryingWhereItWasGoing()
@@ -87,7 +87,7 @@ public class AuthMiddlewareTests
     [Fact]
     public async Task AnOldBrowserThatOnlySaysAcceptStillGetsTheRedirect()
     {
-        var request = Request("/apps/admin/devices");
+        var request = Request("/plan");
         request.Headers.Accept = "text/html,*/*;q=0.8";
 
         var (context, _) = await Run(request);

@@ -2,7 +2,7 @@
 
 **The two sentences to send a friend:** *Clone this repository, install Docker
 Desktop, then run `docker compose up -d` from the repository root and open
-http://localhost:8080/apps/hatch/. That is a project board of your own, with a
+http://localhost:8080/. That is a project board of your own, with a
 page inside it that hands you the runner that works your tickets for you.*
 
 Everything else is the board's own **Docs**, [/docs/](/docs/);

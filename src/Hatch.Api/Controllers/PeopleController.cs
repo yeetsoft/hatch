@@ -26,7 +26,7 @@ namespace Hatch.Api.Controllers;
 /// worth having at all: <c>Role</c> is set on this page, so an unguarded
 /// PUT would let any enrolled device make itself an administrator, which turns
 /// the whole boundary into a formality. The reads, photo included, ask only for
-/// User - a name and a photo are what the family apps render next to a note -
+/// User - a name and a photo are what the board renders next to a note -
 /// so a Pending person, who has not been let in, sees none of it.
 /// </summary>
 [ApiController]

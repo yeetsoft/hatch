@@ -126,10 +126,10 @@ const AGENT_CREDENTIALS: {
  * The things a Hatch install of its own configures - a credential per agent, and
  * a name - and the one thing this browser does.
  *
- * Here rather than on the admin app's Settings page because an install with no
- * admin app - which is every install that is only somebody's tracker - still
- * has to be able to set them. They are the same site settings under the same
- * keys, so a token set on the old page is already set on this one.
+ * Open to every signed-in User rather than gated to Admin, because an install
+ * with no Administrator yet - every install that is only somebody's tracker -
+ * still has to be able to set them. They are the same site settings under the
+ * same keys that back everything else this install configures.
  *
  * The credentials are one table, one card per supported agent, because they
  * follow the same rules - each is never read back, saved only when non-blank,
