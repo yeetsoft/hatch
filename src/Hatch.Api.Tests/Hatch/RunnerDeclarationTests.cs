@@ -118,6 +118,62 @@ public class RunnerDeclarationTests
         Assert.True(declared.Tags.RefusesDangerous);
     }
 
+    private static EfHatchRunnerConfig Refusing(EfApiKey key, params string[] refused) =>
+        new() { ApiKeyId = key.Id, RefusedModels = RunnerTagColumn.Write(refused), UpdatedAt = Now };
+
+    [Fact]
+    public async Task BeatPlusConfig_ReadsTheConfigRefusedModels_OnBothOverloads()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var beat = Beat(key.Name);
+        var config = Refusing(key, "fable", "claude-opus-5-5");
+        var runner = new Runner(key, config, beat);
+
+        // The session overload's early return, taken with no live sessions.
+        var noSessions = await RunnerDeclaration.OfAsync(runner, [], actors, default);
+        var withSession = await RunnerDeclaration.OfAsync(runner, [Session(key.Id)], actors, default);
+        var beatOverload = await RunnerDeclaration.OfAsync(beat, actors, default, config);
+
+        Assert.Equal(["fable", "claude-opus-5-5"], noSessions.Refused);
+        Assert.Equal(["fable", "claude-opus-5-5"], withSession.Refused);
+        Assert.Equal(["fable", "claude-opus-5-5"], beatOverload.Refused);
+    }
+
+    [Fact]
+    public async Task AKeylessRow_RefusesNothing()
+    {
+        var actors = new StubActorDirectory();
+
+        var declared = await RunnerDeclaration.OfAsync(Beat("unclaimed"), actors, default);
+
+        Assert.Empty(declared.Refused);
+    }
+
+    [Fact]
+    public async Task AKeyWithNoConfigRow_RefusesNothing_WhateverItsSessions()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var runner = new Runner(key, null, Beat(key.Name));
+
+        Assert.Empty((await RunnerDeclaration.OfAsync(runner, [], actors, default)).Refused);
+        Assert.Empty((await RunnerDeclaration.OfAsync(runner, [Session(key.Id)], actors, default)).Refused);
+        Assert.Empty((await RunnerDeclaration.OfAsync(new Runner(key, null, null), [Session(key.Id)], actors, default)).Refused);
+    }
+
+    [Fact]
+    public async Task ASessionOnlyKey_ReadsTheConfigRefusedModels()
+    {
+        var actors = new StubActorDirectory();
+        var key = Key();
+        var runner = new Runner(key, Refusing(key, "opus"), null);
+
+        var declared = await RunnerDeclaration.OfAsync(runner, [Session(key.Id)], actors, default);
+
+        Assert.Equal(["opus"], declared.Refused);
+    }
+
     [Fact]
     public async Task SessionOnly_ReadsSessionRemotesAndConfigTags()
     {

@@ -4364,7 +4364,7 @@ board remembered.
 
 `waitingOnARunner` lists every issue whose next move is clear, but that no live
 runner can take: every live runner's own declaration folds it on the
-[model fold and the dependency fold](#what-a-pass-skipped), and on nothing
+[model fold, the refusal fold and the dependency fold](#what-a-pass-skipped), and on nothing
 else. A runner is live when it is being heard from, running, and not out of
 usage - the same test a peer is held to when one runner's let-go ticket is left
 for another. Each entry is `key`, `title`, `type`, `move` (the column the move
@@ -4373,13 +4373,17 @@ starts from) and `missing`, ordered by tier, then rank, as the queue is.
 The list is empty when no runner is live - the existing "no runner" condition
 says that - and when every gap is met by some live runner. A runner that never
 declared models or what it has is never counted as lacking them: one that
-declared neither empties the list, and a check is skipped where no live runner
+declared neither, and refuses nothing, empties the list, and a check is skipped where no live runner
 declared that capability. `missing` takes one of two shapes, joined with `; `
 when a move needs both:
 
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
-  pinned id.
+  pinned id. A live runner that [refuses](#runners-on-the-board) the model
+  does not offer it, whatever it declared: `no live runner offers <model>`
+  is said, for an alias or a pinned id, when every live runner that could
+  take it refuses it or folds it on the model fold - and a runner that never
+  declared models and refuses nothing is still never counted as lacking them.
 - `no live runner has pwsh 7 or newer and playwright-browsers` - the
   project's bound repositories declare dependencies no live runner's `has`
   satisfies; an
@@ -4418,7 +4422,8 @@ runner at all, nothing is judged and the list is empty, the same as
 `waitingOnARunner`'s own *no runner is live* case.
 
 **The reason.** Verbatim, the fold's own sentence for that peer's scan row -
-no prose written for this endpoint. A step outside a peer's own declared
+no prose written for this endpoint. A runner that refuses the step's model reads
+`<key> in <column> runs on <model> - <runner> refuses it`, and is no taker. A step outside a peer's own declared
 scope reads `outside its scope: <under>`; a peer whose own scan failed uses
 its failure text instead.
 
@@ -5452,6 +5457,22 @@ missing configuration:
     offer it"* (*"... this runner does not offer it"* when no agent was sent),
     or *"pinned to gpt-6-luna, a codex model - this runner's agent is claude"*,
     kind `other`. Waits on nobody. Said after the dangerous item and before the
+    refusal item.
+12a. The same model is one the asking runner's key **refuses** — its
+    [refused models](#runners-on-the-board), `RunnerModels.Refuses`: equal after
+    trimming, with an alias lowercased, or the refused entry is an alias and
+    the model a pinned id whose hyphen-separated tokens include it (`opus`
+    refuses `claude-opus-5-5`, never `claude-fable-5-2`). A refused pinned id
+    matches itself only, and a null or blank model matches nothing. Gated as
+    the model item is — every move a session is spawned for, never a hop,
+    never an idle review self-move. The runner is the one `?runner=` or
+    `?asRunner=` names, and `work/{key}` falls back to the calling key's own
+    name where it sent none, since `hatch work KEY` sends no `?runner=`; a
+    name no key answers to refuses nothing, and a scan that names nobody (an
+    attention or takers read of the whole board) refuses nothing. *"HA-12 in
+    Breakdown runs on fable - build-box refuses it"*, kind `other`. Waits on
+    nobody. A peer that refuses the model is no peer that could take a ticket
+    another runner let go of. Said after the model item and before the
     toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
@@ -6872,7 +6893,8 @@ the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
-runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, or a
+runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, a model it cannot
+spawn or refuses, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
@@ -6911,7 +6933,8 @@ first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
 assignee, an unanswered question, a repository this runner lacks, a runner tag the
 project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
-refuses dangerous work was asked about, an unmet dependency, an open child, a
+refuses dangerous work was asked about, a model the runner cannot spawn, a model the
+runner refuses, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -9476,8 +9499,11 @@ here does, so a key holding its own list is not the hole that gate exists to
 close. A key naming another runner is refused. The list rides every
 heartbeat back as `refusedModels`, on both heartbeat routes, so a loop
 restarting reads the board's current list rather than the one a process
-started with; an older Hatch answers with none. Nothing reads the column to
-dispatch work yet — that is its own story.
+started with; an older Hatch answers with none. The dispatcher reads the
+column too: a move whose model the key refuses is folded for it, from every
+door — see item 12a of [the dispatcher](#the-dispatcher) — and across the
+fleet, [a move no live runner can take](#a-move-no-live-runner-can-take)
+counts a live runner that refuses the model as not offering it.
 
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every

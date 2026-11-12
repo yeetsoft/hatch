@@ -67,9 +67,15 @@ export type FlowBandKind = 'clear' | 'working' | 'wip' | 'dependency' | 'turn' |
     for the column the card just left, not the one it is now in. A row whose
     `blockedKind` is null because it came from a server older than HA-937
     reads as `other`, the same as an unnamed block, rather than as no band at
-    all. */
+    all. A clear or in-line row the server judged takers for (HA-2308) and
+    found none live for wears `other` too - `takers` empty and not merely
+    absent, so a server that did not judge (`takers` null or missing) still
+    keeps the band its `blockedKind` alone would give it. */
 export function flowBand(row: QueueEntry | undefined, card: IssueCard): { kind: FlowBandKind; words: string } | null {
   if (!row || row.fromStatus.id !== card.statusId) return null;
+  if ((row.blocked === null || row.blockedKind === 'turn') && row.takers?.length === 0) {
+    return { kind: 'other', words: 'Blocked' };
+  }
   if (row.blocked === null) return { kind: 'clear', words: 'Clear' };
   switch (row.blockedKind) {
     case 'working':

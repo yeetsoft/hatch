@@ -36,7 +36,7 @@ without the flag.
 | `next` | No | No |
 | `queue` | No | No |
 | `changelog` | No | No |
-| `runners` | No | No |
+| `runners` | No | Only with `refuse` and a model, or `--lift` |
 | `show` | No | No |
 | `comments` | No | No |
 | `start` | No | Yes: moves the ticket |
@@ -533,6 +533,8 @@ sessions.
 
 ```
 hatch runners [--json]
+hatch runners refuse [<model>...]
+hatch runners refuse --lift <model>...
 ```
 
 One line per runner that has spoken to this Hatch lately, most recently
@@ -586,6 +588,24 @@ read-only, drawn from the runner's own flags.
 A runner that advertises models closes its line with them after any projects,
 `  models haiku sonnet opus fable`, the ids space-separated; one that advertises
 none prints nothing extra ([the runner](the-runner#models)).
+
+A runner that refuses some models closes its line after the models it
+advertises with `  refuses haiku, fable`, comma-separated; one that refuses
+none prints nothing extra.
+
+`hatch runners refuse` reads, sets and lifts the calling key's own refused
+models - the runner is always the calling key's own name, never a flag, and a
+call with no key is refused: `hatch: a refusal is a key's - run \`hatch
+config\` to create one.` With no argument it prints the held models one per
+line, or `This runner refuses no model.` where it holds none. With one or more
+models it reads the held list, adds each, and sends the whole list with `PUT
+/api/hatch/runners/{name}/refused-models`; `--lift <model>...` does the same
+but takes each off instead. Both print the list as it now stands once
+written. Each model is its own argument - a comma inside one is refused the
+way `config --models` refuses it - and a model the shared normaliser refuses
+is refused before anything is sent, with the normaliser's own sentence.
+Lifting a model that is not on the list says so, naming it, and writes
+nothing. See [the runner](the-runner#refused-models).
 
 ### show
 

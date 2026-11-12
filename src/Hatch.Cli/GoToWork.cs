@@ -2204,10 +2204,14 @@ public sealed class GoToWorkCommand(Runtime runtime)
     /// folds in is the effective cap and not only the row's own. The tags
     /// are the exception in one respect: a null list is an older Hatch that
     /// does not answer with them, so it leaves the loop's own alone, where a
-    /// null bound means cleared. Dangerous and the project list are never read
-    /// back at all - only the tags and the six bounds (<c>--under</c>,
-    /// <c>--max-runs</c>, <c>--max-spend</c>, <c>--max-tokens</c>,
-    /// <c>--max-tokens-per-hour</c>, <c>--until</c>) are.
+    /// null bound means cleared. The refused models follow the tags' own
+    /// rule - a null list leaves <see cref="Board.Refused"/> alone, and a
+    /// changed one is held and said once, the board's own list never
+    /// subtracted from <c>model=</c> since the board folds it. Dangerous and
+    /// the project list are never read back at all - only the tags, the
+    /// refused models and the six bounds (<c>--under</c>, <c>--max-runs</c>,
+    /// <c>--max-spend</c>, <c>--max-tokens</c>, <c>--max-tokens-per-hour</c>,
+    /// <c>--until</c>) are.
     /// </remarks>
     private string? Fold(RunnerInstructionDto told, Tally tally, string? under)
     {
@@ -2229,6 +2233,12 @@ public sealed class GoToWorkCommand(Runtime runtime)
         {
             moved.Add($"--tag {(tags.Count > 0 ? string.Join(",", tags) : "off")}");
             runtime.Board.Tags = tags;
+        }
+
+        if (told.RefusedModels is { } refused && !refused.SequenceEqual(runtime.Board.Refused))
+        {
+            moved.Add($"refuses {(refused.Count > 0 ? string.Join(",", refused) : "none")}");
+            runtime.Board.Refused = refused;
         }
 
         if (moved.Count > 0) runtime.Say.Line($"hatch: the board set {string.Join(", ", moved)}");
