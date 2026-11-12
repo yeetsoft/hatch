@@ -1848,6 +1848,12 @@ beneath reads on the next request with no write to the issues beneath.
 (this story's own override, null when it inherits) and `onePrFrom` (the story a
 task read it from, null when it is its own, the project's, or absent).
 
+`IssueCardDto.createdBy` is the issue's own `CreatedBy` - a name, not a
+foreign key to People, so a runner's key files tickets under its own name too.
+Every route that serves a card carries it: the same six routes `noCode` does
+below, plus `/search` and a work response's child cards. The synthetic
+"Other" card on the timeline carries an empty one, having no issue of its own.
+
 **Who may set what.** The project default is a person's, and an owner's: it
 changes how every story under the project is worked, and it rides the same
 route as the landing policy (`PUT /projects/{id}/landing`, `{ onePullRequest }`).

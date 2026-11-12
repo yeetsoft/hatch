@@ -225,6 +225,7 @@ public class IssuesController(
                 i.PullRequestUrl,
                 i.ClosedAt,
                 i.NoCode,
+                i.CreatedBy,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -288,7 +289,8 @@ public class IssuesController(
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt,
                 NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
-                Contribution: contributions.GetValueOrDefault(i.Id)));
+                Contribution: contributions.GetValueOrDefault(i.Id),
+                CreatedBy: i.CreatedBy));
         }
 
         return cards;

@@ -1428,7 +1428,7 @@ public class WorkController(
                 i.ReadyAt, i.ReadyAtHasTime, i.DueAt, i.DueAtHasTime,
                 i.AssigneePersonId, i.AssigneeApiKeyId, i.Priority, i.PreApproval,
                 i.StalledAt, i.StalledWhy, i.Held, i.PullRequestUrl,
-                i.ClosedAt, i.NoCode,
+                i.ClosedAt, i.NoCode, i.CreatedBy,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -1467,7 +1467,8 @@ public class WorkController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: c.ClosedAt,
-                NoCode: c.NoCode));
+                NoCode: c.NoCode,
+                CreatedBy: c.CreatedBy));
         }
 
         // What runners reported about the branch, for an issue in review: the

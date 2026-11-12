@@ -444,6 +444,7 @@ public record RunnerOmissionDto(string Runner, string? Reason, string By, DateTi
 /// <param name="OmittedRunners">The union of this issue's and every ancestor's omissions, the root-most winning a runner named twice - see <see cref="PriorityTree.EffectiveOmittedRunners"/>.</param>
 /// <param name="NoCode">Why this issue finished with no code, or null where it has not declared that - see <see cref="EfHatchIssue.NoCode"/>. Null on an issue with a child, whatever it declared, since the declaration there says nothing. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
 /// <param name="Contribution">The record that this issue came from outside, or null where it did not - see <see cref="EfHatchContribution"/>. Trailing and defaulted for the reason <paramref name="OpenQuestions"/> is.</param>
+/// <param name="CreatedBy">The name that filed this issue - a person's or an API key's, never a person id - see <see cref="EfHatchIssue.CreatedBy"/>. Empty on the synthetic "Other" card, which has no issue.</param>
 public record IssueCardDto(
     string Key,
     string ProjectKey,
@@ -482,7 +483,8 @@ public record IssueCardDto(
     IReadOnlyList<RunnerOmissionDto> OmittedRunnersOwn = null!,
     IReadOnlyList<RunnerOmissionDto> OmittedRunners = null!,
     string? NoCode = null,
-    ContributionDto? Contribution = null)
+    ContributionDto? Contribution = null,
+    string CreatedBy = "")
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter -

@@ -59,6 +59,17 @@ public class SearchControllerDatabaseTests
         Assert.Equal([closed.Key, open.Key], result.Hits.Select(x => x.Card.Key));
     }
 
+    [SkippableFact]
+    public async Task AWordMatch_CardCarriesTheIssuesOwnCreatedBy()
+    {
+        await using var h = await NewAsync();
+        var issue = await h.FileAsync("gasket", createdBy: "rall-runner");
+
+        var result = await h.SearchAsync("gasket");
+
+        Assert.Equal("rall-runner", Assert.Single(result.Hits).Card.CreatedBy);
+    }
+
     // ---- Why it was found ----
 
     [SkippableFact]
@@ -224,7 +235,8 @@ public class SearchControllerDatabaseTests
 
         /// <summary>An issue, placed directly - the create path is not under test here.</summary>
         public async Task<(long Id, string Key)> FileAsync(
-            string title, string description = "", int? statusId = null, DateTimeOffset? closedAt = null)
+            string title, string description = "", int? statusId = null, DateTimeOffset? closedAt = null,
+            string createdBy = "operator")
         {
             var number = next++;
             var db = Connect();
@@ -238,7 +250,7 @@ public class SearchControllerDatabaseTests
                 Description = description,
                 StatusId = statusId ?? StatusId,
                 Rank = 1024 * number,
-                CreatedBy = "operator",
+                CreatedBy = createdBy,
                 CreatedAt = Now,
                 UpdatedAt = Now,
                 ClosedAt = closedAt,
