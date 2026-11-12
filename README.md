@@ -18,7 +18,7 @@ cd hatch
 docker compose up -d
 ```
 
-Open **http://localhost:8080/apps/hatch/**. First run takes a few minutes — it
+Open **http://localhost:8080/**. First run takes a few minutes — it
 builds the image, migrates the database, and only then starts the API.
 
 Change the port with `HATCH_PORT`:
@@ -43,7 +43,7 @@ docker compose down
 
 The full walkthrough — naming yourself, backup and restore, upgrading,
 troubleshooting — is the board's own **Docs**, in the top bar, at
-http://localhost:8080/apps/hatch/docs/, with the pages' source in
+http://localhost:8080/docs/, with the pages' source in
 [`src/Hatch.Web/apps/hatch/docs/`](src/Hatch.Web/apps/hatch/docs/).
 
 ## Hatch builds itself in a container
@@ -156,7 +156,7 @@ src/
   Hatch.Cli          the `hatch` CLI: work, go-to-work, board, and the rest
   Hatch.Contracts    the wire types both of the above share
   Hatch.Web/
-    apps/hatch       the board's own SPA, served at /apps/hatch/ - holds the design gallery, Design, as a page
+    apps/hatch       the board's own SPA, served at / - holds the design gallery, Design, as a page
     apps/site        the GitHub Pages site, served at the Pages address
     packages/ui      @hatch/ui — the design system
 containers/

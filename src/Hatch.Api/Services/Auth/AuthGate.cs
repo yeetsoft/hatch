@@ -132,8 +132,8 @@ public class AuthGate(
         // The sign-in shell and the two endpoints it calls. Gating these is an
         // infinite redirect loop. /auth is the shell's real mount (Program.cs),
         // so everything under it is exempt by prefix - its JS bundle, and the
-        // r/{code} link a scanned QR opens. The old /apps/auth address is a
-        // permanent redirect (Program.cs), so it needs no entry of its own.
+        // r/{code} link a scanned QR opens. The old suite-prefixed address is
+        // a permanent redirect (Program.cs), so it needs no entry of its own.
         "/auth",
         "/api/auth/verify",
         "/api/auth/redeem",

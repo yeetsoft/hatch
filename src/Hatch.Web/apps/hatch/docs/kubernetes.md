@@ -50,7 +50,7 @@ API expects of a cluster, and what an operator writes.
     JSON log lines to stdout.
   - The secrets from a Secret.
   - `.env.json` is optional, and a board needs nothing in it.
-- **One origin** serving `/apps/*`, `/api/*`,
+- **One origin** serving `/`, `/auth/`, `/api/*`,
   `/.well-known/assetlinks.json` and `/health/*`: one Ingress host to one
   Service.
 - **One replica.** Quartz's scheduler instance id is never configured, so
