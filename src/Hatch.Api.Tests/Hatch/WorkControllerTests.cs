@@ -7460,6 +7460,139 @@ public class WorkControllerTests
         Assert.Empty(await h.Db.Comments.Where(c => c.IssueId == issue.Id).ToListAsync());
     }
 
+    // ---- Approving a mirrored epic (HA-2271) ----
+    //
+    // The epic-level approval HA-2228 exists for, end to end: a person
+    // pre-approves a mirrored epic and nothing else. The approve hop carries
+    // each contribution child into the merge column once it is clean and
+    // green, the merged route closes each, and the close hop closes the epic.
+    // Every step after the pre-approval goes through Work, as the loop would
+    // call it; each phase is asserted on its own, so withholding any one of
+    // the approve hop, the merged route or the close hop fails the test.
+
+    private static async Task<(EfHatchStatus Approved, EfHatchIssue Epic, EfHatchIssue First, EfHatchIssue Second)>
+        MirroredEpicAsync(Harness h, string secondBuild)
+    {
+        var approved = new EfHatchStatus { Name = "approved", SortOrder = 37, IsProtected = true, MergesPullRequest = true };
+        h.Db.Add(approved);
+        await h.Db.SaveChangesAsync();
+
+        var epic = await h.FileAsync("epic", "a mirrored epic", h.Review);
+        h.Db.Contributions.Add(new EfHatchContribution
+        {
+            IssueId = epic.Id, OriginInstance = "elsewhere", OriginKey = "EL-1",
+            AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+        });
+        await h.Db.SaveChangesAsync();
+
+        var first = await ContributionChildAsync(h, epic, 1, BuildVerdicts.Passed);
+        var second = await ContributionChildAsync(h, epic, 2, secondBuild);
+
+        // The one write a person makes: the pre-approval, on the epic alone.
+        await h.PreApprovedAsync(epic);
+
+        return (approved, epic, first, second);
+    }
+
+    private static async Task<EfHatchIssue> ContributionChildAsync(
+        Harness h, EfHatchIssue epic, int n, string build)
+    {
+        var url = $"https://example.com/o/r/pull/{n}";
+        var child = await h.FileAsync("story", $"contribution {n}", h.Review, parentId: epic.Id, rank: 1024 * n);
+        await h.SetPullRequestAsync(child, url);
+        h.Db.Contributions.Add(new EfHatchContribution
+        {
+            IssueId = child.Id, PullRequestUrl = url, HeadBranch = $"feature/thing-{n}",
+            AuthorLogin = "octocat", AuthorAssociation = "NONE", FiledAt = Now, FiledBy = "runner-1",
+        });
+        await h.Db.SaveChangesAsync();
+        await h.VerdictAsync(child, MergeVerdicts.Clean, holdsTrunk: true);
+        await h.BuildAsync(child, build);
+        return child;
+    }
+
+    private static async Task<int> StatusOfAsync(Harness h, EfHatchIssue issue) =>
+        (await h.Db.Issues.AsNoTracking().FirstAsync(i => i.Id == issue.Id)).StatusId;
+
+    [Fact]
+    public async Task PreApprovingAMirroredEpic_CarriesEachCleanGreenContributionThroughTheTrainAndClosesTheEpic()
+    {
+        var h = await NewAsync();
+        var (approved, epic, first, second) = await MirroredEpicAsync(h, BuildVerdicts.Passed);
+
+        // The approve hop names each contribution; the epic itself is no hop.
+        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key);
+        foreach (var child in new[] { first, second })
+        {
+            var entry = queue[Key(child)];
+            Assert.True(entry.Hop);
+            Assert.Equal(HopKinds.Approve, entry.HopKind);
+            Assert.Equal(approved.Id, entry.ToStatus!.Id);
+            Assert.Null(entry.Blocked);
+        }
+        Assert.False(queue[Key(epic)].Hop);
+        Assert.Equal(StatusCodes.Status409Conflict,
+            ((ObjectResult)(await h.Work.HopWork(Key(epic), null, null, null, default)).Result!).StatusCode);
+
+        // The approve hop carries each into the merge column.
+        foreach (var child in new[] { first, second })
+        {
+            Assert.Equal(approved.Id, Value(await h.Work.HopWork(Key(child), null, null, null, default)).StatusId);
+            Assert.Equal(approved.Id, await StatusOfAsync(h, child));
+        }
+
+        // The merged route closes each; the epic waits while one is open.
+        await h.Work.MergedWork(
+            Key(first), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        Assert.Equal(h.Done, await StatusOfAsync(h, first));
+        Assert.Equal(StatusCodes.Status409Conflict,
+            ((ObjectResult)(await h.Work.HopWork(Key(epic), null, null, null, default)).Result!).StatusCode);
+        Assert.Equal(h.Review, await StatusOfAsync(h, epic));
+
+        await h.Work.MergedWork(
+            Key(second), new PullRequestMergedRequest("https://example.com/o/r/pull/2", "somewhere:/checkouts/one"), default);
+        Assert.Equal(h.Done, await StatusOfAsync(h, second));
+
+        // The close hop closes the epic, on its pre-approval.
+        Assert.Equal(h.Done, Value(await h.Work.HopWork(Key(epic), null, null, null, default)).StatusId);
+        Assert.Equal(h.Done, await StatusOfAsync(h, epic));
+
+        var events = await h.Db.IssueEvents
+            .Where(e => e.Kind == EfHatchIssueEvent.StatusChanged && new[] { epic.Id, first.Id, second.Id }.Contains(e.IssueId))
+            .ToListAsync();
+        Assert.Equal(5, events.Count);
+        Assert.All(events, e => Assert.Equal("hatch-loop", e.Actor));
+        var close = JsonDocument.Parse(events.Single(e => e.IssueId == epic.Id).Payload!).RootElement;
+        Assert.True(close.GetProperty("preapproved").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PreApprovingAMirroredEpic_WithOneContributionRed_MergesTheOtherAndLeavesTheEpicOpen()
+    {
+        var h = await NewAsync();
+        var (approved, epic, first, second) = await MirroredEpicAsync(h, BuildVerdicts.Failed);
+
+        var queue = Value(await h.Work.GetQueue(0, null, default)).ToDictionary(e => e.Issue.Key);
+        Assert.True(queue[Key(first)].Hop);
+        Assert.Equal(HopKinds.Approve, queue[Key(first)].HopKind);
+        Assert.False(queue[Key(second)].Hop);
+        Assert.Equal(ReviewWork.ContributionHeld, queue[Key(second)].Blocked);
+
+        // The clean one is carried and merged exactly as before.
+        Assert.Equal(approved.Id, Value(await h.Work.HopWork(Key(first), null, null, null, default)).StatusId);
+        await h.Work.MergedWork(
+            Key(first), new PullRequestMergedRequest("https://example.com/o/r/pull/1", "somewhere:/checkouts/one"), default);
+        Assert.Equal(h.Done, await StatusOfAsync(h, first));
+
+        // The red one is not carried, and the epic stays open behind it.
+        Assert.Equal(StatusCodes.Status409Conflict,
+            ((ObjectResult)(await h.Work.HopWork(Key(second), null, null, null, default)).Result!).StatusCode);
+        Assert.Equal(h.Review, await StatusOfAsync(h, second));
+        Assert.Equal(StatusCodes.Status409Conflict,
+            ((ObjectResult)(await h.Work.HopWork(Key(epic), null, null, null, default)).Result!).StatusCode);
+        Assert.Equal(h.Review, await StatusOfAsync(h, epic));
+    }
+
     // ---- Express is routing, never priority (HA-241) ----
     //
     // Express decides whether a column needs a session - it is in no OrderBy
