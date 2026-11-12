@@ -50,6 +50,18 @@ Escape to put the current seed back. On a page served over plain HTTP the browse
 may not allow copying; the message says so, and the seed can still be selected
 and copied by hand.
 
+**Tune**, after the dice, opens "Tune the theme": a hue dial, a slider for each
+remaining parameter, and a board of the colours with the contrast of each pair
+that has to stay readable. The page behind the dialog follows the controls as
+they move, as a preview only; nothing is stored. **Revert** puts the controls,
+and the page, back to where they were when the dialog opened. **Apply** keeps
+the palette and turns Random on, and closing the dialog any other way puts the
+page back as it was. **Roll** draws a fresh candidate and previews it the same
+way. The seed at the foot of the dialog is the candidate's own: copy it out, or
+paste one in and press Enter or click away to load it, and a seed Hatch cannot
+read is refused in words with nothing changed. The bar on the API reference page
+(Swagger UI) carries the seed line but not Tune.
+
 The link button beside it copies the page's own address with the seed on it.
 Opening a link like that applies the palette and turns Random on, the same as
 pasting the seed would; the address bar is cleaned of the parameter right

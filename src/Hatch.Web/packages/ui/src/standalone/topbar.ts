@@ -301,7 +301,8 @@ function paletteLine(): HTMLElement[] {
     navigator.clipboard.writeText(shareLink(shown())).then(() => announce('Link copied'), failed);
   });
 
-  /* The configurator's Tune button belongs here, after the dice. */
+  /* No Tune here, deliberately: this bar lives on a page that is not a Vite app, and Tune would bring React and the
+     Modal onto Swagger UI. The seed line is all it carries. */
   line.append(randomLabel, dice, seed, copy, link);
   render();
   return [line, refusal, status];

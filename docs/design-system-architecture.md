@@ -161,6 +161,12 @@ which also holds `rollSeed` (the engine's `rollParams`, drawn from
 `crypto.getRandomValues`, or `Math.random` without it) and `checkSeed` (the
 engine's own refusal message, which is the inline text).
 
+The configurator *previews* a seed and only Apply *sets* it: moving its controls
+calls `previewPalette`, which writes the generated stylesheet and touches no
+storage, while `setPalette` stores `hatch.palette` and `hatch.palette.last`, so
+Random turns on; every other way out of the dialog reverts to the palette it
+opened on.
+
 A value that does not decode — malformed, or written by an older engine — reads
 as absent, so a stale seed never half-applies.
 
@@ -195,8 +201,8 @@ button with a `role="status"` region that says "Seed copied". Committing a seed
 in DOM calls with the class names the component declares
 (`standaloneClasses.test.ts` holds it to that) and the glyphs from
 [`components/themePickerIcons.ts`](../src/Hatch.Web/packages/ui/src/components/themePickerIcons.ts),
-and drives the store through `storePalette` and `applyPalette`. The configurator's
-Tune button goes after the dice; it is not drawn yet.
+and drives the store through `storePalette` and `applyPalette`. Tune, after the dice,
+opens `<PaletteConfigurator>`; the standalone bar draws no Tune, since it would bring React and the Modal onto a page that is not a Vite app.
 
 Everything that reads the palette is told when it changes: `useTheme()` carries
 `palette`, `lastSeed` and `setPalette` beside `choice`, and the consumers that read computed
@@ -369,7 +375,7 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 | Text | `<Badge>`, `<Text>` |
 | Identity | `<ProjectMark>` |
 | Palette | `<PaletteBoard>` |
-| Configurator | `<ParameterControls>`, with `<HueDial>` and `<ParameterSlider>` |
+| Configurator | `<PaletteConfigurator>`, built from `<ParameterControls>` (with `<HueDial>` and `<ParameterSlider>`), `<PaletteBoard>` and `<Modal tone="console">` |
 | The exception | `<EmptyState>` |
 
 The ten primitives after the chrome are extracted from CSS conventions that

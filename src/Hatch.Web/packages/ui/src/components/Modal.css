@@ -123,7 +123,7 @@
    stylesheet the bundle puts last. The descendants are written under the
    panel's modifier (0,2,0) to beat the card's own 0,1,0 rules, and the close's
    `:hover` and `:focus-visible` at three classes to beat `.hatch-modal__close:hover`
-   at two. The scanline is the one `.design-pc-panel` draws. */
+   at two. The scanline is this panel's own; the gallery's `.design-pc-live-panel` copies it. */
 .hatch-modal__panel.hatch-modal__panel--console {
   border-color: var(--console-line);
   color: var(--on-console);
