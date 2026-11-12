@@ -33,7 +33,7 @@ const point = (at: number, counts: number[], projectCounts: number[] = []): Cumu
 const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
   from: new Date(0).toISOString(),
   to: new Date(100).toISOString(),
-  step: 'hour',
+  stepMinutes: 60,
   columns: [1, 2, 3],
   projects: [],
   points: [point(0, [3, 1, 2]), point(100, [0, 0, 0])],
@@ -230,13 +230,12 @@ describe('momentLabel', () => {
   // Noon UTC, as lib/spend.test.ts's own fixtures are: the day is the same one
   // regardless of which zone the test runs in, which the hour component is
   // not and is asserted loosely instead.
-  it('names the hour alongside the day on an hour step', () => {
-    expect(momentLabel('2026-10-12T12:00:00.000Z', 'hour', 'en-GB')).toMatch(/^12 Oct \d{2}:\d{2}$/);
+  it.each([1, 15, 720])('names the time alongside the day on a %i minute step', (stepMinutes) => {
+    expect(momentLabel('2026-10-12T12:00:00.000Z', stepMinutes, 'en-GB')).toMatch(/^12 Oct \d{2}:\d{2}$/);
   });
 
-  it('drops the time on a day or week step', () => {
-    expect(momentLabel('2026-10-12T12:00:00.000Z', 'day', 'en-GB')).toBe('12 Oct');
-    expect(momentLabel('2026-10-12T12:00:00.000Z', 'week', 'en-GB')).toBe('12 Oct');
+  it.each([1440, 10080])('drops the time on a %i minute step', (stepMinutes) => {
+    expect(momentLabel('2026-10-12T12:00:00.000Z', stepMinutes, 'en-GB')).toBe('12 Oct');
   });
 });
 

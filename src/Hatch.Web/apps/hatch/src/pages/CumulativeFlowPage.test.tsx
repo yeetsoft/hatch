@@ -19,7 +19,7 @@ const projects = [{ id: 1, key: 'HA', name: 'Hatch', color: '#112233' }] as Proj
 const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
   from: '2026-10-01T00:00:00.000Z',
   to: '2026-10-11T00:00:00.000Z',
-  step: 'day',
+  stepMinutes: 1440,
   columns: [1],
   projects: [],
   points: [{ at: '2026-10-02T00:00:00.000Z', counts: [4], projectCounts: [] }],

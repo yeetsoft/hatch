@@ -26,7 +26,7 @@ const render = (p: CumulativeFlowPoint | null) =>
       by="column"
       statuses={statuses}
       projects={projects}
-      step="day"
+      stepMinutes={1440}
       locale="en-GB"
     />,
   );

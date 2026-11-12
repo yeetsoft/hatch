@@ -22,12 +22,11 @@ public static class CumulativeFlowReport
     public sealed record Point(DateTimeOffset At, IReadOnlyList<int> Counts, IReadOnlyList<int> ProjectCounts);
 
     public sealed record Result(
-        DateTimeOffset From, DateTimeOffset To, string Step,
+        DateTimeOffset From, DateTimeOffset To, int StepMinutes,
         IReadOnlyList<int> Columns, IReadOnlyList<string> Projects, IReadOnlyList<Point> Points, int Unresolved);
 
-    private static readonly TimeSpan Hour = TimeSpan.FromHours(1);
-    private static readonly TimeSpan Day = TimeSpan.FromDays(1);
-    private static readonly TimeSpan Week = TimeSpan.FromDays(7);
+    /// <summary>The bucket sizes a grid may take, in minutes, finest first: 1, 5, 15, 30 minutes; 1, 3, 6, 12 hours; a day; a week.</summary>
+    private static readonly int[] Ladder = [1, 5, 15, 30, 60, 180, 360, 720, 1440, 10080];
 
     /// <summary>
     /// Counts per board column, swept from <paramref name="start"/> to
@@ -130,38 +129,31 @@ public static class CumulativeFlowReport
     }
 
     /// <summary>
-    /// The grid's bucket size, chosen from the span of <c>[from, end]</c>: the
-    /// finest of hour, day or week whose point count fits
-    /// <see cref="WorkLogController.MaxBuckets"/>, falling back to week - the
-    /// widest bucket this draws - rather than refusing a range that outgrows
-    /// even that.
+    /// The grid's bucket size in minutes, chosen from the span of
+    /// <c>[from, end]</c>: the finest rung of <see cref="Ladder"/> whose point
+    /// count fits <see cref="WorkLogController.MaxBuckets"/>, falling back to
+    /// the week - the widest bucket this draws - rather than refusing a range
+    /// that outgrows even that.
     /// </summary>
-    private static string StepOf(DateTimeOffset from, DateTimeOffset end)
+    private static int StepOf(DateTimeOffset from, DateTimeOffset end)
     {
         var span = end - from;
-        if (PointsOver(span, Hour) <= WorkLogController.MaxBuckets) return "hour";
-        if (PointsOver(span, Day) <= WorkLogController.MaxBuckets) return "day";
-        return "week";
+        foreach (var rung in Ladder)
+            if (PointsOver(span, TimeSpan.FromMinutes(rung)) <= WorkLogController.MaxBuckets) return rung;
+        return Ladder[^1];
     }
 
     private static int PointsOver(TimeSpan span, TimeSpan step) =>
         span <= TimeSpan.Zero ? 1 : (int)((span.Ticks + step.Ticks - 1) / step.Ticks) + 1;
-
-    private static TimeSpan SpanOf(string step) => step switch
-    {
-        "hour" => Hour,
-        "day" => Day,
-        _ => Week,
-    };
 
     /// <summary>
     /// Every grid point from <paramref name="from"/> to <paramref name="end"/>,
     /// <paramref name="step"/> apart, with <paramref name="end"/> appended when
     /// it does not already land on the grid.
     /// </summary>
-    private static List<DateTimeOffset> GridOf(DateTimeOffset from, DateTimeOffset end, string step)
+    private static List<DateTimeOffset> GridOf(DateTimeOffset from, DateTimeOffset end, int stepMinutes)
     {
-        var span = SpanOf(step);
+        var span = TimeSpan.FromMinutes(stepMinutes);
         var grid = new List<DateTimeOffset>();
         for (var at = from; at <= end; at += span) grid.Add(at);
         if (grid[^1] < end) grid.Add(end);

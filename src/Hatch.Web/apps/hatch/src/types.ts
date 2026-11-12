@@ -1805,7 +1805,9 @@ export interface CumulativeFlowPoint {
 export interface CumulativeFlow {
   from: string;
   to: string;
-  step: 'hour' | 'day' | 'week';
+  /** The grid's bucket size in minutes: the finest rung of 1, 5, 15, 30, 60,
+      180, 360, 720, 1440 or 10080 that fits the point budget. */
+  stepMinutes: number;
   /** The board's own columns, in board order, deferred columns excluded -
       parallel to each point's `counts`. */
   columns: number[];
