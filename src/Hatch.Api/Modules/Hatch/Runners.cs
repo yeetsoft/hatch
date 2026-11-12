@@ -165,7 +165,10 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
             runner.Has?.Split('\n', StringSplitOptions.RemoveEmptyEntries) ?? [],
             RetiredAt: runner.RetiredAt,
             SupersededBy: runner.RetiredBy,
-            Image: runner.Image);
+            Image: runner.Image,
+            AgentDownUntil: runner.AgentDownUntil,
+            AgentDownKind: runner.AgentDownKind,
+            AgentDownLine: runner.AgentDownLine);
     }
 
     /// <summary>
@@ -265,6 +268,9 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         RefusesDangerous = beat.RefusesDangerous,
         Projects = beat.Projects,
         ExhaustedUntil = beat.ExhaustedUntil,
+        AgentDownUntil = beat.AgentDownUntil,
+        AgentDownKind = beat.AgentDownKind,
+        AgentDownLine = beat.AgentDownLine,
         ThrottledUntil = beat.ThrottledUntil,
         Usage = beat.Usage,
         UsageReadAt = beat.UsageReadAt,
@@ -490,8 +496,12 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         // Only a loop ever starts a MergeTrain; a `once` runner's own BeatAsync
         // throws its instruction away (GoToWork.cs), so electing one would
         // strand a project with a driver that can never answer.
+        // A paused agent is not a peer: the epic's own decision is that a
+        // runner whose agent is down is not counted as a peer or elected
+        // driver, unlike exhaustion, which stays electable.
         var live = await db.LegacyRunners.AsNoTracking()
-            .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind && r.RetiredAt == null)
+            .Where(r => r.LastSeenAt >= cutoff && r.Kind == EfHatchRunner.LoopKind && r.RetiredAt == null
+                && (r.AgentDownUntil == null || r.AgentDownUntil <= now))
             .Select(r => new { r.Name, r.FirstSeenAt, r.LastSeenAt, r.Remotes, r.Standing, r.ForPersonId })
             .ToListAsync(ct);
 
@@ -505,7 +515,8 @@ public sealed class Runners(IOptions<HatchOptions> options, IOptions<AuthOptions
         // a session still gets a driver. A session whose key no longer exists
         // is skipped rather than thrown on.
         var liveSessions = await db.RunnerSessions.AsNoTracking()
-            .Where(s => s.EndedAt == null && s.LastSeenAt >= cutoff && s.Kind == EfHatchRunner.LoopKind)
+            .Where(s => s.EndedAt == null && s.LastSeenAt >= cutoff && s.Kind == EfHatchRunner.LoopKind
+                && (s.AgentDownUntil == null || s.AgentDownUntil <= now))
             .ToListAsync(ct);
 
         if (liveSessions.Count > 0)

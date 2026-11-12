@@ -73,7 +73,7 @@ public sealed class RunnersCommand(Cli cli)
     private static IReadOnlyList<string> Render(IReadOnlyList<RunnerDto> rows, DateTimeOffset now)
     {
         var table = new List<(string Runner, string State, string Ticket, string Heard)> { ("runner", "state", "ticket", "heard") };
-        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
+        table.AddRange(rows.Select(r => (r.Name, State(r.LastSeenAt, r.GoneAfterSeconds, r.ExhaustedUntil, r.State, r.ClaimKey, now, r.AgentDownUntil, r.AgentDownKind), r.ClaimKey ?? "none", Format.Ago(now - r.LastSeenAt) + Facts(r) + Has(r) + Bound(r) + Models(r))));
 
         var runnerWidth = table.Max(r => r.Runner.Length);
         var stateWidth = table.Max(r => r.State.Length);
@@ -101,7 +101,7 @@ public sealed class RunnersCommand(Cli cli)
     {
         var live = row.Sessions
             .Where(s => s.EndedAt is null)
-            .Select(s => (Where: s.Where ?? "-", Agent: s.Agent ?? "-", Os: s.Os ?? "-", State: State(s.LastSeenAt, row.GoneAfterSeconds, s.ExhaustedUntil, s.State, s.ClaimKey, now)))
+            .Select(s => (Where: s.Where ?? "-", Agent: s.Agent ?? "-", Os: s.Os ?? "-", State: State(s.LastSeenAt, row.GoneAfterSeconds, s.ExhaustedUntil, s.State, s.ClaimKey, now, s.AgentDownUntil, s.AgentDownKind)))
             .Where(s => s.State != "gone")
             .ToList();
 
@@ -129,6 +129,7 @@ public sealed class RunnersCommand(Cli cli)
         if (row.Spent is { } spent) parts.Add(string.Create(CultureInfo.InvariantCulture, $"${spent:F2}"));
         if (row.TokensUsed is { } used)
             parts.Add($"{Format.Compact(used)} tokens" + (row.TokensLastHour is { } lastHour ? $" ({Format.Compact(lastHour)} last hour)" : ""));
+        if (row.AgentDownUntil is not null && row.AgentDownLine is { Length: > 0 } said) parts.Add($"agent said: {said}");
         return parts.Count > 0 ? "  " + string.Join(" ", parts) : "";
     }
 
@@ -169,8 +170,11 @@ public sealed class RunnersCommand(Cli cli)
     /// runner's own row and each of its sessions, which carry the same facts
     /// under their own names.
     /// </summary>
-    private static string State(DateTimeOffset lastSeenAt, int goneAfterSeconds, DateTimeOffset? exhaustedUntil, string state, string? claimKey, DateTimeOffset now) =>
+    private static string State(
+        DateTimeOffset lastSeenAt, int goneAfterSeconds, DateTimeOffset? exhaustedUntil, string state, string? claimKey, DateTimeOffset now,
+        DateTimeOffset? agentDownUntil = null, string? agentDownKind = null) =>
         (now - lastSeenAt).TotalSeconds > goneAfterSeconds ? "gone"
+        : agentDownUntil is { } d && d > now ? (agentDownKind == RunnerAgentDownKinds.SignedOut ? "needs signing in" : "agent not starting")
         : exhaustedUntil is { } u && u > now ? "out of usage"
         : state == "paused" ? "paused"
         : state == "stopping" ? "stopping"

@@ -7632,7 +7632,8 @@ button.hatch-option.chosen {
 }
 
 .hatch-runner-glyph--gone,
-.hatch-runner-glyph--exhausted {
+.hatch-runner-glyph--exhausted,
+.hatch-runner-glyph--agent-down {
   color: var(--danger);
 }
 

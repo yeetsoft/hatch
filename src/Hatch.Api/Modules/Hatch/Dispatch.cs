@@ -608,6 +608,7 @@ public sealed class Dispatch(
         && beat.Kind == EfHatchRunner.LoopKind
         && beat.State == EfHatchRunner.Running
         && (beat.ExhaustedUntil == null || beat.ExhaustedUntil <= now)
+        && (beat.AgentDownUntil == null || beat.AgentDownUntil <= now)
         && (beat.UntilAt == null || beat.UntilAt > now)
         && (beat.MaxRuns == null || (beat.Runs ?? 0) < beat.MaxRuns);
 
@@ -617,6 +618,7 @@ public sealed class Dispatch(
         if (session.EndedAt != null || session.LastSeenAt < liveSince) return false;
         if (session.Kind != EfHatchRunner.LoopKind || session.State != EfHatchRunner.Running) return false;
         if (session.ExhaustedUntil is { } exhaustedUntil && exhaustedUntil > now) return false;
+        if (session.AgentDownUntil is { } agentDownUntil && agentDownUntil > now) return false;
 
         var bounds = RunnerSessions.Effective(config, session);
         if (bounds.UntilAt.Value is { } untilAt && untilAt <= now) return false;

@@ -16,7 +16,8 @@ public sealed class RunnersCommandTests
         int goneAfterSeconds = 3600, string state = "running", DateTimeOffset? exhaustedUntil = null,
         IReadOnlyList<string>? projects = null, int? runs = null, decimal? spent = null, string? host = null,
         long? tokensUsed = null, long? tokensLastHour = null, IReadOnlyList<string>? models = null,
-        IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null, string? image = null) =>
+        IReadOnlyList<string>? has = null, IReadOnlyList<RunnerSessionDto>? sessions = null, string? image = null,
+        DateTimeOffset? agentDownUntil = null, string? agentDownKind = null, string? agentDownLine = null) =>
         new(
             Name: name, Kind: "loop", FirstSeenAt: DateTimeOffset.UnixEpoch,
             LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
@@ -25,15 +26,17 @@ public sealed class RunnersCommandTests
             Repositories: [], Clones: null, Mine: null, Standing: null, Where: null, Agent: null,
             ExhaustedUntil: exhaustedUntil, Projects: projects ?? [], Runs: runs, Spent: spent, Host: host,
             TokensUsed: tokensUsed, TokensLastHour: tokensLastHour, Models: models, Has: has, Sessions: sessions,
-            Image: image);
+            Image: image, AgentDownUntil: agentDownUntil, AgentDownKind: agentDownKind, AgentDownLine: agentDownLine);
 
     private static RunnerSessionDto ASession(
         string where = "Fry:/code/hatch", string? agent = "claude", string? os = "Darwin 23.6.0",
-        string state = "running", string? claimKey = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null) =>
+        string state = "running", string? claimKey = null, DateTimeOffset? lastSeenAt = null, DateTimeOffset? endedAt = null,
+        DateTimeOffset? agentDownUntil = null, string? agentDownKind = null) =>
         new(
             Id: 1, Where: where, Kind: "loop", Host: null, State: state,
             StartedAt: Now - TimeSpan.FromHours(1), LastSeenAt: lastSeenAt ?? Now - TimeSpan.FromSeconds(10),
-            EndedAt: endedAt, ClaimKey: claimKey, Agent: agent, Os: os);
+            EndedAt: endedAt, ClaimKey: claimKey, Agent: agent, Os: os,
+            AgentDownUntil: agentDownUntil, AgentDownKind: agentDownKind);
 
     [Fact]
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
@@ -200,6 +203,92 @@ public sealed class RunnersCommandTests
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
         Assert.Contains("paused", h.Said);
+    }
+
+    [Fact]
+    public async Task A_row_whose_agent_down_check_is_ahead_prints_agent_not_starting()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("agent not starting", h.Said);
+    }
+
+    [Fact]
+    public async Task A_row_signed_out_prints_needs_signing_in()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("needs signing in", h.Said);
+    }
+
+    [Fact]
+    public async Task A_row_silent_past_its_own_gone_after_seconds_prints_gone_even_while_agent_down()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120), agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("gone", h.Said);
+        Assert.DoesNotContain("agent not starting", h.Said);
+    }
+
+    [Fact]
+    public async Task A_row_whose_agent_down_check_has_passed_prints_idle_not_agent_not_starting()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(-1), agentDownKind: "not-starting"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("idle", h.Said);
+        Assert.DoesNotContain("agent not starting", h.Said);
+    }
+
+    [Fact]
+    public async Task An_agent_down_row_with_a_line_closes_with_what_the_agent_said()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting", agentDownLine: "npm not found"),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("agent said: npm not found", h.Said);
+    }
+
+    [Fact]
+    public async Task A_session_whose_agent_is_down_prints_agent_not_starting_under_its_runner()
+    {
+        using var h = new CliHarness(clock: new FrozenClock(Now));
+        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        {
+            ARunner(sessions: [ASession(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out")]),
+        });
+
+        await new RunnersCommand(h.Cli).RunAsync([], default);
+
+        Assert.Contains("needs signing in", h.Said);
     }
 
     /// <summary>

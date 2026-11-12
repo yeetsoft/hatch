@@ -2604,10 +2604,33 @@ public sealed class GoToWorkTests
         Assert.Single(Claims(h));
         Assert.Equal("haiku", h.Sessions.Spawned[0].Model);
 
+        // The beat at the top of the pass that runs the check still carries
+        // the carried pause; the first beat after AgentUp clears it at once.
+        var beats = Beats(h);
+        Assert.True(beats[0].AgentDown);
+        Assert.Equal(PausedAt(start).AgentDownUntil, beats[0].AgentDownUntil);
+        Assert.Equal(Tally.NotStarting, beats[0].AgentDownKind);
+        Assert.Equal("boom", beats[0].AgentDownLine);
+        Assert.False(beats[^1].AgentDown);
+
         var said = h.Say.Said.ToList();
         Assert.Contains(said, l => l.StartsWith("hatch: checking whether the agent starts", StringComparison.Ordinal));
         Assert.Contains(said, l => l.StartsWith("hatch:   the check cost $", StringComparison.Ordinal));
         Assert.Contains("hatch: the agent starts again - taking tickets", said);
+    }
+
+    [Fact]
+    public async Task A_once_beat_sends_no_agent_down_fact_even_with_a_carried_pause()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, PausedAt(DateTimeOffset.UtcNow));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        // Absent, not false - a once beat shares the loop's own row name and
+        // must never clear the loop's own pause out from under it.
+        Assert.All(Beats(h), b => Assert.Null(b.AgentDown));
     }
 
     [Fact]
