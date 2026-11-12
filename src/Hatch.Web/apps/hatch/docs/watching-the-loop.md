@@ -93,12 +93,20 @@ thing, and either, both or neither can be true of one runner; a session started
 outside a checkout holding Hatch's source never shows **Rebuild**. A failed save
 in this card says so inside it.
 
-**What it may work.** **Tags** (one per line; empty is any runner) and **Under**
+**What it may work.** **Tags** (one per line; empty is any runner), **Under**
 (an epic to stay inside, like `AER-930`; empty is the whole board, and a link
-beside it opens the ticket), saved together with **Save settings**, or undone with
-**Revert**. The loop adopts a changed list on its very next heartbeat, saying so
-once - `hatch: the board set --tag ...`, or `--tag off` for none. Tags are set
-only here, or by a `PATCH` on the runner; the CLI never sends them.
+beside it opens the ticket) and **Refuses models** (one per line, like `fable`
+or `claude-opus-5`; empty refuses none), saved together with **Save settings**,
+or undone with **Revert**. The loop adopts a changed tag list on its very next
+heartbeat, saying so once - `hatch: the board set --tag ...`, or `--tag off`
+for none. A refused model binds sooner: on the board's very next dispatch read,
+not the next heartbeat. An entry that is neither an alias nor a pinned id of
+an agent this runner can run is refused in the card, before anything is sent.
+Tags are set only here, or by a `PATCH` on the runner; the CLI never sends
+them. The refused models are the exception: the CLI has its own door to the
+same route, in the [CLI reference](cli-reference). A runner that refuses
+models says so on its row in the list, as `refuses fable`, and a caller who
+cannot edit reads `Refuses:` beside `Tags:` and `Under:`.
 
 Beneath them, **Declared by its sessions** is read-only: **Projects** is every
 project any live session was started with (every project when none), and whether

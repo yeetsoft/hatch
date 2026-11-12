@@ -6,6 +6,7 @@ import {
   patchRunner,
   patchRunnerSession,
   pauseAllSessions,
+  putRunnerRefusedModels,
   stopAllSessions,
   withdrawSessionOrder,
 } from '../api/client';
@@ -22,7 +23,7 @@ import {
   runnerActionable,
   sessionsByStart,
 } from '../lib/runners';
-import { saveRunner } from '../lib/saveRunner';
+import { saveRunner, saveRunnerSettings } from '../lib/saveRunner';
 import { sessionActions } from '../lib/sessionActions';
 import { useMe } from '../lib/useMe';
 import { usePhone } from '../lib/viewport';
@@ -166,7 +167,15 @@ function RunnerConfigCards({
         live={live}
         editable={editable}
         refusal={settingsRefusal}
-        onSave={async (request) => setSettingsRefusal(await save(request))}
+        onSave={async (request) =>
+          setSettingsRefusal(
+            await saveRunnerSettings(runner.name, request, runner.refusedModels, runner.agent, {
+              patch: patchRunner,
+              putRefused: putRunnerRefusedModels,
+              reload,
+            }),
+          )
+        }
       />
       <RunnerBoundsForm
         key={`bounds:${runner.name}`}
