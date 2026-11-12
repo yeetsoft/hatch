@@ -32,8 +32,6 @@ public class BackupJob(BackupService backup, BackupStatus status, ILogger<Backup
 
     public TimeSpan Interval => Every;
 
-    public bool ServesTheHouse => false;
-
     public Task Execute(IJobExecutionContext context) => RunAsync(context.CancellationToken);
 
     public async Task RunAsync(CancellationToken ct)

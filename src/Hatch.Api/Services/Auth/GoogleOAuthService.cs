@@ -1,10 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Hatch.Api.Services.DeviceMapping;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace Hatch.Api.Services.Calendar;
+namespace Hatch.Api.Services.Auth;
 
 /// <summary>Tokens as Google's token endpoint returns them, with <c>expires_in</c> already resolved to an instant.</summary>
 /// <param name="RefreshToken">Only present when Google chose to issue one - an authorization with <c>access_type=offline</c> and <c>prompt=consent</c>, or the rare rotation on a refresh.</param>
@@ -78,72 +77,36 @@ public interface IGoogleOAuthService
     /// <summary>The sign-in shape: identity scopes only, and the account chooser. No refresh token is asked for because nothing is refreshed later.</summary>
     string BuildSignInUrl(string clientId, string redirectUri, string state, string codeChallenge);
 
-    /// <summary>The sign-in exchange, with the client named by the caller rather than read from site settings.</summary>
+    /// <summary>The sign-in exchange. <paramref name="redirectUri"/> has to be the same string that went out with the authorization request - Google compares them.</summary>
     Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, string clientId, string clientSecret, CancellationToken ct);
-
-    /// <summary>The URL to send the admin's browser to. Everything the callback needs to finish the flow is carried in <paramref name="state"/>, which indexes the EfOAuthState row.</summary>
-    string BuildAuthorizationUrl(string clientId, string redirectUri, string state, string codeChallenge);
-
-    /// <summary><paramref name="redirectUri"/> has to be the same string that went out with the authorization request - Google compares them.</summary>
-    Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct);
-
-    Task<GoogleTokenResult> RefreshAsync(string refreshToken, CancellationToken ct);
-
-    /// <summary>Best-effort revocation, telling Google to forget a grant Hatch is about to delete. Returns whether Google accepted it; a false is worth logging, not worth blocking on.</summary>
-    Task<bool> RevokeAsync(string token, CancellationToken ct);
 }
 
 /// <summary>
-/// Google's OAuth 2.0 endpoints, called directly rather than through
-/// Google.Apis.Auth - three endpoints and a revoke, against an SDK whose main
-/// value here would be a credential store Hatch already has in Postgres (see
-/// docs/kiosk-architecture.md).
+/// Google's OAuth 2.0 endpoints for signing in, called directly rather than
+/// through Google.Apis.Auth - an authorization URL and one token exchange,
+/// against an SDK whose main value would be a credential store Hatch does not
+/// need.
 ///
-/// Fail-soft like WeatherService: every method returns a result, never throws
-/// a transport failure at its caller. A dead or throttling Google leaves the
-/// calendar stale, which is the intended degradation.
+/// Fail-soft: the exchange returns a result, never throws a transport failure
+/// at its caller. A dead or throttling Google leaves the person at the sign-in
+/// page with an error code.
 /// </summary>
 public class GoogleOAuthService(
     IHttpClientFactory httpClientFactory,
-    ISiteSettingsService siteSettings,
     TimeProvider time,
     ILogger<GoogleOAuthService> logger) : IGoogleOAuthService
 {
-    /// <summary>The named HttpClient registered in Program.cs. No BaseAddress - OAuth and the Calendar API answer on different hosts, so every call here is absolute.</summary>
+    /// <summary>The named HttpClient registered in Program.cs. No BaseAddress - every call here is absolute.</summary>
     public const string HttpClientName = "Google";
 
     public const string AuthorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
     public const string TokenEndpoint = "https://oauth2.googleapis.com/token";
-    public const string RevokeEndpoint = "https://oauth2.googleapis.com/revoke";
 
-    /// <summary><c>openid</c>+<c>email</c> identify which account was connected; the calendar scope is read-only because Hatch displays calendars and never writes to them.</summary>
-    public const string Scope = "openid email https://www.googleapis.com/auth/calendar.readonly";
-
-    /// <summary>What to assume when Google omits <c>expires_in</c>. Its access tokens are an hour today; assuming less only costs an early refresh.</summary>
     /// <summary>What signing in asks for: who the person is, and nothing else.</summary>
     public const string SignInScope = "openid email profile";
 
+    /// <summary>What to assume when Google omits <c>expires_in</c>. Its access tokens are an hour today; assuming less is harmless.</summary>
     private const int DefaultExpiresInSeconds = 3600;
-
-    public string BuildAuthorizationUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
-        QueryHelpers.AddQueryString(AuthorizationEndpoint, new Dictionary<string, string?>
-        {
-            ["client_id"] = clientId,
-            ["redirect_uri"] = redirectUri,
-            ["response_type"] = "code",
-            ["scope"] = Scope,
-            // access_type=offline is what makes Google issue a refresh token at
-            // all. prompt=consent is what makes it issue one *again* when an
-            // already-authorized account reconnects - without it that second
-            // authorization comes back with an access token only, and the
-            // reconnect the admin just performed to fix a dead grant would
-            // leave the account exactly as dead.
-            ["access_type"] = "offline",
-            ["prompt"] = "consent",
-            ["state"] = state,
-            ["code_challenge"] = codeChallenge,
-            ["code_challenge_method"] = "S256",
-        });
 
     public string BuildSignInUrl(string clientId, string redirectUri, string state, string codeChallenge) =>
         QueryHelpers.AddQueryString(AuthorizationEndpoint, new Dictionary<string, string?>
@@ -162,15 +125,6 @@ public class GoogleOAuthService(
             ["code_challenge_method"] = "S256",
         });
 
-    public Task<GoogleTokenResult> ExchangeCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct) =>
-        PostSettingsTokenAsync(new Dictionary<string, string>
-        {
-            ["grant_type"] = "authorization_code",
-            ["code"] = code,
-            ["code_verifier"] = codeVerifier,
-            ["redirect_uri"] = redirectUri,
-        }, ct);
-
     public Task<GoogleTokenResult> ExchangeCodeAsync(
         string code, string codeVerifier, string redirectUri, string clientId, string clientSecret, CancellationToken ct) =>
         PostTokenAsync(new Dictionary<string, string>
@@ -180,29 +134,6 @@ public class GoogleOAuthService(
             ["code_verifier"] = codeVerifier,
             ["redirect_uri"] = redirectUri,
         }, clientId, clientSecret, ct);
-
-    public Task<GoogleTokenResult> RefreshAsync(string refreshToken, CancellationToken ct) =>
-        PostSettingsTokenAsync(new Dictionary<string, string>
-        {
-            ["grant_type"] = "refresh_token",
-            ["refresh_token"] = refreshToken,
-        }, ct);
-
-    public async Task<bool> RevokeAsync(string token, CancellationToken ct)
-    {
-        try
-        {
-            var client = httpClientFactory.CreateClient(HttpClientName);
-            using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["token"] = token });
-            using var response = await client.PostAsync(RevokeEndpoint, content, ct);
-            return response.IsSuccessStatusCode;
-        }
-        catch (Exception ex) when (IsTransport(ex, ct))
-        {
-            logger.LogWarning(ex, "Revoking a Google token failed");
-            return false;
-        }
-    }
 
     /// <summary>
     /// Reads <c>email</c> out of the id token's payload without validating the
@@ -229,16 +160,6 @@ public class GoogleOAuthService(
         {
             return null;
         }
-    }
-
-    /// <summary>The calendar's client, which lives in site settings.</summary>
-    private async Task<GoogleTokenResult> PostSettingsTokenAsync(Dictionary<string, string> form, CancellationToken ct)
-    {
-        var settings = await siteSettings.GetAsync(ct);
-        if (settings.GoogleClientId is not { } clientId || settings.GoogleClientSecret is not { } clientSecret)
-            return GoogleTokenResult.Failed("not_configured");
-
-        return await PostTokenAsync(form, clientId, clientSecret, ct);
     }
 
     private async Task<GoogleTokenResult> PostTokenAsync(Dictionary<string, string> form, string clientId, string clientSecret, CancellationToken ct)

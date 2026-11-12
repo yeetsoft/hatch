@@ -530,12 +530,12 @@ public sealed class Claim : IAsyncDisposable
             // asking for.
             var answer = await _client.Send(HttpMethod.Delete, path, null, budget.Token);
 
-            // A Hatch too old to know "unservable" 400s the value it has never
-            // heard of. Asked again with the token alone, it gives the lease
+            // A Hatch too old to know "unservable" or "unstarted" 400s the value
+            // it has never heard of. Asked again with the token alone, it gives the lease
             // back as any plain release does; only this outcome is retried,
             // since a 400 on any other is the endpoint refusing something
             // else. Otherwise the claim would sit out its lease.
-            if (answer.Status == HttpStatusCode.BadRequest && outcome == ClaimOutcomes.Unservable)
+            if (answer.Status == HttpStatusCode.BadRequest && outcome is ClaimOutcomes.Unservable or ClaimOutcomes.Unstarted)
                 await _client.Send(HttpMethod.Delete, $"/api/hatch/issues/{Key}/claim?token={Token}", null, budget.Token);
         }
         catch (OperationCanceledException)

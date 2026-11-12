@@ -68,14 +68,6 @@ public sealed class BackupJobTests : IDisposable
     }
 
     [Fact]
-    public void ServesTheHouse_IsFalse()
-    {
-        var (job, _) = NewJob(new FakeBackupProcess(), _dir);
-
-        Assert.False(job.ServesTheHouse);
-    }
-
-    [Fact]
     public async Task RunAsync_NotConfigured_LogsOnTheFirstCallAndNotTheSecond()
     {
         var (job, logger) = NewJob(new FakeBackupProcess(), "");

@@ -14,8 +14,7 @@ namespace Hatch.Api.Tests;
 /// <para>Nothing here is mocked. It boots the real host off the real
 /// Program.cs against a real Postgres, supplying exactly the three settings a
 /// friend's <c>docker run</c> supplies - the two connection strings and
-/// <c>Auth:Enabled=false</c> - and no Home Assistant, no go2rtc, no share, no
-/// kiosk host and no log-shipper token. That is the point: the failure it
+/// <c>Auth:Enabled=false</c> - and no log-shipper token. That is the point: the failure it
 /// guards against was a database read from inside DI resolution, which no
 /// unit test of any one class can see.</para>
 ///
@@ -32,17 +31,12 @@ namespace Hatch.Api.Tests;
 public class MinimalStartupTests
 {
     /// <summary>
-    /// Everything the four house jobs, BackfillChannelHistory, ReflectionCadence
-    /// and Backup are registered under - criterion 6 is that no <em>house</em>
-    /// job holds a trigger here. ReflectionCadence and Backup are not house
-    /// jobs (<see cref="Hatch.Api.Modules.Hatch.ReflectionCadenceJob.ServesTheHouse"/>
-    /// and <see cref="Hatch.Api.Modules.Hatch.BackupJob.ServesTheHouse"/> are
-    /// false), so they are scheduled either way and are the two triggers this
-    /// group is left holding.
+    /// Everything ReflectionCadence and Backup are registered under - the two
+    /// jobs, and so the two triggers, this group is left holding.
     /// </summary>
     private const string JobGroup = "Hatch.Api";
 
-    /// <summary>The only triggers a house-less install still carries - see <see cref="JobGroup"/>.</summary>
+    /// <summary>The only triggers an install carries - see <see cref="JobGroup"/>.</summary>
     private static readonly string[] ExpectedTriggers = ["ReflectionCadence_Trigger", "Backup_Trigger"];
 
     /// <summary>
@@ -63,37 +57,33 @@ public class MinimalStartupTests
     private const int CaseTimeoutMs = (CaseBudgetSeconds + 10) * 1000;
 
     /// <summary>
-    /// The exit 139. Resolving JobsInit constructs every job, one of which takes
-    /// an HADotNet client whose registration blocks on a SiteSettings read - and
-    /// on a database the migrate step has not touched, that table does not
-    /// exist. The exception used to unwind out of Main before the first request.
+    /// The exit 139. Resolving JobsInit constructs every job, and a service
+    /// that read the database while DI was resolving it, on a database the
+    /// migrate step has not touched, found a table that did not exist. The
+    /// exception used to unwind out of Main before the first request.
     ///
-    /// <para>What is asserted is criterion 1's second half exactly: it stays up,
-    /// it serves, and it says what it decided. Not the absence of Error lines -
-    /// EF reports the failed read at Error, correctly, because a serving process
-    /// that cannot run a command has something wrong with it. Something is: the
-    /// migrate step has not run. Criterion 5's clean log is the case below,
-    /// which is the one a friend is actually left in.</para>
+    /// <para>What is asserted is that it stays up and it serves. Not the
+    /// absence of Error lines - a job's first firing against an unmigrated
+    /// database may report the missing table at Error, correctly, because a
+    /// serving process that cannot read its database has something wrong with
+    /// it. Something is: the migrate step has not run. The clean log is the case
+    /// below, which is the one a friend is actually left in.</para>
     /// </summary>
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public async Task AgainstADatabaseNobodyHasMigrated_ItStaysUpAndSaysWhy()
+    public async Task AgainstADatabaseNobodyHasMigrated_ItStaysUpAndServes()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
-        var logs = await AssertStartsAndServesAsync(migrated: false);
-
-        Assert.Contains(logs.Messages, m => m.Contains("Could not read the site settings", StringComparison.Ordinal));
+        await AssertStartsAndServesAsync(migrated: false);
     }
 
     /// <summary>
     /// The install a friend is left with once the migrate step has run:
-    /// criteria 1, 5 and 6 at startup. Nothing at Error or above, and not one
-    /// of the four house jobs holding a trigger - which is what says the
-    /// weather call that would have gone out to the internet, and the 7,200 log
-    /// lines a day, are not going to happen.
+    /// nothing at Error or above, and exactly the two triggers
+    /// <see cref="ExpectedTriggers"/> names.
     /// </summary>
     [SkippableFact(Timeout = CaseTimeoutMs)]
-    public async Task AgainstAMigratedDatabase_ItStartsCleanlyAndSchedulesNoHouseJob()
+    public async Task AgainstAMigratedDatabase_ItStartsCleanlyAndSchedulesOnlyTheTwoJobs()
     {
         Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
@@ -151,7 +141,7 @@ public class MinimalStartupTests
 
     /// <summary>
     /// What both cases share: the host builds and starts, /health/ready answers
-    /// 200, and the store holds no trigger for any house job - every phase of
+    /// 200, and the store holds exactly the expected triggers - every phase of
     /// it, including making the scratch databases, bounded against one
     /// <see cref="Deadline"/> so a stalled phase fails this case alone, naming
     /// itself, rather than taking the whole run with it.

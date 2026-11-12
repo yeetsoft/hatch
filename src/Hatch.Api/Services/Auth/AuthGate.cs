@@ -1,5 +1,4 @@
 using Hatch.Api.Ef;
-using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 
@@ -92,24 +91,21 @@ public interface IAuthGate
 /// an auth bug from the outside.
 ///
 /// The allow-list below is load-bearing and every entry is there for a stated
-/// reason - see docs/auth-architecture.md, "The allow-list is load-bearing". Two of
-/// them fail silently and confusingly if they are ever dropped: the health
+/// reason - see docs/auth-architecture.md, "The allow-list is load-bearing". One
+/// of them fails silently and confusingly if it is ever dropped: the health
 /// probes (gating them fails readiness on every pod, and the Deployment never
-/// becomes available) and the media library (Sonos speakers fetch the stream
-/// themselves and cannot hold a cookie, so gating it stops all music with no
-/// error that mentions authentication).
+/// becomes available).
 /// </summary>
 public class AuthGate(
     IAuthService auth,
     IOptions<AuthOptions> options,
-    IOptions<MediaLibraryOptions> mediaLibrary,
     ILogger<AuthGate> logger) : IAuthGate
 {
     private readonly AuthOptions options = options.Value;
 
     /// <summary>
-    /// Prefixes that never see the wall. Matched by path segment, so /media is
-    /// exempt and /mediafoo is not - a StartsWith on the raw string would open
+    /// Prefixes that never see the wall. Matched by path segment, so /auth is
+    /// exempt and /authfoo is not - a StartsWith on the raw string would open
     /// far more than this list names.
     /// </summary>
     private readonly PathString[] exemptPaths =
@@ -119,11 +115,6 @@ public class AuthGate(
         // outage whose cause looks nothing like authentication.
         "/health/live",
         "/health/ready",
-
-        // Read from MediaLibraryOptions rather than hardcoded, because the
-        // prefix is deploy-time config and the two drifting apart is exactly
-        // the silent failure this list exists to prevent.
-        NormalizePrefix(mediaLibrary.Value.RequestPath),
 
         // Browser log shipping, including from the sign-in shell itself. A
         // gated log endpoint means the failures you most want to see are the
@@ -137,26 +128,6 @@ public class AuthGate(
         // cluster's own state is *not* part of the unauthenticated answer; the
         // controller withholds that separately.
         "/api/hatch-revision",
-
-        // Server-to-server from Hyper-V scheduled tasks, which hold no cookie -
-        // and it carries its own X-Vm-Log-Token gate, which is strictly
-        // stronger than a cookie would be (VmConsoleLogsController).
-        "/api/vm-console-logs",
-
-        // Tablet provisioning stays friction-free: nothing behind it is more
-        // sensitive than an APK URL and the Wi-Fi credentials the tablet is
-        // about to join with anyway.
-        "/api/kiosk/provisioning-info",
-
-        // The kiosk *shell* drives the tablet backlight from the day's sun
-        // events (DisplayController.kt) and calls this over plain
-        // HttpURLConnection, which shares no cookie jar with the GeckoView the
-        // page runs in - the page's grant cannot cover it. Exposed: sunrise and
-        // sunset times, from which the site's approximate latitude is
-        // inferable. That is strictly less than the line above already hands
-        // out, and the endpoint takes lat/lon overrides, so it is a solar
-        // calculator far more than it is a location.
-        "/api/sun-events",
 
         // The sign-in shell and the two endpoints it calls. Gating these is an
         // infinite redirect loop. /auth is the shell's real mount (Program.cs),
@@ -200,7 +171,7 @@ public class AuthGate(
     /// Exempt paths whose caller is still worth identifying. Deliberately one
     /// entry rather than "all of them": identification costs a credential
     /// lookup, and the reason the list above exists is that the health probes
-    /// and the media stream must cost nothing.
+    /// must cost nothing.
     ///
     /// The one entry is log shipping, and it is here because of a bug this
     /// method exists to fix. UiLogsController has always logged an `actor`
@@ -303,14 +274,5 @@ public class AuthGate(
         }
 
         return false;
-    }
-
-    /// <summary>A PathString has to be rooted and unslashed; MediaLibrary:RequestPath is operator-supplied and may be neither.</summary>
-    private static PathString NormalizePrefix(string? value)
-    {
-        var trimmed = value?.Trim().TrimEnd('/');
-        if (string.IsNullOrEmpty(trimmed)) return PathString.Empty;
-
-        return new PathString(trimmed.StartsWith('/') ? trimmed : "/" + trimmed);
     }
 }

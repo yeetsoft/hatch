@@ -1,7 +1,6 @@
 using Hatch.Api.Common;
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -35,7 +34,6 @@ public class AuthMiddlewareTests
 
     [Theory]
     [InlineData("/health/ready")]
-    [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
     [InlineData("/auth/")]
     [InlineData("/.well-known/assetlinks.json")]
@@ -103,7 +101,7 @@ public class AuthMiddlewareTests
     [InlineData("same-origin", "application/json", null)]
     [InlineData(null, "application/json", null)]
     [InlineData(null, "text/html", "XMLHttpRequest")]
-    // A Sonos speaker reaching something outside the media prefix, and a probe.
+    // A non-browser client with an unusual Accept, and a probe.
     [InlineData(null, "audio/flac", null)]
     [InlineData(null, "", null)]
     public async Task EveryOtherCallerGetsABare401ItCanActuallySee(string? fetchMode, string accept, string? requestedWith)
@@ -304,12 +302,10 @@ public class AuthMiddlewareTests
 
     [Theory]
     [InlineData("/health/ready")]
-    [InlineData("/media/Beatles/Revolver/01.flac")]
     public async Task DoesNotSpendACredentialLookupOnTheExemptPathsThatMustCostNothing(string path)
     {
         // Identification is one entry on a list, not a blanket. The health
-        // probes fire on every pod forever and Sonos streams every byte of
-        // every song through here; a database round trip on either is the
+        // probes fire on every pod forever; a database round trip on each is the
         // reason the allow-list exists in the first place.
         var auth = new StubAuthService(Grant());
         var request = Request(path);
@@ -380,7 +376,6 @@ public class AuthMiddlewareTests
         var gate = new AuthGate(
             auth ??= new StubAuthService(),
             options,
-            Options.Create(new MediaLibraryOptions { RequestPath = "/media" }),
             NullLogger<AuthGate>.Instance);
 
         var served = false;

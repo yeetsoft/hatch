@@ -1,6 +1,5 @@
 using Hatch.Api.Ef;
 using Hatch.Api.Services.Auth;
-using Hatch.Api.Services.Media;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -9,25 +8,18 @@ namespace Hatch.Api.Tests.Auth;
 
 /// <summary>
 /// The allow-list, which is the part of the wall that fails silently when it
-/// is wrong. Two entries take the whole install down in ways that look nothing
-/// like an auth bug - the health probes (readiness fails on every pod and the
-/// Deployment never becomes available) and the media prefix (Sonos speakers
-/// fetch the stream themselves and hold no cookie, so all music stops with no
-/// error that mentions authentication) - so the near-miss cases matter as much
-/// as the matches: a StartsWith on the raw string would open /mediafoo too.
+/// is wrong. The health probes take the whole install down in a way that looks
+/// nothing like an auth bug (readiness fails on every pod and the Deployment
+/// never becomes available), so the near-miss cases matter as much as the
+/// matches: a StartsWith on the raw string would open /authors too.
 /// </summary>
 public class AuthGateTests
 {
     [Theory]
     [InlineData("/health/live")]
     [InlineData("/health/ready")]
-    [InlineData("/media")]
-    [InlineData("/media/Beatles/Revolver/01.flac")]
     [InlineData("/api/ui-logs")]
     [InlineData("/api/hatch-revision")]
-    [InlineData("/api/vm-console-logs")]
-    [InlineData("/api/kiosk/provisioning-info")]
-    [InlineData("/api/sun-events")]
     [InlineData("/auth/")]
     [InlineData("/auth/r/K3M9P2QT")]
     [InlineData("/auth/assets/index-BGJobmXl.js")]
@@ -46,7 +38,6 @@ public class AuthGateTests
     [InlineData("/.well-known/assetlinks.json")]
     // Casing is the proxy's to normalize, not ours to depend on.
     [InlineData("/Health/Ready")]
-    [InlineData("/Media/track.flac")]
     public async Task ExemptPathsAreServedWithoutACredential(string path)
     {
         var gate = NewGate();
@@ -58,15 +49,17 @@ public class AuthGateTests
 
     [Theory]
     // The near misses. Each of these is a path a naive StartsWith would open.
-    [InlineData("/mediafoo/track.flac")]
-    [InlineData("/media-library/track.flac")]
     [InlineData("/healthz")]
     [InlineData("/health/livez")]
     [InlineData("/api/ui-logs-admin")]
-    [InlineData("/api/kiosk/provisioning-info-secret")]
     [InlineData("/api/kiosk/logs")]
     [InlineData("/api/auth/verifyer")]
     [InlineData("/api/app-versions")]
+    // Routes that were exempt when the house had a kiosk, and are gone with it.
+    [InlineData("/media/track.flac")]
+    [InlineData("/api/vm-console-logs")]
+    [InlineData("/api/kiosk/provisioning-info")]
+    [InlineData("/api/sun-events")]
     // The kiosk-era app-version route is gone, and its exemption with it.
     [InlineData("/api/app-version")]
     [InlineData("/api/app-version/hatch")]
@@ -95,28 +88,6 @@ public class AuthGateTests
         var decision = await gate.EvaluateAsync(path, "home.example.com", tokens: [], bearer: null, clientIp: "10.0.0.7", CancellationToken.None);
         Assert.Equal(AuthOutcome.Challenge, decision.Outcome);
         Assert.Equal(AuthDecision.NoCredential, decision.Reason);
-    }
-
-    [Fact]
-    public async Task TheMediaPrefixComesFromOptionsRatherThanTheLiteralSlashMedia()
-    {
-        // A deploy that repoints the library and an allow-list that hardcodes
-        // /media is exactly the silent failure this list exists to prevent.
-        var gate = NewGate(mediaRequestPath: "/music/");
-
-        Assert.True(gate.IsExempt("/music/Revolver/01.flac", null));
-        Assert.False(gate.IsExempt("/media/Revolver/01.flac", null));
-        Assert.Equal(AuthOutcome.Allow, (await gate.EvaluateAsync("/music", null, null, null, null, CancellationToken.None)).Outcome);
-    }
-
-    [Fact]
-    public void AnUnconfiguredMediaLibraryExemptsNothing()
-    {
-        // Empty RequestPath must not degrade into "/" and open the whole app.
-        var gate = NewGate(mediaRequestPath: "");
-
-        Assert.False(gate.IsExempt("/media/track.flac", null));
-        Assert.False(gate.IsExempt("/api/zones", null));
     }
 
     [Fact]
@@ -186,11 +157,9 @@ public class AuthGateTests
 
     private static AuthGate NewGate(
         bool enabled = true,
-        string mediaRequestPath = "/media",
         string[]? exemptHosts = null,
         IAuthService? auth = null) =>
         new(auth ?? new StubAuthService(null),
             Options.Create(new AuthOptions { Enabled = enabled, ExemptHosts = exemptHosts ?? [] }),
-            Options.Create(new MediaLibraryOptions { RequestPath = mediaRequestPath }),
             NullLogger<AuthGate>.Instance);
 }

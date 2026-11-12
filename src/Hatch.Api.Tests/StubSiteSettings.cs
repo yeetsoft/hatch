@@ -1,5 +1,4 @@
-using Hatch.Api.Ef;
-using Hatch.Api.Services.DeviceMapping;
+using Hatch.Api.Services.Settings;
 
 namespace Hatch.Api.Tests;
 
@@ -14,14 +13,6 @@ internal sealed class StubSiteSettings(
     string? googleClientSecret = "GOCSPX-secret",
     string? googleOAuthRedirectUri = null,
     string timeZone = "America/New_York",
-    int calendarAgendaDays = 2,
-    double latitude = 40.7128,
-    double longitude = -74.0060,
-    string? weatherAlertContact = null,
-    int airQualityAlertThresholdAqi = 101,
-    int hazardMaxSeverityAgeHours = 48,
-    string weatherAlertProvider = HazardProviders.Nws,
-    string airQualityProvider = HazardProviders.OpenMeteo,
     string? anthropicApiKey = null,
     string? claudeSubscriptionToken = null,
     string? codexApiKey = null,
@@ -32,23 +23,10 @@ internal sealed class StubSiteSettings(
 {
     public Task<SiteSettingsSnapshot> GetAsync(CancellationToken ct) => Task.FromResult(new SiteSettingsSnapshot(
         TimeZone: timeZone,
-        Latitude: latitude,
-        Longitude: longitude,
         WeatherEntity: null,
-        ComfortToleranceF: 2m,
-        DefaultComfortLowF: 68m,
-        DefaultComfortHighF: 72m,
-        MediaLibraryBaseUrl: null,
-        OverrideBackoffMinutes: 120,
         GoogleClientId: googleClientId,
         GoogleClientSecret: googleClientSecret,
         GoogleOAuthRedirectUri: googleOAuthRedirectUri,
-        CalendarAgendaDays: calendarAgendaDays,
-        WeatherAlertProvider: weatherAlertProvider,
-        AirQualityProvider: airQualityProvider,
-        WeatherAlertContact: weatherAlertContact,
-        AirQualityAlertThresholdAqi: airQualityAlertThresholdAqi,
-        HazardMaxSeverityAgeHours: hazardMaxSeverityAgeHours,
         AnthropicApiKey: anthropicApiKey,
         ClaudeSubscriptionToken: claudeSubscriptionToken,
         CodexApiKey: codexApiKey,
