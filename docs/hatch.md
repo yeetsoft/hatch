@@ -66,7 +66,7 @@ the next heading of the same level and stop.
     overnight page?
 - [The wall, the roles, and API keys](#the-wall-the-roles-and-api-keys) - Who
   may reach Hatch, and how does an API key differ from a person?
-- [API surface](#api-surface) - Which routes exist under `/api/hatch`, and
+- [API surface](#api-surface) - Which routes exist under `/api`, and
   who may call each?
 - [The battery](#the-battery) - How much Claude is left, and when does it
   come back?
@@ -149,7 +149,7 @@ The name is the product. You hatch a plan here, and epics hatch into stories
 into shipped work.
 
 It is spelled `Hatch` / `hatch` everywhere — C# namespace
-`Hatch.Api.Modules.Hatch`, Postgres schema `hatch`, routes under `/api/hatch`,
+`Hatch.Api.Modules.Hatch`, Postgres schema `hatch`, routes under `/api`,
 bundle at `/`, and its own host `hatch.${DOMAIN}`.
 
 Four properties carry the design:
@@ -161,7 +161,7 @@ Four properties carry the design:
   API 403s for anyone who is not the operator — the same posture an
   Admin-gated page takes, through the same gate.
 - **An agent is a first-class caller.** An `Authorization: Bearer hatch_ak_…` key
-  reaches `/api/hatch/*` and nothing else, decided by the same gate that
+  reaches the `/api/*` routes that accept a key, decided by the same gate that
   decides everything else. A ticket link is a complete instruction, and the
   ticket is where the answer goes back.
 - **Everything an agent needs to decide is decided on the server.** Which issue
@@ -291,7 +291,7 @@ being shell.
 is the standard way to run this install: `db`, a `migrate` step, and `api`
 serving the board and the sign-in shell from `http://localhost:8080` (or
 `HATCH_PORT`). There is no reverse proxy in front of it and nothing to rewrite:
-the board is served at the origin's own root, and `/api/hatch/*` is how a key
+the board is served at the origin's own root, and `/api/*` is how a key
 can `curl` the API on the same origin the browser uses. A deep link pasted
 into a chat window or a VS Code prompt — `<origin>/issues/AER-12` — needs no
 prefix, and the old `/apps/hatch/...` form a bookmark or an open pull request
@@ -657,7 +657,7 @@ uploads from the install's own origin must not do.
 and the `DELETE`, checked again in the action.
 
 `ProjectDto.LogoUpdatedAt` is what lets the browser point an `<img>` at a
-stable `/api/hatch/projects/{id}/logo?v={ticks}` URL and still see a new
+stable `/api/projects/{id}/logo?v={ticks}` URL and still see a new
 upload the moment it lands — the same role `PersonDto.PhotoUpdatedAt` plays for
 a person's photo. Deleting a project takes its logo with it.
 
@@ -740,10 +740,10 @@ claiming the shelved half shipped.
 `IsWip` marks the columns in the WIP section — the lane or lanes the operator
 wants bounded. It is read only where the column is neither deferred nor
 terminal: a flag stranded on a column that has since become either does not
-silently hold a limit down. It is written only through `PUT /api/hatch/wip`, by
+silently hold a limit down. It is written only through `PUT /api/wip`, by
 a person — see ["the one edge that is deliberately
 cut"](#the-one-edge-that-is-deliberately-cut) — never through a status write, so
-the ordinarily key-writable `PATCH /api/hatch/statuses/{id}` cannot reach it.
+the ordinarily key-writable `PATCH /api/statuses/{id}` cannot reach it.
 The limit itself is a row in `hatch."WipLimits"` (`Types`, `Limit`), one per
 slice of the board the flag is measured against; no row means no limit. Hatch
 knows exactly two slices, `story,bug` and `epic`, in that fixed order — the
@@ -758,19 +758,19 @@ from the playbook matrix, for the reason [above](#status) — this box only
 says which columns an express issue, or a running epic's own story or bug, is
 carried past, and says nothing about who works the columns on either side of
 it. Set only by a person, through its own route
-(`PUT /api/hatch/statuses/{id}/express-skips`), for the reason given under
+(`PUT /api/statuses/{id}/express-skips`), for the reason given under
 ["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
 it decides which gates the loop may pass unattended, and a key that could tick
 it could carry its own ticket through the night with nobody reading it first.
-Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can set
+Neither `POST /api/statuses` nor `PATCH /api/statuses/{id}` can set
 it.
 
 `ParentPulls` marks the columns a child is carried on out of, with no session,
 while its parent stands in the implementation column — seeded true on
 `Backlog` and read by [the hop](#the-hop). Set only by a person, through its
-own route (`PUT /api/hatch/statuses/{id}/parent-pulls`), for the same reason
+own route (`PUT /api/statuses/{id}/parent-pulls`), for the same reason
 `ExpressSkips` is: it decides which gates the loop may pass unattended.
-Neither `POST /api/hatch/statuses` nor `PATCH /api/hatch/statuses/{id}` can
+Neither `POST /api/statuses` nor `PATCH /api/statuses/{id}` can
 set it either.
 
 Out of the one `ParentPulls` column that feeds the implementation column
@@ -787,14 +787,14 @@ the seeded default leaves that column unticked (AR-52).
 reads the leftmost column, as it always has, except where an issue is being
 filed by a program (`ICallerIdentity.IsProgramAsync`) and a column carries
 this flag, in which case that column is used instead. At most one column ever
-holds it — `PUT /api/hatch/statuses/{id}/agent-files` clears every other row
+holds it — `PUT /api/statuses/{id}/agent-files` clears every other row
 when it ticks one, the same way `express-skips` does. It is read only where
 the column is neither deferred nor terminal: a flag stranded on a column that
 has since become either does not silently apply, the same guard `IsWip` reads
 under. Set only by a person, through its own route
-(`PUT /api/hatch/statuses/{id}/agent-files`), unreachable from either ordinary
-status write — neither `POST /api/hatch/statuses` nor
-`PATCH /api/hatch/statuses/{id}` can set it. A board with nothing ticked files
+(`PUT /api/statuses/{id}/agent-files`), unreachable from either ordinary
+status write — neither `POST /api/statuses` nor
+`PATCH /api/statuses/{id}` can set it. A board with nothing ticked files
 every issue leftmost, whoever files it, exactly as it always has.
 
 `IsImplementation` marks the implementation column, the one where code gets
@@ -803,7 +803,7 @@ that column follows it: a [dependency](#dependency) holds the move into it, an
 issue with a child still open is not carried out of it, and
 [`ParentPulls`](#the-hop) carries a child on while its parent stands in it. All
 three read `Columns.Implementation`. At most one column ever holds it —
-`PUT /api/hatch/statuses/{id}/implementation` clears every other row when it
+`PUT /api/statuses/{id}/implementation` clears every other row when it
 ticks one, the same way `agent-files` does. Ticking a deferred or terminal
 column is refused with a 400 naming the column; unticking is always accepted.
 It is read only where the column is neither deferred nor terminal: a tick
@@ -812,8 +812,8 @@ answers as if nothing were ticked, the same guard `IsWip` and `AgentFiles` read
 under. Set only by a person, through its own route, for the reason under
 ["the one edge that is deliberately cut"](#the-one-edge-that-is-deliberately-cut):
 it decides which move a dependency holds, and a key that could move it could
-ungate its own ticket. Neither `POST /api/hatch/statuses` nor
-`PATCH /api/hatch/statuses/{id}` can set it: a new column starts unticked, and a
+ungate its own ticket. Neither `POST /api/statuses` nor
+`PATCH /api/statuses/{id}` can set it: a new column starts unticked, and a
 PATCH of other fields leaves it as it was. **Nothing ticked means measured,
 exactly as before.** The implementation column is then the one whose own next
 move is into the awaiting-review column (see [Dependency](#dependency)). No
@@ -827,12 +827,12 @@ and `IsImplementation` give those columns for their own question;
 unticking it refuses while `MergesPullRequest` still holds, since a merge
 column with nobody guarding its door would let anything that can move a
 card merge its own code. Set only by a person, through its own route
-(`PUT /api/hatch/statuses/{id}/protected`), checked again in the action —
+(`PUT /api/statuses/{id}/protected`), checked again in the action —
 the same `ProjectsController.NotAPerson` idiom a [repository](#repository)
 write uses — for the same reason `ParentPulls` is closed to a key: it
 decides who may move work past this door, and that is a playbook's kind of
-power. Neither `POST /api/hatch/statuses` nor
-`PATCH /api/hatch/statuses/{id}` can set it.
+power. Neither `POST /api/statuses` nor
+`PATCH /api/statuses/{id}` can set it.
 
 `MergesPullRequest` marks the column whose runner poll merges an issue's
 pull request once it stands there, current and green, with no session —
@@ -842,13 +842,13 @@ a key included, merge its own code — and refuses a deferred or a terminal
 column for the same reason `IsProtected` does; unticking is always
 allowed, the same stranded-flag tolerance `IsWip` gives. Set only by a
 person, through its own route
-(`PUT /api/hatch/statuses/{id}/merges-pull-request`), for the same reason
+(`PUT /api/statuses/{id}/merges-pull-request`), for the same reason
 `IsProtected` is: it decides whose code merges unattended, and that is a
-playbook's kind of power. Neither `POST /api/hatch/statuses` nor
-`PATCH /api/hatch/statuses/{id}` can set it.
+playbook's kind of power. Neither `POST /api/statuses` nor
+`PATCH /api/statuses/{id}` can set it.
 
 `RunnerTags` is a column's own runner tags, written through its own route,
-`PUT /api/hatch/statuses/{id}/runner-tags`, refused to a program the same
+`PUT /api/statuses/{id}/runner-tags`, refused to a program the same
 way `IsProtected` and `MergesPullRequest` are - `NotAPerson` checked in the
 action, with no owner check beside it, since a column has no owner the way
 a project does. The list is replaced whole, run through
@@ -859,8 +859,8 @@ answers to. A tag that breaks it, a blank one included, or a list over 8 is
 refused `400`; a null body is refused `400` too, rather than read as "leave
 it alone", since this route only ever replaces the whole list. Re-sending
 the list the column already holds, the same tags in the same order, writes
-nothing, and an empty list clears it. Neither `POST /api/hatch/statuses` nor
-`PATCH /api/hatch/statuses/{id}` can set it.
+nothing, and an empty list clears it. Neither `POST /api/statuses` nor
+`PATCH /api/statuses/{id}` can set it.
 
 `Color` is a column rather than a palette keyed on the shipped names, because
 the operator invents columns — a lookup by name would leave a new one grey
@@ -1028,7 +1028,7 @@ whenever the sha differs from the one held, and a repeat read, a new merge state
 or a new review decision on the same head leaves it. It rides on the review read
 (`ReviewCheckDto.PullRequestHeadSince`), and nothing reads it yet. All five are
 nullable, and null means *not read* — which is not `unknown` or `none`, both of which are things
-the forge can say. Only `PUT /api/hatch/issues/{key}/pull-request-state` writes
+the forge can say. Only `PUT /api/issues/{key}/pull-request-state` writes
 them, and when the url changes they are cleared together with
 `PullRequestClosedAt`, since a state read of one pull request says nothing of
 another. They are stored and drawn, and `MergeWork.Judge` reads
@@ -1130,7 +1130,7 @@ anything else, considers a low candidate only after every normal one,
 considers an economy candidate only when an unattended pass finds the
 account it would spend has a reserve of usage to spare, and never considers a
 paused one at all. `PUT
-/api/hatch/issues/{key}/priority` sets the level by name; the older
+/api/issues/{key}/priority` sets the level by name; the older
 `PUT .../expedite` stays as a two-level alias (`{ expedited: true }` sets
 expedited, `false` sets normal), so a script or a browser tab written against
 the two-level flag does not break. A person sets it from a picker: a pill on
@@ -1417,7 +1417,7 @@ slice already holds, just narrowed to this one epic's direct children, so the
 two limits can both apply to the same move without either counting the
 other's load twice.
 
-Written only through `PATCH /api/hatch/issues/{key}/wip` with `{ limit }` as a
+Written only through `PATCH /api/issues/{key}/wip` with `{ limit }` as a
 string — `""` clears it to no limit, a whole number of one or more
 sets it, anything else is refused with a sentence, and anything but an epic
 or a reflection is refused with a sentence saying only an epic or a
@@ -1455,7 +1455,7 @@ in memory.
 
 #### Moving between projects
 
-An issue's project can change too — `PATCH /api/hatch/issues/{key}` takes a
+An issue's project can change too — `PATCH /api/issues/{key}` takes a
 `projectId` alongside the fields above. The move mints the issue a number in
 the target project through the exact mint just described, with the same
 retry on a lost race; its old key goes dead, the same cost a project's own
@@ -1818,7 +1818,7 @@ writes nothing and is not an error, as re-applying any edit here is not.
 override. An edge is a statement about the work rather than about an agent's
 budget, and a planning session that has just filed five stories is exactly who
 should chain them. Both verbs — `POST` and `DELETE` on
-`/api/hatch/issues/{key}/dependencies` — answer with the whole issue, and there
+`/api/issues/{key}/dependencies` — answer with the whole issue, and there
 is no `GET`: both lists ride `IssueDto`, where the board, the page and a client
 at a terminal need them anyway. Both directions land in the issue's history, on the issue that
 waits and on it alone.
@@ -2019,7 +2019,7 @@ A ticket whose work changed nothing - the setting was already what the ticket
 asked for, the question was answered on the ticket, the bug did not reproduce -
 has no branch to push and no pull request to open. It says so, and the board
 takes its word: `hatch pr KEY --none "reason"`, which is `PUT
-/api/hatch/issues/{key}/no-code` with `{ reason }`. The reason is trimmed and
+/api/issues/{key}/no-code` with `{ reason }`. The reason is trimmed and
 kept on the issue (`EfHatchIssue.NoCode`, with `NoCodeAt` for when); `""` or
 whitespace clears it, an absent reason is a `400` so that clearing is something
 the caller says, and the length limit is `NoCodeRequest.MaxLength`. Setting
@@ -2172,7 +2172,7 @@ flagged, it is present with every slice's load, whether or not that slice has
 a limit — a board that has never turned WIP on reads exactly as one that
 predates it.
 
-Read at `GET /api/hatch/board`'s `wip` block, and printed as one line per
+Read at `GET /api/board`'s `wip` block, and printed as one line per
 limited slice by `hatch board`.
 
 On the board itself the WIP columns read as one zone. A band spans each run of
@@ -2604,7 +2604,7 @@ verdicts does. A second write for the same pair replaces the first; a verdict
 for a project that binds nothing is keyed on the remote the runner spelled, like
 any other.
 
-`PUT /api/hatch/issues/{key}/merge-check` writes it, and a key may: the caller is
+`PUT /api/issues/{key}/merge-check` writes it, and a key may: the caller is
 a runner, and a verdict only a person could enter would be one nobody entered.
 It is refused, in a sentence, for a remote that does not canonicalise, a verdict
 that is not one of the four, `conflicted` with no files, and `clean` or
@@ -2643,7 +2643,7 @@ as the caller spelled it, for the reason the [merge check](#merge-check) is: a
 project may bind several repositories, and each gets its own row rather than
 one overwriting another.
 
-`PUT /api/hatch/issues/{key}/landing` writes it, and a key may, for the reason
+`PUT /api/issues/{key}/landing` writes it, and a key may, for the reason
 a key may write a merge check. It is refused, in a sentence, for a remote that
 does not canonicalise, an empty or non-hex sha, and `ContainedBy` given
 without a `Trunk` — a landing that names what contains it must also name its
@@ -2698,7 +2698,7 @@ minutes after `ShaSince`. `PushedByIncrement` records that a build increment
 pushed the sha, and is what tells a build that fails on an agent's own fix — a
 question — from one that fails on somebody else's push, which is new work.
 
-`PUT /api/hatch/issues/{key}/build-check` writes it, and a key may, for the
+`PUT /api/issues/{key}/build-check` writes it, and a key may, for the
 reason a key may write a merge check. It is refused, in a sentence, for a remote
 that does not canonicalise, an unknown verdict, no branch, no sha, `failed` with
 no failing checks, more than 100 of them, a check name that is empty, over 200
@@ -2777,7 +2777,7 @@ auto-filing ([below](#checking-the-branches-in-review)) — a trunk build with n
 project binding it, or bound to a project this runner does not drive, is
 nobody's to act on without a person.
 
-`PUT /api/hatch/trunk-builds` writes a verdict and a key may, for the reason it
+`PUT /api/trunk-builds` writes a verdict and a key may, for the reason it
 may write a build check — the caller is a runner, and a verdict only a person
 could enter would be one nobody entered. It takes the same refusals the build
 check's write does (an uncanonicalisable remote, an unknown verdict, no trunk,
@@ -2785,7 +2785,7 @@ no sha, `failed` with no failing checks, an over-long or broken check name, an
 over-limit runner), naming the trunk rather than the branch. **No event, and no
 question**: there is no issue to write either on, and a trunk's failure is a
 person's row in the attention panel rather than a stall a session is asked
-about. `GET /api/hatch/trunk-builds` answers every stored verdict, ordered by
+about. `GET /api/trunk-builds` answers every stored verdict, ordered by
 canonical then trunk — the runner's poll reads it once a poll, since a trunk
 carries no issue for the verdict to ride in on.
 
@@ -2842,7 +2842,7 @@ write that finds the file `absent` leaves them untouched too — whatever was
 last remembered good stays remembered until a parse clears it or a fresh
 transition out of `parsed` updates it.
 
-`PUT /api/hatch/playbook-files` writes a row and a key may, for the reason it
+`PUT /api/playbook-files` writes a row and a key may, for the reason it
 may write a trunk build — the caller is a runner, reporting what it read, not
 proposing it. `{ remote, trunk, sha, content?, url?, runner }`, `content` the
 blob's exact bytes, base64-encoded, and absent for a trunk with nothing at the
@@ -2853,7 +2853,7 @@ runner — plus content that is not valid base64 or over the parser's own size
 limit; an unsafe or over-long `url` is not refused, it is simply stored as
 null. **No event, and no question**: there is no issue to write either on,
 and a bad playbooks file is this row's own state, not a stall a session is
-asked about. `GET /api/hatch/playbook-files` answers every stored row,
+asked about. `GET /api/playbook-files` answers every stored row,
 ordered by canonical then trunk, with the path itself (`.hatch/playbooks.yaml`)
 alongside them — what the Playbooks page reads once a load, and what a
 runner's poll reads once a poll to know whether it has already put this sha.
@@ -2905,7 +2905,7 @@ write that finds the file `absent` leaves them untouched too — whatever was
 last remembered good stays remembered until a parse clears it or a fresh
 transition out of `parsed` updates it.
 
-`PUT /api/hatch/dependency-files` writes a row and a key may, for the reason
+`PUT /api/dependency-files` writes a row and a key may, for the reason
 it may write a playbook file — the caller is a runner, reporting what it
 read, not proposing it. `{ remote, trunk, sha, content?, url?, runner }`,
 `content` the blob's exact bytes, base64-encoded, and absent for a trunk with
@@ -2916,7 +2916,7 @@ over-long trunk, sha or runner — plus content that is not valid base64 or
 over the parser's own size limit; an unsafe or over-long `url` is not
 refused, it is simply stored as null. **No event, and no question**: there
 is no issue to write either on, and a bad dependencies file is this row's
-own state, not a stall a session is asked about. `GET /api/hatch/dependency-files`
+own state, not a stall a session is asked about. `GET /api/dependency-files`
 answers every stored row, ordered by canonical then trunk, with the path
 itself (`.hatch/dependencies.json`) alongside them, each entry's id resolved
 to its current label.
@@ -3335,7 +3335,7 @@ schema and migration history, and a constraint into `public.People` is the
 compile-time coupling `Modules/README.md` exists to prevent), `SeenAt`.
 
 One reader's own mark on [the overnight](#the-overnight) page — when they last
-read it, nothing more. Set only by `POST /api/hatch/overnight/seen`, a
+read it, nothing more. Set only by `POST /api/overnight/seen`, a
 person's call and nothing else's: a program is refused the same way
 (`OvernightController.NotAPerson`). No body — a person has only their own
 mark to set — and a second call replaces the first rather than adding a row.
@@ -3383,7 +3383,7 @@ then on the `sub` is the identity, and the email is never used to find it again.
 | `/…` navigation (not `/api`) | no credential | **302** to sign-in with `?r=` |
 | `/api/…` | no credential, or a key nobody minted | **401** |
 | `/…` navigation (not `/api`) | signed in, Pending (or a device nobody has claimed) | **302** to sign-in with no `?r=`, where the shell says they are waiting |
-| `/api/hatch/…` | signed in, Pending | **403** `pending_approval` |
+| `/api/…` | signed in, Pending | **403** `pending_approval` |
 | an Admin route | signed in, User | **403** `not_admin` |
 | `/…` (not `/api`) | an API key, or any non-navigation | **404** — indistinguishable from an install built without it |
 | an Admin route | an API key | **403** `key_not_accepted` |
@@ -3417,7 +3417,7 @@ admin creates the runner.
 A secret is `hatch_ak_` + 32 characters from a cryptographic RNG, drawn from
 letters and digits only because a key is copied through shells, YAML and JSON
 and every one of those has an opinion about punctuation. It is shown **exactly
-once**, at mint, in the response to `POST /api/hatch/runners`, which the
+once**, at mint, in the response to `POST /api/runners`, which the
 Runners page's Create runner dialog calls.
 
 The `hatch_ak_` prefix is not decoration. It is there so that a string pasted
@@ -3517,7 +3517,7 @@ the wall off, so on a local install a bare `curl` or `hatch api` call used
 to reach the write as the local person, same as any other call. `PlaybookWrites.cs`
 closes that gap with one guard, in one file, one sentence constant, checked
 in the action on all four writing verbs — the three on `PlaybooksController`
-plus `PATCH /api/hatch/issues/{key}/playbook` — before the row is read. It
+plus `PATCH /api/issues/{key}/playbook` — before the row is read. It
 refuses a program outright and, with no branch on the wall's state, any call
 carrying neither a key nor `Sec-Fetch-Mode`. It does not
 stop a caller forging a browser's headers on purpose — with the wall off
@@ -3525,7 +3525,7 @@ nothing on a request is a credential, the same as every other local-mode
 guard in Hatch.
 
 **So is writing an issue's override**, and it is the same edge rather than a
-second one: `PATCH /api/hatch/issues/{key}/playbook` sets the model and the
+second one: `PATCH /api/issues/{key}/playbook` sets the model and the
 effort every increment on that ticket runs on, which is a playbook's power
 routed through another table. It lives on its own controller
 (`IssuePlaybookController`) for exactly that reason — `IssuesController` accepts
@@ -3547,10 +3547,10 @@ same one. A playbook widens what an agent may spend; an assignee widens what it
 may be **sent at** — because under the loop's `people only` rule, a name on a
 ticket is what holds it off the night shift. A key that could write one could
 clear a person's name off a ticket and hand itself work somebody had reserved.
-So `PUT /api/hatch/issues/{key}/assignee` lives on its own controller
+So `PUT /api/issues/{key}/assignee` lives on its own controller
 (`AssigneeController`) not setting `AcceptKey`, for the same reason and by
 the same means. Reading is open, and deliberately: an agent has to be able to
-say whose ticket it is leaving alone, so both `GET /api/hatch/assignees` and the
+say whose ticket it is leaving alone, so both `GET /api/assignees` and the
 `assignee` on `IssueDto` are open to a key like everything else.
 
 **And so is setting the priority level**, which is the same edge as the
@@ -3558,7 +3558,7 @@ assignee read from the other side. An assignee holds a ticket *off* the night
 shift; priority puts one at the *front* of it — so a key that could set one
 could put its own ticket ahead of everything a person filed, every night,
 without anything looking wrong on the board. `PUT
-/api/hatch/issues/{key}/priority` and its legacy two-level alias `PUT
+/api/issues/{key}/priority` and its legacy two-level alias `PUT
 .../expedite` therefore both live on `IssueExpediteController`, which does
 not set `AcceptKey` and guards each action the same way, cut in the route by
 the same means. Reading is open like the rest: `priority` and the derived
@@ -3610,7 +3610,7 @@ that, at the Runners page, on purpose.
 progress, and how much of each slice of the board may sit across them at once,
 is the operator's to set — a key that could raise a limit or empty the
 section could pull more of its own work in overnight, the loop stalling behind
-a ceiling it had just raised for itself. `PUT /api/hatch/wip` therefore lives
+a ceiling it had just raised for itself. `PUT /api/wip` therefore lives
 on its own controller (`WipController`) not setting `AcceptKey`, cut in
 the route by the same means, and checked a second time in the action for
 `IssueClaimController.NotAPerson`'s reason: `RoleGate` is dormant wherever the
@@ -3622,7 +3622,7 @@ it rides on the way through.** Pre-approval decides which gates the loop
 may pass *unattended* — a key that could raise it to `express` or
 `preapproved` could carry its own ticket through the night with nobody
 reading it first, or approve it in advance, the same kind of widening a
-playbook or an assignee would be. `PUT /api/hatch/issues/{key}/pre-approval`,
+playbook or an assignee would be. `PUT /api/issues/{key}/pre-approval`,
 and its legacy two-level alias `PUT .../express`, both live on
 `IssuePreApprovalController`, not setting `AcceptKey`, cut by the
 same means as priority and expedite — and gated by what the change touches
@@ -3632,10 +3632,10 @@ same question an ordinary move into `Columns.SendBack` would, through
 either side of the change, asks `IProjectAccess.CanApproveAsync` instead,
 since setting it is the approve press given in advance and lowering from
 it undoes that act. The column half cannot ride `PATCH
-/api/hatch/statuses/{id}` — that route accepts a key on every
+/api/statuses/{id}` — that route accepts a key on every
 action, so one more field on the ordinary status patch would have been a
 key ticking its own gate — so it gets its own action, `PUT
-/api/hatch/statuses/{id}/express-skips`, carrying a plain
+/api/statuses/{id}/express-skips`, carrying a plain
 `[RequireRole(PersonRole.User)]` the way `ProjectsController.PutRepositories`
 does; the rest of `StatusesController`'s actions each carry the class-level
 attribute explicitly instead, because `RequireRoleAttribute` is
@@ -3648,7 +3648,7 @@ of it, the same as expedite.
 **And so is an epic's own [Stories at once](#stories-at-once).** A key that
 could raise its own epic's ceiling could pull more of its own stories into
 progress at once, the same widening the WIP section's own limit is cut
-against. `PATCH /api/hatch/issues/{key}/wip` therefore lives on its own
+against. `PATCH /api/issues/{key}/wip` therefore lives on its own
 controller (`IssueWipLimitController`) not setting `AcceptKey`, cut by
 the same means as the playbook override, and checked a second time in the
 action for `WipController.NotAPerson`'s reason: `RoleGate` is dormant wherever
@@ -3676,7 +3676,7 @@ it grants nothing to anyone who merely reads it.
 
 ## API surface
 
-Everything under `/api/hatch`, every route `[RequireRole(PersonRole.User,
+Everything under `/api`, every route `[RequireRole(PersonRole.User,
 AcceptKey = true)]` except where noted. Issue routes take the display key (`AER-12`).
 
 | Route | Verbs | Notes |
@@ -3809,7 +3809,7 @@ The bar carries one element the board does not: how much Claude *I* have
 left, and how long until it comes back — a reading of a Claude account
 specifically, drawn only for a runner whose agent is `claude`, and absent
 for `codex`, `grok` and `ollama`. It is read from every page without
-opening another app, and it is drawn from `GET /api/hatch/utilization`.
+opening another app, and it is drawn from `GET /api/utilization`.
 
 **Absent is a supported state, and it is the default.** A person no runner has
 ever reported for gets a Hatch with no battery — no element, no placeholder, no
@@ -3848,7 +3848,7 @@ dispatcher asks the same freshest-whole-reading this widget draws, through the
 same `IActorDirectory.PrincipalAsync` resolution, to judge whether the account
 an unattended pass would spend has a reserve left on every window before it
 will touch an economy issue. Nothing about the endpoint or its shape changes
-for this — `GET /api/hatch/utilization` answers exactly as it always has; the
+for this — `GET /api/utilization` answers exactly as it always has; the
 dispatcher is simply a second caller of the same `Utilization.Of`.
 
 **A third reader, since HA-226: [low's own gate](#expedite).** The same one
@@ -3892,7 +3892,7 @@ had.
 
 ### What the endpoint answers
 
-`GET /api/hatch/utilization` is `[RequireRole(PersonRole.User, AcceptKey = true)]` like the
+`GET /api/utilization` is `[RequireRole(PersonRole.User, AcceptKey = true)]` like the
 rest of the module. It answers who is asking with
 `IActorDirectory.PrincipalAsync` — no principal (the wall is up and the caller
 is a key belonging to nobody) is `204`, the same as it is for nobody having a
@@ -3985,7 +3985,7 @@ more sit beside it, `CodexApiKey` and `XaiApiKey`, one Settings field per
 agent. All three are what the *container* runner's entrypoint
 (`containers/hatch-runner/`) reads to authenticate whichever agent CLI
 `HATCH_AGENT` starts, via `hatch runner-credential <agent>` and
-`GET /api/hatch/settings/credentials/{agent}` (`/settings/claude-token`
+`GET /api/settings/credentials/{agent}` (`/settings/claude-token`
 still answers too, for an older container). An install whose runners all run
 on somebody's own machine needs none of this. All three are stored the way
 the Anthropic key already is: obfuscated at rest,
@@ -4011,7 +4011,7 @@ one the loop is still working through a conflict or a red build on is not a
 person's to look at yet, so it moves out of the pull-request section and into
 the group naming what is holding it back, rather than sitting in both. A
 merged pull request leaves the review half on its own: advancing the issue
-takes it out of `/api/hatch/work/review` and out of `/api/hatch/attention`
+takes it out of `/api/work/review` and out of `/api/attention`
 both, so there is nothing left here for a person to look at either.
 
 Each row under *Pull requests to review* also carries two small icons, after
@@ -4039,7 +4039,7 @@ from here is the same person who would see it there.
 Unlike the battery, **it always draws something**. "Nothing is waiting" is an
 answer worth having, and it is the one it gives most of the time.
 
-`GET /api/hatch/attention` answers every list in one read, carrying
+`GET /api/attention` answers every list in one read, carrying
 `[RequireRole(PersonRole.User, AcceptKey = true)]` like the rest of the module:
 
 ```json
@@ -4216,7 +4216,7 @@ may already be filing itself, with no agent and no person either
 **File a bug** where nothing has, which is what the badge exists to surface.
 
 Each row carries a button, unless it already carries a bug's key as a link in
-its place — `POST /api/hatch/trunk-builds/{id}/bug`
+its place — `POST /api/trunk-builds/{id}/bug`
 ([the one edge that is deliberately cut](#the-one-edge-that-is-deliberately-cut)).
 A person pressing it is unchanged: filed in the shape a bug against a failing
 trunk was always filed by hand, from the forge's own page — a bug, titled
@@ -4490,9 +4490,9 @@ unpriced count beside its total.
 ### The two reads behind it
 
 ```
-GET /api/hatch/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=
-GET /api/hatch/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=
-GET /api/hatch/work-log/by-playbook?from=&to=&projectId=
+GET /api/work-log/sessions?from=&to=&ancestorKey=&sort=&limit=
+GET /api/work-log/history?from=&to=&ancestorKey=&bucket=&offsetMinutes=
+GET /api/work-log/by-playbook?from=&to=&projectId=
 ```
 
 The first two are what the page draws; the third is [what each playbook
@@ -4501,7 +4501,7 @@ costs](#what-each-playbook-costs), and takes no `ancestorKey`.
 They take the same range and the same `ancestorKey`, and **`ancestorKey` means
 the same thing on both**: the issue itself *and* everything beneath it at any
 depth, from `Rollup.DescendantIdsAsync`. That is deliberately not how the same
-word reads on `GET /api/hatch/issues`, and the reason is that a planning session
+word reads on `GET /api/issues`, and the reason is that a planning session
 run against an epic is money no child holds. It is also what keeps the ranking,
 the table and the graph from ever describing different populations.
 
@@ -4558,7 +4558,7 @@ component.
 **Nothing on this page writes**, and the absence is the guarantee rather than a
 convention: there is no control that could, and the browser API client has no
 function that could. A work log row is written by the dispatcher with an API
-key, and `POST /api/hatch/issues/{key}/work-log` refuses a person outright — see
+key, and `POST /api/issues/{key}/work-log` refuses a person outright — see
 `IssueWorkLogController.NotAKey`.
 
 ### What each playbook costs
@@ -4575,7 +4575,7 @@ counts and `TotalTokens`.
   in the fold that treats them specially.
 - **The same window and the same `projectId` as the other reads.** The range is
   the half-open `EndedAt` rule `sessions` and `history` use, and `projectId`
-  reads as it does on `GET /api/hatch/issues` - an id that matches no project
+  reads as it does on `GET /api/issues` - an id that matches no project
   answers no rows, not a refusal.
 - **Status names are today's names.** `FromStatusName` and `ToStatusName` are the
   board's *current* names for the stored ids, resolved fresh on every read, and
@@ -4664,7 +4664,7 @@ from the report, as everything the trail would have said about it is (see
 #### The answer
 
 ```
-GET /api/hatch/reports/timeline?from=&to=&projectId=&createdBy=
+GET /api/reports/timeline?from=&to=&projectId=&createdBy=
 ```
 
 `from` and `to` are **instants** (`2026-09-12T17:00:00Z`), not dates. With
@@ -4742,13 +4742,13 @@ when today is inside the range.
 **Nothing on this page writes**, and the absence is the guarantee rather than a
 convention: there is no control that could, and the browser API client has no
 function that could. There is **no CLI subcommand** for it either; a script
-reaches the same answer with `hatch api GET /api/hatch/reports/timeline?...`,
+reaches the same answer with `hatch api GET /api/reports/timeline?...`,
 which is the [API surface](#api-surface)'s row for it.
 
 ### The cumulative flow
 
 ```
-GET /api/hatch/reports/cumulative-flow?from=&to=&project=
+GET /api/reports/cumulative-flow?from=&to=&project=
 ```
 
 The same question the timeline answers about one issue at a time, asked about
@@ -4766,7 +4766,7 @@ It answers `{ from, to, step, columns, projects, points, unresolved }`.
 not deferred, so a deferred column contributes to no band. `projects` is the
 project keys in scope — every project with an issue the sweep counted when
 unscoped, or only those named by `project` when scoped — in the same order
-`/api/hatch/projects` lists them. `points` is one `{ at, counts,
+`/api/projects` lists them. `points` is one `{ at, counts,
 projectCounts }` per grid step from `from` to `to`, oldest first, `counts`
 parallel to `columns` and `projectCounts` parallel to `projects`; on a board
 with no issues both are `[]`. The two cuts of the same sweep always agree: at
@@ -4793,13 +4793,13 @@ own colour and named in a legend above the chart. **Nothing on this page
 writes**, and the absence is the guarantee rather than a convention, as it is
 for [the timeline](#the-timeline). There is **no CLI subcommand** for it
 either; a script reaches the same answer with
-`hatch api GET /api/hatch/reports/cumulative-flow?...`, which is the
+`hatch api GET /api/reports/cumulative-flow?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ### The flow
 
 ```
-GET /api/hatch/reports/flow?from=&to=&projectId=&type=
+GET /api/reports/flow?from=&to=&projectId=&type=
 ```
 
 The timeline says when one epic's work sat where, and the cumulative flow says
@@ -4887,16 +4887,16 @@ the board, left out of every column above.
 **No row names an issue, and there is no flag that adds them**, so what a
 session reads is the whole answer and cannot be widened by a parameter. There is
 **no page** and **no CLI subcommand**; a script reaches it with
-`hatch api GET /api/hatch/reports/flow?...`, which is the
+`hatch api GET /api/reports/flow?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ### The changelog report
 
 ```
-GET /api/hatch/reports/changelog?from=&to=&projectId=&bucket=&offsetMinutes=&level=&loose=
+GET /api/reports/changelog?from=&to=&projectId=&bucket=&offsetMinutes=&level=&loose=
 ```
 
-`GET /api/hatch/changelog` (`ChangelogController`) answers what shipped as a
+`GET /api/changelog` (`ChangelogController`) answers what shipped as a
 page, before and after a cursor. It is the agent-facing feed behind
 `hatch changelog`, unchanged; the web page that used to draw from it was
 replaced by this report. This route answers the same question —
@@ -4970,13 +4970,13 @@ it stays `[]`.
 
 It has a page and an index card, but **no CLI subcommand** (`hatch changelog`
 is the older feed, not this report); a script reaches the same answer with
-`hatch api GET /api/hatch/reports/changelog?...`, which is the
+`hatch api GET /api/reports/changelog?...`, which is the
 [API surface](#api-surface)'s row for it.
 
 ### The consumption report
 
 ```
-GET /api/hatch/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&statusId=&projectId=
+GET /api/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&statusId=&projectId=
 ```
 
 **What did each epic — or any issue type — consume in a window?** Tokens,
@@ -5049,7 +5049,7 @@ session first), with **Projects**, **Type** and **Status** facets narrowing
 the filter, a **Spend over time** graph toggling between tokens and notional
 USD, and a line above the table reading "The first 100 of *N* issues" when
 `matched` outran `limit`. There is **no CLI subcommand**; a script reaches the
-read with `hatch api GET /api/hatch/reports/consumption?...`, which is the
+read with `hatch api GET /api/reports/consumption?...`, which is the
 [API surface](#api-surface)'s row for it. [Watching the
 loop](../src/Hatch.Web/apps/hatch/docs/watching-the-loop.md#reports) covers the
 page itself.
@@ -5057,7 +5057,7 @@ page itself.
 #### The CSV sibling
 
 ```
-GET /api/hatch/reports/consumption.csv?from=&to=&type=&sort=&offsetMinutes=&statusId=&projectId=
+GET /api/reports/consumption.csv?from=&to=&type=&sort=&offsetMinutes=&statusId=&projectId=
 ```
 
 **The whole filter, as a file a spreadsheet opens** rather than a JSON read a
@@ -5095,13 +5095,13 @@ regardless of content-type, so a script reaches it the same way it reaches
 the JSON route:
 
 ```
-hatch api GET /api/hatch/reports/consumption.csv?from=2026-08-01&to=2026-09-01
+hatch api GET /api/reports/consumption.csv?from=2026-08-01&to=2026-09-01
 ```
 
 ### The activity report
 
 ```
-GET /api/hatch/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&lead=&window=&includeKeys=
+GET /api/reports/activity?actor=&from=&to=&projectId=&offsetMinutes=&gap=&lead=&window=&includeKeys=
 ```
 
 **What did one actor do, in a range?** The trail every other report folds
@@ -5138,7 +5138,7 @@ or under or on anything else. `hatch activity
 [--actor <name>] [--days <n>] [--before <instant>] [--project <KEY>] [--include-keys] [--json]`
 prints the rundown as markdown, with `--actor` defaulting to the key's owner; it
 renders neither the series nor the sessions, which `hatch api GET
-/api/hatch/reports/activity?...` still reaches. The route is open to a person or
+/api/reports/activity?...` still reaches. The route is open to a person or
 to a key.
 
 `actor` is required and matched **exactly**, untrimmed, against the event's
@@ -5235,8 +5235,8 @@ epics, then bugs, then stories, then tasks; within a type, most descendants
 first, then newest first — behind one read and one write:
 
 ```
-GET  /api/hatch/overnight
-POST /api/hatch/overnight/seen
+GET  /api/overnight
+POST /api/overnight/seen
 ```
 
 `GET` answers `OvernightDto`: `from`, `to`, `count`, the ordered `rows`, and
@@ -5282,7 +5282,7 @@ page is what clears it, the same `POST` above.
 
 ## The dispatcher
 
-`GET /api/hatch/work/next` answers "what should an agent do next, and how?" in
+`GET /api/work/next` answers "what should an agent do next, and how?" in
 one request: which issue, which column it is headed for, whether it may go
 there, which playbook speaks for the move, the issue's children, and its
 questions.
@@ -5708,7 +5708,7 @@ what is theirs. A fold whose sentence is an imperative aimed at nobody —
 "cut it into tasks first", said to no one — is a bug on its face, which is
 why this kind exists rather than leaving that fold as the only answer.
 
-`POST /api/hatch/work/{key}/hop` carries the issue to the column the kind
+`POST /api/work/{key}/hop` carries the issue to the column the kind
 names: the same column `Columns.Advance` would send a session to, for the
 first four kinds and the sixth, `Columns.SendBack` itself — a column
 strictly left of where the issue stands — for the fifth, or
@@ -5725,7 +5725,7 @@ its own target off `Columns.Advance` or `Columns.Closes` directly rather
 than off `to`, and neither ever returns the column the issue already
 stands in — so the column named is never the column it came from.
 
-It takes the same query parameters `GET /api/hatch/work/{key}` takes, and no
+It takes the same query parameters `GET /api/work/{key}` takes, and no
 `heldToken`: **a hop takes no claim.** A claim protects a session that runs for
 minutes; a hop is one write, and the server re-judges the issue as the write is
 made, with the same `Blocked` a named dispatch is judged by — so a stale runner
@@ -6169,7 +6169,7 @@ unconditional `ExecuteUpdateAsync`. Under a key that is the live (not ended)
 session of that key at the claim's checkout, which is what a current CLI beats.
 Failing that it is the runner row named by `ClaimedBy` (the wall off, where the
 holder is the runner's own name). Failing both, for an older CLI beating
-`POST /api/hatch/runners/{name}` under a key named otherwise, it is the single
+`POST /api/runners/{name}` under a key named otherwise, it is the single
 row at the checkout that was live when the claim was taken; a row under a
 superseded name was already gone by then and is never revived, and a checkout
 with a live session never reaches this step. A heartbeat that races the
@@ -6530,8 +6530,8 @@ the CLI learns them into `ReadoutState.SetDrives`/`Drives`
 which gates the acting of `MergeTrain`'s six halves (`MergeTrain.cs:247, 423,
 521, 637, 813, 865`): a runner acts only on a project it was elected to drive.
 Both heartbeats answer `Drives` from the one election, `TrainDriversAsync`
-(`RunnersController.cs:606`): the bare beat, `POST /api/hatch/runners/{name}`
-(`:456, :491`), and the session heartbeat, `POST /api/hatch/runners/sessions`
+(`RunnersController.cs:606`): the bare beat, `POST /api/runners/{name}`
+(`:456, :491`), and the session heartbeat, `POST /api/runners/sessions`
 (`:330`), which `go-to-work` has sent since HA-2040. So a key that only ever
 runs as a session is told what it drives; a session answer that carried `[]`
 would leave no loop driving any project's train. The
@@ -6620,7 +6620,7 @@ is tested first (`:1842-1845`). The driver comes from
 is passed over, through `EligibleCandidates`. It is a pure read: a driver
 past `Hatch:RunnerGoneAfterSeconds` turns the head's sentence into the
 no-driver one on the next scan, with no beat needed. The sentence reaches
-`hatch queue` and `GET /api/hatch/work/queue` as the row's ordinary blocked
+`hatch queue` and `GET /api/work/queue` as the row's ordinary blocked
 sentence, with no new field.
 
 #### Landing on the trunk
@@ -6867,7 +6867,7 @@ is what the pass skipped and why — above all a column and type nobody has
 written a playbook for, which reads as a finished board from the outside and is
 not one.
 
-`GET /api/hatch/work/queue` answers with every issue the dispatcher considers,
+`GET /api/work/queue` answers with every issue the dispatcher considers,
 in the order it considers them, each carrying the sentence saying why it cannot
 be advanced — or nothing, where it can. It takes the same `ancestorKey` and
 `offsetMinutes` and means the same things by them, and each row is what a
@@ -6917,7 +6917,7 @@ it holds whatever the others are doing - and `work/{key}` and a hop read
 [the dispatcher](#the-dispatcher).
 
 **The rows arrive in the board's own order.** Rightmost column first, and
-within a column the `(rank, id)` that `GET /api/hatch/board` serves that column
+within a column the `(rank, id)` that `GET /api/board` serves that column
 in — so a card's line in the queue is its position on the board, and nothing
 between the two re-sorts. That matters because most of a column being folded in
 silence is indistinguishable from a column being read out of order, and a
@@ -7096,7 +7096,7 @@ nothing beneath it. They take exactly what a playbook takes, refused in the same
 sentence, because it is the same rule called twice. There is no per-issue
 *prompt*: a prompt is the method for a transition, and a per-issue method is a
 paragraph, which is what the description is for. Setting one is a person's
-(`PATCH /api/hatch/issues/{key}/playbook`); reading one is anybody's who can
+(`PATCH /api/issues/{key}/playbook`); reading one is anybody's who can
 read the issue.
 
 **A row from the review column to itself is the review playbook.** It is the
@@ -7208,7 +7208,7 @@ Hypotheses read; Hypotheses filed; What reflection could not see. The stock
 prompt also files an instrumentation gap that lies in the tracker itself,
 rather than in the project reflected on, as an issue with `filedFromKey` set
 to the reflection and no parent in whichever project
-`GET /api/hatch/projects` flags `"bindsTracker": true` (see
+`GET /api/projects` flags `"bindsTracker": true` (see
 [Project](#project)), leaving it in the report as prose instead where none is
 flagged. A hypothesis is an issue filed with `filedFromKey` set to the
 reflection and no parent, a `readyAt` on its read-after date, a dependency
@@ -7219,8 +7219,8 @@ four lines - the metric, the baseline (its window and value), the change
 and a `## How to read it` section naming the comparison, the verdict rule
 and a no-code declaration, so the session dispatched to it on its own date
 can measure it without the reflection. A later reflection finds earlier ones
-with `GET /api/hatch/issues?type=reflection&projectId=` and then each one's
-filed issues with `GET /api/hatch/issues?filedFromKey=`, reports the verdict
+with `GET /api/issues?type=reflection&projectId=` and then each one's
+filed issues with `GET /api/issues?filedFromKey=`, reports the verdict
 already commented on any it finds, and measures only one whose read-after
 date has passed and carries no verdict itself - the same way: an after
 window as long as the baseline, ending on the read-after date, through the
@@ -7249,9 +7249,9 @@ left with no children is for a person to close.
 as `RewordReflectionPlaybook` does: `Prompt` and `UpdatedAt` are left
 untouched, so an operator's own wording survives and a row handed back receives
 the new text. The paragraph it adds to the prompt sits between *Read what has
-already happened* and *Ask the repository*: search `GET /api/hatch/dreams?q=`,
+already happened* and *Ask the repository*: search `GET /api/dreams?q=`,
 read what bears on the epic, quote it, and record the dreams drawn on with
-`PUT /api/hatch/issues/<KEY>/dreams`, or say *no dream bore on this*. It
+`PUT /api/issues/<KEY>/dreams`, or say *no dream bore on this*. It
 applies to every epic breakdown, woven or hand-written. The story and task
 breakdown rows are not reworded, since a story's seed is its epic. This adds
 reading, not writing, so the row stays *judges*.
@@ -7752,7 +7752,7 @@ which one it failed is what `work/queue` reports:
     [express](#pre-approval) and stands in a column marked
     [`ExpressSkips`](#status) is [a hop](#the-hop): the twenty-first condition's
     absence is answered not by a playbook but by the pass carrying the issue on
-    itself, with `POST /api/hatch/work/{key}/hop`. Every condition above this
+    itself, with `POST /api/work/{key}/hop`. Every condition above this
     one still has to hold — a hop is not an escape from a live claim, a pause,
     a ready date, an assignee, a question, a repository, a dependency, an open
     child, a full section or an epic at its own limit, a required runner tag
@@ -8457,7 +8457,7 @@ runner, and never by a prompt** — the [dispatcher](#the-issue-in-review-whose-
 only reads what the runner reports. Once per interval, between the heartbeat and
 the pass, on an idle board and a busy one alike, the loop:
 
-1. asks `GET /api/hatch/work/review` for every issue in the review column that
+1. asks `GET /api/work/review` for every issue in the review column that
    this runner holds a checkout for, with the verdicts the board holds. It is
    the same repository rule as the queue's without the clone allowance — a poll
    clones nothing — and it is **not narrowed** by a claim, a question, a date or
@@ -8552,7 +8552,7 @@ The terminal hears about a build only when it changes — `hatch: HA-12 build on
 
 **The trunk's own build, whether or not anything is in review.** Both halves
 above run only for a checkout that holds an issue in review, because their
-targets come from `/api/hatch/work/review` — a repository nobody happens to be
+targets come from `/api/work/review` — a repository nobody happens to be
 reviewing a branch of is never visited, and a quiet board goes all night
 without its trunk read at all. A repository's trunk is nobody's issue, so once
 per checkout that has an origin, the poll reads the build on its tip the same
@@ -8608,7 +8608,7 @@ may file without a person](#the-trunk-build-that-fails) is asked for next,
 under the same `Drives` gate.
 
 Either way the poll puts a [trunk build](#trunk-build) to the board.
-`GET /api/hatch/trunk-builds` answers every stored trunk verdict once a poll,
+`GET /api/trunk-builds` answers every stored trunk verdict once a poll,
 and the runner matches its own checkout against it by the remote it spells
 until the board's canonical form for that pair is known. The terminal hears
 about a change the same way — `hatch: main build on 1a2b3c4 failed (api, CI)`,
@@ -8619,7 +8619,7 @@ trunk rather than an issue.
 issue in review has no branch to merge-check and no pull request to ask `gh`
 about; what it has is a [landing](#landing), the sha a session recorded and the
 trunk it was landing on. Its targets come from the same
-`/api/hatch/work/review` answer, and for each checkout that holds one the poll
+`/api/work/review` answer, and for each checkout that holds one the poll
 (`Poll.ConfirmLandingsAsync`) reuses the `ls-remote` heads the merge half took,
 so it costs no second one:
 
@@ -8652,7 +8652,7 @@ from it; the shape this paragraph describes still holds for all of them. See
 halves above are keyed on `(path, baseBranch)`, because a merge verdict
 and a build verdict are per repository. A pull request is not: `PullRequestUrl`
 is one field on one issue however many repositories its project binds, so this
-half iterates the `/api/hatch/work/review` answer itself rather than the
+half iterates the `/api/work/review` answer itself rather than the
 per-checkout targets the others build, and reads each issue's pull request
 once regardless of how many repositories its project names — the checkout is
 only somewhere for `gh` to run, taken as the first one a project's
@@ -8672,7 +8672,7 @@ merge made with git alone and pushed by hand leaves the pull request open,
 and closing it afterward is a close, which this half does not act on. On
 `open` it puts the head sha,
 the merge state and the review decision to
-`PUT /api/hatch/issues/{key}/pull-request-state` wherever any of the three
+`PUT /api/issues/{key}/pull-request-state` wherever any of the three
 differs from what `/work/review` carried for that row, so a quiet pull request
 costs no call after the first; it does this for a review-column row and a
 merge-column row alike, and an answer missing any of the three writes nothing.
@@ -8701,7 +8701,7 @@ a quiet interval after says nothing again. A pull request state of `unknown`
 **There is no stored verdict and no window logic like `NoneWindow`**: an open
 pull request is asked about every interval, by design, since noticing the
 merge promptly is the point, and a merged one advances the issue out of review
-- so `/api/hatch/work/review` stops returning it and nothing asks again. The
+- so `/api/work/review` stops returning it and nothing asks again. The
 terminal hears about a change only - `hatch: HA-12 pull request merged ->
 Done` - and a quiet interval says nothing. A `gh` that cannot answer is one
 line per checkout, the same as the build half, and a board that predates the
@@ -9417,12 +9417,12 @@ and the board still starts nothing: it only sets that paused row running at its
 next heartbeat.
 
 **A runner's name is its key's** — assigned once, at mint, and never chosen
-or recorded by the runner itself. `POST /api/hatch/runners`
+or recorded by the runner itself. `POST /api/runners`
 (`RunnersController.CreateRunner`, admin-only, no `AcceptKey`) is the only way
 one is minted, from the Runners page's Create runner dialog. The cast list in
 `src/Hatch.Contracts/runner-names.txt` (main and recurring characters from
 three TV shows, plus the colorful one-offs) only suggests a name there —
-`GET /api/hatch/runners/suggest-name` (`RunnerCast.Suggest`, admin-only,
+`GET /api/runners/suggest-name` (`RunnerCast.Suggest`, admin-only,
 `RunnersController.cs:204`) answers one no key or heartbeat already holds —
 and an admin is free to type anything else instead. There is no
 `hatch config --runner`, or any other way, for a checkout to pick or override
@@ -9438,7 +9438,7 @@ over, which is how a checkout that moved keeps its name.
 not reported one - but carries no uniqueness check, since two runners sharing
 an agent id is not a conflict.
 
-**Who sees which runners.** `GET /api/hatch/runners` filters its rows by the
+**Who sees which runners.** `GET /api/runners` filters its rows by the
 caller. A person at a browser, and every caller on a Hatch with its wall off,
 read every runner; a key whose owner is an admin does too; a key whose owner
 is anyone else reads only that owner's runners; and a key with no owner reads
@@ -9449,7 +9449,7 @@ unscoped on purpose: they read the `LegacyRunners` table — kept only for a
 genuinely keyless heartbeat, wall off and no key at all — not the route, and
 the filter is on the route only.
 
-**The runner is a key; the heartbeat row is kept beside it.** `GET /api/hatch/runners`
+**The runner is a key; the heartbeat row is kept beside it.** `GET /api/runners`
 joins three things: the key (`EfApiKey`), its config (the `RunnerConfigs` row,
 by the key's id) and the legacy heartbeat row (the `LegacyRunners` table, by
 name — the one a genuinely keyless beat writes). A key
@@ -9487,7 +9487,7 @@ this, and an older CLI never sends it at all, so either leaves a
 previously-reported row's tags in place rather than blanking them.
 
 **Refused models are a key's alone, and a key may write its own.** `PUT
-/api/hatch/runners/{name}/refused-models` holds the list of models this
+/api/runners/{name}/refused-models` holds the list of models this
 runner's key will not be told to run — replaced whole, never a delta, and
 normalised against whatever agent the row's beat or a live session last
 reported (a pinned id of a different agent is refused; the check is skipped
@@ -9572,7 +9572,7 @@ row that superseded it), and two things stamp it, both in
   is retired. A row that is still being heard from is never retired by this
   path, so two live runners in one checkout are left alone.
 - **A session beat** (`RetireRenamedAsync`, from `POST
-  /api/hatch/runners/sessions`, `loop` kind only). Every other `loop` row of the
+  /api/runners/sessions`, `loop` kind only). Every other `loop` row of the
   same `Where` and owner is retired, with no quiet test: renaming a checkout's
   runner leaves the old row behind, and the new name's first beat is the
   evidence it is gone. A `once` beat never retires anything.
@@ -9595,7 +9595,7 @@ and `RunnerDto.SupersededBy` carry it, both null for a row that is not retired;
 a read without `live` still returns the retired row with both set.
 
 **One key can hold several sessions, one per checkout.** Beside the beat row
-above, `POST /api/hatch/runners/sessions` answers through `RunnerSessions`
+above, `POST /api/runners/sessions` answers through `RunnerSessions`
 instead — rows grouped by `(ApiKeyId, Where)`, so a key running `go-to-work`
 in two checkouts at once holds two live sessions, each with its own line, its
 own claim and its own bounds. `pause-all` and `stop-all` are the one write
@@ -9918,8 +9918,8 @@ replacement for it.
 ## The level above the board
 
 The board shows every card, which is the one thing it cannot do: say which of
-the running projects is nearest the line. `GET /api/hatch/plan` and
-`/api/hatch/plan/{key}` answer that, and the **Plan** page draws it.
+the running projects is nearest the line. `GET /api/plan` and
+`/api/plan/{key}` answer that, and the **Plan** page draws it.
 
 **The unit is the leaf, and every leaf weighs the same.** A subtree's total is
 the histogram of its leaf descendants by status; an issue with no children
@@ -10012,11 +10012,11 @@ an agent's to make for itself. A key is refused either way, wall on or off.
 A few things the brief has to work around, since the epic it is filed for does
 not exist yet when it is written: it cannot print the epic's own key, so it
 says `<KEY>` and means the ticket's own, read back once filed; it tells the
-session to ask `GET /api/hatch/dreams` again with no `projectId` as well, since
+session to ask `GET /api/dreams` again with no `projectId` as well, since
 a dream leaning toward no project matches only that way; and nothing is parsed
 back out of the description afterwards to find what it drew on - tracing is
 still the link row the session writes itself, with
-`PUT /api/hatch/issues/{key}/dreams`.
+`PUT /api/issues/{key}/dreams`.
 
 ## The importer
 

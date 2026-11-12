@@ -905,7 +905,7 @@ public sealed class Harness : IDisposable
         // never mentions a trunk build gets none of the poll's new trunk half:
         // it is vouched for on sight and costs nothing further. A test about
         // the trunk half itself overrides this with its own stub.
-        Wire.Json("GET", "/api/hatch/trunk-builds", new[] { Fixtures.TrunkBuild() });
+        Wire.Json("GET", "/api/trunk-builds", new[] { Fixtures.TrunkBuild() });
 
         // The default checkout's playbook file is read fresh off
         // Workspace.HeadsFor on every request rather than fixed at setup, so
@@ -914,7 +914,7 @@ public sealed class Harness : IDisposable
         // reads nothing further, the free pass the trunk-builds stub above
         // gives by a fixed sha instead. A test about the playbook file itself
         // overrides this with its own stub, and the dependency file likewise.
-        Wire.Serve("GET", "/api/hatch/playbook-files", _ =>
+        Wire.Serve("GET", "/api/playbook-files", _ =>
         {
             var files = Workspace.HeadsFor.GetValueOrDefault(Root)?.TrunkSha is { } sha
                 ? new[] { Fixtures.PlaybookFile(sha: sha) }
@@ -922,7 +922,7 @@ public sealed class Harness : IDisposable
             return JsonSerializer.Serialize(new PlaybookFilesDto(".hatch/playbooks.yaml", files), Fixtures.Json);
         });
 
-        Wire.Serve("GET", "/api/hatch/dependency-files", _ =>
+        Wire.Serve("GET", "/api/dependency-files", _ =>
         {
             var files = Workspace.HeadsFor.GetValueOrDefault(Root)?.TrunkSha is { } sha
                 ? new[] { Fixtures.DependencyFile(sha: sha) }

@@ -32,7 +32,7 @@ public sealed class HatchClientTests
         using var wire = new HeaderWire();
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
-        await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.True(client.Keyed);
         Assert.Equal("Bearer hatch_ak_test", wire.Authorization);
@@ -45,7 +45,7 @@ public sealed class HatchClientTests
         using var wire = new HeaderWire();
         using var client = new HatchClient(Settings(""), wire);
 
-        await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.False(client.Keyed);
         Assert.Null(wire.Authorization);
@@ -73,7 +73,7 @@ public sealed class HatchClientTests
             using var wire = new HeaderWire();
             using var client = new HatchClient(loaded, wire);
 
-            await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+            await client.Send(HttpMethod.Get, "/api/board", null, default);
 
             Assert.False(client.Keyed);
             Assert.Null(wire.Authorization);
@@ -91,7 +91,7 @@ public sealed class HatchClientTests
         using var wire = new HeaderWire();
         using var client = new HatchClient(Settings("   "), wire);
 
-        await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.False(client.Keyed);
         Assert.Null(wire.Authorization);
@@ -108,11 +108,11 @@ public sealed class HatchClientTests
     public async Task A_401_against_a_key_that_was_sent_says_the_key_was_not_accepted()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/board", HttpStatusCode.Unauthorized);
+        wire.Reply("GET", "/api/board", HttpStatusCode.Unauthorized);
         using var client = new HatchClient(Settings("hatch_ak_wrong"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/board", default));
+            () => client.GetAsync<BoardDto>("/api/board", default));
 
         Assert.Contains("401 - the key was not accepted", thrown.Message);
     }
@@ -126,11 +126,11 @@ public sealed class HatchClientTests
     public async Task A_401_against_no_key_at_all_says_the_wall_is_on_and_names_config()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/board", HttpStatusCode.Unauthorized);
+        wire.Reply("GET", "/api/board", HttpStatusCode.Unauthorized);
         using var client = new HatchClient(Settings(""), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/board", default));
+            () => client.GetAsync<BoardDto>("/api/board", default));
 
         Assert.Contains("no key was sent and this Hatch has its wall on", thrown.Message);
         Assert.Contains("hatch config", thrown.Message);
@@ -146,11 +146,11 @@ public sealed class HatchClientTests
     public async Task A_403_is_the_key_working_and_the_route_being_refused()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden);
+        wire.Reply("GET", "/api/playbooks", HttpStatusCode.Forbidden);
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+            () => client.GetAsync<BoardDto>("/api/playbooks", default));
 
         Assert.Contains("403 - the key is good and this route is not one it may take", thrown.Message);
     }
@@ -164,11 +164,11 @@ public sealed class HatchClientTests
     public async Task A_403_role_gate_code_the_hint_does_not_cover_prints_the_code()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"not_admin\"}");
+        wire.Reply("GET", "/api/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"not_admin\"}");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+            () => client.GetAsync<BoardDto>("/api/playbooks", default));
 
         Assert.Equal("hatch: 403 - not_admin", thrown.Message);
     }
@@ -181,11 +181,11 @@ public sealed class HatchClientTests
     public async Task A_403_key_not_accepted_keeps_the_fixed_sentence()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"key_not_accepted\"}");
+        wire.Reply("GET", "/api/playbooks", HttpStatusCode.Forbidden, "{\"error\":\"key_not_accepted\"}");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+            () => client.GetAsync<BoardDto>("/api/playbooks", default));
 
         Assert.Equal("hatch: 403 - the key is good and this route is not one it may take (CLAUDE.md).", thrown.Message);
     }
@@ -198,12 +198,12 @@ public sealed class HatchClientTests
     public async Task A_403_plain_sentence_prints_the_sentence()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden,
+        wire.Reply("GET", "/api/playbooks", HttpStatusCode.Forbidden,
             "only an owner or approver of AER may move work into \"approved\"");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+            () => client.GetAsync<BoardDto>("/api/playbooks", default));
 
         Assert.Equal(
             "hatch: 403 - only an owner or approver of AER may move work into \"approved\"",
@@ -218,11 +218,11 @@ public sealed class HatchClientTests
     public async Task A_403_with_an_empty_body_and_no_key_sent_does_not_blame_a_key()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/playbooks", HttpStatusCode.Forbidden);
+        wire.Reply("GET", "/api/playbooks", HttpStatusCode.Forbidden);
         using var client = new HatchClient(Settings(""), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<BoardDto>("/api/hatch/playbooks", default));
+            () => client.GetAsync<BoardDto>("/api/playbooks", default));
 
         Assert.Contains("403 -", thrown.Message);
         Assert.DoesNotContain("the key is good", thrown.Message);
@@ -239,7 +239,7 @@ public sealed class HatchClientTests
             [FlakyWire.Failure.Refused, FlakyWire.Failure.Refused, FlakyWire.Failure.Bad503]);
         using var client = new HatchClient(Settings("hatch_ak_test"), wire, clock);
 
-        var sending = client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var sending = client.Send(HttpMethod.Get, "/api/board", null, default);
         await DriveAsync(clock, sending);
         var answer = await sending;
 
@@ -259,7 +259,7 @@ public sealed class HatchClientTests
         using var client = new HatchClient(Settings("hatch_ak_test"), wire, clock);
 
         var sending = client.Send(
-            HttpMethod.Post, "/api/hatch/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
+            HttpMethod.Post, "/api/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
         await DriveAsync(clock, sending);
         var answer = await sending;
 
@@ -279,7 +279,7 @@ public sealed class HatchClientTests
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var answer = await client.Send(
-            HttpMethod.Post, "/api/hatch/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
+            HttpMethod.Post, "/api/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
 
         Assert.Equal(HttpStatusCode.GatewayTimeout, answer.Status);
         Assert.Equal(1, wire.Attempts);
@@ -297,7 +297,7 @@ public sealed class HatchClientTests
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var answer = await client.Send(
-            HttpMethod.Post, "/api/hatch/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
+            HttpMethod.Post, "/api/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
 
         Assert.Null(answer.Status);
         Assert.Equal(1, wire.Attempts);
@@ -308,14 +308,14 @@ public sealed class HatchClientTests
     public async Task A_409_is_a_real_answer_and_is_never_retried()
     {
         using var wire = new Wire();
-        wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.Conflict, "\"busy\"");
+        wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.Conflict, "\"busy\"");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var answer = await client.Send(
-            HttpMethod.Post, "/api/hatch/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
+            HttpMethod.Post, "/api/issues/AER-1/claim", new ClaimRequest("test:/checkout"), default);
 
         Assert.Equal(HttpStatusCode.Conflict, answer.Status);
-        Assert.Single(wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     /// <summary>A 500 is a real answer too, whatever the verb.</summary>
@@ -323,13 +323,13 @@ public sealed class HatchClientTests
     public async Task A_500_is_never_retried()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/board", HttpStatusCode.InternalServerError, "boom");
+        wire.Reply("GET", "/api/board", HttpStatusCode.InternalServerError, "boom");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
-        var answer = await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var answer = await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.Equal(HttpStatusCode.InternalServerError, answer.Status);
-        Assert.Single(wire.To("GET", "/api/hatch/board"));
+        Assert.Single(wire.To("GET", "/api/board"));
     }
 
     /// <summary>
@@ -344,14 +344,14 @@ public sealed class HatchClientTests
         using var wire = new FlakyWire(Enumerable.Repeat(FlakyWire.Failure.Refused, 20));
         using var client = new HatchClient(Settings("hatch_ak_test", retrySeconds: 5), wire, clock);
 
-        var sending = client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var sending = client.Send(HttpMethod.Get, "/api/board", null, default);
         await DriveAsync(clock, sending);
         var answer = await sending;
 
         Assert.False(answer.Ok);
         Assert.Equal(5, answer.WaitedSeconds);
 
-        var reading = client.GetAsync<BoardDto>("/api/hatch/board", default);
+        var reading = client.GetAsync<BoardDto>("/api/board", default);
         var thrown = await Assert.ThrowsAsync<HatchException>(async () =>
         {
             await DriveAsync(clock, reading);
@@ -368,7 +368,7 @@ public sealed class HatchClientTests
         using var wire = new FlakyWire(Enumerable.Repeat(FlakyWire.Failure.Refused, 5));
         using var client = new HatchClient(Settings("hatch_ak_test", retrySeconds: 0), wire);
 
-        var answer = await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var answer = await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.False(answer.Ok);
         Assert.Equal(1, wire.Attempts);
@@ -388,7 +388,7 @@ public sealed class HatchClientTests
         var said = new List<string>();
         using var client = new HatchClient(Settings("hatch_ak_test"), wire, clock, said.Add);
 
-        var sending = client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var sending = client.Send(HttpMethod.Get, "/api/board", null, default);
         await DriveAsync(clock, sending);
         var answer = await sending;
 
@@ -409,13 +409,13 @@ public sealed class HatchClientTests
     {
         using var wire = new Wire();
         wire.Reply(
-            "POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.Conflict,
+            "POST", "/api/issues/AER-1/move", HttpStatusCode.Conflict,
             """{"error":"the WIP section is full - 2 of 2 stories and bugs are in it","load":2,"limit":2}""");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
             () => client.PostAsync<IssueDto>(
-                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+                "/api/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
 
         Assert.Equal("hatch: 409 - the WIP section is full - 2 of 2 stories and bugs are in it", thrown.Message);
     }
@@ -425,12 +425,12 @@ public sealed class HatchClientTests
     public async Task A_bare_string_409_prints_as_before()
     {
         using var wire = new Wire();
-        wire.Reply("POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.Conflict, "\"AER-1 is in Done now - nothing moved\"");
+        wire.Reply("POST", "/api/issues/AER-1/move", HttpStatusCode.Conflict, "\"AER-1 is in Done now - nothing moved\"");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
             () => client.PostAsync<IssueDto>(
-                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+                "/api/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
 
         Assert.Equal("hatch: 409 - \"AER-1 is in Done now - nothing moved\"", thrown.Message);
     }
@@ -444,12 +444,12 @@ public sealed class HatchClientTests
     public async Task A_2xx_body_that_is_not_the_write_s_answer_is_a_HatchException_and_not_a_crash()
     {
         using var wire = new Wire();
-        wire.Reply("POST", "/api/hatch/issues/AER-1/move", HttpStatusCode.OK, "not json at all");
+        wire.Reply("POST", "/api/issues/AER-1/move", HttpStatusCode.OK, "not json at all");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
             () => client.PostAsync<IssueDto>(
-                "/api/hatch/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
+                "/api/issues/AER-1/move", new IssueMoveRequest(2, null, null), default));
 
         Assert.Contains("IssueDto", thrown.Message);
     }
@@ -468,7 +468,7 @@ public sealed class HatchClientTests
         using var client = new HatchClient(
             Settings("hatch_ak_test", retrySeconds: 0), new DeadWire());
 
-        var answer = await client.Send(HttpMethod.Get, "/api/hatch/board", null, default);
+        var answer = await client.Send(HttpMethod.Get, "/api/board", null, default);
 
         Assert.Null(answer.Status);
         Assert.False(answer.Ok);
@@ -483,11 +483,11 @@ public sealed class HatchClientTests
     public async Task A_record_nobody_registered_refuses_by_naming_itself()
     {
         using var wire = new Wire();
-        wire.Reply("GET", "/api/hatch/board", HttpStatusCode.OK, "{}");
+        wire.Reply("GET", "/api/board", HttpStatusCode.OK, "{}");
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
         var thrown = await Assert.ThrowsAsync<HatchException>(
-            () => client.GetAsync<UnregisteredDto>("/api/hatch/board", default));
+            () => client.GetAsync<UnregisteredDto>("/api/board", default));
 
         Assert.Contains("UnregisteredDto is not registered in HatchJson", thrown.Message);
     }
@@ -503,12 +503,12 @@ public sealed class HatchClientTests
     public async Task A_dispatches_repositories_ride_through_the_trimmed_client_with_no_registration_of_their_own()
     {
         using var wire = new Wire();
-        wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work(
+        wire.Json("GET", "/api/work/AER-1", Fixtures.Work(
             "AER-1",
             repositories: [Fixtures.Repository("https://example.com/o/r", primary: true, matchedRemote: "https://example.com/o/r")]));
         using var client = new HatchClient(Settings("hatch_ak_test"), wire);
 
-        var work = await client.GetAsync<WorkDto>("/api/hatch/work/AER-1", default);
+        var work = await client.GetAsync<WorkDto>("/api/work/AER-1", default);
 
         var repo = Assert.Single(work!.Repositories);
         Assert.Equal("https://example.com/o/r", repo.Remote);

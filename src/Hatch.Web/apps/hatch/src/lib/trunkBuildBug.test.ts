@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bugRequest, defaultBugFields, fileBug, loadBugChoices } from './trunkBuildBug';
+import { bugRequest, canApproveBug, defaultBugFields, fileBug, loadBugChoices } from './trunkBuildBug';
 import type { BugFields } from './trunkBuildBug';
-import type { AssigneeDirectory, Issue, Status } from '../types';
+import type { AssigneeDirectory, Issue, Project, Status } from '../types';
 
 const status = (id: number, sortOrder: number, opts: Partial<Status> = {}): Status => ({
   id,
@@ -82,26 +82,37 @@ const ISSUE: Issue = {
 
 describe('defaultBugFields', () => {
   it('opens express, expedited, and sent back to the column that feeds implementation', () => {
-    expect(defaultBugFields(BOARD)).toEqual({ express: true, priority: 'expedited', statusId: TODO.id });
+    expect(defaultBugFields(BOARD)).toEqual({ preApproval: 'express', priority: 'expedited', statusId: TODO.id });
   });
 
   it('has no column yet before the fetch resolves', () => {
-    expect(defaultBugFields(null)).toEqual({ express: true, priority: 'expedited', statusId: null });
+    expect(defaultBugFields(null)).toEqual({ preApproval: 'express', priority: 'expedited', statusId: null });
   });
 });
 
 describe('bugRequest', () => {
   it('sends exactly what a changed field shows', () => {
-    const base: BugFields = { express: true, priority: 'expedited', statusId: TODO.id };
+    const base: BugFields = { preApproval: 'express', priority: 'expedited', statusId: TODO.id };
 
-    expect(bugRequest({ ...base, express: false })).toEqual({ express: false, priority: 'expedited', statusId: TODO.id });
-    expect(bugRequest({ ...base, priority: 'normal' })).toEqual({ express: true, priority: 'normal', statusId: TODO.id });
-    expect(bugRequest({ ...base, statusId: 7 })).toEqual({ express: true, priority: 'expedited', statusId: 7 });
+    expect(bugRequest({ ...base, preApproval: 'none' })).toEqual({ preApproval: 'none', priority: 'expedited', statusId: TODO.id });
+    expect(bugRequest({ ...base, preApproval: 'preapproved' })).toEqual({
+      preApproval: 'preapproved',
+      priority: 'expedited',
+      statusId: TODO.id,
+    });
+    expect(bugRequest({ ...base, priority: 'normal' })).toEqual({ preApproval: 'express', priority: 'normal', statusId: TODO.id });
+    expect(bugRequest({ ...base, statusId: 7 })).toEqual({ preApproval: 'express', priority: 'expedited', statusId: 7 });
+  });
+
+  it('no longer sends the older express boolean', () => {
+    const base: BugFields = { preApproval: 'express', priority: 'expedited', statusId: TODO.id };
+
+    expect(bugRequest(base)).not.toHaveProperty('express');
   });
 });
 
 describe('fileBug', () => {
-  const fields: BugFields = { express: true, priority: 'expedited', statusId: TODO.id };
+  const fields: BugFields = { preApproval: 'express', priority: 'expedited', statusId: TODO.id };
 
   it('resolves ok with the filed issue on success', async () => {
     const post = vi.fn(async () => ISSUE);
@@ -123,34 +134,65 @@ describe('fileBug', () => {
   });
 });
 
+describe('canApproveBug', () => {
+  const project = (key: string, canApprove: boolean) => ({ key, canApprove }) as Project;
+  const projects = [project('HA', true), project('PYC', false)];
+
+  it('is true only for a bound project the person may approve in', () => {
+    expect(canApproveBug(projects, 'HA')).toBe(true);
+    expect(canApproveBug(projects, 'PYC')).toBe(false);
+  });
+
+  it('is false while the projects are unread, or when the trunk binds none', () => {
+    expect(canApproveBug(null, 'HA')).toBe(false);
+    expect(canApproveBug(projects, null)).toBe(false);
+    expect(canApproveBug(projects, 'ELSEWHERE')).toBe(false);
+  });
+});
+
 describe('loadBugChoices', () => {
   const DIRECTORY: AssigneeDirectory = { me: null, assignees: [] };
+  const PROJECTS = [{ key: 'HA', canApprove: true }] as Project[];
 
-  it('resolves ok with the columns and the directory', async () => {
-    const result = await loadBugChoices(async () => BOARD, async () => DIRECTORY);
+  it('resolves ok with the columns, the directory and the projects', async () => {
+    const result = await loadBugChoices(async () => BOARD, async () => DIRECTORY, async () => PROJECTS);
 
-    expect(result).toEqual({ ok: true, statuses: BOARD, directory: DIRECTORY });
+    expect(result).toEqual({ ok: true, statuses: BOARD, directory: DIRECTORY, projects: PROJECTS });
   });
 
   it('still resolves ok, with no directory, when only the directory read fails', async () => {
     const result = await loadBugChoices(
       async () => BOARD,
       async () => {
-        throw new Error('GET /api/hatch/assignees failed: 500 Internal Server Error');
+        throw new Error('GET /api/assignees failed: 500 Internal Server Error');
+      },
+      async () => PROJECTS,
+    );
+
+    expect(result).toEqual({ ok: true, statuses: BOARD, directory: null, projects: PROJECTS });
+  });
+
+  it('still resolves ok, with no projects, when only the projects read fails', async () => {
+    const result = await loadBugChoices(
+      async () => BOARD,
+      async () => DIRECTORY,
+      async () => {
+        throw new Error('GET /api/hatch/projects failed: 500 Internal Server Error');
       },
     );
 
-    expect(result).toEqual({ ok: true, statuses: BOARD, directory: null });
+    expect(result).toEqual({ ok: true, statuses: BOARD, directory: DIRECTORY, projects: null });
   });
 
   it('resolves, rather than rejects, with the sentence when the columns cannot be read', async () => {
     const result = await loadBugChoices(
       async () => {
-        throw new Error('GET /api/hatch/statuses failed: 503 Service Unavailable');
+        throw new Error('GET /api/statuses failed: 503 Service Unavailable');
       },
       async () => DIRECTORY,
+      async () => PROJECTS,
     );
 
-    expect(result).toEqual({ ok: false, error: 'GET /api/hatch/statuses failed: 503 Service Unavailable' });
+    expect(result).toEqual({ ok: false, error: 'GET /api/statuses failed: 503 Service Unavailable' });
   });
 });

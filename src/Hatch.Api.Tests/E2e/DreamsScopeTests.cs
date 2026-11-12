@@ -163,12 +163,12 @@ public class DreamsScopeTests(ITestOutputHelper output)
         var ids = new Dictionary<string, string>();
         foreach (var key in Keys)
         {
-            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new(key, key));
-            await PostAsync<DreamCreateRequest, DreamDto>(http, "/api/hatch/dreams", new(DreamOf(key), null, project.Id));
+            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new(key, key));
+            await PostAsync<DreamCreateRequest, DreamDto>(http, "/api/dreams", new(DreamOf(key), null, project.Id));
             ids[key] = project.Id.ToString();
         }
 
-        await PostAsync<DreamCreateRequest, DreamDto>(http, "/api/hatch/dreams", new(LooseDream, null, null));
+        await PostAsync<DreamCreateRequest, DreamDto>(http, "/api/dreams", new(LooseDream, null, null));
 
         return ids;
     }

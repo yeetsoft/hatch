@@ -20,6 +20,7 @@ import {
   revealType,
   scrubbedFiledBy,
   scrubbedProject,
+  toggleBlocked,
   toggleType,
   toggleWaiting,
   typeCounts,
@@ -29,7 +30,7 @@ import {
   writeBoardTypes,
 } from './filter';
 import { ISSUE_TYPES } from '../types';
-import type { Assignee, ContributionRecord, IssueCard } from '../types';
+import type { Assignee, ContributionRecord, IssueCard, QueueEntry } from '../types';
 
 /** A localStorage that holds what it is given, and can be made to throw - the
     same stub phoneBoard.test.ts uses for its storage pair. */
@@ -180,6 +181,76 @@ describe('filterCards', () => {
     ];
 
     expect(filterCards(asked, filter({ waiting: true, types: ['bug'] })).map((c) => c.key)).toEqual(['AER-4']);
+  });
+});
+
+/* Rows by hand, with statusId set on both the card and its row's fromStatus: a
+   row for a column the card has left is not read (isBlocked). */
+const blockedRow = (c: IssueCard, over: Partial<QueueEntry> = {}): [string, QueueEntry] => [
+  c.key,
+  {
+    issue: { key: c.key },
+    fromStatus: { id: c.statusId },
+    blocked: 'something else',
+    blockedKind: 'other',
+    deadlocked: false,
+    takers: null,
+    ...over,
+  } as unknown as QueueEntry,
+];
+
+describe('the blocked switch', () => {
+  const stuck = card({ key: 'AER-1', statusId: 1 });
+  const held = card({ key: 'AER-2', statusId: 1 });
+  const unread = card({ key: 'AER-3', statusId: 1 });
+  const board = [stuck, held, unread];
+  const rows = new Map([blockedRow(stuck), blockedRow(held, { blockedKind: 'dependency' })]);
+  const keys = (f: ReturnType<typeof filter>, map: ReadonlyMap<string, QueueEntry> | null) =>
+    filterCards(board, f, new Map(), map).map((c) => c.key);
+
+  it('draws only the blocked cards when it is on', () => {
+    expect(keys(filter({ blocked: true }), rows)).toEqual(['AER-1']);
+  });
+
+  it('draws nothing while there are no rows to read', () => {
+    expect(keys(filter({ blocked: true }), null)).toEqual([]);
+  });
+
+  it('ignores the rows when it is off', () => {
+    expect(keys(filter(), rows)).toEqual(['AER-1', 'AER-2', 'AER-3']);
+    expect(keys(filter(), null)).toEqual(['AER-1', 'AER-2', 'AER-3']);
+  });
+
+  it('does not read a row for a column the card has left', () => {
+    expect(keys(filter({ blocked: true }), new Map([blockedRow({ ...stuck, statusId: 2 })]))).toEqual([]);
+  });
+
+  it('narrows with the other clauses rather than instead of them', () => {
+    expect(keys(filter({ blocked: true, query: 'AER-2' }), rows)).toEqual([]);
+  });
+
+  it("draws an epic for its carried story's block, and not when neither is blocked", () => {
+    const epic = card({ key: 'AER-10', type: 'epic' });
+    const story = card({ key: 'AER-11', type: 'story', parentKey: 'AER-10' });
+    const carried = new Map([['AER-10', [story]]]);
+    const on = filter({ blocked: true });
+
+    expect(filterCards([epic], on, carried, new Map([blockedRow(story)])).map((c) => c.key)).toEqual(['AER-10']);
+    expect(filterCards([epic], on, carried, new Map([blockedRow(story, { blockedKind: 'person' })]))).toEqual([]);
+  });
+
+  it('counts as filtering, and Reset and a fresh visit leave it off', () => {
+    expect(isFiltering(filter({ blocked: true }))).toBe(true);
+    expect(DEFAULT_FILTER.blocked).toBe(false);
+  });
+});
+
+describe('toggleBlocked', () => {
+  it('flips the switch and leaves the rest of the filter alone', () => {
+    const on = toggleBlocked(filter({ types: ['bug'], query: 'cert' }));
+
+    expect(on).toMatchObject({ blocked: true, types: ['bug'], query: 'cert' });
+    expect(toggleBlocked(on).blocked).toBe(false);
   });
 });
 

@@ -11,7 +11,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed partial class MergeTrainTests
 {
-    private const string Review = "/api/hatch/work/review";
+    private const string Review = "/api/work/review";
     private const int Interval = 60;
 
     private static readonly string Trunk = new('a', 40);
@@ -21,7 +21,7 @@ public sealed partial class MergeTrainTests
     private static readonly string Updated = new('e', 40);
     private static readonly string NewTrunk = new('f', 40);
 
-    private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
+    private static string Put(string key) => $"/api/issues/{key}/merge-check";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -44,8 +44,8 @@ public sealed partial class MergeTrainTests
 
             // The outside pull request half asks which project binds a checkout's repository; a board that
             // binds nothing says so, and the half has nothing to file. Tests about it Replace these.
-            H.Wire.Json("GET", "/api/hatch/trunk-builds", Array.Empty<TrunkBuildDto>());
-            H.Wire.Json("GET", "/api/hatch/projects", Array.Empty<ProjectDto>());
+            H.Wire.Json("GET", "/api/trunk-builds", Array.Empty<TrunkBuildDto>());
+            H.Wire.Json("GET", "/api/projects", Array.Empty<ProjectDto>());
             foreach (var row in rows) H.Wire.Json("PUT", Put(row.Key), Fixtures.MergeCheck());
             H.Runtime.Readout.SetDrives(rows.Select(r => r.ProjectKey).Distinct().ToList());
             return this;
@@ -67,12 +67,12 @@ public sealed partial class MergeTrainTests
 
     private const string PrUrl = "https://github.com/o/r/pull/1";
     private const string PrUrl2 = "https://github.com/o/r/pull/2";
-    private const string Statuses = "/api/hatch/statuses";
+    private const string Statuses = "/api/statuses";
 
-    private static string Merged(string key) => $"/api/hatch/work/{key}/merged";
-    private static string Closed(string key) => $"/api/hatch/work/{key}/closed";
-    private static string StatePath(string key) => $"/api/hatch/issues/{key}/pull-request-state";
-    private static string BroughtCurrentPath(string key) => $"/api/hatch/issues/{key}/brought-current";
+    private static string Merged(string key) => $"/api/work/{key}/merged";
+    private static string Closed(string key) => $"/api/work/{key}/closed";
+    private static string StatePath(string key) => $"/api/issues/{key}/pull-request-state";
+    private static string BroughtCurrentPath(string key) => $"/api/issues/{key}/brought-current";
 
     private static PullRequestAnswer Forged(
         string state = PullRequestStates.Open, string? head = null, string? merge = MergeStates.Clean,
@@ -369,7 +369,7 @@ public sealed partial class MergeTrainTests
 
     private const string MergeCanonical = Fixtures.MergeCanonical;
 
-    private static string Comments(string key) => $"/api/hatch/issues/{key}/comments";
+    private static string Comments(string key) => $"/api/issues/{key}/comments";
 
     private static ReviewCheckDto MergeRow(
         string key, string branch, string pullRequestUrl, string? kind = WorkKinds.Merge, string? judgedSha = null,
@@ -1066,7 +1066,7 @@ public sealed partial class MergeTrainTests
 
     // ---- The pushback half ----
 
-    private static string Pushback(string key) => $"/api/hatch/work/{key}/pushback";
+    private static string Pushback(string key) => $"/api/work/{key}/pushback";
 
     /// <summary>
     /// A row in the merges column, judged <paramref name="kind"/> (<see
@@ -1138,7 +1138,7 @@ public sealed partial class MergeTrainTests
 
     // ---- The landing half ----
 
-    private static string Landed(string key) => $"/api/hatch/work/{key}/landed";
+    private static string Landed(string key) => $"/api/work/{key}/landed";
 
     /// <summary>
     /// A trunk-landing row in review, judged <paramref name="kind"/> (<see
@@ -1421,7 +1421,7 @@ public sealed partial class MergeTrainTests
 
     // ---- The head's build ----
 
-    private static string BuildPut(string key) => $"/api/hatch/issues/{key}/build-check";
+    private static string BuildPut(string key) => $"/api/issues/{key}/build-check";
 
     private static ForgeAnswer Built(string verdict) => new(new BuildRead(verdict, []), null);
 

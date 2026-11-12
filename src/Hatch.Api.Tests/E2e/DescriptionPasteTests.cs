@@ -9,8 +9,8 @@ namespace Hatch.Api.Tests.E2e;
 
 /// <summary>
 /// An image pasted into an issue's description, end to end in headless
-/// Chromium: it uploads through <c>POST /api/hatch/attachments</c>, the editor
-/// inserts <c>![image](/api/hatch/images/{id})</c>, Save writes it, and the
+/// Chromium: it uploads through <c>POST /api/attachments</c>, the editor
+/// inserts <c>![image](/api/images/{id})</c>, Save writes it, and the
 /// preview draws the picture. Nothing else would notice the paste, the route
 /// and the image route each working and the three not meeting.
 ///
@@ -58,7 +58,7 @@ public partial class DescriptionPasteTests
         """;
 
     /// <summary>Plain CSS, since the page reads it with <c>querySelector</c>, which knows none of Playwright's extensions.</summary>
-    private const string Picture = ".hatch-markdown img[src^=\"/api/hatch/images/\"]";
+    private const string Picture = ".hatch-markdown img[src^=\"/api/images/\"]";
 
     /// <summary>Runs in the page: whether the image has been fetched and decoded, rather than merely put in the DOM.</summary>
     private const string RenderedScript = """
@@ -70,7 +70,7 @@ public partial class DescriptionPasteTests
 
     private const string ConflictNoteScript = "() => document.body.innerText.includes('changed while this was being edited')";
 
-    [GeneratedRegex(@"!\[image\]\(/api/hatch/images/(?<id>[0-9a-fA-F-]{36})\)")]
+    [GeneratedRegex(@"!\[image\]\(/api/images/(?<id>[0-9a-fA-F-]{36})\)")]
     private static partial Regex InsertedImage();
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
@@ -115,15 +115,15 @@ public partial class DescriptionPasteTests
 
             using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-            var issue = await http.GetAsync($"/api/hatch/issues/{key}");
+            var issue = await http.GetAsync($"/api/issues/{key}");
             Assert.Equal(HttpStatusCode.OK, issue.StatusCode);
             var description = JsonDocument.Parse(await issue.Content.ReadAsStringAsync()).RootElement.GetProperty("description").GetString()!;
 
             var inserted = InsertedImage().Match(description);
-            Assert.True(inserted.Success, $"The saved description holds no ![image](/api/hatch/images/{{id}}): {description}");
+            Assert.True(inserted.Success, $"The saved description holds no ![image](/api/images/{{id}}): {description}");
             var id = inserted.Groups["id"].Value;
 
-            var download = await http.GetAsync($"/api/hatch/attachments/{id}");
+            var download = await http.GetAsync($"/api/attachments/{id}");
             Assert.Equal(HttpStatusCode.OK, download.StatusCode);
             Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
             Assert.Equal("attachment", download.Content.Headers.ContentDisposition?.DispositionType);

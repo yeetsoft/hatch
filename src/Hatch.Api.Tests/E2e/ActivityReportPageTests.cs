@@ -140,14 +140,14 @@ public class ActivityReportPageTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("ACT", "ACT"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("ACT", "ACT"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "task", IssueTitle, null, null, null, null));
-        await PostAsync<CommentCreateRequest, object>(http, $"/api/hatch/issues/{issue.Key}/comments", new("A comment"));
+            http, "/api/issues", new(project.Id, "task", IssueTitle, null, null, null, null));
+        await PostAsync<CommentCreateRequest, object>(http, $"/api/issues/{issue.Key}/comments", new("A comment"));
 
-        using var response = await http.GetAsync("/api/hatch/me");
+        using var response = await http.GetAsync("/api/me");
         var text = await response.Content.ReadAsStringAsync();
-        Assert.True(response.IsSuccessStatusCode, $"GET /api/hatch/me answered {(int)response.StatusCode}: {text}");
+        Assert.True(response.IsSuccessStatusCode, $"GET /api/me answered {(int)response.StatusCode}: {text}");
         var me = JsonSerializer.Deserialize<MeDto>(text, Web)!;
 
         return (me.Name, issue.Key);

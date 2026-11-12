@@ -28,7 +28,7 @@ export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   bug: ['epic', 'story', 'reflection'],
 };
 
-/** A stored file: `/api/hatch/attachments/{id}` serves it. */
+/** A stored file: `/api/attachments/{id}` serves it. */
 export interface Attachment {
   id: string;
   fileName: string;
@@ -467,13 +467,17 @@ export interface TrunkBuild {
   checkedBy: string;
   /** The bug filed while this trunk was failing, or null when none is attached yet - see HA-95. */
   bugIssueKey: string | null;
+  /** The project that binds this repository, or null when none does - what the File a bug? dialog reads its approve permission from. */
+  projectKey: string | null;
 }
 
-/** The three fields HA-406's modal can set before filing - see
+/** The fields HA-406's modal can set before filing - see
     TrunkBuildBugRequest. All optional; omitting one files as the route files
-    without a body. */
+    without a body. `preApproval` is `none`, `express` or `preapproved`;
+    `express` is the older spelling, honoured only where it is absent. */
 export interface TrunkBuildBugRequest {
   express?: boolean | null;
+  preApproval?: string | null;
   priority?: string | null;
   statusId?: number | null;
 }
@@ -699,8 +703,7 @@ export interface Issue {
       gate-passer, not a sort key. Derived from the effective pre-approval
       level - the one `preApproval` names - as
       `effective >= PreApprovalLevels.Express`. Readable by anybody a dispatch
-      reaches and writable only by a person, through its own route - see
-      IssueExpressController. */
+      reaches and writable only by a person, through the pre-approval route. */
   express: boolean;
   /** The level's name - see IssueCard.preApproval and IssueDto.PreApproval. */
   preApproval: 'none' | 'express' | 'preapproved';
@@ -1335,7 +1338,7 @@ export interface IssueSearch {
     Matched at SearchController.cs:247-251, in this order and no other. */
 export type SearchMatch = 'title' | 'description' | 'comment' | 'work-log';
 
-/** One hit from GET /api/hatch/search - mirrors SearchHitDto field for field. */
+/** One hit from GET /api/search - mirrors SearchHitDto field for field. */
 export interface SearchHit {
   card: IssueCard;
   createdAt: string;
@@ -1815,7 +1818,7 @@ export interface CumulativeFlow {
   /** The board's own columns, in board order, deferred columns excluded -
       parallel to each point's `counts`. */
   columns: number[];
-  /** The project keys in scope, in `/api/hatch/projects`'s own order -
+  /** The project keys in scope, in `/api/projects`'s own order -
       parallel to each point's `projectCounts`. */
   projects: string[];
   /** One per grid step, oldest first. */
@@ -2567,7 +2570,7 @@ export interface OvernightRowDto {
 
 // ---- Changelog ----
 
-/** The newest window of days that shipped something - `GET /api/hatch/changelog`'s whole read. */
+/** The newest window of days that shipped something - `GET /api/changelog`'s whole read. */
 export interface ChangelogDto {
   days: ChangelogDayDto[];
   hasOlder: boolean;

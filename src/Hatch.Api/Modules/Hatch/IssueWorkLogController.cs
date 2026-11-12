@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// a line on every ticket's history saying nothing the row does not.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/work-log")]
+[Route("api/issues/{key}/work-log")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueWorkLogController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {

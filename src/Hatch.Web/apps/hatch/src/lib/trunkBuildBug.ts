@@ -4,11 +4,12 @@
 
 import { sendBack } from './columns';
 import { message } from './errors';
+import type { PreApproval } from '../components/PreApprovalControl';
 import type { Priority } from '../components/PriorityControl';
-import type { AssigneeDirectory, Issue, Status, TrunkBuildBugRequest } from '../types';
+import type { AssigneeDirectory, Issue, Project, Status, TrunkBuildBugRequest } from '../types';
 
 export interface BugFields {
-  express: boolean;
+  preApproval: PreApproval;
   priority: Priority;
   statusId: number | null;
 }
@@ -18,13 +19,13 @@ export interface BugFields {
     then: there is no column to send yet, and nothing downstream may treat
     that as "leave it to the server's leftmost fallback". */
 export function defaultBugFields(statuses: Status[] | null): BugFields {
-  return { express: true, priority: 'expedited', statusId: statuses ? sendBack(statuses)?.id ?? null : null };
+  return { preApproval: 'express', priority: 'expedited', statusId: statuses ? sendBack(statuses)?.id ?? null : null };
 }
 
 /** What a set of fields sends - HA-406 criterion 3, the half of it that is a
     pure mapping rather than a press. */
 export function bugRequest(fields: BugFields): TrunkBuildBugRequest {
-  return { express: fields.express, priority: fields.priority, statusId: fields.statusId };
+  return { preApproval: fields.preApproval, priority: fields.priority, statusId: fields.statusId };
 }
 
 /** Files the bug with exactly what the fields show, or reports the server's
@@ -43,21 +44,36 @@ export async function fileBug(
   }
 }
 
-/** What the modal reads when it opens: the columns it offers, and the
-    directory the express and priority controls name people from. The
-    directory is a nicety - a failed read of it leaves those controls
-    without names and the dialog still usable - but the columns are not:
+/** Whether the person may set Pre-approved on the project the trunk binds.
+    False while the projects are unread or the trunk binds none: the control
+    then locks that step, and the server's refusal stands behind it. */
+export function canApproveBug(projects: Project[] | null, projectKey: string | null): boolean {
+  return projectKey != null && (projects?.find((p) => p.key === projectKey)?.canApprove ?? false);
+}
+
+/** What the modal reads when it opens: the columns it offers, the
+    directory the pre-approval and priority controls name people from, and
+    the projects, for whether Pre-approved may be pressed. The directory and
+    the projects are niceties - a failed read of either leaves those controls
+    without names, or with the step locked, and the dialog still usable - but the columns are not:
     without them there is nothing to file into, so their failure comes back
     as a sentence for the dialog to show rather than a rejection nobody
     hears, which left the dialog sitting disabled with no word as to why.
-    Both fetchers are parameters for the same reason `fileBug`'s `post` is. */
+    The fetchers are parameters for the same reason `fileBug`'s `post` is. */
 export async function loadBugChoices(
   statuses: () => Promise<Status[]>,
   assignees: () => Promise<AssigneeDirectory>,
-): Promise<{ ok: true; statuses: Status[]; directory: AssigneeDirectory | null } | { ok: false; error: string }> {
+  projects: () => Promise<Project[]>,
+): Promise<
+  { ok: true; statuses: Status[]; directory: AssigneeDirectory | null; projects: Project[] | null } | { ok: false; error: string }
+> {
   try {
-    const [ss, dir] = await Promise.all([statuses(), assignees().then((d) => d, () => null)]);
-    return { ok: true, statuses: ss, directory: dir };
+    const [ss, dir, ps] = await Promise.all([
+      statuses(),
+      assignees().then((d) => d, () => null),
+      projects().then((p) => p, () => null),
+    ]);
+    return { ok: true, statuses: ss, directory: dir, projects: ps };
   } catch (err) {
     return { ok: false, error: message(err) };
   }

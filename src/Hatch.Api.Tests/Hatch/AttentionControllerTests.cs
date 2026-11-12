@@ -2017,6 +2017,20 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attention_NamesTheProjectThatBindsAFailedTrunk_AndNoneWhereNoneDoes()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://forge.example/owner/repo");
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"], remote: "forge.example/owner/unbound");
+
+        var rows = Value(await h.Attention.GetAttention(default)).TrunkBuilds!;
+
+        Assert.Equal("AER", Assert.Single(rows, r => r.Canonical == "forge.example/owner/repo").ProjectKey);
+        Assert.Null(Assert.Single(rows, r => r.Canonical == "forge.example/owner/unbound").ProjectKey);
+    }
+
+    [Fact]
     public async Task Attention_ListsAPendingTrunkBuildThatAlreadyCarriesAFailingCheck()
     {
         var h = await NewAsync();

@@ -164,7 +164,7 @@ public sealed record ConfigCommand(
 
     /// <summary>
     /// Who <c>--show</c>'s own identity line names - a key, per
-    /// <c>/api/hatch/me</c> - and what the mint prompt reads to tell a
+    /// <c>/api/me</c> - and what the mint prompt reads to tell a
     /// wall-off Hatch from a wall-on one. Replaced by a test, which has no
     /// origin to reach.
     /// </summary>

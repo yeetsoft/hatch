@@ -188,7 +188,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
         await harness.WaitForFunctionAsync(
             deadline,
             "waiting for the project fetch to have answered",
-            "() => performance.getEntriesByType('resource').some(e => e.name.includes('/api/hatch/projects'))");
+            "() => performance.getEntriesByType('resource').some(e => e.name.includes('/api/projects'))");
         await harness.EvaluateAsync<bool>(
             deadline,
             "waiting two frames after the project fetch",
@@ -725,7 +725,7 @@ public class ScopeControlRendersTests(ITestOutputHelper output)
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
         foreach (var (key, color) in projects)
-            await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new(key, $"Project {key}", color));
+            await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new(key, $"Project {key}", color));
     }
 
     private static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)

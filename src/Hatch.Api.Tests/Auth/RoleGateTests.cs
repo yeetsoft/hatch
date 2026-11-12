@@ -119,7 +119,7 @@ public class RoleGateTests
         var key = Key("Claude");
         var gate = NewGate(new StubCallerIdentity(null, key));
 
-        var accepted = await gate.EvaluateAsync("GET", "/api/hatch/board", null, minimum, true, default);
+        var accepted = await gate.EvaluateAsync("GET", "/api/board", null, minimum, true, default);
         Assert.Equal(RoleOutcome.Key, accepted.Outcome);
         Assert.Same(key, accepted.ApiKey);
 

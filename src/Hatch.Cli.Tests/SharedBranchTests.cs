@@ -172,8 +172,8 @@ public sealed class SharedBranchTests
     public async Task Leaving_works_on_the_storys_branch_and_is_not_owed_a_pull_request()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/issues/{Story}", Fixtures.Issue(Story, type: "story"));
-        h.Wire.Json("PUT", $"/api/hatch/issues/{Story}/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("GET", $"/api/issues/{Story}", Fixtures.Issue(Story, type: "story"));
+        h.Wire.Json("PUT", $"/api/issues/{Story}/merge-check", Fixtures.MergeCheck());
         h.Workspace.FoundFor[h.Root] = new Verdict(MergeVerdicts.Clean, "main", new string('a', 40), "aer-5-the-story", new string('b', 40), []);
 
         var left = await new Lifecycle(h.Runtime).LeaveAsync(Shared(), Choice(h), ownsTicket: true, default);
@@ -183,15 +183,15 @@ public sealed class SharedBranchTests
         Assert.False(leave.Sync);
         Assert.True(left.HasPullRequest);
         Assert.True(left.BranchOnOrigin);
-        Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Story}/merge-check"));
-        Assert.Empty(h.Wire.To("PUT", $"/api/hatch/issues/{Task}/merge-check"));
+        Assert.Single(h.Wire.To("PUT", $"/api/issues/{Story}/merge-check"));
+        Assert.Empty(h.Wire.To("PUT", $"/api/issues/{Task}/merge-check"));
     }
 
     [Fact]
     public async Task Leaving_brings_the_storys_branch_current_once_the_story_has_a_pull_request()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/issues/{Story}", Fixtures.Issue(Story, type: "story", pullRequestUrl: "https://forge.example/pulls/7"));
+        h.Wire.Json("GET", $"/api/issues/{Story}", Fixtures.Issue(Story, type: "story", pullRequestUrl: "https://forge.example/pulls/7"));
 
         await new Lifecycle(h.Runtime).LeaveAsync(Shared(), Choice(h), ownsTicket: true, default);
 
@@ -202,7 +202,7 @@ public sealed class SharedBranchTests
     public async Task Leaving_an_unshared_task_is_exactly_as_it_was()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/issues/{Task}", Fixtures.Issue(Task));
+        h.Wire.Json("GET", $"/api/issues/{Task}", Fixtures.Issue(Task));
 
         var left = await new Lifecycle(h.Runtime).LeaveAsync(Fixtures.Work(Task, from: "In Review"), Choice(h), ownsTicket: true, default);
 

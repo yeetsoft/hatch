@@ -32,12 +32,14 @@ public class TrunkBuildBugController(
     /// Files the bug, or - if this row already has one - answers that bug
     /// again and files nothing: a second press, or a second call, never gets
     /// a second bug. <paramref name="request"/> is optional and, field by
-    /// field, lets a person choose express, the priority, and the column the
-    /// bug is born in - absent means file exactly as this route always has. A
-    /// key chooses none of the three: they come off the project's auto-heal
-    /// settings instead, and only where that project has auto-filing on.
+    /// field, lets a person choose the pre-approval level, the priority, and
+    /// the column the bug is born in - absent means file exactly as this route
+    /// always has. <c>preapproved</c> asks what filing an issue at that level
+    /// asks: an owner or approver of the bound project. A key chooses none of
+    /// the fields: they come off the project's auto-heal settings instead, and
+    /// only where that project has auto-filing on.
     /// </summary>
-    [HttpPost("api/hatch/trunk-builds/{id:long}/bug")]
+    [HttpPost("api/trunk-builds/{id:long}/bug")]
     [RequireRole(PersonRole.User, AcceptKey = true)]
     public async Task<ActionResult<IssueDto>> PostBug(long id, TrunkBuildBugRequest? request, CancellationToken ct)
     {
@@ -60,6 +62,7 @@ public class TrunkBuildBugController(
             return BadRequest($"no project binds {row.Canonical} - bind it on the Projects page");
 
         var key = await caller.ApiKeyAsync(ct);
+        var access = new ProjectAccess(db, actors);
 
         int priority;
         int preApproval;
@@ -80,7 +83,19 @@ public class TrunkBuildBugController(
             if (request?.Priority is { } priorityName && !PriorityLevels.TryParse(priorityName, out priority))
                 return BadRequest($"\"{priorityName}\" is not a priority - paused, economy, low, normal, expedited or emergency");
 
+            // The level named wins over the older boolean, which still means
+            // express or none where no level is named.
             preApproval = (request?.Express ?? false) ? PreApprovalLevels.Express : PreApprovalLevels.None;
+            if (request?.PreApproval is { } levelName && !PreApprovalLevels.TryParse(levelName, out preApproval))
+                return BadRequest(IssuePreApprovalController.UnknownLevel(levelName));
+
+            if (preApproval == PreApprovalLevels.PreApproved)
+            {
+                var bound = await db.Projects.AsNoTracking().FirstAsync(p => p.Id == projectId, ct);
+                if (await IssuePreApprovalController.LevelRefusalAsync(db, access, bound, PreApprovalLevels.None, preApproval, ct) is { } forbidden)
+                    return forbidden;
+            }
+
             statusId = request?.StatusId;
         }
 
@@ -92,7 +107,7 @@ public class TrunkBuildBugController(
             .. failingChecks.Select(f => f.Url is { } url ? $"[{f.Name}]({url})" : f.Name),
         ]);
 
-        var issues = new IssuesController(db, ranks, actors, claims, caller, time, new ProjectAccess(db, actors)) { ControllerContext = ControllerContext };
+        var issues = new IssuesController(db, ranks, actors, claims, caller, time, access) { ControllerContext = ControllerContext };
         var created = await issues.CreateIssueAsync(
             new IssueCreateRequest(projectId, "bug", $"Build failing on {row.Trunk}", description, null, null, null),
             priority, ct,

@@ -56,7 +56,7 @@ layers, highest first: an exported `HATCH_BASE`/`HATCH_KEY`, then
 file, never a value in a commit, never pasted into a plan or an issue. Hatch is
 headed for release to other operators, and a credential in the artifact is one
 operator's credential inherited by everyone who clones it. The key reaches
-`/api/hatch/*` and nothing else, so a `403` means the key is working and the
+only the `/api/*` routes that accept a key, so a `403` means the key is working and the
 route is not one a key may take — ask the operator.
 
 A loop needs a key, wall on or off: a runner's name is its key's. Keyless calls
@@ -110,7 +110,7 @@ below is what the prompt does not carry.
   outside and may not be.
 
 A playbook edit is refused by the API on purpose — propose it instead with
-`hatch api POST /api/hatch/playbook-proposals`, and say so on the ticket.
+`hatch api POST /api/playbook-proposals`, and say so on the ticket.
 Work on the loop itself (`src/Hatch.Cli`, `scripts/hatch.sh`,
 `scripts/hatch.ps1`, `src/Hatch.Contracts`) restarts the loop rather than
 waiting for the next night.
@@ -128,10 +128,10 @@ it; `./scripts/hatch.sh ask AER-12 "..."` is the call it describes.
 A `hatch.${DOMAIN}/issues/AER-12` link, or a bare `AER-12`:
 
 ```
-GET  ${HATCH_BASE}/api/hatch/issues/AER-12          # title, description, status, parent, children
-GET  ${HATCH_BASE}/api/hatch/issues/AER-12/comments
-GET  ${HATCH_BASE}/api/hatch/issues/AER-12/questions?open=false   # decisions asked for, and given
-GET  ${HATCH_BASE}/api/hatch/issues/AER-12/events   # what has happened to it, newest first
+GET  ${HATCH_BASE}/api/issues/AER-12          # title, description, status, parent, children
+GET  ${HATCH_BASE}/api/issues/AER-12/comments
+GET  ${HATCH_BASE}/api/issues/AER-12/questions?open=false   # decisions asked for, and given
+GET  ${HATCH_BASE}/api/issues/AER-12/events   # what has happened to it, newest first
 ```
 
 Read it, then get to work. The description is markdown and is the brief.
@@ -141,8 +141,8 @@ Read it, then get to work. The description is markdown and is the brief.
 An increment that **files or reshapes work** — an epic into stories, a story
 into tasks, dating something that cannot start yet, or moving a batch — reads
 [`docs/hatch-planning.md`](docs/hatch-planning.md) first: `POST
-/api/hatch/issues` with a `parentKey`, the `readyAt`/`dueAt` dates, the
-`issues` filters, the bulk endpoint, and the `/api/hatch/plan` reads that say
+/api/issues` with a `parentKey`, the `readyAt`/`dueAt` dates, the
+`issues` filters, the bulk endpoint, and the `/api/plan` reads that say
 how far along a project is.
 
 A separate file, since an implementation increment never needs it and this
@@ -157,7 +157,7 @@ one loads on every increment. Two rules from it matter enough to repeat:
 ### Implementing a ticket
 
 - Move it to **in progress** before starting — that is the board's whole job.
-- `POST /api/hatch/issues/AER-12/comments` with the commit sha and branch —
+- `POST /api/issues/AER-12/comments` with the commit sha and branch —
   the ticket is where somebody looks in six months.
 - Record a pull request with `./scripts/hatch.sh pr AER-12 <url>`, named the
   way the prompt's `## Opening a pull request` section says.
@@ -205,7 +205,7 @@ so the trail says who did what without anybody being asked to record it.
   own look is still the last word: never claim a screen works from the build
   alone.
 - The docs are part of done. A change to a primary-nav page, a `hatch` command
-  or flag, a `HATCH_*` variable, a column flag or an `/api/hatch` route updates
+  or flag, a `HATCH_*` variable, a column flag or an `/api` route updates
   the docs page naming it (`src/Hatch.Web/apps/hatch/docs/`) in the same pull
   request. The `docsCoverage.*.test.ts` files beside
   `src/Hatch.Web/apps/hatch/src/lib/docs.ts`, `CliReferenceDocsTests` and

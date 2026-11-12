@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// same rule written twice, in two languages, and the two would drift.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/attention")]
+[Route("api/attention")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class AttentionController(HatchContext db, Runners runners, TimeProvider time, Dispatch dispatch, BackupService backup) : ControllerBase
 {
@@ -54,12 +54,18 @@ public class AttentionController(HatchContext db, Runners runners, TimeProvider 
         // there being a review column at all - a person's row here even on a
         // board too short to have one. The same failing rule the branch builds
         // use: a check that has failed counts while the rest are still running.
-        var trunkBuilds = (await db.TrunkBuilds.AsNoTracking()
-                .Where(t => t.Verdict == BuildVerdicts.Failed || (t.Verdict == BuildVerdicts.Pending && t.Failing != null))
-                .Include(t => t.BugIssue).ThenInclude(i => i!.Project)
-                .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
-                .ToListAsync(ct))
-            .Select(t => TrunkBuildProjection.Project(t, projectKey: null))
+        var failingTrunks = await db.TrunkBuilds.AsNoTracking()
+            .Where(t => t.Verdict == BuildVerdicts.Failed || (t.Verdict == BuildVerdicts.Pending && t.Failing != null))
+            .Include(t => t.BugIssue).ThenInclude(i => i!.Project)
+            .OrderBy(t => t.Canonical).ThenBy(t => t.Trunk)
+            .ToListAsync(ct);
+
+        // The project that binds each trunk, so the File a bug? dialog can ask
+        // whether this person may pre-approve there - as /trunk-builds sends it.
+        var trunkWinners = await ProjectRepositoryBinding.WinnersAsync(
+            db, failingTrunks.Select(t => t.Canonical).Distinct().ToList(), ct);
+        var trunkBuilds = failingTrunks
+            .Select(t => TrunkBuildProjection.Project(t, trunkWinners.TryGetValue(t.Canonical, out var w) ? w.Key : null))
             .ToList();
 
         // The same read as the rest, never a second poll of its own - and

@@ -189,13 +189,13 @@ public class BoardFiledByTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         var filers = new[] { "Ada", "Ada", "Ada", "claude-key", LongName };
         var titles = new[] { "Story one", "Story two", "Task one", "Bug one", "Task two" };
         var types = new[] { "story", "story", "task", "bug", "task" };
         for (var i = 0; i < titles.Length; i++)
             await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, types[i], titles[i], null, null, null, null));
+                http, "/api/issues", new(project.Id, types[i], titles[i], null, null, null, null));
 
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<HatchContext>();

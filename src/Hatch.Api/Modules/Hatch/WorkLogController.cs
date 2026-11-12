@@ -12,7 +12,7 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// A controller of its own because it is the first read of the log that is not
 /// about a single ticket - <see cref="IssueWorkLogController"/> sits at
-/// <c>api/hatch/issues/{key}/work-log</c> and answers for one issue. The
+/// <c>api/issues/{key}/work-log</c> and answers for one issue. The
 /// leaderboard's reads live here together, so they parse a range and an ancestor
 /// filter once between them.
 /// </summary>
@@ -28,7 +28,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// nothing to an outside API.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/work-log")]
+[Route("api/work-log")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkLogController(HatchContext db, TimeProvider time) : ControllerBase
 {
@@ -81,7 +81,7 @@ public class WorkLogController(HatchContext db, TimeProvider time) : ControllerB
     /// <param name="ancestorKey">
     /// One issue and everything beneath it, <b>that issue included</b> - which is
     /// deliberately not how the same parameter reads on
-    /// <c>GET /api/hatch/issues</c>. A planning session run against an epic is
+    /// <c>GET /api/issues</c>. A planning session run against an epic is
     /// money no child holds, and a graph that dropped it would disagree with the
     /// meter on the issue page.
     /// </param>

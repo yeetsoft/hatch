@@ -83,9 +83,9 @@ public class ConsumptionDownloadCsvTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("CND", "CND"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("CND", "CND"));
         var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-            http, "/api/hatch/issues", new(project.Id, "epic", "An epic that consumed something", null, null, null, null));
+            http, "/api/issues", new(project.Id, "epic", "An epic that consumed something", null, null, null, null));
 
         return issue.Key;
     }

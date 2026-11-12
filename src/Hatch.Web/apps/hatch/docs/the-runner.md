@@ -231,8 +231,8 @@ HATCH_RTK            off keeps RTK's Bash hook out of a session where rtk is
   resolved active one, or `<none>`; the `runner:` line below and an unset
   `HATCH_WORKSPACE:` line name it in turn;
 - the runner's name, from the key (`<none - no key>` with no key,
-  `<unreachable>` when `/api/hatch/me` cannot be reached);
-- who `/api/hatch/me` says the caller is - the key and its owner - or
+  `<unreachable>` when `/api/me` cannot be reached);
+- who `/api/me` says the caller is - the key and its owner - or
   `<unreachable>` when there is no origin to ask or the call fails;
 - `HATCH_RETRY_SECONDS`, with its layer;
 - each setting that can live in a file, with the layer it came from: exported,
@@ -379,7 +379,7 @@ runner has the same way, as `has dotnet 10.0.100, node 22.11.0`, under the
 repositories line in a row's details.
 
 A key can also **refuse** a model outright, whatever the runner offers: the
-list `PUT /api/hatch/runners/{name}/refused-models` holds. A move whose model
+list `PUT /api/runners/{name}/refused-models` holds. A move whose model
 it names is folded for that runner, from every dispatch read and a named
 ticket alike - *"HA-12 in Breakdown runs on fable - build-box refuses it"* -
 so the runner never claims a ticket only to refuse it. An alias refused covers
@@ -492,7 +492,7 @@ runner advertises](#what-a-runner-advertises)).
 
 **Where it is read.** The runner's poll reads the blob off the trunk through
 git, beside `.hatch/playbooks.yaml`, and reports it to `PUT
-/api/hatch/dependency-files` ([API reference](api-reference#dependency-files));
+/api/dependency-files` ([API reference](api-reference#dependency-files));
 the board parses the bytes itself. A project's need is the union over every
 repository it binds.
 
@@ -589,7 +589,7 @@ old to answer with the list leaves the loop's own alone.
 
 ## The runner's name
 
-A runner's name is its key's. The board reads it from `GET /api/hatch/me`
+A runner's name is its key's. The board reads it from `GET /api/me`
 and shows it under **Agents → Runners** (*Watching the loop*); `hatch config
 --show` marks its own `runner:` line `(from the key)`. Nothing on this side
 chooses, records or sends another name - a key and a profile each carry one
@@ -667,8 +667,8 @@ hatch dangerous AER-12 --clear    ...clear the flag
 hatch ask AER-12 "how should retries be scoped?"     --recommend "Per-node: one budget per node, so a slow node cannot starve"     --option "Global: one budget for the drain, simpler to reason about"
 hatch verdict AER-12 pass|fail ["findings"]
 hatch answer                      answer the open questions, one at a time, here
-hatch api GET /api/hatch/issues?statusId=2
-hatch api PATCH /api/hatch/issues/AER-12 '{"dueAt":"2026-10-01"}'
+hatch api GET /api/issues?statusId=2
+hatch api PATCH /api/issues/AER-12 '{"dueAt":"2026-10-01"}'
 ```
 
 `hatch api` is the escape hatch for a route with no dedicated verb; see
@@ -904,7 +904,7 @@ path, the profile file's path, or the per-user file's path. An unset line
 carries no layer. The key prints as its first twelve and last four
 characters, or `(set)` when it is short, never in full.
 
-The `identity:` line calls `/api/hatch/me` with whatever origin and key are
+The `identity:` line calls `/api/me` with whatever origin and key are
 folded above, and names the key and its owner. It prints `<unreachable>`
 without calling out at all when no origin is set, and the same when the call
 itself fails, so `--show` keeps working fully offline.
@@ -995,7 +995,7 @@ hatch go-to-work --runners 3
 Runner 1 is this checkout, served as a lone `go-to-work` would. Each of the
 others gets:
 
-- **No name of its own.** It calls `/api/hatch/me` with the same key as
+- **No name of its own.** It calls `/api/me` with the same key as
   runner 1, so it reports under the same name (see [the runner's
   name](#the-runners-name)); **Agents → Runners** tells the members of a set
   apart by workspace, not by name.

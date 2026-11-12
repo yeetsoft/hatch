@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="PrincipalAsync"/>'s remarks there.
 /// </summary>
 [ApiController]
-[Route("api/hatch/utilization")]
+[Route("api/utilization")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class UtilizationController(HatchContext db, IActorDirectory actors, TimeProvider time, IAuthService keys) : ControllerBase
 {

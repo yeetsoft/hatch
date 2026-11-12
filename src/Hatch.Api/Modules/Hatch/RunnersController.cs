@@ -39,7 +39,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// was still running.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/runners")]
+[Route("api/runners")]
 public class RunnersController(
     HatchContext db, Runners runners, IssueClaims claims, ICallerIdentity caller, IActorDirectory actors,
     TimeProvider time, IOptions<AuthOptions> auth, ISiteSettingsService siteSettings, IAuthService keys,

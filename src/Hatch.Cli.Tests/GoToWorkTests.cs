@@ -11,8 +11,8 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class GoToWorkTests
 {
-    private const string Queue = "/api/hatch/work/queue";
-    private const string Review = "/api/hatch/work/review";
+    private const string Queue = "/api/work/queue";
+    private const string Review = "/api/work/review";
 
     private static string Held(string runner) =>
         $"\"hatch is working this from {runner}, last heard from 8 seconds ago\"";
@@ -23,12 +23,12 @@ public sealed class GoToWorkTests
         var token = Guid.NewGuid();
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: "In Review"));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: "In Review"));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
 
         return token;
     }
@@ -47,7 +47,7 @@ public sealed class GoToWorkTests
         var spawnedByThen = false;
         h.Workspace.Watching = () =>
         {
-            claimedByThen = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim") == 1;
+            claimedByThen = h.Wire.Count("POST", "/api/issues/AER-1/claim") == 1;
             spawnedByThen = h.Sessions.Spawned.Count > 0;
         };
 
@@ -59,7 +59,7 @@ public sealed class GoToWorkTests
         Assert.Single(h.Sessions.Spawned);
 
         // ...and let go of when the increment ended.
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -72,19 +72,19 @@ public sealed class GoToWorkTests
         // A pid no process has, so the clean-up finds it gone and kills nothing.
         new SessionRecord(int.MaxValue, DateTime.UtcNow.Ticks, "AER-9", dead, DateTimeOffset.UtcNow, "https://hatch.example", "old-session")
             .Write(SessionRecord.PathFor(h.Root, h.Temp));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-9/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-9/comments", Fixtures.Comment());
+        h.Wire.Reply("DELETE", "/api/issues/AER-9/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-9/comments", Fixtures.Comment());
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-9/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-9/claim"));
         Assert.Contains($"token={dead}", released.Query, StringComparison.Ordinal);
         Assert.Contains("outcome=abandoned", released.Query, StringComparison.Ordinal);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-9/comments"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-9/comments"));
 
         var calls = h.Wire.Calls.Select(c => $"{c.Method} {c.Path}").ToList();
         Assert.True(
-            calls.IndexOf("DELETE /api/hatch/issues/AER-9/claim") < calls.IndexOf("POST /api/hatch/issues/AER-1/claim"),
+            calls.IndexOf("DELETE /api/issues/AER-9/claim") < calls.IndexOf("POST /api/issues/AER-1/claim"),
             "the dead loop's claim was released before this loop took one of its own");
         Assert.False(File.Exists(SessionRecord.PathFor(h.Root, h.Temp)));
     }
@@ -98,8 +98,8 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("a loop died", StringComparison.Ordinal));
         Assert.False(File.Exists(SessionRecord.PathFor(h.Root, h.Temp)));
     }
@@ -115,7 +115,7 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Empty(h.Wire.To("DELETE", "/api/hatch/issues/AER-9/claim"));
+        Assert.Empty(h.Wire.To("DELETE", "/api/issues/AER-9/claim"));
         Assert.True(File.Exists(path));
         Assert.Contains(h.Say.Complained, l => l.Contains("another board", StringComparison.Ordinal));
     }
@@ -159,7 +159,7 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -170,22 +170,22 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         var token = Guid.NewGuid();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
         // The dispatch starts in progress; the post-run read (the second call
         // to this route - the first is the pick itself) says it landed in
         // review, the ordinary shape of an increment that did its job.
         h.Wire.Once(
-            "GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            "GET", "/api/work/AER-1", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(Fixtures.Work("AER-1", from: "In Progress", to: "In Review"), Fixtures.Json));
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", to: "In Review"));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review", to: "In Review"));
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -196,14 +196,14 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         var token = Guid.NewGuid();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
         h.Wire.Json(
-            "GET", "/api/hatch/work/AER-1",
+            "GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(deniedTools: ["Bash", "WebFetch"]) });
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
@@ -222,7 +222,7 @@ public sealed class GoToWorkTests
         // Nothing was spawned onto a tree the loop could not make current, and
         // the lease did not sit there until its TTL.
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
     }
 
@@ -236,7 +236,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Complained, l => l.Contains("the workspace is not ready", StringComparison.Ordinal));
     }
 
@@ -273,7 +273,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--mine"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.True(beat.Mine);
     }
@@ -288,7 +288,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(machine.Os, beat.Os);
         Assert.Equal(machine.Arch, beat.Arch);
@@ -308,7 +308,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Os);
         Assert.Null(beat.Arch);
@@ -358,7 +358,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.True(beat.Standing);
     }
@@ -377,7 +377,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.Revision);
         Assert.Equal(4127, beat.Sequence);
@@ -394,7 +394,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("dev", beat.Revision);
         Assert.Equal(0, beat.Sequence);
@@ -411,7 +411,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal("b465267d5809bc0c672d250a1e7cc81b8714ed92", beat.SourceRevision);
         Assert.Equal(4127, beat.SourceSequence);
@@ -427,7 +427,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.SourceRevision);
         Assert.Null(beat.SourceSequence);
@@ -446,7 +446,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Tags);
 
@@ -471,8 +471,8 @@ public sealed class GoToWorkTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
-        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/work/AER-1");
         foreach (var read in reads)
         {
             Assert.Contains("model=haiku", read.Query);
@@ -490,8 +490,8 @@ public sealed class GoToWorkTests
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/hatch/work/AER-1")).ToList();
-        Assert.Contains(reads, r => r.Path == "/api/hatch/work/AER-1");
+        var reads = h.Wire.To("GET", Queue).Concat(h.Wire.To("GET", "/api/work/AER-1")).ToList();
+        Assert.Contains(reads, r => r.Path == "/api/work/AER-1");
         foreach (var read in reads)
         {
             Assert.Contains("has=dotnet%4010.0.100", read.Query);
@@ -555,7 +555,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.NotNull(beat.Has);
         Assert.Equal(dependencies, beat.Has);
@@ -570,7 +570,7 @@ public sealed class GoToWorkTests
     {
         var h = new Harness(tags: started);
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/runners/sessions",
+        h.Wire.Json("POST", "/api/runners/sessions",
             new RunnerInstructionDto("running", null, 1, null, null, Tags: told));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
@@ -696,7 +696,7 @@ public sealed class GoToWorkTests
         var h = new Harness();
         h.Runtime.Board.Refused = started;
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/runners/sessions",
+        h.Wire.Json("POST", "/api/runners/sessions",
             new RunnerInstructionDto("running", null, 1, null, null, RefusedModels: told));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
@@ -749,7 +749,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(refuses, beat.RefusesDangerous);
 
@@ -821,14 +821,14 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         var tree = Tree(h, "bound", "https://example.test/bound.git");
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(
             ["--once", "--repo", tree, "--project", "FIL"], default));
 
         Assert.Contains("project=FIL", h.Wire.To("GET", Queue)[0].Query);
-        var beat = h.Wire.Calls.Single(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions");
+        var beat = h.Wire.Calls.Single(c => c.Method == "POST" && c.Path == "/api/runners/sessions");
         Assert.Equal(new[] { "FIL" }, beat.Read<RunnerHeartbeatRequest>().Projects);
     }
 
@@ -947,7 +947,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+        h.Wire.Replace("GET", "/api/work/AER-1", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(
                 Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
                 Fixtures.Json));
@@ -962,9 +962,9 @@ public sealed class GoToWorkTests
 
         Assert.Single(h.Say.Said, l => l == "hatch: fable is off this runner's list for the rest of this run");
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=unservable", released.Query, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
     }
 
     /// <summary>
@@ -1005,7 +1005,7 @@ public sealed class GoToWorkTests
         // the same ticket is picked up, refused, and released unservable
         // again, and it is Narrow()'s own dedupe this test is after.
         OneTicket(h);
-        h.Wire.Replace("GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+        h.Wire.Replace("GET", "/api/work/AER-1", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(
                 Fixtures.Work("AER-1", from: "In Review") with { Playbook = Fixtures.Playbook(model: "fable") },
                 Fixtures.Json));
@@ -1154,7 +1154,7 @@ public sealed class GoToWorkTests
         await Task.Delay(50);
 
         Assert.True(Beats(h)[0].Standby);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
 
         cts.Cancel();
         await running;
@@ -1171,7 +1171,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.False(beat.Standing);
     }
@@ -1187,7 +1187,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(readAt, beat.UsageReadAt);
         var window = Assert.Single(beat.Usage!);
@@ -1205,7 +1205,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Null(beat.Usage);
         Assert.Null(beat.UsageReadAt);
@@ -1224,12 +1224,12 @@ public sealed class GoToWorkTests
             Fixtures.Row(blockedKey, blockedSentence, priority: blockedPriority),
             Fixtures.Row(key),
         });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: "In Review"));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: "In Review"));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
 
         return token;
     }
@@ -1280,12 +1280,12 @@ public sealed class GoToWorkTests
             Fixtures.Row("AER-2", sentence, priority: PriorityLevels.LowName),
             Fixtures.Row("AER-1"),
         });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
@@ -1303,7 +1303,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
 
         var beats = h.Wire.Calls
-            .Where(c => c.Path == "/api/hatch/runners/sessions")
+            .Where(c => c.Path == "/api/runners/sessions")
             .ToList();
         Assert.True(beats.Count >= 2, "at least two beats were sent");
         Assert.Equal($"AER-2  {sentence}", beats[1].Read<RunnerHeartbeatRequest>().Line);
@@ -1368,7 +1368,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         var window = Assert.Single(beat.Usage!);
         Assert.Equal("session", window.Window);
@@ -1452,7 +1452,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(runtime).RunAsync(["--once"], default);
 
         var beat = h.Wire.Calls
-            .Single(c => c.Path == "/api/hatch/runners/sessions")
+            .Single(c => c.Path == "/api/runners/sessions")
             .Read<RunnerHeartbeatRequest>();
         Assert.Equal(readAt, beat.UsageReadAt);
         var window = Assert.Single(beat.Usage!);
@@ -1475,7 +1475,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         var fake = new FakeProbingSessions
         {
             Behaviour = () => [Fixtures.UsageReport([("session", 5, null)]), Fixtures.Result(turns: 0)],
@@ -1601,7 +1601,7 @@ public sealed class GoToWorkTests
 
         h.Wire.Json("GET", Queue, rows);
         foreach (var row in rows)
-            h.Wire.Reply("POST", $"/api/hatch/issues/{row.Issue.Key}/claim", HttpStatusCode.Conflict,
+            h.Wire.Reply("POST", $"/api/issues/{row.Issue.Key}/claim", HttpStatusCode.Conflict,
                 Held("other:/tree"));
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
@@ -1662,7 +1662,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
@@ -1683,7 +1683,7 @@ public sealed class GoToWorkTests
             Fixtures.Row("AER-8", sentence),
             Fixtures.Row("AER-9", "AER-7 has not merged"),
         });
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
@@ -1761,7 +1761,7 @@ public sealed class GoToWorkTests
         await interrupting.CancelAsync();
         await running;
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("increment(s) in", StringComparison.Ordinal));
     }
 
@@ -1781,7 +1781,7 @@ public sealed class GoToWorkTests
         h.Wire.Replace(
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1"), Fixtures.Row("AER-2") }, Fixtures.Json));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
 
         // Only the first reset throws - a git command that failed outright,
         // rather than the ordinary Reset.Never a bad tree answers with.
@@ -1801,11 +1801,11 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-2/claim"));
         Assert.Single(h.Sessions.Spawned);
 
-        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("git blew up", comment.Body);
         Assert.Contains(h.Say.Complained, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("git blew up", StringComparison.Ordinal));
     }
@@ -1815,14 +1815,14 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
         h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
 
-        var comment = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var comment = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("the CLI fell over", comment.Body);
 
         // Back on the trunk - the same door a lost lease leaves through.
@@ -1834,14 +1834,14 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
         h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
 
         Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
-        Assert.Equal(3, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
-        Assert.Equal(3, h.Wire.To("POST", "/api/hatch/issues/AER-1/comments").Count);
+        Assert.Equal(3, h.Wire.To("DELETE", "/api/issues/AER-1/claim").Count);
+        Assert.Equal(3, h.Wire.To("POST", "/api/issues/AER-1/comments").Count);
     }
 
     // ---- More than one checkout in play ----
@@ -1872,12 +1872,12 @@ public sealed class GoToWorkTests
 
         var token = Guid.NewGuid();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", repositories: repos));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review", repositories: repos));
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
@@ -1897,15 +1897,15 @@ public sealed class GoToWorkTests
 
         var token = Guid.NewGuid();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: repos));
 
         await new GoToWorkCommand(runtime).RunAsync([], default);
 
         Assert.Equal([primary.Path, other.Path], h.Workspace.Prepared);
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("the workspace could not be reset", StringComparison.Ordinal));
     }
 
@@ -1934,7 +1934,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         // The standing checkout's origin is re-read from git, same as every
         // other checkout's - Harness's own bare .git directory has none set,
@@ -1963,13 +1963,13 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         var tree = Tree(h, "overridden", "https://example.test/overridden.git");
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once", "--repo", tree], default));
 
         var beat = h.Wire.Calls
-            .Where(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions")
+            .Where(c => c.Method == "POST" && c.Path == "/api/runners/sessions")
             .Select(c => c.Read<RunnerHeartbeatRequest>())
             .First();
         Assert.Equal(Checkout.Where(Checkout.Host(), h.Root), beat.Where);
@@ -1980,7 +1980,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         var workspace = Path.Combine(h.Temp, "empty-workspace");
         Directory.CreateDirectory(workspace);
         var runtime = h.Runtime with { Checkouts = [] };
@@ -1989,7 +1989,7 @@ public sealed class GoToWorkTests
             0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--workspace", workspace], default));
 
         var beat = h.Wire.Calls
-            .Where(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions")
+            .Where(c => c.Method == "POST" && c.Path == "/api/runners/sessions")
             .Select(c => c.Read<RunnerHeartbeatRequest>())
             .First();
         Assert.Equal(Checkout.Where(Checkout.Host(), workspace), beat.Where);
@@ -2000,7 +2000,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         var a = Path.Combine(h.Temp, "member-2");
         var b = Path.Combine(h.Temp, "member-3");
         Directory.CreateDirectory(a);
@@ -2011,7 +2011,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(none).RunAsync(["--once", "--workspace", b], default));
 
         var wheres = h.Wire.Calls
-            .Where(c => c.Method == "POST" && c.Path == "/api/hatch/runners/sessions")
+            .Where(c => c.Method == "POST" && c.Path == "/api/runners/sessions")
             .Select(c => c.Read<RunnerHeartbeatRequest>().Where)
             .Distinct()
             .ToList();
@@ -2033,7 +2033,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var fromSettings = new CheckoutEntry(
             Path.Combine(h.Temp, "from-settings"), "https://example.test/from-settings.git", Standing: false);
@@ -2053,7 +2053,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var tree = Tree(h, "Named", "https://example.test/named.git");
         var lowered = Path.Combine(h.Temp, "named");
@@ -2123,13 +2123,13 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var elsewhere = Tree(h, "elsewhere", "https://example.test/elsewhere.git");
         var runtime = h.Runtime with { Checkouts = [] };
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once", "--repo", elsewhere], default));
 
-        Assert.Contains(h.Wire.Calls, c => c.Path == "/api/hatch/runners/sessions");
+        Assert.Contains(h.Wire.Calls, c => c.Path == "/api/runners/sessions");
 
         var call = Assert.Single(h.Wire.To("GET", Queue));
         Assert.DoesNotContain("standing=true", call.Query);
@@ -2141,7 +2141,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         using var held = LoopLock.Take(h.Root, h.Temp, out _);
         Assert.NotNull(held);
@@ -2163,7 +2163,7 @@ public sealed class GoToWorkTests
         foreach (var h in (Harness[])[first, second])
         {
             h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-            h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+            h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         }
 
         Assert.Equal(0, await new GoToWorkCommand(first.Runtime).RunAsync(["--once"], default));
@@ -2229,7 +2229,7 @@ public sealed class GoToWorkTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default);
 
         Assert.Equal(2, h.Sessions.Spawned.Count);
-        Assert.Equal(2, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
+        Assert.Equal(2, h.Wire.To("DELETE", "/api/issues/AER-1/claim").Count);
         Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 2 reached", StringComparison.Ordinal));
     }
 
@@ -2250,8 +2250,8 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-2/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("keyboard", StringComparison.Ordinal));
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--stop-file", StringComparison.Ordinal));
     }
@@ -2275,7 +2275,7 @@ public sealed class GoToWorkTests
         await Harness.Eventually(
             () => h.Say.Said.Any(l => l.Contains("paused from the keyboard", StringComparison.Ordinal)),
             "the paused line");
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
 
         // A second press resumes it, and the nap wakes on the very next slice
         // rather than waiting out the rest of the hour-long interval.
@@ -2285,7 +2285,7 @@ public sealed class GoToWorkTests
         await running.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Single(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -2316,13 +2316,13 @@ public sealed class GoToWorkTests
             () =>
             {
                 runtime.Controls.Press('n');
-                return h.Wire.To("POST", "/api/hatch/issues/AER-1/claim").Count > 0;
+                return h.Wire.To("POST", "/api/issues/AER-1/claim").Count > 0;
             },
             "the claim after n");
 
         await running.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Single(h.Sessions.Spawned);
     }
 
@@ -2349,7 +2349,7 @@ public sealed class GoToWorkTests
         }
 
         // A paused loop never runs a pass, so the queue is never read.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Empty(h.Wire.To("GET", Queue));
 
         runtime.Controls.Press('p');
@@ -2357,7 +2357,7 @@ public sealed class GoToWorkTests
 
         await running.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -2365,13 +2365,13 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("paused", null, null, null, null));
+        h.Wire.Json("POST", "/api/runners/sessions", new RunnerInstructionDto("paused", null, null, null, null));
 
         using var cts = new CancellationTokenSource();
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
 
         await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/runners/sessions") > 0, "the first heartbeat");
+            () => h.Wire.Count("POST", "/api/runners/sessions") > 0, "the first heartbeat");
         await Harness.Eventually(
             () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
             "the board's own paused line");
@@ -2380,7 +2380,7 @@ public sealed class GoToWorkTests
         h.Runtime.Controls.Press('p');
         await Task.Delay(50);
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("the board has this runner paused", StringComparison.Ordinal));
 
         cts.Cancel();
@@ -2389,7 +2389,7 @@ public sealed class GoToWorkTests
 
     // ---- HA-1359: an order, read once from the heartbeat and acted on between increments ----
 
-    private const string Beat = "/api/hatch/runners/sessions";
+    private const string Beat = "/api/runners/sessions";
 
     /// <summary>
     /// The board answering a heartbeat with an order, <paramref name="times"/> beats in a row, and then
@@ -2424,7 +2424,7 @@ public sealed class GoToWorkTests
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
 
         await Harness.Eventually(
-            () => h.Wire.Count("DELETE", "/api/hatch/issues/AER-2/claim") == 1, "the ordered ticket's claim let go");
+            () => h.Wire.Count("DELETE", "/api/issues/AER-2/claim") == 1, "the ordered ticket's claim let go");
         await Harness.Eventually(
             () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
             "the paused line, on the beat after the order");
@@ -2432,7 +2432,7 @@ public sealed class GoToWorkTests
         cts.Cancel();
         await running;
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-2/claim"));
         Assert.Single(h.Sessions.Spawned);
 
         // The queue is never walked for a named ticket.
@@ -2451,7 +2451,7 @@ public sealed class GoToWorkTests
 
         // The ordered increment is the first of the two the cap allows, and
         // the queue's own pick is the second.
-        Assert.Equal(new[] { "/api/hatch/issues/AER-2/claim", "/api/hatch/issues/AER-1/claim" }, Claims(h));
+        Assert.Equal(new[] { "/api/issues/AER-2/claim", "/api/issues/AER-1/claim" }, Claims(h));
         Assert.Equal(2, h.Sessions.Spawned.Count);
     }
 
@@ -2466,7 +2466,7 @@ public sealed class GoToWorkTests
         var running = new GoToWorkCommand(h.Runtime).RunAsync(["--interval", "3600"], cts.Token);
 
         await Harness.Eventually(
-            () => h.Wire.Count("DELETE", "/api/hatch/issues/AER-1/claim") == 1, "the ordinary pass's claim let go");
+            () => h.Wire.Count("DELETE", "/api/issues/AER-1/claim") == 1, "the ordinary pass's claim let go");
         await Harness.Eventually(
             () => h.Say.Said.Any(l => l.Contains("the board has this runner paused", StringComparison.Ordinal)),
             "the paused line, on the beat after the pass");
@@ -2476,7 +2476,7 @@ public sealed class GoToWorkTests
 
         // One ordinary pass: the queue read once, the row it offered claimed once.
         Assert.Equal(1, h.Wire.Count("GET", Queue));
-        Assert.Equal(new[] { "/api/hatch/issues/AER-1/claim" }, Claims(h));
+        Assert.Equal(new[] { "/api/issues/AER-1/claim" }, Claims(h));
         Assert.Single(h.Sessions.Spawned);
     }
 
@@ -2485,7 +2485,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         var fold = Held("other:/tree").Trim('"');
-        h.Wire.Json("GET", "/api/hatch/work/AER-2", Fixtures.Work("AER-2", blocked: fold));
+        h.Wire.Json("GET", "/api/work/AER-2", Fixtures.Work("AER-2", blocked: fold));
         Ordering(h, "paused", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"));
 
         using var cts = new CancellationTokenSource();
@@ -2495,7 +2495,7 @@ public sealed class GoToWorkTests
         cts.Cancel();
         await running;
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-2/claim"));
         Assert.Empty(h.Sessions.Spawned);
         Assert.Contains(h.Say.Said, l => l.Contains($"AER-2 - {fold}", StringComparison.Ordinal));
         Assert.Equal($"AER-2 - {fold}", h.Wire.To("POST", Beat)[1].Read<RunnerHeartbeatRequest>().Line);
@@ -2507,17 +2507,17 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h, "AER-1");
         OneTicket(h, "AER-2");
-        h.Wire.Json("POST", "/api/hatch/issues/AER-2/comments", Fixtures.Comment());
+        h.Wire.Json("POST", "/api/issues/AER-2/comments", Fixtures.Comment());
         h.Sessions.Behaviour = (_, _, _) => throw new InvalidOperationException("the CLI fell over");
         Ordering(h, "running", new RunnerOrderDto(RunnerOrderKinds.Work, "AER-2", "Nathan"), times: 3);
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync([], default));
 
         Assert.Contains(h.Say.Said, l => l.Contains("three increments in a row failed", StringComparison.Ordinal));
-        Assert.Equal(3, h.Wire.To("DELETE", "/api/hatch/issues/AER-2/claim").Count);
+        Assert.Equal(3, h.Wire.To("DELETE", "/api/issues/AER-2/claim").Count);
 
         // The stop is asked before the queue's own pick, so the board's first row was never taken.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -2530,7 +2530,7 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        Assert.Equal(new[] { "/api/hatch/issues/AER-1/claim" }, Claims(h));
+        Assert.Equal(new[] { "/api/issues/AER-1/claim" }, Claims(h));
     }
 
     [Fact]
@@ -2551,7 +2551,7 @@ public sealed class GoToWorkTests
         cts.Cancel();
         await running;
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-2/claim"));
         Assert.Empty(h.Sessions.Spawned);
     }
 
@@ -2560,9 +2560,9 @@ public sealed class GoToWorkTests
     /// <summary>The wires an unstarted increment writes to: the comment it leaves and the stall it declines.</summary>
     private static void UnstartedWires(Harness h, string key = "AER-1")
     {
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments",
+        h.Wire.Json("POST", $"/api/issues/{key}/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/stall", Fixtures.Issue(key));
+        h.Wire.Json("PUT", $"/api/issues/{key}/stall", Fixtures.Issue(key));
     }
 
     /// <summary>
@@ -2856,7 +2856,7 @@ public sealed class GoToWorkTests
         cts.Cancel();
         await running;
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-2/claim"));
         Assert.Empty(h.Sessions.Spawned);
     }
 
@@ -2920,8 +2920,8 @@ public sealed class GoToWorkTests
 
         // Neither claim stall ended the night - the first ticket's own skip
         // is followed straight on by the second, queued ticket.
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-2/claim"));
     }
 
     // ---- HA-370: one queue read per increment, nothing carried from the last ----
@@ -2978,8 +2978,8 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-2/claim"));
     }
 
     [Fact]
@@ -3017,9 +3017,9 @@ public sealed class GoToWorkTests
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "2"], default));
 
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-3/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-2/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-3/claim"));
     }
 
     // ---- The hop ----
@@ -3032,7 +3032,7 @@ public sealed class GoToWorkTests
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         // `--once` waits for the pass that actually is one: a hop is not a
         // session, so the loop reads the board again rather than stopping on
@@ -3041,9 +3041,9 @@ public sealed class GoToWorkTests
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Workspace.Calls);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
         Assert.Equal(2, h.Wire.Count("GET", Queue));
-        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Single(h.Wire.To("POST", "/api/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("express, no session", StringComparison.Ordinal));
     }
 
@@ -3055,11 +3055,11 @@ public sealed class GoToWorkTests
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        var call = h.Wire.To("POST", "/api/work/AER-1/hop")[0];
         Assert.DoesNotContain("model=", call.Query);
         Assert.DoesNotContain("agent=", call.Query);
     }
@@ -3075,11 +3075,11 @@ public sealed class GoToWorkTests
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
-        var call = h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0];
+        var call = h.Wire.To("POST", "/api/work/AER-1/hop")[0];
         if (tagged)
         {
             Assert.Contains("tag=gpu", call.Query);
@@ -3099,12 +3099,12 @@ public sealed class GoToWorkTests
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Contains("has=pwsh", h.Wire.To("GET", Queue)[0].Query);
-        Assert.DoesNotContain("has=", h.Wire.To("POST", "/api/hatch/work/AER-1/hop")[0].Query);
+        Assert.DoesNotContain("has=", h.Wire.To("POST", "/api/work/AER-1/hop")[0].Query);
     }
 
     [Fact]
@@ -3115,15 +3115,15 @@ public sealed class GoToWorkTests
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Approve) }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Workspace.Calls);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
         Assert.Equal(2, h.Wire.Count("GET", Queue));
-        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Single(h.Wire.To("POST", "/api/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("AER-1", StringComparison.Ordinal) && l.Contains("pre-approved, no session", StringComparison.Ordinal));
     }
 
@@ -3136,7 +3136,7 @@ public sealed class GoToWorkTests
             System.Text.Json.JsonSerializer.Serialize(
                 new[] { Fixtures.Row("AER-1", hop: true, hopKind: HopKinds.Under, hopUnder: "HA-86") }, Fixtures.Json));
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
@@ -3150,7 +3150,7 @@ public sealed class GoToWorkTests
         h.Wire.Once(
             "GET", Queue, HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new[] { Fixtures.Row("AER-1", hop: true) }, Fixtures.Json));
-        h.Wire.Json("POST", "/api/hatch/work/AER-1/hop", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/work/AER-1/hop", Fixtures.Issue("AER-1"));
         OneTicket(h, "AER-2");
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default);
@@ -3158,7 +3158,7 @@ public sealed class GoToWorkTests
         // The hop did not advance --max-runs, so the cap is spent on the one
         // pass that actually spawned something.
         Assert.Single(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/work/AER-1/hop"));
+        Assert.Single(h.Wire.To("POST", "/api/work/AER-1/hop"));
         Assert.Contains(h.Say.Said, l => l.Contains("--max-runs 1 reached", StringComparison.Ordinal));
     }
 
@@ -3190,7 +3190,7 @@ public sealed class GoToWorkTests
         // holds no claim, or the version coming back would find its own work
         // being worked by a runner that no longer exists.
         Assert.Single(h.Sessions.Spawned);
-        Assert.Equal(2, h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim").Count);
+        Assert.Equal(2, h.Wire.To("DELETE", "/api/issues/AER-1/claim").Count);
 
         Assert.Contains(h.Say.Said, l => l.Contains("the loop's own source changed", StringComparison.Ordinal));
         Assert.Contains(h.Say.Said, l => l.Contains("src/Hatch.Cli/GoToWork.cs", StringComparison.Ordinal));
@@ -3261,7 +3261,7 @@ public sealed class GoToWorkTests
         Assert.Equal(GoToWorkCommand.RestartExitCode, await new GoToWorkCommand(runtime).RunAsync([], default));
 
         Assert.Single(h.Sessions.Spawned);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(h.Say.Said, l => l.Contains("changed from day to night", StringComparison.Ordinal));
 
         var carried = NightState.Read(h.NightState);
@@ -3424,8 +3424,8 @@ public sealed class GoToWorkTests
         Assert.Single(a.Sessions.Spawned);
         Assert.Equal(0, exits[1]);
         Assert.Equal(2, b.Sessions.Spawned.Count);
-        Assert.Empty(a.Wire.To("POST", "/api/hatch/issues/AER-2/claim"));
-        Assert.Empty(b.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(a.Wire.To("POST", "/api/issues/AER-2/claim"));
+        Assert.Empty(b.Wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -3470,7 +3470,7 @@ public sealed class GoToWorkTests
         // Read where no claim is held, so there is nothing to give back and
         // nothing half-started.
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
@@ -3490,7 +3490,7 @@ public sealed class GoToWorkTests
 
             Assert.True(File.Exists(h.NightState));
             Assert.Empty(h.Sessions.Spawned);
-            Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+            Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         }
         finally
         {
@@ -3745,8 +3745,8 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         OneTicket(h);
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1"));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("GET", "/api/issues/AER-1", Fixtures.Issue("AER-1"));
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
 
         // 7:41pm in New York: the wait cleared at 7:40pm and the account's own
         // reset trailed it, so the sentence names a minute already gone.
@@ -3923,7 +3923,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var start = DateTimeOffset.UtcNow;
         var longInterval = 1_300; // > twice the 600s reminder spacing
@@ -3983,7 +3983,7 @@ public sealed class GoToWorkTests
     public async Task Stopping_from_the_board_ends_the_wait_rather_than_carrying_it_through()
     {
         using var h = new Harness();
-        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
+        h.Wire.Json("POST", "/api/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
 
         Assert.True(new NightState { ExhaustedUntil = DateTimeOffset.UtcNow.AddHours(1) }.Write(h.Supervised.NightStatePath));
 
@@ -4069,7 +4069,7 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h);
         h.Wire.Replace(
-            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            "POST", "/api/issues/AER-1/work-log", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
@@ -4113,7 +4113,7 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         OneTicket(h);
         h.Wire.Replace(
-            "POST", "/api/hatch/issues/AER-1/work-log", HttpStatusCode.OK,
+            "POST", "/api/issues/AER-1/work-log", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(Fixtures.WorkLogRow(tokens: 1_200_000), Fixtures.Json));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-tokens", "1M"], default));
@@ -4151,7 +4151,7 @@ public sealed class GoToWorkTests
     public async Task A_board_stop_sends_no_stopped_beat()
     {
         using var h = new Harness();
-        h.Wire.Json("POST", "/api/hatch/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
+        h.Wire.Json("POST", "/api/runners/sessions", new RunnerInstructionDto("stopping", null, null, null, null));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Supervised).RunAsync([], default));
 
@@ -4472,7 +4472,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "default-workspace");
         using var held = WorkspaceLock.Take(workspace, "elsewhere-checkout", h.Temp, out _);
@@ -4491,7 +4491,7 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain("clones=true", Assert.Single(h.Wire.To("GET", Queue)).Query);
 
         // The heartbeat says the same: a run that gave way declares no clones.
-        var beat = h.Wire.To("POST", "/api/hatch/runners/sessions")[0];
+        var beat = h.Wire.To("POST", "/api/runners/sessions")[0];
         Assert.False(beat.Read<RunnerHeartbeatRequest>().Clones);
     }
 
@@ -4520,7 +4520,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "set-workspace");
         Directory.CreateDirectory(workspace);
@@ -4537,7 +4537,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         // --repo names a clone that lives under the default workspace: a
         // conflict the person never made, so the run serves it and goes on.
@@ -4562,7 +4562,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "clones");
         var a = Path.Combine(workspace, "example.test", "owner", "a");
@@ -4590,7 +4590,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
@@ -4609,15 +4609,15 @@ public sealed class GoToWorkTests
             "https://example.test/owner/repo.git", canonical: "example.test/owner/repo", primary: true, matchedRemote: null);
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var claimedByThen = false;
-        h.Workspace.Watching = () => claimedByThen = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim") == 1;
+        h.Workspace.Watching = () => claimedByThen = h.Wire.Count("POST", "/api/issues/AER-1/claim") == 1;
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--once"], default));
 
@@ -4650,12 +4650,12 @@ public sealed class GoToWorkTests
 
         foreach (var key in new[] { "AER-1", "AER-2" })
         {
-            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-            h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, repositories: [repo]));
-            h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-            h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-            h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+            h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+            h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+            h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, repositories: [repo]));
+            h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+            h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+            h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
         }
 
         Assert.Equal(0, await new GoToWorkCommand(runtime).RunAsync(["--max-runs", "2"], default));
@@ -4685,11 +4685,11 @@ public sealed class GoToWorkTests
                 $"https://example.test/owner/{key}.git", canonical: $"example.test/owner/{key}",
                 primary: true, matchedRemote: null);
 
-            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-            h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-            h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, repositories: [repo]));
-            h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-            h.Wire.Json($"POST", $"/api/hatch/issues/{key}/comments",
+            h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+            h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+            h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, repositories: [repo]));
+            h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+            h.Wire.Json($"POST", $"/api/issues/{key}/comments",
                 new CommentDto(1, "hatch", "noted", "comment", null, null, DateTimeOffset.UnixEpoch));
         }
 
@@ -4700,10 +4700,10 @@ public sealed class GoToWorkTests
         Assert.Empty(h.Sessions.Spawned);
         foreach (var key in keys)
         {
-            Assert.Single(h.Wire.To("POST", $"/api/hatch/issues/{key}/claim"));
-            Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{key}/claim"));
+            Assert.Single(h.Wire.To("POST", $"/api/issues/{key}/claim"));
+            Assert.Single(h.Wire.To("DELETE", $"/api/issues/{key}/claim"));
 
-            var comment = Assert.Single(h.Wire.To("POST", $"/api/hatch/issues/{key}/comments"));
+            var comment = Assert.Single(h.Wire.To("POST", $"/api/issues/{key}/comments"));
             var body = comment.Read<CommentCreateRequest>().Body;
             Assert.Contains("could not clone", body, StringComparison.Ordinal);
             Assert.Contains("fatal: could not read from remote repository.", body, StringComparison.Ordinal);
@@ -4744,7 +4744,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "clones");
         Directory.CreateDirectory(workspace);
@@ -4766,7 +4766,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var first = Path.Combine(h.Temp, "clones-a");
         var second = Path.Combine(h.Temp, "clones-b");
@@ -4787,7 +4787,7 @@ public sealed class GoToWorkTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
 
         var workspace = Path.Combine(h.Temp, "clones");
         Directory.CreateDirectory(workspace);
@@ -4831,15 +4831,15 @@ public sealed class GoToWorkTests
         var repo = Fixtures.Repository("https://example.test/elsewhere.git", primary: true, matchedRemote: null);
 
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", repositories: [repo]));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         Assert.Empty(h.Sessions.Spawned);
         Assert.Empty(h.Clone.Requested);
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     // ---- The banners and the readout's facts (HA-121, HA-122) ----
@@ -4855,7 +4855,7 @@ public sealed class GoToWorkTests
         // process started with, the way a real server's first-seen seed does -
         // folding back a bare null would clear the cap this test relies on to
         // end the loop.
-        h.Wire.Json("POST", "/api/hatch/runners/sessions",
+        h.Wire.Json("POST", "/api/runners/sessions",
             new RunnerInstructionDto("running", null, 1, null, null, "Nathan", Drives: ["AER"]));
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
@@ -4889,21 +4889,21 @@ public sealed class GoToWorkTests
         string? landing = null, IReadOnlyList<LandingDto>? landings = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
 
         h.Wire.Once(
-            "GET", $"/api/hatch/work/{key}", HttpStatusCode.OK,
+            "GET", $"/api/work/{key}", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(
                 Fixtures.Work(key, from: "In Progress", to: "In Review", letGo: letGo, landing: landing), Fixtures.Json));
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: endsIn, to: endsIn, inReview: endsInReview));
+        h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: endsIn, to: endsIn, inReview: endsInReview));
 
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
-        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/merge-check", Fixtures.MergeCheck());
+        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key, pullRequestUrl: pullRequest, landings: landings));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/issues/{key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/issues/{key}/merge-check", Fixtures.MergeCheck());
 
         if (branchOnOrigin)
             h.Workspace.FoundFor[h.Root] =
@@ -4911,7 +4911,7 @@ public sealed class GoToWorkTests
     }
 
     private static List<CommentCreateRequest> UnpublishedComments(Harness h, string key = "AER-1") =>
-        h.Wire.To("POST", $"/api/hatch/issues/{key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        h.Wire.To("POST", $"/api/issues/{key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
 
     [Fact]
     public async Task A_branch_on_origin_with_no_pull_request_is_noted_once_and_released_dropped()
@@ -4926,7 +4926,7 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(written, c => c.Kind == "question");
         Assert.Contains("no pull request recorded", written[0].Body, StringComparison.Ordinal);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -4946,7 +4946,7 @@ public sealed class GoToWorkTests
         Assert.Contains(options, o => o.Label == Unpublished.Recorded);
         Assert.Contains(options, o => o.Label == Unpublished.NotNeeded);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -4959,7 +4959,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(UnpublishedComments(h));
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -4978,7 +4978,7 @@ public sealed class GoToWorkTests
         Assert.Contains("hatch landed", written[0].Body, StringComparison.Ordinal);
         Assert.DoesNotContain("pull request", written[0].Body, StringComparison.Ordinal);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -4998,7 +4998,7 @@ public sealed class GoToWorkTests
         Assert.Contains(options, o => o.Label == Unpublished.Landed);
         Assert.Contains(options, o => o.Label == Unpublished.LandingNotNeeded);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -5011,7 +5011,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(UnpublishedComments(h));
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -5024,7 +5024,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(UnpublishedComments(h));
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -5038,7 +5038,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(UnpublishedComments(h));
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -5051,7 +5051,7 @@ public sealed class GoToWorkTests
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Empty(UnpublishedComments(h));
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -5062,15 +5062,15 @@ public sealed class GoToWorkTests
         using var h = new Harness();
         const string key = "AER-1";
         h.Wire.Json("GET", Queue, new[] { Fixtures.ConflictRow(key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.ConflictWork(key) with { InReview = true });
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}", Fixtures.Issue(key));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/comments", Fixtures.Comment());
-        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/merge-check", Fixtures.MergeCheck());
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{key}", Fixtures.ConflictWork(key) with { InReview = true });
+        h.Wire.Json("GET", $"/api/issues/{key}", Fixtures.Issue(key));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/issues/{key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/issues/{key}/merge-check", Fixtures.MergeCheck());
 
         // Conflicted before the session, clean after it - a session that
         // resolved the merge and pushed, but never opened a pull request.
@@ -5093,7 +5093,7 @@ public sealed class GoToWorkTests
         var written = UnpublishedComments(h, key);
         Assert.Single(written);
 
-        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{key}/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/issues/{key}/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -5113,7 +5113,7 @@ public sealed class GoToWorkTests
         // origin and no pull request all the same.
         UnpublishedBoard(h, endsIn: "In Review", endsInReview: true);
         h.Wire.Replace(
-            "GET", "/api/hatch/work/AER-1", HttpStatusCode.OK,
+            "GET", "/api/work/AER-1", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(
                 Fixtures.Work("AER-1", from: "In Review", to: "In Review", inReview: true), Fixtures.Json));
 
@@ -5124,7 +5124,7 @@ public sealed class GoToWorkTests
         Assert.Contains("where it found it and let it go", written[0].Body, StringComparison.Ordinal);
         Assert.DoesNotContain("pull request", written[0].Body, StringComparison.Ordinal);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 }

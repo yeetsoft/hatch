@@ -46,6 +46,25 @@ describe('BoardFilters', () => {
     expect(html).not.toContain('Waiting on me');
   });
 
+  it('puts the Blocked switch right after Needs me', () => {
+    const html = render();
+    expect(html.indexOf('>Blocked<')).toBeGreaterThan(html.indexOf('>Needs me<'));
+    expect(html).toContain('title="Cards no pass and no live runner will move"');
+    expect(html).toMatch(/<button[^>]*aria-pressed="false"[^>]*>Blocked</);
+  });
+
+  it('lights Blocked, counts and offers Reset when it is on', () => {
+    const html = render({ ...DEFAULT_FILTER, blocked: true });
+    expect(html).toMatch(/<button[^>]*class="hatch-facet hatch-facet--lit"[^>]*aria-pressed="true"[^>]*>Blocked</);
+    expect(html).toContain('3 of 9');
+    expect(html).toContain('aria-label="Reset filters"');
+  });
+
+  it('keeps Blocked inside the Filters disclosure on the phone', () => {
+    const phone = render(DEFAULT_FILTER, true);
+    expect(phone.match(/<details[\s\S]*<\/details>/)![0]).toContain('>Blocked<');
+  });
+
   it('closes the Project chooser on the key and keeps the names in its list', () => {
     const html = render({ ...DEFAULT_FILTER, project: 'GL' });
     const shown = [...html.matchAll(/<span class="hatch-facet__option hatch-facet__option--shown">([^<]*)</g)];

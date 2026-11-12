@@ -584,7 +584,7 @@ public static class Prompt
             $"hatch depends {key} <waited-on>   {key} cannot start until <waited-on> lands",
             $"hatch dangerous {key} \"why\"   flag it if running its work could destabilise the machine",
         }),
-        $"hatch api GET /api/hatch/issues?parentKey={key}",
+        $"hatch api GET /api/issues?parentKey={key}",
         "```",
         "",
         ..(isCheck ? Array.Empty<string>() : new[]
@@ -662,7 +662,7 @@ public static class Prompt
         "with no end. If a playbook is wrong, propose the change instead:",
         "",
         "```",
-        $"hatch api POST /api/hatch/playbook-proposals '{{ \"reason\": \"...\", \"issueKey\": \"{key}\", \"changes\": [{{ \"playbookId\": N, ... }}] }}'",
+        $"hatch api POST /api/playbook-proposals '{{ \"reason\": \"...\", \"issueKey\": \"{key}\", \"changes\": [{{ \"playbookId\": N, ... }}] }}'",
         "```",
         "",
         $"Say on {key} that it was proposed, and stop. A person applies it on the",
