@@ -505,7 +505,7 @@ public class EfHatchProjectLogo
 
     /// <summary>
     /// When these bytes were stored. Serves as the logo's ETag, which is what
-    /// lets the admin app point an &lt;img&gt; at a stable URL and still see a
+    /// lets the board point an &lt;img&gt; at a stable URL and still see a
     /// new upload immediately.
     /// </summary>
     public required DateTimeOffset UpdatedAt { get; set; }
@@ -3313,6 +3313,12 @@ public class EfHatchRunner
     public const int MaxAgentLength = 16;
     public const int MaxHostLength = 64;
 
+    /// <summary>Room for <see cref="RunnerAgentDownKinds.NotStarting"/> and <see cref="RunnerAgentDownKinds.SignedOut"/>, the longer of the two.</summary>
+    public const int MaxAgentDownKindLength = 16;
+
+    /// <summary>Room for what the agent said, on the terms a claim's chatter has.</summary>
+    public const int MaxAgentDownLineLength = 200;
+
     /// <summary>Room for a registry image reference with its tag, such as <c>ghcr.io/owner/repo/hatch-runner:abc123</c>.</summary>
     public const int MaxImageLength = 256;
 
@@ -3570,6 +3576,24 @@ public class EfHatchRunner
     public DateTimeOffset? ExhaustedUntil { get; set; }
 
     /// <summary>
+    /// This runner's own agent is not starting, or is signed out, and this is
+    /// when it expects to be checked again - a fact about the process, on the
+    /// same terms as <see cref="ExhaustedUntil"/>: a heartbeat that names one
+    /// writes it, and a heartbeat that says it is not down clears all three,
+    /// which is the only way they ever clear other than expiring by
+    /// arithmetic at read time.
+    /// </summary>
+    public DateTimeOffset? AgentDownUntil { get; set; }
+
+    /// <summary>One of <see cref="RunnerAgentDownKinds"/>, read only while <see cref="AgentDownUntil"/> is set.</summary>
+    [MaxLength(MaxAgentDownKindLength)]
+    public string? AgentDownKind { get; set; }
+
+    /// <summary>What the agent said, read only while <see cref="AgentDownUntil"/> is set.</summary>
+    [MaxLength(MaxAgentDownLineLength)]
+    public string? AgentDownLine { get; set; }
+
+    /// <summary>
     /// When this runner expects its token throttle to lift - a fact about the
     /// process, on the same terms as <see cref="ExhaustedUntil"/>: a loop
     /// heartbeat writes it, and a loop heartbeat that says it is not throttled
@@ -3802,6 +3826,17 @@ public class EfHatchRunnerSession
 
     /// <summary>When this session's account was exhausted until, as <see cref="EfHatchRunner.ExhaustedUntil"/>.</summary>
     public DateTimeOffset? ExhaustedUntil { get; set; }
+
+    /// <summary>When this session's agent was down until, as <see cref="EfHatchRunner.AgentDownUntil"/>.</summary>
+    public DateTimeOffset? AgentDownUntil { get; set; }
+
+    /// <summary>This session's own agent-down kind, as <see cref="EfHatchRunner.AgentDownKind"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxAgentDownKindLength)]
+    public string? AgentDownKind { get; set; }
+
+    /// <summary>What this session's agent said, as <see cref="EfHatchRunner.AgentDownLine"/>.</summary>
+    [MaxLength(EfHatchRunner.MaxAgentDownLineLength)]
+    public string? AgentDownLine { get; set; }
 
     /// <summary>When this session's token throttle was due to lift, as <see cref="EfHatchRunner.ThrottledUntil"/>.</summary>
     public DateTimeOffset? ThrottledUntil { get; set; }

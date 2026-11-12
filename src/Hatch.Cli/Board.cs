@@ -67,6 +67,14 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public IReadOnlyList<string> Projects { get; set; } = [];
 
     /// <summary>
+    /// The models this runner's key refuses, held for comparison only - the
+    /// twin of <see cref="Tags"/>. Never sent: the board folds a refused
+    /// model out of the dispatch read itself, so this is read back off a
+    /// heartbeat and compared against, not declared.
+    /// </summary>
+    public IReadOnlyList<string> Refused { get; set; } = [];
+
+    /// <summary>
     /// This machine's offset from UTC in minutes, which is what the API wants in
     /// order to fold ready dates against the caller's calendar day rather than
     /// the server's.
@@ -156,6 +164,21 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     /// </summary>
     public async Task<IReadOnlyList<RunnerDto>> RunnersAsync(CancellationToken ct) =>
         await Client.GetAsync<List<RunnerDto>>("/api/hatch/runners?live=true", ct) ?? [];
+
+    /// <summary>One named runner, whole - <c>GET /api/hatch/runners/{name}</c>.</summary>
+    public Task<RunnerDto?> RunnerAsync(string name, CancellationToken ct) =>
+        Client.GetAsync<RunnerDto>($"/api/hatch/runners/{Uri.EscapeDataString(name)}", ct);
+
+    /// <summary>
+    /// Replaces the models a runner's key refuses, whole - see
+    /// <see cref="RunnerRefusedModelsWriteRequest"/>. The caller sends the
+    /// whole list each time; there is no add or remove on the wire, only a
+    /// read-modify-write.
+    /// </summary>
+    public Task<RunnerDto?> WriteRefusedModelsAsync(string name, IReadOnlyList<string> models, CancellationToken ct) =>
+        Client.WriteAsync<RunnerDto>(
+            HttpMethod.Put, $"/api/hatch/runners/{Uri.EscapeDataString(name)}/refused-models",
+            new RunnerRefusedModelsWriteRequest(models), ct);
 
     /// <summary>Who this call is - a key or a runner - per <c>/api/hatch/me</c>.</summary>
     public Task<MeDto?> MeAsync(CancellationToken ct) => Client.GetAsync<MeDto>("/api/hatch/me", ct);

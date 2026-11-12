@@ -193,7 +193,7 @@ public class WorkController(
         var clear = scan.Rows.FirstOrDefault(r => r.Blocked is null);
         if (clear is null) return NoContent();
 
-        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), ct);
+        return await ResolveAsync(clear.Issue, scan.Statuses, scan.Loop, scan.Pace, scan.Gate, scan.Family, scan.Claims, scan.Repos, scan.Wip, scan.Epics, scan.Tags ?? TagDeclaration.Unjudged, scan.Models ?? ModelDeclaration.Unjudged, hasDeclared, Asking(runner), scan.Refusal, ct);
     }
 
     /// <summary>
@@ -331,6 +331,7 @@ public class WorkController(
         // No heldToken here, and deliberately: the queue is a report on what a
         // pass would do, not a pass, and a caller reading it holds nothing.
         RepositoryDeclaration repos;
+        RunnerRefusal? asRefusal = null;
         Actor? principal = null;
 
         if (!string.IsNullOrWhiteSpace(asRunner))
@@ -361,6 +362,7 @@ public class WorkController(
             mine = declared.Mine;
             tags = declared.Tags;
             models = declared.Models;
+            asRefusal = new RunnerRefusal(asRunner, declared.Refused);
             hasDeclared = declared.Has;
             projects = declared.Projects.ToList();
             principal = declared.Principal;
@@ -371,7 +373,8 @@ public class WorkController(
         }
 
         var scan = await _dispatch.ScanAsync(offsetMinutes, ancestorKey, null, repos, mine, ct, principal, markDeadlocks: true, tags: tags, projects: projects,
-            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared);
+            asking: Asking(string.IsNullOrWhiteSpace(asRunner) ? runner : asRunner), models: models, has: hasDeclared,
+            refusal: asRefusal);
         if (scan.Failure is not null) return BadRequest(scan.Failure);
 
         var taken = takers
@@ -683,6 +686,7 @@ public class WorkController(
             models,
             hasDeclared,
             Asking(runner),
+            await RefusalAsync(runner, ct),
             ct);
     }
 
@@ -1411,10 +1415,16 @@ public class WorkController(
     /// the same name the scan folded on, so a row it called clear on omission
     /// cannot come back blocked here. Null folds nothing.
     /// </param>
+    /// <param name="runnerRefusal">
+    /// The models the caller's runner refuses, see <see cref="Dispatch.RefusalFold"/>
+    /// - the scan's own for a loop's dispatch, the named runner's or the
+    /// calling key's for a named one. Null folds nothing.
+    /// </param>
     private async Task<WorkDto> ResolveAsync(
         EfHatchIssue issue, List<EfHatchStatus> statuses, LoopScope? loop, PaceReadings? pace, DependencyGate gate,
         FamilyGate family, ClaimGate claimed, RepositoryDeclaration repos, WipSection? wip,
-        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking, CancellationToken ct)
+        IReadOnlyDictionary<long, EpicLimit> epics, TagDeclaration tags, ModelDeclaration models, HasDeclaration has, RunnerAsking? asking,
+        RunnerRefusal? runnerRefusal, CancellationToken ct)
     {
         var from = statuses.First(s => s.Id == issue.StatusId);
 
@@ -1531,7 +1541,7 @@ public class WorkController(
             issue, from, rowTo, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed, implementationStatus,
             await IssueProjection.ToAssigneeAsync(actors, issue.AssigneePersonId, issue.AssigneeApiKeyId, ct),
             repos, merged, built, hopKind, statuses, wip, epics, driver: driver, landing: landing, tags: tags, asking: asking, models: models,
-            has: has, requirement: requirement);
+            has: has, requirement: requirement, refusal: runnerRefusal);
         var hopped = hop && blocked is null;
         var kind = Dispatch.KindOf(issue, from, rowTo, merged, built, claimed.Now, landing);
         var asksReleaseNote = issue.ParentId is null && !hopped && kind == WorkKinds.Advance
@@ -1726,6 +1736,17 @@ public class WorkController(
     /// </summary>
     private RunnerAsking? Asking(string? runner) =>
         string.IsNullOrWhiteSpace(runner) ? null : new RunnerAsking(runner, runners.Cutoff(time.GetUtcNow()));
+
+    /// <summary>
+    /// The refusals a named dispatch is judged on: <paramref name="runner"/>'s
+    /// when the caller named one, else the calling key's own - the CLI's
+    /// <c>work KEY</c> sends no <c>runner</c>, and the key is the runner. Used
+    /// for the refusal only: a scan with no asking folds nothing else on a name.
+    /// Null for neither, and for a name no key answers to.
+    /// </summary>
+    private async Task<RunnerRefusal?> RefusalAsync(string? runner, CancellationToken ct) =>
+        await _dispatch.RefusedByAsync(
+            string.IsNullOrWhiteSpace(runner) ? (await caller.ApiKeyAsync(ct))?.Name : runner, ct);
 
     internal static List<string> ProjectKeys(IEnumerable<string>? raw) =>
         (raw ?? []).Select(p => p.Trim().ToUpperInvariant()).Where(p => p.Length > 0).Distinct().ToList();

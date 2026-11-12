@@ -205,6 +205,19 @@ public sealed class IncrementReport
     /// </summary>
     public bool Unstarted { get; set; }
 
+    /// <summary>
+    /// The session ended because its agent is signed out of its account - an
+    /// expired OAuth session, a rejected key, a prompt to log in again - read
+    /// from the same text <see cref="Unstarted"/>'s sentence is, but recognised
+    /// whether or not the agent ever started a stream. Not a stall and not a
+    /// let-go: the ticket goes back untouched, and the runner pauses at once
+    /// rather than waiting for a second run.
+    /// </summary>
+    public bool AuthFailed { get; set; }
+
+    /// <summary>The sentence <see cref="AuthFailed"/> was recognised from.</summary>
+    public string? AuthFailedLine { get; set; }
+
     /// <summary>The cumulative tokens the session had spent when its playbook's budget was crossed.</summary>
     public long? ClampedAtTokens { get; set; }
 
@@ -388,6 +401,7 @@ public sealed class IncrementReport
         : Preempted ? $"put down for {PreemptedKey} - {PreemptedTitle}"
         : UsageLimited ? $"out of {AgentDisplayName} usage until {UsageLimit.Clock(UsageLimitResetAt!.Value, UsageLimitResetKnown)}{(UsageLimitPassed ? " (the named reset had just passed)" : UsageLimitResetKnown ? "" : " (unknown, one hour assumed)")}"
         : Unservable ? $"{UnservableModel} is not one this runner can spawn"
+        : AuthFailed ? $"the agent is signed out - \"{AuthFailedLine}\""
         : Unstarted ? $"the agent never started{(KeptLast.Length > 0 ? $" - the CLI said \"{KeptLast}\"" : "")}"
         : Skipped ? "skipped from the keyboard"
         : Resolved ? $"conflicts with {ConflictTrunk ?? Conflicts.UnnamedTrunk} resolved{(Flag is { Length: > 0 } ? $", {Flag}" : "")}"
@@ -762,6 +776,25 @@ public sealed class Increment(
                 say.Line($"hatch: {report.Key} - {refusedModel} was refused, not spawnable on this account");
             }
 
+            // A session whose agent is signed out of its account is a third
+            // kind of session that ended for a reason that is not the
+            // ticket's: the ticket goes back untouched, and the runner pauses
+            // at once rather than waiting a second run to notice the same
+            // thing twice. Read whether or not the agent ever started a
+            // stream - a sign-out partway through one still ends this way -
+            // but never when a usage limit or a model refusal already won,
+            // nor when the lease was lost or the ticket was put down.
+            if (!claim.LostToOthers && claim.Preempted is null && !report.UsageLimited && !report.Unservable
+                && adapter.RecogniseAuthFailure(said) is { } signedOut)
+            {
+                report.AuthFailed = true;
+                report.AuthFailedLine = signedOut.Sentence;
+                report.ReleaseOutcome = ClaimOutcomes.Unstarted;
+
+                say.Line("");
+                say.Line($"hatch: {report.Key} - the agent is signed out ({signedOut.Sentence}) - sign in on this machine");
+            }
+
             // A session whose agent never started - and for which nothing above
             // gives a better reason - left the ticket untouched, and is
             // released unstarted: not a let-go, not a stall. Never in quiet
@@ -769,9 +802,11 @@ public sealed class Increment(
             // real work reads as never started too; never when the token was
             // cancelled, which is a skip or Ctrl-C and not an agent that would
             // not start; and a quiet or run-time stop keeps its own verdict.
+            // Nor when the agent is signed out instead - a stderr-only run with
+            // nothing started is otherwise both at once.
             if (!report.Started && !quiet && !ct.IsCancellationRequested
                 && !claim.LostToOthers && claim.Preempted is null
-                && !report.UsageLimited && !report.Unservable
+                && !report.UsageLimited && !report.Unservable && !report.AuthFailed
                 && !report.QuietStopped && !report.RunTimeStopped)
             {
                 report.Unstarted = true;
@@ -828,12 +863,12 @@ public sealed class Increment(
                 // board is told about its branch is theirs to say. Never on a
                 // usage limit either: there is no fix to judge, only a session
                 // that did not finish.
-                if (conflict is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.Preempted) await JudgeAsync(report, conflict, ct);
+                if (conflict is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted) await JudgeAsync(report, conflict, ct);
 
                 // The same for a build increment, and the same reason: what it
                 // did is on origin's branch. Whether that fixed the build is the
                 // board's to say, later, when the build on the new tip has run.
-                if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.Preempted) await JudgeBuildAsync(report, build, ct);
+                if (build is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted) await JudgeBuildAsync(report, build, ct);
 
                 // The verdict on a check increment: the tree first - a check
                 // that left anything uncommitted or moved HEAD is not one
@@ -841,7 +876,7 @@ public sealed class Increment(
                 // itself. Same guards as the other two judgments, plus
                 // HardLimited: a check that was stopped for crossing its hard
                 // limit has nothing finished to apply either.
-                if (checkTreeUnchanged is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.Preempted && !report.HardLimited)
+                if (checkTreeUnchanged is not null && !claim.LostToOthers && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted && !report.HardLimited)
                     await JudgeCheckAsync(report, work, claim, checkTreeUnchanged, ct);
 
                 // A plain increment's session may have written no work-log
@@ -946,7 +981,14 @@ public sealed class Increment(
                 if (report.Unstarted && !report.Moved && report.Filed.Count == 0)
                     await LetGo.UnstartedAsync(board, say, report.Key, report.Kept, report.ExitCode, ct);
 
-                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.Preempted && !report.HardLimited)
+                // A signed-out agent is neither either, for the same reason -
+                // but its comment must not say the ticket was left untouched:
+                // the stream may have started and done some of it before the
+                // account dropped. One comment, no resume line, no stall mark.
+                if (report.AuthFailed && !report.Moved && report.Filed.Count == 0)
+                    await LetGo.SignedOutAsync(board, say, report.Key, report.AuthFailedLine ?? "", ct);
+
+                if (report.Stalled && !report.LostLease && !report.UsageLimited && !report.Unservable && !report.Unstarted && !report.AuthFailed && !report.Preempted && !report.HardLimited)
                 {
                     if (report.Recused)
                     {

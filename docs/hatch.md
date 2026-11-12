@@ -150,7 +150,7 @@ into shipped work.
 
 It is spelled `Hatch` / `hatch` everywhere — C# namespace
 `Hatch.Api.Modules.Hatch`, Postgres schema `hatch`, routes under `/api/hatch`,
-bundle at `/apps/hatch/`, and its own host `hatch.${DOMAIN}`.
+bundle at `/`, and its own host `hatch.${DOMAIN}`.
 
 Four properties carry the design:
 
@@ -158,8 +158,8 @@ Four properties carry the design:
   Switching boards to find out what is next is the thing the markdown files
   already did badly.
 - **Behind the wall, and admin-gated on top of it.** The bundle 404s and the
-  API 403s for anyone who is not the operator — the same posture the admin app
-  takes, through the same gate.
+  API 403s for anyone who is not the operator — the same posture an
+  Admin-gated page takes, through the same gate.
 - **An agent is a first-class caller.** An `Authorization: Bearer hatch_ak_…` key
   reaches `/api/hatch/*` and nothing else, decided by the same gate that
   decides everything else. A ticket link is a complete instruction, and the
@@ -272,8 +272,7 @@ API for now" costs nothing architecturally.
 
 **Frontend: its own workspace SPA.**
 `src/Hatch.Web/apps/hatch`, built into `wwwroot/apps/hatch`, served by the same
-pod — the arrangement the admin and docs apps already use. It is an operator's
-tool.
+pod. It is an operator's tool.
 
 **The wire contract: its own project.** `src/Hatch.Contracts` holds the
 records the API serves and the records a client sends it — nothing else, and
@@ -290,7 +289,7 @@ being shell.
 
 **Host: one container, one origin.** The root [`compose.yaml`](../compose.yaml)
 is the standard way to run this install: `db`, a `migrate` step, and `api`
-serving every app — Hatch included — from `http://localhost:8080` (or
+serving the board and the sign-in shell from `http://localhost:8080` (or
 `HATCH_PORT`). There is no reverse proxy in front of it and nothing to rewrite:
 the board is served at the origin's own root, and `/api/hatch/*` is how a key
 can `curl` the API on the same origin the browser uses. A deep link pasted
@@ -4365,7 +4364,7 @@ board remembered.
 
 `waitingOnARunner` lists every issue whose next move is clear, but that no live
 runner can take: every live runner's own declaration folds it on the
-[model fold and the dependency fold](#what-a-pass-skipped), and on nothing
+[model fold, the refusal fold and the dependency fold](#what-a-pass-skipped), and on nothing
 else. A runner is live when it is being heard from, running, and not out of
 usage - the same test a peer is held to when one runner's let-go ticket is left
 for another. Each entry is `key`, `title`, `type`, `move` (the column the move
@@ -4374,13 +4373,17 @@ starts from) and `missing`, ordered by tier, then rank, as the queue is.
 The list is empty when no runner is live - the existing "no runner" condition
 says that - and when every gap is met by some live runner. A runner that never
 declared models or what it has is never counted as lacking them: one that
-declared neither empties the list, and a check is skipped where no live runner
+declared neither, and refuses nothing, empties the list, and a check is skipped where no live runner
 declared that capability. `missing` takes one of two shapes, joined with `; `
 when a move needs both:
 
 - `no live runner offers fable` - the move runs on a model alias no live
   runner offers; or `pinned to <id> - no live runner's agent is <agent>` for a
-  pinned id.
+  pinned id. A live runner that [refuses](#runners-on-the-board) the model
+  does not offer it, whatever it declared: `no live runner offers <model>`
+  is said, for an alias or a pinned id, when every live runner that could
+  take it refuses it or folds it on the model fold - and a runner that never
+  declared models and refuses nothing is still never counted as lacking them.
 - `no live runner has pwsh 7 or newer and playwright-browsers` - the
   project's bound repositories declare dependencies no live runner's `has`
   satisfies; an
@@ -4419,7 +4422,8 @@ runner at all, nothing is judged and the list is empty, the same as
 `waitingOnARunner`'s own *no runner is live* case.
 
 **The reason.** Verbatim, the fold's own sentence for that peer's scan row -
-no prose written for this endpoint. A step outside a peer's own declared
+no prose written for this endpoint. A runner that refuses the step's model reads
+`<key> in <column> runs on <model> - <runner> refuses it`, and is no taker. A step outside a peer's own declared
 scope reads `outside its scope: <under>`; a peer whose own scan failed uses
 its failure text instead.
 
@@ -5453,6 +5457,22 @@ missing configuration:
     offer it"* (*"... this runner does not offer it"* when no agent was sent),
     or *"pinned to gpt-6-luna, a codex model - this runner's agent is claude"*,
     kind `other`. Waits on nobody. Said after the dangerous item and before the
+    refusal item.
+12a. The same model is one the asking runner's key **refuses** — its
+    [refused models](#runners-on-the-board), `RunnerModels.Refuses`: equal after
+    trimming, with an alias lowercased, or the refused entry is an alias and
+    the model a pinned id whose hyphen-separated tokens include it (`opus`
+    refuses `claude-opus-5-5`, never `claude-fable-5-2`). A refused pinned id
+    matches itself only, and a null or blank model matches nothing. Gated as
+    the model item is — every move a session is spawned for, never a hop,
+    never an idle review self-move. The runner is the one `?runner=` or
+    `?asRunner=` names, and `work/{key}` falls back to the calling key's own
+    name where it sent none, since `hatch work KEY` sends no `?runner=`; a
+    name no key answers to refuses nothing, and a scan that names nobody (an
+    attention or takers read of the whole board) refuses nothing. *"HA-12 in
+    Breakdown runs on fable - build-box refuses it"*, kind `other`. Waits on
+    nobody. A peer that refuses the model is no peer that could take a ticket
+    another runner let go of. Said after the model item and before the
     toolchain item.
 13. The issue's project binds one or more [repositories](#repository), and
     the union of their parsed `.hatch/dependencies.json` entries names a
@@ -6873,7 +6893,8 @@ the merge train; `family` a parent, a child, a sibling in flight, or a
 relative's claim; `person` everything only a person resolves — an unanswered
 question, an assignment, a hold, a pause, or a next column only a person moves
 work into; and `other` every fold none of the six name — a repository this runner lacks, a
-runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, or a
+runner tag it does not advertise, a ticket omitted for it, a flagged-dangerous issue it refuses, a model it cannot
+spawn or refuses, or a
 clean, checked review row a passing check would carry into the merge column
 but no check playbook covers the move for, among them: no new kind.
 
@@ -6912,7 +6933,8 @@ first: a terminal or deferred column, nowhere to go, a next column that is
 terminal, a live [claim](#claim), a [pause](#expedite), a ready date, an
 assignee, an unanswered question, a repository this runner lacks, a runner tag the
 project asks for and this runner lacks, a ticket omitted for this runner, a flagged-dangerous issue a runner that
-refuses dangerous work was asked about, an unmet dependency, an open child, a
+refuses dangerous work was asked about, a model the runner cannot spawn, a model the
+runner refuses, an unmet dependency, an open child, a
 full [WIP section](#wip), [an epic at its own limit](#an-epics-own-limit), and
 — for an issue in review — the verdict on its branch, then [the hop](#the-hop),
 and last the missing playbook — last because it is only worth saying about an
@@ -8011,6 +8033,16 @@ session proves the agent starts before the next pass reads the queue — see
 [what it stops for](#what-it-stops-for). It sits after the usage-limit wait, so
 an account out of usage says so first.
 
+**A runner whose agent is signed out** pauses the same way, but after the very
+first increment that ends on one — an expired OAuth session, a rejected key, a
+prompt to log in again — rather than waiting for a second. The ticket it held
+goes back to the board untouched and with one comment, not a let-go and not a
+stall: the agent needs a person to sign in again, and nothing about the
+increment's own run counts against it. The back-off ladder, the cheap check
+and the terminal's sentence are the same as the not-starting wait; a check
+that starts and answers is read as a sign-in, whatever reason it had paused
+for.
+
 One pass, from the board to the release:
 
 1. **Read the queue.** `work/queue` applies the loop's policy — the ready date,
@@ -8105,10 +8137,11 @@ One pass, from the board to the release:
    so the runner keeps what the CLI itself wrote: the last 40 lines of its
    standard error and of its standard output that were not stream events,
    scrubbed of `hatch_ak_…` keys, other API keys and `Bearer` values, and
-   capped at 200 characters a line. The usage-limit and model-refusal
-   recognisers read those lines whatever the exit code, and the let-go and
-   stall comments carry them in a code block, as does the closing tally line
-   for a stall (its last line). A session that streamed keeps nothing extra.
+   capped at 200 characters a line. The usage-limit, model-refusal and
+   sign-in recognisers read those lines whatever the exit code, and the
+   let-go and stall comments carry them in a code block, as does the closing
+   tally line for a stall (its last line). A session that streamed keeps
+   nothing extra.
 6. **Heartbeat**, carrying the last line the runner printed — and only when it
    has changed, so the time a card draws is when the line was printed rather than
    when a heartbeat happened to fire. A `--quiet` increment renders nothing and
@@ -9466,8 +9499,11 @@ here does, so a key holding its own list is not the hole that gate exists to
 close. A key naming another runner is refused. The list rides every
 heartbeat back as `refusedModels`, on both heartbeat routes, so a loop
 restarting reads the board's current list rather than the one a process
-started with; an older Hatch answers with none. Nothing reads the column to
-dispatch work yet — that is its own story.
+started with; an older Hatch answers with none. The dispatcher reads the
+column too: a move whose model the key refuses is folded for it, from every
+door — see item 12a of [the dispatcher](#the-dispatcher) — and across the
+fleet, [a move no live runner can take](#a-move-no-live-runner-can-take)
+counts a live runner that refuses the model as not offering it.
 
 **It also says whether it refuses dangerous work, and which projects it is
 bound to, on every beat.** `refusesDangerous` and `projects` ride every
@@ -9720,6 +9756,30 @@ pass, so the beat is never a pass behind. The server keeps it on the row, writte
 by every `loop` beat (so a null clears it) and left alone by a `once` beat; the
 page draws it as the throttled status, ranked below *Gone* and *Out of usage*
 and above *Paused*, in the viewer's own time zone like *Out of usage until*.
+
+**`agentDownUntil`, `agentDownKind` and `agentDownLine` are a fact a runner
+reports about its own agent, never a person's to set** — the same tri-state
+`exhaustedUntil` has, for *the agent will not start or is signed out* rather
+than *the account is out of usage*. `agentDown: true` writes `agentDownUntil`
+and normalises `agentDownKind` to one of `not-starting` or `signed-out`
+(anything else sent is stored as `not-starting`), and `agentDown: false` clears
+all three at once — the only way they clear other than expiring by arithmetic
+at read time, the same lazy rule `exhaustedUntil` follows. A keyed runner with
+no beat of its own composes the three off its live sessions the same way it
+composes `exhaustedUntil`, except whole: the one live session whose own
+`agentDownUntil` is latest and still ahead of now, with its kind and line
+copied alongside it, never a kind from one session and a line from another.
+The Runners page and `hatch runners` draw such a row *Agent not starting until
+7:40pm* or *Agent needs signing in*, with what the agent said where it gave
+one, ranked under *Gone* and over *Out of usage* — the agent itself is the
+problem, which outranks the account having no usage left. Unlike exhaustion, a
+runner down this way is left out of `Dispatch`'s own peer set
+(`Dispatch.IsLiveBeat`/`IsLiveSession`) and out of the election
+`Runners.LiveCandidatesAsync` runs for `DriversAsync` and
+`ProjectDriversAsync`: a paused agent cannot answer a claim or a merge train's
+own heartbeat, so it is never offered either. `go-to-work` writes the tri-state
+on every beat except a `once` one, which sends none of it so a single
+increment can never clear the loop's own pause out from under it.
 
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and

@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { BoardFilters } from './BoardFilters';
 import { DEFAULT_FILTER } from '../lib/filter';
 import type { CardFilter } from '../lib/filter';
-import type { Project } from '../types';
+import type { IssueCard, Project } from '../types';
 
 const noop = () => {};
 
@@ -15,7 +15,7 @@ const projects = [
 function render(
   filter: CardFilter = DEFAULT_FILTER,
   collapsed = false,
-  over: { scoped?: boolean; projects?: Project[] } = {},
+  over: { scoped?: boolean; projects?: Project[]; cards?: IssueCard[] } = {},
 ) {
   return renderToStaticMarkup(
     <BoardFilters
@@ -23,7 +23,7 @@ function render(
       onChange={noop}
       assignees={[]}
       projects={over.projects ?? projects}
-      cards={[]}
+      cards={over.cards ?? []}
       showing={3}
       total={9}
       collapsed={collapsed}
@@ -32,6 +32,8 @@ function render(
     />,
   );
 }
+
+const filed = [{ createdBy: 'Ada' }, { createdBy: 'zoe' }] as IssueCard[];
 
 describe('BoardFilters', () => {
   it('has a short placeholder, so the box can rest narrow', () => {
@@ -83,6 +85,22 @@ describe('BoardFilters', () => {
     const details = html.match(/<details[\s\S]*<\/details>/)![0];
     expect(details).toContain('hatch-facet__label">Assignee');
     expect(html).not.toContain('More filters');
+  });
+
+  it('keeps Filed by inside the Filters disclosure on a phone, and not inline on a desktop', () => {
+    const phone = render(DEFAULT_FILTER, true, { cards: filed });
+    expect(phone.match(/<details[\s\S]*<\/details>/)![0]).toContain('hatch-facet__label">Filed by');
+    const desk = render(DEFAULT_FILTER, false, { cards: filed });
+    expect(desk).not.toContain('hatch-facet__label">Filed by');
+    expect(desk).toContain('aria-label="More filters"');
+    expect(desk).toContain('aria-label="Filed by"');
+  });
+
+  it('lights More filters, counts and offers Reset for an empty Filed by', () => {
+    const html = render({ ...DEFAULT_FILTER, filedBy: [] }, false, { cards: filed });
+    expect(html).toMatch(/hatch-facet hatch-facet--lit hatch-more-filters/);
+    expect(html).toContain('3 of 9');
+    expect(html).toContain('aria-label="Reset filters"');
   });
 
   it('reads All in scope under a scope', () => {

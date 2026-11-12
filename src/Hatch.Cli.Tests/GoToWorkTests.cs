@@ -686,6 +686,58 @@ public sealed class GoToWorkTests
         Assert.DoesNotContain(h.Say.Said, l => l.Contains("--tag", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// One pass answered with <paramref name="told"/> refused models, the
+    /// loop having started holding <paramref name="started"/> - the same
+    /// shape <see cref="OnePassTold"/> uses for tags.
+    /// </summary>
+    private static async Task<Harness> OnePassToldRefused(IReadOnlyList<string> started, IReadOnlyList<string>? told)
+    {
+        var h = new Harness();
+        h.Runtime.Board.Refused = started;
+        OneTicket(h);
+        h.Wire.Json("POST", "/api/hatch/runners/sessions",
+            new RunnerInstructionDto("running", null, 1, null, null, RefusedModels: told));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--max-runs", "1"], default));
+        return h;
+    }
+
+    [Fact]
+    public async Task The_board_setting_a_refused_model_the_loop_started_without_says_so()
+    {
+        using var h = await OnePassToldRefused([], ["fable"]);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set refuses fable");
+        Assert.Equal(new[] { "fable" }, h.Runtime.Board.Refused);
+    }
+
+    [Fact]
+    public async Task The_board_clearing_the_refused_models_says_none()
+    {
+        using var h = await OnePassToldRefused(["fable"], []);
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the board set refuses none");
+        Assert.Empty(h.Runtime.Board.Refused);
+    }
+
+    [Fact]
+    public async Task An_older_hatch_that_answers_no_refused_models_leaves_them_alone()
+    {
+        using var h = await OnePassToldRefused(["fable"], null);
+
+        Assert.Equal(new[] { "fable" }, h.Runtime.Board.Refused);
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("refuses", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_board_whose_refused_models_match_the_loops_says_nothing()
+    {
+        using var h = await OnePassToldRefused(["fable"], ["fable"]);
+
+        Assert.DoesNotContain(h.Say.Said, l => l.Contains("refuses", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -2604,10 +2656,33 @@ public sealed class GoToWorkTests
         Assert.Single(Claims(h));
         Assert.Equal("haiku", h.Sessions.Spawned[0].Model);
 
+        // The beat at the top of the pass that runs the check still carries
+        // the carried pause; the first beat after AgentUp clears it at once.
+        var beats = Beats(h);
+        Assert.True(beats[0].AgentDown);
+        Assert.Equal(PausedAt(start).AgentDownUntil, beats[0].AgentDownUntil);
+        Assert.Equal(Tally.NotStarting, beats[0].AgentDownKind);
+        Assert.Equal("boom", beats[0].AgentDownLine);
+        Assert.False(beats[^1].AgentDown);
+
         var said = h.Say.Said.ToList();
         Assert.Contains(said, l => l.StartsWith("hatch: checking whether the agent starts", StringComparison.Ordinal));
         Assert.Contains(said, l => l.StartsWith("hatch:   the check cost $", StringComparison.Ordinal));
         Assert.Contains("hatch: the agent starts again - taking tickets", said);
+    }
+
+    [Fact]
+    public async Task A_once_beat_sends_no_agent_down_fact_even_with_a_carried_pause()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        Carrying(h, PausedAt(DateTimeOffset.UtcNow));
+
+        Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
+
+        // Absent, not false - a once beat shares the loop's own row name and
+        // must never clear the loop's own pause out from under it.
+        Assert.All(Beats(h), b => Assert.Null(b.AgentDown));
     }
 
     [Fact]
@@ -2663,6 +2738,76 @@ public sealed class GoToWorkTests
 
         Assert.Empty(Claims(h));
         Assert.Empty(h.Sessions.Spawned);
+    }
+
+    // ---- HA-2290: a signed-out agent pauses the loop at once ----
+
+    [Fact]
+    public async Task A_signed_out_run_pauses_the_loop_at_once_with_one_run_not_two()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+        UnstartedWires(h);
+        h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "", Stderr: ["Not logged in"]));
+
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromMilliseconds(100),
+            () => h.Say.Said.Any(l => l.Contains("sign in on this machine", StringComparison.Ordinal)),
+            "the sign-in sentence");
+
+        var claimed = Claims(h).Length;
+        clock.Advance(TimeSpan.FromMinutes(2));
+        await Task.Delay(50);
+
+        cts.Cancel();
+        await running;
+
+        // One run is enough to pause - no second one waited for, the way an
+        // unstarted run's streak is.
+        Assert.Equal(1, claimed);
+        Assert.Equal(1, Claims(h).Length);
+        Assert.Equal(1, h.Sessions.Spawned.Count);
+        Assert.Contains(h.Say.Said, l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine");
+        Assert.Contains(h.Say.Said, l => l.Contains("claiming nothing until a check session starts - checking again at ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_signed_out_pause_says_so_in_full_once_then_quietly_while_it_waits()
+    {
+        using var h = new Harness();
+        OneTicket(h);
+
+        var start = DateTimeOffset.UtcNow;
+        Carrying(h, PausedAt(start) with
+        {
+            AgentDownKind = Tally.SignedOut,
+            AgentDownLine = "Not logged in",
+            AgentDownUntil = start.AddMinutes(20),
+        });
+
+        var clock = new FakeTimeProvider(start);
+        using var cts = new CancellationTokenSource();
+        var running = new GoToWorkCommand(h.Supervised with { Clock = clock }).RunAsync(
+            ["--interval", "1", "--restart-after", "0"], cts.Token);
+
+        await DriveUntilAsync(clock, TimeSpan.FromSeconds(30),
+            () => h.Say.Said.Any(l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine"),
+            "the in-full sign-in sentence");
+
+        await DriveUntilAsync(clock, TimeSpan.FromMinutes(1),
+            () => h.Say.Said.Any(l => l.StartsWith("hatch: still waiting on", StringComparison.Ordinal)
+                && l.Contains("the agent is signed out", StringComparison.Ordinal)),
+            "the quiet repeat", withinMs: 20_000);
+
+        cts.Cancel();
+        await running;
+
+        Assert.Single(h.Say.Said, l => l == "hatch: the agent is signed out (Not logged in) - sign in on this machine");
+        Assert.Empty(Claims(h));
     }
 
     // ---- HA-1685: over --max-tokens-per-hour the loop waits, it does not stop ----

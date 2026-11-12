@@ -131,6 +131,18 @@ describe('RunnerRow', () => {
     expect(html).toContain('>AER-1 - reading the brief</span>');
   });
 
+  it('ends line three with what the runner refuses, and its title says it too', () => {
+    const html = draw(
+      runner({ for: 'sam', refusedModels: ['fable', 'haiku'], sessions: [session({ host: 'mac-mini' })] }),
+    );
+    expect(html).toContain('title="sam · mac-mini · refuses fable, haiku"');
+    expect(html).toContain('>sam · mac-mini · refuses fable, haiku</span>');
+  });
+
+  it('says nothing of refusals for an empty list', () => {
+    expect(draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini' })] }))).not.toContain('refuses');
+  });
+
   it('says whose it is and where it runs on line three, with the same words in its title', () => {
     const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini' })] }));
 
@@ -142,5 +154,15 @@ describe('RunnerRow', () => {
     const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini', image: 'ghcr.io/o/r:1' })] }));
 
     expect(html).toContain('sam · mac-mini · ghcr.io/o/r:1');
+  });
+
+  it('draws an agent-down session with its own glyph and words', () => {
+    const html = draw(
+      runner({ sessions: [session({ agentDownUntil: at(3_600_000), agentDownKind: 'not-starting', agentDownLine: 'npm not found' })] }),
+    );
+
+    expect(html).toContain('hatch-runner-glyph--agent-down');
+    expect(html).toContain('Agent not starting until');
+    expect(html).toContain('npm not found');
   });
 });

@@ -743,6 +743,63 @@ public class RunnersControllerTests
             typeof(RunnerPatchRequest).GetProperties(), p => p.Name == "ExhaustedUntil" || p.Name == "Exhausted");
     }
 
+    // ---- The agent is not starting, or is signed out ----
+
+    [Fact]
+    public async Task AgentDownUntil_IsSetClearedAndLeftAloneTheSameWayExhaustedIs()
+    {
+        var h = await NewAsync();
+        var checkAt = Now.AddHours(2);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AgentDown: true, AgentDownUntil: checkAt, AgentDownKind: "signed-out", AgentDownLine: "logged out"));
+        var down = await h.OneAsync();
+        Assert.Equal(checkAt, down.AgentDownUntil);
+        Assert.Equal("signed-out", down.AgentDownKind);
+        Assert.Equal("logged out", down.AgentDownLine);
+
+        // A beat that says it is not down clears all three at once.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AgentDown: false));
+        var cleared = await h.OneAsync();
+        Assert.Null(cleared.AgentDownUntil);
+        Assert.Null(cleared.AgentDownKind);
+        Assert.Null(cleared.AgentDownLine);
+
+        // And absent - an older CLI, or hatch work's single beat - leaves
+        // whatever the row already said alone.
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AgentDown: true, AgentDownUntil: checkAt, AgentDownKind: "not-starting"));
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest());
+        Assert.Equal(checkAt, (await h.OneAsync()).AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task AgentDownUntil_IsSeededOnANewRow()
+    {
+        var h = await NewAsync();
+        var checkAt = Now.AddHours(1);
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AgentDown: true, AgentDownUntil: checkAt, AgentDownKind: "not-starting"));
+
+        Assert.Equal(checkAt, (await h.OneAsync()).AgentDownUntil);
+    }
+
+    [Fact]
+    public async Task AgentDownKind_NotOneOfTheTwoWords_IsStoredAsNotStarting()
+    {
+        var h = await NewAsync();
+
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(AgentDown: true, AgentDownUntil: Now.AddHours(1), AgentDownKind: "something-else"));
+
+        Assert.Equal(RunnerAgentDownKinds.NotStarting, (await h.OneAsync()).AgentDownKind);
+    }
+
+    [Fact]
+    public async Task AgentDownUntil_IsNotSomethingAPersonPatches()
+    {
+        Assert.DoesNotContain(
+            typeof(RunnerPatchRequest).GetProperties(),
+            p => p.Name == "AgentDownUntil" || p.Name == "AgentDown" || p.Name == "AgentDownKind" || p.Name == "AgentDownLine");
+    }
+
     // ---- The account's usage reading, and who it works for ----
 
     [Fact]
@@ -1262,6 +1319,31 @@ public class RunnersControllerTests
     }
 
     [Fact]
+    public async Task ASessionWhoseAgentIsDown_IsNeitherAPeerNorElectedDriver()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        var key = await h.AddKeyAsync("session-only");
+        var session = NewSession(key.Id, Now, "here:/checkouts/one", remotes: "git@example.com:o/r.git");
+        session.AgentDownUntil = Now.AddHours(1);
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        Assert.Empty((await h.OneAsync()).Drives);
+    }
+
+    [Fact]
+    public async Task ABeatWhoseAgentIsDown_IsNeitherAPeerNorElectedDriver()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync("https://example.com/o/r");
+        await h.BeatAsync(Runner, new RunnerHeartbeatRequest(
+            Kind: "loop", Remotes: ["git@example.com:o/r.git"], AgentDown: true, AgentDownUntil: Now.AddHours(1)));
+
+        Assert.Empty((await h.OneAsync()).Drives);
+    }
+
+    [Fact]
     public async Task TwoLiveSessionsUnderOneKey_DriveAsOneNameNeverTwiceNorAThrow()
     {
         var h = await NewAsync();
@@ -1454,6 +1536,47 @@ public class RunnersControllerTests
 
         Assert.Null(runner.ExhaustedUntil);
         Assert.Null(runner.ThrottledUntil);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWhoseLiveSessionIsAgentDown_CarriesTheLatestFutureSessionsThreeWhole()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var one = NewSession(key.Id, Now, "here:/a");
+        one.AgentDownUntil = Now.AddHours(1);
+        one.AgentDownKind = "not-starting";
+        one.AgentDownLine = "npm not found";
+        var two = NewSession(key.Id, Now, "here:/b");
+        two.AgentDownUntil = Now.AddHours(2);
+        two.AgentDownKind = "signed-out";
+        two.AgentDownLine = "logged out";
+        h.Db.RunnerSessions.AddRange(one, two);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        // Whole from the later session - never a kind from one and a line from another.
+        Assert.Equal(Now.AddHours(2), runner.AgentDownUntil);
+        Assert.Equal("signed-out", runner.AgentDownKind);
+        Assert.Equal("logged out", runner.AgentDownLine);
+    }
+
+    [Fact]
+    public async Task AKeyedRunnerWhoseSessionAgentDownTimeHasPassed_CarriesNoneOnTheRow()
+    {
+        var h = await NewAsync();
+        var key = await h.AddKeyAsync(Runner);
+        var session = NewSession(key.Id, Now, "here:/a");
+        session.AgentDownUntil = Now.AddHours(-1);
+        session.AgentDownKind = "not-starting";
+        h.Db.RunnerSessions.Add(session);
+        await h.Db.SaveChangesAsync();
+
+        var runner = await h.OneAsync();
+
+        Assert.Null(runner.AgentDownUntil);
+        Assert.Null(runner.AgentDownKind);
     }
 
     private static EfHatchRunnerSession NewSession(Guid apiKeyId, DateTimeOffset at, string? where, string? remotes = null) => new()

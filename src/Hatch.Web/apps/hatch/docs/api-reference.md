@@ -580,10 +580,10 @@ the second half of this page, after the board's own.
 
 | Method | Path | What it does |
 |---|---|---|
-| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, and a ticket it is omitted from is left out; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
-| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; a call with no key and neither `tag` nor `dangerous` sent is the board's own scan, so a person's board-wide read (wall off) folds nothing on tags or the danger flag; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
+| GET | `/work/next` | The next clear issue an unattended pass would pick up; `?dangerous=false` for a runner that refuses issues flagged dangerous; `?runner=` names the caller's own runner, so a ticket it let go of is left to a different live runner, a ticket it is omitted from is left out, and a move on a model its key refuses (see `/runners/{name}/refused-models`) is folded; `?model=` (repeatable) and `?agent=` say what the caller's runner offers, so a move whose model it does not offer is folded, nothing sent folds nothing, and a bad entry is a `400`; `?has=` (repeatable, `id` or `id@version`) says what development dependencies the runner has, so a move that runs the issue's code is folded when a bound repository's `.hatch/dependencies.json` declares one it does not satisfy, or when that file is invalid - absent folds nothing, and a bad entry is a `400` |
+| GET | `/work/queue` | What a whole pass would do, blocked issues included, each with the sentence saying why; `?dangerous=false`, `?runner=`, `?model=`, `?agent=` and `?has=` as on `/work/next` (`?asRunner=` reads the runner's own row instead, and a row that never reported models or dependencies folds nothing; `?runner=` and `?asRunner=` agree on the key's refused models); where that key holds live loop sessions, `asRunner` and the let-go peer check judge it off its beat row and those sessions together, and a key with none answers exactly as before; a call with no key and neither `tag` nor `dangerous` sent is the board's own scan, so a person's board-wide read (wall off) folds nothing on tags or the danger flag; `?takers=true` (default `false`) judges, for every clear row, which live runners could take it right now, adding `takers` (runner names, sorted; null when not asked for; empty when none can) and `untaken` (one `{runner, reason}` per live runner that cannot, the fold's own sentence verbatim; filled in only when `takers` holds fewer than two names, empty otherwise, null alongside a null `takers`) - `hatch queue` and the web queue ask for this, the runner loop's own poll does not |
 | GET | `/work/review` | Every issue in review or merges this caller holds a checkout of, and what the board holds about its branch |
-| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner, so an issue omitted for it comes back blocked |
+| GET | `/work/{key}` | The same dispatch answer for one named issue; `?dangerous=false`, `?model=`, `?agent=` and `?has=` as on `/work/next` (a model the caller's runner does not offer, or a dependency it lacks, comes back blocked); `?runner=` names the caller's own runner - the calling key's own name where none is sent - so an issue omitted for it, or on a model its key refuses, comes back blocked |
 | POST | `/work/{key}/hop` | Carries an express issue, or a child its parent pulls, across its column with no session, folded the same as any other move - runner tags and omissions included (`?runner=` names the caller's own runner) |
 | POST | `/work/{key}/verdict` | Applies a check session's recorded verdict - passes it on, sends it back, or holds it for a person on a second fail in a row |
 | POST | `/work/{key}/merged` | Advances a reviewed issue whose pull request the forge says merged |
@@ -860,10 +860,10 @@ A session that found a playbook's prompt, model, effort or shape wrong can propo
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately |
+| GET | `/runners` | key | Every runner the caller may see - one entry per visible key, revoked included, plus one per visible heartbeat no key claims - most recently heard from first; `?live=true` keeps only the entries actually answering lately; carries `agentDownUntil`, `agentDownKind` and `agentDownLine` beside `exhaustedUntil` |
 | GET | `/runners/{name}` | key | One visible runner by its name, or `404` for a name nothing has ever used or this caller may not see |
-| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key |
-| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all) |
+| POST | `/runners/{name}` | key | A runner's own heartbeat: what it is (including the `models` it can run and the dependencies it `has`), and what the board would like it to do next; writes a heartbeat row regardless of whether the call carries a key; `agentDown`, `agentDownUntil`, `agentDownKind` and `agentDownLine` carry the agent's own pause the same tri-state way as `exhausted` |
+| POST | `/runners/sessions` | key | The session-level heartbeat: the bearer key alone, never a name; the CLI's heartbeat goes here now, and `POST /runners/{name}` above is the legacy route for a genuinely keyless beat (wall off, no key at all); takes the same `agentDown` fields |
 | POST | `/runners/sessions/{id}/end` | key | Ends one of the calling key's own sessions - a loop leaving, so a fresh loop in the same checkout is not refused for it; `204` whether or not it was already ended, `404` for an id that is not this key's |
 | POST | `/runners` | **admin** | Mints a runner - a key and its config - and answers it with its `secret`, shown once and sent `no-store`; `409` for a name already held, `400` for `names` or `suggest-name`; the owner defaults to the caller, and a key is refused |
 | GET | `/runners/suggest-name` | **admin** | A cast-list name no key (revoked included) and no heartbeat holds, as a bare string |
@@ -943,6 +943,19 @@ nothing has heard from it in a while.
 expects to be back under that cap while it waits, written on every `loop` beat
 (so a beat that carries null clears it) and left alone by a `once` beat. It has
 no `PATCH` field.
+
+`agentDownUntil`, `agentDownKind` and `agentDownLine` are the same tri-state
+`exhausted`/`exhaustedUntil` already has, for the agent rather than the
+account: `agentDown: true` writes `agentDownUntil` and normalises
+`agentDownKind` to one of `not-starting` or `signed-out` (anything else sent
+is stored as `not-starting`), `agentDown: false` clears all three at once, and
+absent - an older CLI, or `hatch work`'s single beat - leaves them alone. A
+keyed runner composes them off its live sessions the way `exhaustedUntil` does:
+whichever session's own `agentDownUntil` is latest and still ahead of now,
+copied whole rather than mixing a kind from one session with a line from
+another. None of the three has a `PATCH` field. Unlike exhaustion, a runner
+whose agent is down is left out of `Dispatch`'s peer set and is never elected
+driver until the check passes.
 
 `models` is a fact the runner reports, written on every beat like `remotes`:
 an absent one leaves the row alone, `[]` clears it, and any other list replaces

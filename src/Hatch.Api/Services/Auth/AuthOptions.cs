@@ -65,8 +65,9 @@ public class AuthOptions
     /// The cookie the grant token rides in. The <c>__Secure-</c> prefix is
     /// correct rather than <c>__Host-</c>: <c>__Host-</c> forbids a Domain
     /// attribute, and the Domain attribute is the entire single-sign-on story
-    /// here - it's what makes one enrollment cover home., kiosk. and share.
-    /// Local dev over http has to override this, since browsers reject a
+    /// here - it's what makes one enrollment cover every subdomain of the
+    /// cookie's domain. Local dev over http has to override this, since
+    /// browsers reject a
     /// <c>__Secure-</c> cookie that arrives without TLS.
     /// </summary>
     public string CookieName { get; set; } = "__Secure-hatch_grant";
@@ -82,7 +83,7 @@ public class AuthOptions
     /// Hostnames the gate never challenges, whatever the path - the hosts whose
     /// Ingress simply never gets the middleware annotation, repeated here so
     /// the in-process gate agrees with the proxy. files.&lt;domain&gt; is the
-    /// standing example: the kiosk APK and its checksum are public by design.
+    /// standing example: a static-file host whose contents are public by design.
     /// </summary>
     public string[] ExemptHosts { get; set; } = [];
 

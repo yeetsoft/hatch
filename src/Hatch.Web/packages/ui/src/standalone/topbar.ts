@@ -64,7 +64,7 @@ import '../components/Menu.css';
  *   toggle there would recolor a 48px bar and leave the page behind it.
  *
  * A pinned host is why this is a config value rather than a fixed invariant.
- * <TopBar> in React keeps the switch unconditionally, and should: every app
+ * <TopBar> in React keeps the switch unconditionally, and should: any app
  * that renders it can theme. This is the case that component does not cover.
  */
 export type StandaloneThemeMode = 'switch' | 'light' | 'dark';

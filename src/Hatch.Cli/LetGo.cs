@@ -65,6 +65,32 @@ public static class LetGo
         }
     }
 
+    /// <summary>
+    /// The session's agent is signed out of its account - an expired OAuth
+    /// session, a rejected key, a prompt to log in again - recognised whether
+    /// or not the agent ever started a stream, so this must not claim the
+    /// ticket was left untouched the way <see cref="UnstartedAsync"/> does: the
+    /// stream may have done some of it before the account dropped. Not a
+    /// let-go, and not a stall: the comment is the whole record, and the
+    /// runner pauses itself at once rather than waiting for a second run. No
+    /// resume line - signing in again is what the next session needs, not a
+    /// session id. Best-effort, as <see cref="WriteAsync"/>.
+    /// </summary>
+    public static async Task SignedOutAsync(
+        Board board, Terminal say, string key, string sentence, CancellationToken ct)
+    {
+        var body = $"The agent on this runner is signed out and needs signing in again: \"{sentence}\".";
+
+        try
+        {
+            await board.CommentAsync(key, body, ct);
+        }
+        catch (Exception e) when (e is HatchException or OperationCanceledException)
+        {
+            say.Complain($"hatch: {key} could not be told its agent is signed out - {e.Message}");
+        }
+    }
+
     private static async Task WriteAsync(
         Board board, Terminal say, IAgentAdapter adapter, string key, string opening, string? sessionId,
         string noSession, CancellationToken ct, string? kept = null)

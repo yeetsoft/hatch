@@ -5,7 +5,8 @@ order: 10
 summary: What a running Hatch is made of - the five Compose services and which of them exits on purpose, how to start it, move its port and stop it, and how to run from the published images instead of building.
 ---
 
-Hatch is a Postgres and one API image, and that image also serves every app.
+Hatch is a Postgres and one API image, and that image also serves the board
+and the sign-in shell.
 `compose.yaml` at the repository root runs both on one computer, and it is the
 default: everything on this page is about that file. A cluster is the other
 way to run it ([Kubernetes](kubernetes)), and no manifests ship with Hatch.
@@ -16,7 +17,7 @@ way to run it ([Kubernetes](kubernetes)), and no manifests ship with Hatch.
 |---|---|---|
 | `db` | Postgres, built from `containers/hatch-db/Dockerfile.db`: `postgres:18.4` plus `pginit.sql`, which on a fresh volume creates the `hatch` and `quartz` databases and Quartz's tables. Its healthcheck is `pg_isready`. Port 5432 is published, because this is the developer's stack and its tests reach Postgres from the host | Runs until stopped |
 | `migrate` | The API image with `HATCH_MIGRATE=1`, which makes it apply the schema and nothing else | Runs to completion on every start, then **exits, and exited is correct**: that is the state `api` waits for |
-| `api` | The API, and every app it serves, on 8080 inside the container and `HATCH_PORT` outside it | Starts only once `migrate` has completed successfully, and runs until stopped |
+| `api` | The API, and the board and sign-in shell it serves, on 8080 inside the container and `HATCH_PORT` outside it | Starts only once `migrate` has completed successfully, and runs until stopped |
 | `runner` | [The container runner](the-container-runner), under the profile `runner` | Off unless that profile is named |
 
 `migrate` and `api` are the same image. Because `migrate` is a separate
@@ -36,8 +37,8 @@ and the volume names, so they are the same wherever the command is run from.
 docker compose up -d
 ```
 
-Then open `<your-hatch-origin>/apps/hatch/`, which on one computer is
-`http://localhost:8080/apps/hatch/`.
+Then open `<your-hatch-origin>/`, which on one computer is
+`http://localhost:8080/`.
 
 Port 8080 is only the default. `HATCH_PORT` moves it:
 

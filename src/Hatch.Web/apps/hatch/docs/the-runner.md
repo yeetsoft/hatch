@@ -378,6 +378,18 @@ dotnet 10.0.100, node 22.11.0`. The Runners page draws the dependencies a
 runner has the same way, as `has dotnet 10.0.100, node 22.11.0`, under the
 repositories line in a row's details.
 
+A key can also **refuse** a model outright, whatever the runner offers: the
+list `PUT /api/hatch/runners/{name}/refused-models` holds. A move whose model
+it names is folded for that runner, from every dispatch read and a named
+ticket alike - *"HA-12 in Breakdown runs on fable - build-box refuses it"* -
+so the runner never claims a ticket only to refuse it. An alias refused covers
+a pinned id that names it (`opus` refuses `claude-opus-5-5`); a pinned id
+refused covers itself only. `hatch work KEY` sends no runner name, so it is
+judged on the calling key's own list. A runner that refuses the model is not
+counted as offering it: the board's list of moves no live runner can take
+says `no live runner offers fable` once every live runner refuses it or
+lacks it.
+
 ### Has
 
 A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
@@ -554,6 +566,26 @@ that decides the work is not one this runner can do runs `hatch recuse AER-12
 and the increment ends with `hatch: AER-12 - <runner> recused itself
 (<reason>), going on to the next` - no stall comment, no mark, no question.
 `hatch omit AER-12 --lift <runner>` undoes it.
+
+### Refused models
+
+A key can also refuse models rather than tickets: a list of models its runner
+is never to be told to run, narrower than what it advertises
+([Models](#models)). It lives on the board, on the key's own config row -
+not `hatch config` and not a `HATCH_*` variable, since a setting here would
+be a second store for the same fact.
+
+Two doors reach it. From a terminal, `hatch runners refuse` reads, adds to
+and lifts from the calling key's own list -
+[CLI reference](cli-reference#runners) has the forms. The Runners page has
+its own control over the same row.
+
+The board folds a refused model out of the dispatch read itself, so a loop
+never advertises one it has refused and never has to subtract it from its own
+`model=` list. A running loop reads the list back on every heartbeat the way
+it reads tags, and says once when the board has changed it: `hatch: the board
+set refuses fable` (or `refuses none` when the list is cleared). A Hatch too
+old to answer with the list leaves the loop's own alone.
 
 ## The runner's name
 
@@ -1088,6 +1120,12 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   - it is **not a stall**: no let-go comment, no mark, no question, and not
     one of the three failed increments - it neither resets nor advances them.
     A `--quiet` run is never read this way.
+- **The agent is signed out** (an expired OAuth session, a rejected key, a
+  prompt to log in again, however far the session got): one increment is
+  enough - the ticket goes back with one comment saying the agent needs
+  signing in again, and the runner pauses itself at once rather than waiting
+  for a second run to say the same thing twice. See
+  [troubleshooting](troubleshooting#the-runner-says-its-agent-needs-signing-in).
 - **`hatch: {model} is off this runner's list until {clock}`** (or `for the
   rest of this run`):
   - the increment ends released `unservable` - the model is one the account

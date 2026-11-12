@@ -69,6 +69,10 @@ public sealed class ModelFamilies(IReadOnlyList<ModelFamily> rows)
             ? $"{key} in {column} runs on {model} - this runner does not offer it"
             : $"{key} in {column} runs on {model} - this runner's {agent} does not offer it";
 
+    /// <summary>The sentence a board or runner prints when <paramref name="key"/>'s <paramref name="column"/> runs on a <paramref name="model"/> that <paramref name="runner"/> refuses.</summary>
+    public static string Refused(string key, string column, string model, string runner) =>
+        $"{key} in {column} runs on {model} - {runner} refuses it";
+
     /// <summary>"an" before a vowel-initial word, "a" otherwise.</summary>
     private static string Article(string word) => "aeiou".Contains(word[0]) ? "an" : "a";
 }

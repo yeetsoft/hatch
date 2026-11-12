@@ -21,7 +21,7 @@ namespace Hatch.Api.Common;
 /// inherit (docs/ethos.md) - to solve a problem this design does not have: the
 /// bytes are never interpreted by the server, they are sized-capped, and they
 /// are served back with a sniffed type and <c>Content-Disposition: attachment</c>
-/// semantics via <c>X-Content-Type-Options: nosniff</c>. The admin app downscales
+/// semantics via <c>X-Content-Type-Options: nosniff</c>. The board downscales
 /// before it uploads, so the cap is generous rather than tight.
 /// </summary>
 public static class PersonPhoto

@@ -4273,6 +4273,20 @@ public static class RunnerStates
 }
 
 /// <summary>
+/// Why a runner's own agent is paused rather than running, carried on
+/// <see cref="RunnerHeartbeatRequest.AgentDownKind"/> and read back off
+/// <see cref="RunnerDto.AgentDownKind"/> and <see cref="RunnerSessionDto.AgentDownKind"/>.
+/// </summary>
+public static class RunnerAgentDownKinds
+{
+    /// <summary>The agent would not start.</summary>
+    public const string NotStarting = "not-starting";
+
+    /// <summary>The agent is signed out and needs a person to sign it back in.</summary>
+    public const string SignedOut = "signed-out";
+}
+
+/// <summary>
 /// What a person is ordering a runner to do, from the Runners page's own
 /// <c>POST .../order</c>.
 /// </summary>
@@ -4351,6 +4365,17 @@ public record RunnerOrderDto(string Kind, string? Key, string? By, DateTimeOffse
 /// expects to reset - null on an ordinary runner. A fact this runner reports
 /// about itself, never a person's to set.
 /// </param>
+/// <param name="AgentDownUntil">
+/// This runner's own agent is not starting, or is signed out, and this is
+/// when it expects to be checked again - null on an ordinary runner, or
+/// composed off the live session whose own value is latest and still ahead
+/// of now. A fact this runner reports about itself, never a person's to set.
+/// </param>
+/// <param name="AgentDownKind">
+/// One of <see cref="RunnerAgentDownKinds"/>, read only while
+/// <see cref="AgentDownUntil"/> is set.
+/// </param>
+/// <param name="AgentDownLine">What the agent said, read only while <see cref="AgentDownUntil"/> is set.</param>
 /// <param name="Drives">
 /// The project keys this row is the elected driver for, computed off every
 /// live loop's own heartbeat - see <see cref="Hatch.Api.Modules.Hatch.Runners.DriversAsync"/>.
@@ -4510,7 +4535,10 @@ public record RunnerDto(
     string? SupersededBy = null,
     IReadOnlyList<string>? DrivesTold = null,
     string? Image = null,
-    IReadOnlyList<string> RefusedModels = null!)
+    IReadOnlyList<string> RefusedModels = null!,
+    DateTimeOffset? AgentDownUntil = null,
+    string? AgentDownKind = null,
+    string? AgentDownLine = null)
 {
     // A default parameter value must be a compile-time constant, so the
     // empty-rather-than-null default lives here instead of on the parameter.
@@ -4576,7 +4604,10 @@ public record RunnerSessionDto(
     string? Username = null,
     DateTimeOffset? ProcessStartedAt = null,
     string? Ip = null,
-    string? Image = null)
+    string? Image = null,
+    DateTimeOffset? AgentDownUntil = null,
+    string? AgentDownKind = null,
+    string? AgentDownLine = null)
 {
     public IReadOnlyList<string> Remotes { get; init; } = Remotes ?? [];
     public IReadOnlyList<string> Projects { get; init; } = Projects ?? [];
@@ -4656,6 +4687,19 @@ public enum RunnerBoardDrift
 /// carries the value.
 /// </param>
 /// <param name="ExhaustedUntil">When the account resets, read only when <see cref="Exhausted"/> is true.</param>
+/// <param name="AgentDown">
+/// This runner's own agent is not starting, or is signed out - or, sent
+/// false, it is neither. Absent (an older CLI, or <c>hatch work</c>'s single
+/// beat, which sends null so it can never clear a loop's own pause) leaves
+/// whatever the row already says alone, the same tri-state convention as
+/// <see cref="Exhausted"/> and <see cref="ExhaustedUntil"/> carries the value.
+/// </param>
+/// <param name="AgentDownUntil">When to check again, read only when <see cref="AgentDown"/> is true.</param>
+/// <param name="AgentDownKind">
+/// One of <see cref="RunnerAgentDownKinds"/>, read only when <see cref="AgentDown"/>
+/// is true - anything else sent is stored as <see cref="RunnerAgentDownKinds.NotStarting"/>.
+/// </param>
+/// <param name="AgentDownLine">What the agent said, read only when <see cref="AgentDown"/> is true.</param>
 /// <param name="Usage">
 /// The account's usage windows, as this runner's own session last read them -
 /// Hatch's own vocabulary, the same fields <c>UtilizationLimit</c> carries
@@ -4768,6 +4812,10 @@ public record RunnerHeartbeatRequest(
     string? Agent = null,
     bool? Exhausted = null,
     DateTimeOffset? ExhaustedUntil = null,
+    bool? AgentDown = null,
+    DateTimeOffset? AgentDownUntil = null,
+    string? AgentDownKind = null,
+    string? AgentDownLine = null,
     IReadOnlyList<RunnerUsageWindowDto>? Usage = null,
     DateTimeOffset? UsageReadAt = null,
     IReadOnlyList<string>? Tags = null,

@@ -160,7 +160,7 @@ public class EfPersonPhoto
 
     /// <summary>
     /// When these bytes were stored. Serves as the photo's ETag, which is what
-    /// lets the admin app point an &lt;img&gt; at a stable URL and still see a
+    /// lets the board point an &lt;img&gt; at a stable URL and still see a
     /// new upload immediately.
     /// </summary>
     public required DateTimeOffset UpdatedAt { get; set; }

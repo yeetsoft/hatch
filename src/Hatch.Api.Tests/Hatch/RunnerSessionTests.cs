@@ -40,6 +40,9 @@ public class RunnerSessionTests
             TokensUsed = 1_000L,
             TokensLastHour = 100L,
             ExhaustedUntil = Now.AddHours(2),
+            AgentDownUntil = Now.AddHours(4),
+            AgentDownKind = "signed-out",
+            AgentDownLine = "logged out",
             ThrottledUntil = Now.AddHours(3),
             Usage = "[{\"window\":\"5h\"}]",
             UsageReadAt = Now.AddMinutes(1),
@@ -85,6 +88,9 @@ public class RunnerSessionTests
         Assert.Equal(1_000L, row.TokensUsed);
         Assert.Equal(100L, row.TokensLastHour);
         Assert.Equal(Now.AddHours(2), row.ExhaustedUntil);
+        Assert.Equal(Now.AddHours(4), row.AgentDownUntil);
+        Assert.Equal("signed-out", row.AgentDownKind);
+        Assert.Equal("logged out", row.AgentDownLine);
         Assert.Equal(Now.AddHours(3), row.ThrottledUntil);
         Assert.Equal("[{\"window\":\"5h\"}]", row.Usage);
         Assert.Equal(Now.AddMinutes(1), row.UsageReadAt);
@@ -140,6 +146,9 @@ public class RunnerSessionTests
         Assert.Null(row.TokensUsed);
         Assert.Null(row.TokensLastHour);
         Assert.Null(row.ExhaustedUntil);
+        Assert.Null(row.AgentDownUntil);
+        Assert.Null(row.AgentDownKind);
+        Assert.Null(row.AgentDownLine);
         Assert.Null(row.ThrottledUntil);
         Assert.Null(row.Usage);
         Assert.Null(row.UsageReadAt);

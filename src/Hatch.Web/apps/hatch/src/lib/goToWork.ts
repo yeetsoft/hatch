@@ -87,6 +87,7 @@ function lineFor(r: Runner, now: Date): { rank: number; line: Omit<StatusLine, '
   }
 
   if (runnerActivity(r, now) === 'exhausted') return keyless(4, activityWords(r, now), ACTIVITY_TONES.exhausted, 'Out of usage');
+  if (runnerActivity(r, now) === 'agent-down') return keyless(4, activityWords(r, now), ACTIVITY_TONES['agent-down'], 'Agent down');
   if (r.state === 'running') {
     const where = r.projects.length > 0 ? r.projects.join(', ') : 'any project';
     return keyless(5, `Idle - nothing to do in ${where}`, ACTIVITY_TONES.idle, 'Idle');

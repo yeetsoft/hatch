@@ -13,6 +13,7 @@ import {
   declaredDangerous,
   declaredProjects,
   sessionTotals,
+  refusedLabel,
   settingsChanged,
   settingsOf,
   settingsRequest,
@@ -190,6 +191,44 @@ describe('runnerActivity', () => {
   it('names the weekday for a reset tomorrow', () => {
     const words = activityWords(runner({ exhaustedUntil: at(26 * 3_600_000) }), NOW);
     expect(words).toMatch(/^Out of usage until [A-Za-z]+ at \d{1,2}:\d{2}(am|pm)$/);
+  });
+});
+
+describe('an agent-down runner', () => {
+  const GONE = { lastSeenAt: at(-GONE_AFTER * 1000 - 1000) };
+
+  it('is agent-down while the check is ahead of now', () => {
+    expect(runnerActivity(runner({ agentDownUntil: at(60_000), agentDownKind: 'not-starting' }), NOW)).toBe('agent-down');
+  });
+
+  it('ranks under gone and over exhausted', () => {
+    expect(runnerActivity(runner({ ...GONE, agentDownUntil: at(60_000) }), NOW)).toBe('gone');
+    expect(
+      runnerActivity(runner({ agentDownUntil: at(60_000), agentDownKind: 'not-starting', exhaustedUntil: at(3_600_000) }), NOW),
+    ).toBe('agent-down');
+  });
+
+  it('is not agent-down once the check has passed', () => {
+    expect(runnerActivity(runner({ agentDownUntil: at(-60_000), agentDownKind: 'not-starting' }), NOW)).toBe('idle');
+  });
+
+  it('words a not-starting agent with the clock and its line', () => {
+    expect(
+      activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'not-starting', agentDownLine: 'npm not found' }), NOW),
+    ).toMatch(/^Agent not starting until \d{1,2}:\d{2}(am|pm) - npm not found$/);
+  });
+
+  it('words a signed-out agent without the clock, and drops the line when there is none', () => {
+    expect(activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'signed-out' }), NOW)).toBe(
+      'Agent needs signing in',
+    );
+    expect(activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'signed-out', agentDownLine: 'logged out' }), NOW)).toBe(
+      'Agent needs signing in - logged out',
+    );
+  });
+
+  it('is drawn as a danger', () => {
+    expect(ACTIVITY_TONES['agent-down']).toBe('danger');
   });
 });
 
@@ -1076,7 +1115,26 @@ describe('rowSecondLine', () => {
   });
 });
 
+describe('refusedLabel', () => {
+  it('is null for none, and names one or many after "refuses"', () => {
+    expect(refusedLabel(runner())).toBeNull();
+    expect(refusedLabel(runner({ refusedModels: ['fable'] }))).toBe('refuses fable');
+    expect(refusedLabel(runner({ refusedModels: ['fable', 'haiku'] }))).toBe('refuses fable, haiku');
+  });
+});
+
 describe('rowThirdLine', () => {
+  it('ends with what the runner refuses, after the host and image, and says nothing for none', () => {
+    const r = runner({
+      for: 'Ada',
+      refusedModels: ['fable', 'haiku'],
+      sessions: [session({ id: 1, host: 'Mac', image: 'ghcr.io/o/r:1' })],
+    });
+    expect(rowThirdLine(r, NOW)).toBe('Ada · Mac · ghcr.io/o/r:1 · refuses fable, haiku');
+    expect(rowThirdLine(runner({ for: 'Ada', refusedModels: ['fable'] }), NOW)).toBe('Ada · refuses fable');
+    expect(rowThirdLine(runner({ for: 'Ada' }), NOW)).toBe('Ada');
+  });
+
   it('names the owner and the one live host', () => {
     const r = runner({ for: 'Ada', sessions: [session({ id: 1, host: 'Mac' })] });
     expect(rowThirdLine(r, NOW)).toBe('Ada · Mac');
@@ -1301,8 +1359,9 @@ describe('the runner detail\'s two forms', () => {
     });
 
   it('seeds the settings from tags and under alone', () => {
-    expect(settingsOf(held())).toEqual({ tags: 'gpu\nfast', under: 'AER-930' });
-    expect(settingsOf(runner())).toEqual({ tags: '', under: '' });
+    expect(settingsOf(held())).toEqual({ tags: 'gpu\nfast', under: 'AER-930', refusedModels: '' });
+    expect(settingsOf(runner())).toEqual({ tags: '', under: '', refusedModels: '' });
+    expect(settingsOf(runner({ refusedModels: ['fable', 'haiku'] })).refusedModels).toBe('fable\nhaiku');
   });
 
   it('seeds the ceilings from the five fields alone', () => {
@@ -1315,11 +1374,15 @@ describe('the runner detail\'s two forms', () => {
     });
   });
 
-  it('sends exactly tags and under from the settings form', () => {
-    const req = settingsRequest({ tags: 'gpu\n\nfast ', under: ' AER-930 ' });
-    expect(Object.keys(req).sort()).toEqual(['tags', 'under']);
-    expect(req).toEqual({ tags: ['gpu', 'fast'], under: 'AER-930' });
-    expect(settingsRequest({ tags: '', under: '' })).toEqual({ tags: [], under: '' });
+  it('sends exactly tags and under as the patch, and the refused models beside it', () => {
+    const req = settingsRequest({ tags: 'gpu\n\nfast ', under: ' AER-930 ', refusedModels: ' fable\n\nhaiku ' });
+    expect(Object.keys(req).sort()).toEqual(['patch', 'refusedModels']);
+    expect(Object.keys(req.patch).sort()).toEqual(['tags', 'under']);
+    expect(req).toEqual({ patch: { tags: ['gpu', 'fast'], under: 'AER-930' }, refusedModels: ['fable', 'haiku'] });
+    expect(settingsRequest({ tags: '', under: '', refusedModels: '' })).toEqual({
+      patch: { tags: [], under: '' },
+      refusedModels: [],
+    });
   });
 
   it('sends exactly the five ceilings from the bounds form, the empty ones too', () => {
@@ -1343,6 +1406,15 @@ describe('the runner detail\'s two forms', () => {
     expect(settingsChanged({ ...settingsOf(r), tags: 'fast\ngpu' }, r)).toBe(true);
     expect(settingsChanged({ ...settingsOf(r), tags: 'gpu\nfast\n' }, r)).toBe(false);
     expect(settingsChanged(settingsOf(runner()), runner())).toBe(false);
+  });
+
+  it('notices the refused models changing, not their blank lines or padding', () => {
+    const r = runner({ refusedModels: ['fable', 'haiku'] });
+    expect(settingsChanged(settingsOf(r), r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), refusedModels: ' fable\n\nhaiku\n' }, r)).toBe(false);
+    expect(settingsChanged({ ...settingsOf(r), refusedModels: 'haiku\nfable' }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(r), refusedModels: '' }, r)).toBe(true);
+    expect(settingsChanged({ ...settingsOf(runner()), refusedModels: 'fable' }, runner())).toBe(true);
   });
 
   it('judges a bounds problem from the three fields it reads', () => {

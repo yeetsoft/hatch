@@ -15,6 +15,11 @@ namespace Hatch.Api.Modules.Hatch;
 /// <paramref name="Mine"/> is false, and also where it is true and the runner
 /// belongs to nobody - see <see cref="Refusal"/>.
 /// </param>
+/// <param name="Refused">
+/// The models the runner's key refuses, from its config row's <c>RefusedModels</c>
+/// - empty for a keyless row and for a key with no config row. See
+/// <see cref="Hatch.Contracts.RunnerModels.Refuses"/>.
+/// </param>
 public sealed record RunnerDeclaration(
     RepositoryDeclaration Repos,
     string? Under,
@@ -24,7 +29,8 @@ public sealed record RunnerDeclaration(
     ModelDeclaration Models,
     IReadOnlyList<string> Projects,
     Actor? Principal,
-    string Name)
+    string Name,
+    IReadOnlyList<string> Refused)
 {
     /// <summary>
     /// The sentence saying why this runner cannot be answered for, or null. A
@@ -36,7 +42,8 @@ public sealed record RunnerDeclaration(
           "owner on the API Keys page"
         : null;
 
-    public static async Task<RunnerDeclaration> OfAsync(EfHatchRunner row, IActorDirectory actors, CancellationToken ct)
+    public static async Task<RunnerDeclaration> OfAsync(
+        EfHatchRunner row, IActorDirectory actors, CancellationToken ct, EfHatchRunnerConfig? config = null)
     {
         var mine = row.Mine ?? false;
 
@@ -54,7 +61,8 @@ public sealed record RunnerDeclaration(
             ModelDeclaration.Of(row.Models?.Split('\n', StringSplitOptions.RemoveEmptyEntries), row.Agent),
             WorkController.ProjectKeys(row.Projects?.Split('\n', StringSplitOptions.RemoveEmptyEntries)),
             principal,
-            row.Name);
+            row.Name,
+            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
     }
 
     /// <summary>
@@ -78,7 +86,7 @@ public sealed record RunnerDeclaration(
         Runner runner, IReadOnlyList<EfHatchRunnerSession> live, IActorDirectory actors, CancellationToken ct)
     {
         var beat = runner.Beat;
-        if (live.Count == 0 && beat is not null) return await OfAsync(beat, actors, ct);
+        if (live.Count == 0 && beat is not null) return await OfAsync(beat, actors, ct, runner.Config);
 
         var config = runner.Config;
 
@@ -120,7 +128,8 @@ public sealed record RunnerDeclaration(
             : WorkController.ProjectKeys(contributors.SelectMany(c => c));
 
         return new RunnerDeclaration(
-            repos, under, mine, TagDeclaration.Of(tags, refusesDangerous), has, models, projects, principal, runner.Name);
+            repos, under, mine, TagDeclaration.Of(tags, refusesDangerous), has, models, projects, principal, runner.Name,
+            config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
     }
 
     /// <summary>

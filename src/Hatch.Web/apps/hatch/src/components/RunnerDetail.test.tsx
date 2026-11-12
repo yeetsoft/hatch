@@ -215,6 +215,18 @@ describe('RunnerDetail: Live sessions', () => {
     const html = renderAt('/runners/Quill');
     expect(html.indexOf('Mac:/earlier')).toBeLessThan(html.indexOf('Mac:/later'));
   });
+
+  it('draws an agent-down session with its own glyph and words', () => {
+    const down = live({
+      id: 1,
+      agentDownUntil: new Date(Date.now() + 3_600_000).toISOString(),
+      agentDownKind: 'signed-out',
+    });
+    state.read = { runners: [runner({ name: 'Quill', sessions: [down] })], error: null };
+    const html = renderAt('/runners/Quill');
+    expect(html).toContain('hatch-runner-glyph--agent-down');
+    expect(html).toContain('Agent needs signing in');
+  });
 });
 
 describe('RunnerDetail: Pause all and Stop all', () => {

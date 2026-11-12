@@ -246,6 +246,23 @@ run](the-runner#when-it-will-not-run).
 - **How much it cost.** The closing tally says how many runs never started
   and how long the runner was paused for it.
 
+## The runner says its agent needs signing in
+
+- **One increment ended on a sign-in failure.** An expired OAuth session, a
+  rejected key, a prompt to log in again. Unlike the agent not starting, one
+  is enough - the runner pauses at once, rather than waiting for a second
+  run to say the same thing twice. The ticket it was holding goes back to
+  the board with one comment naming the sentence; nothing is wrong with the
+  ticket, and it is neither a let-go nor a stall.
+- **Sign in on this machine.** Run the agent by hand in the checkout and sign
+  in again; the next check passes by itself.
+- **It checks on the same back-off** as the agent not starting - five
+  minutes, then fifteen, then sixty - with the same cheap headless session,
+  and the terminal says *the agent starts again - taking tickets* once a
+  check starts and answers. A later run that starts clears the pause too.
+- **Want it sooner.** The same as the agent not starting: stop the loop and
+  start it again by hand once signed in.
+
 ## A session is still running in the checkout after the loop died
 
 - **The loop was killed or its window closed mid-increment.** The agent it
