@@ -1088,6 +1088,12 @@ Running `scripts/hatch.ps1` at all needs the execution policy to allow it:
   - it is **not a stall**: no let-go comment, no mark, no question, and not
     one of the three failed increments - it neither resets nor advances them.
     A `--quiet` run is never read this way.
+- **The agent is signed out** (an expired OAuth session, a rejected key, a
+  prompt to log in again, however far the session got): one increment is
+  enough - the ticket goes back with one comment saying the agent needs
+  signing in again, and the runner pauses itself at once rather than waiting
+  for a second run to say the same thing twice. See
+  [troubleshooting](troubleshooting#the-runner-says-its-agent-needs-signing-in).
 - **`hatch: {model} is off this runner's list until {clock}`** (or `for the
   rest of this run`):
   - the increment ends released `unservable` - the model is one the account

@@ -171,6 +171,8 @@ public class CodexAdapter(string? configured = null, string? path = null) : IAge
     public virtual ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefusal.Codex(said);
 
+    public virtual AuthFailure.Recognised? RecogniseAuthFailure(string? said) => AuthFailure.Codex(said);
+
     /// <summary>
     /// The binary to spawn, which is only known once <see cref="CanSpawn"/> has
     /// said there is one. A caller that skipped the question is a bug, and

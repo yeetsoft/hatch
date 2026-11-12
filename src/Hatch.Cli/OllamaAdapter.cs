@@ -226,6 +226,9 @@ public sealed class OllamaAdapter : CodexAdapter
     public override ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefusal.Ollama(said);
 
+    /// <summary>Overrides Codex's: a local server has no account to be signed out of.</summary>
+    public override AuthFailure.Recognised? RecogniseAuthFailure(string? said) => null;
+
     /// <summary>
     /// <c>haiku=&lt;id&gt;,sonnet=&lt;id&gt;,...</c>, in any order and any subset,
     /// as a dictionary keyed by lower-case alias - null or blank answers an

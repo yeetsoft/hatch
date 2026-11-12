@@ -227,6 +227,8 @@ public sealed class ClaudeAdapter(
     public ModelRefusal.Recognised? RecogniseModelRefusal(string? said, DateTimeOffset endedAt, TimeZoneInfo? runnerZone = null) =>
         ModelRefusal.Claude(said, endedAt, runnerZone);
 
+    public AuthFailure.Recognised? RecogniseAuthFailure(string? said) => AuthFailure.Claude(said);
+
     /// <summary>
     /// What <see cref="MachineFacts.ReadAsync"/> read once at process start.
     /// Where a verdict from an earlier process already names this version, the
