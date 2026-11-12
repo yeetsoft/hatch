@@ -66,7 +66,7 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     reason: 'the icon egg, fetched outside any document',
   },
   {
-    file: 'apps/design/src/pages/ProjectMarkPage.tsx',
+    file: 'apps/hatch/src/design/pages/ProjectMarkPage.tsx',
     literal: '#7a5cff',
     reason: 'a sample project colour - operator data',
   },

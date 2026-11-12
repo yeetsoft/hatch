@@ -52,6 +52,7 @@ export const APP_ROUTE_ROOTS = [
   'projects',
   'statuses',
   'playbooks',
+  'design',
   'runners',
   'overnight',
   'changelog',
