@@ -4866,9 +4866,88 @@ public class WorkControllerTests
         await ConfigureKeyTagsAsync(h, "macos", "xcode");
         h.Caller.Key = null;
 
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithNoKeyAndNoTag_IsTheBoardsOwnScan()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var inProgress = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        var todo = await h.FileAsync("story", "not yet in progress", h.Todo);
+        h.Caller.Key = null;
+
+        var entries = Value(await h.Work.GetQueue(0, null, default));
+        Assert.Null(entries.Single(e => e.Issue.Key == Key(inProgress)).Blocked);
+        Assert.Null(entries.Single(e => e.Issue.Key == Key(todo)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithNoKeyAndAnExplicitTag_StillFoldsOnIt()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var tagged = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        h.Caller.Key = null;
+
         Assert.Equal(
-            $"{Key(issue)} is worked only by a runner advertising macos and xcode - this runner advertises none",
-            Only(await h.Work.GetQueue(0, null, default)).Blocked);
+            $"{Key(tagged)} is worked only by a runner advertising macos and xcode - this runner advertises linux",
+            Only(await h.Work.GetQueue(0, null, default, tag: ["linux"])).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithNoKeyAndDangerousFalse_StillFoldsOnTheFlag()
+    {
+        var h = await NewAsync();
+        var flagged = await FileFlaggedAsync(h);
+        h.Caller.Key = null;
+
+        Assert.Equal(
+            $"{Key(flagged)} is flagged dangerous (load-tests the API) - this runner refuses dangerous work",
+            Only(await h.Work.GetQueue(0, null, default, dangerous: false)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ACallWithNoKey_AsksTakersOfTheTagRequiringRow()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        await h.FileAsync("task", "built only on a mac", h.InProgress);
+        var a = RunnerName();
+        var b = RunnerName();
+        await AddLoopRunnerAsync(h, a, r => r.Tags = "macos\nxcode");
+        await AddLoopRunnerAsync(h, b);
+        h.Caller.Key = null;
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, takers: true));
+
+        Assert.Equal(new[] { a }, entry.Takers);
+        Assert.Equal(b, entry.Untaken!.Single().Runner);
+    }
+
+    [Fact]
+    public async Task Next_ACallWithNoKey_AnswersForATagRequiringProject()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default)).Result);
+
+        h.Caller.Key = null;
+        Assert.Equal(Key(issue), Value(await h.Work.GetNextWork(0, null, null, default)).Issue.Key);
+    }
+
+    [Fact]
+    public async Task Work_ACallWithNoKey_CarriesNoTagSentence()
+    {
+        var h = await NewAsync();
+        await h.RequireTagsAsync("macos", "xcode");
+        var issue = await h.FileAsync("story", "built only on a mac", h.InProgress);
+        h.Caller.Key = null;
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
     }
 
     [Fact]

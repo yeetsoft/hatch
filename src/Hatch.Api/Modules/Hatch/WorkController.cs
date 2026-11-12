@@ -1693,7 +1693,10 @@ public class WorkController(
     /// none sent, a call made with an API key is judged on that key's own
     /// runner config tags, the list the session heartbeat answers with, so a
     /// queue or a single increment run by hand agrees with a loop under the
-    /// same key. A call with no key, or a key with no config, advertises none.
+    /// same key - a key with no config advertises none. A call with no key
+    /// and neither <paramref name="tag"/> nor <paramref name="dangerous"/>
+    /// sent is the board's own scan, <see cref="TagDeclaration.Unjudged"/>,
+    /// and folds nothing on tags or danger.
     /// </summary>
     private async Task<(string? Refusal, TagDeclaration Tags)> CallerTagsAsync(
         List<string>? tag, bool? dangerous, CancellationToken ct)
@@ -1704,12 +1707,13 @@ public class WorkController(
             return (refusal, declared);
         }
 
-        IReadOnlyList<string> configured = [];
-        if (await caller.ApiKeyAsync(ct) is { } key)
+        if (await caller.ApiKeyAsync(ct) is not { } key)
         {
-            var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
-            if (config is not null) configured = RunnerTagColumn.Read(config.Tags);
+            return (null, dangerous is null ? TagDeclaration.Unjudged : TagDeclaration.Of([], dangerous == false));
         }
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        var configured = config is not null ? RunnerTagColumn.Read(config.Tags) : [];
 
         return (null, TagDeclaration.Of(configured, dangerous == false));
     }
