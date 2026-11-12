@@ -183,7 +183,7 @@ describe('ConsumptionReportBody', () => {
     const query: ConsumptionFilterQuery = { from: '2026-08-01T00:00:00.000Z', type: 'story', sort: 'cost', offsetMinutes: -60 };
     const html = render(report(), 'activity', 'tokens', query);
 
-    const escapedHref = `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`.replace(
+    const escapedHref = `/api/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`.replace(
       /&/g,
       '&amp;',
     );

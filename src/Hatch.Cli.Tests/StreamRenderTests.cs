@@ -388,9 +388,9 @@ public sealed class StreamRenderTests
     [Fact]
     public void Reads_CountsAHatchApiCallByItsEndpointAlone()
     {
-        var reads = ReadsOf(Fixtures.ToolUse("Bash", "hatch api GET /api/hatch/issues/HA-1186/events?a=b"));
+        var reads = ReadsOf(Fixtures.ToolUse("Bash", "hatch api GET /api/issues/HA-1186/events?a=b"));
 
-        Assert.Equal([("/api/hatch/issues/HA-1186/events", 1)], reads);
+        Assert.Equal([("/api/issues/HA-1186/events", 1)], reads);
     }
 
     [Fact]

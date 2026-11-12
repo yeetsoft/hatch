@@ -21,36 +21,36 @@ function attachment(id: string, overrides: Partial<Attachment> = {}): Attachment
 
 describe('attachmentUrl', () => {
   it('is the same binding descriptionImage.ts exports', () => {
-    expect(attachmentUrl('abc')).toBe('/api/hatch/attachments/abc');
+    expect(attachmentUrl('abc')).toBe('/api/attachments/abc');
   });
 });
 
 describe('linkedAttachmentIds', () => {
   it('keeps order of first appearance', () => {
-    const markdown = `[b](/api/hatch/attachments/${ID_B}) [a](/api/hatch/attachments/${ID_A})`;
+    const markdown = `[b](/api/attachments/${ID_B}) [a](/api/attachments/${ID_A})`;
     expect(linkedAttachmentIds(markdown)).toEqual([ID_B, ID_A]);
   });
 
   it('collapses duplicates, including the same id in different case, to one lower-case entry', () => {
-    const markdown = `/api/hatch/attachments/${ID_A} /api/hatch/attachments/${ID_A.toUpperCase()}`;
+    const markdown = `/api/attachments/${ID_A} /api/attachments/${ID_A.toUpperCase()}`;
     expect(linkedAttachmentIds(markdown)).toEqual([ID_A]);
   });
 
   it('finds an image, a link and a bare path together in one call', () => {
     const markdown = [
-      `![alt](/api/hatch/images/${ID_A})`,
-      `[text](/api/hatch/attachments/${ID_B})`,
-      `see /api/hatch/attachments/${ID_C} for more`,
+      `![alt](/api/images/${ID_A})`,
+      `[text](/api/attachments/${ID_B})`,
+      `see /api/attachments/${ID_C} for more`,
     ].join('\n');
     expect(linkedAttachmentIds(markdown)).toEqual([ID_A, ID_B, ID_C]);
   });
 
   it('lower-cases an upper-case guid', () => {
-    expect(linkedAttachmentIds(`/api/hatch/images/${ID_A.toUpperCase()}`)).toEqual([ID_A]);
+    expect(linkedAttachmentIds(`/api/images/${ID_A.toUpperCase()}`)).toEqual([ID_A]);
   });
 
   it('matches a full URL, a host in front is just more text before the match', () => {
-    expect(linkedAttachmentIds(`https://host/api/hatch/images/${ID_A}`)).toEqual([ID_A]);
+    expect(linkedAttachmentIds(`https://host/api/images/${ID_A}`)).toEqual([ID_A]);
   });
 
   it('is empty for no match anywhere', () => {
@@ -59,63 +59,63 @@ describe('linkedAttachmentIds', () => {
   });
 
   it('is empty for a query string form and a guid-shaped string that fails the hex groups', () => {
-    const markdown = `/api/hatch/attachments?ids=${ID_A} /api/hatch/images/not-a-guid`;
+    const markdown = `/api/attachments?ids=${ID_A} /api/images/not-a-guid`;
     expect(linkedAttachmentIds(markdown)).toEqual([]);
   });
 
   it('still lists a guid inside a fenced code span, since this is a regex scan, not a markdown parse', () => {
-    const markdown = ['```', `/api/hatch/attachments/${ID_A}`, '```'].join('\n');
+    const markdown = ['```', `/api/attachments/${ID_A}`, '```'].join('\n');
     expect(linkedAttachmentIds(markdown)).toEqual([ID_A]);
   });
 });
 
 describe('removeAttachmentLinks', () => {
   it('drops an image reference alone on its line, and one of its two flanking blank lines', () => {
-    const markdown = `before\n\n![alt](/api/hatch/images/${ID_A})\n\nafter`;
+    const markdown = `before\n\n![alt](/api/images/${ID_A})\n\nafter`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\n\nafter');
   });
 
   it('drops a link reference alone on its line with no flanking blank lines', () => {
-    const markdown = `before\n[text](/api/hatch/attachments/${ID_A})\nafter`;
+    const markdown = `before\n[text](/api/attachments/${ID_A})\nafter`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
   });
 
   it('drops a bare path alone on its line the same as a link', () => {
-    const markdown = `before\n/api/hatch/attachments/${ID_A}\nafter`;
+    const markdown = `before\n/api/attachments/${ID_A}\nafter`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
   });
 
   it('strips a mid-sentence reference and leaves the rest of the sentence intact', () => {
-    const markdown = `Check [report.pdf](/api/hatch/attachments/${ID_A}) for details.`;
+    const markdown = `Check [report.pdf](/api/attachments/${ID_A}) for details.`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('Check for details.');
   });
 
   it('leaves no leading blank line when the reference was the first line', () => {
-    const markdown = `[text](/api/hatch/attachments/${ID_A})\n\nafter`;
+    const markdown = `[text](/api/attachments/${ID_A})\n\nafter`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('after');
   });
 
   it('leaves no trailing blank line when the reference was the last line', () => {
-    const markdown = `before\n\n[text](/api/hatch/attachments/${ID_A})`;
+    const markdown = `before\n\n[text](/api/attachments/${ID_A})`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('before');
   });
 
   it('matches regardless of case between the markdown and the id passed in', () => {
-    const markdown = `before\n[text](/api/hatch/attachments/${ID_A.toUpperCase()})\nafter`;
+    const markdown = `before\n[text](/api/attachments/${ID_A.toUpperCase()})\nafter`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('before\nafter');
   });
 
   it('leaves a different id untouched', () => {
-    const markdown = `[a](/api/hatch/attachments/${ID_A})\n[b](/api/hatch/attachments/${ID_B})`;
-    expect(removeAttachmentLinks(markdown, ID_A)).toBe(`[b](/api/hatch/attachments/${ID_B})`);
+    const markdown = `[a](/api/attachments/${ID_A})\n[b](/api/attachments/${ID_B})`;
+    expect(removeAttachmentLinks(markdown, ID_A)).toBe(`[b](/api/attachments/${ID_B})`);
   });
 
   it('is empty when the whole text was the one reference', () => {
-    expect(removeAttachmentLinks(`/api/hatch/attachments/${ID_A}`, ID_A)).toBe('');
+    expect(removeAttachmentLinks(`/api/attachments/${ID_A}`, ID_A)).toBe('');
   });
 
   it('leaves no leading space before trailing prose on the same line', () => {
-    const markdown = `[report.pdf](/api/hatch/attachments/${ID_A}) see attached.`;
+    const markdown = `[report.pdf](/api/attachments/${ID_A}) see attached.`;
     expect(removeAttachmentLinks(markdown, ID_A)).toBe('see attached.');
   });
 });

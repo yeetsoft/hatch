@@ -61,7 +61,7 @@ describe('setStatusRunnerTags', () => {
     const result = await setStatusRunnerTags(7, { tags: ['breakdown', 'macos'] });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/statuses/7/runner-tags',
+      '/api/statuses/7/runner-tags',
       expect.objectContaining({ method: 'PUT', body: '{"tags":["breakdown","macos"]}' }),
     );
     expect(result).toEqual(status);
@@ -81,7 +81,7 @@ describe('runner orders', () => {
     const result = await orderRunner('here:/checkouts/one', { kind: 'work', key: 'HA-12' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
+      '/api/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'POST', body: '{"kind":"work","key":"HA-12"}' }),
     );
     expect(result).toEqual(held);
@@ -94,7 +94,7 @@ describe('runner orders', () => {
     await expect(withdrawOrder('here:/checkouts/one')).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fcheckouts%2Fone/order',
+      '/api/runners/here%3A%2Fcheckouts%2Fone/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
   });
@@ -138,13 +138,13 @@ describe('runners page calls', () => {
     return fetchMock;
   };
 
-  it('getAllRunners GETs /api/hatch/runners with no live flag', async () => {
+  it('getAllRunners GETs /api/runners with no live flag', async () => {
     const rows = [{ name: 'Gone' }] as Runner[];
     const fetchMock = answering(rows);
 
     await expect(getAllRunners()).resolves.toEqual(rows);
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/hatch/runners', expect.objectContaining({}));
+    expect(fetchMock).toHaveBeenCalledWith('/api/runners', expect.objectContaining({}));
   });
 
   it('suggestRunnerName GETs suggest-name and reads the bare string', async () => {
@@ -152,7 +152,7 @@ describe('runners page calls', () => {
 
     await expect(suggestRunnerName()).resolves.toBe('Data');
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/hatch/runners/suggest-name', expect.objectContaining({}));
+    expect(fetchMock).toHaveBeenCalledWith('/api/runners/suggest-name', expect.objectContaining({}));
   });
 
   it('createRunner POSTs the request and returns the minted runner', async () => {
@@ -162,7 +162,7 @@ describe('runners page calls', () => {
     await expect(createRunner({ name: 'Data', ownerPersonId: 'p1' })).resolves.toEqual(minted);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners',
+      '/api/runners',
       expect.objectContaining({ method: 'POST', body: '{"name":"Data","ownerPersonId":"p1"}' }),
     );
   });
@@ -174,7 +174,7 @@ describe('runners page calls', () => {
     await expect(rotateRunner('here:/x')).resolves.toEqual(minted);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/rotate',
+      '/api/runners/here%3A%2Fx/rotate',
       expect.objectContaining({ method: 'POST' }),
     );
   });
@@ -185,7 +185,7 @@ describe('runners page calls', () => {
     await revokeRunner('here:/x');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/revoke',
+      '/api/runners/here%3A%2Fx/revoke',
       expect.objectContaining({ method: 'POST' }),
     );
   });
@@ -196,7 +196,7 @@ describe('runners page calls', () => {
     await setRunnerOwner('here:/x', null);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/owner',
+      '/api/runners/here%3A%2Fx/owner',
       expect.objectContaining({ method: 'PUT', body: '{"personId":null}' }),
     );
   });
@@ -208,7 +208,7 @@ describe('runners page calls', () => {
     await expect(patchRunnerSession('here:/x', 7, { state: 'paused' })).resolves.toEqual(runner);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/sessions/7',
+      '/api/runners/here%3A%2Fx/sessions/7',
       expect.objectContaining({ method: 'PATCH', body: '{"state":"paused"}' }),
     );
   });
@@ -220,7 +220,7 @@ describe('runners page calls', () => {
     await expect(putRunnerRefusedModels('here:/x', ['fable', 'claude-opus-5'])).resolves.toEqual(runner);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/refused-models',
+      '/api/runners/here%3A%2Fx/refused-models',
       expect.objectContaining({ method: 'PUT', body: '{"models":["fable","claude-opus-5"]}' }),
     );
   });
@@ -232,7 +232,7 @@ describe('runners page calls', () => {
     await expect(orderRunnerSession('here:/x', 7, { kind: 'work', key: 'HA-12' })).resolves.toEqual(runner);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/sessions/7/order',
+      '/api/runners/here%3A%2Fx/sessions/7/order',
       expect.objectContaining({ method: 'POST', body: '{"kind":"work","key":"HA-12"}' }),
     );
   });
@@ -243,7 +243,7 @@ describe('runners page calls', () => {
     await expect(withdrawSessionOrder('here:/x', 7)).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/sessions/7/order',
+      '/api/runners/here%3A%2Fx/sessions/7/order',
       expect.objectContaining({ method: 'DELETE' }),
     );
   });
@@ -254,7 +254,7 @@ describe('runners page calls', () => {
     await expect(pauseAllSessions('here:/x')).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/pause-all',
+      '/api/runners/here%3A%2Fx/pause-all',
       expect.objectContaining({ method: 'POST' }),
     );
   });
@@ -265,7 +265,7 @@ describe('runners page calls', () => {
     await expect(stopAllSessions('here:/x')).resolves.toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/runners/here%3A%2Fx/stop-all',
+      '/api/runners/here%3A%2Fx/stop-all',
       expect.objectContaining({ method: 'POST' }),
     );
   });
@@ -284,7 +284,7 @@ describe('omitRunner', () => {
     const result = await omitRunner('HA-12', 'host:/checkouts/one', { reason: 'too risky' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      '/api/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
       expect.objectContaining({ method: 'PUT', body: '{"reason":"too risky"}' }),
     );
     expect(result).toEqual(issue);
@@ -304,7 +304,7 @@ describe('liftRunnerOmission', () => {
     const result = await liftRunnerOmission('HA-12', 'host:/checkouts/one');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/hatch/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
+      '/api/issues/HA-12/omitted-runners/host%3A%2Fcheckouts%2Fone',
       expect.objectContaining({ method: 'DELETE' }),
     );
     expect(result).toEqual(issue);
@@ -327,7 +327,7 @@ describe('getChangelogReport', () => {
 
   it('sends the level and offset alone when nothing else is set', async () => {
     expect(await urlOf({ level: 'story', offsetMinutes: 0 })).toBe(
-      '/api/hatch/reports/changelog?level=story&offsetMinutes=0',
+      '/api/reports/changelog?level=story&offsetMinutes=0',
     );
   });
 
@@ -343,7 +343,7 @@ describe('getChangelogReport', () => {
     });
 
     expect(url).toBe(
-      '/api/hatch/reports/changelog?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+      '/api/reports/changelog?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
         '&projectId=3&projectId=5&bucket=week&level=epic&offsetMinutes=-300&loose=true',
     );
   });
@@ -351,7 +351,7 @@ describe('getChangelogReport', () => {
   it('leaves off a false loose, an empty from and a null bucket', async () => {
     expect(
       await urlOf({ loose: false, from: '', bucket: null, projectId: [], level: 'story', offsetMinutes: 60 }),
-    ).toBe('/api/hatch/reports/changelog?level=story&offsetMinutes=60');
+    ).toBe('/api/reports/changelog?level=story&offsetMinutes=60');
   });
 });
 
@@ -371,7 +371,7 @@ describe('getActivityReport', () => {
 
   it('sends the actor, offset and gap/lead alone when nothing else is set', async () => {
     expect(await urlOf({ actor: 'Ada', offsetMinutes: 0, gap: 30, lead: 15 })).toBe(
-      '/api/hatch/reports/activity?actor=Ada&offsetMinutes=0&gap=30&lead=15',
+      '/api/reports/activity?actor=Ada&offsetMinutes=0&gap=30&lead=15',
     );
   });
 
@@ -388,7 +388,7 @@ describe('getActivityReport', () => {
     });
 
     expect(url).toBe(
-      '/api/hatch/reports/activity?actor=Ada&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+      '/api/reports/activity?actor=Ada&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
         '&projectId=3&projectId=5&offsetMinutes=-300&window=7&gap=45&lead=20',
     );
   });
@@ -405,7 +405,7 @@ describe('getActivityReport', () => {
         gap: 30,
         lead: 15,
       }),
-    ).toBe('/api/hatch/reports/activity?actor=Rall+%26+Co+runner&offsetMinutes=60&gap=30&lead=15');
+    ).toBe('/api/reports/activity?actor=Rall+%26+Co+runner&offsetMinutes=60&gap=30&lead=15');
   });
 
   it('always sends the offset, and the window only when set', async () => {
@@ -436,20 +436,20 @@ describe('getActivity', () => {
   };
 
   it('sends no query string when nothing is set', async () => {
-    expect(await urlOf({})).toBe('/api/hatch/activity');
+    expect(await urlOf({})).toBe('/api/activity');
   });
 
   it('keeps limit and offset as they were, and repeats projectId once per id after them', async () => {
     expect(await urlOf({ limit: 20, offset: 40, projectId: [3, 5] })).toBe(
-      '/api/hatch/activity?limit=20&offset=40&projectId=3&projectId=5',
+      '/api/activity?limit=20&offset=40&projectId=3&projectId=5',
     );
-    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/activity?projectId=3&projectId=5');
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/activity?projectId=3&projectId=5');
   });
 
   it('treats an empty or null projectId as none', async () => {
-    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/activity');
-    expect(await urlOf({ projectId: null })).toBe('/api/hatch/activity');
-    expect(await urlOf({ limit: 20, projectId: null })).toBe('/api/hatch/activity?limit=20');
+    expect(await urlOf({ projectId: [] })).toBe('/api/activity');
+    expect(await urlOf({ projectId: null })).toBe('/api/activity');
+    expect(await urlOf({ limit: 20, projectId: null })).toBe('/api/activity?limit=20');
   });
 });
 
@@ -468,7 +468,7 @@ describe('getWorkLogSessions', () => {
   };
 
   const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z' };
-  const base = '/api/hatch/work-log/sessions?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z';
+  const base = '/api/work-log/sessions?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z';
 
   it('builds today\'s URL without a projectId, leaving out null fields', async () => {
     expect(await urlOf(range)).toBe(base);
@@ -501,7 +501,7 @@ describe('getWorkLogHistory', () => {
 
   const range = { from: '2026-10-01T00:00:00.000Z', to: '2026-11-01T00:00:00.000Z', offsetMinutes: -300 };
   const base =
-    '/api/hatch/work-log/history?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&offsetMinutes=-300';
+    '/api/work-log/history?from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z&offsetMinutes=-300';
 
   it('builds today\'s URL without a projectId, leaving out null fields', async () => {
     expect(await urlOf(range)).toBe(base);
@@ -533,19 +533,19 @@ describe('getPlan', () => {
   };
 
   it('sends no query string with no projectId', async () => {
-    expect(await urlOf()).toBe('/api/hatch/plan');
+    expect(await urlOf()).toBe('/api/plan');
   });
 
   it('sends one projectId, as a single value', async () => {
-    expect(await urlOf(3)).toBe('/api/hatch/plan?projectId=3');
+    expect(await urlOf(3)).toBe('/api/plan?projectId=3');
   });
 
   it('repeats projectId once per id, given a list', async () => {
-    expect(await urlOf([3, 5])).toBe('/api/hatch/plan?projectId=3&projectId=5');
+    expect(await urlOf([3, 5])).toBe('/api/plan?projectId=3&projectId=5');
   });
 
   it('treats an empty list as none', async () => {
-    expect(await urlOf([])).toBe('/api/hatch/plan');
+    expect(await urlOf([])).toBe('/api/plan');
   });
 });
 
@@ -564,20 +564,20 @@ describe('getTimeline', () => {
   };
 
   it('sends no query string when nothing is set', async () => {
-    expect(await urlOf({})).toBe('/api/hatch/reports/timeline');
+    expect(await urlOf({})).toBe('/api/reports/timeline');
   });
 
   it('sends one projectId, as a single value', async () => {
-    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/reports/timeline?projectId=3');
+    expect(await urlOf({ projectId: 3 })).toBe('/api/reports/timeline?projectId=3');
   });
 
   it('repeats projectId once per id, given a list', async () => {
-    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/reports/timeline?projectId=3&projectId=5');
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/reports/timeline?projectId=3&projectId=5');
   });
 
   it('treats an empty or null projectId as none', async () => {
-    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/reports/timeline');
-    expect(await urlOf({ projectId: null })).toBe('/api/hatch/reports/timeline');
+    expect(await urlOf({ projectId: [] })).toBe('/api/reports/timeline');
+    expect(await urlOf({ projectId: null })).toBe('/api/reports/timeline');
   });
 });
 
@@ -596,20 +596,20 @@ describe('searchIssues', () => {
   };
 
   it('sends no query string with no filter set', async () => {
-    expect(await urlOf({})).toBe('/api/hatch/issues');
+    expect(await urlOf({})).toBe('/api/issues');
   });
 
   it('sends one projectId, as a single value', async () => {
-    expect(await urlOf({ projectId: 3 })).toBe('/api/hatch/issues?projectId=3');
+    expect(await urlOf({ projectId: 3 })).toBe('/api/issues?projectId=3');
   });
 
   it('repeats projectId once per id, given a list', async () => {
-    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/hatch/issues?projectId=3&projectId=5');
+    expect(await urlOf({ projectId: [3, 5] })).toBe('/api/issues?projectId=3&projectId=5');
   });
 
   it('treats an empty or null projectId as none', async () => {
-    expect(await urlOf({ projectId: [] })).toBe('/api/hatch/issues');
-    expect(await urlOf({ projectId: null })).toBe('/api/hatch/issues');
+    expect(await urlOf({ projectId: [] })).toBe('/api/issues');
+    expect(await urlOf({ projectId: null })).toBe('/api/issues');
   });
 });
 
@@ -625,7 +625,7 @@ describe('uploadAttachment', () => {
 
     const result = await uploadAttachment(new Blob(['x'], { type: 'image/png' }), 'shot.png');
 
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/attachments');
     const init = fetchMock.mock.calls[0][1]!;
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
@@ -649,7 +649,7 @@ describe('getAttachments', () => {
 
     const result = await getAttachments(['a', 'b']);
 
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/hatch/attachments?ids=a,b');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/attachments?ids=a,b');
     expect(result).toEqual(found);
   });
 });

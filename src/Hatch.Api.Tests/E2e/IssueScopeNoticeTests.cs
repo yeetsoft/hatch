@@ -175,9 +175,9 @@ public class IssueScopeNoticeTests(ITestOutputHelper output)
         var keys = new List<string>();
         foreach (var key in new[] { "SCA", "SCB" })
         {
-            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new(key, key));
+            var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new(key, key));
             var issue = await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, "task", $"A task in {key}", null, null, null, null));
+                http, "/api/issues", new(project.Id, "task", $"A task in {key}", null, null, null, null));
             keys.Add(issue.Key);
         }
 

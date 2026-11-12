@@ -21,7 +21,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// ancestor carries is lifted on the ancestor.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueRunnerOmissionsController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

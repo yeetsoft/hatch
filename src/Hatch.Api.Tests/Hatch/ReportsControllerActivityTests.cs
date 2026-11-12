@@ -10,7 +10,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/reports/activity</c>: one actor's events loaded, folded by
+/// <c>GET /api/reports/activity</c>: one actor's events loaded, folded by
 /// <see cref="ActivityReport"/> and answered as an <see cref="ActivityReportDto"/>,
 /// wired against the in-memory database.
 /// </summary>

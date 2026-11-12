@@ -26,7 +26,7 @@ public sealed class ChangelogCommandTests
     public async Task A_day_prints_its_heading_its_features_and_an_also_list_of_its_fixes()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13",
                 features: [Entry("AER-12", "Auth: the first Admin", note: "Admins can now invite teammates by email.", descendantCount: 4)],
                 fixes: [Entry("AER-9", "Fixed a crash on close", type: "bug")])));
@@ -49,7 +49,7 @@ public sealed class ChangelogCommandTests
     public async Task A_feature_with_no_descendants_says_none_beneath()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13", features: [Entry("AER-12", "A title", note: "A note")])));
 
         await new ChangelogCommand(h.Cli).RunAsync([], default);
@@ -60,7 +60,7 @@ public sealed class ChangelogCommandTests
     public async Task A_fixs_blank_note_falls_back_to_its_title_rather_than_an_empty_bullet()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13", fixes: [Entry("AER-9", "Fixed a crash on close", type: "bug", note: "  ")])));
 
         await new ChangelogCommand(h.Cli).RunAsync([], default);
@@ -71,7 +71,7 @@ public sealed class ChangelogCommandTests
     public async Task A_fixs_note_is_cut_to_its_first_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13", fixes: [Entry("AER-9", "A title", type: "bug", note: "First line.\nSecond line.")])));
 
         await new ChangelogCommand(h.Cli).RunAsync([], default);
@@ -83,7 +83,7 @@ public sealed class ChangelogCommandTests
     public async Task A_feature_with_a_blank_note_shows_no_dash_rather_than_repeating_its_title()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13", features: [Entry("AER-12", "A title")])));
 
         await new ChangelogCommand(h.Cli).RunAsync([], default);
@@ -94,7 +94,7 @@ public sealed class ChangelogCommandTests
     public async Task Two_days_are_separated_by_a_blank_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog(
+        h.Wire.Json("GET", "/api/changelog", AChangelog(
             Day("2026-10-13", features: [Entry("AER-12", "Newer")]),
             Day("2026-10-12", features: [Entry("AER-11", "Older")])));
 
@@ -117,7 +117,7 @@ public sealed class ChangelogCommandTests
     public async Task An_empty_window_prints_one_sentence_rather_than_a_blank_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog());
+        h.Wire.Json("GET", "/api/changelog", AChangelog());
 
         Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync([], default));
         Assert.Equal("Nothing has shipped yet.", h.Said);
@@ -127,56 +127,56 @@ public sealed class ChangelogCommandTests
     public async Task With_nothing_set_the_default_window_is_seven_days_and_nothing_else_is_sent()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog());
+        h.Wire.Json("GET", "/api/changelog", AChangelog());
 
         await new ChangelogCommand(h.Cli).RunAsync([], default);
 
-        Assert.Equal("?days=7", h.Wire.To("GET", "/api/hatch/changelog").Single().Query);
+        Assert.Equal("?days=7", h.Wire.To("GET", "/api/changelog").Single().Query);
     }
 
     [Fact]
     public async Task Days_resizes_the_window()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog());
+        h.Wire.Json("GET", "/api/changelog", AChangelog());
 
         await new ChangelogCommand(h.Cli).RunAsync(["--days", "30"], default);
 
-        Assert.Equal("?days=30", h.Wire.To("GET", "/api/hatch/changelog").Single().Query);
+        Assert.Equal("?days=30", h.Wire.To("GET", "/api/changelog").Single().Query);
     }
 
     [Fact]
     public async Task Before_moves_the_window_back()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog());
+        h.Wire.Json("GET", "/api/changelog", AChangelog());
 
         await new ChangelogCommand(h.Cli).RunAsync(["--before", "2026-09-01"], default);
 
-        Assert.Equal("?days=7&before=2026-09-01", h.Wire.To("GET", "/api/hatch/changelog").Single().Query);
+        Assert.Equal("?days=7&before=2026-09-01", h.Wire.To("GET", "/api/changelog").Single().Query);
     }
 
     [Fact]
     public async Task Project_resolves_the_key_to_an_id_and_sends_that()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
-        h.Wire.Json("GET", "/api/hatch/changelog", AChangelog());
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/changelog", AChangelog());
 
         Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--project", "aer"], default));
 
-        Assert.Equal("?days=7&projectId=3", h.Wire.To("GET", "/api/hatch/changelog").Single().Query);
+        Assert.Equal("?days=7&projectId=3", h.Wire.To("GET", "/api/changelog").Single().Query);
     }
 
     [Fact]
     public async Task A_project_key_nobody_has_is_refused_by_name_and_the_changelog_is_never_asked()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
 
         Assert.Equal(1, await new ChangelogCommand(h.Cli).RunAsync(["--project", "ZZZ"], default));
         Assert.Contains("there is no project ZZZ", h.Complained);
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/changelog"));
+        Assert.Empty(h.Wire.To("GET", "/api/changelog"));
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public sealed class ChangelogCommandTests
     {
         using var h = new CliHarness();
         var changelog = AChangelog(Day("2026-10-13", features: [Entry("AER-12", "Auth: the first Admin")]));
-        h.Wire.Json("GET", "/api/hatch/changelog", changelog);
+        h.Wire.Json("GET", "/api/changelog", changelog);
 
         Assert.Equal(0, await new ChangelogCommand(h.Cli).RunAsync(["--json"], default));
 

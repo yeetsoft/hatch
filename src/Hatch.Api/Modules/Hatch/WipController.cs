@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// there is a program too.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/wip")]
+[Route("api/wip")]
 public class WipController(HatchContext db, ICallerIdentity caller) : ControllerBase
 {
     [HttpGet]

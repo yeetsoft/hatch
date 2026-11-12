@@ -30,7 +30,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// in two places, disagreeing the first time somebody edited one of them.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/claim")]
+[Route("api/issues/{key}/claim")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueClaimController(
     HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time, Preemption preemption,
@@ -395,7 +395,7 @@ public class IssueClaimController(
     /// most one row: the wall off, where the claim's holder is the runner's
     /// own name, or a key named like its runner.</item>
     /// <item>Only where no session matched: for an older CLI beating
-    /// <c>POST /api/hatch/runners/{name}</c> under a key named otherwise, the
+    /// <c>POST /api/runners/{name}</c> under a key named otherwise, the
     /// single row at the checkout that was live when the claim was taken - an
     /// older CLI beats just before it claims. A row under a superseded name was
     /// already gone by then, so it is never revived (HA-2074's ghost), and a
@@ -447,7 +447,7 @@ public class IssueClaimController(
     /// <summary>
     /// Hands the holding loop's usage reading to the record
     /// <see cref="TouchRunnerAsync"/> touched - its live session and/or the one
-    /// runner row - so <c>GET /api/hatch/utilization</c> stays current while an
+    /// runner row - so <c>GET /api/utilization</c> stays current while an
     /// increment runs; the loop's own heartbeat is sent only between
     /// increments. Never to a row by checkout: that reached every name the
     /// checkout had ever used. Nothing is written where the beat carries no

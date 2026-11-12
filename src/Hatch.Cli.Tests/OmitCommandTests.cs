@@ -7,7 +7,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class OmitCommandTests
 {
-    private const string Route = "/api/hatch/issues/AER-5/omitted-runners/Sisyphus";
+    private const string Route = "/api/issues/AER-5/omitted-runners/Sisyphus";
 
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-04T12:00:00+00:00");
 
@@ -21,7 +21,7 @@ public sealed class OmitCommandTests
     public async Task One_argument_reads_an_empty_list_and_puts_nothing()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-5", Omitting());
+        h.Wire.Json("GET", "/api/issues/AER-5", Omitting());
 
         Assert.Equal(0, await new OmitCommand(h.Cli).RunAsync(["AER-5"], default));
 
@@ -34,7 +34,7 @@ public sealed class OmitCommandTests
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
         var inherited = new RunnerOmissionDto("Atlas", null, "key-two", Now.AddHours(-3), "AER-3");
-        h.Wire.Json("GET", "/api/hatch/issues/AER-5", Omitting(Own(), inherited));
+        h.Wire.Json("GET", "/api/issues/AER-5", Omitting(Own(), inherited));
 
         Assert.Equal(0, await new OmitCommand(h.Cli).RunAsync(["AER-5"], default));
 

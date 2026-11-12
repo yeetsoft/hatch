@@ -34,7 +34,7 @@ describe('projectLogoUrl', () => {
 
   it('points at the logo route, versioned by when it was last updated', () => {
     const url = projectLogoUrl({ id: 1, logoUpdatedAt: '2026-01-01T00:00:00Z' });
-    expect(url).toBe(`/api/hatch/projects/1/logo?v=${Date.parse('2026-01-01T00:00:00Z')}`);
+    expect(url).toBe(`/api/projects/1/logo?v=${Date.parse('2026-01-01T00:00:00Z')}`);
   });
 
   it('changes when the logo is replaced, so the browser never serves the old image from cache', () => {

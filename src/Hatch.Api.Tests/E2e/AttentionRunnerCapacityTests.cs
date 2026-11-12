@@ -15,7 +15,7 @@ namespace Hatch.Api.Tests.E2e;
 ///
 /// <para>Two more cases, desktop Chromium only, prove the queue modal's own
 /// sentences: a one-taker and a no-taker <c>QueueEntryDto</c> stubbed on
-/// <c>/api/hatch/work/queue</c>, opened from the board's queue control.</para>
+/// <c>/api/work/queue</c>, opened from the board's queue control.</para>
 ///
 /// <para>A scratch database has no runner and no project whose steps a live
 /// runner could be short on, so both reads are fulfilled with
@@ -140,7 +140,7 @@ public class AttentionRunnerCapacityTests(ITestOutputHelper output)
             Conflicts: [],
             RunnerCapacity: hasRow ? [Row] : []);
 
-        return context.RouteAsync("**/api/hatch/attention", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/attention", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(attention, Web),
@@ -230,7 +230,7 @@ public class AttentionRunnerCapacityTests(ITestOutputHelper output)
             new QueueEntryDto(MinimalIssue("E2E-41"), FromStatus, null, Blocked: null, Takers: [], Untaken: [new RunnerReasonDto("Nathan-PC", "out of usage")]),
         };
 
-        return context.RouteAsync("**/api/hatch/work/queue**", route => route.FulfillAsync(new()
+        return context.RouteAsync("**/api/work/queue**", route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(queue, Web),

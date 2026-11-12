@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// routes call it and shape what it decides into a response.
 /// </summary>
 [ApiController]
-[Route("api/hatch/work")]
+[Route("api/work")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class WorkController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time,

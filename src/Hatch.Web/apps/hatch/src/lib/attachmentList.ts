@@ -10,7 +10,7 @@ export { attachmentUrl } from './descriptionImage';
 export type Known = ReadonlyMap<string, Attachment | null>;
 
 const ATTACHMENT_ID_PATTERN =
-  /\/api\/hatch\/(?:images|attachments)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+  /\/api\/(?:images|attachments)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
 
 /** Every attachment id linked anywhere in `markdown`, lower-cased and in
     order of first appearance - a regex scan over the rendered path, not a
@@ -79,7 +79,7 @@ export function settle(known: Known, asked: string[], found: Attachment[]): Know
     indentation (a list item, a blockquote) when the reference opens that
     line - again never produced by `attachmentMarkdown` itself. */
 export function removeAttachmentLinks(markdown: string, id: string): string {
-  const path = `/api/hatch/(?:images|attachments)/${id}`;
+  const path = `/api/(?:images|attachments)/${id}`;
   const pattern = new RegExp(`!?\\[(?:\\\\.|[^\\]\\n])*\\]\\(${path}\\)|${path}`, 'gi');
 
   const lines = markdown.split('\n').flatMap((line) => {

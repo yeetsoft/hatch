@@ -50,7 +50,7 @@ public class DreamWeaveTests
     public void SeedBrief_EscapesQuotesAndAmpersandsInTheGetLine()
     {
         var brief = Brief("seed", "x&y \"z\"");
-        var get = brief.Split('\n').Single(l => l.Contains("/api/hatch/dreams?"));
+        var get = brief.Split('\n').Single(l => l.Contains("/api/dreams?"));
 
         Assert.Contains("%26", get);
         Assert.Contains("%22", get);
@@ -87,7 +87,7 @@ public class DreamWeaveTests
         var brief = Brief("common", null, 7);
 
         Assert.Contains("projectId=7", brief);
-        Assert.Contains("PUT /api/hatch/issues/<KEY>/dreams", brief);
+        Assert.Contains("PUT /api/issues/<KEY>/dreams", brief);
     }
 
     [Fact]

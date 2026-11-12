@@ -20,7 +20,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// against, so the board and its meter never disagree about what is claimed.
 /// </summary>
 [ApiController]
-[Route("api/hatch/board")]
+[Route("api/board")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BoardController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time, DoneHorizon horizon) : ControllerBase
