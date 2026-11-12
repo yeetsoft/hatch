@@ -232,6 +232,8 @@ issue has no pull request of its own, the record's becomes it; where it has a
 different one, the write is refused and nothing is written. The first write adds
 a `contribution_filed` event carrying the URL, branch, author and origin.
 
+How a contribution is filed, approved at the epic level and merged is told in order on [the review page](review-pull-requests-and-the-merge-train#contributions); `docs/hatch.md` carries the record and the envelope under "Contribution", and the approval path under "The approval column".
+
 ### The mirrored tree
 
 A pull request a Hatch instance opens for its own issue carries that issue's
