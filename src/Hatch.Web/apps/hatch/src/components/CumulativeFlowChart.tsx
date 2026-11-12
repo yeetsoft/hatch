@@ -1,11 +1,13 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
+  bandEdge,
   bandPolygon,
   bandStyle,
   bands,
   breakdown,
   cutKeys,
+  drawOrder,
   labelFor,
   momentLabel,
   peakLabel,
@@ -17,9 +19,6 @@ import type { ColourBy, PinAction } from '../lib/cumulativeFlow';
 import { CHART_UNITS, ticks, todayX, xOf, type Scale } from '../lib/timeline';
 import { CumulativeFlowPin } from './CumulativeFlowPin';
 import type { CumulativeFlow, Project, Status } from '../types';
-
-/** Own to this component, as `SpendGraph.tsx`'s is. */
-const HEIGHT = 100;
 
 /** The hover card's own footprint, matching its CSS `width` exactly - a fixed
     width, not `max-width`, is what keeps the flip math below exact. */
@@ -68,6 +67,32 @@ export function CumulativeFlowChart({
   const [pointer, setPointer] = useState<{ index: number; x: number; y: number } | null>(null);
   const [pin, setPin] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  /* The first-render and server-render fallback - `renderToStaticMarkup`
+     runs no effects, so this is the size the page tests see. The
+     `ResizeObserver` below replaces it with the svg's own measured box the
+     moment it mounts in a real DOM. */
+  const [size, setSize] = useState({ width: 600, height: 200 });
+
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const measure = () => {
+      const rect = svg.getBoundingClientRect();
+      setSize((current) =>
+        current.width === rect.width && current.height === rect.height
+          ? current
+          : { width: rect.width, height: rect.height },
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(svg);
+
+    return () => observer.disconnect();
+  }, []);
 
   // The answer object is new on every load; this is React's own
   // adjust-state-during-render pattern, not an effect, so the pin never
@@ -152,8 +177,7 @@ export function CumulativeFlowChart({
               <svg
                 ref={svgRef}
                 className="hatch-cumulative-flow-plot"
-                viewBox={`0 0 ${CHART_UNITS} ${HEIGHT}`}
-                preserveAspectRatio="none"
+                viewBox={`0 0 ${size.width} ${size.height}`}
                 role="img"
                 aria-label={peakLabel(answer.points, by)}
                 tabIndex={0}
@@ -164,12 +188,20 @@ export function CumulativeFlowChart({
                 onPointerCancel={stopDragging}
                 onKeyDown={onKeyDown}
               >
-                {series.map((band, i) => (
+                {drawOrder(keys, series).map(({ key, band }) => (
                   <polygon
-                    key={keys[keys.length - 1 - i]}
+                    key={key}
                     className="hatch-timeline-segment"
-                    points={bandPolygon(band, HEIGHT)}
-                    style={bandStyle(by, keys[keys.length - 1 - i], statuses, projects)}
+                    points={bandPolygon(band, size.width, size.height)}
+                    style={bandStyle(by, key, statuses, projects)}
+                  />
+                ))}
+
+                {drawOrder(keys, series).map(({ key, band }) => (
+                  <polyline
+                    key={key}
+                    className="hatch-cumulative-flow-edge"
+                    points={bandEdge(band, size.width, size.height)}
                   />
                 ))}
 
@@ -177,10 +209,10 @@ export function CumulativeFlowChart({
                   <rect
                     key={point.at}
                     className="hatch-spend-slot"
-                    x={slotted[i].x}
+                    x={(slotted[i].x * size.width) / CHART_UNITS}
                     y={0}
-                    width={slotted[i].width}
-                    height={HEIGHT}
+                    width={(slotted[i].width * size.width) / CHART_UNITS}
+                    height={size.height}
                   />
                 ))}
               </svg>
