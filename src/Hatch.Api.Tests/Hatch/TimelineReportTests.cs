@@ -1113,6 +1113,7 @@ public class TimelineReportControllerTests
 
         var epic = Assert.Single(timeline.Epics);
         Assert.Equal("bob", epic.CreatedBy);
+        Assert.Equal("bob", epic.Issue.CreatedBy);
         Assert.Equal(["ann", "bob"], timeline.Creators);
     }
 

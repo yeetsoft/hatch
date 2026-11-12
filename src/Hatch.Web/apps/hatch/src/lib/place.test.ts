@@ -46,6 +46,7 @@ const card = (
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  createdBy: 'Britta Perry',
 });
 
 /* The board as the API hands it over: grouped by column, ranked within it. */

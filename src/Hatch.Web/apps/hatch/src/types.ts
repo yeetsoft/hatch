@@ -375,6 +375,9 @@ export interface IssueCard {
   /** Why the issue finished with no code, or absent; null on an issue with
       children, whatever it declared. See IssueCardDto.NoCode. */
   noCode?: string | null;
+  /** Who filed this issue - a person's or an API key's name, never a person
+      id. See IssueCardDto.CreatedBy. */
+  createdBy: string;
 }
 
 /** The lease a running dispatcher holds on an issue - see IssueClaimDto.

@@ -109,6 +109,7 @@ public class ReportsController(
                     i.PullRequestUrl,
                     i.ClosedAt,
                     i.NoCode,
+                    i.CreatedBy,
                     Claim = new ClaimSnapshot(
                         i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                         i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -153,7 +154,8 @@ public class ReportsController(
                     OnePrOwn: onePrOwn,
                     OnePrFrom: onePrFrom,
                     ClosedAt: i.ClosedAt,
-                    NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
+                    NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
+                    CreatedBy: i.CreatedBy);
             }
         }
 
@@ -1042,6 +1044,7 @@ public class ReportsController(
                 i.PullRequestUrl,
                 i.ClosedAt,
                 i.NoCode,
+                i.CreatedBy,
                 Claim = new ClaimSnapshot(
                     i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
                     i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
@@ -1084,7 +1087,8 @@ public class ReportsController(
                 OnePrOwn: onePrOwn,
                 OnePrFrom: onePrFrom,
                 ClosedAt: i.ClosedAt,
-                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities));
+                NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
+                CreatedBy: i.CreatedBy);
         }
 
         return (cards, tree);

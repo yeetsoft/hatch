@@ -108,6 +108,7 @@ const card = (over: Partial<IssueCard> = {}): IssueCard => ({
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  createdBy: 'Britta Perry',
   ...over,
 });
 

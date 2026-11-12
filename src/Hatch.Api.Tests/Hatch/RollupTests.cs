@@ -34,6 +34,18 @@ public class RollupTests
     }
 
     [Fact]
+    public async Task ACard_CarriesTheIssuesOwnCreatedBy()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the epic", h.Todo, createdBy: "Pam Beesly");
+        var story = await h.FileAsync("story", "the story", h.Todo, parentId: epic.Id, createdBy: "rall-runner");
+
+        var plan = Value(await h.Plan.GetIssuePlan(Key(epic), default));
+
+        Assert.Equal("rall-runner", Assert.Single(plan.Children).Issue.CreatedBy);
+    }
+
+    [Fact]
     public async Task AParent_IsExactlyTheSumOfItsChildren()
     {
         var h = await NewAsync();
@@ -365,7 +377,7 @@ public class RollupTests
 
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int statusId,
-            long rank = 1024, long? parentId = null, DateTimeOffset? readyAt = null)
+            long rank = 1024, long? parentId = null, DateTimeOffset? readyAt = null, string createdBy = "operator")
         {
             var issue = new EfHatchIssue
             {
@@ -379,7 +391,7 @@ public class RollupTests
                 ParentId = parentId,
                 ReadyAt = readyAt,
                 ReadyAtHasTime = readyAt is not null,
-                CreatedBy = "operator",
+                CreatedBy = createdBy,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             };

@@ -55,7 +55,8 @@ public class BoardController(
         string? PullRequestUrl,
         DateTimeOffset? ClosedAt,
         string? NoCode,
-        ClaimSnapshot Claim);
+        ClaimSnapshot Claim,
+        string CreatedBy);
 
     /// <summary>
     /// The projection itself, as an expression tree so it translates to SQL -
@@ -89,7 +90,8 @@ public class BoardController(
         new ClaimSnapshot(
             i.ClaimToken, i.ClaimedBy, i.ClaimRunner,
             i.ClaimedAt, i.ClaimHeartbeatAt, i.ClaimChatter, i.ClaimChatterAt,
-            i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds));
+            i.ClaimQuietLimitSeconds, i.ClaimMaxRunSeconds),
+        i.CreatedBy);
 
     [HttpGet]
     public async Task<ActionResult<BoardDto>> GetBoard(CancellationToken ct)
@@ -227,7 +229,8 @@ public class BoardController(
                 Dangerous: dangerous,
                 DangerousFrom: dangerousFrom,
                 NoCode: NoCode.OnCard(i.NoCode, i.Id, priorities),
-                Contribution: contributions.GetValueOrDefault(i.Id));
+                Contribution: contributions.GetValueOrDefault(i.Id),
+                CreatedBy: i.CreatedBy);
         }
 
         var cards = issues.Select(Card).ToList();
