@@ -146,6 +146,79 @@ public class TrunkBuildBugControllerTests
     }
 
     [Fact]
+    public async Task APreApprovalLevel_IsFiledAsNamed_ForAPersonWhoMayApprove()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+        var ada = h.Actors.AddPerson("Ada");
+        h.Actors.Me = ada;
+        h.Db.ProjectMembers.Add(new EfHatchProjectMember
+        {
+            ProjectId = h.ProjectId, PersonId = ada.Id, Role = ProjectMemberRole.Approver, CreatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, null, "preapproved"), default));
+
+        Assert.Equal("preapproved", dto.PreApproval);
+    }
+
+    [Fact]
+    public async Task PreApprovedFromAPersonWhoMayNotApprove_IsRefusedForbidden_AndFilesNothing()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var result = Assert.IsType<ObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, null, "preapproved"), default)).Result);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, result.StatusCode);
+        Assert.Contains("owner or approver", result.Value!.ToString());
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ThePreApprovalLevel_WinsOverTheOlderExpressBoolean_WhenBothAreSent()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(true, null, null, "none"), default));
+
+        Assert.Equal("none", dto.PreApproval);
+        Assert.False(dto.Express);
+    }
+
+    [Fact]
+    public async Task TheOlderExpressBoolean_StillFilesExpress_WhenNoLevelIsSent()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var dto = Value(await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(true, null, null), default));
+
+        Assert.Equal("express", dto.PreApproval);
+    }
+
+    [Fact]
+    public async Task AnUnknownPreApprovalLevel_IsRefused_InTheWordsTheLevelRouteUses()
+    {
+        var h = await NewAsync();
+        await h.BindRepositoryAsync(h.ProjectId, Canonical);
+        var row = await h.TrunkAsync(BuildVerdicts.Failed, failing: ["api"]);
+
+        var result = Assert.IsType<BadRequestObjectResult>(
+            (await h.Bug.PostBug(row.Id, new TrunkBuildBugRequest(null, null, null, "nonsense"), default)).Result);
+
+        Assert.Equal(IssuePreApprovalController.UnknownLevel("nonsense"), result.Value);
+        Assert.Empty(await h.Db.Issues.ToListAsync());
+    }
+
+    [Fact]
     public async Task ABody_WithNoStatusId_StillFilesIntoTheLeftmostColumn()
     {
         var h = await NewAsync();

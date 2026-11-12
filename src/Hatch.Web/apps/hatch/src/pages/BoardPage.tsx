@@ -13,7 +13,7 @@ import {
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, Callout, EmptyState } from '@hatch/ui';
-import { deleteIssue, getAssignees, getBoard, moveIssue } from '../api/client';
+import { deleteIssue, getAssignees, moveIssue } from '../api/client';
 import { BoardCard, CardPreview } from '../components/BoardCard';
 import { BoardFilters } from '../components/BoardFilters';
 import { CloseSubtreeDialog } from '../components/CloseSubtreeDialog';
@@ -54,7 +54,7 @@ import {
 import type { CardFilter } from '../lib/filter';
 import { cardsInScope } from '../lib/scope';
 import { aimAt } from '../lib/aim';
-import { getFlowBoard } from '../lib/flowViz';
+import { boardLoader } from '../lib/flowViz';
 import type { FlowBoard } from '../lib/flowViz';
 import { whereOnBoard } from '../lib/goTo';
 import { planGoToWork, statusLine } from '../lib/goToWork';
@@ -161,8 +161,27 @@ export function BoardPage() {
   // band or a card holding keyboard focus, whichever last changed it.
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
+  // Above the loader, which reads `filter.blocked`: a hook cannot be called
+  // before the state it takes its argument from.
+  const [params, setParams] = useSearchParams();
+  /* Only two halves of the filter outlive the page: the types and the
+     project are both read from the browser's storage (readBoardTypes,
+     initialProject) on the way into local state, rather than off `params`
+     or storage on every render - a pasted link's `?project=` wins over
+     storage when it names one. The write-back for both lives in its own
+     effect, below. */
+  const [filter, setFilter] = useState<CardFilter>(() => ({
+    ...DEFAULT_FILTER,
+    types: readBoardTypes(),
+    contributions: readBoardContributions(),
+    project: initialProject(params.get(PROJECT)),
+  }));
+
+  // The queue is read for the flow view and for the Blocked switch, which
+  // works at phone width too, so unlike `flowing` this has no `!stacked`.
+  const queueing = flowing || filter.blocked;
   // A changed `load` re-runs useLoaded's effect, so pressing FlowVizControl
-  // reads at once rather than waiting for the next 30s tick - see
+  // or Blocked reads at once rather than waiting for the next 30s tick - see
   // lib/flowViz.ts. Board and queue land under one ledger this way, so the
   // drag/move pause below holds both.
   const {
@@ -171,7 +190,7 @@ export function BoardPage() {
     error,
     setError,
     reload,
-  } = useLoaded<FlowBoard>(flowing ? getFlowBoard : getBoard, {
+  } = useLoaded<FlowBoard>(boardLoader(queueing), {
     everyMs: POLL_MS,
     paused: dragging !== null || moving > 0,
   });
@@ -199,20 +218,7 @@ export function BoardPage() {
      which leaves the press unoffered and the state still drawn. */
   const [directory, setDirectory] = useState<AssigneeDirectory | null>(null);
   const [filing, setFiling] = useState(false);
-  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  /* Only two halves of the filter outlive the page: the types and the
-     project are both read from the browser's storage (readBoardTypes,
-     initialProject) on the way into local state, rather than off `params`
-     or storage on every render - a pasted link's `?project=` wins over
-     storage when it names one. The write-back for both lives in its own
-     effect, below. */
-  const [filter, setFilter] = useState<CardFilter>(() => ({
-    ...DEFAULT_FILTER,
-    types: readBoardTypes(),
-    contributions: readBoardContributions(),
-    project: initialProject(params.get(PROJECT)),
-  }));
 
   /* Wraps the plain setter so a change to the project also writes (or drops)
      `?project=` - replaced rather than pushed, exactly as PlanPage's picker
@@ -371,6 +377,14 @@ export function BoardPage() {
     );
     return filedBy === filter.filedBy ? filter : { ...filter, filedBy };
   }, [filter, filers]);
+  /* The work queue keyed by `row.issue.key`, for a lookup rather than a scan:
+     null before the queue has landed or when its read failed, and while
+     neither the flow view nor Blocked is asking for it. Cards the Blocked
+     switch reads, and (through `rows`) the bands the flow view draws. */
+  const queueRows = useMemo(
+    () => (board?.queue ? new Map(board.queue.map((row) => [row.issue.key, row])) : null),
+    [board?.queue],
+  );
   /* Grouped once per status, right where the filter's own output would
      otherwise have been a flat list: `Column`/`PhoneColumn` just filter this
      by statusId (unchanged), so a column's drawn order falls out of this one
@@ -379,12 +393,12 @@ export function BoardPage() {
      the whole board, exactly as lib/lineage.ts's docstring requires, so a
      parent hidden by the type filter still costs its children no depth. */
   const visible: LineageCard[] = useMemo(() => {
-    const vis = filterCards(cards, shown, storiesByEpic);
+    const vis = filterCards(cards, shown, storiesByEpic, filter.blocked ? queueRows : null);
     const carriedCards = vis.filter((c) => !carriedKeys.has(c.key));
     const statusIds: number[] = [];
     for (const c of carriedCards) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
     return statusIds.flatMap((id) => lineage(cards, carriedCards.filter((c) => c.statusId === id)));
-  }, [cards, shown, carriedKeys, storiesByEpic]);
+  }, [cards, shown, carriedKeys, storiesByEpic, filter.blocked, queueRows]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
@@ -400,13 +414,9 @@ export function BoardPage() {
      the cards or the filter change, which is what makes it live. */
   const narrow = useMemo(() => narrowColumns(columns, visible), [columns, visible]);
 
-  /* Keyed by `row.issue.key`, for Column's BoardCard calls to band a card by
-     a lookup rather than a scan - null while flow-viz is off, or before its
-     queue has landed. */
-  const rows = useMemo(
-    () => (flowing && board?.queue ? new Map(board.queue.map((row) => [row.issue.key, row])) : null),
-    [flowing, board?.queue],
-  );
+  /* For Column's BoardCard calls to band a card - null while flow-viz is off,
+     or before its queue has landed. */
+  const rows = flowing ? queueRows : null;
 
   // Null while flow-viz is off or a drag is underway, else the key
   // Callout.Group reports open - the group already reports null while
@@ -687,9 +697,9 @@ export function BoardPage() {
 
   // useLoaded clears `error` on any board that lands, so a failed queue read
   // (the board itself still landing fine) has to be read off the answer's
-  // own `queueError` instead - and only while flow-viz is on, so a stale
+  // own `queueError` instead - and only while the queue is being read, so a stale
   // queueError left over from before a press turned it off is not shown.
-  const boardError = error ?? (flowing ? board.queueError ?? null : null);
+  const boardError = error ?? (queueing ? board.queueError ?? null : null);
 
   // Marks the card and peeks it - or, where the card is not on the board to be
   // marked, peeks it and leaves the filter, the folds and the scroll alone.

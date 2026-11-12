@@ -4,6 +4,7 @@ import {
   anyClaimed,
   flowBand,
   flowSentence,
+  isBlocked,
   isRefusedRunner,
   mergeTrains,
   queueCard,
@@ -736,5 +737,42 @@ describe('trainDriverWords', () => {
 
   it('says no runner is driving it when there is none', () => {
     expect(trainDriverWords(null)).toBe('no runner is driving it');
+  });
+});
+
+describe('isBlocked', () => {
+  const here = card({ statusId: 1 });
+  const row = (over: Partial<QueueEntry> = {}) => entry({ fromStatus: status({ id: 1 }), ...over });
+
+  it('is blocked for an other block, or one with no blockedKind from an older server', () => {
+    expect(isBlocked(row({ blocked: 'something else', blockedKind: 'other' }), here)).toBe(true);
+    expect(isBlocked(row({ blocked: 'something else', blockedKind: null }), here)).toBe(true);
+  });
+
+  it.each(['dependency', 'wip', 'family', 'working', 'person'] as const)('is not blocked for a %s block', (kind) => {
+    expect(isBlocked(row({ blocked: 'held', blockedKind: kind }), here)).toBe(false);
+  });
+
+  it('is blocked for an in-line row only when no live runner can take it', () => {
+    expect(isBlocked(row({ blocked: 'not its turn', blockedKind: 'turn', takers: ['box:/a'] }), here)).toBe(false);
+    expect(isBlocked(row({ blocked: 'not its turn', blockedKind: 'turn', takers: [] }), here)).toBe(true);
+  });
+
+  it('is blocked for a clear row with no taker, and not with one, with null or with none judged', () => {
+    expect(isBlocked(row({ blocked: null, takers: [] }), here)).toBe(true);
+    expect(isBlocked(row({ blocked: null, takers: ['box:/a'] }), here)).toBe(false);
+    expect(isBlocked(row({ blocked: null, takers: null }), here)).toBe(false);
+    expect(isBlocked(row({ blocked: null }), here)).toBe(false);
+  });
+
+  it('is blocked for a deadlock whatever kind its fold kept', () => {
+    expect(isBlocked(row({ blocked: 'waiting on HA-2', blockedKind: 'dependency', deadlocked: true }), here)).toBe(true);
+  });
+
+  it('is not blocked for a stale row, or no row', () => {
+    const stale = row({ blocked: 'something else', blockedKind: 'other', deadlocked: true });
+
+    expect(isBlocked(stale, card({ statusId: 2 }))).toBe(false);
+    expect(isBlocked(undefined, here)).toBe(false);
   });
 });

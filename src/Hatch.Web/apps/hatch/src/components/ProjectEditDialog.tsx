@@ -487,23 +487,29 @@ export function ProjectEditDialog({
               healing it with no session.
             </p>
             <fieldset className="hatch-landing-choice" disabled={!draft.autoHealBugEnabled}>
-              <PriorityControl
-                issueKey=""
-                priority={draft.autoHealBugPriority}
-                priorityOwn={draft.autoHealBugPriority}
-                priorityFrom={null}
-                directory={directory}
-                onChange={(priority) => setDraft((d) => d && { ...d, autoHealBugPriority: priority })}
-              />
-              <PreApprovalControl
-                issueKey=""
-                preApproval={draft.autoHealBugPreApproval}
-                preApprovalOwn={draft.autoHealBugPreApproval}
-                preApprovalFrom={null}
-                directory={directory}
-                canApprove={project.canApprove}
-                onChange={(level) => setDraft((d) => d && { ...d, autoHealBugPreApproval: level })}
-              />
+              <div className="hatch-field-pair">
+                <Field label="Priority" as="div">
+                  <PriorityControl
+                    issueKey=""
+                    priority={draft.autoHealBugPriority}
+                    priorityOwn={draft.autoHealBugPriority}
+                    priorityFrom={null}
+                    directory={directory}
+                    onChange={(priority) => setDraft((d) => d && { ...d, autoHealBugPriority: priority })}
+                  />
+                </Field>
+                <Field label="Pre-approval" as="div">
+                  <PreApprovalControl
+                    issueKey=""
+                    preApproval={draft.autoHealBugPreApproval}
+                    preApprovalOwn={draft.autoHealBugPreApproval}
+                    preApprovalFrom={null}
+                    directory={directory}
+                    canApprove={project.canApprove}
+                    onChange={(level) => setDraft((d) => d && { ...d, autoHealBugPreApproval: level })}
+                  />
+                </Field>
+              </div>
               <Field label="Column">
                 <select
                   value={draft.autoHealBugStatusId ?? ''}

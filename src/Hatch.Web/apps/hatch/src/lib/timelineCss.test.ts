@@ -103,6 +103,32 @@ describe('the timeline styles', () => {
     expect(brush['pointer-events']).toBe('none');
   });
 
+  it('declares the row height where the Timeline and the Cumulative flow both read it, from tokens', () => {
+    const timeline = declarationsIn(css, '.hatch-timeline')['--hatch-timeline-row'];
+    const flow = declarationsIn(css, '.hatch-cumulative-flow')['--hatch-timeline-row'];
+
+    expect(timeline).toMatch(/^calc\(var\(--sp-\d+\) \+ var\(--sp-\d+\)\)$/);
+    expect(flow).toBe(timeline);
+    expect(declarationsIn(css, '.hatch-timeline-ruler')['height']).toBe('var(--hatch-timeline-row)');
+  });
+
+  /* A new reader is one more box that must be rendered under one of the two
+     declarers, so adding one is a decision this list makes visible. */
+  it('reads the row height in only the boxes both charts render', () => {
+    const readers: string[] = [];
+
+    for (const [, selectors, body] of css.matchAll(RULE)) {
+      if (body.includes('var(--hatch-timeline-row)')) readers.push(...selectors.split(',').map((s) => s.trim()));
+    }
+
+    expect(readers.sort()).toEqual([
+      '.hatch-timeline-corner',
+      '.hatch-timeline-label',
+      '.hatch-timeline-lane',
+      '.hatch-timeline-ruler',
+    ]);
+  });
+
   it('makes only the brushable ruler a drag target', () => {
     expect(declarationsIn(css, '.hatch-timeline-ruler--brushable')['cursor']).toBe('col-resize');
     expect(declarationsIn(css, '.hatch-timeline-ruler')['cursor']).toBeUndefined();

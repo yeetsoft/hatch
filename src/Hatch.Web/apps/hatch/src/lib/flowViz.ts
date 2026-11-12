@@ -42,3 +42,8 @@ export async function readFlowBoard(
 /** Stable across renders, so `useLoaded`'s effect does not re-run on every
     one of them - see `lib/useLoaded.ts`'s own doc comment on `load`. */
 export const getFlowBoard = () => readFlowBoard(getBoard, () => getQueue(null, true));
+
+/** The board read to use: with the queue beside it while the flow view or the
+    Blocked switch needs the queue, the plain board otherwise. Both are
+    module-level, so the reference stays stable for `useLoaded`. */
+export const boardLoader = (queueing: boolean) => (queueing ? getFlowBoard : getBoard);

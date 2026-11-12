@@ -157,6 +157,7 @@ export function PriorityControl({
   priorityFrom,
   directory,
   busy = false,
+  size = 'md',
   onChange,
 }: {
   issueKey: string;
@@ -172,6 +173,9 @@ export function PriorityControl({
   directory: AssigneeDirectory | null;
   /** A press is already out: the pill stays where it is and stops answering. */
   busy?: boolean;
+  /** `lg` is the issue page's status bar, drawn the size of its status pill;
+      `md` is the peek's and the forms'. */
+  size?: 'md' | 'lg';
   onChange: (priority: Priority) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -233,7 +237,7 @@ export function PriorityControl({
       <button
         ref={buttonRef}
         type="button"
-        className={`hatch-priority-pill hatch-priority-pill-press${effective.class ? ` ${effective.class}` : ''}`}
+        className={`hatch-priority-pill hatch-priority-pill-press${size === 'lg' ? ' hatch-priority-pill-lg' : ''}${effective.class ? ` ${effective.class}` : ''}`}
         aria-expanded={open}
         aria-controls={bandId}
         aria-busy={busy}

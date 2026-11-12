@@ -453,4 +453,32 @@ describe('ProjectEditDialog', () => {
 
     expect(html).toContain(`reflects every 5 day(s), next due ${new Date(nextDueAt).toLocaleDateString()}.`);
   });
+
+  describe('the auto-heal levels', () => {
+    const label = (text: string) => `hatch-field__label">${text}<`;
+
+    it('puts Priority and Pre-approval on one labelled row above Column', () => {
+      const html = render(project({ canAdminister: true, autoHealBugEnabled: true }));
+
+      const pair = html.indexOf('hatch-field-pair"');
+      const column = html.indexOf(label('Column'), pair);
+      expect(pair).toBeGreaterThan(-1);
+      expect(column).toBeGreaterThan(pair);
+      const row = html.slice(pair, column);
+      expect(row).toContain(label('Priority'));
+      expect(row).toContain(label('Pre-approval'));
+      expect(row.indexOf(label('Priority'))).toBeLessThan(row.indexOf(label('Pre-approval')));
+    });
+
+    it('disables the whole fieldset, the pair included, with auto-filing off', () => {
+      const html = render(project({ canAdminister: true, autoHealBugEnabled: false }));
+
+      const start = html.indexOf('hatch-landing-choice" disabled');
+      const column = html.indexOf(label('Column'), start);
+      expect(start).toBeGreaterThan(-1);
+      expect(column).toBeGreaterThan(start);
+      expect(html.slice(start, column)).toContain('hatch-field-pair"');
+      expect(html.slice(start, start + 60)).toContain('disabled=""');
+    });
+  });
 });

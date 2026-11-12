@@ -152,6 +152,7 @@ export function PreApprovalControl({
   directory,
   canApprove,
   busy = false,
+  size = 'md',
   onChange,
 }: {
   issueKey: string;
@@ -170,6 +171,9 @@ export function PreApprovalControl({
   canApprove: boolean;
   /** A press is already out: the pill stays where it is and stops answering. */
   busy?: boolean;
+  /** `lg` is the issue page's status bar, drawn the size of its status pill;
+      `md` is the peek's and the forms'. */
+  size?: 'md' | 'lg';
   onChange: (preApproval: PreApproval) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -231,7 +235,7 @@ export function PreApprovalControl({
       <button
         ref={buttonRef}
         type="button"
-        className={`hatch-preapproval-pill hatch-preapproval-pill-press${effective.class ? ` ${effective.class}` : ''}`}
+        className={`hatch-preapproval-pill hatch-preapproval-pill-press${size === 'lg' ? ' hatch-preapproval-pill-lg' : ''}${effective.class ? ` ${effective.class}` : ''}`}
         aria-expanded={open}
         aria-controls={bandId}
         aria-busy={busy}

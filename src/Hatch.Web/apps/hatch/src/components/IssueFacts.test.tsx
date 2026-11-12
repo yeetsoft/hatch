@@ -144,7 +144,8 @@ describe('IssueFacts', () => {
     expect(html).not.toContain('<input');
     expect(html).not.toContain('<button');
 
-    expect(html).toContain('Expedited · inherited from AER-0');
+    expect(html).not.toContain('Priority');
+    expect(html).not.toContain('Pre-approval');
     expect(html).toContain('Pam Beesly (person)');
     expect(html).toContain('claude-opus-5');
     expect(html).toContain('high');
@@ -158,6 +159,9 @@ describe('IssueFacts', () => {
     expect(html).not.toContain('<select');
     expect(html).not.toContain('<input');
     expect(html).not.toContain('<button');
+
+    expect(html).not.toContain('Priority');
+    expect(html).not.toContain('Pre-approval');
 
     expect(html).toContain('—');
     expect(html).toContain('the playbook decides');

@@ -86,7 +86,7 @@ across every column and hop above, start to finish.
 ## Narrowing the board
 
 On a desktop window the header is one row, left to right: **Search**,
-**Project**, **Types**, **Needs me**, **Contributions**, **…** (More filters), the count
+**Project**, **Types**, **Needs me**, **Blocked**, **Contributions**, **…** (More filters), the count
 (*N of M*) and **×** (Reset filters) while a filter is set, then Go to Work,
 the work queue, the flow view and **+** (New issue). **Search** rests narrow
 and widens while you type in it. **Project** shows only its key (or **All**)
@@ -96,7 +96,14 @@ which keeps that row alone (on a touch screen it is always shown). **All** and
 **None** sit at its foot: **None** leaves the board blank on purpose, with the
 count reading *0 of N*, and **×** brings every type back. The choice, None
 included, is remembered in this browser. **Needs me** shows the
-cards holding a question nobody has answered. **Contributions** has three
+cards holding a question nobody has answered. **Blocked** shows only the cards
+the work queue says no pass and no live runner will move: a
+deadlock, a step with no playbook, a stall, or a ready step no live runner can
+take. It does not show a card waiting on a dependency, a full WIP section, a
+family or its turn, a running session, or a person, nor one the queue does not
+read. Pressing it reads the queue, so the board draws nothing until the queue
+lands, and a failed read shows its sentence beside the board; it works with the
+flow view on or off, and is not remembered between visits. **Contributions** has three
 choices: **All** (the default, a contribution drawn with everything else),
 **Only** (just the cards with a contribution record) and **Hidden** (every card
 but those); the count and **×** treat it like any other filter, and the choice
@@ -366,7 +373,7 @@ on a column never counts one. With the setting off, the board draws exactly as
 it always has.
 
 The filter bar finds a carried story through its epic. Searching a carried
-story's key or words from its title, the **Needs me** switch and the Assignee filter
+story's key or words from its title, the **Needs me** and **Blocked** switches and the Assignee filter
 each draw the epic whose carried story matches. The Types and Project filters
 judge the epic itself. The story is never drawn as a card.
 

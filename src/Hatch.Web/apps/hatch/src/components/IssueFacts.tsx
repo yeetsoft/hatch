@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Field, ProjectMark } from '@hatch/ui';
-import { assigneeFact, effortFact, modelFact, preApprovalFact, priorityFact, wipLimitFact } from '../lib/issueFacts';
+import { assigneeFact, effortFact, modelFact, wipLimitFact } from '../lib/issueFacts';
 import { dangerousFact } from '../lib/dangerous';
 import { projectLogoUrl } from '../lib/projectLogo';
 import { omissionsFact } from '../lib/runnerOmissions';
@@ -12,7 +12,7 @@ import { RUNS_CHILDREN } from '../types';
 import type { Issue, Project } from '../types';
 
 /**
- * The primary-info card's read mode - every one of its twelve fields as
+ * The primary-info card's read mode - every one of its fields as
  * text, a badge or a mark, and nothing in the tab order except a Parent link
  * and a PullRequestLink (see HA-334's own Done list: §6.2/§6.3's test pins
  * no `<select>`, no `<input>`, no `<button>`, and says nothing about `<a>`,
@@ -49,14 +49,6 @@ export function IssueFacts({ issue, project, stopped }: { issue: Issue; project:
 
       <Field label="Assignee" as="div">
         {assigneeFact(issue.assignee)}
-      </Field>
-
-      <Field label="Priority" as="div">
-        {priorityFact(issue.priority, issue.priorityFrom)}
-      </Field>
-
-      <Field label="Pre-approval" as="div">
-        {preApprovalFact(issue.preApproval, issue.preApprovalFrom)}
       </Field>
 
       {issue.runnerTags.length > 0 && (
