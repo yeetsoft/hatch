@@ -96,6 +96,9 @@ const state = vi.hoisted(() => ({
 vi.mock('../lib/useRunners', () => ({ useRunners: () => state.read }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
 vi.mock('../lib/useMe', () => ({ useMe: () => ({ me: state.me, isAdmin: state.isAdmin }) }));
+vi.mock('../lib/useAttentionContext', () => ({
+  useAttentionContext: () => ({ attention: null, reload: () => Promise.resolve() }),
+}));
 
 // Nested the same way App.tsx nests the runners routes - see RunnersLayout.test.tsx.
 function renderAt(path: string, phone = false): string {

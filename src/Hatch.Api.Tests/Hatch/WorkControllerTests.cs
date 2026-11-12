@@ -5965,6 +5965,23 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Queue_AsRunner_InOneFleet_TheRunnerThatMeetsTheDeclarationIsOffered_AndTheOtherIsFolded()
+    {
+        var h = await NewAsync();
+        var repo = await NeedingAsync(h, new DeclaredDependency("dotnet", "10"));
+        var issue = await h.FileAsync("task", "being built", h.InProgress);
+        var lacks = RunnerName();
+        var meets = RunnerName();
+        await AddLoopRunnerAsync(h, lacks, r => r.Has = "dotnet@8");
+        await AddLoopRunnerAsync(h, meets, r => r.Has = "dotnet@10.0.100");
+
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, asRunner: meets)).Blocked);
+        Assert.Equal(
+            NeedsSentence(issue, "dotnet 10 or newer", repo.Canonical, "dotnet 8"),
+            Only(await h.Work.GetQueue(0, null, default, asRunner: lacks)).Blocked);
+    }
+
+    [Fact]
     public async Task LetGoBy_APeerThatLacksTheDependency_IsNotOneThatCouldTakeTheTicket()
     {
         var h = await NewAsync();

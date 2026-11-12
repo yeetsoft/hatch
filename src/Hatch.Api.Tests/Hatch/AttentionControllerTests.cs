@@ -1638,6 +1638,33 @@ public class AttentionControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task WaitingOnARunner_ADeclarationWithNoLiveRunnerRaisesNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs a toolchain", h.InProgress);
+
+        // Nobody is live, so that is the no-runner condition and not this one.
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
+    public async Task WaitingOnARunner_ADeclarationOneOfTwoRunnersMeetsRaisesNothing()
+    {
+        var h = await NewAsync();
+        await WaitingBoardAsync(h, "sonnet");
+        var repo = await h.BindRepositoryAsync("https://example.com/o/r", "main");
+        await h.DependencyFileAsync(repo, "main", new DeclaredDependency("pwsh", "7"));
+        await h.FileAsync("task", "needs a toolchain", h.InProgress);
+        await h.RunnerAsync("host:/lacks", null, has: ["dotnet@10"]);
+        await h.RunnerAsync("host:/meets", null, has: ["pwsh@7.4"]);
+
+        Assert.Empty(Value(await h.Attention.GetAttention(default)).WaitingOnARunner!);
+    }
+
+    [Fact]
     public async Task WaitingOnARunner_NeverCountsARunnerThatDeclaredNothingAsLackingIt()
     {
         var h = await NewAsync();

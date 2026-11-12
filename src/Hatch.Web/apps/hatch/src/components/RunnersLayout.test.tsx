@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { RunnersLayout, RunnersIndex } from './RunnersLayout';
 import { RunnerDetail } from './RunnerDetail';
-import type { Runner, RunnerSession } from '../types';
+import type { Attention, Runner, RunnerSession, WaitingOnARunner } from '../types';
 
 const NOW = new Date('2026-09-08T12:00:00Z');
 
@@ -89,9 +89,13 @@ const state = vi.hoisted(() => ({
   read: { runners: null as Runner[] | null, error: null as string | null },
   phone: false,
   isAdmin: true,
+  attention: null as Attention | null,
 }));
 vi.mock('../lib/useRunners', () => ({ useRunners: () => state.read }));
 vi.mock('../lib/viewport', () => ({ usePhone: () => state.phone }));
+vi.mock('../lib/useAttentionContext', () => ({
+  useAttentionContext: () => ({ attention: state.attention, reload: () => Promise.resolve() }),
+}));
 vi.mock('../lib/useMe', () => ({
   useMe: () => ({ me: { kind: 'person', name: 'a', role: state.isAdmin ? 'admin' : 'user' }, isAdmin: state.isAdmin }),
 }));
@@ -207,5 +211,58 @@ describe('RunnersLayout: Create runner', () => {
     state.isAdmin = false;
     state.read = { runners: [QUILL], error: null };
     expect(renderAt('/runners')).not.toContain('Create runner');
+  });
+});
+
+const waitingRow = (key: string, missing: string): WaitingOnARunner => ({
+  key,
+  title: `${key}'s title`,
+  type: 'task',
+  move: 'In Progress',
+  missing,
+});
+
+const attentionWith = (waitingOnARunner?: WaitingOnARunner[]): Attention => ({
+  reviews: [],
+  inReviewWithoutPullRequest: 0,
+  questions: [],
+  conflicts: [],
+  reviewsHeldBack: 0,
+  waitingOnARunner,
+});
+
+describe('RunnersLayout: waiting on a runner', () => {
+  beforeEach(() => {
+    state.isAdmin = true;
+    state.read = { runners: [QUILL], error: null };
+    state.attention = attentionWith([
+      waitingRow('AER-1', 'no live runner has postgres 18 or newer'),
+      waitingRow('AER-2', 'no live runner has postgres 18 or newer'),
+    ]);
+  });
+
+  it('desk: the lines draw as an alert above the list', () => {
+    const html = renderAt('/runners');
+    expect(html).toMatch(/role="alert"[^>]*>.*2 issues wait for a runner that has postgres 18 or newer/);
+    expect(html.indexOf('2 issues wait')).toBeLessThan(html.indexOf('hatch-runners-split'));
+  });
+
+  it('phone: the lines draw above the list', () => {
+    const html = renderAt('/runners', true);
+    expect(html).toContain('2 issues wait for a runner that has postgres 18 or newer');
+    expect(html.indexOf('2 issues wait')).toBeLessThan(html.indexOf('Quill'));
+  });
+
+  it('phone: the detail route draws no banner', () => {
+    expect(renderAt('/runners/Quill', true)).not.toContain('issues wait');
+  });
+
+  it.each([
+    ['an empty list', attentionWith([])],
+    ['a server too old to say', attentionWith(undefined)],
+    ['no attention yet', null],
+  ])('draws nothing for %s', (_, attention) => {
+    state.attention = attention;
+    expect(renderAt('/runners')).not.toContain('role="alert"');
   });
 });
