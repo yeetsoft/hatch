@@ -27,6 +27,29 @@ address — there isn't one the repository can know.
 
 **Docs** in the gear's menu (on a phone, in the main menu) always opens here.
 
+## Theme and a random palette
+
+The gear's menu opens on **Theme**: Auto follows your device, Light and Dark
+override it. Beneath those sits a palette line, which swaps Hatch's own colours
+for a randomly drawn set.
+
+- **Random** is the switch. Turn it on and Hatch rolls a palette, applies it
+  everywhere (every app, and the API reference page, which carries the same
+  gear) and remembers it. Turn it off and the house colours come straight back,
+  with no reload. Light and Dark still apply either way.
+- The **dice** rolls a new palette. It is greyed out while Random is off.
+- The **seed** beside it, a short `hx1-` code, *is* the palette: the same seed
+  is the same colours on any machine. Turning Random off keeps the last seed,
+  so turning it on again returns the same palette instead of rolling a new one.
+
+To share a palette, press the copy button beside the seed; it says "Seed
+copied" when it has. To use somebody else's, paste their seed into the field and
+press Enter, or click away. The palette applies and Random turns on. A seed Hatch
+cannot read is refused underneath the field, in words, and nothing changes; press
+Escape to put the current seed back. On a page served over plain HTTP the browser
+may not allow copying; the message says so, and the seed can still be selected
+and copied by hand.
+
 ## Where to go
 
 - **Start here** — [Getting started](getting-started) walks a clean machine

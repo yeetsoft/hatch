@@ -8569,6 +8569,13 @@ button.hatch-option.chosen {
   --measure: 600px;
 }
 
+/* A stage whose bar has its gear open: the panel hangs below the bar and the
+   frame clips it, so the frame is tall enough to hold the Theme row and the
+   palette line beneath it. Fixed, as .design-stage--narrow's 420px is. */
+.design-stage--gear-open {
+  min-height: 240px;
+}
+
 /* A genuine phone-width viewport, not a narrowed container - see the note on
    ModalPage/TablePage. Modal and Table's phone rules are @media (max-width:
    40rem), which reads this browsing context's width; only an iframe has one
@@ -9039,6 +9046,12 @@ button.hatch-option.chosen {
 
 .design-menu-stage--spread {
   justify-content: space-between;
+}
+
+/* The gear's own case holds the Theme row and the palette line, and a panel
+   taller than the default stage would run over the next section. */
+.design-menu-stage--theme {
+  min-height: 260px;
 }
 
 .design-menu-stage__row {
