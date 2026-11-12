@@ -2034,6 +2034,13 @@ public sealed class GoToWorkCommand(Runtime runtime)
                 SourceSequence: source?.Sequence,
                 Exhausted: tally.ExhaustedUntil is not null,
                 ExhaustedUntil: tally.ExhaustedUntil,
+                // Null on a once beat - the API has no kind guard on this one,
+                // so a once run (which shares the loop's own row name) sending
+                // false would clear the loop's own pause out from under it.
+                AgentDown: once ? null : tally.AgentDownUntil is not null,
+                AgentDownUntil: once ? null : tally.AgentDownUntil,
+                AgentDownKind: once ? null : tally.AgentDownKind,
+                AgentDownLine: once ? null : tally.AgentDownLine,
                 // Read here rather than carried from the last pass, so the beat
                 // at the top of a pass is never one pass behind the window.
                 ThrottledUntil: tally.ThrottledUntil(runtime.Clock.GetUtcNow()),

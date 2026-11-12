@@ -249,6 +249,16 @@ describe('statusLine', () => {
     expect(statusLine([runner({ exhaustedUntil: at(-1000) })], NOW).before).toMatch(/^Idle/);
   });
 
+  it('reads agent down for a row with no claim and a check ahead', () => {
+    const line = statusLine([runner({ agentDownUntil: at(3_600_000), agentDownKind: 'not-starting' })], NOW);
+    expect(line.before).toMatch(/^Agent not starting until /);
+    expect(line).toMatchObject({ key: null, after: '', tone: 'danger', verb: 'Agent down' });
+  });
+
+  it('does not count an agent-down check in the past', () => {
+    expect(statusLine([runner({ agentDownUntil: at(-1000), agentDownKind: 'not-starting' })], NOW).before).toMatch(/^Idle/);
+  });
+
   it('reads idle with the projects it is bound to', () => {
     expect(statusLine([runner({ projects: ['FIL'] })], NOW)).toMatchObject({
       before: 'Idle - nothing to do in FIL',

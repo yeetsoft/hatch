@@ -9721,6 +9721,30 @@ by every `loop` beat (so a null clears it) and left alone by a `once` beat; the
 page draws it as the throttled status, ranked below *Gone* and *Out of usage*
 and above *Paused*, in the viewer's own time zone like *Out of usage until*.
 
+**`agentDownUntil`, `agentDownKind` and `agentDownLine` are a fact a runner
+reports about its own agent, never a person's to set** — the same tri-state
+`exhaustedUntil` has, for *the agent will not start or is signed out* rather
+than *the account is out of usage*. `agentDown: true` writes `agentDownUntil`
+and normalises `agentDownKind` to one of `not-starting` or `signed-out`
+(anything else sent is stored as `not-starting`), and `agentDown: false` clears
+all three at once — the only way they clear other than expiring by arithmetic
+at read time, the same lazy rule `exhaustedUntil` follows. A keyed runner with
+no beat of its own composes the three off its live sessions the same way it
+composes `exhaustedUntil`, except whole: the one live session whose own
+`agentDownUntil` is latest and still ahead of now, with its kind and line
+copied alongside it, never a kind from one session and a line from another.
+The Runners page and `hatch runners` draw such a row *Agent not starting until
+7:40pm* or *Agent needs signing in*, with what the agent said where it gave
+one, ranked under *Gone* and over *Out of usage* — the agent itself is the
+problem, which outranks the account having no usage left. Unlike exhaustion, a
+runner down this way is left out of `Dispatch`'s own peer set
+(`Dispatch.IsLiveBeat`/`IsLiveSession`) and out of the election
+`Runners.LiveCandidatesAsync` runs for `DriversAsync` and
+`ProjectDriversAsync`: a paused agent cannot answer a claim or a merge train's
+own heartbeat, so it is never offered either. `go-to-work` writes the tri-state
+on every beat except a `once` one, which sends none of it so a single
+increment can never clear the loop's own pause out from under it.
+
 See [Runners out of Claude usage](#runners-out-of-claude-usage) for the read
 that feeds the attention panel's dot, and
 [when an increment does nothing](#when-an-increment-does-nothing) for what

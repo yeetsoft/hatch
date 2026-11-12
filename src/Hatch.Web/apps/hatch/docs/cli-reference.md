@@ -540,6 +540,12 @@ heard from first: its name, what it is doing, the ticket it holds (or
 *none*), and how long ago it last heartbeat. A caller with nothing to see
 prints one sentence saying so. It writes nothing.
 
+A runner whose own agent is not starting, or is signed out, reads `agent not
+starting` or `needs signing in` in place of its ordinary state - ranked under
+`gone` and over `out of usage`, the same order the Runners page draws it in -
+and closes its line with `  agent said: <what it told the loop>` where it has
+one. A session beneath it reads the same word on its own line.
+
 - `--json` prints the endpoint's own answer and nothing else.
 
 A runner's row is followed by one indented line per session of its own that is

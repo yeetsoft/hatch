@@ -33,18 +33,20 @@ Each row opens that runner's detail, and has three lines:
   on) when more than one session is live, and a `revoked` badge when it is.
 - What it is doing: `Working HA-12 - <its last line>` (with `+1 more` when
   several sessions work), `Idle - seen 4 minutes ago`, `Paused`, `Stopping`,
-  `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Gone - last seen
-  …`, or `Not started`. The full line is its tooltip.
+  `Over 200k tokens/hour until 3:40am`, `Out of usage until …`, `Agent not
+  starting until … - <what it said>`, `Agent needs signing in - <what it
+  said>`, `Gone - last seen …`, or `Not started`. The full line is its tooltip.
 - Its owner, or `no owner`, then the machine it runs on - or `{n} machines` when
   its live sessions are on several.
 
 **The glyph** is the runner's most urgent state among its live sessions, ranked
-gone, out of usage, throttled, paused or stopping, working, idle, none. Its shape
-carries the state, so colour is never the only signal:
+gone, agent down, out of usage, throttled, paused or stopping, working, idle,
+none. Its shape carries the state, so colour is never the only signal:
 
 | State | Shape |
 | --- | --- |
 | Gone | ring with a diagonal slash, red |
+| Agent down | ring with an exclamation mark, red |
 | Out of usage | solid disc with a bar cut out, red |
 | Throttled | half-filled disc, amber |
 | Paused, stopping | two vertical bars, blue |
@@ -61,11 +63,14 @@ A session is live when it has not ended and has been heard from within the
 runner's silence limit. Silence beats everything else: a runner that has stopped
 answering reads `Gone` whatever it was last asked to do. Silence is ninety
 seconds by default, which `Hatch:RunnerGoneAfterSeconds` changes; a value of
-zero or less is not believed, and ninety stands. `Over 200k tokens/hour until
-3:40am` ranks below `Gone` and `Out of usage` and above `Paused`. It means the
-loop is waiting out its hourly token cap and resumes by itself when the time
-passes. A runner that holds no hourly cap reads `Over its hourly token cap until
-…`.
+zero or less is not believed, and ninety stands. `Agent not starting until …`
+and `Agent needs signing in` rank below `Gone` and above `Out of usage`: the
+agent itself, not the account, is the problem, and a runner stuck here is left
+out of the board's peer set and is never elected driver until the check passes.
+`Over 200k tokens/hour until 3:40am` ranks below `Gone`, `Agent down` and `Out
+of usage` and above `Paused`. It means the loop is waiting out its hourly token
+cap and resumes by itself when the time passes. A runner that holds no hourly
+cap reads `Over its hourly token cap until …`.
 
 Runners with a live session come first, then the rest, each group by the most
 recent time it was heard from and then by name. Revoked runners sit last, in a

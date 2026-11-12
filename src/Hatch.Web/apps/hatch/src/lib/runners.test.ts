@@ -193,6 +193,44 @@ describe('runnerActivity', () => {
   });
 });
 
+describe('an agent-down runner', () => {
+  const GONE = { lastSeenAt: at(-GONE_AFTER * 1000 - 1000) };
+
+  it('is agent-down while the check is ahead of now', () => {
+    expect(runnerActivity(runner({ agentDownUntil: at(60_000), agentDownKind: 'not-starting' }), NOW)).toBe('agent-down');
+  });
+
+  it('ranks under gone and over exhausted', () => {
+    expect(runnerActivity(runner({ ...GONE, agentDownUntil: at(60_000) }), NOW)).toBe('gone');
+    expect(
+      runnerActivity(runner({ agentDownUntil: at(60_000), agentDownKind: 'not-starting', exhaustedUntil: at(3_600_000) }), NOW),
+    ).toBe('agent-down');
+  });
+
+  it('is not agent-down once the check has passed', () => {
+    expect(runnerActivity(runner({ agentDownUntil: at(-60_000), agentDownKind: 'not-starting' }), NOW)).toBe('idle');
+  });
+
+  it('words a not-starting agent with the clock and its line', () => {
+    expect(
+      activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'not-starting', agentDownLine: 'npm not found' }), NOW),
+    ).toMatch(/^Agent not starting until \d{1,2}:\d{2}(am|pm) - npm not found$/);
+  });
+
+  it('words a signed-out agent without the clock, and drops the line when there is none', () => {
+    expect(activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'signed-out' }), NOW)).toBe(
+      'Agent needs signing in',
+    );
+    expect(activityWords(runner({ agentDownUntil: at(3_600_000), agentDownKind: 'signed-out', agentDownLine: 'logged out' }), NOW)).toBe(
+      'Agent needs signing in - logged out',
+    );
+  });
+
+  it('is drawn as a danger', () => {
+    expect(ACTIVITY_TONES['agent-down']).toBe('danger');
+  });
+});
+
 describe('a throttled runner', () => {
   const GONE = { lastSeenAt: at(-GONE_AFTER * 1000 - 1000) };
 

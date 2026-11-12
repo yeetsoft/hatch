@@ -1392,6 +1392,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("AgentDownKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("AgentDownLine")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("AgentDownUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset?>("BuiltAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1602,6 +1613,17 @@ namespace Hatch.Api.Modules.Hatch.Migrations
                     b.Property<string>("Agent")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<string>("AgentDownKind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("AgentDownLine")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("AgentDownUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("AgentVersion")
                         .HasMaxLength(64)
