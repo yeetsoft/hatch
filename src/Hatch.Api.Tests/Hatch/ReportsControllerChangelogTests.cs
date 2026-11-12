@@ -330,6 +330,19 @@ public class ReportsControllerChangelogTests
     }
 
     [Fact]
+    public async Task TheEpicCard_CarriesItsOwnCreatedBy()
+    {
+        var h = await NewAsync();
+        await h.CloseEpicAsync("the epic", Now - TimeSpan.FromMinutes(1), createdBy: "rall-runner");
+
+        var result = Value(await h.Controller.GetChangelogReport(
+            null, null, null, null, level: "story", ct: default));
+
+        var group = Assert.Single(Assert.Single(result.Buckets).Groups);
+        Assert.Equal("rall-runner", group.Epic.CreatedBy);
+    }
+
+    [Fact]
     public async Task AnEpicClosingWithNoStoryClosingUnderIt_StillMakesAGroup()
     {
         var h = await NewAsync();
@@ -447,7 +460,8 @@ public class ReportsControllerChangelogTests
         }
 
         public async Task<EfHatchIssue> FileAsync(
-            string type, string title, int statusId, long? parentId = null, int? projectId = null)
+            string type, string title, int statusId, long? parentId = null, int? projectId = null,
+            string createdBy = "operator")
         {
             var issue = new EfHatchIssue
             {
@@ -459,7 +473,7 @@ public class ReportsControllerChangelogTests
                 StatusId = statusId,
                 Rank = 1024,
                 ParentId = parentId,
-                CreatedBy = "operator",
+                CreatedBy = createdBy,
                 // Well before Now, so the default fourteen-day window is never
                 // clamped forward onto Now by RangeBounds.ClampStart - closes
                 // a minute or two before Now must stay inside the range.
@@ -473,16 +487,18 @@ public class ReportsControllerChangelogTests
         }
 
         public async Task<EfHatchIssue> CloseAsync(
-            string type, string title, DateTimeOffset closedAt, long? parentId = null, int? projectId = null)
+            string type, string title, DateTimeOffset closedAt, long? parentId = null, int? projectId = null,
+            string createdBy = "operator")
         {
-            var issue = await FileAsync(type, title, Shipped, parentId, projectId);
+            var issue = await FileAsync(type, title, Shipped, parentId, projectId, createdBy);
             issue.ClosedAt = closedAt;
             await Db.SaveChangesAsync();
             return issue;
         }
 
         public Task<EfHatchIssue> CloseEpicAsync(
-            string title, DateTimeOffset closedAt, long? parentId = null, int? projectId = null) =>
-            CloseAsync("epic", title, closedAt, parentId, projectId);
+            string title, DateTimeOffset closedAt, long? parentId = null, int? projectId = null,
+            string createdBy = "operator") =>
+            CloseAsync("epic", title, closedAt, parentId, projectId, createdBy);
     }
 }

@@ -3054,6 +3054,18 @@ public class WorkControllerTests
     }
 
     [Fact]
+    public async Task Work_AChildCard_CarriesItsOwnCreatedBy()
+    {
+        var h = await NewAsync();
+        var story = await h.FileAsync("story", "parent", h.Todo);
+        await h.FileAsync("task", "a task", h.Todo, parentId: story.Id, createdBy: "rall-runner");
+
+        var work = Value(await h.Work.GetWork(Key(story), null, default));
+
+        Assert.Equal("rall-runner", Assert.Single(work.Children).CreatedBy);
+    }
+
+    [Fact]
     public async Task Work_CarriesTheBoardsColumnsSoAChildsStatusHasAName()
     {
         var h = await NewAsync();
@@ -14311,7 +14323,8 @@ public class WorkControllerTests
         /// </summary>
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int statusId,
-            long rank = 1024, DateTimeOffset? readyAt = null, long? parentId = null, int? projectId = null)
+            long rank = 1024, DateTimeOffset? readyAt = null, long? parentId = null, int? projectId = null,
+            string createdBy = "operator")
         {
             var issue = new EfHatchIssue
             {
@@ -14325,7 +14338,7 @@ public class WorkControllerTests
                 ParentId = parentId,
                 ReadyAt = readyAt,
                 ReadyAtHasTime = readyAt is not null,
-                CreatedBy = "operator",
+                CreatedBy = createdBy,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             };

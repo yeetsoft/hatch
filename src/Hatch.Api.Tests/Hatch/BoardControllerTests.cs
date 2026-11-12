@@ -333,6 +333,37 @@ public class BoardControllerTests
         Assert.Equal("the setting was already right", Assert.Single(board.Issues, i => i.Key == deferredKey).NoCode);
     }
 
+    // ---- Filed by (HA-2310) ----
+
+    [Fact]
+    public async Task CreatedBy_BoardCardsCarryTheIssuesOwnName()
+    {
+        var h = await NewAsync();
+        var person = await h.IssueAsync("bug", h.InProgress, closedAt: null, createdBy: "Pam Beesly");
+        var key = await h.IssueAsync("bug", h.InProgress, closedAt: null, createdBy: "rall-runner");
+        var personKey = IssueKey.Format(h.ProjectKey, person.Number);
+        var keyKey = IssueKey.Format(h.ProjectKey, key.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal("Pam Beesly", Assert.Single(board.Issues, i => i.Key == personKey).CreatedBy);
+        Assert.Equal("rall-runner", Assert.Single(board.Issues, i => i.Key == keyKey).CreatedBy);
+    }
+
+    [Fact]
+    public async Task CreatedBy_PastHorizonCardsCarryItToo()
+    {
+        var h = await NewAsync();
+        var epic = await h.IssueAsync("epic", h.InProgress, closedAt: null);
+        var story = await h.IssueAsync(
+            "story", h.Done, closedAt: Now.AddHours(-49), parentId: epic.Id, createdBy: "rall-runner");
+        var storyKey = IssueKey.Format(h.ProjectKey, story.Number);
+
+        var board = Value(await h.Board.GetBoard(default));
+
+        Assert.Equal("rall-runner", Assert.Single(board.PastHorizon, i => i.Key == storyKey).CreatedBy);
+    }
+
     // ---- Harness ----
 
     private static readonly DateTimeOffset Now = new(2026, 10, 18, 12, 0, 0, TimeSpan.Zero);
@@ -350,7 +381,8 @@ public class BoardControllerTests
         public required int Done { get; init; }
         public required int Deferred { get; init; }
 
-        public async Task<EfHatchIssue> IssueAsync(string type, int statusId, DateTimeOffset? closedAt, long? parentId = null)
+        public async Task<EfHatchIssue> IssueAsync(
+            string type, int statusId, DateTimeOffset? closedAt, long? parentId = null, string createdBy = "hatch")
         {
             var project = await Db.Projects.SingleAsync(p => p.Id == ProjectId);
             var issue = new EfHatchIssue
@@ -363,7 +395,7 @@ public class BoardControllerTests
                 Rank = 100,
                 ParentId = parentId,
                 ClosedAt = closedAt,
-                CreatedBy = "hatch",
+                CreatedBy = createdBy,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             };

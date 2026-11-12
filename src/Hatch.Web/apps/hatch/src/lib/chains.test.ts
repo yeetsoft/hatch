@@ -131,6 +131,7 @@ const card = (key: string, statusId: number, parentKey: string | null, rank = 10
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  createdBy: 'Britta Perry',
 });
 
 // A queue row for `key` waiting on `dependsOn`.

@@ -37,6 +37,17 @@ public class PlanTests
     }
 
     [Fact]
+    public async Task AnEpicEntry_CarriesTheIssuesOwnCreatedBy()
+    {
+        var h = await NewAsync();
+        var epic = await h.FileAsync("epic", "the programme", h.Todo, createdBy: "rall-runner");
+
+        var top = Assert.Single(Value(await h.Plan.GetPlan(null, default)).Epics);
+
+        Assert.Equal("rall-runner", top.Issue.CreatedBy);
+    }
+
+    [Fact]
     public async Task AnEpicsRollup_CountsTheLeavesBelowANestedEpic()
     {
         var h = await NewAsync();
@@ -336,7 +347,7 @@ public class PlanTests
 
         public async Task<EfHatchIssue> FileAsync(
             string type, string title, int statusId,
-            long rank = 1024, long? parentId = null, int? project = null)
+            long rank = 1024, long? parentId = null, int? project = null, string createdBy = "operator")
         {
             var issue = new EfHatchIssue
             {
@@ -348,7 +359,7 @@ public class PlanTests
                 StatusId = statusId,
                 Rank = rank,
                 ParentId = parentId,
-                CreatedBy = "operator",
+                CreatedBy = createdBy,
                 CreatedAt = Now,
                 UpdatedAt = Now,
             };

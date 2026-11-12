@@ -48,6 +48,7 @@ const epic = (key: string, leaves: number, done: number, children: PlanEntry[] =
     onePr: false,
     onePrOwn: null,
     onePrFrom: null,
+    createdBy: 'Britta Perry',
   },
   isLeaf: children.length === 0 && leaves === 0,
   rollup: rollup(leaves, done),

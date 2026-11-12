@@ -97,6 +97,7 @@ const card = (
   onePr: false,
   onePrOwn: null,
   onePrFrom: null,
+  createdBy: 'Britta Perry',
 });
 
 const project = (storiesOnEpics: boolean) => ({ key: 'AER', storiesOnEpics }) as Project;

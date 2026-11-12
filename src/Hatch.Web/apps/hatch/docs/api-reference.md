@@ -193,6 +193,10 @@ stories the horizon withheld, handed over separately so a client can count
 them against their still-open epic. There is no write here, and no refusal
 beyond the standard ones.
 
+Every card names who filed it, as `createdBy` - a person's or an API key's
+name, so a runner's own filings are filterable too. Every route that serves
+an `IssueCardDto` carries it, not just this one.
+
 ## Issues
 
 | Method | Path | What it does |

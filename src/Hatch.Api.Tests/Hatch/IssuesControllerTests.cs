@@ -122,6 +122,20 @@ public class IssuesControllerTests
     }
 
     [Fact]
+    public async Task AKeyFiledIssue_CarriesTheKeysNameOnItsCard()
+    {
+        var h = await NewAsync();
+        h.Caller.Person = null;
+        h.Caller.Key = AProgram();
+
+        var issue = await h.CreateAsync("task", "filed by a key");
+
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
+
+        Assert.Equal("hatch", Assert.Single(cards, c => c.Key == issue.Key).CreatedBy);
+    }
+
+    [Fact]
     public async Task NothingTicked_BothCallersLandLeftmost()
     {
         var h = await NewAsync();
@@ -706,6 +720,20 @@ public class IssuesControllerTests
         var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
 
         Assert.Null(Assert.Single(cards, c => c.Key == story.Key).NoCode);
+    }
+
+    [Fact]
+    public async Task CreatedBy_RidesTheListedCard()
+    {
+        var h = await NewAsync();
+        var issue = await h.CreateAsync("task", "a chore");
+        var row = await h.Db.Issues.FirstAsync(i => i.Project!.Key + "-" + i.Number == issue.Key);
+        row.CreatedBy = "Pam Beesly";
+        await h.Db.SaveChangesAsync();
+
+        var cards = Value(await h.Issues.SearchIssues(null, null, null, null, null, null, null, default));
+
+        Assert.Equal("Pam Beesly", Assert.Single(cards, c => c.Key == issue.Key).CreatedBy);
     }
 
     // ---- PreApproval, inherited live at read ----
