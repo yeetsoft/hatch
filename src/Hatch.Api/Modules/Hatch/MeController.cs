@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// the two need nothing between them.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/me")]
+[Route("api/me")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class MeController(
     ICallerIdentity caller,

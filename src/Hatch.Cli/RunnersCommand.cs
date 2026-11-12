@@ -4,7 +4,7 @@ namespace Hatch.Cli;
 
 /// <summary>
 /// Every runner that has spoken to this Hatch lately, most recently heard from
-/// first - the terminal's own reading of <c>GET /api/hatch/runners</c>.
+/// first - the terminal's own reading of <c>GET /api/runners</c>.
 /// </summary>
 /// <remarks>
 /// Nothing here re-litigates the endpoint: the ordering and the drop horizon
@@ -65,7 +65,7 @@ public sealed class RunnersCommand(Cli cli)
 
         if (json)
         {
-            const string path = "/api/hatch/runners?live=true";
+            const string path = "/api/runners?live=true";
             var answer = await cli.Board.Client.Send(HttpMethod.Get, path, null, ct);
             if (!answer.Ok)
             {

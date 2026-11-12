@@ -13,8 +13,8 @@ public sealed class IncrementTests
 {
     private static async Task<(Claim Claim, Harness Harness)> HoldingAsync(Harness h, string key, Guid token)
     {
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(token));
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, key, "test:/checkout", default, Harness.Beat);
         return (claim!, h);
@@ -26,9 +26,9 @@ public sealed class IncrementTests
     /// </summary>
     private static async Task<Claim> HoldingWithLapseAsync(Harness h, string key, Guid token, int stallLapseSeconds)
     {
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK,
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK,
             Fixtures.Taken(token, stallLapseSeconds: stallLapseSeconds));
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, key, "test:/checkout", default, Harness.Beat);
         return claim!;
@@ -43,9 +43,9 @@ public sealed class IncrementTests
     private static async Task<Claim> HoldingWithRunLimitAsync(
         Harness h, string key, Guid token, int maxRunSeconds, int stallLapseSeconds = 0)
     {
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK,
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK,
             Fixtures.Taken(token, stallLapseSeconds: stallLapseSeconds, maxRunSeconds: maxRunSeconds));
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, key, "test:/checkout", default, Harness.Beat);
         return claim!;
@@ -58,10 +58,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -71,7 +71,7 @@ public sealed class IncrementTests
         Assert.Equal("s-1", report.SessionId);
         Assert.Equal(1.5m, report.Cost);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("s-1", billed.SessionId);
         Assert.Equal("Did a thing", billed.Title);
         Assert.Equal("In detail.", billed.Summary);
@@ -80,7 +80,7 @@ public sealed class IncrementTests
 
         // The board read carries the runner's own token, so its own lease does
         // not fold its own dispatch.
-        Assert.Contains($"heldToken={token}", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
+        Assert.Contains($"heldToken={token}", h.Wire.To("GET", "/api/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
 
         await claim.ReleaseAsync();
@@ -101,10 +101,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
@@ -122,7 +122,7 @@ public sealed class IncrementTests
         Assert.NotNull(adapter.WrittenHooks);
         Assert.Equal(adapter.WrittenHooks!.Opaque, h.Sessions.Spawned[0].HookSettings);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("fake-session-1", billed.SessionId);
         Assert.Equal("Did a fake thing", billed.Title);
         Assert.Equal("In fake detail.", billed.Summary);
@@ -131,7 +131,7 @@ public sealed class IncrementTests
 
         Assert.True(h.Say.Mentions("fake-agent"));
 
-        var billedBody = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Body;
+        var billedBody = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Body;
         Assert.All(h.Say.Said, line => Assert.DoesNotContain("claude", line, StringComparison.OrdinalIgnoreCase));
         Assert.All(h.Sessions.Spawned, s => Assert.DoesNotContain("claude", s.Prompt, StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain("claude", billedBody, StringComparison.OrdinalIgnoreCase);
@@ -144,10 +144,10 @@ public sealed class IncrementTests
     {
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
@@ -168,10 +168,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var started = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
         h.Sessions.Child = (4242, started);
@@ -214,10 +214,10 @@ public sealed class IncrementTests
     {
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -243,10 +243,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -288,10 +288,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var adapter = new FakeAdapter { Limit = new UsageLimit.Recognised(DateTimeOffset.UtcNow.AddHours(1), true, "session") };
         var report = await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
@@ -318,10 +318,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "fable", "high", quiet: false, claim, default);
@@ -347,17 +347,17 @@ public sealed class IncrementTests
         Assert.False(report.LetGo);
         Assert.Contains(h.Say.Said, l => l.Contains("fable was refused, not spawnable on this account", StringComparison.Ordinal));
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/questions"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/questions"));
 
         // Nothing else was written to the ticket either - no mark, no move.
         string[] allowed =
         [
-            "/api/hatch/issues/AER-1/claim/heartbeat", "/api/hatch/issues/AER-1/work-log",
-            "/api/hatch/work/AER-1", "/api/hatch/issues/AER-1", "/api/hatch/issues/AER-1/questions", "/api/hatch/issues/AER-1/claim",
+            "/api/issues/AER-1/claim/heartbeat", "/api/issues/AER-1/work-log",
+            "/api/work/AER-1", "/api/issues/AER-1", "/api/issues/AER-1/questions", "/api/issues/AER-1/claim",
         ];
         Assert.All(h.Wire.Calls, c => Assert.Contains(c.Path, allowed));
-        Assert.Contains("outcome=unservable", Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim")).Query, StringComparison.Ordinal);
+        Assert.Contains("outcome=unservable", Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim")).Query, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -422,15 +422,15 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("board", billed.PlaybookSource);
         Assert.Null(billed.PlaybookFileTrunk);
         Assert.Null(billed.PlaybookFileSha);
@@ -449,10 +449,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
         var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
@@ -463,7 +463,7 @@ public sealed class IncrementTests
         await h.Runtime.Increment().RunAsync(
             work, h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("file", billed.PlaybookSource);
         Assert.Equal("main", billed.PlaybookFileTrunk);
         Assert.Equal("abcdef0123456789", billed.PlaybookFileSha);
@@ -483,10 +483,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
         var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
@@ -497,7 +497,7 @@ public sealed class IncrementTests
         await h.Runtime.Increment().RunAsync(
             work, h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("board", billed.PlaybookSource);
         Assert.Null(billed.PlaybookFileTrunk);
         Assert.Null(billed.PlaybookFileSha);
@@ -517,17 +517,17 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var work = Fixtures.Work("AER-1");
 
         await h.Runtime.Increment().RunAsync(
             work, h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal("1", billed.PlaybookKey);
         Assert.Equal(3, billed.PlaybookFromStatusId);
         Assert.Equal(4, billed.PlaybookToStatusId);
@@ -551,10 +551,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var playbookFile = new PlaybookFileReferenceDto(".hatch/playbooks.yaml", "canonical", "main", "abcdef0123456789", "deadbeef");
         var work = Fixtures.Work("AER-1", playbookFile: playbookFile) with
@@ -565,7 +565,7 @@ public sealed class IncrementTests
         await h.Runtime.Increment().RunAsync(
             work, h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal(expected, billed.PlaybookKey);
 
         await claim.ReleaseAsync();
@@ -585,15 +585,15 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, model, effort, quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal(expectedModel, billed.PlaybookModel);
         Assert.Equal(expectedEffort, billed.PlaybookEffort);
 
@@ -613,10 +613,10 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review", inReview: true));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review", inReview: true));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -643,14 +643,14 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Equal(2, billed.Requests);
         Assert.Equal(200, billed.PeakContextTokens);
         Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
@@ -689,10 +689,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -723,10 +723,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet, claim, default);
 
@@ -752,10 +752,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -787,10 +787,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -824,10 +824,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -860,10 +860,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -888,10 +888,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -928,11 +928,11 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, children: []));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1, children: []));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
@@ -944,8 +944,8 @@ public sealed class IncrementTests
         // but the stall-flagging path that a second stall in a row would
         // otherwise take does not: no question, and no comment about the
         // ticket being left where it was found.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/questions"));
-        Assert.DoesNotContain(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"),
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/questions"));
+        Assert.DoesNotContain(h.Wire.To("POST", "/api/issues/AER-1/comments"),
             c => c.Body.Contains("in a row to leave this ticket here", StringComparison.Ordinal));
 
         await claim.ReleaseAsync();
@@ -962,14 +962,14 @@ public sealed class IncrementTests
         h.Sessions.Behaviour = (_, _, _) =>
             Task.FromResult(new SessionResult(0, Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```")));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: true, claim, default);
 
-        var billed = h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
+        var billed = h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>();
         Assert.Null(billed.Requests);
         Assert.Null(billed.PeakContextTokens);
         Assert.Equal(Prompt.Compose(work).Length, billed.PromptChars);
@@ -992,12 +992,12 @@ public sealed class IncrementTests
         var token = Guid.NewGuid();
         var (claim, _) = await HoldingAsync(h, "AER-1", token);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Once("GET", "/api/hatch/work/AER-1", HttpStatusCode.ServiceUnavailable);
-        h.Wire.Once("GET", "/api/hatch/work/AER-1", HttpStatusCode.BadGateway);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Once("GET", "/api/work/AER-1", HttpStatusCode.ServiceUnavailable);
+        h.Wire.Once("GET", "/api/work/AER-1", HttpStatusCode.BadGateway);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var running = h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1012,12 +1012,12 @@ public sealed class IncrementTests
         Assert.True(report.Moved);
         Assert.Equal("In Progress -> In Review", report.Outcome);
         Assert.Null(report.Flag);
-        Assert.Equal(3, h.Wire.Count("GET", "/api/hatch/work/AER-1"));
+        Assert.Equal(3, h.Wire.Count("GET", "/api/work/AER-1"));
 
         // A stall comment here would flag another runner's increment as ours,
         // exactly as it does today for a read that answers on the first try -
         // there is nothing here for anybody to see.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1035,11 +1035,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1052,7 +1052,7 @@ public sealed class IncrementTests
 
         // One comment naming the session, and no question: the ticket is free
         // for the very next pass to try again.
-        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
+        var written = h.Wire.To("POST", "/api/issues/AER-1/comments");
         Assert.Single(written);
         Assert.Contains("let it go", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
         Assert.Contains("the session ended without moving it", written[0].Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
@@ -1082,13 +1082,13 @@ public sealed class IncrementTests
 
         h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(exitCode, "", Stderr: stderr));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var runtime = adapter is null ? h.Runtime : h.Runtime with { Adapter = adapter };
         var report = await runtime.Increment().RunAsync(
@@ -1099,7 +1099,7 @@ public sealed class IncrementTests
     }
 
     private static string CommentBody(Harness h) =>
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")).Read<CommentCreateRequest>().Body;
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments")).Read<CommentCreateRequest>().Body;
 
     [Fact]
     public async Task A_session_that_never_started_is_released_unstarted_with_one_comment_carrying_what_the_cli_said()
@@ -1121,7 +1121,7 @@ public sealed class IncrementTests
         Assert.EndsWith("It exited 0.", body, StringComparison.Ordinal);
         Assert.DoesNotContain("let it go", body, StringComparison.Ordinal);
         Assert.DoesNotContain("resume", body, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Equal("the agent never started - the CLI said \"boom\"", report.Outcome);
     }
 
@@ -1134,7 +1134,7 @@ public sealed class IncrementTests
         Assert.True(report.Unstarted);
         Assert.Equal(ClaimOutcomes.Unstarted, report.ReleaseOutcome);
         Assert.Null(report.Flag);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains("```\nfirst\nboom\n```", CommentBody(h), StringComparison.Ordinal);
         Assert.EndsWith(" - the CLI said \"boom\"", report.Outcome, StringComparison.Ordinal);
     }
@@ -1181,7 +1181,7 @@ public sealed class IncrementTests
         Assert.False(report.Started);
         Assert.True(report.UsageLimited);
         Assert.False(report.Unstarted);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
     }
 
     [Fact]
@@ -1235,11 +1235,11 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, "", Stderr: ["warning: something"]));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1285,13 +1285,13 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, "", Stderr: []));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: letGo));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await (h.Runtime with { Adapter = adapter ?? new FakeAdapter() }).Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: letGo), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1317,7 +1317,7 @@ public sealed class IncrementTests
         Assert.Contains("signed out", body, StringComparison.Ordinal);
         Assert.Contains("needs signing in again", body, StringComparison.Ordinal);
         Assert.Contains(ClaudeSignedOutSentence, body, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
     }
 
     [Fact]
@@ -1334,7 +1334,7 @@ public sealed class IncrementTests
         var body = CommentBody(h);
         Assert.Contains("signed out", body, StringComparison.Ordinal);
         Assert.Contains("needs signing in again", body, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
     }
 
     [Fact]
@@ -1375,15 +1375,15 @@ public sealed class IncrementTests
         var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: endedIn));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: endedIn));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
-        if (readFails) h.Wire.Reply("GET", "/api/hatch/issues/AER-1", HttpStatusCode.InternalServerError);
-        else h.Wire.Json("GET", "/api/hatch/issues/AER-1", Fixtures.Issue("AER-1") with { OmittedRunnersOwn = after });
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        if (readFails) h.Wire.Reply("GET", "/api/issues/AER-1", HttpStatusCode.InternalServerError);
+        else h.Wire.Json("GET", "/api/issues/AER-1", Fixtures.Issue("AER-1") with { OmittedRunnersOwn = after });
 
         var work = Fixtures.Work("AER-1", letGo: letGo, issue: dispatched);
         var report = await h.Runtime.Increment().RunAsync(
@@ -1411,8 +1411,8 @@ public sealed class IncrementTests
         Assert.False(report.LetGo);
         Assert.Contains("recused itself (needs a GPU)", report.Outcome, StringComparison.Ordinal);
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains(h.Say.Said, l => l.Contains("rall recused itself (needs a GPU), going on to the next", StringComparison.Ordinal));
         Assert.Equal(0, report.ExitCode);
     }
@@ -1465,7 +1465,7 @@ public sealed class IncrementTests
         Assert.True(report.Moved);
         Assert.True(report.Recused);
         Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
     }
 
     /// <summary>The second increment in a row to do the same is flagged exactly as every stall used to be.</summary>
@@ -1475,13 +1475,13 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1494,11 +1494,11 @@ public sealed class IncrementTests
         // A comment naming the session and mentioning this is the second
         // increment in a row, and the mark that actually stops the next pass
         // spending the same money the same way.
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("second increment in a row", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains("without moving it", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -1523,10 +1523,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1538,8 +1538,8 @@ public sealed class IncrementTests
 
         // No stall mark and no let-go comment - the missing fence is the
         // work-log row's to show, not a reason to ask a person to look.
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1561,11 +1561,11 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", letGo: 1, children: [Fixtures.Card("AER-2")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1580,8 +1580,8 @@ public sealed class IncrementTests
         // report instead.
         Assert.Equal("the session wrote no work-log, and it filed 1 under it", report.Outcome);
 
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1602,10 +1602,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1, from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1615,8 +1615,8 @@ public sealed class IncrementTests
         Assert.Null(report.Flag);
         Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
 
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1639,13 +1639,13 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1657,11 +1657,11 @@ public sealed class IncrementTests
         // Nothing here distinguishes a missing fence from any other plain
         // stall - the board shows no move and no filed child, which is the
         // whole of what a stall ever needed.
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         var body = written.Read<CommentCreateRequest>().Body;
         Assert.Contains("left this issue where it found it", body, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains("without moving it", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -1679,11 +1679,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1697,7 +1697,7 @@ public sealed class IncrementTests
 
         // Neither a stall comment nor a question - filing is progress, and
         // nothing here needs a person's eye.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1723,12 +1723,12 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1741,7 +1741,7 @@ public sealed class IncrementTests
         Assert.Equal("clamped at 820k tokens, filed 2 under it", report.Outcome);
         Assert.False(report.Stalled);
 
-        var written = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments");
+        var written = h.Wire.To("POST", "/api/issues/AER-1/comments");
         Assert.Single(written);
         var body = written[0].Read<CommentCreateRequest>().Body;
         Assert.Contains("820k", body, StringComparison.Ordinal);
@@ -1760,11 +1760,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", children: [Fixtures.Card("AER-2"), Fixtures.Card("AER-3")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1772,7 +1772,7 @@ public sealed class IncrementTests
         Assert.False(report.Clamped);
         Assert.Equal(["AER-2", "AER-3"], report.Filed);
         Assert.Equal("filed 2 under it", report.Outcome);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1784,11 +1784,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0, children: []));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0, children: []));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1808,11 +1808,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", from: "In Review", children: [Fixtures.Card("AER-2")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1837,12 +1837,12 @@ public sealed class IncrementTests
         var found = new Rechecked([new Checked("/checkouts/repo0", verdict)], Unknown: false, Reported: true);
         var conflict = new ConflictRun(found, _ => Task.FromResult(found));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1",
             Fixtures.Work("AER-1", from: "In Review", children: [Fixtures.Card("AER-2")]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments", Fixtures.Comment());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments", Fixtures.Comment());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.ConflictWork("AER-1", letGo: 1), h.Root, "opus", "high", quiet: false, claim, default, conflict: conflict);
@@ -1858,15 +1858,15 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
         // The question is already open before the increment starts, so the
         // session did not ask it - it is the second increment in a row to
         // leave the ticket where it was, which is what puts this on the
         // flagged path rather than a quiet let-go.
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1, questions: [Fixtures.Question(42)]));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", new[] { Fixtures.Question(42) });
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1, questions: [Fixtures.Question(42)]));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", new[] { Fixtures.Question(42) });
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1874,7 +1874,7 @@ public sealed class IncrementTests
 
         Assert.Equal("waiting on a question", report.Flag);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         // The session raised no question of its own this time - the one open
         // is the same one that was already there.
@@ -1894,10 +1894,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", new[] { Fixtures.Question(42) });
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", new[] { Fixtures.Question(42) });
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1906,7 +1906,7 @@ public sealed class IncrementTests
         Assert.False(report.LetGo);
         Assert.Null(report.Flag);
         Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -1925,11 +1925,11 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -1938,7 +1938,7 @@ public sealed class IncrementTests
         Assert.True(report.LetGo);
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
 
-        var body = h.Wire.To("POST", "/api/hatch/issues/AER-1/comments")[0].Read<CommentCreateRequest>().Body;
+        var body = h.Wire.To("POST", "/api/issues/AER-1/comments")[0].Read<CommentCreateRequest>().Body;
         Assert.Contains("the session ended with an error", body, StringComparison.Ordinal);
         Assert.Contains("the build failed on main", body, StringComparison.Ordinal);
 
@@ -1959,10 +1959,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -1972,7 +1972,7 @@ public sealed class IncrementTests
         Assert.False(report.Moved);
         Assert.Null(report.Flag);
         Assert.Equal(0, report.Asked);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains(h.Say.Said, l => l.Contains("out of Claude usage", StringComparison.Ordinal));
 
         await claim.ReleaseAsync();
@@ -1993,10 +1993,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2035,10 +2035,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2080,10 +2080,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2112,10 +2112,10 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2139,11 +2139,11 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         var report = await h.Runtime.Increment().RunAsync(
@@ -2172,9 +2172,9 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", to: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", to: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2200,9 +2200,9 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(1, ""));
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2218,11 +2218,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim was taken over\"");
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -2238,7 +2238,7 @@ public sealed class IncrementTests
 
         // A stall comment here would flag another runner's increment as ours,
         // and the ticket did not move because we stopped.
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         // The meter reading goes up either way: money was spent on that ticket,
         // and a bill is not a claim to have done the work. (This run was killed
@@ -2260,11 +2260,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.OK,
             Fixtures.Preempted("AER-9", "Trunk is down"));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
         {
@@ -2296,11 +2296,11 @@ public sealed class IncrementTests
 
         // This runner still owns the ticket, unlike a lost lease: the board
         // read carries its token.
-        Assert.Contains("heldToken", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
+        Assert.Contains("heldToken", h.Wire.To("GET", "/api/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
 
         // Money was spent either way, the same as every other path through here.
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
 
         await claim.ReleaseAsync();
     }
@@ -2311,11 +2311,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim has expired\"");
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
         {
@@ -2338,13 +2338,13 @@ public sealed class IncrementTests
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
         Assert.True(report.LostLease);
-        Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
         Assert.Equal("Got most of the way",
-            h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>().Title);
+            h.Wire.To("POST", "/api/issues/AER-1/work-log")[0].Read<WorkLogEntryRequest>().Title);
 
         // The board read after a lost lease presents no token: this runner is no
         // longer the holder, and asking as one would be a lie about a lease.
-        Assert.DoesNotContain("heldToken", h.Wire.To("GET", "/api/hatch/work/AER-1")[0].Query,
+        Assert.DoesNotContain("heldToken", h.Wire.To("GET", "/api/work/AER-1")[0].Query,
             StringComparison.OrdinalIgnoreCase);
 
         await claim.ReleaseAsync();
@@ -2363,10 +2363,10 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -2392,7 +2392,7 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         var body = written.Read<CommentCreateRequest>().Body;
         Assert.Contains("without a word", body, StringComparison.Ordinal);
         Assert.Contains("claude --resume s-1", body, StringComparison.Ordinal);
@@ -2408,12 +2408,12 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -2434,10 +2434,10 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("without a word", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains("without a word", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -2464,10 +2464,10 @@ public sealed class IncrementTests
             return new SessionResult(0, "");
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var running = h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2508,10 +2508,10 @@ public sealed class IncrementTests
             return new SessionResult(0, "");
         };
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var running = h.Runtime with { ToolCeiling = TimeSpan.FromSeconds(10) };
         var task = running.Increment().RunAsync(
@@ -2543,12 +2543,12 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
         {
@@ -2594,12 +2594,12 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
         {
@@ -2652,10 +2652,10 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 12, stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
@@ -2708,11 +2708,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim has gone quiet","reason":"quiet"}""");
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -2727,7 +2727,7 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.Quiet, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("without a word", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -2745,11 +2745,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 300);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim was taken over","reason":"taken"}""");
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -2759,7 +2759,7 @@ public sealed class IncrementTests
         Assert.True(report.LostLease);
         Assert.False(report.QuietStopped);
         Assert.Contains("the claim was taken", report.Flag!, StringComparison.Ordinal);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -2772,9 +2772,9 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithLapseAsync(h, "AER-1", Guid.NewGuid(), stallLapseSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
 
@@ -2794,7 +2794,7 @@ public sealed class IncrementTests
         Assert.False(report.Stalled);
         Assert.Equal(ClaimOutcomes.Worked, report.ReleaseOutcome);
         Assert.Null(report.ReleaseReason);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
         await claim.ReleaseAsync();
     }
@@ -2814,10 +2814,10 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2, stallLapseSeconds: 600);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.Chattering();
@@ -2841,7 +2841,7 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("this playbook's run limit is 2s", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -2855,10 +2855,10 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.Chattering();
@@ -2888,10 +2888,10 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0, isCheck: true));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0, isCheck: true));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.Chattering();
@@ -2920,10 +2920,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
@@ -2942,12 +2942,12 @@ public sealed class IncrementTests
         using var h = new Harness(clock: clock);
         var claim = await HoldingWithRunLimitAsync(h, "AER-1", Guid.NewGuid(), maxRunSeconds: 2);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 1));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-1/stall", Fixtures.Issue("AER-1"));
+        h.Wire.Json("PUT", "/api/issues/AER-1/stall", Fixtures.Issue("AER-1"));
 
         h.Sessions.Behaviour = FakeSessions.Chattering();
 
@@ -2968,10 +2968,10 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("this playbook's run limit is 2s", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
-        var marked = Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
         Assert.Contains("this playbook's run limit is 2s", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
@@ -2988,11 +2988,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim has run past its playbook's limit","reason":"run-time"}""");
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/comments",
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", letGo: 0));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", "/api/issues/AER-1/comments",
             new CommentDto(1, "hatch", "…", "comment", null, null, DateTimeOffset.UnixEpoch));
 
         h.Sessions.Behaviour = FakeSessions.UntilStopped();
@@ -3008,14 +3008,14 @@ public sealed class IncrementTests
         Assert.Equal(ClaimOutcomes.Dropped, report.ReleaseOutcome);
         Assert.Equal(ClaimLostReasons.RunTime, report.ReleaseReason);
 
-        var written = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        var written = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/comments"));
         Assert.Contains("this playbook's run limit is", written.Read<CommentCreateRequest>().Body, StringComparison.Ordinal);
 
         await claim.ReleaseAsync();
     }
 
-    private const string ReleaseNotePath = "/api/hatch/issues/AER-1/release-note";
-    private const string WorkLogPath = "/api/hatch/issues/AER-1/work-log";
+    private const string ReleaseNotePath = "/api/issues/AER-1/release-note";
+    private const string WorkLogPath = "/api/issues/AER-1/work-log";
     private const string NoteAndLog = "```release-note\nShipped it.\n```\n```work-log\nDid a thing\n```";
 
     private static void SaysNoteAndLog(Harness h) =>
@@ -3028,10 +3028,10 @@ public sealed class IncrementTests
 
     private static void StubTheBoard(Harness h)
     {
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
     }
 
     [Fact]
@@ -3080,11 +3080,11 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim has expired\"");
         h.Wire.Json("POST", WorkLogPath, Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
         h.Wire.Json("PUT", ReleaseNotePath, Fixtures.Issue("AER-1"));
 
         h.Sessions.Behaviour = async (_, onLine, ct) =>
@@ -3139,12 +3139,12 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
-        List<string?> Carried() => h.Wire.To("POST", "/api/hatch/issues/AER-1/claim/heartbeat")
+        List<string?> Carried() => h.Wire.To("POST", "/api/issues/AER-1/claim/heartbeat")
             .Select(c => c.Read<ClaimHeartbeatRequest>().Chatter)
             .Where(c => c is not null)
             .ToList();
@@ -3196,9 +3196,9 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
@@ -3209,7 +3209,7 @@ public sealed class IncrementTests
         await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
         Assert.Contains(h.Say.Complained, l => l.Contains("no work log entry", StringComparison.Ordinal));
 
         await claim.ReleaseAsync();
@@ -3219,10 +3219,10 @@ public sealed class IncrementTests
     private static async Task<(IncrementReport Report, Claim Claim)> RunWithAsync(Harness h, WorkDto work)
     {
         var (claim, _) = await HoldingAsync(h, work.Issue.Key, Guid.NewGuid());
-        h.Wire.Reply("POST", $"/api/hatch/issues/{work.Issue.Key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", $"/api/hatch/issues/{work.Issue.Key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/work/{work.Issue.Key}", Fixtures.Work(work.Issue.Key, from: "In Review"));
-        h.Wire.Json("GET", $"/api/hatch/issues/{work.Issue.Key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", $"/api/issues/{work.Issue.Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", $"/api/issues/{work.Issue.Key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/work/{work.Issue.Key}", Fixtures.Work(work.Issue.Key, from: "In Review"));
+        h.Wire.Json("GET", $"/api/issues/{work.Issue.Key}/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(work, h.Root, "opus", "high", quiet: false, claim, default);
         return (report, claim);
@@ -3302,10 +3302,10 @@ public sealed class IncrementTests
             return FakeSessions.UntilStopped()(request, onLine, ct);
         };
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict, "\"taken\"");
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict, "\"taken\"");
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: false, claim, default);
 
@@ -3318,10 +3318,10 @@ public sealed class IncrementTests
     {
         using var h = new Harness();
         var spawnedAfter = -1;
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/messages/deliver", new[] { Fixtures.Message(7), Fixtures.Message(9) });
+        h.Wire.Json("POST", "/api/issues/AER-1/messages/deliver", new[] { Fixtures.Message(7), Fixtures.Message(9) });
         h.Sessions.Behaviour = (_, onLine, _) =>
         {
-            spawnedAfter = h.Wire.Count("POST", "/api/hatch/issues/AER-1/messages/deliver");
+            spawnedAfter = h.Wire.Count("POST", "/api/issues/AER-1/messages/deliver");
             onLine?.Invoke(Fixtures.Result(said: "```work-log\nDid a thing\n\nIn detail.\n```"));
             return Task.FromResult(new SessionResult(0, ""));
         };
@@ -3330,7 +3330,7 @@ public sealed class IncrementTests
             h, Fixtures.Work("AER-1", messages: [Fixtures.Message(7), Fixtures.Message(9)]));
 
         Assert.Equal(1, spawnedAfter);
-        var marked = Assert.Single(h.Wire.To("POST", "/api/hatch/issues/AER-1/messages/deliver")).Read<MessageDeliverRequest>();
+        var marked = Assert.Single(h.Wire.To("POST", "/api/issues/AER-1/messages/deliver")).Read<MessageDeliverRequest>();
         Assert.Equal([7L, 9L], marked.Ids);
 
         // And they were said in the prompt the session was handed.
@@ -3346,7 +3346,7 @@ public sealed class IncrementTests
 
         var (_, claim) = await RunWithAsync(h, Fixtures.Work("AER-1", messages: []));
 
-        Assert.Equal(0, h.Wire.Count("POST", "/api/hatch/issues/AER-1/messages/deliver"));
+        Assert.Equal(0, h.Wire.Count("POST", "/api/issues/AER-1/messages/deliver"));
         await claim.ReleaseAsync();
     }
 
@@ -3354,7 +3354,7 @@ public sealed class IncrementTests
     public async Task A_failure_to_mark_them_does_not_stop_the_spawn()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/messages/deliver", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("POST", "/api/issues/AER-1/messages/deliver", HttpStatusCode.InternalServerError, "boom");
 
         var (report, claim) = await RunWithAsync(h, Fixtures.Work("AER-1", messages: [Fixtures.Message(7)]));
 
@@ -3374,9 +3374,9 @@ public sealed class IncrementTests
             return Task.FromResult(new SessionResult(0, ""));
         };
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         await h.Runtime.Increment().RunAsync(Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
 
@@ -3395,9 +3395,9 @@ public sealed class IncrementTests
         h.Sessions.Behaviour = (_, _, _) =>
             Task.FromResult(new SessionResult(1, "You've hit your session limit · resets 7:40pm (America/New_York)"));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await h.Runtime.Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
@@ -3423,10 +3423,10 @@ public sealed class IncrementTests
             "\n" +
             "FAKE-RESULT fake-session-2|Second|second detail|5|2.0|20000"));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var report = await (h.Runtime with { Adapter = new FakeAdapter() }).Increment().RunAsync(
             Fixtures.Work("AER-1"), h.Root, "opus", "high", quiet: true, claim, default);
@@ -3449,9 +3449,9 @@ public sealed class IncrementTests
 
         h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "stream cut off mid-sent"));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var adapter = new FakeAdapter { OutputLastMessageFile = lastMessage };
         await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
@@ -3470,9 +3470,9 @@ public sealed class IncrementTests
 
         h.Sessions.Behaviour = (_, _, _) => Task.FromResult(new SessionResult(1, "stream cut off mid-sent"));
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         var adapter = new FakeAdapter { OutputLastMessageFile = Path.Combine(h.Temp, "never-written.txt") };
         await (h.Runtime with { Adapter = adapter }).Increment().RunAsync(
@@ -3491,10 +3491,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         using var skip = new CancellationTokenSource();
 
@@ -3526,10 +3526,10 @@ public sealed class IncrementTests
         using var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         using var stopped = new CancellationTokenSource();
 
@@ -3560,10 +3560,10 @@ public sealed class IncrementTests
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
         var controls = new Controls(keysOn: true);
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
 
         Assert.False(controls.Snapshot().Confirming == Confirming.Skip);
 
@@ -3672,11 +3672,11 @@ public sealed class IncrementTests
         var h = new Harness();
         var (claim, _) = await HoldingAsync(h, "AER-1", Guid.NewGuid());
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
-        h.Wire.Json("PUT", "/api/hatch/playbook-files", Fixtures.PlaybookFile());
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("PUT", "/api/playbook-files", Fixtures.PlaybookFile());
 
         arrange?.Invoke(h);
 
@@ -3730,11 +3730,11 @@ public sealed class IncrementTests
         Assert.Contains(JudgedSha, report.Flag);
         Assert.Contains(TrunkTip, report.Flag);
         Assert.Empty(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/work-log"));
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-1/stall"));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/comments"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/work-log"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-1/stall"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/comments"));
 
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        var put = Assert.Single(h.Wire.To("PUT", "/api/playbook-files"));
         var request = put.Read<PlaybookFileRequest>();
         Assert.Equal("git@example.test:o/r.git", request.Remote);
         Assert.Equal("main", request.Trunk);
@@ -3759,7 +3759,7 @@ public sealed class IncrementTests
 
         Assert.False(report.PlaybookStale);
         Assert.Single(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.Empty(h.Wire.To("PUT", "/api/playbook-files"));
     }
 
     [Fact]
@@ -3778,7 +3778,7 @@ public sealed class IncrementTests
         Assert.Contains("is missing", report.Flag);
         Assert.Empty(h.Sessions.Spawned);
 
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        var put = Assert.Single(h.Wire.To("PUT", "/api/playbook-files"));
         Assert.Null(put.Read<PlaybookFileRequest>().Content);
     }
 
@@ -3792,7 +3792,7 @@ public sealed class IncrementTests
 
         Assert.False(report.PlaybookStale);
         Assert.Single(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.Empty(h.Wire.To("PUT", "/api/playbook-files"));
         Assert.True(h.Say.Mentions("origin did not answer"));
     }
 
@@ -3810,7 +3810,7 @@ public sealed class IncrementTests
 
         Assert.False(report.PlaybookStale);
         Assert.Single(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.Empty(h.Wire.To("PUT", "/api/playbook-files"));
         Assert.True(h.Say.Mentions("could not fetch"));
     }
 
@@ -3828,7 +3828,7 @@ public sealed class IncrementTests
 
         Assert.False(report.PlaybookStale);
         Assert.Single(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/playbook-files"));
+        Assert.Empty(h.Wire.To("PUT", "/api/playbook-files"));
         Assert.True(h.Say.Mentions("could not read"));
     }
 

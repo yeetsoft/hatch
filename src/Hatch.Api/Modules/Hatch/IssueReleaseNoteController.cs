@@ -24,7 +24,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// claim at all.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueReleaseNoteController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

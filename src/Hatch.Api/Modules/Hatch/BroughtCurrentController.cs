@@ -17,7 +17,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// enter would be one nobody ever entered.
 /// </summary>
 [ApiController]
-[Route("api/hatch/issues/{key}/brought-current")]
+[Route("api/issues/{key}/brought-current")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BroughtCurrentController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase

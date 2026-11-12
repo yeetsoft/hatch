@@ -1,3 +1,4 @@
+using Hatch.Api.Modules.Hatch;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using System.Reflection;
@@ -7,7 +8,7 @@ namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
 /// The API reference page, held to the routes the controllers expose. A route
-/// added under <c>/api/hatch</c> without a row on the page is a red build
+/// added under <c>/api</c> without a row on the page is a red build
 /// naming the page and the route, so the page cannot drift quietly the way a
 /// doc nobody is made to open does.
 /// </summary>
@@ -17,7 +18,7 @@ namespace Hatch.Api.Tests.Hatch;
 public partial class ApiReferenceDocsTests
 {
     private const string Page = "src/Hatch.Web/apps/hatch/docs/api-reference.md";
-    private const string Prefix = "/api/hatch";
+    private const string Prefix = "/api";
 
     [Fact]
     public void EveryApiHatchRouteHasARowOnTheApiReference()
@@ -41,17 +42,22 @@ public partial class ApiReferenceDocsTests
         var routes = Routes();
         var rows = PageRows();
 
-        Assert.True(routes.Count > 100, $"The reflection found {routes.Count} api/hatch routes, too few to be the whole surface.");
+        Assert.True(routes.Count > 100, $"The reflection found {routes.Count} api routes, too few to be the whole surface.");
         Assert.True(rows.Count > 100, $"The parse of {Page} found {rows.Count} rows, too few to be the whole page.");
     }
 
-    /// <summary>Every <c>METHOD /path</c> the actions expose, the <c>/api/hatch</c> prefix stripped.</summary>
+    /// <summary>
+    /// Every <c>METHOD /path</c> the Hatch module's actions expose, the <c>/api</c>
+    /// prefix stripped. Auth, people, ui-logs and hatch-revision answer under
+    /// <c>/api</c> too, but belong to other modules and have their own pages.
+    /// </summary>
     private static HashSet<string> Routes()
     {
         var routes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var controllers = typeof(Program).Assembly.GetTypes()
-            .Where(t => t is { IsAbstract: false, IsPublic: true } && typeof(ControllerBase).IsAssignableFrom(t));
+            .Where(t => t is { IsAbstract: false, IsPublic: true } && typeof(ControllerBase).IsAssignableFrom(t)
+                && t.Namespace == typeof(AssigneeController).Namespace);
 
         foreach (var controller in controllers)
         {
@@ -67,7 +73,6 @@ public partial class ApiReferenceDocsTests
                 {
                     var path = Normalise(Combine(prefix, attribute.Template));
 
-                    // A bare "/api/hatch-revision" shares the text but not the segment.
                     if (path != Prefix && !path.StartsWith(Prefix + "/", StringComparison.OrdinalIgnoreCase)) continue;
 
                     var rest = path[Prefix.Length..];

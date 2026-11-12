@@ -11,7 +11,7 @@ namespace Hatch.Cli;
 /// <para>The container carries <c>git</c>, the agent CLIs and this binary, and
 /// nothing else - no <c>python</c>, no <c>jq</c>, no <c>openssl</c>. So the
 /// shell script that starts the loop has no way of its own to unwrap what
-/// <c>GET /api/hatch/settings/credentials/{agent}</c> answers with, and this is
+/// <c>GET /api/settings/credentials/{agent}</c> answers with, and this is
 /// that way: one call, one line on standard output, nothing else anywhere. The
 /// line names the variable the agent's CLI reads for headless use, so the
 /// entrypoint exports it without knowing any vendor's vocabulary.</para>
@@ -94,7 +94,7 @@ public sealed class CredentialCommand(Cli cli)
                 CredentialUsage);
         }
 
-        var path = $"/api/hatch/settings/credentials/{agent}";
+        var path = $"/api/settings/credentials/{agent}";
 
         // Through Send rather than the throwing read: the 204 is an answer here
         // and not a fault, and it has an exit code of its own.

@@ -44,7 +44,7 @@ public sealed class RunnersCommandTests
     public async Task No_runner_heard_from_prints_one_sentence_rather_than_an_empty_table()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/runners", Array.Empty<RunnerDto>());
+        h.Wire.Json("GET", "/api/runners", Array.Empty<RunnerDto>());
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
         Assert.Equal(RunnersCommand.EmptyWords, h.Said);
@@ -54,7 +54,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_holding_a_claim_and_heard_from_recently_prints_working_and_the_key()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto> { ARunner(claimKey: "AER-12") });
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(claimKey: "AER-12") });
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -66,7 +66,7 @@ public sealed class RunnersCommandTests
     public async Task The_same_row_with_no_claim_prints_idle_and_none()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto> { ARunner(claimKey: null) });
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(claimKey: null) });
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -78,7 +78,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_bound_to_projects_ends_with_them_and_a_row_bound_to_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "bound", projects: ["FIL", "AER"]),
             ARunner(name: "free"),
@@ -95,7 +95,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_with_dependencies_closes_with_them_before_its_projects_and_a_row_with_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "told", projects: ["HA"], has: ["dotnet@10.0.100", "node@22.11.0", "pwsh"]),
             ARunner(name: "silent"),
@@ -112,7 +112,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_with_models_closes_with_them_after_its_projects_and_a_row_with_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "told", projects: ["HA"], models: ["haiku", "sonnet"]),
             ARunner(name: "silent"),
@@ -129,7 +129,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_reporting_its_tokens_prints_them_after_the_spend_with_the_hour_where_it_has_one()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "both", runs: 3, spent: 1.25m, host: "Fry", tokensUsed: 2_400_000, tokensLastHour: 180_000),
             ARunner(name: "total", tokensUsed: 950_000),
@@ -148,7 +148,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_reporting_its_host_runs_and_spend_prints_them_before_any_projects_and_a_row_reporting_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "told", runs: 3, spent: 1.25m, host: "Fry", projects: ["HA"]),
             ARunner(name: "mute"),
@@ -167,7 +167,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_reporting_its_image_prints_it_after_the_host_and_a_row_reporting_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "built", host: "Fry", image: "ghcr.io/o/r:1"),
             ARunner(name: "generic", host: "Fry"),
@@ -184,7 +184,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_silent_past_its_own_gone_after_seconds_prints_gone_and_still_names_its_key()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(claimKey: "AER-12", goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120)),
         });
@@ -200,7 +200,7 @@ public sealed class RunnersCommandTests
     public async Task A_paused_row_heard_from_recently_prints_paused()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto> { ARunner(state: "paused") });
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto> { ARunner(state: "paused") });
 
         await new RunnersCommand(h.Cli).RunAsync([], default);
 
@@ -211,7 +211,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_whose_agent_down_check_is_ahead_prints_agent_not_starting()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
         });
@@ -225,7 +225,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_signed_out_prints_needs_signing_in()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out"),
         });
@@ -239,7 +239,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_silent_past_its_own_gone_after_seconds_prints_gone_even_while_agent_down()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120), agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting"),
         });
@@ -254,7 +254,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_whose_agent_down_check_has_passed_prints_idle_not_agent_not_starting()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(agentDownUntil: Now.AddHours(-1), agentDownKind: "not-starting"),
         });
@@ -269,7 +269,7 @@ public sealed class RunnersCommandTests
     public async Task An_agent_down_row_with_a_line_closes_with_what_the_agent_said()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(agentDownUntil: Now.AddHours(1), agentDownKind: "not-starting", agentDownLine: "npm not found"),
         });
@@ -283,7 +283,7 @@ public sealed class RunnersCommandTests
     public async Task A_session_whose_agent_is_down_prints_agent_not_starting_under_its_runner()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(sessions: [ASession(agentDownUntil: Now.AddHours(1), agentDownKind: "signed-out")]),
         });
@@ -315,7 +315,7 @@ public sealed class RunnersCommandTests
     public async Task Runners_written_with_string_drift_are_listed()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+        h.Wire.Reply("GET", "/api/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync([], default));
         Assert.Contains("behind-runner", h.Said);
@@ -326,7 +326,7 @@ public sealed class RunnersCommandTests
     public async Task Board_reads_string_drift_as_the_enum()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Reply("GET", "/api/hatch/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
+        h.Wire.Reply("GET", "/api/runners", HttpStatusCode.OK, RunnerBodyWithStringDrift("behind-runner"));
 
         var runners = await h.Board.RunnersAsync(default);
 
@@ -338,7 +338,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_with_two_live_sessions_prints_them_indented_in_server_order()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "busy", sessions: [
                 ASession(where: "Fry:/code/hatch", agent: "claude", os: "Darwin 23.6.0", claimKey: "AER-12"),
@@ -358,7 +358,7 @@ public sealed class RunnersCommandTests
     public async Task A_gone_runner_with_only_ended_sessions_prints_no_session_line()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(
                 name: "silent", goneAfterSeconds: 60, lastSeenAt: Now - TimeSpan.FromSeconds(120),
@@ -377,7 +377,7 @@ public sealed class RunnersCommandTests
     public async Task An_ended_session_on_an_otherwise_live_runner_is_not_printed()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "mixed", sessions: [
                 ASession(where: "Fry:/code/hatch"),
@@ -395,7 +395,7 @@ public sealed class RunnersCommandTests
     public async Task A_session_with_no_agent_prints_a_dash_in_its_place()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "quiet", sessions: [ASession(agent: null)]),
         });
@@ -411,7 +411,7 @@ public sealed class RunnersCommandTests
     public async Task A_session_with_no_os_prints_a_dash_and_its_sibling_stays_aligned()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "quiet", sessions: [
                 ASession(where: "Fry:/code/hatch", os: null),
@@ -433,7 +433,7 @@ public sealed class RunnersCommandTests
     {
         using var h = new CliHarness();
         var rows = new List<RunnerDto> { ARunner(claimKey: "AER-12", sessions: [ASession(), ASession(where: "Leela:/code/aerie")]) };
-        h.Wire.Json("GET", "/api/hatch/runners", rows);
+        h.Wire.Json("GET", "/api/runners", rows);
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["--json"], default));
 
@@ -464,7 +464,7 @@ public sealed class RunnersCommandTests
     public async Task A_row_refusing_some_models_closes_with_them_after_its_models_and_a_row_refusing_none_does_not()
     {
         using var h = new CliHarness(clock: new FrozenClock(Now));
-        h.Wire.Json("GET", "/api/hatch/runners", new List<RunnerDto>
+        h.Wire.Json("GET", "/api/runners", new List<RunnerDto>
         {
             ARunner(name: "told", models: ["haiku"], refusedModels: ["haiku", "fable"]),
             ARunner(name: "silent", models: ["haiku"]),
@@ -490,8 +490,8 @@ public sealed class RunnersRefuseCommandTests
     public async Task No_argument_prints_the_held_models_one_per_line()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
-        h.Wire.Json("GET", "/api/hatch/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
+        h.Wire.Json("GET", "/api/me", AKey());
+        h.Wire.Json("GET", "/api/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["refuse"], default));
 
@@ -502,8 +502,8 @@ public sealed class RunnersRefuseCommandTests
     public async Task No_argument_with_nothing_held_prints_the_sentence()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
-        h.Wire.Json("GET", "/api/hatch/runners/runner-1", RunnersCommandTests.ARunner());
+        h.Wire.Json("GET", "/api/me", AKey());
+        h.Wire.Json("GET", "/api/runners/runner-1", RunnersCommandTests.ARunner());
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["refuse"], default));
 
@@ -514,13 +514,13 @@ public sealed class RunnersRefuseCommandTests
     public async Task Adding_a_model_reads_the_held_list_and_sends_the_whole_thing()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
-        h.Wire.Json("GET", "/api/hatch/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku"]));
-        h.Wire.Json("PUT", "/api/hatch/runners/runner-1/refused-models", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
+        h.Wire.Json("GET", "/api/me", AKey());
+        h.Wire.Json("GET", "/api/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku"]));
+        h.Wire.Json("PUT", "/api/runners/runner-1/refused-models", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["refuse", "fable"], default));
 
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/runners/runner-1/refused-models"));
+        var put = Assert.Single(h.Wire.To("PUT", "/api/runners/runner-1/refused-models"));
         Assert.Equal(new[] { "haiku", "fable" }, put.Read<RunnerRefusedModelsWriteRequest>().Models);
         Assert.Equal("haiku\nfable", h.Said);
     }
@@ -529,13 +529,13 @@ public sealed class RunnersRefuseCommandTests
     public async Task Lifting_a_held_model_sends_the_remainder()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
-        h.Wire.Json("GET", "/api/hatch/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
-        h.Wire.Json("PUT", "/api/hatch/runners/runner-1/refused-models", RunnersCommandTests.ARunner(refusedModels: ["fable"]));
+        h.Wire.Json("GET", "/api/me", AKey());
+        h.Wire.Json("GET", "/api/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku", "fable"]));
+        h.Wire.Json("PUT", "/api/runners/runner-1/refused-models", RunnersCommandTests.ARunner(refusedModels: ["fable"]));
 
         Assert.Equal(0, await new RunnersCommand(h.Cli).RunAsync(["refuse", "--lift", "haiku"], default));
 
-        var put = Assert.Single(h.Wire.To("PUT", "/api/hatch/runners/runner-1/refused-models"));
+        var put = Assert.Single(h.Wire.To("PUT", "/api/runners/runner-1/refused-models"));
         Assert.Equal(new[] { "fable" }, put.Read<RunnerRefusedModelsWriteRequest>().Models);
         Assert.Equal("fable", h.Said);
     }
@@ -544,36 +544,36 @@ public sealed class RunnersRefuseCommandTests
     public async Task Lifting_a_model_not_held_complains_and_sends_nothing()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
-        h.Wire.Json("GET", "/api/hatch/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku"]));
+        h.Wire.Json("GET", "/api/me", AKey());
+        h.Wire.Json("GET", "/api/runners/runner-1", RunnersCommandTests.ARunner(refusedModels: ["haiku"]));
 
         Assert.Equal(1, await new RunnersCommand(h.Cli).RunAsync(["refuse", "--lift", "fable"], default));
 
         Assert.Contains("fable is not on the list - nothing written", h.Complained);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/runners/runner-1/refused-models"));
+        Assert.Empty(h.Wire.To("PUT", "/api/runners/runner-1/refused-models"));
     }
 
     [Fact]
     public async Task A_model_the_normaliser_refuses_is_refused_before_anything_is_sent()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
+        h.Wire.Json("GET", "/api/me", AKey());
 
         Assert.Equal(1, await new RunnersCommand(h.Cli).RunAsync(["refuse", "not-a-model"], default));
 
         Assert.Contains("hatch:", h.Complained);
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/runners/runner-1"));
+        Assert.Empty(h.Wire.To("GET", "/api/runners/runner-1"));
     }
 
     [Fact]
     public async Task A_comma_inside_one_argument_is_refused_the_way_config_models_refuses_it()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", AKey());
+        h.Wire.Json("GET", "/api/me", AKey());
 
         Assert.Equal(1, await new RunnersCommand(h.Cli).RunAsync(["refuse", "haiku,fable"], default));
 
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/runners/runner-1"));
+        Assert.Empty(h.Wire.To("GET", "/api/runners/runner-1"));
     }
 
     [Fact]
@@ -613,7 +613,7 @@ public sealed class RunnersRefuseCommandTests
     public async Task A_call_that_is_not_a_key_is_refused()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/me", new MeDto("person", "Nathan", null, true, true, true));
+        h.Wire.Json("GET", "/api/me", new MeDto("person", "Nathan", null, true, true, true));
 
         Assert.Equal(1, await new RunnersCommand(h.Cli).RunAsync(["refuse"], default));
 

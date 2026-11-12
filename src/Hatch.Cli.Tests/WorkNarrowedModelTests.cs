@@ -14,14 +14,14 @@ public sealed class WorkNarrowedModelTests
     public async Task A_named_row_whose_model_is_narrowed_refuses_and_claims_nothing()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1"));
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1"));
         h.Runtime.Narrowing.Narrow("opus", null, DateTimeOffset.UtcNow);
 
         var code = await new WorkCommand(h.Runtime).RunAsync(["AER-1"], default);
 
         Assert.Equal(2, code);
         Assert.Contains(h.Say.Complained, l => l.Contains($"AER-1 - {Narrowed}", StringComparison.Ordinal));
-        Assert.Empty(h.Wire.To("POST", "/api/hatch/issues/AER-1/claim"));
+        Assert.Empty(h.Wire.To("POST", "/api/issues/AER-1/claim"));
         Assert.Empty(h.Sessions.Spawned);
     }
 }

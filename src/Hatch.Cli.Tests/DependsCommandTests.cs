@@ -18,7 +18,7 @@ public sealed class DependsCommandTests
     public async Task An_issue_with_no_edges_says_so_in_both_directions()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue());
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue());
 
         Assert.Equal(0, await new DependsCommand(h.Cli).RunAsync(["AER-12"], default));
 
@@ -34,7 +34,7 @@ public sealed class DependsCommandTests
     public async Task One_dependent_waits_and_several_wait()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12",
+        h.Wire.Json("GET", "/api/issues/AER-12",
             AnIssue(waitsOn: ["AER-11"], waitedOnBy: ["AER-13", "AER-14"]));
 
         await new DependsCommand(h.Cli).RunAsync(["AER-12"], default);
@@ -51,7 +51,7 @@ public sealed class DependsCommandTests
     public async Task A_single_dependent_is_singular()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/issues/AER-12", AnIssue(waitedOnBy: ["AER-13"]));
+        h.Wire.Json("GET", "/api/issues/AER-12", AnIssue(waitedOnBy: ["AER-13"]));
 
         await new DependsCommand(h.Cli).RunAsync(["AER-12"], default);
         Assert.Contains("AER-13 waits on AER-12", h.Said);
@@ -61,11 +61,11 @@ public sealed class DependsCommandTests
     public async Task A_second_key_is_the_edge_to_add()
     {
         using var h = new CliHarness();
-        h.Wire.Json("POST", "/api/hatch/issues/AER-13/dependencies", AnIssue("AER-13", waitsOn: ["AER-12"]));
+        h.Wire.Json("POST", "/api/issues/AER-13/dependencies", AnIssue("AER-13", waitsOn: ["AER-12"]));
 
         Assert.Equal(0, await new DependsCommand(h.Cli).RunAsync(["AER-13", "AER-12"], default));
 
-        Assert.Equal("AER-12", h.Wire.To("POST", "/api/hatch/issues/AER-13/dependencies").Single()
+        Assert.Equal("AER-12", h.Wire.To("POST", "/api/issues/AER-13/dependencies").Single()
             .Read<IssueDependencyRequest>().DependsOnKey);
         Assert.Contains("AER-13 waits on AER-12", h.Said);
     }
@@ -74,7 +74,7 @@ public sealed class DependsCommandTests
     public async Task Remove_takes_the_edge_off_by_naming_it_in_the_path()
     {
         using var h = new CliHarness();
-        h.Wire.Json("DELETE", "/api/hatch/issues/AER-13/dependencies/AER-12", AnIssue("AER-13"));
+        h.Wire.Json("DELETE", "/api/issues/AER-13/dependencies/AER-12", AnIssue("AER-13"));
 
         Assert.Equal(0, await new DependsCommand(h.Cli).RunAsync(["AER-13", "--remove", "AER-12"], default));
         Assert.Contains("AER-13 waits on nothing", h.Said);

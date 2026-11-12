@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/changelog</c>, wired against the in-memory database - the
+/// <c>GET /api/changelog</c>, wired against the in-memory database - the
 /// two queries and the <see cref="Rollup"/> call that feed
 /// <see cref="Changelog"/>'s functions, which <see cref="ChangelogTests"/>
 /// already pins on their own.

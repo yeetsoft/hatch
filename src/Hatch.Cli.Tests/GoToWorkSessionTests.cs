@@ -11,10 +11,10 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class GoToWorkSessionTests
 {
-    private const string Beat = "/api/hatch/runners/sessions";
-    private const string End = "/api/hatch/runners/sessions/7/end";
-    private const string Queue = "/api/hatch/work/queue";
-    private const string Claim = "/api/hatch/issues/AER-1/claim";
+    private const string Beat = "/api/runners/sessions";
+    private const string End = "/api/runners/sessions/7/end";
+    private const string Queue = "/api/work/queue";
+    private const string Claim = "/api/issues/AER-1/claim";
 
     private static readonly DateTimeOffset Start = new(2026, 9, 8, 2, 0, 0, TimeSpan.Zero);
 
@@ -24,9 +24,9 @@ public sealed class GoToWorkSessionTests
         h.Wire.Reply("POST", Claim, HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
         h.Wire.Reply("POST", $"{Claim}/heartbeat", HttpStatusCode.NoContent);
         h.Wire.Reply("DELETE", Claim, HttpStatusCode.NoContent);
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
-        h.Wire.Json("POST", "/api/hatch/issues/AER-1/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", "/api/hatch/issues/AER-1/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/work/AER-1", Fixtures.Work("AER-1", from: "In Review"));
+        h.Wire.Json("POST", "/api/issues/AER-1/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", "/api/issues/AER-1/questions", Array.Empty<QuestionDto>());
     }
 
     private static RunnerInstructionDto Told(string state = "running", int? maxRuns = null) =>

@@ -270,7 +270,7 @@ header line beside the name carries `Behind`** when any live session's
   change and disabled while saving —
   [`ApiKeysPage.tsx`](../src/Hatch.Web/apps/hatch/src/pages/ApiKeysPage.tsx)'s
   `changeOwner`/`setApiKeyOwner` pattern, becoming `PUT
-  /api/hatch/runners/{name}/owner` (HA-1936). Everyone else reads it as text:
+  /api/runners/{name}/owner` (HA-1936). Everyone else reads it as text:
   `for`, or "no owner".
 - **`Rotate key`** (`Button`, default `secondary`) and **`Revoke`**
   (`variant="danger"`) are admin only and absent on a revoked runner.
@@ -376,7 +376,7 @@ press them by [Who sees what](#who-sees-what).
 `Create runner` opens a `Modal` at its default width, the actions in its
 `footer`. The form has two fields and no more.
 
-- **`Field` Name** is prefilled from `GET /api/hatch/runners/suggest-name`, with
+- **`Field` Name** is prefilled from `GET /api/runners/suggest-name`, with
   the hint "A name from the cast list; yours to change. It is the runner's
   identity and cannot be renamed". A `Suggest another` secondary button beside
   it asks again and replaces what is in the field.
@@ -398,7 +398,7 @@ press them by [Who sees what](#who-sees-what).
 - **On success** the modal closes, the page navigates to `/runners/:name`, and
   the secret panel shows there.
 
-The call is `POST /api/hatch/runners` (HA-1936), which answers the new secret
+The call is `POST /api/runners` (HA-1936), which answers the new secret
 once, with `Cache-Control: no-store`. A revoked name stays taken: creating
 another runner needs another name, which is the server's 409.
 
@@ -438,7 +438,7 @@ carry over. The new secret is shown once."
 - **A failure draws `text-danger` inside the modal,** which stays open.
 - **On success the modal closes** and the secret panel shows the new secret.
 
-The call is `POST /api/hatch/runners/{name}/rotate` (HA-1943), which answers the
+The call is `POST /api/runners/{name}/rotate` (HA-1943), which answers the
 new secret once, as create does.
 
 ### Revoke
@@ -457,7 +457,7 @@ runner working, rotate instead."
   body's last sentence, which points at rotate, is the guard against revoking
   when a leak was the reason.
 
-The call is `POST /api/hatch/runners/{name}/revoke` (HA-1936), which stamps
+The call is `POST /api/runners/{name}/revoke` (HA-1936), which stamps
 `RevokedAt` and ends no session of its own - the body above says only what is
 actually true of it.
 

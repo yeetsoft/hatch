@@ -10,7 +10,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class PollTests
 {
-    private const string Review = "/api/hatch/work/review";
+    private const string Review = "/api/work/review";
     private const int Interval = 60;
 
     private static readonly string Trunk = new('a', 40);
@@ -18,11 +18,11 @@ public sealed class PollTests
     private static readonly string Tip = new('b', 40);
     private static readonly string Tip2 = new('d', 40);
 
-    private static string Put(string key) => $"/api/hatch/issues/{key}/merge-check";
-    private static string PutBuild(string key) => $"/api/hatch/issues/{key}/build-check";
-    private const string TrunkBuilds = "/api/hatch/trunk-builds";
-    private const string PlaybookFiles = "/api/hatch/playbook-files";
-    private const string DependencyFiles = "/api/hatch/dependency-files";
+    private static string Put(string key) => $"/api/issues/{key}/merge-check";
+    private static string PutBuild(string key) => $"/api/issues/{key}/build-check";
+    private const string TrunkBuilds = "/api/trunk-builds";
+    private const string PlaybookFiles = "/api/playbook-files";
+    private const string DependencyFiles = "/api/dependency-files";
 
     private static RemoteHeads Heads(string? trunk = null, params (string Name, string Sha)[] branches) =>
         new("main", new Dictionary<string, string>(
@@ -458,7 +458,7 @@ public sealed class PollTests
         // vouch for its one default checkout - these two are neither, so each
         // needs its own row or those halves would fetch both, same as a trunk
         // build would.
-        rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+        rig.H.Wire.Replace("GET", "/api/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
             new PlaybookFilesDto(".hatch/playbooks.yaml",
             [
                 Fixtures.PlaybookFile(remote: "https://example.test/one.git", canonical: "example.test/one"),
@@ -504,7 +504,7 @@ public sealed class PollTests
 
         // See the sibling test above: this checkout is not the harness's own default one either,
         // for the playbook file or the dependency file.
-        rig.H.Wire.Replace("GET", "/api/hatch/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
+        rig.H.Wire.Replace("GET", "/api/playbook-files", HttpStatusCode.OK, System.Text.Json.JsonSerializer.Serialize(
             new PlaybookFilesDto(".hatch/playbooks.yaml",
                 [Fixtures.PlaybookFile(remote: "https://example.test/two.git", canonical: "example.test/two")]),
             Fixtures.Json));
@@ -1678,7 +1678,7 @@ public sealed class PollTests
         // also reaches the HA-795 bug-filing gate below - stubbed as refused the
         // same way an auto-filing-off project is, which is silent, so it does
         // not add to the one line this test is actually about.
-        rig.H.Wire.Reply("POST", "/api/hatch/trunk-builds/1/bug", HttpStatusCode.BadRequest, "auto-filing off");
+        rig.H.Wire.Reply("POST", "/api/trunk-builds/1/bug", HttpStatusCode.BadRequest, "auto-filing off");
 
         await rig.RunAsync();
 
@@ -1696,7 +1696,7 @@ public sealed class PollTests
 
     // ---- Filing the bug a trunk failure never got re-run into (HA-795) ----
 
-    private static string PostBug(long id) => $"/api/hatch/trunk-builds/{id}/bug";
+    private static string PostBug(long id) => $"/api/trunk-builds/{id}/bug";
 
     [Fact]
     public async Task A_trunk_failure_that_was_not_re_run_is_filed_and_its_key_printed()
@@ -1792,7 +1792,7 @@ public sealed class PollTests
     private const string Remote = "https://example.test/repo.git";
     private static readonly string Landed = new('e', 40);
 
-    private static string PutLanding(string key) => $"/api/hatch/issues/{key}/landing";
+    private static string PutLanding(string key) => $"/api/issues/{key}/landing";
 
     /// <summary>A trunk-landing row in review, holding one landing as the unbound checkout spells it.</summary>
     private static ReviewCheckDto LandingRow(string key, string? containedBy = null, string? sha = null) =>

@@ -84,8 +84,8 @@ public class RunnersRefusedModelsTests(ITestOutputHelper output)
             await deadline.BoundAsync("waiting for both requests", () => WaitForRequests(sent, 2));
             Assert.Equal(
             [
-                "PATCH /api/hatch/runners/" + Owned + " {\"tags\":[],\"under\":\"\"}",
-                "PUT /api/hatch/runners/" + Owned + "/refused-models {\"models\":[\"fable\",\"haiku\",\"claude-opus-5\"]}",
+                "PATCH /api/runners/" + Owned + " {\"tags\":[],\"under\":\"\"}",
+                "PUT /api/runners/" + Owned + "/refused-models {\"models\":[\"fable\",\"haiku\",\"claude-opus-5\"]}",
             ], sent);
             var screenshotAfter = await harness.ScreenshotAsync(deadline, screenshot + "-after");
             output.WriteLine($"--- owner after, desktop: {screenshotAfter}");
@@ -97,7 +97,7 @@ public class RunnersRefusedModelsTests(ITestOutputHelper output)
             await harness.ClickAsync(deadline, "button:text-is(\"Save settings\")");
             await deadline.BoundAsync("waiting for the patch", () => WaitForRequests(sent, 1));
             await Task.Delay(300);
-            Assert.Equal(["PATCH /api/hatch/runners/" + Owned + " {\"tags\":[\"gpu\"],\"under\":\"\"}"], sent);
+            Assert.Equal(["PATCH /api/runners/" + Owned + " {\"tags\":[\"gpu\"],\"under\":\"\"}"], sent);
 
             // The row says what it refuses on its third line.
             var row = await harness.EvaluateAsync<string>(deadline, "reading the owner's row", "() => [...document.querySelectorAll('.hatch-runner-row')].find(r => r.textContent.includes('" + Owned + "'))?.querySelector('.hatch-runner-row__third')?.textContent ?? ''");
@@ -188,13 +188,13 @@ public class RunnersRefusedModelsTests(ITestOutputHelper output)
             Runner(Viewed, false, "an invented owner", "haiku"),
         };
 
-        await context.RouteAsync(new System.Text.RegularExpressions.Regex(@"/api/hatch/runners(\?.*)?$"), route => route.FulfillAsync(new()
+        await context.RouteAsync(new System.Text.RegularExpressions.Regex(@"/api/runners(\?.*)?$"), route => route.FulfillAsync(new()
         {
             ContentType = "application/json",
             Body = JsonSerializer.Serialize(runners, Web),
         }));
 
-        await context.RouteAsync("**/api/hatch/runners/**", async route =>
+        await context.RouteAsync("**/api/runners/**", async route =>
         {
             var request = route.Request;
             var line = $"{request.Method} {new Uri(request.Url).AbsolutePath}{(request.PostData is null ? "" : " " + request.PostData)}";

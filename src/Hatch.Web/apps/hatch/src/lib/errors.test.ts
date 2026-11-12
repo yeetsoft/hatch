@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { refusalSentence } from './errors';
 
-const FALLBACK = 'POST /api/hatch/issues/AER-1/move failed: 409 Conflict';
+const FALLBACK = 'POST /api/issues/AER-1/move failed: 409 Conflict';
 
 describe('refusalSentence', () => {
   it('reads a bare JSON string as the sentence', () => {

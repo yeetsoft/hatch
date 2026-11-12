@@ -2,10 +2,10 @@
 title: API reference
 section: Reference
 order: 30
-summary: Every route under /api/hatch, grouped by resource, with who may call it and what it answers.
+summary: Every route under /api, grouped by resource, with who may call it and what it answers.
 ---
 
-Every route Hatch answers lives under `/api/hatch`, JSON in and JSON out. This
+Every route Hatch answers lives under `/api`, JSON in and JSON out. This
 page groups them by resource: the board's own resources first, then the
 loop's ([`cli-reference`](cli-reference) is the easier way to make most of
 these calls; this page is for the ones it has no verb for).
@@ -23,10 +23,16 @@ never a database id. Project and column routes take an int id -
 `/projects/{id}/members/{personId}`.
 
 ```
-hatch api GET /api/hatch/issues?statusId=2
+hatch api GET /api/issues?statusId=2
 ```
 
 [`cli-reference`](cli-reference) has `hatch api` in full.
+
+**The old prefix.** Before this page's routes lived at `/api/<name>` they lived
+at `/api/hatch/<name>`. That prefix is still served in place - the same answer
+`/api/<name>` gives, with no redirect, so the key and a write's body arrive
+intact - and `/api/hatch-revision` is not part of it. [Upgrading](upgrading#the-old-apihatch-prefix) has what that means
+for an older `hatch` binary.
 
 `docs/hatch-planning.md` ships inside every Hatch image, so a session can read
 it on the machine it is working on. It carries the filing shapes in full -
@@ -732,10 +738,17 @@ state is what the forge itself already says, a brought-current mark is the
 train saying which row it just updated, and a trunk build is nobody's
 issue, so its one route answers to no claim and no column at all.
 `/trunk-builds/{id}/bug` is the one write in this group a person can also
-take, from the attention panel's own button; a key filing one gets none of
-the three optional fields (express, priority, the column) a person may
-choose - they come off the project's own auto-heal settings, and only where
-a project has turned auto-filing on.
+take, from the attention panel's own button. The body is optional, and a
+person may choose three fields in it: `preApproval` (`none`, `express` or
+`preapproved`), `priority`, and `statusId`, the column the bug is born in.
+`express` is the older spelling of `preApproval`, still accepted: it means
+`express` when true and `none` when false, and only where `preApproval` is
+absent - where both are sent, `preApproval` wins. `preapproved` takes an owner
+or approver of the project that binds the trunk, and a person who is neither
+gets the same 403 `POST /issues` gives, with nothing filed; a level that is
+not one of the three is a 400. A key filing one gets none of the fields - they
+come off the project's own auto-heal settings, and only where a project has
+turned auto-filing on.
 
 **Refusals worth naming.** `verdicts` 400s a verdict that is not `pass`/
 `fail`, and refuses where the issue holds no live check-playbook claim.
@@ -1334,8 +1347,7 @@ a read with no body to reject.
 
 ## Who may call what
 
-A key reaches everything under `/api/hatch` **less the
-routes that take a person only**. A key that calls one of those gets a
+A key reaches every route of the board's own API (everything under `/api` except sign-in, `people`, `ui-logs` and the routes that take a **person only**). A key that calls one of those gets a
 `403`, and that is the gate working as designed, not a misconfiguration -
 [People, roles and keys](people-roles-and-keys#runners-and-their-keys) says the same thing
 in prose, grouped by what the route does; this list is the route-by-route

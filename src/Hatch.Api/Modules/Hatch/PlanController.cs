@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// a key, asks the tree, and shapes the answer.
 /// </summary>
 [ApiController]
-[Route("api/hatch/plan")]
+[Route("api/plan")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class PlanController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, TimeProvider time) : ControllerBase

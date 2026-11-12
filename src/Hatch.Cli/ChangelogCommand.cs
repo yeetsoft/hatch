@@ -8,7 +8,7 @@ namespace Hatch.Cli;
 /// </summary>
 /// <remarks>
 /// Nothing here re-litigates the endpoint: the window, the day-counting and the
-/// feature/fix split are <c>GET /api/hatch/changelog</c>'s own
+/// feature/fix split are <c>GET /api/changelog</c>'s own
 /// (<c>src/Hatch.Api/Modules/Hatch/Changelog.cs</c>). This prints what it was
 /// served, in the same words the page already uses - <c>fixLine</c> and
 /// <c>beneathLabel</c>, mirrored rather than reinvented.

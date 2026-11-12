@@ -34,8 +34,6 @@ import {
 import { AssigneeField } from '../components/AssigneeField';
 import { QuestionOptions, Waiting } from '../components/OpenQuestions';
 import { OmittedRunners } from '../components/OmittedRunners';
-import { PriorityControl } from '../components/PriorityControl';
-import { PreApprovalControl } from '../components/PreApprovalControl';
 import { RunnerTagsField } from '../components/RunnerTagsField';
 import { NoCodeField } from '../components/NoCodeField';
 import { OnePrControl, type OnePrSetting } from '../components/OnePrControl';
@@ -56,7 +54,7 @@ import { MessageState } from '../components/MessageState';
 import { NewestFirstTitle } from '../components/NewestFirstGlyph';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
-import { StatusPicker } from '../components/StatusPicker';
+import { IssueStatusBar } from '../components/IssueStatusBar';
 import { ContributionBadge } from '../components/ContributionMark';
 import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
@@ -76,7 +74,6 @@ import { joinTags, runnerTagsDraft, runnerTagsFromLabel, runnerTagsRequest, same
 import { dangerousDraft, dangerousRequest } from '../lib/dangerous';
 import { originChain } from '../lib/contribution';
 import { confirmMove, moveBlocked } from '../lib/protectedColumns';
-import { statusVars } from '../lib/color';
 import { closeOffer } from '../lib/closeSubtree';
 import { isObviated, isSettled } from '../lib/columns';
 import { dependencyCandidates } from '../lib/dependencies';
@@ -173,7 +170,7 @@ export function IssuePage() {
      as `runnerNames`: one live-runners read feeds both. */
   const [pickable, setPickable] = useState<string[]>([]);
   /* A hold or a resume is already out - StallPanel's own busy flag, the same
-     single-flag shape ExpressControl uses rather than ClaimPanel's per-field one. */
+     single-flag shape the pre-approval control uses rather than ClaimPanel's per-field one. */
   const [stallBusy, setStallBusy] = useState(false);
   /* A message to the agent is on its way to the server. */
   const [messageSending, setMessageSending] = useState(false);
@@ -759,12 +756,17 @@ export function IssuePage() {
       {/* Not an IssueSection either, the same reason as Waiting and ClaimPanel
           above it: the column this ticket is in right now is not content to
           be folded away. */}
-      <StatusBar
-        issueKey={issue.key}
+      <IssueStatusBar
+        issue={issue}
         statuses={board.statuses}
-        statusId={issue.statusId}
+        directory={directory}
+        canApprove={project?.canApprove ?? false}
+        priorityBusy={priorityBusy}
+        preApprovalBusy={preApprovalBusy}
         onMove={(statusId) => void moveStatus(statusId)}
         blocked={(status) => moveBlocked(status, project, issue)}
+        onPriority={(priority) => void savePriority(priority)}
+        onPreApproval={(level) => void savePreApproval(level)}
       />
 
       <Card>
@@ -860,44 +862,6 @@ export function IssuePage() {
               assignee={issue.assignee}
               directory={directory}
               onChange={(request) => void saveAssignee(request)}
-            />
-          </Field>
-
-          {/* `as="div"` for the reason the fields above it are. The control
-              draws the current level, so this field says how urgent the issue
-              is without anybody pressing anything - which is the point of it
-              being here as well as on the card. */}
-          <Field
-            label="Priority"
-            as="div"
-            hint="Economy, normal, expedited or emergency: how far up its column this floats, and how soon the dispatcher reaches for it. A level set on an ancestor reaches here too, until this issue sets its own."
-          >
-            <PriorityControl
-              issueKey={key}
-              priority={issue.priority}
-              priorityOwn={issue.priorityOwn}
-              priorityFrom={issue.priorityFrom}
-              directory={directory}
-              busy={priorityBusy}
-              onChange={(priority) => void savePriority(priority)}
-            />
-          </Field>
-
-          {/* `as="div"` for the reason the fields above it are. */}
-          <Field
-            label="Pre-approval"
-            as="div"
-            hint="None, Express or Pre-approved: express is carried past a column marked Express skips with no session; pre-approved also skips the approve press, carrying a clean review into the merge column or closing a finished parent. A level set on an ancestor reaches here too, until this issue sets its own."
-          >
-            <PreApprovalControl
-              issueKey={key}
-              preApproval={issue.preApproval}
-              preApprovalOwn={issue.preApprovalOwn}
-              preApprovalFrom={issue.preApprovalFrom}
-              canApprove={project?.canApprove ?? false}
-              directory={directory}
-              busy={preApprovalBusy}
-              onChange={(level) => void savePreApproval(level)}
             />
           </Field>
 
@@ -1086,54 +1050,6 @@ export function IssuePage() {
 
       <MoveProjectDialog move={move} projects={projects} />
     </div>
-  );
-}
-
-/**
- * Where this issue is, and every other place it could be.
- *
- * Status was a <select> in a row of five pickers, which made "what is the state
- * of this thing" - the first question anybody opens an issue with - the same
- * size as its ready date. Here it is the page's own band: the column it is in,
- * in that column's colour, as a pill that opens the board's columns on a press
- * - the same StatusPicker the board peek uses, so the two screens cannot
- * disagree about what is on offer.
- */
-function StatusBar({
-  issueKey,
-  statuses,
-  statusId,
-  onMove,
-  blocked,
-}: {
-  issueKey: string;
-  statuses: Status[];
-  statusId: number;
-  onMove: (statusId: number) => void;
-  /** Why a move into this column is refused, or null where it is allowed. */
-  blocked: (status: Status) => string | null;
-}) {
-  const current = statuses.find((s) => s.id === statusId);
-
-  return (
-    <section className="hatch-status-bar" style={statusVars(current?.color)} aria-label="Status">
-      <span className="hatch-status-bar-label">Status</span>
-      {current ? (
-        // Keyed so following a parent or child link, which keeps this page
-        // mounted, never carries an open band across issues.
-        <StatusPicker
-          key={issueKey}
-          issueKey={issueKey}
-          status={current}
-          statuses={statuses}
-          size="lg"
-          onMove={onMove}
-          blocked={blocked}
-        />
-      ) : (
-        <span className="text-muted">unknown</span>
-      )}
-    </section>
   );
 }
 

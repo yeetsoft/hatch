@@ -15,7 +15,7 @@ describe('AttachmentRows', () => {
     const rows: AttachmentRow[] = [{ id: ID_A, state: 'file', attachment: attachment() }];
     const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
-    expect(html).toContain(`href="/api/hatch/attachments/${ID_A}"`);
+    expect(html).toContain(`href="/api/attachments/${ID_A}"`);
     expect(html).toContain('download="file.pdf"');
     expect(html).toContain('2 KB');
   });
@@ -49,7 +49,7 @@ describe('AttachmentRows', () => {
     const html = renderToStaticMarkup(<AttachmentRows rows={rows} deleting={new Set()} onDelete={() => {}} />);
 
     expect(html).toContain('(unavailable)');
-    expect(html).toContain(`href="/api/hatch/attachments/${ID_A}"`);
+    expect(html).toContain(`href="/api/attachments/${ID_A}"`);
   });
 
   it('draws nothing for no rows', () => {

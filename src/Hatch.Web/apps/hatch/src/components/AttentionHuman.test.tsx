@@ -43,6 +43,7 @@ const trunkBuild = (over: Partial<TrunkBuild> = {}): TrunkBuild => ({
   runner: 'box:/work/repo',
   checkedBy: 'runner',
   bugIssueKey: null,
+  projectKey: null,
   ...over,
 });
 

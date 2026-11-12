@@ -117,7 +117,7 @@ function TrunkBuildRow({ build, onFiled }: { build: TrunkBuild; onFiled: () => v
         )}
       </span>
 
-      <TrunkBuildBugDialog open={open} buildId={build.id} onClose={() => setOpen(false)} onFiled={onFiled} />
+      <TrunkBuildBugDialog open={open} buildId={build.id} projectKey={build.projectKey} onClose={() => setOpen(false)} onFiled={onFiled} />
     </div>
   );
 }

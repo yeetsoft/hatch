@@ -10,12 +10,12 @@ namespace Hatch.Cli.Tests;
 public sealed partial class MergeTrainTests
 {
     private const string OutsideUrl = "https://example.test/repo/pull/50";
-    private const string Issues = "/api/hatch/issues";
-    private const string TrunkBuilds = "/api/hatch/trunk-builds";
-    private const string Projects = "/api/hatch/projects";
-    private const string Contribution = "/api/hatch/issues/AER-50/contribution";
-    private const string Move = "/api/hatch/issues/AER-50/move";
-    private const string FiledComments = "/api/hatch/issues/AER-50/comments";
+    private const string Issues = "/api/issues";
+    private const string TrunkBuilds = "/api/trunk-builds";
+    private const string Projects = "/api/projects";
+    private const string Contribution = "/api/issues/AER-50/contribution";
+    private const string Move = "/api/issues/AER-50/move";
+    private const string FiledComments = "/api/issues/AER-50/comments";
 
     private static ProjectDto AProject(int id, string key, params string[] canonicals) =>
         new(id, key, key, 0, DateTimeOffset.UnixEpoch, null, null,
@@ -128,9 +128,9 @@ public sealed partial class MergeTrainTests
             var key = $"AER-{next++}";
             var issue = Fixtures.Issue(key, type: request.Type, title: request.Title, parentKey: request.ParentKey, statusId: 1);
 
-            wire.Json("PUT", $"/api/hatch/issues/{key}/contribution", issue);
-            wire.Json("POST", $"/api/hatch/issues/{key}/move", issue with { StatusId = 4 });
-            wire.Json("POST", $"/api/hatch/issues/{key}/comments", new CommentDto(1, "me", "x", "comment", null, null, DateTimeOffset.UnixEpoch));
+            wire.Json("PUT", $"/api/issues/{key}/contribution", issue);
+            wire.Json("POST", $"/api/issues/{key}/move", issue with { StatusId = 4 });
+            wire.Json("POST", $"/api/issues/{key}/comments", new CommentDto(1, "me", "x", "comment", null, null, DateTimeOffset.UnixEpoch));
 
             return AsJson(issue);
         });
@@ -525,9 +525,9 @@ public sealed partial class MergeTrainTests
         var order = rig.H.Wire.Calls.Where(c => c.Method != "GET").Select(c => c.Route).ToList();
         Assert.Equal(
             [
-                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-50/contribution", "POST /api/hatch/issues/AER-50/move",
-                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-51/contribution", "POST /api/hatch/issues/AER-51/move",
-                "POST /api/hatch/issues", "PUT /api/hatch/issues/AER-52/contribution", "POST /api/hatch/issues/AER-52/move",
+                "POST /api/issues", "PUT /api/issues/AER-50/contribution", "POST /api/issues/AER-50/move",
+                "POST /api/issues", "PUT /api/issues/AER-51/contribution", "POST /api/issues/AER-51/move",
+                "POST /api/issues", "PUT /api/issues/AER-52/contribution", "POST /api/issues/AER-52/move",
             ],
             order);
 
@@ -542,17 +542,17 @@ public sealed partial class MergeTrainTests
         Assert.Equal("The task", created[2].Title);
         Assert.Equal("AER-51", created[2].ParentKey);
 
-        var epicRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        var epicRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution")).Read<ContributionRequest>();
         Assert.Null(epicRecord.PullRequestUrl);
         Assert.Equal(Instance, epicRecord.OriginInstance);
         Assert.Equal("HA", epicRecord.OriginProjectKey);
         Assert.Equal("HA-1", epicRecord.OriginKey);
 
-        var storyRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-51/contribution")).Read<ContributionRequest>();
+        var storyRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-51/contribution")).Read<ContributionRequest>();
         Assert.Null(storyRecord.PullRequestUrl);
         Assert.Equal("HA-2", storyRecord.OriginKey);
 
-        var taskRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-52/contribution")).Read<ContributionRequest>();
+        var taskRecord = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-52/contribution")).Read<ContributionRequest>();
         Assert.Equal(OutsideUrl, taskRecord.PullRequestUrl);
         Assert.Equal("HA-3", taskRecord.OriginKey);
         Assert.Equal(1, taskRecord.EnvelopeVersion);
@@ -579,10 +579,10 @@ public sealed partial class MergeTrainTests
         var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
         Assert.Equal("task", created.Type);
         Assert.Equal("AER-11", created.ParentKey);
-        Assert.Empty(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-10/contribution"));
-        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-10/move"));
-        Assert.Empty(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-11/contribution"));
-        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-11/move"));
+        Assert.Empty(rig.H.Wire.To("PUT", "/api/issues/AER-10/contribution"));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/issues/AER-10/move"));
+        Assert.Empty(rig.H.Wire.To("PUT", "/api/issues/AER-11/contribution"));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/issues/AER-11/move"));
     }
 
     [Fact]
@@ -621,7 +621,7 @@ public sealed partial class MergeTrainTests
         Assert.Equal("task", created.Type);
         Assert.Null(created.ParentKey);
 
-        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution")).Read<ContributionRequest>();
         Assert.Null(record.OriginInstance);
         Assert.Null(record.OriginKey);
         Assert.NotNull(record.EnvelopeNote);
@@ -639,7 +639,7 @@ public sealed partial class MergeTrainTests
         Assert.Equal("task", created.Type);
         Assert.Null(created.ParentKey);
 
-        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution")).Read<ContributionRequest>();
         Assert.Equal("HA-12", record.OriginKey);
         Assert.Equal("HA", record.OriginProjectKey);
         Assert.Equal(0, record.EnvelopeVersion);
@@ -658,7 +658,7 @@ public sealed partial class MergeTrainTests
         var created = Assert.Single(rig.H.Wire.To("POST", Issues)).Read<IssueCreateRequest>();
         Assert.Equal("task", created.Type);
 
-        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution")).Read<ContributionRequest>();
         Assert.Null(record.OriginInstance);
         Assert.NotNull(record.EnvelopeNote);
     }
@@ -673,7 +673,7 @@ public sealed partial class MergeTrainTests
 
         await rig.RunAsync();
 
-        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution")).Read<ContributionRequest>();
+        var record = Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution")).Read<ContributionRequest>();
         Assert.Null(record.OriginKey);
         Assert.NotNull(record.EnvelopeNote);
     }
@@ -707,24 +707,24 @@ public sealed partial class MergeTrainTests
     {
         var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The epic", "epic") };
         using var rig = Mirror(Enveloped(chain));
-        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.InternalServerError, "boom");
+        rig.H.Wire.Replace("PUT", "/api/issues/AER-50/contribution", HttpStatusCode.InternalServerError, "boom");
 
         await rig.RunAsync();
 
         Assert.Single(rig.H.Wire.To("POST", Issues));
-        Assert.Empty(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
+        Assert.Empty(rig.H.Wire.To("POST", "/api/issues/AER-50/move"));
         Assert.Single(rig.H.Say.Complained);
 
-        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.OK, AsJson(Fixtures.Issue("AER-50", statusId: 1)));
+        rig.H.Wire.Replace("PUT", "/api/issues/AER-50/contribution", HttpStatusCode.OK, AsJson(Fixtures.Issue("AER-50", statusId: 1)));
         await rig.Later().RunAsync();
 
         var posts = rig.H.Wire.To("POST", Issues);
         Assert.Equal(2, posts.Count);
         var own = posts[1].Read<IssueCreateRequest>();
         Assert.Equal("AER-50", own.ParentKey);
-        Assert.Equal(2, rig.H.Wire.To("PUT", "/api/hatch/issues/AER-50/contribution").Count);
-        Assert.Single(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
-        Assert.Single(rig.H.Wire.To("PUT", "/api/hatch/issues/AER-51/contribution"));
+        Assert.Equal(2, rig.H.Wire.To("PUT", "/api/issues/AER-50/contribution").Count);
+        Assert.Single(rig.H.Wire.To("POST", "/api/issues/AER-50/move"));
+        Assert.Single(rig.H.Wire.To("PUT", "/api/issues/AER-51/contribution"));
     }
 
     [Fact]
@@ -732,11 +732,11 @@ public sealed partial class MergeTrainTests
     {
         var chain = new[] { Chained("HA-2", "Own", "task"), Chained("HA-1", "The epic", "epic") };
         using var rig = Mirror(Enveloped(chain));
-        rig.H.Wire.Replace("PUT", "/api/hatch/issues/AER-50/contribution", HttpStatusCode.Conflict, "already recorded");
+        rig.H.Wire.Replace("PUT", "/api/issues/AER-50/contribution", HttpStatusCode.Conflict, "already recorded");
 
         await rig.RunAsync();
 
-        Assert.Single(rig.H.Wire.To("POST", "/api/hatch/issues/AER-50/move"));
+        Assert.Single(rig.H.Wire.To("POST", "/api/issues/AER-50/move"));
         var posts = rig.H.Wire.To("POST", Issues);
         Assert.Equal(2, posts.Count);
         Assert.Equal("AER-50", posts[1].Read<IssueCreateRequest>().ParentKey);

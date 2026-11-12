@@ -17,7 +17,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// is a person's own act and nothing else's.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/backup")]
+[Route("api/backup")]
 public class BackupController(
     BackupService backup, BackupStatus status, IOptions<HatchOptions> options, ICallerIdentity caller)
     : ControllerBase

@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// the ticket is still true.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/pull-request-state")]
+[Route("api/issues/{key}/pull-request-state")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class PullRequestStateController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
