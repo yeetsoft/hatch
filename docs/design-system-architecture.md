@@ -369,6 +369,7 @@ Two rules are deliberately **not** in `base.css`, and each app states its own:
 | Text | `<Badge>`, `<Text>` |
 | Identity | `<ProjectMark>` |
 | Palette | `<PaletteBoard>` |
+| Configurator | `<ParameterControls>`, with `<HueDial>` and `<ParameterSlider>` |
 | The exception | `<EmptyState>` |
 
 The ten primitives after the chrome are extracted from CSS conventions that

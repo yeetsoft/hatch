@@ -1,0 +1,10 @@
+.hatch-parameter-readout {
+  color: var(--console-glow);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.hatch-parameter-readout.is-outside {
+  color: var(--console-dim);
+}

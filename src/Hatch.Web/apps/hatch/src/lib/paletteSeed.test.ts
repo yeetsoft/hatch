@@ -13,6 +13,7 @@ import {
   parseTokenBlocks,
   rollParams,
   SEED_VERSION,
+  snapToSeed,
   type PaletteParams,
   type SeedRefusal,
 } from '@hatch/ui/palette';
@@ -200,6 +201,30 @@ describe('the version', () => {
       expect(back.ok).toBe(true);
       if (back.ok) expectParams(back.params, decoded(seed));
       expect(refusal(bumped)).toBe('version');
+    }
+  });
+});
+
+describe('snapToSeed', () => {
+  it('is exactly what the seed holds for a value, for every parameter across its range', () => {
+    for (const key of PARAMETER_KEYS) {
+      const { min, max } = PARAMETERS[key];
+      for (let at = 0; at <= 97; at += 1) {
+        const value = min + (at / 97) * (max - min);
+        const decoded = decodeSeed(encodeSeed({ ...IDENTITY, [key]: value }));
+        if (!decoded.ok) throw new Error(decoded.message);
+        expect(snapToSeed(PARAMETERS[key], value), `${key} ${value}`).toBe(decoded.params[key]);
+      }
+    }
+  });
+
+  it('is idempotent and clamps outside the range', () => {
+    for (const key of PARAMETER_KEYS) {
+      const spec = PARAMETERS[key];
+      const once = snapToSeed(spec, spec.min + (spec.max - spec.min) * 0.3141);
+      expect(snapToSeed(spec, once)).toBe(once);
+      expect(snapToSeed(spec, spec.min - 5)).toBe(spec.min);
+      expect(snapToSeed(spec, spec.max + 5)).toBe(spec.max);
     }
   });
 });

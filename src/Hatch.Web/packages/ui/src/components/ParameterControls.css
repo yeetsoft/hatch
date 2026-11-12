@@ -1,0 +1,10 @@
+/* The group lays its controls out in a column and paints no ground of its own: its parts are drawn for the
+   console ground (--console, with the --console-* tokens on it), which the panel holding the group supplies. */
+.hatch-parameter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  color: var(--on-console);
+  font-family: var(--mono);
+}

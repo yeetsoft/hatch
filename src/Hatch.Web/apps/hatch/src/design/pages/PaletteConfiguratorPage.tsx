@@ -1,17 +1,20 @@
-import { Button, PaletteBoard, Text } from '@hatch/ui';
+import { useMemo, useState } from 'react';
+import { Button, PaletteBoard, ParameterControls, Text, useTheme } from '@hatch/ui';
 import {
   measurePairs,
   PARAMETERS,
   PARAMETER_KEYS,
+  windowBands,
   type Palette,
   type ParameterSpec,
   type PaletteParams,
 } from '@hatch/ui/palette';
 import { GalleryPage, GallerySection } from '../components/Gallery';
-import { ACCENT_TOKENS, rimMarks, SEED, sketchPalettes, windowBands } from '../lib/paletteSketch';
+import { ACCENT_TOKENS, deriveBoth, rimMarks, SEED, sketchPalettes } from '../lib/paletteSketch';
 
-/* Three arrangements of one set of parts, each drawn at the fixed seed.
-   Nothing here is live: every dial, slider and button is `inert`, and
+/* Three arrangements of one set of parts, each drawn at the fixed seed, and
+   above them the live controls (<ParameterControls>) the sketches stand in for.
+   Nothing in a sketch is live: every dial, slider and button is `inert`, and
    Revert/Apply/Roll do nothing yet - this round is sketches for a person to
    look at, and the pick is the outcome. The seed's own text stays selectable,
    so it can still be copied by hand while the button beside it cannot be
@@ -141,7 +144,7 @@ function ContrastReadout({ palette }: { palette: Palette }) {
   );
 }
 
-function HueDial({ palette }: { palette: Palette }) {
+function SketchDial({ palette }: { palette: Palette }) {
   const marks = rimMarks(palette);
   const radius = 42;
   const centre = 50;
@@ -158,7 +161,7 @@ function HueDial({ palette }: { palette: Palette }) {
   );
 }
 
-function ParameterSlider({ name, spec, value }: { name: string; spec: ParameterSpec; value: number }) {
+function SketchSlider({ name, spec, value }: { name: string; spec: ParameterSpec; value: number }) {
   const { min, max } = spec;
   const pct = (v: number) => ((v - min) / (max - min)) * 100;
   return (
@@ -243,11 +246,11 @@ function ConfiguratorPanel({
         <ContrastReadout palette={palette} />
       </div>
       <div className="design-pc-area-dial">
-        <HueDial palette={palette} />
+        <SketchDial palette={palette} />
       </div>
       <div className="design-pc-area-sliders">
         {SLIDER_KEYS.map((key) => (
-          <ParameterSlider key={key} name={key} spec={PARAMETERS[key]} value={params[key]} />
+          <SketchSlider key={key} name={key} spec={PARAMETERS[key]} value={params[key]} />
         ))}
       </div>
       <div className="design-pc-area-seed">
@@ -255,6 +258,40 @@ function ConfiguratorPanel({
       </div>
       <div className="design-pc-area-actions">
         <ActionRow />
+      </div>
+    </div>
+  );
+}
+
+/** The live section: the controls at the fixed seed, wired to local state, and the board beside them
+    re-derived from that same state on every move. The rim follows the theme on screen, not either board. */
+function LiveControls() {
+  const { resolved } = useTheme();
+  const [params, setParams] = useState<PaletteParams>(() => sketchPalettes().params);
+  const { light, dark } = useMemo(() => deriveBoth(params), [params]);
+  const boards = useMemo(
+    () =>
+      (
+        [
+          ['Light block', light],
+          ['Dark block', dark],
+        ] as const
+      ).map(([label, palette]) => ({ label, palette, pairs: measurePairs(palette) })),
+    [light, dark],
+  );
+
+  return (
+    <div className="design-pc-live">
+      <div className="design-pc-live-panel">
+        <ParameterControls value={params} onChange={setParams} palette={resolved === 'dark' ? dark : light} />
+      </div>
+      <div className="design-pc-boards">
+        {boards.map(({ label, palette, pairs }) => (
+          <div key={label} className="design-pc-board-block">
+            <span className="design-pc-board-block-label">{label}</span>
+            <PaletteBoard palette={palette} pairs={pairs} />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -287,6 +324,13 @@ export function PaletteConfiguratorPage() {
         </div>
       </GallerySection>
 
+      <GallerySection
+        title="Parameter controls"
+        note="The build: a hue dial and one slider per remaining parameter, bound to the engine's table, drawn at the fixed seed and live. Every track is the parameter's full range with its roll window lit on it; a value outside the window says so. The dial's rim carries the nine accents where the engine derived them, so the dots move with spread as well as with hue. The boards re-derive from the same state."
+      >
+        <LiveControls />
+      </GallerySection>
+
       {LAYOUTS.map((layout) => (
         <GallerySection key={layout.key} title={layout.title} note={layout.note}>
           <div className="design-pc-pair">
@@ -310,7 +354,7 @@ export function PaletteConfiguratorPage() {
 
       <GallerySection
         title="What this is not"
-        note="No dial, slider or button here is live - Revert, Apply and Roll do nothing, and the dial and sliders are drawings of their resting state at the fixed seed above. Only the seed's own text stays selectable, so it can still be copied by hand."
+        note="The live controls are the Parameter controls section; in the three layouts no dial, slider or button is live. Revert, Apply and Roll do nothing, and the dial and sliders are drawings of their resting state at the fixed seed above. Only the seed's own text stays selectable, so it can still be copied by hand."
       >
         <Text tone="muted">Nothing to see here - this section is the note.</Text>
       </GallerySection>

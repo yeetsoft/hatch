@@ -21,6 +21,22 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 const BODY_LENGTH = Math.ceil((PARAMETER_KEYS.length * 4) / 3);
 const STEPS = 255;
 
+/** The byte a value is quantised to: clamped into the range, then rounded onto one of 256 steps. */
+function byteOf({ min, max }: { min: number; max: number }, value: number): number {
+  return Math.round(((Math.min(Math.max(value, min), max) - min) / (max - min)) * STEPS);
+}
+
+/** What a byte reads back as. */
+function valueOf({ min, max }: { min: number; max: number }, byte: number): number {
+  return min + (byte / STEPS) * (max - min);
+}
+
+/** The value the seed would hold for `value`: what `decodeSeed(encodeSeed(...))` returns, exactly. A control
+    snaps what it reports to this so the screen never shows a vector the seed cannot hold. */
+export function snapToSeed(spec: { min: number; max: number }, value: number): number {
+  return valueOf(spec, byteOf(spec, value));
+}
+
 function toBase64Url(bytes: number[]): string {
   let out = '';
   for (let at = 0; at < bytes.length; at += 3) {
@@ -53,8 +69,7 @@ export function makeSeedCodec(version: number): {
     const bytes = PARAMETER_KEYS.map((key) => {
       const value = params[key];
       if (!Number.isFinite(value)) throw new RangeError(`Seed parameter ${key} is not a finite number: ${value}`);
-      const { min, max } = PARAMETERS[key];
-      return Math.round(((Math.min(Math.max(value, min), max) - min) / (max - min)) * STEPS);
+      return byteOf(PARAMETERS[key], value);
     });
     return prefix + toBase64Url(bytes);
   }
@@ -82,8 +97,7 @@ export function makeSeedCodec(version: number): {
     const bytes = fromBase64Url(body);
     const params = {} as PaletteParams;
     PARAMETER_KEYS.forEach((key, at) => {
-      const { min, max } = PARAMETERS[key];
-      params[key] = min + (bytes[at] / STEPS) * (max - min);
+      params[key] = valueOf(PARAMETERS[key], bytes[at]);
     });
     return { ok: true, params };
   }

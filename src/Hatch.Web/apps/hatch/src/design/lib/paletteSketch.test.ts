@@ -1,6 +1,6 @@
 import { measurePairs, PARAMETERS, PARAMETER_KEYS } from '@hatch/ui/palette';
 import { describe, expect, it } from 'vitest';
-import { ACCENT_TOKENS, rimMarks, SEED, sketchPalettes, windowBands } from './paletteSketch';
+import { ACCENT_TOKENS, deriveBoth, rimMarks, SEED, sketchPalettes } from './paletteSketch';
 import { SECTIONS } from '../sections';
 
 describe('the palette sketch fixture', () => {
@@ -40,26 +40,10 @@ describe('the palette sketch fixture', () => {
     }
   });
 
-  it('bands a plain window as one segment', () => {
-    expect(windowBands(PARAMETERS.spread)).toEqual([[0.8, 1.25]]);
-  });
-
-  it('bands the whole range for an unrestricted parameter', () => {
-    expect(windowBands(PARAMETERS.hue)).toEqual([[0, 360]]);
-  });
-
-  it('splits a picked window into five segments, two of them wrapped', () => {
-    const bands = windowBands(PARAMETERS.tintHue);
-    expect(bands).toHaveLength(5);
-    expect(bands).toEqual(
-      expect.arrayContaining([
-        [0, 12],
-        [348, 360],
-        [18, 42],
-        [168, 192],
-        [198, 222],
-      ]),
-    );
+  it('derives both blocks from any vector, as the live page does on every move', () => {
+    const { params, light, dark } = sketchPalettes();
+    expect(deriveBoth(params)).toEqual({ light, dark });
+    expect(deriveBoth({ ...params, hue: (params.hue + 90) % 360 }).light['--primary']).not.toBe(light['--primary']);
   });
 
   it('marks one rim position per accent, each hue in range', () => {
