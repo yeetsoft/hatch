@@ -14,7 +14,7 @@ import type { AssigneeDirectory, Issue } from '../types';
  * nothing, the same argument `ClaimPanel.tsx` makes at length for a claim.
  *
  * Presentational, same as `ClaimPanel`: the busy flag, the error line and the
- * re-read are the page's. Two buttons, gated the way `ExpressControl` gates -
+ * re-read are the page's. Two buttons, gated the way the pre-approval control is -
  * a key reading the page gets the words and no buttons, because an agent is
  * entitled to know why its ticket is sitting and a dead button is not how to
  * tell it.

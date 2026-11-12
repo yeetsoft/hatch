@@ -3851,8 +3851,8 @@ input.hatch-inline-title-input {
   margin: 0 0 var(--sp-2);
 }
 
-/* What a key reading the page gets instead of the two buttons - ExpressControl's
-   own register for a state it may not write. */
+/* What a key reading the page gets instead of the two buttons - the register
+   for a state it may not write. */
 .hatch-stall-said {
   color: var(--muted);
   font-size: var(--t-label);
@@ -5515,52 +5515,10 @@ input.hatch-inline-title-input {
   line-height: 1.6;
 }
 
-/* The control itself, on the issue page and in the summary - the same shape
-   as .hatch-priority-pill's rest state, in --success instead of --primary. */
-.hatch-express {
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--t-label);
-  cursor: pointer;
-}
-
-.hatch-express:hover:not(:disabled) {
-  border-color: var(--success);
-  color: var(--success);
-}
-
-.hatch-express:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.hatch-express.on {
-  border-color: var(--success);
-  background: var(--success);
-  color: var(--on-accent);
-}
-
-/* What a reader who may not press it sees instead: the state as a word. An
-   agent holding this page is refused the write and is still entitled to know
-   why it was carried on with no session - see IssueExpressController. */
-.hatch-express-said {
-  color: var(--muted);
-  font-size: var(--t-label);
-}
-
-.hatch-express-said.on {
-  color: var(--success-ink);
-  font-weight: 600;
-}
-
 /* The pill, on the issue page and in the summary: `PriorityControl`'s pill in
    the same shape, opening a band of three steps instead of six - see
-   PreApprovalControl. Express takes --success, the hue `.hatch-express`
-   already spends; preapproved goes one shade stronger, the same "second
+   PreApprovalControl. Express takes --success;
+   preapproved goes one shade stronger, the same "second
    intensity of one hue" idiom `.hatch-priority-pill.low`/`.economy` use for
    --muted, since there is no fourth accent token to spend on a third level.
    The size and the rest paint are shared with .hatch-priority-pill and kept in
@@ -8380,7 +8338,7 @@ button.hatch-option.chosen {
 
 /* The one-pull-request control on a story's page - see OnePrControl. Three
    steps drawn like the pre-approval band's, and a line saying what is in
-   effect. --success for on, the same hue .hatch-express takes. */
+   effect. --success for on, the same hue the pre-approval pill's express takes. */
 .hatch-one-pr {
   display: flex;
   flex-wrap: wrap;

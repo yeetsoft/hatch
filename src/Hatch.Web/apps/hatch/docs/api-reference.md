@@ -738,10 +738,17 @@ state is what the forge itself already says, a brought-current mark is the
 train saying which row it just updated, and a trunk build is nobody's
 issue, so its one route answers to no claim and no column at all.
 `/trunk-builds/{id}/bug` is the one write in this group a person can also
-take, from the attention panel's own button; a key filing one gets none of
-the three optional fields (express, priority, the column) a person may
-choose - they come off the project's own auto-heal settings, and only where
-a project has turned auto-filing on.
+take, from the attention panel's own button. The body is optional, and a
+person may choose three fields in it: `preApproval` (`none`, `express` or
+`preapproved`), `priority`, and `statusId`, the column the bug is born in.
+`express` is the older spelling of `preApproval`, still accepted: it means
+`express` when true and `none` when false, and only where `preApproval` is
+absent - where both are sent, `preApproval` wins. `preapproved` takes an owner
+or approver of the project that binds the trunk, and a person who is neither
+gets the same 403 `POST /issues` gives, with nothing filed; a level that is
+not one of the three is a 400. A key filing one gets none of the fields - they
+come off the project's own auto-heal settings, and only where a project has
+turned auto-filing on.
 
 **Refusals worth naming.** `verdicts` 400s a verdict that is not `pass`/
 `fail`, and refuses where the issue holds no live check-playbook claim.

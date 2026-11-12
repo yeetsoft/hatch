@@ -467,13 +467,17 @@ export interface TrunkBuild {
   checkedBy: string;
   /** The bug filed while this trunk was failing, or null when none is attached yet - see HA-95. */
   bugIssueKey: string | null;
+  /** The project that binds this repository, or null when none does - what the File a bug? dialog reads its approve permission from. */
+  projectKey: string | null;
 }
 
-/** The three fields HA-406's modal can set before filing - see
+/** The fields HA-406's modal can set before filing - see
     TrunkBuildBugRequest. All optional; omitting one files as the route files
-    without a body. */
+    without a body. `preApproval` is `none`, `express` or `preapproved`;
+    `express` is the older spelling, honoured only where it is absent. */
 export interface TrunkBuildBugRequest {
   express?: boolean | null;
+  preApproval?: string | null;
   priority?: string | null;
   statusId?: number | null;
 }
@@ -699,8 +703,7 @@ export interface Issue {
       gate-passer, not a sort key. Derived from the effective pre-approval
       level - the one `preApproval` names - as
       `effective >= PreApprovalLevels.Express`. Readable by anybody a dispatch
-      reaches and writable only by a person, through its own route - see
-      IssueExpressController. */
+      reaches and writable only by a person, through the pre-approval route. */
   express: boolean;
   /** The level's name - see IssueCard.preApproval and IssueDto.PreApproval. */
   preApproval: 'none' | 'express' | 'preapproved';

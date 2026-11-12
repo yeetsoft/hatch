@@ -17,17 +17,20 @@ const CONFIRMATIONS: IssueConfirmations = {
 function render() {
   return renderToStaticMarkup(
     <IssueConfirmationsContext.Provider value={CONFIRMATIONS}>
-      <TrunkBuildBugDialog open={true} buildId={9} onClose={() => undefined} onFiled={() => undefined} />
+      <TrunkBuildBugDialog open={true} buildId={9} projectKey="HA" onClose={() => undefined} onFiled={() => undefined} />
     </IssueConfirmationsContext.Provider>,
   );
 }
 
 describe('TrunkBuildBugDialog', () => {
-  it('opens with express on and priority expedited', () => {
+  it('opens with Priority and Pre-approval on one row, on Expedited and Express', () => {
     const html = render();
 
-    expect(html).toContain('hatch-express-said on');
+    expect(html).toContain('hatch-field-pair');
+    expect(html).toContain('Priority');
+    expect(html).toContain('Pre-approval');
     expect(html).toContain('Expedited');
+    expect(html).toContain('Express');
   });
 
   it('offers Cancel and File it as two independent buttons', () => {
