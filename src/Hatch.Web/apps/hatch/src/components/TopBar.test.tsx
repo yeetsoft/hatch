@@ -23,6 +23,11 @@ describe('TopBar', () => {
     const menuIndex = html.indexOf('X marks the spot');
     expect(themeIndex).toBeGreaterThan(-1);
     expect(menuIndex).toBeGreaterThan(themeIndex);
+
+    /* The Random switch is part of the Theme row, so it too comes first. */
+    const randomIndex = html.indexOf('role="switch"');
+    expect(randomIndex).toBeGreaterThan(themeIndex);
+    expect(menuIndex).toBeGreaterThan(randomIndex);
   });
 
   it('carries the full-width modifier only when asked for it', () => {

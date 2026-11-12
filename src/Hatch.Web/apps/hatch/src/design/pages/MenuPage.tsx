@@ -94,9 +94,9 @@ export function MenuPage() {
 
       <GallerySection
         title="A row that is not a link"
-        note="Any content goes in the panel. This is the gear's case: the theme control, which stays open while it is used because only a Menu.Item closes the menu."
+        note="Any content goes in the panel. This is the gear's case: the theme control, radios and palette line both, which stays open while it is used because only a Menu.Item closes the menu."
       >
-        <div className="design-stage-page design-menu-stage">
+        <div className="design-stage-page design-menu-stage design-menu-stage--theme">
           <Menu
             label="Settings"
             align="start"
