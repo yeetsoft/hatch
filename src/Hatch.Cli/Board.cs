@@ -517,7 +517,7 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
 
         return Uri.TryCreate(Client.Origin, UriKind.Absolute, out var origin)
             && origin.Scheme is "http" or "https"
-                ? work with { IssueUrl = $"{Client.Origin}/apps/hatch/issues/{work.Issue.Key}" }
+                ? work with { IssueUrl = $"{Client.Origin}/issues/{work.Issue.Key}" }
                 : work;
     }
 

@@ -1092,7 +1092,7 @@ public sealed class IssueCommandsTests
         Assert.Equal(["In Progress", "To Do", "In Progress"], envelope.Chain.Select(i => i.Status));
         Assert.Equal(["task brief", "story brief", "epic brief"], envelope.Chain.Select(i => i.Description));
         Assert.Equal(["AER-11", "AER-10", null], envelope.Chain.Select(i => i.ParentKey));
-        Assert.All(envelope.Chain, i => Assert.EndsWith($"/apps/hatch/issues/{i.Key}", i.Url));
+        Assert.All(envelope.Chain, i => Assert.EndsWith($"/issues/{i.Key}", i.Url));
         Assert.Equal(PrUrl, h.Said);
         Assert.Empty(h.Complained);
     }

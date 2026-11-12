@@ -153,7 +153,7 @@ ten minutes; `queue` is where the counts turn back into tickets.
 - **Name the ticket in the pull request, in two places.** The title is the key,
   one space, then the subject in house style — `AER-12 Auth: the first Admin`,
   with no brackets and no second colon. The first line of the description is
-  `[AER-12](<origin>/apps/hatch/issues/AER-12)` and nothing else, then a blank
+  `[AER-12](<origin>/issues/AER-12)` and nothing else, then a blank
   line, then the summary. `<origin>` is the address Hatch was reached at
   (`HATCH_BASE`), or the install's public address where it sets one; `hatch work
   AER-12 --dry-run` prints the exact line. Never write a relative link.

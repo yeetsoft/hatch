@@ -1,0 +1,205 @@
+import { GalleryPage, GallerySection } from '../components/Gallery';
+import { Swatch } from '../components/Swatch';
+import { useTokenValues } from '../lib/useTokenValues';
+
+interface ColorGroup {
+  title: string;
+  note?: string;
+  tokens: { name: string; use: string }[];
+}
+
+const GROUPS: ColorGroup[] = [
+  {
+    title: 'Surfaces',
+    note: 'Two levels, not a stack. A card sits on the page; nothing sits on a card.',
+    tokens: [
+      { name: '--bg', use: 'The page behind everything' },
+      { name: '--card', use: 'A raised surface: cards, modals, popovers' },
+    ],
+  },
+  {
+    title: 'Ink',
+    tokens: [
+      { name: '--ink', use: 'Body text and headings' },
+      { name: '--muted', use: 'Secondary text: labels, timestamps, help' },
+    ],
+  },
+  {
+    title: 'Lines',
+    note: 'Two weights. --line divides; --line-strong is a line that has to carry weight against --card.',
+    tokens: [
+      { name: '--line', use: 'Borders, dividers, the resting secondary button' },
+      { name: '--line-strong', use: 'A pressed control, a divider on --card' },
+    ],
+  },
+  {
+    title: 'Primary',
+    note: 'Every accent is a triple: the accent, a wash of it, and a darker ink for hover and text on a light ground.',
+    tokens: [
+      { name: '--primary', use: 'The action a page is for' },
+      { name: '--primary-bg', use: 'A wash: selection, focus ring, chart fill' },
+      { name: '--primary-ink', use: 'Hover, and primary-colored text' },
+    ],
+  },
+  {
+    title: 'Danger',
+    tokens: [
+      { name: '--danger', use: 'Destructive actions and failure states' },
+      { name: '--danger-bg', use: 'The wash behind an error' },
+      { name: '--danger-ink', use: 'Hover, and error text' },
+    ],
+  },
+  {
+    title: 'Success',
+    tokens: [
+      { name: '--success', use: 'Healthy, connected, saved' },
+      { name: '--success-bg', use: 'The wash behind a confirmation' },
+      { name: '--success-ink', use: 'Hover, and success text' },
+      { name: '--success-fill', use: 'The fill behind a success button' },
+    ],
+  },
+  {
+    title: 'Warn',
+    note: 'Not wrong yet, and wanting looking at before it is - a due date three days out, a certificate two weeks from expiry. Amber rather than orange so it is not read as danger at a glance.',
+    tokens: [
+      { name: '--warn', use: 'Approaching, expiring, nearly out of room' },
+      { name: '--warn-bg', use: 'The wash behind a caution' },
+      { name: '--warn-ink', use: 'Hover, and caution text' },
+    ],
+  },
+  {
+    title: 'Ink on an accent',
+    note: 'These flip with the theme rather than being white forever: the dark accents are light blues and corals, and white on them is a label nobody can read.',
+    tokens: [
+      { name: '--on-accent', use: 'A primary button’s label, and a tone chip on the bar' },
+      { name: '--on-accent-wash', use: 'The same ink at hover strength' },
+    ],
+  },
+  {
+    title: 'Chrome',
+    note: "The bar's own ground, apart from the accent fills above: in dark mode the bar stays dark while the accents turn light, so --on-chrome is light in both themes where --on-accent flips.",
+    tokens: [
+      { name: '--chrome', use: "The gradient's near stop" },
+      { name: '--chrome-end', use: 'The far stop, violet' },
+      { name: '--on-chrome', use: 'Ink on the bar' },
+      { name: '--on-chrome-wash', use: "Hover and active ground on the bar; the bar's hairline" },
+      { name: '--chrome-glow', use: "Hover ink, the active rule's far end, the focus ring on the bar" },
+    ],
+  },
+  {
+    title: 'Fixed',
+    note: 'Black in both themes, or white regardless of theme - neither follows the palette.',
+    tokens: [
+      { name: '--letterbox', use: 'Behind a video or image whose aspect is not the frame’s' },
+      { name: '--on-series', use: 'The series band label, on :root only' },
+    ],
+  },
+  {
+    title: 'Usage ramp',
+    note: 'Three bands, low/mid/high, the same order the battery and the usage bars draw from. Dark lifts the red: today’s --danger is 2.8:1 on the dark --card, too faint for this fill.',
+    tokens: [
+      { name: '--ramp-low', use: 'Plenty left' },
+      { name: '--on-ramp-low', use: 'Ink on --ramp-low' },
+      { name: '--ramp-mid', use: 'Over half spent' },
+      { name: '--on-ramp-mid', use: 'Ink on --ramp-mid' },
+      { name: '--ramp-high', use: 'Nearly spent' },
+      { name: '--on-ramp-high', use: 'Ink on --ramp-high' },
+    ],
+  },
+  {
+    title: 'Console',
+    note: 'Dark in both themes, because the look is the point: a console that turned white in the light theme would be a search box. Fixed like the letterbox, so no dark block redefines them.',
+    tokens: [
+      { name: '--console', use: 'The ground: a blue-black that sits with the top bar’s navy' },
+      { name: '--console-line', use: 'Hairlines between prompt, list and status line; the keycaps' },
+      { name: '--on-console', use: 'Ink: keys, titles, what is typed' },
+      { name: '--console-dim', use: 'The type, the column name, the status line' },
+      { name: '--console-glow', use: 'The phosphor: prompt, caret, matched characters, the row marker' },
+    ],
+  },
+];
+
+const ALL_TOKENS = GROUPS.flatMap((group) => group.tokens.map((token) => token.name));
+
+/* The four accents, laid out the way they are actually used: a filled block
+   with its --on-accent label. This is the only honest way to show an ink token
+   - a swatch of near-white on --card says nothing about whether it is legible
+   where it lands. */
+const ACCENTS = [
+  { fill: '--primary', label: 'Primary' },
+  { fill: '--danger', label: 'Danger' },
+  { fill: '--success', label: 'Success' },
+  { fill: '--warn', label: 'Warn' },
+];
+
+export function ColorPage() {
+  const values = useTokenValues(ALL_TOKENS);
+
+  return (
+    <GalleryPage
+      title="Color"
+      blurb="Admin's existing vocabulary, carried forward. Every value here is authored in both themes - switch the theme in the sidebar and read them again."
+    >
+      {GROUPS.map((group) => (
+        <GallerySection key={group.title} title={group.title} note={group.note}>
+          <div className="design-swatch-grid">
+            {group.tokens.map((token) => (
+              <Swatch key={token.name} token={token.name} value={values[token.name]} use={token.use} />
+            ))}
+          </div>
+        </GallerySection>
+      ))}
+
+      <GallerySection
+        title="In context"
+        note="Ink on an accent, at the size it is read. If a label here is hard to read in either theme, the pair is wrong."
+      >
+        <div className="design-accent-row">
+          {ACCENTS.map((accent) => (
+            <div
+              key={accent.fill}
+              className="design-accent-block"
+              style={{ background: `var(${accent.fill})`, color: 'var(--on-accent)' }}
+            >
+              {accent.label}
+            </div>
+          ))}
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="On the bar"
+        note="Token pairings, not the component - see the Top bar page for the bar itself. The strip is wide enough that the samples sit at different points of the gradient; the worst figures are at the left end, where the resting and hover samples sit."
+      >
+        <div className="design-chrome-ground design-row">
+          <span style={{ fontWeight: 600, color: 'var(--on-chrome)' }}>Resting</span>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--r-ctl)',
+              backgroundColor: 'var(--on-chrome-wash)',
+              color: 'var(--chrome-glow)',
+            }}
+          >
+            Hovered
+          </span>
+          <span
+            style={{
+              padding: '4px 10px',
+              borderRadius: 'var(--r-ctl)',
+              backgroundColor: 'var(--on-chrome-wash)',
+              backgroundImage: 'linear-gradient(90deg, var(--on-chrome), var(--chrome-glow))',
+              backgroundSize: '100% 2px',
+              backgroundPosition: 'bottom',
+              backgroundRepeat: 'no-repeat',
+              color: 'var(--on-chrome)',
+            }}
+          >
+            Active
+          </span>
+          <span style={{ color: 'var(--chrome-glow)' }}>Glow</span>
+        </div>
+      </GallerySection>
+    </GalleryPage>
+  );
+}

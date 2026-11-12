@@ -156,3 +156,13 @@ A loop running under Hatch's own supervisor restarts itself as a newer build
 when its source changes ([Restarts](one-increment-and-the-loop#restarts)). The
 container runner never does; a new build reaches it only through the commands
 above.
+
+## Links an older `hatch` wrote
+
+A pull request, a preemption comment or a `hatch work` read-out names an issue
+as `<origin>/issues/AER-12`, with no `/apps/hatch` in front. A `hatch` binary
+built before that change keeps writing the old `<origin>/apps/hatch/issues/AER-12`
+form until its operator upgrades it. Nothing breaks meanwhile: the root answers
+the old path with a permanent redirect to the same path at the root, and a pull
+request whose first line still carries the old form is read the same way as the
+new one, for the same key and instance.

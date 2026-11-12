@@ -228,18 +228,18 @@ public sealed class BoardCommandsTests
 
         var work = await h.Board.WorkAsync([], "AER-1", null, default);
 
-        Assert.Equal("https://hatch.example/apps/hatch/issues/AER-1", work!.IssueUrl);
+        Assert.Equal("https://hatch.example/issues/AER-1", work!.IssueUrl);
     }
 
     [Fact]
     public async Task A_link_the_server_wrote_is_passed_through_untouched()
     {
         using var h = new CliHarness();
-        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", issueUrl: "https://home.example.com/apps/hatch/issues/AER-1"));
+        h.Wire.Json("GET", "/api/hatch/work/AER-1", Fixtures.Work("AER-1", issueUrl: "https://home.example.com/issues/AER-1"));
 
         var work = await h.Board.WorkAsync([], "AER-1", null, default);
 
-        Assert.Equal("https://home.example.com/apps/hatch/issues/AER-1", work!.IssueUrl);
+        Assert.Equal("https://home.example.com/issues/AER-1", work!.IssueUrl);
     }
 
     /// <summary>

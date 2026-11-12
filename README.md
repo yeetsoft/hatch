@@ -128,17 +128,11 @@ docker compose --profile runner up -d
 ## The UI Design library
 
 `@hatch/ui` — tokens, day/night theming, and the components Hatch itself is
-built from — plus its own browsable gallery app, both kept for their standalone
-value. The gallery isn't part of the default stack; bring it up as a hot-
-reloading dev server with its own profile:
-
-```
-docker compose --profile design up -d
-```
-
-Then open **http://localhost:5173/apps/design/**. See
+built from — plus a browsable gallery of them, kept for their standalone
+value. The gallery is a page of the board, Design, under Manage; signed in,
+open it at `/design`. See
 [docs/design-system-architecture.md](docs/design-system-architecture.md) and
-[src/Hatch.Web/apps/design/README.md](src/Hatch.Web/apps/design/README.md).
+[src/Hatch.Web/apps/hatch/docs/the-design-gallery.md](src/Hatch.Web/apps/hatch/docs/the-design-gallery.md).
 
 ## Working on this repository
 
@@ -162,8 +156,7 @@ src/
   Hatch.Cli          the `hatch` CLI: work, go-to-work, board, and the rest
   Hatch.Contracts    the wire types both of the above share
   Hatch.Web/
-    apps/hatch       the board's own SPA, served at /apps/hatch/
-    apps/design      the design gallery, served at /apps/design/
+    apps/hatch       the board's own SPA, served at /apps/hatch/ - holds the design gallery, Design, as a page
     apps/site        the GitHub Pages site, served at the Pages address
     packages/ui      @hatch/ui — the design system
 containers/

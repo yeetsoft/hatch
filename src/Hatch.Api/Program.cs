@@ -344,13 +344,16 @@ opt.AddRedirect("^apps/hatch$", "/", StatusCodes.Status301MovedPermanently);
 // which browsers resolve as another host.
 opt.AddRedirect(@"^apps/hatch/+([^/\\].*)?$", "/$1", StatusCodes.Status301MovedPermanently);
 opt.AddRedirect("^apps/?$", "/", StatusCodes.Status301MovedPermanently);
-opt.AddRedirect("^apps/design$", "apps/design/");
+// The gallery is a page of the board now (HA-2250), at the same address
+// shape every other old /apps/<app> address redirects to above.
+opt.AddRedirect("^apps/design/*$", "/design", StatusCodes.Status301MovedPermanently);
+opt.AddRedirect(@"^apps/design/+([^/\\].*)$", "/design/$1", StatusCodes.Status301MovedPermanently);
 // The sign-in shell lives at /auth/ now; the old address is a permanent
 // redirect, with the query string carried so /apps/auth/?r=%2Fplan still knows
 // where it was going. The bare /auth gets its slash here because the static
 // file middleware never adds one to a sub-mount on its own (the same reason
-// apps/design has a rule above); /auth/ itself is answered by the mount and
-// the fallback further down. The capture follows a literal `/auth/`, so
+// the old address needed a slash added by hand); /auth/ itself is answered by
+// the mount and the fallback further down. The capture follows a literal `/auth/`, so
 // whatever it echoes - even a leading slash - stays a path on this host
 // rather than becoming the `//` the board's rule above has to guard against.
 opt.AddRedirect("^apps/auth/?$", "/auth/", StatusCodes.Status301MovedPermanently);
@@ -487,10 +490,6 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c
 if (board is not null)
 {
     app.MapFallbackToFile("{*path:nonfile}", "index.html", BoardFileOptions(board));
-}
-if (Directory.Exists(Path.Combine(appsPath, "design")))
-{
-    app.MapFallbackToFile("/apps/design/{*path:nonfile}", "apps/design/index.html");
 }
 
 if (authShell is not null)

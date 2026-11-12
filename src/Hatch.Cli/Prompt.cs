@@ -729,7 +729,7 @@ public static class Prompt
             "One sentence announcing what shipped.",
             "",
             "A short paragraph beneath it, which may link into the docs as",
-            "`/apps/hatch/docs/...` - a path, never an origin.",
+            "`/docs/...` - a path, never an origin.",
             "```",
             "",
             "It shows on the changelog and the issue page, where a person may edit or correct",
