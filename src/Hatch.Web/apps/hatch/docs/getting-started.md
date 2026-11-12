@@ -7,7 +7,7 @@ summary: From a clean machine to a first `hatch work`, in the order you do it.
 
 **The two sentences to send a friend:** *Clone this repository, install Docker
 Desktop, then run `docker compose up -d` from the repository root and open
-http://localhost:8080/apps/hatch/. That is a project board of your own, with a
+http://localhost:8080/. That is a project board of your own, with a
 page inside it that hands you the runner that works your tickets for you.*
 
 The rest of this page is those two sentences, in order.
@@ -46,7 +46,7 @@ From the repository root:
 docker compose up -d
 ```
 
-Then open **http://localhost:8080/apps/hatch/**. Compose says nothing about the
+Then open **http://localhost:8080/**. Compose says nothing about the
 address once it has gone to the background, so that part is on this page rather
 than in your terminal. The line is the same in both PowerShells and in a macOS
 terminal, character for character.

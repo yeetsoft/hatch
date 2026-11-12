@@ -865,7 +865,7 @@ and [variable interpolation in Compose](https://docs.docker.com/compose/how-tos/
 pages, such as Safari, Chrome, Edge or Firefox. The board is a web page that
 Hatch serves from this machine, so opening it means pointing a browser at the
 address from step 5: `http://localhost:` followed by the port, then
-`/apps/hatch/`. A bookmark is a saved address, so the person can get back to
+`/`. A bookmark is a saved address, so the person can get back to
 the board without being told it again.
 
 **Tell the person.** "Hatch is running, so now I am going to open the board in
@@ -879,25 +879,25 @@ see it, and please bookmark the page so you can come back to it."
 macOS:
 
 ```
-open http://localhost:<port>/apps/hatch/
+open http://localhost:<port>/
 ```
 
 Windows PowerShell:
 
 ```
-Start-Process http://localhost:<port>/apps/hatch/
+Start-Process http://localhost:<port>/
 ```
 
 In Git Bash on Windows:
 
 ```
-cmd.exe //c start "" http://localhost:<port>/apps/hatch/
+cmd.exe //c start "" http://localhost:<port>/
 ```
 
 Linux:
 
 ```
-xdg-open http://localhost:<port>/apps/hatch/
+xdg-open http://localhost:<port>/
 ```
 
 If `xdg-open` is missing, or this machine has no desktop, do not install
@@ -1972,7 +1972,7 @@ only from what this walkthrough did. A program that was already there is
 "already there", not "installed". Leave out any line for something that did
 not happen.
 
-1. **The board.** It is open at `http://localhost:<port>/apps/hatch/`, with
+1. **The board.** It is open at `http://localhost:<port>/`, with
    `<port>` the one step 5 settled on.
 2. **What was installed**, only what this run did: Git (step 2), Docker
    (step 3), Hatch's source in `~/hatch` and the running board (steps 4 and

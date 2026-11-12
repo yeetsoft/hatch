@@ -24,7 +24,7 @@ public class HatchOptionsTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("home.example.com")]     // no scheme - nothing to open
-    [InlineData("/apps/hatch")]          // relative
+    [InlineData("/board")]               // relative
     [InlineData("ftp://home.example.com")]
     public void NormalizeBaseUrl_RejectsWhatCannotBeOpened(string? configured)
         => Assert.Null(HatchOptions.NormalizeBaseUrl(configured));

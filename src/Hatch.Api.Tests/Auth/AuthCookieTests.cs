@@ -61,7 +61,7 @@ public class AuthCookieTests
         // The live failure, end to end: the phone's stale host-only cookie is
         // sent first, the grant it names is long deleted, and the good
         // domain-wide cookie is right behind it. Refusing here is what made
-        // home.example.com unreachable while kiosk.example.com worked.
+        // home.example.com unreachable while device.example.com worked.
         var grant = new EfAuthGrant
         {
             TokenHash = AuthTokens.Hash("good"),

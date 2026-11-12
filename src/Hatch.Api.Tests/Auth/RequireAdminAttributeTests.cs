@@ -58,8 +58,8 @@ public class RequireAdminAttributeTests
     }
 
     /// <summary>
-    /// A 403, not the 404 the admin app's bundle gets. The entities behind
-    /// these verbs are already listed by unguarded GETs, so there is nothing
+    /// A 403, not the 404 the board's bundle gets (AdminAppMiddleware). The
+    /// entities behind these verbs are already listed by unguarded GETs, so there is nothing
     /// left for a 404 to conceal and a great deal for it to confuse.
     /// </summary>
     [Theory]
