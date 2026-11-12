@@ -38,12 +38,14 @@ import { message } from '../lib/errors';
 import {
   DEFAULT_FILTER,
   assigneeFacets,
+  filedByFacets,
   filterCards,
   initialProject,
   isFiltering,
   readBoardContributions,
   readBoardTypes,
   revealType,
+  scrubbedFiledBy,
   scrubbedProject,
   writeBoardProject,
   writeBoardContributions,
@@ -356,6 +358,19 @@ export function BoardPage() {
       return next;
     });
   }, []);
+  /* Who filed the cards on the whole board, not on what survives the filter, so
+     choosing somebody does not empty the list you chose them from. */
+  const filers = useMemo(() => filedByFacets(cards), [cards]);
+  /* The stored `filedBy` can name someone who has left the board when the cards
+     refresh, so it is scrubbed on the way out rather than in an effect: what is
+     drawn is `shown`, and `changeFilter` still takes and stores the raw filter. */
+  const shown = useMemo(() => {
+    const filedBy = scrubbedFiledBy(
+      filter.filedBy,
+      filers.map((f) => f.name),
+    );
+    return filedBy === filter.filedBy ? filter : { ...filter, filedBy };
+  }, [filter, filers]);
   /* Grouped once per status, right where the filter's own output would
      otherwise have been a flat list: `Column`/`PhoneColumn` just filter this
      by statusId (unchanged), so a column's drawn order falls out of this one
@@ -364,12 +379,12 @@ export function BoardPage() {
      the whole board, exactly as lib/lineage.ts's docstring requires, so a
      parent hidden by the type filter still costs its children no depth. */
   const visible: LineageCard[] = useMemo(() => {
-    const vis = filterCards(cards, filter, storiesByEpic);
+    const vis = filterCards(cards, shown, storiesByEpic);
     const carriedCards = vis.filter((c) => !carriedKeys.has(c.key));
     const statusIds: number[] = [];
     for (const c of carriedCards) if (!statusIds.includes(c.statusId)) statusIds.push(c.statusId);
     return statusIds.flatMap((id) => lineage(cards, carriedCards.filter((c) => c.statusId === id)));
-  }, [cards, filter, carriedKeys, storiesByEpic]);
+  }, [cards, shown, carriedKeys, storiesByEpic]);
   const visibleKeys = useMemo(() => new Set(visible.map((c) => c.key)), [visible]);
 
   /* The board's own columns. The API sends every status - the issue page needs
@@ -719,7 +734,7 @@ export function BoardPage() {
       <h1 className="hatch-visually-hidden">Board</h1>
 
       <BoardFilters
-        filter={filter}
+        filter={shown}
         onChange={changeFilter}
         assignees={assignees}
         projects={offered}
@@ -805,7 +820,7 @@ export function BoardPage() {
                 status={status}
                 cards={visible.filter((i) => i.statusId === status.id)}
                 hidden={cards.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
-                filtering={isFiltering(filter)}
+                filtering={isFiltering(shown)}
                 found={found}
                 wip={zoneIds.has(status.id) && tint !== null ? { text: wipText!, tint } : null}
                 projectsByKey={projectsByKey}
@@ -853,7 +868,7 @@ export function BoardPage() {
                   narrow={narrow.has(status.id)}
                   cards={visible.filter((i) => i.statusId === status.id)}
                   hidden={cards.filter((i) => i.statusId === status.id && !carriedKeys.has(i.key)).length - visible.filter((i) => i.statusId === status.id).length}
-                  filtering={isFiltering(filter)}
+                  filtering={isFiltering(shown)}
                   dropping={dragging !== null && over === status.id}
                   lit={previewing && over !== null && zoneIds.has(over) && zoneIds.has(status.id)}
                   blocked={columnBlocked(status, dragging, projectsByKey)}

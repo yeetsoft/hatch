@@ -19,6 +19,7 @@ import {
   orderRunnerSession,
   patchRunnerSession,
   pauseAllSessions,
+  putRunnerRefusedModels,
   rotateRunner,
   revokeRunner,
   searchIssues,
@@ -209,6 +210,18 @@ describe('runners page calls', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/hatch/runners/here%3A%2Fx/sessions/7',
       expect.objectContaining({ method: 'PATCH', body: '{"state":"paused"}' }),
+    );
+  });
+
+  it('putRunnerRefusedModels PUTs the whole list to the runner and returns the runner', async () => {
+    const runner = { name: 'here:/x' } as Runner;
+    const fetchMock = answering(runner);
+
+    await expect(putRunnerRefusedModels('here:/x', ['fable', 'claude-opus-5'])).resolves.toEqual(runner);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/hatch/runners/here%3A%2Fx/refused-models',
+      expect.objectContaining({ method: 'PUT', body: '{"models":["fable","claude-opus-5"]}' }),
     );
   });
 

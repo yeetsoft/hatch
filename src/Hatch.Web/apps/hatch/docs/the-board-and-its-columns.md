@@ -104,11 +104,16 @@ is remembered in this browser as the types are. A contribution's card wears a
 mark beside its type glyph and names where it came from; see
 [Contribution](issues#contribution). Dropping one into a column that merges pull
 requests asks first. **…** opens the filters kept
-out of the row, today the **Assignee** choice; the button is lit while one of
-them is set, and the count still includes it. **×** returns every filter to
-its default and is drawn only when one is set. On a phone the row folds
-everything past the search box behind **Filters**, where **Assignee** stays
-beside the others.
+out of the row: **Assignee** and **Filed by**. The button is lit while either
+is set, and the count and **×** include them. **Filed by** lists everyone who
+filed a card on the board, hidden cards included, each with the number of cards
+they filed, sorted A-Z. **Only**, **All** and **None** read as they do in
+**Types**, and **None** leaves the board blank with the count reading *0 of N*.
+A name nobody has a card for any more drops out of the choice. Neither is
+remembered between visits. **×** returns every filter to its default and is
+drawn only when one is set. On a phone the row folds everything past the search
+box behind **Filters**, where **Assignee** and **Filed by** stay inline beside
+the others.
 
 The **Project** picker is drawn only when Hatch has more than one project,
 and **All projects** is a choice like any other. It and the type filter are

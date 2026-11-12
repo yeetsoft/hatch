@@ -1,7 +1,7 @@
 import { Menu } from '@hatch/ui';
 import { Caret } from './Facet';
 import { facetClass } from '../lib/facet';
-import { toggleChoice } from '../lib/checklist';
+import { ChecklistPanel } from './ChecklistPanel';
 
 /**
  * A control that says its value and opens a list of checkboxes. Not a row of
@@ -41,45 +41,7 @@ export function ChecklistFacet({
         </button>
       )}
     >
-      <div className="hatch-types-panel" role="group" aria-label={groupLabel}>
-        {options.map((option) => {
-          const on = chosen.includes(option.value);
-          return (
-            <div key={option.value} className="hatch-types-item">
-              <label className="hatch-types-label">
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => onChange(toggleChoice(chosen, option.value, options.map((o) => o.value)))}
-                />
-                <span className="hatch-types-name">{option.text}</span>
-                {option.count !== undefined && <span className="hatch-types-count">{option.count}</span>}
-              </label>
-              <button
-                type="button"
-                className="hatch-filter-clear hatch-types-only"
-                aria-label={`Only ${option.text}`}
-                onClick={() => onChange([option.value])}
-              >
-                Only
-              </button>
-            </div>
-          );
-        })}
-        <div className="hatch-types-footer">
-          <button
-            type="button"
-            className="hatch-filter-clear"
-            disabled={!lit}
-            onClick={() => onChange(options.map((o) => o.value))}
-          >
-            All
-          </button>
-          <button type="button" className="hatch-filter-clear" disabled={chosen.length === 0} onClick={() => onChange([])}>
-            None
-          </button>
-        </div>
-      </div>
+      <ChecklistPanel groupLabel={groupLabel} options={options} chosen={chosen} onChange={onChange} />
     </Menu>
   );
 }

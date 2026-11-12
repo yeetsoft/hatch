@@ -114,6 +114,17 @@ describe('RunnerSettingsForm', () => {
     expect(html).not.toContain('Save bounds');
   });
 
+  it('draws Refuses models beside Tags, one per line, with its own hint', () => {
+    const html = render(runner({ refusedModels: ['fable', 'claude-opus-5'] }));
+    expect(html).toContain('Refuses models');
+    expect(html).toContain('fable\nclaude-opus-5');
+    expect(html).toContain('Empty refuses none.');
+    expect(html).toContain("Binds on the board&#x27;s very next dispatch read, not on the next heartbeat the way tags do.");
+    expect(html.match(/<textarea/g)).toHaveLength(2);
+    expect(html.indexOf('Refuses models')).toBeGreaterThan(html.indexOf('Tags'));
+    expect(html.indexOf('Refuses models')).toBeLessThan(html.indexOf('Save settings'));
+  });
+
   it('links Under only while it is shaped like an issue key', () => {
     expect(render(runner({ under: 'not an epic!' }))).not.toContain('/issues/');
     expect(render(runner({ under: 'AER-930' }))).toContain('href="/issues/AER-930"');
@@ -165,9 +176,19 @@ describe('RunnerSettingsForm', () => {
     expect(html).toContain('href="/issues/AER-930"');
   });
 
+  it('reads what a runner refuses when not editable, with no textarea', () => {
+    const html = render(runner({ refusedModels: ['fable'] }), { editable: false });
+    expect(html).toContain('Refuses: fable');
+    expect(html).not.toContain('<textarea');
+    expect(render(runner({ refusedModels: ['fable', 'haiku'] }), { editable: false })).toContain(
+      'Refuses: fable, haiku',
+    );
+  });
+
   it('reads an unrestricted runner in words when not editable', () => {
     const html = render(runner(), { editable: false });
     expect(html).toContain('Tags: any runner');
     expect(html).toContain('Under: the whole board');
+    expect(html).toContain('Refuses: nothing');
   });
 });
