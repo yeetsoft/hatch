@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBoard, getQueue } from '../api/client';
-import { getFlowBoard, readFlowBoard } from './flowViz';
+import { boardLoader, getFlowBoard, readFlowBoard } from './flowViz';
 import type { Board, QueueEntry } from '../types';
 
 vi.mock('../api/client', () => ({ getBoard: vi.fn(), getQueue: vi.fn() }));
@@ -49,5 +49,27 @@ describe('getFlowBoard', () => {
     await getFlowBoard();
 
     expect(getQueue).toHaveBeenCalledWith(null, true);
+  });
+});
+
+describe('boardLoader', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('reads the queue with takers when the queue is wanted', async () => {
+    vi.mocked(getBoard).mockResolvedValueOnce(board);
+    vi.mocked(getQueue).mockResolvedValueOnce(queue);
+
+    const result = await boardLoader(true)();
+
+    expect(getQueue).toHaveBeenCalledWith(null, true);
+    expect((result as { queue?: QueueEntry[] | null }).queue).toBe(queue);
+  });
+
+  it('reads the board alone when it is not', async () => {
+    vi.mocked(getBoard).mockResolvedValueOnce(board);
+
+    await boardLoader(false)();
+
+    expect(getQueue).not.toHaveBeenCalled();
   });
 });
