@@ -36,6 +36,8 @@ export { SEED_PARAM, applySharedSeed, seedFromHref, shareLink } from './theme/sh
 export type { ThemeChoice, ResolvedTheme, ThemeContextValue } from './theme/themeContext';
 export { ThemeSwitch } from './components/ThemeSwitch';
 export type { ThemeSwitchTone } from './components/ThemeSwitch';
+export { PaletteBoard } from './components/PaletteBoard';
+export type { PaletteBoardProps } from './components/PaletteBoard';
 export { TopBar } from './components/TopBar';
 export type { TopBarProps } from './components/TopBar';
 export { HatchMark } from './components/HatchMark';

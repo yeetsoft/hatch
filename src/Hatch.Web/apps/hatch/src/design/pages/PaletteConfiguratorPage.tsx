@@ -1,4 +1,4 @@
-import { Button, Text } from '@hatch/ui';
+import { Button, PaletteBoard, Text } from '@hatch/ui';
 import {
   measurePairs,
   PARAMETERS,
@@ -268,6 +268,25 @@ export function PaletteConfiguratorPage() {
       title="Palette configurator"
       blurb="Three layouts of the same configurator, drawn at one fixed seed - sketches for the operator to pick between, not the build. Every part is the same; only the arrangement changes."
     >
+      <GallerySection
+        title="Palette board"
+        note="The board the configurator is built around, at the fixed seed: every non-fixed token the engine derives, drawn the way it is used, with the measured contrast of every guarded pair beneath it. A row that clears its floor is lit; one that does not says so."
+      >
+        <div className="design-pc-boards">
+          {(
+            [
+              ['Light block', light],
+              ['Dark block', dark],
+            ] as const
+          ).map(([label, palette]) => (
+            <div key={label} className="design-pc-board-block">
+              <span className="design-pc-board-block-label">{label}</span>
+              <PaletteBoard palette={palette} pairs={measurePairs(palette)} />
+            </div>
+          ))}
+        </div>
+      </GallerySection>
+
       {LAYOUTS.map((layout) => (
         <GallerySection key={layout.key} title={layout.title} note={layout.note}>
           <div className="design-pc-pair">
