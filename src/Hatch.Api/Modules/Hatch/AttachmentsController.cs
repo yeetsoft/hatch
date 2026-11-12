@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// says who may reach it.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/attachments")]
+[Route("api/attachments")]
 public class AttachmentsController(HatchContext db, TimeProvider time, ICallerIdentity caller) : ControllerBase
 {
     /// <summary>The largest file an upload may carry.</summary>

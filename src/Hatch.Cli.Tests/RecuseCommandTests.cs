@@ -7,7 +7,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class RecuseCommandTests
 {
-    private const string Route = "/api/hatch/issues/AER-5/omitted-runners/test%3A%2Fcheckout";
+    private const string Route = "/api/issues/AER-5/omitted-runners/test%3A%2Fcheckout";
 
     [Fact]
     public async Task Recusing_trims_puts_the_reason_and_says_what_it_recorded()

@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// says who may reach it.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/images")]
+[Route("api/images")]
 public class ImagesController(HatchContext db) : ControllerBase
 {
     /// <summary>

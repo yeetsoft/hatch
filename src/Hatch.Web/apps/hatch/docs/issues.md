@@ -182,7 +182,7 @@ close hop and the attention panel.
 
 A session sets it with `hatch pr KEY --none "reason"`. A person sets it from
 the issue page: the edit view's **Finished with no code** field, with **Save**
-and **Clear**. Both call `PUT /api/hatch/issues/{key}/no-code`, and the
+and **Clear**. Both call `PUT /api/issues/{key}/no-code`, and the
 history shows a `no_code_changed` event whose actor is whoever made the call.
 
 The route refuses while the ticket has a pull request recorded, or a branch on

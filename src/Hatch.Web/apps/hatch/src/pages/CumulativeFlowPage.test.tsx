@@ -29,7 +29,15 @@ const answer = (over: Partial<CumulativeFlow> = {}): CumulativeFlow => ({
 
 const render = (data: CumulativeFlow | null, by: ColourBy = 'column'): string =>
   renderToStaticMarkup(
-    <CumulativeFlowBody answer={data} statuses={statuses} by={by} projects={projects} offsetMinutes={0} now={NOW} />,
+    <CumulativeFlowBody
+      answer={data}
+      statuses={statuses}
+      by={by}
+      projects={projects}
+      offsetMinutes={0}
+      now={NOW}
+      onFrame={() => {}}
+    />,
   );
 
 describe('CumulativeFlowBody', () => {

@@ -59,7 +59,7 @@ public sealed class CredentialCommandTests
     public async Task No_credential_saved_is_its_own_exit_code_and_says_nothing(string agent)
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", $"/api/hatch/settings/credentials/{agent}", HttpStatusCode.NoContent);
+        h.Wire.Reply("GET", $"/api/settings/credentials/{agent}", HttpStatusCode.NoContent);
 
         Assert.Equal(CredentialCommand.NoCredential, await new CredentialCommand(h.Cli).RunAsync([agent], default));
         Assert.Empty(h.Say.Said);
@@ -74,7 +74,7 @@ public sealed class CredentialCommandTests
     public async Task A_refusal_is_complained_about_and_exits_one(string agent)
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", $"/api/hatch/settings/credentials/{agent}", HttpStatusCode.Forbidden);
+        h.Wire.Reply("GET", $"/api/settings/credentials/{agent}", HttpStatusCode.Forbidden);
 
         Assert.Equal(1, await new CredentialCommand(h.Cli).RunAsync([agent], default));
         Assert.Contains("403", h.Complained);
@@ -126,7 +126,7 @@ public sealed class CredentialCommandTests
     public async Task A_body_that_is_not_a_credential_exits_one(string agent)
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", $"/api/hatch/settings/credentials/{agent}", HttpStatusCode.OK, "not json at all");
+        h.Wire.Reply("GET", $"/api/settings/credentials/{agent}", HttpStatusCode.OK, "not json at all");
 
         Assert.Equal(1, await new CredentialCommand(h.Cli).RunAsync([agent], default));
         Assert.Empty(h.Say.Said);
@@ -193,7 +193,7 @@ public sealed class CredentialCommandTests
 
     private static void Answer(CliHarness h, string agent, string protectedToken) =>
         h.Wire.Reply(
-            "GET", $"/api/hatch/settings/credentials/{agent}", HttpStatusCode.OK,
+            "GET", $"/api/settings/credentials/{agent}", HttpStatusCode.OK,
             System.Text.Json.JsonSerializer.Serialize(new CredentialDto(protectedToken), Fixtures.Json));
 
     /// <summary>

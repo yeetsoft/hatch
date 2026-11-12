@@ -119,7 +119,7 @@ export function consumptionFilterQuery(query: ConsumptionFilterQuery): URLSearch
     a plain link, not a fetch, so the browser's own download handling and the
     server's `Content-Disposition` name the file. */
 export const consumptionCsvHref = (query: ConsumptionFilterQuery): string =>
-  `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`;
+  `/api/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`;
 
 /** The column the URL names, by its numeric id, or null for every column. A
     column has no `key` the way a project does, and the id is what the API takes.

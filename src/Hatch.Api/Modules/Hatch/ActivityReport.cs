@@ -4,7 +4,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// One actor's events over a range, folded into counts by kind, a rundown per
 /// issue touched, the newest rows, a bucketed series with rolling means, and
 /// the trail bracketed into working sessions - the shape <c>GET
-/// /api/hatch/reports/activity</c> answers.
+/// /api/reports/activity</c> answers.
 ///
 /// Pure in the way <see cref="CumulativeFlowReport"/> is: rows in, a shape
 /// out, with no database, no clock and no DTOs, so the rules can be pinned by

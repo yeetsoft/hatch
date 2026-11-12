@@ -28,7 +28,7 @@ export const LEGAL_PARENT_TYPES: Record<IssueType, IssueType[]> = {
   bug: ['epic', 'story', 'reflection'],
 };
 
-/** A stored file: `/api/hatch/attachments/{id}` serves it. */
+/** A stored file: `/api/attachments/{id}` serves it. */
 export interface Attachment {
   id: string;
   fileName: string;
@@ -1335,7 +1335,7 @@ export interface IssueSearch {
     Matched at SearchController.cs:247-251, in this order and no other. */
 export type SearchMatch = 'title' | 'description' | 'comment' | 'work-log';
 
-/** One hit from GET /api/hatch/search - mirrors SearchHitDto field for field. */
+/** One hit from GET /api/search - mirrors SearchHitDto field for field. */
 export interface SearchHit {
   card: IssueCard;
   createdAt: string;
@@ -1815,7 +1815,7 @@ export interface CumulativeFlow {
   /** The board's own columns, in board order, deferred columns excluded -
       parallel to each point's `counts`. */
   columns: number[];
-  /** The project keys in scope, in `/api/hatch/projects`'s own order -
+  /** The project keys in scope, in `/api/projects`'s own order -
       parallel to each point's `projectCounts`. */
   projects: string[];
   /** One per grid step, oldest first. */
@@ -2567,7 +2567,7 @@ export interface OvernightRowDto {
 
 // ---- Changelog ----
 
-/** The newest window of days that shipped something - `GET /api/hatch/changelog`'s whole read. */
+/** The newest window of days that shipped something - `GET /api/changelog`'s whole read. */
 export interface ChangelogDto {
   days: ChangelogDayDto[];
   hasOlder: boolean;

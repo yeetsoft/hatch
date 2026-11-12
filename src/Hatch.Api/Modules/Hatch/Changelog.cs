@@ -7,7 +7,7 @@ namespace Hatch.Api.Modules.Hatch;
 ///
 /// Pure and synchronous - no <see cref="HatchContext"/>, no query - because
 /// reading "an issue closed" off the database is a different job
-/// (<c>ChangelogController</c>'s, wiring this to <c>GET /api/hatch/changelog</c>)
+/// (<c>ChangelogController</c>'s, wiring this to <c>GET /api/changelog</c>)
 /// and this fold is tested without one.
 /// </summary>
 public static class Changelog

@@ -39,7 +39,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="IssueDto"/> and <see cref="IssueCardDto"/> carry the flag.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssuePreApprovalController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time, IProjectAccess access) : ControllerBase

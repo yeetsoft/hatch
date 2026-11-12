@@ -245,7 +245,7 @@ public class ApiKeyTests
         var auth = new StubAuthService(null) { Key = Key("Claude") };
         var gate = NewGate(auth);
 
-        var decision = await gate.EvaluateAsync("/api/hatch/board", "hatch.example.com", [], "hatch_ak_secret", null, default);
+        var decision = await gate.EvaluateAsync("/api/board", "hatch.example.com", [], "hatch_ak_secret", null, default);
 
         Assert.Equal(AuthOutcome.Authenticated, decision.Outcome);
         Assert.Equal("Claude", decision.ApiKey?.Name);
@@ -260,7 +260,7 @@ public class ApiKeyTests
     {
         var gate = NewGate(new StubAuthService(null));
 
-        var decision = await gate.EvaluateAsync("/api/hatch/board", "hatch.example.com", [], "hatch_ak_gone", null, default);
+        var decision = await gate.EvaluateAsync("/api/board", "hatch.example.com", [], "hatch_ak_gone", null, default);
 
         Assert.Equal(AuthOutcome.Challenge, decision.Outcome);
         Assert.Equal(AuthDecision.UnknownKey, decision.Reason);
@@ -277,7 +277,7 @@ public class ApiKeyTests
         var auth = new StubAuthService(Grant("Nathan's laptop"));
         var gate = NewGate(auth);
 
-        var decision = await gate.EvaluateAsync("/api/hatch/board", "hatch.example.com", ["a-good-token"], "hatch_ak_revoked", null, default);
+        var decision = await gate.EvaluateAsync("/api/board", "hatch.example.com", ["a-good-token"], "hatch_ak_revoked", null, default);
 
         Assert.Equal(AuthOutcome.Challenge, decision.Outcome);
         Assert.Empty(auth.Verified);
@@ -290,7 +290,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/board", null, PersonRole.User, true, default);
 
         Assert.Equal(RoleOutcome.Key, decision.Outcome);
         Assert.True(decision.IsAllowed);
@@ -309,7 +309,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, acceptKey, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/board", null, PersonRole.User, acceptKey, default);
 
         Assert.Equal(allowed, decision.IsAllowed);
         Assert.Equal(reason, decision.Reason);
@@ -326,7 +326,7 @@ public class ApiKeyTests
     {
         var gate = NewRoleGate(key: Key("Claude"));
 
-        var decision = await gate.EvaluateAsync("POST", "/api/hatch/runners", null, PersonRole.Admin, acceptKey: false, default);
+        var decision = await gate.EvaluateAsync("POST", "/api/runners", null, PersonRole.Admin, acceptKey: false, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.KeyNotAccepted, decision.Reason);
@@ -343,7 +343,7 @@ public class ApiKeyTests
         var person = new EfPerson { Name = "Ada", Role = PersonRole.Pending, CreatedAt = Now, UpdatedAt = Now };
         var gate = NewRoleGate(grant: Grant("Ada's iPhone", person));
 
-        var decision = await gate.EvaluateAsync("GET", "/api/hatch/board", null, PersonRole.User, true, default);
+        var decision = await gate.EvaluateAsync("GET", "/api/board", null, PersonRole.User, true, default);
 
         Assert.False(decision.IsAllowed);
         Assert.Equal(RoleDecision.PendingApproval, decision.Reason);

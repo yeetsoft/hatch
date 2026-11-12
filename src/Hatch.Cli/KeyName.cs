@@ -4,7 +4,7 @@ namespace Hatch.Cli;
 /// What a loop needs of its key: that there is one, and the name it carries.
 /// </summary>
 /// <remarks>
-/// A runner's name is its key's - the server says it, at <c>GET /api/hatch/me</c>,
+/// A runner's name is its key's - the server says it, at <c>GET /api/me</c>,
 /// and nothing on this side chooses, records or sends another. Kept out of
 /// <c>Program.cs</c>, whose top level a test cannot reach.
 /// </remarks>
@@ -28,7 +28,7 @@ public static class LoopKey
 
     /// <summary>
     /// The key's own name: the empty string with no key, the <c>Name</c> of one
-    /// <c>GET /api/hatch/me</c> for a key, and null where that read failed or
+    /// <c>GET /api/me</c> for a key, and null where that read failed or
     /// the caller it described was not a key.
     /// </summary>
     public static async Task<string?> NameAsync(

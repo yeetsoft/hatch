@@ -17,8 +17,8 @@ import { message } from './errors';
 
 describe('imageMarkdown', () => {
   it('is exactly the image syntax over the API route', () => {
-    expect(imageMarkdown('abc')).toBe('![image](/api/hatch/images/abc)');
-    expect(imageUrl('abc')).toBe('/api/hatch/images/abc');
+    expect(imageMarkdown('abc')).toBe('![image](/api/images/abc)');
+    expect(imageUrl('abc')).toBe('/api/images/abc');
   });
 });
 
@@ -101,29 +101,29 @@ describe('dragHasFiles', () => {
 describe('attachmentMarkdown', () => {
   it('is image syntax over the attachment route for an image type', () => {
     expect(attachmentMarkdown({ id: 'abc', fileName: 'photo.png', contentType: 'image/png' })).toBe(
-      '![photo.png](/api/hatch/images/abc)',
+      '![photo.png](/api/images/abc)',
     );
   });
 
   it('is link syntax for a non-image type', () => {
     expect(attachmentMarkdown({ id: 'abc', fileName: 'report.pdf', contentType: 'application/pdf' })).toBe(
-      '[report.pdf](/api/hatch/attachments/abc)',
+      '[report.pdf](/api/attachments/abc)',
     );
-    expect(attachmentUrl('abc')).toBe('/api/hatch/attachments/abc');
+    expect(attachmentUrl('abc')).toBe('/api/attachments/abc');
   });
 
   it('escapes the backslash before the brackets, so an escaped backslash is never doubled', () => {
     expect(attachmentMarkdown({ id: 'abc', fileName: 'a\\b[c].pdf', contentType: 'application/pdf' })).toBe(
-      '[a\\\\b\\[c\\].pdf](/api/hatch/attachments/abc)',
+      '[a\\\\b\\[c\\].pdf](/api/attachments/abc)',
     );
   });
 
   it('falls back to a word naming the kind when the file name is empty', () => {
     expect(attachmentMarkdown({ id: 'abc', fileName: '', contentType: 'image/png' })).toBe(
-      '![image](/api/hatch/images/abc)',
+      '![image](/api/images/abc)',
     );
     expect(attachmentMarkdown({ id: 'abc', fileName: '', contentType: 'application/pdf' })).toBe(
-      '[attachment](/api/hatch/attachments/abc)',
+      '[attachment](/api/attachments/abc)',
     );
   });
 });
@@ -159,7 +159,7 @@ describe('markdownForDrop', () => {
     const result = await markdownForDrop(files, upload);
     expect(calls).toEqual(['a.png', 'b.pdf', 'c.jpg']);
     expect(result).toBe(
-      '![a.png](/api/hatch/images/a.png)\n[b.pdf](/api/hatch/attachments/b.pdf)\n![c.jpg](/api/hatch/images/c.jpg)',
+      '![a.png](/api/images/a.png)\n[b.pdf](/api/attachments/b.pdf)\n![c.jpg](/api/images/c.jpg)',
     );
   });
 

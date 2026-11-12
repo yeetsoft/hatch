@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>GET /api/hatch/reports/consumption</c>: the work log loaded, folded by
+/// <c>GET /api/reports/consumption</c>: the work log loaded, folded by
 /// <see cref="ConsumptionReport"/> and answered as a
 /// <see cref="ConsumptionReportDto"/>, wired against the in-memory database.
 /// </summary>

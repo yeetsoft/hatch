@@ -19,7 +19,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// a person's own mark and nothing else's.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/overnight")]
+[Route("api/overnight")]
 public class OvernightController(
     HatchContext db, ICallerIdentity caller, IActorDirectory directory, TimeProvider time) : ControllerBase
 {

@@ -56,7 +56,7 @@ import { MessageState } from '../components/MessageState';
 import { NewestFirstTitle } from '../components/NewestFirstGlyph';
 import { StatusMeter } from '../components/StatusMeter';
 import { StatusPill } from '../components/StatusPill';
-import { StatusSteps } from '../components/StatusSteps';
+import { StatusPicker } from '../components/StatusPicker';
 import { ContributionBadge } from '../components/ContributionMark';
 import { ContributionMoveDialog } from '../components/ContributionMoveDialog';
 import { WipOverrideDialog } from '../components/WipOverrideDialog';
@@ -760,6 +760,7 @@ export function IssuePage() {
           above it: the column this ticket is in right now is not content to
           be folded away. */}
       <StatusBar
+        issueKey={issue.key}
         statuses={board.statuses}
         statusId={issue.statusId}
         onMove={(statusId) => void moveStatus(statusId)}
@@ -1094,17 +1095,18 @@ export function IssuePage() {
  * Status was a <select> in a row of five pickers, which made "what is the state
  * of this thing" - the first question anybody opens an issue with - the same
  * size as its ready date. Here it is the page's own band: the column it is in,
- * in that column's colour, and the whole board's worth of columns beside it as
- * one press each, drawn by StatusSteps - the same group the board peek's
- * status picker opens, so the two screens cannot disagree about what is on
- * offer.
+ * in that column's colour, as a pill that opens the board's columns on a press
+ * - the same StatusPicker the board peek uses, so the two screens cannot
+ * disagree about what is on offer.
  */
 function StatusBar({
+  issueKey,
   statuses,
   statusId,
   onMove,
   blocked,
 }: {
+  issueKey: string;
   statuses: Status[];
   statusId: number;
   onMove: (statusId: number) => void;
@@ -1115,12 +1117,22 @@ function StatusBar({
 
   return (
     <section className="hatch-status-bar" style={statusVars(current?.color)} aria-label="Status">
-      <div className="hatch-status-bar-now">
-        <span className="hatch-status-bar-label">Status</span>
-        {current ? <StatusPill status={current} size="lg" /> : <span className="text-muted">unknown</span>}
-      </div>
-
-      <StatusSteps statuses={statuses} statusId={statusId} onMove={onMove} blocked={blocked} />
+      <span className="hatch-status-bar-label">Status</span>
+      {current ? (
+        // Keyed so following a parent or child link, which keeps this page
+        // mounted, never carries an open band across issues.
+        <StatusPicker
+          key={issueKey}
+          issueKey={issueKey}
+          status={current}
+          statuses={statuses}
+          size="lg"
+          onMove={onMove}
+          blocked={blocked}
+        />
+      ) : (
+        <span className="text-muted">unknown</span>
+      )}
     </section>
   );
 }

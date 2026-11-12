@@ -206,6 +206,9 @@ public sealed class RootMountFixture : IAsyncLifetime
     /// <summary>Stops at the first response, so a redirect's own status and Location are what a case asserts on.</summary>
     public HttpClient NoRedirectClient { get; private set; } = null!;
 
+    /// <summary>The host's own services, for a case that has to seed something - a key - before it calls.</summary>
+    public IServiceProvider Services => factory!.Services;
+
     public void SkipIfUnavailable() => Skip.IfNot(HatchDatabase.Available, $"{HatchDatabase.Variable} is unset");
 
     public async Task InitializeAsync()

@@ -48,7 +48,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// whatever is added beside them.
 /// </summary>
 [ApiController]
-[Route("api/hatch/settings")]
+[Route("api/settings")]
 public class SettingsController(
     AppDbContext db,
     ISiteSettingsService siteSettings,

@@ -215,7 +215,7 @@ describe('consumptionCsvHref', () => {
     const query: ConsumptionFilterQuery = { type: 'bug', sort: 'tokens', offsetMinutes: 0 };
 
     expect(consumptionCsvHref(query)).toBe(
-      `/api/hatch/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`,
+      `/api/reports/consumption.csv?${consumptionFilterQuery(query).toString()}`,
     );
   });
 

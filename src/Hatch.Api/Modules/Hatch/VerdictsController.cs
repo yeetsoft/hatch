@@ -23,7 +23,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <c>204 No Content</c> with no read DTO.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/verdicts")]
+[Route("api/issues/{key}/verdicts")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class VerdictsController(HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

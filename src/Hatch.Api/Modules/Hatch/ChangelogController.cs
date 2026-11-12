@@ -12,7 +12,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// ordering.
 /// </summary>
 [ApiController]
-[Route("api/hatch/changelog")]
+[Route("api/changelog")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ChangelogController(HatchContext db, TimeProvider time) : ControllerBase
 {

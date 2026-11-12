@@ -20,7 +20,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="NoCode"/> holds the rules that clear it.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues")]
+[Route("api/issues")]
 public class IssueNoCodeController(
     HatchContext db, IActorDirectory actors, IssueClaims claims, ICallerIdentity caller,
     TimeProvider time) : ControllerBase

@@ -29,7 +29,7 @@ interface PlanView {
  * it, so the operator can pick the one worth furthering today.
  *
  * It does not fetch the board. The board is seven hundred cards this page has
- * no use for, and the whole reason `/api/hatch/plan` exists as its own read is
+ * no use for, and the whole reason `/api/plan` exists as its own read is
  * that the arithmetic is done on the server once rather than re-derived here
  * from every card in the tracker.
  */

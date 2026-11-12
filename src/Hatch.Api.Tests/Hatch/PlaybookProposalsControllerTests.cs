@@ -11,7 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Hatch.Api.Tests.Hatch;
 
 /// <summary>
-/// <c>POST /api/hatch/playbook-proposals</c>: every refusal in the order
+/// <c>POST /api/playbook-proposals</c>: every refusal in the order
 /// <see cref="PlaybookProposalsController.SubmitProposal"/> makes them, that
 /// nothing live moves when it saves, and that the event it writes on a named
 /// issue matches the one <see cref="PlaybookProposalReadsTests.Harness"/>'s

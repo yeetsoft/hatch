@@ -29,7 +29,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// than a transaction is worth here.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/messages")]
+[Route("api/issues/{key}/messages")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class IssueMessagesController(
     HatchContext db, IssueClaims claims, ICallerIdentity caller, TimeProvider time) : ControllerBase

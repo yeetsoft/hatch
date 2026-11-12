@@ -15,7 +15,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// got there.
 /// </summary>
 [ApiController]
-[Route("api/hatch/dependency-files")]
+[Route("api/dependency-files")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class DependencyFileController(
     HatchContext db, ICallerIdentity caller, TimeProvider time, Dependencies? known = null) : ControllerBase
