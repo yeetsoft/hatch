@@ -131,6 +131,18 @@ describe('RunnerRow', () => {
     expect(html).toContain('>AER-1 - reading the brief</span>');
   });
 
+  it('ends line three with what the runner refuses, and its title says it too', () => {
+    const html = draw(
+      runner({ for: 'sam', refusedModels: ['fable', 'haiku'], sessions: [session({ host: 'mac-mini' })] }),
+    );
+    expect(html).toContain('title="sam · mac-mini · refuses fable, haiku"');
+    expect(html).toContain('>sam · mac-mini · refuses fable, haiku</span>');
+  });
+
+  it('says nothing of refusals for an empty list', () => {
+    expect(draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini' })] }))).not.toContain('refuses');
+  });
+
   it('says whose it is and where it runs on line three, with the same words in its title', () => {
     const html = draw(runner({ for: 'sam', sessions: [session({ host: 'mac-mini' })] }));
 

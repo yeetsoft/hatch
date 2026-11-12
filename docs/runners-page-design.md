@@ -202,7 +202,9 @@ flush>`. It carries `aria-current="page"` when selected (see
   - none: "Not started".
 - **Line 3** is `--t-micro`, muted: the owner (`for`, or "no owner"), then a
   " · " and the host — the one distinct host of its live sessions, or "{n}
-  machines". With no sessions the host is omitted.
+  machines". With no sessions the host is omitted. The image follows the same
+  way, and a runner that refuses models ends the line with `refuses fable,
+  haiku` (`refusedLabel`); an empty list adds nothing.
 - **Which session speaks on line 2** is, among the sessions at the winning rank,
   the most recently heard. `activityWords` is that session's. Working draws its
   claim key and `line` (the key alone when `line` is null), and "+{n-1} more"
@@ -280,13 +282,21 @@ header line beside the name carries `Behind`** when any live session's
 
 ### What it may work
 
-Two editable fields in one `.hatch-field-grid`, saved together: Tags
-(`RunnerTagsField`, one per line, empty is any runner) and Under (plain input,
+Three editable fields in one `.hatch-field-grid`, saved together: Tags
+(`RunnerTagsField`, one per line, empty is any runner), Under (plain input,
 hint "An epic to stay inside, like AER-930. Empty is the whole board.", with a
 link to `/issues/{under}` beside it when set — `BoundsSummary`'s under-link,
-lifted here). `Button variant="primary"` "Save settings" and "Revert" —
-`BoundsForm`/`boundsOf`/`boundsChanged`'s pattern, narrowed to `{ tags, under
-}` and its own PATCH.
+lifted here) and Refuses models (`RunnerTagsField` again, one per line, empty
+refuses none; its hint says it binds on the board's very next dispatch read,
+not on the next heartbeat the way tags do). `Button variant="primary"` "Save
+settings" and "Revert" — `BoundsForm`/`boundsOf`/`boundsChanged`'s pattern,
+narrowed to `{ tags, under }` and its own PATCH, plus the refused models on
+their own `PUT /runners/{name}/refused-models` (`saveRunnerSettings`), sent
+only when that list changed and only after the PATCH went through. An entry
+the shared normaliser would refuse (`lib/runnerModels.ts`, a port of
+`RunnerModels.Normalise`) is refused in the card with the API's own sentence
+before either request is sent. A caller who cannot edit reads `Refuses: fable`
+(or `Refuses: nothing`) beside `Tags:` and `Under:`.
 
 - **Below, read-only "Declared by its sessions"**: Projects is the union of
   every live session's declared `projects` ("every project" when none; hint

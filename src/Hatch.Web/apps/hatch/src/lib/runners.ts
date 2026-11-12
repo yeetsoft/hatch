@@ -15,6 +15,7 @@
 import { resetClockWords } from './attention';
 import { agoPhrase } from './claim';
 import { buildTimePhrase, isStamped, shortSha } from './revision';
+import { refusedModelsDraft, refusedModelsRequest } from './runnerModels';
 import { runnerTagsDraft, runnerTagsRequest, sameTags } from './runnerTags';
 import { compactTokens, parseTokenCount, thousands, TOKEN_FIELD_HINT } from './workLog';
 import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
@@ -378,6 +379,9 @@ export function rowThirdLine(runner: Runner, now: Date): string {
   if (images.length === 1) parts.push(images[0]);
   else if (images.length > 1) parts.push(`${images.length} images`);
 
+  const refused = refusedLabel(runner);
+  if (refused) parts.push(refused);
+
   return parts.join(' · ');
 }
 
@@ -521,6 +525,11 @@ export function dangerousLabel(runner: Runner): string | null {
 /** A runner's models, joined - or null where it has reported none. The `models ` prefix is deliberate, the same reason as `projectsLabel`: a bare list beside an agent name reads as nothing. */
 export function modelsLabel(runner: Runner): string | null {
   return runner.models.length === 0 ? null : `models ${runner.models.join(', ')}`;
+}
+
+/** The models a runner refuses, as the row says it - or null where it refuses none. The `refuses ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an owner reads as nothing. */
+export function refusedLabel(runner: Runner): string | null {
+  return runner.refusedModels.length === 0 ? null : `refuses ${runner.refusedModels.join(', ')}`;
 }
 
 /** A runner's dependencies, joined - or null where it has reported none. The `has ` prefix is deliberate, the same reason as `modelsLabel`: a bare list beside an agent name reads as nothing. Each entry is `id` or `id@version`; the `@` becomes a space, since the version is a fact about the id, not part of it. */
@@ -717,24 +726,42 @@ export function boundsRequest(draft: RunnerBounds): RunnerPatchRequest {
 export interface RunnerSettings {
   tags: string;
   under: string;
+  refusedModels: string;
 }
 
 /** What a row's tags and under look like in the form that edits them. */
 export function settingsOf(runner: Runner): RunnerSettings {
-  return { tags: runnerTagsDraft(runner.tags), under: runner.under ?? '' };
+  return {
+    tags: runnerTagsDraft(runner.tags),
+    under: runner.under ?? '',
+    refusedModels: refusedModelsDraft(runner.refusedModels),
+  };
 }
 
 /** Whether the settings form is holding anything the row is not. */
 export function settingsChanged(draft: RunnerSettings, runner: Runner): boolean {
   return (
-    draft.under.trim() !== (runner.under ?? '').trim() || !sameTags(runnerTagsRequest(draft.tags), runner.tags)
+    draft.under.trim() !== (runner.under ?? '').trim() ||
+    !sameTags(runnerTagsRequest(draft.tags), runner.tags) ||
+    !sameTags(refusedModelsRequest(draft.refusedModels), runner.refusedModels)
   );
 }
 
-/** The settings form as a request: exactly `tags` and `under`, so saving it
-    leaves every ceiling alone. */
-export function settingsRequest(draft: RunnerSettings): RunnerPatchRequest {
-  return { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() };
+/** The settings form as two requests' worth: the `PATCH` body, exactly `tags`
+    and `under` so saving leaves every ceiling alone, and the refused models,
+    which have a route of their own - `RunnerPatchRequest` carries no such
+    field, on purpose. */
+export interface RunnerSettingsRequest {
+  patch: RunnerPatchRequest;
+  refusedModels: string[];
+}
+
+/** The settings form as its requests. */
+export function settingsRequest(draft: RunnerSettings): RunnerSettingsRequest {
+  return {
+    patch: { tags: runnerTagsRequest(draft.tags), under: draft.under.trim() },
+    refusedModels: refusedModelsRequest(draft.refusedModels),
+  };
 }
 
 /** The bounds card's five ceilings, as `RunnerBounds` holds them. */
