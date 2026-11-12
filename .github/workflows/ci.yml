@@ -506,6 +506,34 @@ jobs:
       - name: actionlint the handed-out workflow
         run: docker run --rm -v /tmp:/lint -w /lint rhysd/actionlint:latest -color hatch-runner-image.yml
 
+      # The handed-out workflow builds through docker/build-push-action, not
+      # docker build: render the Dockerfile it would, and pass the action the
+      # same inputs minus the registry, so the build-arg is proved to reach
+      # the Dockerfile through the action itself.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Render the Dockerfile the handed-out workflow would build
+        run: artifacts/hatch/linux-x64/hatch image dockerfile --base hatch-runner:ci > /tmp/Dockerfile.rendered
+
+      - name: Build through docker/build-push-action
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: /tmp/Dockerfile.rendered
+          push: false
+          load: true
+          tags: hatch-image-workflow-cli:ci
+          build-args: HATCH_IMAGE=hatch-image-workflow-cli:ci
+
+      - name: The build-arg reached the Dockerfile through the action
+        run: |
+          set -euo pipefail
+          image=$(docker inspect --format '{{index .Config.Labels "hatch.image"}}' hatch-image-workflow-cli:ci)
+          [ -n "$image" ] || { echo "the hatch.image label is empty" >&2; exit 1; }
+          declared=$(docker run --rm --entrypoint cat hatch-image-workflow-cli:ci /etc/hatch/dependencies.json)
+          [ -n "$declared" ] || { echo "/etc/hatch/dependencies.json is empty" >&2; exit 1; }
+
   # One job that depends on every other, so a merge gate has exactly one
   # check to name instead of one per job (and one per matrix leg).
   ci:
