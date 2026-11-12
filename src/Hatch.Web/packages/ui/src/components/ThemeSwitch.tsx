@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTheme } from '../theme/useTheme';
 import type { ThemeChoice } from '../theme/themeContext';
 import { checkSeed, rollSeed } from '../theme/randomPalette';
@@ -79,8 +79,11 @@ export function ThemeSwitch({
   const random = palette !== null;
 
   /* A roll, a Random toggle or a paste elsewhere moves the seed under the
-     field; what was typed gives way to it. */
-  useEffect(() => {
+     field; what was typed gives way to it. Layout, not passive: a roll and the
+     read of the field it lands in both sit inside one user gesture (a dice
+     click, a driver's read right after), and a passive effect's one extra
+     task-loop turn is enough to lose that race. */
+  useLayoutEffect(() => {
     setDraft(shown);
     setRefusal(null);
   }, [shown]);
