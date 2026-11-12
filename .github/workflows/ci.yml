@@ -167,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [auth, design, hatch, site]
+        app: [auth, hatch, site]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -260,11 +260,12 @@ jobs:
 
       # Before the dotnet build, for two reasons. The hatch bundle lands in
       # src/Hatch.Api/wwwroot/apps/hatch, which is gitignored and which no
-      # MSBuild target produces (Hatch.Api.csproj builds design and auth, and
-      # deliberately not hatch). And that csproj's NpmInstall target only runs
-      # when Hatch.Web/node_modules is missing, so installing first keeps the
-      # build from shelling out to an `npm install` on whatever Node the runner
-      # image carries.
+      # MSBuild target produces (Hatch.Api.csproj builds auth, and deliberately
+      # not hatch - the design gallery moved inside apps/hatch in HA-2250, so it
+      # is covered by this same build now too). And that csproj's NpmInstall
+      # target only runs when Hatch.Web/node_modules is missing, so installing
+      # first keeps the build from shelling out to an `npm install` on whatever
+      # Node the runner image carries.
       - name: Install dependencies
         working-directory: src/Hatch.Web
         run: npm ci
@@ -277,13 +278,13 @@ jobs:
         run: dotnet restore src/Hatch.Api.Tests/Hatch.Api.Tests.csproj
 
       # The test project, which pulls Hatch.Api in with it; the Cli suite is the
-      # api job's business. The design and auth targets run before every build
-      # and would build two SPAs this job never serves.
+      # api job's business. The auth target runs before every build and would
+      # build an SPA this job never serves.
       - name: Build
         run: |
           dotnet build src/Hatch.Api.Tests/Hatch.Api.Tests.csproj \
             --no-restore --configuration Release \
-            -p:SkipDesignBuild=true -p:SkipAuthBuild=true
+            -p:SkipAuthBuild=true
 
       # After the build, because the installer is copied beside the test binary
       # by the Playwright package itself. Chromium and WebKit, as `make

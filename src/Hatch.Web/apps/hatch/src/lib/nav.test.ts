@@ -12,6 +12,9 @@ import type { NavEntry } from './nav';
 // unknown-route fallback) are not pages a menu lists. :name is /runners'
 // nested detail route - the regex below captures a nested <Route>'s path
 // literally, with no parent prefix - reached from a RunnerRow, never the nav.
+// /design/:slug is reached from the gallery's own rail, and /design itself
+// only redirects to its first slug - neither is a bar entry; /design alone
+// (below, in NAV) is the row that opens it.
 const EXCLUDED_ROUTES = new Set([
   '/',
   '/docs',
@@ -24,6 +27,7 @@ const EXCLUDED_ROUTES = new Set([
   '/changelog',
   '/docs/*',
   '/settings',
+  '/design/:slug',
   ':name',
   '*',
 ]);
@@ -141,6 +145,20 @@ describe('navFor', () => {
   it('drops the admin-only rows for anybody else', () => {
     const rows = manage(navFor(false)).rows.map((row) => row.to);
     expect(rows).not.toContain('/users');
+  });
+
+  it('lists Design after Bulk edit and before Users, for anybody', () => {
+    for (const isAdmin of [false, true]) {
+      const rows = manage(navFor(isAdmin)).rows;
+      const design = rows.findIndex((row) => row.to === '/design');
+      const bulk = rows.findIndex((row) => row.to === '/bulk');
+      expect(design).toBeGreaterThan(-1);
+      expect(design).toBeGreaterThan(bulk);
+      if (isAdmin) {
+        const users = rows.findIndex((row) => row.to === '/users');
+        expect(design).toBeLessThan(users);
+      }
+    }
   });
 
   it('ends Manage with Users for an Admin', () => {

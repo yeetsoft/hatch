@@ -4554,16 +4554,14 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There are four reports with
+per report, each stating the question it answers. There are five reports with
 a card each: the Timeline, the Cumulative flow, the
-[Changelog](#the-changelog-report) and the [Activity](#the-activity-report)
-report. **One further read, the [flow](#the-flow),
-has no page and no index card** — it is for a program, not a person at a screen — and
-neither has [the consumption report](#the-consumption-report), what each issue
-consumed in a window: tokens, notional USD and runner time, which has no page or
-card yet. A
-new report with a page is one more entry in that index and a route; neither
-report gets a nav entry of its own, and the index card stays the only way in.
+[Changelog](#the-changelog-report), the [Consumption](#the-consumption-report)
+report at `/reports/consumption`, and the [Activity](#the-activity-report)
+report. **One further read, the [flow](#the-flow), has no page and no index
+card** — it is for a program, not a person at a screen. A new report with a
+page is one more entry in that index and a route; no report gets a nav entry
+of its own, and the index card stays the only way in.
 
 ### The timeline
 
@@ -4933,11 +4931,11 @@ GET /api/hatch/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&s
 ```
 
 **What did each epic — or any issue type — consume in a window?** Tokens,
-notional USD and runner time, read off the work log rather than the board. It
-is **for a program**, like [the flow](#the-flow): one JSON read carrying rows,
-totals and a time series, with **no page** and no index card yet — HA-2245 is
-the page, HA-2246 the graph and HA-2247 the page's own CSV download. The CSV
-sibling below is this route's, not theirs.
+notional USD and runner time, read off the work log rather than the board: one
+JSON read carrying rows, totals and a time series. The page is at
+`/reports/consumption`, a card on the Reports index, and is the one place
+this read is for a person rather than a program; the CSV sibling below is
+this route's own, not the page's.
 
 `from` and `to` are the other reports' own bounds — instants, the 90 days
 ending now by default, the same `400`s for an unparseable or inverted range.
@@ -4997,9 +4995,15 @@ lastSessionAt, rows, history }`:
 - **`statusId` filters on the issue's current column**, the same as
   elsewhere in the module; two ids read as **either**.
 
-It has no page, no index card and no CLI subcommand; a script reaches it with
-`hatch api GET /api/hatch/reports/consumption?...`, which is the
-[API surface](#api-surface)'s row for it.
+The page opens on `type=epic`, the last ninety days, sorted by activity (newest
+session first), with **Projects**, **Type** and **Status** facets narrowing
+the filter, a **Spend over time** graph toggling between tokens and notional
+USD, and a line above the table reading "The first 100 of *N* issues" when
+`matched` outran `limit`. There is **no CLI subcommand**; a script reaches the
+read with `hatch api GET /api/hatch/reports/consumption?...`, which is the
+[API surface](#api-surface)'s row for it. [Watching the
+loop](../src/Hatch.Web/apps/hatch/docs/watching-the-loop.md#reports) covers the
+page itself.
 
 #### The CSV sibling
 
@@ -5035,9 +5039,11 @@ totalTokens, costUsd, unpricedSessions, runnerMs, firstSessionAt, lastSessionAt
 cost-sort sentinel the JSON route's `cost` sort reads off `UnpricedSessions ==
 Sessions`. `parentKey` is empty on a root. Instants are ISO 8601 in UTC.
 
-It has no page and no CLI subcommand of its own; `hatch api`'s passthrough
-prints any body verbatim regardless of content-type, so a script reaches it
-the same way it reaches the JSON route:
+It has no page of its own — a **Download CSV** link beside the consumption
+page's totals line reaches it, carrying that page's own filter — and no CLI
+subcommand of its own; `hatch api`'s passthrough prints any body verbatim
+regardless of content-type, so a script reaches it the same way it reaches
+the JSON route:
 
 ```
 hatch api GET /api/hatch/reports/consumption.csv?from=2026-08-01&to=2026-09-01
