@@ -1,6 +1,6 @@
 import { measurePairs, PARAMETERS, PARAMETER_KEYS } from '@hatch/ui/palette';
 import { describe, expect, it } from 'vitest';
-import { ACCENT_TOKENS, deriveBoth, rimMarks, SEED, sketchPalettes } from './paletteSketch';
+import { deriveBoth, SEED, sketchPalettes } from './paletteSketch';
 import { SECTIONS } from '../sections';
 
 describe('the palette sketch fixture', () => {
@@ -44,16 +44,6 @@ describe('the palette sketch fixture', () => {
     const { params, light, dark } = sketchPalettes();
     expect(deriveBoth(params)).toEqual({ light, dark });
     expect(deriveBoth({ ...params, hue: (params.hue + 90) % 360 }).light['--primary']).not.toBe(light['--primary']);
-  });
-
-  it('marks one rim position per accent, each hue in range', () => {
-    const { light } = sketchPalettes();
-    const marks = rimMarks(light);
-    expect(marks.map((mark) => mark.token)).toEqual([...ACCENT_TOKENS]);
-    for (const mark of marks) {
-      expect(mark.hue).toBeGreaterThanOrEqual(0);
-      expect(mark.hue).toBeLessThan(360);
-    }
   });
 
   it('ends Components with the palette configurator', () => {

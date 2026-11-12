@@ -3,8 +3,7 @@
 
    The ground, the ink and the head's and foot's rules are the Modal's console tone, so this file paints only what is
    inside it. Every colour is a console token: the candidate's own colours are the board's and the dial's, set inline
-   by them. The `.design-pc-*` rules in apps/hatch/src/App.css are the sketches this was drawn from; they stay where
-   they are until the gallery's sketches go, and nothing here imports them.
+   by them. The gallery's Palette configurator page opens this component and draws its parts as specimens.
 
    Nothing moves on its own. The two transitions are a hover and a focus ring, and are off under reduced motion. */
 

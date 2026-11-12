@@ -119,7 +119,7 @@ export function TopBarPage() {
 
       <GallerySection
         title="The gear, open"
-        note="Pressing the gear opens Theme first, with the current choice checked, and the palette line beneath it: Random, the dice, the seed and its copy button. Turn Random on to roll a palette; paste a seed into the field to reproduce one. No menu passed, no divider and nothing below it."
+        note="Pressing the gear opens Theme first, with the current choice checked, and the palette line beneath it: Random, the dice, Tune, the seed and its copy button. Turn Random on to roll a palette; paste a seed into the field to reproduce one. No menu passed, no divider and nothing below it."
       >
         <div className="design-stage design-stage--gear-open">
           <TopBar appName="Hatch Admin" menuDefaultOpen />
