@@ -6,7 +6,7 @@
    been waiting are all pure functions of one answer from the server, and every
    one of them is pinned in attention.test.ts. */
 
-import type { Attention, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild } from '../types';
+import type { Attention, RunnerCapacity, StalledIssue, TrainStalled, TrunkBuild, WaitingOnARunner } from '../types';
 
 /** Resting or loud. Named for what it is doing rather than for how it looks, so
     a later change to the loud state's colour is not a rename. `isWaiting` is
@@ -281,6 +281,29 @@ export const deadlockedEmptyWords = (): string => 'Nothing is deadlocked.';
 
 /** The empty state of the "Waiting on a runner" section. */
 export const waitingOnARunnerEmptyWords = (): string => 'Nothing is waiting on a runner.';
+
+const NO_LIVE_RUNNER = 'no live runner ';
+
+/**
+ * The Runners page's banner: one line per distinct `missing` sentence, commonest
+ * first and then alphabetically - `hatch queue`'s own grouping and wording, so
+ * `2 issues wait for a runner that has postgres 18 or newer` reads the same in
+ * both places. A sentence that is not the plain `no live runner <x>` shape is
+ * said whole, after a colon.
+ */
+export function waitingOnARunnerLines(waiting: WaitingOnARunner[]): string[] {
+  const groups = new Map<string, number>();
+  for (const w of waiting) groups.set(w.missing, (groups.get(w.missing) ?? 0) + 1);
+
+  return [...groups]
+    .sort(([am, an], [bm, bn]) => bn - an || (am < bm ? -1 : am > bm ? 1 : 0))
+    .map(([missing, n]) => {
+      const verb = n === 1 ? 'waits' : 'wait';
+      return missing.startsWith(NO_LIVE_RUNNER) && !missing.includes('; ')
+        ? `${count(n, 'issue')} ${verb} for a runner that ${missing.slice(NO_LIVE_RUNNER.length)}`
+        : `${count(n, 'issue')} ${verb}: ${missing}`;
+    });
+}
 
 /**
  * A runner capacity row's second line: `3 clear steps: only Nathan-PC can take

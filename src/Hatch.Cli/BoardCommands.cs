@@ -57,8 +57,8 @@ public sealed class BoardCommands(Cli cli)
         "  runner can take this: <runner>: <reason>; ...)\" has none, and says",
         "  what rules each live runner out. A row with two or more says nothing.",
         "",
-        "  The queue closes with one line per distinct thing no live runner",
-        "  offers or has, among the issues it just printed - a server too old to",
+        "  The queue opens with one line per distinct thing no live runner",
+        "  offers or has, among the issues it prints - a server too old to",
         "  say so prints nothing extra.",
         "",
         "  Run inside a checkout of a bound repository, and without --mine or an",
@@ -242,6 +242,32 @@ public sealed class BoardCommands(Cli cli)
 
         var queue = await cli.Board.QueueAsync(cli.Checkouts, under, cli.OffsetMinutes, ct, cli.Clones, mine, cli.RunnerName, takers: true);
 
+        // Best-effort, as Idle.cs reads it: the rows below are the answer this
+        // command exists to give, and a line that did not arrive must not turn
+        // a printed queue into an error. It leads them because a project no
+        // live runner can build for is the thing to know before reading what
+        // else is queued.
+        AttentionDto? attention = null;
+        try
+        {
+            attention = await cli.Board.AttentionAsync(ct);
+        }
+        catch (HatchException)
+        {
+        }
+
+        var narrowed = mine || under is { Length: > 0 };
+        if (attention?.WaitingOnARunner is { Count: > 0 } waiting)
+        {
+            if (narrowed)
+            {
+                var shown = queue.Select(q => q.Issue.Key).ToHashSet();
+                waiting = waiting.Where(w => shown.Contains(w.Key)).ToList();
+            }
+
+            if (waiting.Count > 0) cli.Say.Lines(Waiting(waiting));
+        }
+
         // An empty board is a sentence and not a blank line: "there is nothing"
         // and "something went wrong and printed nothing" look identical
         // otherwise, which is the one thing a run nobody watched cannot afford
@@ -255,35 +281,12 @@ public sealed class BoardCommands(Cli cli)
                 : under is { Length: > 0 }
                     ? $"hatch: nothing under {under} is on the dispatcher's path"
                     : "hatch: nothing on the board is on the dispatcher's path");
-            return await SayPassedOverAsync(mine || under is { Length: > 0 }, ct);
+            return await SayPassedOverAsync(narrowed, ct);
         }
 
         foreach (var line in Draw(queue)) cli.Say.Line(line);
 
-        // Best-effort, as Idle.cs reads it: the rows above are the answer
-        // this command exists to give, and a footer that did not arrive must
-        // not turn a printed queue into an error.
-        AttentionDto? attention = null;
-        try
-        {
-            attention = await cli.Board.AttentionAsync(ct);
-        }
-        catch (HatchException)
-        {
-        }
-
-        if (attention?.WaitingOnARunner is { Count: > 0 } waiting)
-        {
-            if (under is { Length: > 0 } || mine)
-            {
-                var shown = queue.Select(q => q.Issue.Key).ToHashSet();
-                waiting = waiting.Where(w => shown.Contains(w.Key)).ToList();
-            }
-
-            if (waiting.Count > 0) cli.Say.Lines(Waiting(waiting));
-        }
-
-        return await SayPassedOverAsync(mine || under is { Length: > 0 }, ct);
+        return await SayPassedOverAsync(narrowed, ct);
     }
 
     /// <summary>
