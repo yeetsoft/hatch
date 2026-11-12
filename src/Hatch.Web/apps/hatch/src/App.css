@@ -1653,6 +1653,26 @@ button.hatch-card-stories:focus-visible {
   fill: currentColor;
 }
 
+/* On the phone Filed by sits after Assignee, mid-row, and a panel anchored at
+   its trigger would run off the right edge. Anchored to the Filters block it
+   starts at the left gutter and opens under the last row, as wide as the menu's
+   own viewport cap allows. */
+.hatch-board-filters-more {
+  position: relative;
+}
+
+.hatch-board-filters-more .hatch-menu:has(> button[aria-label='Filed by']) {
+  position: static;
+}
+
+/* A heading over each group in the "…" popover. */
+.hatch-more-filters-title {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--t-label);
+  color: var(--muted);
+}
+
 @media (max-width: 40rem) {
   .hatch-board-search {
     flex: 1 1 auto;
@@ -1851,6 +1871,19 @@ button.hatch-card-stories:focus-visible {
 
 .hatch-types-name {
   text-transform: capitalize;
+}
+
+.hatch-types-panel[aria-label='Filed by'] {
+  max-width: 22rem;
+}
+
+/* A name somebody gave is shown as it was given, not capitalised like a type. */
+.hatch-types-panel[aria-label='Filed by'] .hatch-types-name {
+  text-transform: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hatch-types-count {

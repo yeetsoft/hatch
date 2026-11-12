@@ -7,6 +7,8 @@ import {
   DEFAULT_FILTER,
   DEFAULT_TYPES,
   assigneeFacets,
+  filedByFacets,
+  filedBySummary,
   filterCards,
   initialProject,
   isFiltering,
@@ -16,6 +18,7 @@ import {
   readBoardProject,
   readBoardTypes,
   revealType,
+  scrubbedFiledBy,
   scrubbedProject,
   toggleType,
   toggleWaiting,
@@ -205,6 +208,12 @@ describe('carried stories', () => {
     expect(keys(filter({ assignee: assigneeToken(person('Grace')) }))).toEqual([]);
   });
 
+  it('belongs to the filer of a story it carries', () => {
+    const filed = new Map([['AER-10', [{ ...s1, createdBy: 'Ada' }, s2]]]);
+    expect(keys(filter({ filedBy: ['Ada'] }), [epic], filed)).toEqual(['AER-10']);
+    expect(keys(filter({ filedBy: ['Grace'] }), [epic], filed)).toEqual([]);
+  });
+
   it('decides each clause on its own, so two stories can satisfy two clauses', () => {
     expect(keys(filter({ assignee: assigneeToken(ada), waiting: true, query: 'audit' }))).toEqual(['AER-10']);
   });
@@ -240,6 +249,67 @@ describe('isFiltering', () => {
     expect(isFiltering(filter({ assignee: UNASSIGNED }))).toBe(true);
     expect(isFiltering(filter({ assignee: assigneeToken(person('Ada')) }))).toBe(true);
     expect(isFiltering(filter({ project: 'AER' }))).toBe(true);
+    expect(isFiltering(filter({ filedBy: [] }))).toBe(true);
+    expect(isFiltering(filter({ filedBy: ['Ada'] }))).toBe(true);
+    expect(isFiltering(filter({ filedBy: null }))).toBe(false);
+  });
+});
+
+describe('the filed by facet', () => {
+  const board = [
+    card({ key: 'AER-1', createdBy: 'zoe' }),
+    card({ key: 'AER-2', createdBy: 'Ada' }),
+    card({ key: 'AER-3', createdBy: 'claude-key' }),
+    card({ key: 'AER-4', createdBy: 'Ada' }),
+  ];
+  const keys = (filedBy: string[] | null) => filterCards(board, filter({ filedBy })).map((c) => c.key);
+
+  it('draws everything for null, nothing for [], and only the names in a list', () => {
+    expect(keys(null)).toEqual(['AER-1', 'AER-2', 'AER-3', 'AER-4']);
+    expect(keys([])).toEqual([]);
+    expect(keys(['Ada', 'zoe'])).toEqual(['AER-1', 'AER-2', 'AER-4']);
+  });
+
+  it('counts each filer and sorts them case-insensitively', () => {
+    expect(filedByFacets(board)).toEqual([
+      { name: 'Ada', count: 2 },
+      { name: 'claude-key', count: 1 },
+      { name: 'zoe', count: 1 },
+    ]);
+  });
+
+  it('skips a card with no filer', () => {
+    expect(filedByFacets([card({ createdBy: '' })])).toEqual([]);
+  });
+
+  describe('scrubbedFiledBy', () => {
+    const offered = ['Ada', 'claude-key', 'zoe'];
+
+    it('leaves null as null', () => {
+      expect(scrubbedFiledBy(null, offered)).toBeNull();
+    });
+
+    it('collapses a list holding every name, and anything when nothing is offered', () => {
+      expect(scrubbedFiledBy(['zoe', 'Ada', 'claude-key'], offered)).toBeNull();
+      expect(scrubbedFiledBy(['Ada'], [])).toBeNull();
+      expect(scrubbedFiledBy([], [])).toBeNull();
+    });
+
+    it('drops a name no card carries, in the offered order', () => {
+      expect(scrubbedFiledBy(['zoe', 'gone', 'Ada'], offered)).toEqual(['Ada', 'zoe']);
+    });
+
+    it('turns a list that loses every name into null, but keeps a deliberate []', () => {
+      expect(scrubbedFiledBy(['gone'], offered)).toBeNull();
+      expect(scrubbedFiledBy([], offered)).toEqual([]);
+    });
+  });
+
+  it('says All, None, the one name, or N of M', () => {
+    expect(filedBySummary(null, 3)).toBe('All');
+    expect(filedBySummary([], 3)).toBe('None');
+    expect(filedBySummary(['Ada'], 3)).toBe('Ada');
+    expect(filedBySummary(['Ada', 'zoe'], 3)).toBe('2 of 3');
   });
 });
 

@@ -1,16 +1,17 @@
 import type { ReactNode } from 'react';
 import type { Assignee, IssueCard, Project } from '../types';
-import { DEFAULT_FILTER, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
+import { DEFAULT_FILTER, filedByFacets, isFiltering, toggleWaiting, typeCounts } from '../lib/filter';
 import type { CardFilter, ContributionChoice } from '../lib/filter';
 import { Facet } from './Facet';
 import { facetClass } from '../lib/facet';
 import { TypesFacet } from './TypesFacet';
+import { FiledByFacet } from './FiledByFacet';
 import { MoreFilters, assigneeOptions } from './MoreFilters';
 import { hasMultipleProjects } from '../lib/useProjects';
 
 /**
  * What the board is showing: a search box, a project, the types, a switch and
- * an assignee (behind "…" on a desktop), all in one look (see `.hatch-facet`). A control holding its
+ * an assignee and who filed (both behind "…" on a desktop), all in one look (see `.hatch-facet`). A control holding its
  * default sits at rest and one holding anything else is tinted, so the bar reads
  * as "what have I changed" and not as three-of-four-lit.
  *
@@ -40,8 +41,9 @@ export function BoardFilters({
 }: {
   filter: CardFilter;
   onChange: (next: CardFilter) => void;
-  /** The whole board's cards, for the counts in the Types panel - not the
-      visible ones, so choosing a type does not shrink the list it was chosen from. */
+  /** The whole board's cards, for the counts in the Types panel and the list of
+      who filed - not the visible ones, so choosing a type does not shrink the
+      list it was chosen from. */
   cards: IssueCard[];
   /** The assignees this board actually has cards for - see assigneeFacets. */
   assignees: Assignee[];
@@ -67,6 +69,7 @@ export function BoardFilters({
   trailing?: ReactNode;
 }) {
   const filtering = isFiltering(filter);
+  const filers = filedByFacets(cards);
 
   const rest = (
     <>
@@ -121,19 +124,23 @@ export function BoardFilters({
         onChange={(contributions) => onChange({ ...filter, contributions: contributions as ContributionChoice })}
       />
 
-      {/* Assignee is the rarely used filter, so on the desktop row it sits behind
-          "…" (MoreFilters) to keep the row on one line. The phone row has the
-          room inside its Filters disclosure and keeps it inline. */}
+      {/* Assignee and Filed by are the rarely used filters, so on the desktop row
+          they sit behind "…" (MoreFilters) to keep the row on one line. The
+          phone row has the room inside its Filters disclosure and keeps them
+          inline. */}
       {collapsed ? (
-        <Facet
-          label="Assignee"
-          lit={filter.assignee !== ''}
-          value={filter.assignee}
-          options={assigneeOptions(assignees)}
-          onChange={(assignee) => onChange({ ...filter, assignee })}
-        />
+        <>
+          <Facet
+            label="Assignee"
+            lit={filter.assignee !== ''}
+            value={filter.assignee}
+            options={assigneeOptions(assignees)}
+            onChange={(assignee) => onChange({ ...filter, assignee })}
+          />
+          <FiledByFacet filter={filter} filers={filers} onChange={onChange} />
+        </>
       ) : (
-        <MoreFilters filter={filter} assignees={assignees} onChange={onChange} />
+        <MoreFilters filter={filter} assignees={assignees} filedBy={filers} onChange={onChange} />
       )}
 
       {filtering && (
