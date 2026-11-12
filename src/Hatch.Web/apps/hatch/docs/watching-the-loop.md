@@ -303,7 +303,12 @@ Beside **Projects**, a
 **Colour by** control (also drawn only where there is more than one project)
 cuts the same stack by project instead of by column. Hovering a row of
 **Projects** shows **Only**, which keeps that project alone (on a touch screen
-it is always shown). A ticket counts as in
+it is always shown). Dragging across the ruler above the Cumulative flow frames
+the window: a highlight follows the pointer, and releasing sets the window to
+the two instants dragged, whichever way the drag went, and **Length** reads
+**Custom** (or the matching preset). A drag too short to mean anything does
+nothing, and **Escape**, or releasing off the chart, cancels. **Earlier**,
+**Today**, **Later** and **Length** still work on the result. A ticket counts as in
 flight while it stands in any
 column after the first that is neither done nor parked - the first column is
 where work waits, a done column is where it ended, and a parked one is a

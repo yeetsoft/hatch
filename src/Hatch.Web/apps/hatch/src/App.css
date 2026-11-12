@@ -6134,6 +6134,26 @@ button.hatch-option.chosen {
   pointer-events: none;
 }
 
+/* A ruler that frames a window when dragged across. Its own modifier, since the
+   Timeline's ruler shares the base rule and is not draggable. `pan-y` leaves
+   vertical scroll to the touch and takes the horizontal drag for the brush. */
+.hatch-timeline-ruler--brushable {
+  cursor: col-resize;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+/* The drag in progress, over the ruler and the plot: a child of the track, which
+   holds both, so top and bottom reach the whole of it. */
+.hatch-timeline-brush {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--primary-bg);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* The window's controls. --facet-h is defined on .hatch-board-filters only, so
    the facets here take it from this strip. */
 .hatch-timeline-controls {

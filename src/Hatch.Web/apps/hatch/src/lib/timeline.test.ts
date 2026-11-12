@@ -6,6 +6,8 @@ import {
   CREATOR,
   OTHER_KEY,
   PROJECT,
+  brushBox,
+  brushWindow,
   creatorChoices,
   foldRows,
   makeScale,
@@ -70,6 +72,93 @@ describe('xOf', () => {
 
   it('takes epoch milliseconds as well as an ISO string', () => {
     expect(xOf(scale, scale.from + 2.5 * DAY_MS)).toBe(25);
+  });
+});
+
+describe('brushWindow', () => {
+  const MINUTE = 60_000;
+  // 1000px over ten days: a pixel is 864 seconds, so 100px is exactly 1 day.
+  const scale = days(10);
+  const at = (day: number) => new Date(scale.from + day * DAY_MS).toISOString();
+
+  it('maps the two ends onto the scale', () => {
+    expect(brushWindow(scale, 100, 300, 1000)).toEqual({ from: at(1), to: at(3) });
+  });
+
+  it('gives the same window for a drag either way', () => {
+    expect(brushWindow(scale, 300, 100, 1000)).toEqual(brushWindow(scale, 100, 300, 1000));
+  });
+
+  it('clamps a press left of the ruler and a release past it', () => {
+    expect(brushWindow(scale, -50, 1200, 1000)).toEqual({ from: at(0), to: at(10) });
+  });
+
+  it('rounds each end to the nearest whole minute', () => {
+    // 100.01px is 1 day and 8.64 seconds; 200.02px is 2 days and 17.28 seconds.
+    expect(brushWindow(scale, 100.01, 200.02, 1000)).toEqual({ from: at(1), to: at(2) });
+    // 100.4px is 1 day, 5 minutes 45.6 seconds: rounds up to 6 minutes.
+    expect(brushWindow(scale, 100.4, 300, 1000)?.from).toBe(new Date(scale.from + DAY_MS + 6 * MINUTE).toISOString());
+  });
+
+  it('is a click under 8px on a long scale', () => {
+    const quarter = days(90);
+
+    expect(brushWindow(quarter, 100, 107.9, 1000)).toBeNull();
+    expect(brushWindow(quarter, 100, 100, 1000)).toBeNull();
+  });
+
+  it('is a window at exactly 8px', () => {
+    expect(brushWindow(scale, 100, 108, 1000)).not.toBeNull();
+  });
+
+  it('is a click under a minute on a one-hour scale, where a minute is under 8px', () => {
+    const hour = makeScale('2026-10-01T00:00:00.000Z', '2026-10-01T01:00:00.000Z');
+
+    // 1000px over 60 minutes: 16.67px a minute, so 8px is under a minute.
+    expect(brushWindow(hour, 0, 8, 1000)).toBeNull();
+    expect(brushWindow(hour, 0, 15, 1000)).toBeNull();
+  });
+
+  it('is a window at exactly a minute on a one-hour scale', () => {
+    const short = makeScale('2026-10-01T00:00:00.000Z', '2026-10-01T01:04:00.000Z');
+
+    // 1024px over 64 minutes: a pixel is 3.75 seconds, so 16px is exactly one
+    // minute and 8px, half of one, is under it. Powers of two keep it exact.
+    expect(brushWindow(short, 0, 16, 1024)).toEqual({
+      from: '2026-10-01T00:00:00.000Z',
+      to: '2026-10-01T00:01:00.000Z',
+    });
+    expect(brushWindow(short, 0, 15, 1024)).toBeNull();
+  });
+
+  it('is a click under a minute on a narrow ruler', () => {
+    const hour = makeScale('2026-10-01T00:00:00.000Z', '2026-10-01T01:00:00.000Z');
+
+    // Half a pixel of a hundred is 18 seconds: under a minute, so no window.
+    expect(brushWindow(hour, 1, 1.5, 100)).toBeNull();
+  });
+
+  it('is null with no width to map onto', () => {
+    expect(brushWindow(scale, 0, 100, 0)).toBeNull();
+    expect(brushWindow(scale, 0, 100, -5)).toBeNull();
+  });
+});
+
+describe('brushBox', () => {
+  it('is the span between the two ends, as percent of the width', () => {
+    expect(brushBox(100, 300, 1000)).toEqual({ left: 10, width: 20 });
+  });
+
+  it('orders the ends', () => {
+    expect(brushBox(300, 100, 1000)).toEqual({ left: 10, width: 20 });
+  });
+
+  it('clamps to the ruler on both sides', () => {
+    expect(brushBox(-50, 1200, 1000)).toEqual({ left: 0, width: 100 });
+  });
+
+  it('is nothing with no width', () => {
+    expect(brushBox(0, 100, 0)).toEqual({ left: 0, width: 0 });
   });
 });
 
