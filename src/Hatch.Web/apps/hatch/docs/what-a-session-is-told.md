@@ -91,6 +91,24 @@ repository, in whichever of these states the tree is in:
 What the runner does to a checkout, and why, is
 [one increment and the loop](one-increment-and-the-loop#what-it-does-to-your-checkout).
 
+### Changed since this brief
+
+Only when it has something to say, and only for an increment that moves the
+ticket along - not a conflict or a build fix. A brief can go stale while it
+waits, so for each repository path the brief names in backticks (a span such
+as `` `.hatch/dependencies.json` `` or `` `src/Cli/Prompt.cs:40` ``; a word
+like `hatch ask` or `true` is not a path and is ignored) this lists the commits
+that landed on the trunk to that path since the brief was last set, newest
+first: short sha, date, subject and body. At most 5 commits are shown per path
+and 10 paths, and a path nothing touched adds nothing.
+
+The section says plainly that the brief predates those commits, so a change it
+asks for that undoes one of them is a question for the operator
+(`hatch ask`), not an instruction to follow. The brief's date is its last
+description edit, or its creation if it was never edited; a move between
+columns does not change it. Where the board's events cannot be read, there is
+no section rather than a guess.
+
 ### Its children
 
 When the ticket has any. Each child's key, type, title and the column it is in

@@ -46,6 +46,7 @@ namespace Hatch.Cli;
 [JsonSerializable(typeof(MeDto))]
 [JsonSerializable(typeof(List<StatusDto>))]
 [JsonSerializable(typeof(List<CommentDto>))]
+[JsonSerializable(typeof(List<IssueEventDto>))]
 [JsonSerializable(typeof(List<QuestionDto>))]
 [JsonSerializable(typeof(List<IssueCardDto>))]
 [JsonSerializable(typeof(List<QueueEntryDto>))]

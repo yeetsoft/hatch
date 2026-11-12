@@ -453,15 +453,16 @@ A row's marker says where the pass puts it:
   session)` marks a hop: the loop carries the ticket on itself, with no session,
   rather than spawning one.
 
-After those rows, `queue` closes with one line per distinct thing no live
+Before those rows, `queue` opens with one line per distinct thing no live
 runner currently offers or has, read from the same `waitingOnARunner` list
-the attention panel draws, so the terminal and the panel cannot disagree.
-Narrowed to `--mine` or an ancestor key, the footer counts only the issues the
-rows above show; unnarrowed, it matches the panel. For example: `3 issues
+the attention panel draws, so the terminal and the panel cannot disagree. It
+leads rather than trails so that a project no runner can build for is read
+first, and it is printed over an empty queue too. Narrowed to `--mine` or an
+ancestor key, the lines count only the issues the rows below show, and over
+an empty queue say nothing; unnarrowed, they match the panel. For example: `3 issues
 wait for a runner that offers fable` or `1 issue waits for a runner that has
 pwsh 7 or newer and playwright-browsers`. A server too old to send the list
 prints nothing extra.
-
 Run inside a checkout of a bound repository, with neither `--mine` nor an
 ancestor key, `queue` then lists each open pull request there that no issue
 records and that the project's driver would pass over rather than file as an

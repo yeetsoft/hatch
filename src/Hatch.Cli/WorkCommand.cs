@@ -618,6 +618,8 @@ public sealed class WorkCommand(Runtime runtime)
                 return 2;
             }
 
+            var since = await lifecycle.SinceAsync(work, chosen, ct);
+
             // False until a branch below says otherwise, rather than true until
             // one says not: an exception thrown out of either branch is neither
             // a finished attach nor a report to read `LostLease` off, and
@@ -630,7 +632,7 @@ public sealed class WorkCommand(Runtime runtime)
             {
                 if (attach)
                 {
-                    var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, ct);
+                    var code = await AttachAsync(work, model, effort, claim, chosen, entering.Entries, found, built, since, ct);
                     owned = true;
 
                     // work -i has no LetGo or stall-counting concept - that is
@@ -680,7 +682,7 @@ public sealed class WorkCommand(Runtime runtime)
                         found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                         built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                         work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
-                        runnerName: runtime.RunnerName, incrementNumber: 1);
+                        runnerName: runtime.RunnerName, incrementNumber: 1, since: since);
                 }
                 finally
                 {
@@ -773,7 +775,8 @@ public sealed class WorkCommand(Runtime runtime)
     /// </remarks>
     private async Task<int> AttachAsync(
         WorkDto work, string model, string effort, Claim claim, Checkouts.Choice chosen,
-        IReadOnlyList<BranchEntry> branches, Rechecked? conflict, BuildFound? build, CancellationToken ct)
+        IReadOnlyList<BranchEntry> branches, Rechecked? conflict, BuildFound? build,
+        IReadOnlyList<RepoSince> since, CancellationToken ct)
     {
         runtime.Say.Line($"hatch: {work.Issue.Key} [{work.Issue.Type}] {work.Issue.Title}");
         runtime.Say.Line(
@@ -793,7 +796,7 @@ public sealed class WorkCommand(Runtime runtime)
         await runtime.Increment().MarkSaidAsync(work, ct);
 
         return await runtime.Sessions.AttachAsync(
-            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build), Quiet: false, chosen.AddDirs,
+            new SessionRequest(chosen.Root, model, effort, Prompt.Compose(work, chosen.Repositories, branches, conflict, build, since), Quiet: false, chosen.AddDirs,
                 DeniedTools: work.Playbook?.DeniedTools ?? [], Settings: runtime.Settings),
             ct);
     }

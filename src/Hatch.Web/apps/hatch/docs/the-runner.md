@@ -515,6 +515,18 @@ advertises yet, holds the same as one that drops a dependency outright. The
 live fleet lacks what the branch's edit asks for, says so on the end of its
 own sentence.
 
+**When no live runner meets it.** The fold stays: a declaration nobody can meet
+is held, not lifted, so a runner that lacks a tool is never handed a build it
+cannot run. What changes is who is told. The project's rows are listed under
+**Waiting on a runner** in the [attention list](watching-the-loop#what-is-waiting-on-you),
+naming the ids (*no live runner has postgres 18 or newer*), printed first by
+`hatch queue`, and shown above the list on the Runners page. That stays until a
+runner that has them is live, or the file is fixed on the trunk. With one live
+runner that meets the declaration there is nothing to raise: that runner is
+offered the steps and the others are folded as above. A fleet with no live
+runner at all raises nothing, since that is the *no runner* condition and not
+this one.
+
 **An invalid file.** An invalid file folds the project's development steps with
 *"acme/repo's .hatch/dependencies.json is invalid at `<sha>` (`<problem>`) - fix it
 on the trunk"*. An absent file, or one no runner has read yet, folds nothing, so

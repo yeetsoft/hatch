@@ -5,6 +5,8 @@ import { CreateRunnerDialog } from './CreateRunnerDialog';
 import { RunnerList } from './RunnerList';
 import { useRunners } from '../lib/useRunners';
 import { useMe } from '../lib/useMe';
+import { useAttentionContext } from '../lib/useAttentionContext';
+import { waitingOnARunnerLines } from '../lib/attention';
 import { usePhone } from '../lib/viewport';
 import type { RunnerSecret } from '../lib/runnerKey';
 import type { Runner } from '../types';
@@ -35,6 +37,7 @@ export function RunnersIndex() {
 export function RunnersLayout() {
   const { runners, error, reload } = useRunners(true, true);
   const { me, isAdmin } = useMe();
+  const { attention } = useAttentionContext();
   const wallOff = me?.kind === 'local' || me?.kind === 'none';
   const now = new Date();
   const phone = usePhone();
@@ -72,6 +75,16 @@ export function RunnersLayout() {
   );
   const header = <PageHeader title="Runners" actions={headerActions} />;
   const failed = error && <p className="text-danger">{error}</p>;
+  // A project no live runner meets the declaration of stays folded from every runner: the board holds it
+  // rather than lifting it, so this is where somebody who can fix the file is told.
+  const waiting = attention?.waitingOnARunner ?? [];
+  const held = waiting.length > 0 && (
+    <div className="hatch-runner-note" role="alert">
+      {waitingOnARunnerLines(waiting).map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </div>
+  );
   const dialog = <CreateRunnerDialog open={creating} onClose={() => setCreating(false)} onCreated={onCreated} />;
 
   if (phone) {
@@ -87,6 +100,7 @@ export function RunnersLayout() {
       <div className="hatch-page">
         {header}
         {failed}
+        {held}
         {list}
         {dialog}
       </div>
@@ -97,6 +111,7 @@ export function RunnersLayout() {
     <div className="hatch-page hatch-page--split">
       {header}
       {failed}
+      {held}
       <div className="hatch-runners-split">
         <section className="hatch-runners-pane">{list}</section>
         <section className="hatch-runners-pane">
