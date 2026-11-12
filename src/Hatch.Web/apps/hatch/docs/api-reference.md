@@ -29,10 +29,9 @@ hatch api GET /api/issues?statusId=2
 [`cli-reference`](cli-reference) has `hatch api` in full.
 
 **The old prefix.** Before this page's routes lived at `/api/<name>` they lived
-at `/api/hatch/<name>`. That prefix answers a permanent redirect to the same
-path and query string - `301` for a `GET` or `HEAD`, `308` for every other
-method, so a write keeps its method and body - and `/api/hatch-revision` is not
-part of it. [Upgrading](upgrading#the-old-apihatch-prefix) has what that means
+at `/api/hatch/<name>`. That prefix is still served in place - the same answer
+`/api/<name>` gives, with no redirect, so the key and a write's body arrive
+intact - and `/api/hatch-revision` is not part of it. [Upgrading](upgrading#the-old-apihatch-prefix) has what that means
 for an older `hatch` binary.
 
 `docs/hatch-planning.md` ships inside every Hatch image, so a session can read
