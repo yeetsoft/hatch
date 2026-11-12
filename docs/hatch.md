@@ -5397,13 +5397,15 @@ missing configuration:
    which may write its code, and the scan hands a runner a hop's ticket whether
    or not a session is spawned for it. Never a review row the verdict below
    already folds - nothing is handed to any runner on that row, and its own
-   sentence says why. A caller that sends no `?tag=` has advertised none; a
-   superset of the union qualifies. *"AER-12 is worked only by a runner
-   advertising macos and xcode - this runner advertises linux"* (*"...
-   advertises none"* when the caller sent no tags),
-   kind `other`. Named by the column only when that column's own tags are part
-   of why it folded: *"AER-12 in Breakdown is worked only by a runner
-   advertising gpu - this runner advertises none"*. Waits on nobody.
+   sentence says why. A keyed caller that sends no `?tag=` has advertised its
+   key's config tags, or none where the key has no config; a caller with no
+   key and neither `?tag=` nor `?dangerous=` is the board's own scan and folds
+   nothing on tags. A superset of the union qualifies. *"AER-12 is worked only
+   by a runner advertising macos and xcode - this runner advertises linux"*
+   (*"... advertises none"* for a keyed caller whose key sent or configured
+   none), kind `other`. Named by the column only when that column's own tags
+   are part of why it folded: *"AER-12 in Breakdown is worked only by a
+   runner advertising gpu - this runner advertises none"*. Waits on nobody.
 10. The caller's runner is [omitted](#omitted-runners) from the issue, on its
     own row or inherited from an ancestor's (the two are a union), and the
     caller sent `?runner=<name>`: somebody said this runner is not to work it.
@@ -7616,9 +7618,12 @@ which one it failed is what `work/queue` reports:
    dependency below is checked on the move into that column alone. See [the dispatcher](#the-dispatcher) for the exact sentence.
 12. **The union of the project's, its ancestors' and its own tags, folded in
     with the column being left's own, requires no runner tag the caller's
-    runner lacks.** A caller that sends no `?tag=` has advertised none, so it
-    fails a union that requires any; a runner advertising a superset of the
-    union qualifies. Checked on every move a runner is handed, in every column
+    runner lacks.** A keyed caller that sends no `?tag=` has advertised its
+    key's config tags, or none where the key has no config, so it fails a
+    union that requires any; a caller with no key and neither `?tag=` nor
+    `?dangerous=` is the board's own scan and folds nothing here. A runner
+    advertising a superset of the union qualifies. Checked on every move a
+    runner is handed, in every column
     and on every hop, the move into the implementation column included —
     never a review row the verdict below already folds. Kind `other`, and it
     waits on nobody. See

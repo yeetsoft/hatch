@@ -280,8 +280,10 @@ wire: a caller sending no `model=`/`agent=` or `has=` is folded by nothing for
 it, which is why an older CLI and the issue page are unaffected. Tags are the
 exception: a caller sending no `tag=` is judged on the tags of the API key it
 called with, so `hatch queue` and `hatch work` run by hand see what a loop
-under the same key sees (a `tag=` sent replaces them, never joins them; with
-no key, or a key with none set, the caller advertises none).
+under the same key sees (a `tag=` sent replaces them, never joins them; a key
+with none set still advertises none). A call with no key and neither `tag=`
+nor `dangerous=` sent is the board's own scan and is judged on no tags at
+all, so a person's board-wide read folds nothing on tags.
 [Models](#models) and [Has](#has) below have each detection in full. A
 container `hatch image build` built advertises two more facts with no
 detection of its own, read once at start the same way the six [machine
@@ -308,7 +310,9 @@ is refused by the Runners page with the rule's sentence.
 A runner that falls short of what a project requires is not refused outright:
 `hatch queue` folds the row and says what is missing, by name — *"AER-12 is
 worked only by a runner advertising macos and xcode - this runner
-advertises linux"* (*"... advertises none"* for a runner with no tags at all, or for a call made with no key).
+advertises linux"* (*"... advertises none"* for a runner with no tags at
+all; a call with no key and no `tag=`/`dangerous=` folds nothing here at
+all, rather than reading as advertising none).
 
 ### Models
 
