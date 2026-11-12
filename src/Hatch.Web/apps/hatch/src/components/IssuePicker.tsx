@@ -11,12 +11,9 @@
    matching decision it makes is made in lib/issuePicker.ts, which is where
    they are tested. What is here is state and events.
 
-   It stays in apps/hatch rather than @hatch/ui. Admin's ChannelSelect is the
-   same idea and older, and merging them is a third screen's worth of argument
-   - its ranking by match position, its lack of ARIA, its inline styles -
-   landing on a ticket about the parent field. The leaderboard's issue filter is
-   the second screen, and a third is when a move to the library is worth
-   proposing. */
+   It stays in apps/hatch rather than @hatch/ui, since this is its only
+   consumer - promoting it there is a move to make once something else needs
+   the same idea. */
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { pickerRows } from '../lib/issuePicker';
@@ -267,7 +264,7 @@ export function IssuePicker({
                   className={classes.join(' ')}
                   /* The press must not blur the search box: a blur closes the
                      popup and the click then lands on a node that is no longer
-                     there. ChannelSelect does the same, for the same reason. */
+                     there. */
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => void take(row)}
                   onMouseEnter={() => setHighlight(index)}

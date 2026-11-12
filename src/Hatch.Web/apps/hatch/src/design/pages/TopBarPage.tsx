@@ -34,7 +34,7 @@ export function TopBarPage() {
 
       <GallerySection
         title="As it ships"
-        note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; every other app leaves the default and gets a centred, --measure-capped bar instead. Board is forced active here (the page this specimen actually renders on is not `/color`), Plan sits at rest, and Agents is forced open with defaultOpen, so a resting link, the active link and an open menu are all on the bar at once. Hover any of them to see the hover paint live."
+        note="What the hatch app renders: PrimaryNav in leading, wearing the same accent-tone triggers the gear itself does, and the session cluster - the battery and the attention control, stood in for here with a Badge - in trailing. It passes width full, below, so the bar reaches the same edges the board under it does; the auth app leaves the default and gets a centred, --measure-capped bar instead. Board is forced active here (the page this specimen actually renders on is not `/color`), Plan sits at rest, and Agents is forced open with defaultOpen, so a resting link, the active link and an open menu are all on the bar at once. Hover any of them to see the hover paint live."
       >
         <div className="design-stage">
           <TopBar
@@ -79,7 +79,7 @@ export function TopBarPage() {
 
       <GallerySection
         title="Width"
-        note="`measure` caps the bar at --measure and centres it, the default every app but hatch leaves alone. `full` drops the cap and runs it to the box it sits in - the window, in a real app. This stage narrows --measure on itself, gallery furniture rather than a real width, so the two are visibly different without resizing the window."
+        note="`measure` caps the bar at --measure and centres it, the default the auth app leaves alone. `full` drops the cap and runs it to the box it sits in - the window, in a real app. This stage narrows --measure on itself, gallery furniture rather than a real width, so the two are visibly different without resizing the window."
       >
         <div className="design-stage design-stage--narrow-measure">
           <TopBar appName="Hatch" />
@@ -97,7 +97,7 @@ export function TopBarPage() {
 
       <GallerySection
         title="Slots"
-        note="An app adds to the bar rather than forking it: the leading slot sits after the logo and name, the trailing slot before the gear. The gear itself takes a menu slot, for whatever the app wants behind it beside Theme. The gear is always last, so it is in the same place in every app."
+        note="An app adds to the bar rather than forking it: the leading slot sits after the logo and name, the trailing slot before the gear. The gear itself takes a menu slot, for whatever the app wants behind it beside Theme. The gear is always last, so it is in the same place in both apps."
       >
         <div className="design-stage">
           <TopBar

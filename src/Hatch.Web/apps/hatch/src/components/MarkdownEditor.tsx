@@ -21,7 +21,7 @@
    pays nothing until somebody reaches for the comment box.
 
    It is in apps/hatch and not @hatch/ui: the ui barrel pulls every component's
-   CSS into every app, and only this app writes prose. */
+   CSS into each consuming app, and only this app writes prose. */
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react';
 import { Button, useTheme } from '@hatch/ui';

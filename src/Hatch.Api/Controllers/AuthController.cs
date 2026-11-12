@@ -95,8 +95,9 @@ public class AuthController(
                 // the browser as http://api.<ns>.svc.cluster.local:8080/auth/
                 // - unreachable from the LAN, and a wall that looks like it is
                 // working right up until the sign-in page fails to load. The
-                // origin is rebuilt from the forwarded headers, so kiosk. still
-                // stays on kiosk.; ?r= stays a relative path regardless.
+                // origin is rebuilt from the forwarded headers, so a request to
+                // one subdomain still stays on that subdomain; ?r= stays a
+                // relative path regardless.
                 Response.Headers.Location = AuthChallenge.SignInLocation(
                     options,
                     forwardedUri,

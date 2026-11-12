@@ -141,7 +141,7 @@ ones below; to set one, add it under `environment:` for `api` in a
   The first is the address Google sends a person back to
   (`compose.yaml:91`); the second is the address a pull request's link back
   to its ticket is built from (`compose.yaml:101`).
-- **One origin.** The proxy sends `/apps/*`, `/api/*`,
+- **One origin.** The proxy sends `/`, `/auth/`, `/api/*`,
   `/.well-known/assetlinks.json` and `/health/*` to the API from one host.
   The cookie, and the installed app's scope (`/`,
   `src/Hatch.Web/apps/hatch/public/manifest.webmanifest:6`), belong to that
@@ -160,10 +160,11 @@ ones below; to set one, add it under `environment:` for `api` in a
   - `/auth` and everything under it (the sign-in shell, its assets and the
     `/auth/r/{code}` link a QR opens), `/api/auth/verify`, `/api/auth/redeem`
     and `/api/auth/google` (sign-in start and callback): the way in. Gating
-    the way in is a redirect loop. The old `/apps/auth` address is no longer
-    on the list: it is a permanent redirect to `/auth/`, so behind a proxy
-    that asks the wall about the original address, an old bookmark to it is
-    sent to sign in first and reaches the shell by way of its return address.
+    the way in is a redirect loop. The retired `/apps/` addresses are no longer
+    on the list: each is a permanent redirect to its new address (see
+    [Upgrading](upgrading)), so behind a proxy that asks the wall about the
+    original address, an old bookmark to one is sent to sign in first and
+    reaches the shell by way of its return address.
   - `/.well-known/assetlinks.json`, which Android's own link verifier fetches
     with no cookie.
   - `/api/hatch-revision`, which commit this replica runs. The caller who

@@ -55,7 +55,7 @@ public class AppDbContext(DbContextOptions options) : DbContext(options)
             .OnDelete(DeleteBehavior.SetNull);
 
         // People sit beside auth for the same reason auth sits here: they are
-        // infrastructure the whole install shares rather than one family app's
+        // infrastructure the whole install shares rather than one module's
         // data, and a module schema would make every module depend on one
         // module. A person is not an account - see EfPerson.
         //

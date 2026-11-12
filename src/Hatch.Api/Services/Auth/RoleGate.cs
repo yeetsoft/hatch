@@ -16,7 +16,7 @@ public enum RoleOutcome
     /// <summary>An API key on a route that accepts one. Not a person, and never an administrator.</summary>
     Key,
 
-    /// <summary>Refused. What that looks like is the caller's choice: a 404 for the admin app, a 403 for the API.</summary>
+    /// <summary>Refused. What that looks like is the caller's choice: a 404 for the board, a 403 for the API.</summary>
     Refused,
 }
 
@@ -120,7 +120,7 @@ public class RoleGate(
     /// <c>Auth:Enabled</c> alone, because an install with no wall has no identity
     /// to read. It being false is the whole of local development and of
     /// <c>AUTH_MODE=none</c>: nobody is enrolled, no cookie is expected, and a
-    /// guard that refused on that basis would make the admin app unreachable
+    /// guard that refused on that basis would make the board unreachable
     /// for every developer running `make run`.
     ///
     /// Deliberately *not* also gated on <c>Auth:EnforceInProcess</c>. That

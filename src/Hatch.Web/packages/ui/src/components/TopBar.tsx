@@ -63,7 +63,7 @@ export interface TopBarProps {
  *   `leading`/`trailing`. Nothing app-specific compiles into this file.
  *
  * The gear is always present and always last, so it is in the same place in
- * every app: pressing it opens Theme (Auto/Light/Dark) and, when the app
+ * both apps: pressing it opens Theme (Auto/Light/Dark) and, when the app
  * passes `menu`, whatever else the install-level menu carries below a
  * divider. That makes a <ThemeProvider> above this component a requirement,
  * not a nicety - useTheme throws without one, which is the loud failure a

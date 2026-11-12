@@ -67,7 +67,7 @@ describe('hatch-at-home.md, the pointer', () => {
 
   it('keeps the two sentences to send a friend', () => {
     expect(source).toContain('docker compose up -d');
-    expect(source).toContain('http://localhost:8080/apps/hatch/');
+    expect(source).toContain('http://localhost:8080/');
   });
 
   it('is short - the walkthrough itself lives on the docs pages now', () => {

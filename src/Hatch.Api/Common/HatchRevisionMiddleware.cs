@@ -47,8 +47,10 @@ public class HatchRevisionMiddleware(
     public const string ClientSequenceHeaderName = "Hatch-Client-Sequence";
 
     /// <summary>
-    /// The native kiosk shell's own build, which drifts independently of the
-    /// bundle it is displaying and so travels separately.
+    /// The native kiosk shell this suite once served, since retired, had its
+    /// own build, which drifted independently of the bundle it was displaying
+    /// and so travelled as its own header. Nothing sets it today, so this
+    /// header arrives from nowhere; a follow-up could remove it.
     /// </summary>
     public const string ShellHeaderName = "Hatch-Shell-Revision";
 

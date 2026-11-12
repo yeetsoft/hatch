@@ -4,12 +4,12 @@
 
 Hatch's web apps share one vocabulary and one set of components, both living in
 **`@hatch/ui`** — a package inside the `src/Hatch.Web` npm workspace, consumed
-by every app that renders house chrome.
+by both apps that render house chrome.
 
 The design goal is a *property*, not a style guide.
 The property is that **a color, radius, type step or spacing value written as a
 literal in an app is a bug** — there is one place those values live, a designer
-can change them there, and every app changes with them. Nothing enforces that
+can change them there, and both apps change with them. Nothing enforces that
 mechanically. What makes it hold is that the alternative is genuinely more work:
 the token is already named, already has an answer in both themes, and is already
 on a page you can look at.
@@ -114,7 +114,7 @@ is the whole vocabulary. It states values and paints nothing.
 ### The contract
 
 One stored choice — `auto | light | dark` — under one key, `hatch.theme`,
-namespaced because every app shares an origin.
+namespaced because both apps share an origin.
 
 ```
 choice          <html data-theme>     what governs
@@ -238,7 +238,7 @@ Three behaviours worth knowing before touching it:
 
 One breakpoint, `40rem`, governs layout everywhere it changes:
 [`apps/hatch/src/lib/viewport.ts`](../src/Hatch.Web/apps/hatch/src/lib/viewport.ts)
-exports it as `PHONE_QUERY`, and every app's CSS writes the same value in the
+exports it as `PHONE_QUERY`, and both apps' CSS writes the same value in the
 same words, as a bare `@media (max-width: 40rem)`.
 
 It is seen, not merely read, at the `iPhone 14 Pro` profile
@@ -426,7 +426,7 @@ The favicons and icon set stay literal, since they are SVG files fetched
 outside any document, where no token is in scope.
 
 `width` picks how far it runs: `measure` caps it at `--measure` and centres it,
-which every app but hatch leaves at its default. The hatch app passes `full`,
+which the auth app leaves at its default. The hatch app passes `full`,
 because the board under it runs edge to edge too — a bar narrower than the
 board it introduces would misalign every column against it — and carries its
 primary nav in `leading` and the battery-and-attention cluster in `trailing`.

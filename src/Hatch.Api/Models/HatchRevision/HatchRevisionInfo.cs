@@ -10,7 +10,7 @@ namespace Hatch.Api.Models.HatchRevision;
 /// <param name="Client">
 /// The verdict on the caller's build, or null if it sent no
 /// <c>Hatch-Client-Revision</c> - which is every caller that isn't one of
-/// Hatch's own web apps, and every app build from before this shipped.
+/// Hatch's own web apps, and any build of either from before this shipped.
 /// </param>
 /// <param name="Cluster">
 /// What Flux has reconciled, for an authenticated admin caller. Null for

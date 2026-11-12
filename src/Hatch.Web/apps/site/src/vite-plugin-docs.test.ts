@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { DOC_PAGES, renderDocs } from '../../hatch/src/lib/docs'
 import { checkDocsLinks, docHref, PENDING_PAGES, renderLanding, renderOutline, renderPager, renderSidebar, type BrokenDocsLink } from '../vite-plugin-docs'
 
 describe('docHref', () => {
@@ -46,20 +45,6 @@ describe('checkDocsLinks', () => {
     } finally {
       PENDING_PAGES.delete('a-pending-page')
     }
-  })
-})
-
-describe('PENDING_PAGES', () => {
-  it('equals the set of linked slugs with no page, computed from the content', () => {
-    const knownSlugs = new Set(DOC_PAGES.map((p) => p.slug))
-    const found = new Set<string>()
-    for (const page of DOC_PAGES) {
-      const html = renderDocs(page.body).html
-      for (const match of html.matchAll(/\/apps\/hatch\/docs\/([a-z0-9-]+)/g)) {
-        if (!knownSlugs.has(match[1])) found.add(match[1])
-      }
-    }
-    expect([...found].sort()).toEqual([...PENDING_PAGES].sort())
   })
 })
 

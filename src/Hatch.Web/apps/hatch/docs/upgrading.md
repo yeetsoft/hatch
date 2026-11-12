@@ -136,7 +136,7 @@ with everything in them:
   `WeatherAlertContact`, `AirQualityAlertThresholdAqi` and
   `HazardMaxSeverityAgeHours`.
 
-An install that never ran those apps, or never used the house half, has none
+An install that never ran those apps, or never used the home-automation half, has none
 of this, and the migrations find nothing to drop. One that did loses their
 data the moment `migrate` runs, and rolling the images back does not bring it
 back: the older migration history is still there, but the tables are not. If

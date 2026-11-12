@@ -34,7 +34,7 @@ override it. Beneath those sits a palette line, which swaps Hatch's own colours
 for a randomly drawn set.
 
 - **Random** is the switch. Turn it on and Hatch rolls a palette, applies it
-  everywhere (every app, and the API reference page, which carries the same
+  everywhere (the board, and the API reference page, which carries the same
   gear) and remembers it. Turn it off and the house colours come straight back,
   with no reload. Light and Dark still apply either way.
 - The **dice** rolls a new palette. It is greyed out while Random is off.

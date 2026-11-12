@@ -6,12 +6,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace Hatch.Api.Controllers;
 
 /// <summary>
-/// Receives client-side log events from Hatch's frontend apps (dashboard/kiosk, admin, ...)
-/// and writes them through the normal ILogger pipeline, so they flow into the existing
-/// docker.* -> fluent-bit -> OpenSearch hatch-logs index alongside every other Hatch.Api
-/// log line, visible at logs.&lt;domain&gt;. Each app is reached same-origin (e.g. from
-/// kiosk.&lt;domain&gt;, see docs/reverse-proxy-architecture.md), so no CORS handling is
-/// needed here.
+/// Receives client-side log events from Hatch's frontend apps (the board, the
+/// sign-in shell) and writes them through the normal ILogger pipeline, so they
+/// flow into the existing docker.* -> fluent-bit -> OpenSearch hatch-logs index
+/// alongside every other Hatch.Api log line, visible at logs.&lt;domain&gt;.
+/// Both apps are reached same-origin, so no CORS handling is needed here.
 /// </summary>
 [ApiController]
 [Route("api/ui-logs")]
@@ -78,10 +77,10 @@ public class UiLogsController(ILogger<UiLogsController> logger, IHatchRevision r
             // {ClientIp} comes from RemoteIpAddress, which UseForwardedHeaders
             // (Program.cs) resolves from Caddy's X-Forwarded-For - trusted here
             // because `api` is only reachable from `caddy` on the isolated `edge`
-            // Docker network (see docs/reverse-proxy-architecture.md), never
-            // published to the host directly. {DeviceId} is client-supplied (same
-            // trust level as every other field on entry) so multiple kiosks can be
-            // told apart in OpenSearch even though they share IPs from the same LAN.
+            // Docker network, never published to the host directly. {DeviceId} is
+            // client-supplied (same trust level as every other field on entry) so
+            // multiple devices can be told apart in OpenSearch even though they
+            // share IPs from the same LAN.
             logger.Log(
                 level,
                 "{Service}[{SessionId}] {Message} ({Url}) :: {Metadata} :: ip={ClientIp} device={DeviceId} rev={HatchRevision} seq={HatchSequence} relay={HatchRelayRevision} actor={ActorId} person={PersonId} personName={PersonName}",
