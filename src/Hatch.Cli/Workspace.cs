@@ -134,6 +134,13 @@ public interface IWorkspace
     /// cannot be read rather than thrown.
     /// </summary>
     string? DiffStat(string branch);
+
+    /// <summary>
+    /// The commits that landed on origin's trunk after <paramref name="at"/> to each
+    /// of <paramref name="paths"/>, newest first and capped - best-effort, empty
+    /// wherever git cannot say rather than thrown.
+    /// </summary>
+    IReadOnlyList<PathCommits> Since(DateTimeOffset at, IReadOnlyList<string> paths);
 }
 
 /// <summary>What came of pushing a session's work after its account ran out of usage.</summary>

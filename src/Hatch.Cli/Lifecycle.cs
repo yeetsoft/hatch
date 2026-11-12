@@ -163,6 +163,49 @@ public sealed class Lifecycle(Runtime runtime)
     }
 
     /// <summary>
+    /// What has landed on the trunk, to the files the brief names, since the brief
+    /// was last set - for the prompt's "Changed since this brief" section. Empty
+    /// for any dispatch that is not an advance, a brief that names no path, an
+    /// events read that fails or finds no date, and paths nothing touched.
+    /// </summary>
+    /// <remarks>
+    /// The brief's time is its last description edit, else its creation - never
+    /// <see cref="IssueDto.UpdatedAt"/>, which any move between columns bumps.
+    /// </remarks>
+    public async Task<IReadOnlyList<RepoSince>> SinceAsync(WorkDto work, Checkouts.Choice chosen, CancellationToken ct)
+    {
+        if (work.Kind != WorkKinds.Advance) return [];
+        if (BriefPaths.Extract(work.Issue.Description) is not { Count: > 0 } paths) return [];
+
+        IReadOnlyList<IssueEventDto> events;
+        try
+        {
+            events = await runtime.Board.EventsAsync(work.Issue.Key, ct);
+        }
+        catch (HatchException)
+        {
+            return [];
+        }
+
+        var set = (events.FirstOrDefault(e => e.Kind == "redescribed") ?? events.FirstOrDefault(e => e.Kind == "created"))?.At;
+        if (set is not { } at) return [];
+
+        var found = new List<RepoSince>();
+        foreach (var r in chosen.Resets)
+        {
+            var commits = runtime.Workspace(r.Path, r.BaseBranch).Since(at, paths);
+            if (commits.Count == 0) continue;
+
+            var where = chosen.Resets.Count > 1
+                ? chosen.Repositories.FirstOrDefault(l => l.Path == r.Path)?.Remote ?? Path.GetFileName(r.Path.TrimEnd('/', '\\'))
+                : null;
+            found.Add(new RepoSince(where, commits));
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// What <see cref="EnterAsync"/> would do, without doing any of it - the
     /// entries a dry run composes its prompt from.
     /// </summary>
