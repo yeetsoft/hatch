@@ -28,7 +28,6 @@ import {
 } from './timeline';
 import {
   DEFAULT_DAYS,
-  WINDOW_PRESETS,
   presetOf,
   resizeWindow,
   resolveWindow,
@@ -856,8 +855,7 @@ describe('as the page composes it', () => {
     ['from the default', ''],
     ['from range=1y', 'range=1y'],
   ])('a resize to 6m %s reads back as the window it wrote', (_, query) => {
-    const days = WINDOW_PRESETS.find((preset) => preset.key === '6m')!.days;
-    const { next, written, read } = roundTrip(query, (w) => resizeWindow(w, days));
+    const { next, written, read } = roundTrip(query, (w) => resizeWindow(w, '6m', NOW));
 
     expect(read).toEqual(next);
     expect(presetOf(read)).toBe('6m');
