@@ -661,6 +661,10 @@ public sealed class Board(HatchClient client, bool refusesDangerous = false)
     public async Task<IReadOnlyList<CommentDto>> CommentsAsync(string key, CancellationToken ct) =>
         await Client.GetAsync<List<CommentDto>>($"/api/issues/{key}/comments", ct) ?? [];
 
+    /// <summary>What has happened to one issue, newest first.</summary>
+    public async Task<IReadOnlyList<IssueEventDto>> EventsAsync(string key, CancellationToken ct) =>
+        await Client.GetAsync<List<IssueEventDto>>($"/api/issues/{key}/events", ct) ?? [];
+
     /// <summary>Into a column. The board decides the rank; nothing here has an opinion about it.</summary>
     public Task<IssueDto?> MoveAsync(string key, int statusId, CancellationToken ct) =>
         Client.PostAsync<IssueDto>($"/api/issues/{key}/move", new IssueMoveRequest(statusId, null, null), ct);

@@ -19,7 +19,8 @@ public static class Prompt
         IReadOnlyList<Checkouts.RepositoryLine>? repositories = null,
         IReadOnlyList<BranchEntry>? branches = null,
         Rechecked? conflict = null,
-        BuildFound? build = null)
+        BuildFound? build = null,
+        IReadOnlyList<RepoSince>? since = null)
     {
         var issue = work.Issue;
         var key = issue.Key;
@@ -85,6 +86,11 @@ public static class Prompt
         var sharedStory = Branches.IsShared(work) ? work.BranchKey : null;
         var deniesGitWrites = DeniesGitWrites(work.Playbook?.DeniedTools);
         if (branches is { Count: > 0 }) lines.AddRange(Branch(branches, sharedStory, deniesGitWrites));
+
+        // After the branch, which says where the work goes, and before the
+        // children: a brief can go stale while it waits, and this is what
+        // happened to the files it names in the meantime.
+        if (since is { Count: > 0 }) lines.AddRange(Since(since));
 
         if (work.Children.Count > 0)
         {
@@ -283,6 +289,45 @@ public static class Prompt
         }
 
         yield return "";
+    }
+
+    /// <summary>
+    /// The commits that landed on the trunk, to the files the brief names, after
+    /// the brief was last set. Says plainly that the brief predates them, so a
+    /// change it asks for that undoes one is a question rather than an order.
+    /// </summary>
+    private static IEnumerable<string> Since(IReadOnlyList<RepoSince> since)
+    {
+        yield return "## Changed since this brief";
+        yield return "";
+        yield return "The brief predates these commits to files it names. It was written without them,";
+        yield return "so a change it asks for that undoes one of them is not an instruction to follow:";
+        yield return "ask with `hatch ask` and stop, rather than reverting somebody's decision. Read the";
+        yield return "commit's own message first - it may say why.";
+        yield return "";
+
+        foreach (var repo in since)
+        {
+            if (repo.Where is { Length: > 0 } where)
+            {
+                yield return $"{where}:";
+                yield return "";
+            }
+
+            foreach (var path in repo.Paths)
+            {
+                yield return $"- `{path.Path}`";
+
+                foreach (var c in path.Commits)
+                {
+                    yield return $"  - {c.Sha}  {c.Date}  {c.Subject}";
+                    foreach (var line in c.Body.ReplaceLineEndings("\n").Split('\n'))
+                        if (line.Length > 0) yield return $"    {line}";
+                }
+            }
+
+            yield return "";
+        }
     }
 
     /// <summary>The most bytes the whole failing-build section spends on log excerpts.</summary>

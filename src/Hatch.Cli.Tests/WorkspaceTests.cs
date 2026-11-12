@@ -67,8 +67,27 @@ public abstract class RepoFixture : IDisposable
         Other();
         G(_other, "fetch", "--quiet", "origin");
         G(_other, "checkout", "--quiet", "-B", "main", "origin/main");
-        File.WriteAllText(Path.Combine(_other, file), content);
+        var target = Path.Combine(_other, file);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllText(target, content);
         Commit(_other, $"Trunk changes {file}");
+        G(_other, "push", "--quiet", "origin", "main");
+    }
+
+    /// <summary>One trunk commit touching every file given - for a test that wants many paths without many pushes.</summary>
+    protected void MoveMainAll(IEnumerable<string> files)
+    {
+        Other();
+        G(_other, "fetch", "--quiet", "origin");
+        G(_other, "checkout", "--quiet", "-B", "main", "origin/main");
+        foreach (var file in files)
+        {
+            var target = Path.Combine(_other, file);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllText(target, file);
+        }
+
+        Commit(_other, "Trunk changes many files");
         G(_other, "push", "--quiet", "origin", "main");
     }
 

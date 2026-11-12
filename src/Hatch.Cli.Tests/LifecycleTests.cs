@@ -1305,4 +1305,64 @@ public sealed class LifecycleTests
         Assert.Single(found.StillFailing);
         Assert.Null(h.Forge.Canonicals.Single());
     }
+
+    // ---- Changed since this brief ----
+
+    private static void Created(Harness h) =>
+        h.Wire.Json("GET", "/api/issues/AER-1/events", new[]
+        {
+            new IssueEventDto(1, "somebody", "created", null, DateTimeOffset.UnixEpoch),
+        });
+
+    private static IReadOnlyList<PathCommits> Landed() =>
+        [new PathCommits(".hatch/dependencies.json", [new TrunkCommit("abc1234", "2026-11-10", "Deps: drop postgres", "On purpose.")])];
+
+    private static WorkDto Naming(string kind = WorkKinds.Advance) =>
+        Fixtures.Work("AER-1", from: "In Review", issue: Fixtures.Issue("AER-1", description: "Add to `.hatch/dependencies.json`.")) with { Kind = kind };
+
+    [Fact]
+    public async Task A_brief_naming_a_file_that_changed_since_it_was_set_carries_the_commit_into_the_prompt()
+    {
+        using var h = new Harness();
+        Board(h, work: Naming());
+        Created(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.SinceFor[h.Root] = Landed();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        var prompt = Assert.Single(h.Sessions.Spawned).Prompt;
+        Assert.Contains("## Changed since this brief", prompt);
+        Assert.Contains("Deps: drop postgres", prompt);
+        Assert.Contains("On purpose.", prompt);
+        Assert.Equal([".hatch/dependencies.json"], Assert.Single(h.Workspace.SinceAsked));
+    }
+
+    [Fact]
+    public async Task A_failed_events_read_gives_no_section()
+    {
+        using var h = new Harness();
+        Board(h, work: Naming());
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.SinceFor[h.Root] = Landed();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.DoesNotContain("## Changed since this brief", Assert.Single(h.Sessions.Spawned).Prompt);
+        Assert.Empty(h.Workspace.SinceAsked);
+    }
+
+    [Fact]
+    public async Task A_conflicts_dispatch_is_not_asked()
+    {
+        using var h = new Harness();
+        Board(h, work: Naming(WorkKinds.Conflicts));
+        Created(h);
+        h.Workspace.Entry = (path, _) => On(path);
+        h.Workspace.SinceFor[h.Root] = Landed();
+
+        await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
+
+        Assert.Empty(h.Workspace.SinceAsked);
+    }
 }

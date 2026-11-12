@@ -2562,6 +2562,8 @@ public sealed class GoToWorkCommand(Runtime runtime)
             // - so a failure past this point has to be told to put it back.
             entered = true;
 
+            var since = await lifecycle.SinceAsync(work, chosen, ct);
+
             runtime.Say.Line("");
 
             // The playbook's, and no flag reaches this: `work --model` is one
@@ -2587,7 +2589,7 @@ public sealed class GoToWorkCommand(Runtime runtime)
                     found is null ? null : new ConflictRun(found, judge => lifecycle.JudgeAsync(work, chosen, judge)),
                     built is null ? null : new BuildRun(built, judge => lifecycle.JudgeBuildAsync(work.Issue.Key, built, chosen, judge)),
                     work.Playbook?.IsCheck == true ? ct2 => lifecycle.TreeUnchangedAsync(chosen, entering.Entries, ct2) : (Func<CancellationToken, Task<bool>>?)null,
-                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1);
+                    runnerName: runtime.RunnerName, incrementNumber: tally.Runs + 1, since: since);
             }
             finally
             {
