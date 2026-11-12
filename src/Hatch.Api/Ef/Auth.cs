@@ -6,7 +6,7 @@ namespace Hatch.Api.Ef;
 
 /// <summary>
 /// How a grant's holder behaves, which is the only thing anything branches on
-/// today. Interactive is a person's browser; Device is a kiosk tablet or
+/// today. Interactive is a person's browser; Device is an unattended tablet or
 /// anything else that will never see a sign-in screen again after enrollment.
 /// Append-only, like every other enum in this folder - see DeviceChannelMetric.
 /// </summary>
@@ -62,7 +62,7 @@ public class EfAuthGrant
     ///
     /// Which makes what this is *not* worth stating: there is no permission
     /// model behind it yet. There is one global role - RoleGate reads
-    /// Person.Role off this link to decide who is served the admin app -
+    /// Person.Role off this link to decide who is granted the Admin role -
     /// and outside the operator verbs it guards, no endpoint answers
     /// differently for one person than for another.
     ///

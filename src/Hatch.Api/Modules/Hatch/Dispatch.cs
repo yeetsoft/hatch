@@ -92,15 +92,23 @@ public sealed class Dispatch(
     /// omission fold can read that runner's own omissions: the let-go deferral
     /// is not applied, so a peer's scan never starts peer scans of its own.
     /// </param>
+    /// <param name="refusal">
+    /// The models the asking runner's key refuses, see <see cref="RefusalFold"/>.
+    /// Null reads them off <paramref name="asking"/>'s name - none where that is
+    /// null too, so a board-wide scan refuses nothing. A peer's scan passes its
+    /// own, and an empty list says fold nothing and look nothing up.
+    /// </param>
     public async Task<Scan> ScanAsync(
         int offsetMinutes, string? ancestorKey, Guid? heldToken, RepositoryDeclaration repos, bool mine,
         CancellationToken ct, Actor? principalOverride = null, bool markDeadlocks = false,
         TagDeclaration? tags = null, IReadOnlyList<string>? projects = null, RunnerAsking? asking = null,
-        bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null)
+        bool foldLetGo = true, ModelDeclaration? models = null, HasDeclaration? has = null,
+        RunnerRefusal? refusal = null)
     {
         tags ??= TagDeclaration.Unjudged;
         models ??= ModelDeclaration.Unjudged;
         has ??= HasDeclaration.Unjudged;
+        refusal ??= await RefusedByAsync(asking?.Name, ct);
 
         // Judged here, on the one entry every caller shares - the same place
         // ancestorKey's own unknown key is refused - so a refused scan never
@@ -383,8 +391,10 @@ public sealed class Dispatch(
                         trainSlots.GetValueOrDefault(issue.Id),
                         drivers.TryGetValue(issue.ProjectId, out var driver) ? driver : null,
                         landing, projectRepoSourced, tags: tags, projects: projects, asking: asking, models: models,
-                        has: has, requirement: requirement);
-                    if (!hop && ModelFold(issue, status, playbook, models) is not null) modelFolded = true;
+                        has: has, requirement: requirement, refusal: refusal);
+                    if (!hop && (ModelFold(issue, status, playbook, models) is not null
+                                  || RefusalFold(issue, status, playbook, refusal) is not null))
+                        modelFolded = true;
                     if (requirement is not null && rowTo is not null
                         && CodeGated(issue, status, rowTo, hop, implementation, merged, built)
                         && DependencyFold(issue, has, requirement) is not null)
@@ -483,7 +493,7 @@ public sealed class Dispatch(
                     rows[i] = rows[i] with { Deadlocked = true, Blocked = $"deadlocked - {rows[i].Blocked}" };
         }
 
-        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models);
+        return new Scan(statuses, rows, loop, gate, family, claimed, repos, wip, epics, null, pace, tags, models, refusal);
     }
 
     /// <summary>
@@ -589,7 +599,7 @@ public sealed class Dispatch(
             if (string.Equals(runner.Name, excludeName, StringComparison.Ordinal)) continue;
 
             if (runner.Beat is { } beat && IsLiveBeat(beat, now, liveSince))
-                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, await RunnerDeclaration.OfAsync(beat, actors, ct)));
+                peers.Add(new Peer($"beat:{runner.Name}", runner.Name, await RunnerDeclaration.OfAsync(beat, actors, ct, runner.Config)));
 
             if (sessions is null || runner.Sessions is null) continue;
             foreach (var session in runner.Sessions)
@@ -641,7 +651,7 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has);
+            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused));
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -664,7 +674,7 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: ModelDeclaration.Unjudged,
-            has: HasDeclaration.Unjudged);
+            has: HasDeclaration.Unjudged, refusal: new RunnerRefusal(peer.Name, []));
         if (scan.Failure is not null) return [];
 
         return scan.Rows
@@ -690,7 +700,7 @@ public sealed class Dispatch(
 
         // A fleet that judges neither can never fold on a toolchain, so no
         // issue is stuck on one - and an unprofiled fleet is spared the scans.
-        if (declared.Any(d => !d.Models.Judged && !d.Has.Judged)) return [];
+        if (declared.Any(d => !d.Models.Judged && !d.Has.Judged && d.Refused.Count == 0)) return [];
 
         HashSet<long>? stuck = null;
         foreach (var peer in fleet)
@@ -740,7 +750,7 @@ public sealed class Dispatch(
             offsetMinutes, declared.Under, null, declared.Repos, declared.Mine, ct, declared.Principal,
             tags: declared.Tags, projects: declared.Projects,
             asking: new RunnerAsking(peer.Name, time.GetUtcNow()), foldLetGo: false, models: declared.Models,
-            has: declared.Has);
+            has: declared.Has, refusal: new RunnerRefusal(peer.Name, declared.Refused));
     }
 
     /// <summary>
@@ -880,19 +890,25 @@ public sealed class Dispatch(
     {
         var parts = new List<string>();
 
-        var withModels = declared.Where(d => d.Models.Judged).ToList();
+        // A runner that refuses models judges them, though it may never have
+        // declared any: it offers what it does not refuse, and what it declared.
+        var withModels = declared.Where(d => d.Models.Judged || d.Refused.Count > 0).ToList();
         if (withModels.Count > 0 && !string.IsNullOrWhiteSpace(row.Model))
         {
             var model = row.Model;
             if (ModelFamilies.Aliases.Contains(model))
             {
-                if (!withModels.Any(d => d.Models.Has.Count == 0 || d.Models.Has.Contains(model)))
+                if (!withModels.Any(d => !RunnerModels.Refuses(d.Refused, model)
+                                         && (!d.Models.Judged || d.Models.Has.Count == 0 || d.Models.Has.Contains(model))))
                     parts.Add($"no live runner offers {model}");
             }
             else if (ModelFamilies.Default.AgentOf(model) is { } owner)
             {
-                if (!withModels.Any(d => d.Models.Agent is null || d.Models.Agent == owner))
+                var ofAgent = withModels.Where(d => d.Models.Agent is null || d.Models.Agent == owner).ToList();
+                if (ofAgent.Count == 0)
                     parts.Add($"pinned to {model} - no live runner's agent is {owner}");
+                else if (ofAgent.All(d => RunnerModels.Refuses(d.Refused, model)))
+                    parts.Add($"no live runner offers {model}");
             }
         }
 
@@ -1326,6 +1342,39 @@ public sealed class Dispatch(
         return models.Agent is not null && ModelFamilies.Default.AgentOf(model) is { } owner && owner != models.Agent
             ? ModelFamilies.Default.WrongAgent(model, models.Agent)
             : null;
+    }
+
+    /// <summary>
+    /// Why the asking runner will not take the move: the model it runs on - the
+    /// issue's override, else the matched playbook's - is one the runner
+    /// refuses, see <see cref="RunnerModels.Refuses"/>. Null for a scan with no
+    /// refusal, for a runner that refuses nothing, and for a move that names no
+    /// model.
+    /// </summary>
+    internal static string? RefusalFold(EfHatchIssue issue, EfHatchStatus from, EfHatchPlaybook? playbook, RunnerRefusal? refusal)
+    {
+        if (refusal is null || refusal.Models.Count == 0) return null;
+
+        var model = issue.ModelOverride ?? playbook?.Model;
+        return RunnerModels.Refuses(refusal.Models, model)
+            ? ModelFamilies.Refused(IssueKey.Format(issue.Project!.Key, issue.Number), from.Name, model!, refusal.Runner)
+            : null;
+    }
+
+    /// <summary>
+    /// The models the key named <paramref name="name"/> refuses, read once for a
+    /// pass. Null for no name, no key store, and a name no key answers to - a
+    /// board-wide scan or an unknown runner refuses nothing.
+    /// </summary>
+    public async Task<RunnerRefusal?> RefusedByAsync(string? name, CancellationToken ct)
+    {
+        if (name is null || keys is null) return null;
+
+        var key = (await keys.ListApiKeysAsync(ct)).FirstOrDefault(k => string.Equals(k.Name, name, StringComparison.Ordinal));
+        if (key is null) return null;
+
+        var config = await db.RunnerConfigs.AsNoTracking().FirstOrDefaultAsync(c => c.ApiKeyId == key.Id, ct);
+        return new RunnerRefusal(name, config is null ? [] : RunnerTagColumn.Read(config.RefusedModels));
     }
 
     /// <summary>
@@ -1798,11 +1847,12 @@ public sealed class Dispatch(
         RunnerAsking? asking = null,
         ModelDeclaration? models = null,
         HasDeclaration? has = null,
-        DependencyRequirement? requirement = null) =>
+        DependencyRequirement? requirement = null,
+        RunnerRefusal? refusal = null) =>
         BlockedWithKind(
             issue, from, to, playbook, waiting, letGo, sendBackStreak, loop, pace, gate, family, claimed,
             implementation, assignee, repos, verdicts, builds, hopKind, statuses, wip, epics, train, driver, landing,
-            repoSourced, tags, projects, asking, models, has, requirement).Sentence;
+            repoSourced, tags, projects, asking, models, has, requirement, refusal).Sentence;
 
     /// <summary>
     /// <see cref="Blocked"/>'s own answer, plus which of <see cref="BlockedKinds"/>
@@ -1842,7 +1892,8 @@ public sealed class Dispatch(
         RunnerAsking? asking = null,
         ModelDeclaration? models = null,
         HasDeclaration? has = null,
-        DependencyRequirement? requirement = null)
+        DependencyRequirement? requirement = null,
+        RunnerRefusal? refusal = null)
     {
         var hop = hopKind is not null;
 
@@ -2030,7 +2081,12 @@ public sealed class Dispatch(
         if (!hop && !reviewIdle && ModelFold(issue, from, playbook, models ?? ModelDeclaration.Unjudged) is { } modelBlock)
             return new Blocking(modelBlock, BlockedKinds.Other);
 
-        // After the model fold, before the dependencies: a runner that cannot
+        // Beside the model fold, and gated as it is: a runner that refuses the
+        // model is never dispatched a move on it, from any door.
+        if (!hop && !reviewIdle && RefusalFold(issue, from, playbook, refusal) is { } refusalBlock)
+            return new Blocking(refusalBlock, BlockedKinds.Other);
+
+        // After the model and refusal folds, before the dependencies: a runner that cannot
         // build the ticket's code is not asked to wait on what blocks it. The
         // move into implementation runs no code, so CodeGated leaves it out.
         if (CodeGated(issue, from, to, hop, implementation, verdicts, builds)
@@ -2731,7 +2787,7 @@ public sealed record Scan(
     List<EfHatchStatus> Statuses, List<ScanRow> Rows, LoopScope? Loop, DependencyGate Gate,
     FamilyGate Family, ClaimGate Claims, RepositoryDeclaration Repos, WipSection? Wip,
     IReadOnlyDictionary<long, EpicLimit> Epics, string? Failure, PaceReadings? Pace = null,
-    TagDeclaration? Tags = null, ModelDeclaration? Models = null)
+    TagDeclaration? Tags = null, ModelDeclaration? Models = null, RunnerRefusal? Refusal = null)
 {
     public static Scan Refused(string why) =>
         new(
@@ -2842,6 +2898,13 @@ public sealed record RepositoryDeclaration(IReadOnlyDictionary<string, string>? 
 /// a runner's last sighting means it is gone (<see cref="Runners.Cutoff"/>).
 /// </summary>
 public sealed record RunnerAsking(string Name, DateTimeOffset LiveSince);
+
+/// <summary>
+/// The models the asking runner's key refuses, see <see cref="RunnerModels.Refuses"/>.
+/// An empty <see cref="Models"/> folds nothing, and is what a scan passes to
+/// say "no refusal, and do not look one up".
+/// </summary>
+public sealed record RunnerRefusal(string Runner, IReadOnlyList<string> Models);
 
 /// <summary>
 /// The tags a caller's runner advertises, or that the scan answers for no

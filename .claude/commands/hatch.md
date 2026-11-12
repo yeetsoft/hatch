@@ -94,7 +94,7 @@ columns.
 
    If you open a pull request, its title is `<KEY> ` and then that same
    subject (`AER-12 Auth: the first Admin` — no brackets, no second colon), and
-   the first line of its description is `[<KEY>](<HATCH_BASE>/apps/hatch/issues/<KEY>)`
+   the first line of its description is `[<KEY>](<HATCH_BASE>/issues/<KEY>)`
    and nothing else, then a blank line and the summary. Read `HATCH_BASE` from
    `./scripts/hatch.sh config` when it is not exported. Where the install sets
    a public address different from the one you reach Hatch at, take the line
