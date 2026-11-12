@@ -38,7 +38,8 @@ import {
   type ThemeChoice,
 } from '../theme/themeStore';
 import { checkSeed, readLastSeed, rollSeed, storePalette } from '../theme/randomPalette';
-import { COPY_SHAPES, DIE_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from '../components/themePickerIcons';
+import { applySharedSeed, shareLink } from '../theme/sharedSeed';
+import { COPY_SHAPES, DIE_SHAPES, LINK_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from '../components/themePickerIcons';
 
 /* The mark's geometry, the same two paths <HatchMark> draws; see TopBar.tsx. */
 import { HATCH_MARK_BODY, HATCH_MARK_CAP, HATCH_MARK_VIEWBOX } from '../brand/hatchMark';
@@ -210,6 +211,13 @@ function paletteLine(): HTMLElement[] {
   copy.title = 'Copy seed';
   copy.appendChild(pickerIcon(COPY_SHAPES));
 
+  const link = document.createElement('button');
+  link.type = 'button';
+  link.className = 'hatch-theme-picker__button';
+  link.setAttribute('aria-label', 'Copy link');
+  link.title = 'Copy link';
+  link.appendChild(pickerIcon(LINK_SHAPES));
+
   /* A <p> that exists only while there is something to say; the status is
      always there, so the announcement has a region to land in. */
   const refusal = document.createElement('p');
@@ -240,6 +248,7 @@ function paletteLine(): HTMLElement[] {
     dice.disabled = applied === null;
     seed.value = shown();
     copy.disabled = shown() === '';
+    link.disabled = shown() === '';
     refuse(null);
   };
 
@@ -286,8 +295,14 @@ function paletteLine(): HTMLElement[] {
     navigator.clipboard.writeText(shown()).then(() => announce('Seed copied'), failed);
   });
 
+  link.addEventListener('click', () => {
+    const failed = () => announce('Could not copy the link');
+    if (!navigator.clipboard) return failed();
+    navigator.clipboard.writeText(shareLink(shown())).then(() => announce('Link copied'), failed);
+  });
+
   /* The configurator's Tune button belongs here, after the dice. */
-  line.append(randomLabel, dice, seed, copy);
+  line.append(randomLabel, dice, seed, copy, link);
   render();
   return [line, refusal, status];
 }
@@ -472,6 +487,10 @@ export function createTopBar(config: StandaloneTopBarConfig): HTMLElement {
 /** The theme the host page is to be shown in, settled before anything paints. */
 function applyHostTheme(config: StandaloneTopBarConfig): void {
   const theme = config.theme ?? 'switch';
+  /* A shared link's seed, if the page was opened with one - called again at
+     mount (mountTopBar), by which point the parameter is already gone, so
+     the second call is harmless. */
+  applySharedSeed();
   /* The palette applies in all three modes: the bar is house chrome, and a
      host pinned to one appearance still takes the house's colours. */
   applyPalette(readPalette());

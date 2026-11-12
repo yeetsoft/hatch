@@ -29,3 +29,10 @@ export const COPY_SHAPES: IconShape[] = [
   { tag: 'rect', attrs: { x: '8.5', y: '8.5', width: '11', height: '11', rx: '2.5' } },
   { tag: 'rect', attrs: { x: '4.5', y: '4.5', width: '11', height: '11', rx: '2.5' } },
 ];
+
+/** A chain: two pill-shaped rects, offset and crossed, like COPY_SHAPES's two
+    squares but with rx large enough to read as links rather than corners. */
+export const LINK_SHAPES: IconShape[] = [
+  { tag: 'rect', attrs: { x: '3.5', y: '9.5', width: '11', height: '5', rx: '2.5', transform: 'rotate(-45 9 12)' } },
+  { tag: 'rect', attrs: { x: '9.5', y: '9.5', width: '11', height: '5', rx: '2.5', transform: 'rotate(-45 15 12)' } },
+];

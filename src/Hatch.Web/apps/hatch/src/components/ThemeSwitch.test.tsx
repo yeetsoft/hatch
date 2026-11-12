@@ -40,6 +40,11 @@ describe('ThemeSwitch', () => {
     expect(html).toMatch(/<button[^>]*aria-label="Copy seed"[^>]*disabled/);
   });
 
+  it('has a named copy-link button after the copy-seed button, disabled with no seed', () => {
+    expect(html).toMatch(/<button[^>]*aria-label="Copy link"[^>]*disabled/);
+    expect(html.indexOf('aria-label="Copy link"')).toBeGreaterThan(html.indexOf('aria-label="Copy seed"'));
+  });
+
   it('has a status region for the copy announcement, and no alert until a seed is refused', () => {
     expect(html).toMatch(/<span[^>]*role="status"/);
     expect(html).not.toContain('role="alert"');

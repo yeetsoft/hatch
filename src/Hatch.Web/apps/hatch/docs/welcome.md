@@ -50,6 +50,13 @@ Escape to put the current seed back. On a page served over plain HTTP the browse
 may not allow copying; the message says so, and the seed can still be selected
 and copied by hand.
 
+The link button beside it copies the page's own address with the seed on it.
+Opening a link like that applies the palette and turns Random on, the same as
+pasting the seed would; the address bar is cleaned of the parameter right
+after, so the link is not kept in a bookmark by accident. A seed a link
+carries that Hatch cannot read is ignored - said in the console, not on the
+page - and the page renders in whichever theme was already stored.
+
 ## Where to go
 
 - **Start here** — [Getting started](getting-started) walks a clean machine
