@@ -4769,8 +4769,9 @@ public sealed class GoToWorkTests
         // resolved the merge and pushed, but never opened a pull request.
         h.Workspace.Verdicts[(h.Root, key)] =
             new Verdict(MergeVerdicts.Conflicted, "main", new string('a', 40), "aer-1-thing", new string('b', 40), ["a.txt"]);
-        h.Sessions.Behaviour = (_, _, _) =>
+        h.Sessions.Behaviour = (_, onLine, _) =>
         {
+            onLine?.Invoke(Fixtures.Init());
             h.Workspace.Verdicts[(h.Root, key)] =
                 new Verdict(MergeVerdicts.Clean, "main", new string('c', 40), "aer-1-thing", new string('b', 40), []);
             return Task.FromResult(new SessionResult(0, ""));

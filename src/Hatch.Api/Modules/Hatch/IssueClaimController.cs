@@ -252,7 +252,7 @@ public class IssueClaimController(
                 return BadRequest(
                     $"\"{outcome}\" is not an outcome - it is \"{ClaimOutcomes.Dropped}\", \"{ClaimOutcomes.Worked}\", " +
                     $"\"{ClaimOutcomes.Preempted}\", \"{ClaimOutcomes.Recused}\", " +
-                    $"\"{ClaimOutcomes.Unservable}\", \"{ClaimOutcomes.Abandoned}\", or nothing at all");
+                    $"\"{ClaimOutcomes.Unservable}\", \"{ClaimOutcomes.Abandoned}\", \"{ClaimOutcomes.Unstarted}\", or nothing at all");
             given = outcome;
         }
 
