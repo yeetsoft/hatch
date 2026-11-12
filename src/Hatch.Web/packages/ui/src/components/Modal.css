@@ -112,6 +112,51 @@
   border-top: 1px solid var(--line);
 }
 
+/* ---- The console tone ----
+
+   A dark instrument ground for a dialog whose content is drawn for it - the
+   palette configurator, whose board is read against --console. The console is
+   dark in both themes, so none of this moves with the theme.
+
+   Doubled for the same reason `--framed` is: `.hatch-modal__panel.--console`
+   is 0,2,0 and beats an app's own `.hatch-card { background }` whichever
+   stylesheet the bundle puts last. The descendants are written under the
+   panel's modifier (0,2,0) to beat the card's own 0,1,0 rules, and the close's
+   `:hover` and `:focus-visible` at three classes to beat `.hatch-modal__close:hover`
+   at two. The scanline is the one `.design-pc-panel` draws. */
+.hatch-modal__panel.hatch-modal__panel--console {
+  border-color: var(--console-line);
+  color: var(--on-console);
+  font-family: var(--mono);
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--on-console) 3%, transparent) 2px 3px),
+    var(--console);
+}
+
+.hatch-modal__panel--console .hatch-modal__head {
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--console-line);
+}
+
+.hatch-modal__panel--console .hatch-modal__foot {
+  border-top-color: var(--console-line);
+}
+
+.hatch-modal__panel--console .hatch-modal__close {
+  color: var(--console-dim);
+}
+
+.hatch-modal__panel--console .hatch-modal__close:hover {
+  color: var(--console-glow);
+  background: transparent;
+}
+
+.hatch-modal__panel--console .hatch-modal__close:focus-visible {
+  outline: 2px solid var(--console-glow);
+  outline-offset: 2px;
+  color: var(--console-glow);
+}
+
 /* ---- Below the breakpoint, a sheet rather than a keyhole ----
 
    A dialog that stays a 358px card with 16px gutters on a 390px screen is a

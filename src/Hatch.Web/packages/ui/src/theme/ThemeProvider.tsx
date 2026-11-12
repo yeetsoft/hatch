@@ -58,9 +58,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     storePalette(next);
   }, []);
 
+  /* State only - no storage, no last seed. The layout effect above puts it on
+     the document and every reader of `palette` follows, so a candidate shows on
+     the real page and a reload still finds what was stored. */
+  const previewPalette = useCallback((next: string | null) => {
+    setStoredPalette(next);
+  }, []);
+
   const value = useMemo<ThemeContextValue>(
-    () => ({ choice, resolved, setChoice, palette, lastSeed, setPalette }),
-    [choice, resolved, setChoice, palette, lastSeed, setPalette],
+    () => ({ choice, resolved, setChoice, palette, lastSeed, setPalette, previewPalette }),
+    [choice, resolved, setChoice, palette, lastSeed, setPalette, previewPalette],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

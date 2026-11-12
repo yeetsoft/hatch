@@ -22,6 +22,10 @@ export interface ThemeContextValue {
   /** Applies a seed (turning Random on), or `null` for the house palette
       (turning it off, leaving `lastSeed` alone). */
   setPalette: (seed: string | null) => void;
+  /** Shows a seed (or the house palette for `null`) on the page and to every reader of `palette`, without
+      writing it anywhere: storage and `lastSeed` are left as they were, so a reload undoes it. The configurator
+      previews with this and commits with `setPalette`. */
+  previewPalette: (seed: string | null) => void;
 }
 
 /* Undefined rather than a default value: a component reading the theme outside

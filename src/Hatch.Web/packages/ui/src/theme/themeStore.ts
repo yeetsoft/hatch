@@ -136,7 +136,8 @@ function chromeIn(block: Record<string, string>, name: string): string {
   if (!value) throw new Error(`tokens.css: no --chrome in the ${name} block`);
   return value;
 }
-const BLOCKS = parseTokenBlocks(tokensCss);
+/** The two token blocks, parsed once from tokens.css, for a caller that derives a palette of its own (the configurator). */
+export const BLOCKS = parseTokenBlocks(tokensCss);
 const CHROME: Record<ResolvedTheme, string> = {
   light: chromeIn(BLOCKS.light, 'light'),
   dark: chromeIn(BLOCKS.dark, 'dark'),

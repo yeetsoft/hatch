@@ -7,7 +7,7 @@ import { GalleryPage, GallerySection, PhoneFrame } from '../components/Gallery';
    inline in the page could show the paint and none of that, and the behaviour
    is the part worth checking. */
 
-type Which = 'short' | 'form' | 'long' | 'pinned' | 'title' | 'narrow' | null;
+type Which = 'short' | 'form' | 'long' | 'pinned' | 'title' | 'narrow' | 'console' | null;
 
 export function ModalPage() {
   const [open, setOpen] = useState<Which>(null);
@@ -46,6 +46,15 @@ export function ModalPage() {
       >
         <div className="design-row">
           <Button onClick={() => setOpen('pinned')}>Long content, pinned actions</Button>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="The console tone"
+        note="`tone=&quot;console&quot;` paints the panel on the dark console ground with its own ink, line, dim and glow tokens, in both themes: the head and foot are ruled in --console-line, the close control is --console-dim and lights --console-glow on hover and focus. It is for a dialog whose content is drawn for that ground; the palette configurator is the first."
+      >
+        <div className="design-row">
+          <Button onClick={() => setOpen('console')}>A console dialog</Button>
         </div>
       </GallerySection>
 
@@ -140,6 +149,27 @@ export function ModalPage() {
         <div className="design-row design-row--top">
           <Button onClick={close}>Close</Button>
         </div>
+      </Modal>
+
+      <Modal
+        open={open === 'console'}
+        onClose={close}
+        title="Tune the theme"
+        tone="console"
+        width="narrow"
+        footer={
+          <div className="design-row">
+            <Button onClick={close}>Revert</Button>
+            <Button variant="primary" onClick={close}>
+              Apply
+            </Button>
+          </div>
+        }
+      >
+        <Text tone="muted">
+          The ground, the ink, the rule under the head and over the foot, and the close control all come from the
+          --console tokens. Tab to the close control to see its glow.
+        </Text>
       </Modal>
 
       <Modal open={open === 'narrow'} onClose={close} title="Claude usage" width="narrow">
