@@ -2359,9 +2359,9 @@ caps how many such resumes a ticket gets in a row before it holds for a
 person instead — see `letGo`, below.
 
 **A release may say how the increment ended.** `DELETE …/claim?token=…` takes
-an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable` or `abandoned` — absent
+an optional `outcome`, `dropped`, `worked`, `preempted`, `recused`, `unservable`, `abandoned` or `unstarted` — absent
 is accepted exactly as it always has been, which covers the pick's own
-release, a restart, and an older CLI, and a value that is none of the six is
+release, a restart, and an older CLI, and a value that is none of the seven is
 `400`. It is read only where a token is given: the operator's tokenless
 clobber names no increment to have an outcome. The `claim_released` event
 carries it, and it is what `letGo` counts (see [Comment, question and
@@ -2372,7 +2372,7 @@ what it pushed lands as its own comment, not as a dropped increment.
 `recused` is skipped the other way: it *stops* the count exactly as `worked`
 does, because the session's own `hatch recuse` is the decision, and the
 omission — not the let-go count — is what folds the ticket; a recusal never
-raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there.
+raises the let-go fold on its own. `unservable` means the runner's model could not be spawned; it is skipped over exactly like `preempted` (neither counted nor resetting the let-go count), because the increment neither stalled nor did work. `abandoned` means the loop that ran the increment died - a crash, a closed window - and the next loop in that checkout ended the session it left and released the claim for it (see *A loop that died* under [What a runner does, in order](#what-a-runner-does-in-order)); it is skipped over exactly like `unservable`, because no increment chose to end there. `unstarted` means the session's agent never started on this runner - it printed nothing before the process ended - so the ticket was never touched; it is skipped over exactly like `unservable`, neither counted nor stopped at, because there was no increment to let go.
 
 **A release that gave an outcome also names the runner.** The event's `from`
 reads `"<who> on <runner>"`, which cannot be split reliably, so the
@@ -4554,16 +4554,14 @@ holds only the present column of every issue.
 
 Reports is a top-level area of the Hatch app: a **Reports** link in the primary
 nav between **Plan** and **Agents**, and an index at `/reports` with one card
-per report, each stating the question it answers. There are four reports with
+per report, each stating the question it answers. There are five reports with
 a card each: the Timeline, the Cumulative flow, the
-[Changelog](#the-changelog-report) and the [Activity](#the-activity-report)
-report. **One further read, the [flow](#the-flow),
-has no page and no index card** — it is for a program, not a person at a screen — and
-neither has [the consumption report](#the-consumption-report), what each issue
-consumed in a window: tokens, notional USD and runner time, which has no page or
-card yet. A
-new report with a page is one more entry in that index and a route; neither
-report gets a nav entry of its own, and the index card stays the only way in.
+[Changelog](#the-changelog-report), the [Consumption](#the-consumption-report)
+report at `/reports/consumption`, and the [Activity](#the-activity-report)
+report. **One further read, the [flow](#the-flow), has no page and no index
+card** — it is for a program, not a person at a screen. A new report with a
+page is one more entry in that index and a route; no report gets a nav entry
+of its own, and the index card stays the only way in.
 
 ### The timeline
 
@@ -4933,11 +4931,11 @@ GET /api/hatch/reports/consumption?from=&to=&type=&sort=&limit=&offsetMinutes=&s
 ```
 
 **What did each epic — or any issue type — consume in a window?** Tokens,
-notional USD and runner time, read off the work log rather than the board. It
-is **for a program**, like [the flow](#the-flow): one JSON read carrying rows,
-totals and a time series, with **no page** and no index card yet — HA-2245 is
-the page, HA-2246 the graph and HA-2247 the page's own CSV download. The CSV
-sibling below is this route's, not theirs.
+notional USD and runner time, read off the work log rather than the board: one
+JSON read carrying rows, totals and a time series. The page is at
+`/reports/consumption`, a card on the Reports index, and is the one place
+this read is for a person rather than a program; the CSV sibling below is
+this route's own, not the page's.
 
 `from` and `to` are the other reports' own bounds — instants, the 90 days
 ending now by default, the same `400`s for an unparseable or inverted range.
@@ -4997,9 +4995,15 @@ lastSessionAt, rows, history }`:
 - **`statusId` filters on the issue's current column**, the same as
   elsewhere in the module; two ids read as **either**.
 
-It has no page, no index card and no CLI subcommand; a script reaches it with
-`hatch api GET /api/hatch/reports/consumption?...`, which is the
-[API surface](#api-surface)'s row for it.
+The page opens on `type=epic`, the last ninety days, sorted by activity (newest
+session first), with **Projects**, **Type** and **Status** facets narrowing
+the filter, a **Spend over time** graph toggling between tokens and notional
+USD, and a line above the table reading "The first 100 of *N* issues" when
+`matched` outran `limit`. There is **no CLI subcommand**; a script reaches the
+read with `hatch api GET /api/hatch/reports/consumption?...`, which is the
+[API surface](#api-surface)'s row for it. [Watching the
+loop](../src/Hatch.Web/apps/hatch/docs/watching-the-loop.md#reports) covers the
+page itself.
 
 #### The CSV sibling
 
@@ -5035,9 +5039,11 @@ totalTokens, costUsd, unpricedSessions, runnerMs, firstSessionAt, lastSessionAt
 cost-sort sentinel the JSON route's `cost` sort reads off `UnpricedSessions ==
 Sessions`. `parentKey` is empty on a root. Instants are ISO 8601 in UTC.
 
-It has no page and no CLI subcommand of its own; `hatch api`'s passthrough
-prints any body verbatim regardless of content-type, so a script reaches it
-the same way it reaches the JSON route:
+It has no page of its own — a **Download CSV** link beside the consumption
+page's totals line reaches it, carrying that page's own filter — and no CLI
+subcommand of its own; `hatch api`'s passthrough prints any body verbatim
+regardless of content-type, so a script reaches it the same way it reaches
+the JSON route:
 
 ```
 hatch api GET /api/hatch/reports/consumption.csv?from=2026-08-01&to=2026-09-01
@@ -8820,6 +8826,23 @@ claimed. A restart carries this, the same way it carries a usage limit's
 wait; a fresh start forgets it. The night's tally counts it as
 **interrupted**, not one of the three failures that end a night, for the same
 reason a usage limit and a preemption are not either.
+
+**Neither is a session that never started.** An agent that ends before its
+first stream event - a CLI that refused to start and said why on stderr -
+never touched the ticket, and the runner says so rather than
+calling it a stall: the claim is released `unstarted`, which `letGo` steps over,
+so it neither counts toward the ticket's let-goes nor resets them. The ticket
+gets one comment - *An unattended increment could not start its agent on this
+runner and left HA-nnn untouched* - carrying what the CLI wrote (scrubbed, and
+cut to its last lines) in a fenced block, and *It exited N.*; no resume line,
+since there is no session, no mark, and no question. A usage limit or a model
+refusal read from the same text wins, as it does for `unservable`. A `--quiet`
+run is never read this way, since quiet mode prints no `init` and so cannot
+tell a run that never started from one that crashed after real work; and a
+stop for quiet or run time, a lost lease, a put-down ticket and a skip keep
+their own verdicts. The night's tally lists it under **interrupted** as
+`unstarted`, and it neither resets nor advances the three failures that end a
+night.
 
 **A mark rather than a question that waits on a person forever, which is what
 this used to be.** Most of the time whatever happened is weather, and a ticket

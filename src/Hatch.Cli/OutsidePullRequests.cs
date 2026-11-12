@@ -120,6 +120,174 @@ public static class OutsidePullRequests
         + (pr.Body ?? "");
 
     /// <summary>
+    /// Which parents each mirrored type may hang under. A copy of <c>EfHatchIssue.LegalParentTypes</c> in
+    /// <c>Hatch.Api</c>, which this is a port of - the CLI cannot reference that assembly, so keep the two in
+    /// step by hand. Nothing here ever mirrors as <c>reflection</c> (see <see cref="FoldType"/>), but the row
+    /// is kept anyway since this is meant as a faithful copy.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> LegalParents = new Dictionary<string, string[]>
+    {
+        ["epic"] = ["epic", "reflection"],
+        ["reflection"] = ["epic"],
+        ["story"] = ["epic", "reflection"],
+        ["task"] = ["story", "bug", "epic", "reflection"],
+        ["bug"] = ["epic", "story", "reflection"],
+    };
+
+    private static readonly HashSet<string> MirrorableTypes = ["epic", "story", "task", "bug"];
+
+    /// <summary>
+    /// The type a mirrored issue is created as: <c>reflection</c> folds to <c>epic</c>, since a reflection is
+    /// its own board's cadence artefact and has no standing as an ancestor elsewhere; anything this board does
+    /// not know folds to <c>task</c>, the type that hangs under the most other types.
+    /// </summary>
+    public static string FoldType(string? type) =>
+        type == "reflection" ? "epic" : type is not null && MirrorableTypes.Contains(type) ? type : "task";
+
+    /// <summary>"an epic", "a story" - read on screen by the person who approves the mirrored issue.</summary>
+    private static string Article(string noun) =>
+        noun.Length > 0 && "aeiou".Contains(char.ToLowerInvariant(noun[0])) ? "an" : "a";
+
+    /// <summary>
+    /// The nearest of <paramref name="nearestFirst"/> (a mirrored issue's key and its actual, already-folded
+    /// type) that <paramref name="type"/> may legally hang under, and the sentence a description says when
+    /// that is not the nearest one at all. Null, null for an empty chain or one where nothing is legal.
+    /// </summary>
+    public static (string? ParentKey, string? Note) ResolveParent(string type, IReadOnlyList<(string Key, string Type)> nearestFirst)
+    {
+        if (nearestFirst.Count == 0) return (null, null);
+
+        var legal = LegalParents.TryGetValue(type, out var set) ? set : [];
+        foreach (var (key, parentType) in nearestFirst)
+        {
+            if (!legal.Contains(parentType)) continue;
+
+            var natural = nearestFirst[0];
+            return key == natural.Key
+                ? (key, null)
+                : (key, $"Hangs under {key} rather than {natural.Key}, because {Article(type)} {type} does not "
+                    + $"hang under {Article(natural.Type)} {natural.Type} here.");
+        }
+
+        var tried = string.Join(" or ", nearestFirst.Select(a => $"{Article(a.Type)} {a.Type}"));
+        return (null, $"Hangs under no mirrored ancestor: {Article(type)} {type} does not hang under {tried} here.");
+    }
+
+    /// <summary>The description a mirrored ancestor's issue is created with: where it came from, the fold's note where there is one, then the originating description exactly, marked where the envelope says it was cut short.</summary>
+    public static string MirrorDescription(string instance, string key, string? description, bool truncated, string? foldNote)
+    {
+        var header = $"Mirrored from {instance} {key}.";
+        if (foldNote is not null) header += " " + foldNote;
+
+        var body = description ?? "";
+        if (truncated)
+            body += (body.Length > 0 ? "\n\n" : "") + "_The originating description was cut short in the envelope._";
+
+        return body.Length > 0 ? $"{header}\n\n{body}" : header;
+    }
+
+    /// <summary>The longest a mirrored issue's title is taken as, matching <c>EfHatchIssue.MaxTitleLength</c> - the CLI cannot reference it either.</summary>
+    private const int MaxTitleLength = 300;
+
+    public static string CapTitle(string title) => title.Length > MaxTitleLength ? title[..MaxTitleLength] : title;
+
+    /// <summary>What reading a pull request's body for a chain of ancestors, or the pre-envelope version-zero shape, settled on.</summary>
+    public enum EnvelopeStatus
+    {
+        /// <summary>Neither an envelope nor the version-zero shape - an ordinary pull request's own.</summary>
+        None,
+
+        /// <summary>The pre-envelope shape: a title and a first line naming the issue it came from, and nothing else.</summary>
+        VersionZero,
+
+        /// <summary>An envelope, read in full.</summary>
+        Read,
+
+        /// <summary>An envelope was there, by its markers, but could not be read - <see cref="Note"/> says why.</summary>
+        Unreadable,
+    }
+
+    /// <summary>
+    /// What a pull request's body says about where it came from - see <see cref="ReadEnvelope"/>.
+    /// </summary>
+    /// <param name="Instance">The Hatch it was mirrored from, without a trailing slash. Set on every status but <see cref="EnvelopeStatus.None"/> and <see cref="EnvelopeStatus.Unreadable"/>.</param>
+    /// <param name="OriginProjectKey">The project key of the pull request's own ticket on <paramref name="Instance"/>.</param>
+    /// <param name="OriginKey">The pull request's own ticket's key on <paramref name="Instance"/>.</param>
+    /// <param name="Version">The envelope's version, or 0 for the version-zero shape.</param>
+    /// <param name="Note">Why an envelope could not be read, cut to what the contribution record takes. Null everywhere else.</param>
+    /// <param name="OwnType">The folded type to create the pull request's own ticket as - only on <see cref="EnvelopeStatus.Read"/>.</param>
+    /// <param name="OwnTitle">The title the envelope gives the pull request's own ticket - only on <see cref="EnvelopeStatus.Read"/>, and only when the chain says one.</param>
+    /// <param name="Ancestors">The chain above the pull request's own ticket, root first - empty except on <see cref="EnvelopeStatus.Read"/>.</param>
+    public sealed record EnvelopeOutcome(
+        EnvelopeStatus Status, string? Instance, string? OriginProjectKey, string? OriginKey, int? Version,
+        string? Note, string? OwnType, string? OwnTitle, IReadOnlyList<PullRequestEnvelopeIssue> Ancestors)
+    {
+        public static readonly EnvelopeOutcome None = new(EnvelopeStatus.None, null, null, null, null, null, null, null, []);
+    }
+
+    /// <summary>
+    /// Where a pull request says it came from: an envelope first, by its markers, read with
+    /// <see cref="PullRequestEnvelopeReader.TryRead"/>; else the pre-envelope version-zero shape
+    /// (<see cref="PullRequestEnvelopeReader.TryReadVersionZero"/>); else nothing. An envelope the reader
+    /// cannot make sense of, or whose own key this board could never record (no instance, or a key longer
+    /// than <see cref="ContributionRequest.MaxOriginKeyLength"/> anywhere in the chain), reads as
+    /// <see cref="EnvelopeStatus.Unreadable"/> rather than throwing - nothing here is worth failing a filing
+    /// session over.
+    /// </summary>
+    public static EnvelopeOutcome ReadEnvelope(PullRequestAnswer pr)
+    {
+        var body = pr.Body ?? "";
+        var hasMarker = body.Contains(PullRequestEnvelopeMarkers.Start, StringComparison.Ordinal)
+            || body.Contains(PullRequestEnvelopeMarkers.End, StringComparison.Ordinal);
+
+        if (!hasMarker)
+        {
+            if (PullRequestEnvelopeReader.TryReadVersionZero(pr.Title ?? "", body, out var versionZeroKey, out var versionZeroInstance)
+                && versionZeroKey is { Length: > 0 } key && key.LastIndexOf('-') is > 0 and var dash)
+                return new EnvelopeOutcome(
+                    EnvelopeStatus.VersionZero, versionZeroInstance, key[..dash], key, 0, null, null, null, []);
+
+            return EnvelopeOutcome.None;
+        }
+
+        if (!PullRequestEnvelopeReader.TryRead(body, out var envelope, out var reason) || envelope is null)
+            return Unreadable(reason ?? "the envelope could not be read");
+
+        if (envelope.Instance is not { Length: > 0 } rawInstance)
+            return Unreadable("the envelope named no instance");
+
+        if (envelope.Chain.Count == 0)
+            return Unreadable("the envelope's chain is empty");
+
+        if (envelope.Chain.Any(issue => issue.Key.Length > ContributionRequest.MaxOriginKeyLength))
+            return Unreadable($"a key in the envelope's chain is longer than {ContributionRequest.MaxOriginKeyLength} characters");
+
+        var own = envelope.Chain[0];
+        var ownDash = own.Key.LastIndexOf('-');
+        if (ownDash <= 0) return Unreadable($"\"{own.Key}\" is not an issue key");
+
+        var instance = rawInstance.TrimEnd('/');
+        var ancestors = envelope.Chain.Skip(1).Reverse().ToList();
+
+        return new EnvelopeOutcome(
+            EnvelopeStatus.Read, instance, own.Key[..ownDash], own.Key, envelope.Version, null,
+            FoldType(own.Type), own.Title, ancestors);
+    }
+
+    private static EnvelopeOutcome Unreadable(string reason) =>
+        new(EnvelopeStatus.Unreadable, null, null, null, null, Cap(reason, ContributionRequest.MaxEnvelopeNoteLength),
+            null, null, []);
+
+    private static string Cap(string s, int max) => s.Length > max ? s[..max] : s;
+
+    /// <summary>The project key before an issue key's last dash, or null where there is none to take.</summary>
+    public static string? ProjectOf(string key)
+    {
+        var dash = key.LastIndexOf('-');
+        return dash <= 0 ? null : key[..dash];
+    }
+
+    /// <summary>
     /// The pull requests <c>hatch queue</c> would say are passed over, run inside a checkout of a bound
     /// repository: each open one no issue records that the filer would pass over, and why. Best effort -
     /// anything the forge or the board will not say is left out, as the attention footer is.
@@ -194,6 +362,15 @@ public sealed class OutsideFiler
     private readonly HashSet<string> _settled = [];
     private readonly Dictionary<string, (string Key, Stage Stage, string Association)> _filing = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (string Association, DateTimeOffset At)> _strangers = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A mirrored ancestor created but not yet fully recorded and moved, keyed <c>instance|originKey</c> -
+    /// consulted before the find-by-origin read, so a tick that is retrying never creates a second issue for
+    /// one it already made. An entry is dropped the moment its move to review succeeds; a found ancestor
+    /// (one some earlier tick, or another instance entirely, already finished) is never added at all, since
+    /// nothing is left to resume on it.
+    /// </summary>
+    private readonly Dictionary<string, (string Key, string Type, Stage Stage)> _mirrors = new(StringComparer.Ordinal);
 
     /// <summary>
     /// One look at every checkout this runner holds of a repository whose project it drives. <paramref name="lists"/>
@@ -320,15 +497,104 @@ public sealed class OutsideFiler
         Runtime runtime, Action<string> complain, OutsidePullRequests.Home home, string url, PullRequestAnswer pr,
         string association, CancellationToken ct)
     {
+        var outcome = OutsidePullRequests.ReadEnvelope(pr);
+
+        var type = "task";
+        var title = Title(pr);
+        string? parentKey = null;
+        var description = OutsidePullRequests.Describe(url, pr, association, home);
+
+        if (outcome.Status == OutsidePullRequests.EnvelopeStatus.Read)
+        {
+            IReadOnlyList<StatusDto> statuses;
+            try
+            {
+                statuses = await runtime.QuietBoard.StatusesAsync(ct);
+            }
+            catch (HatchException e)
+            {
+                complain($"hatch: could not read the columns to mirror the chain {url} carries - {e.Message}");
+                return;
+            }
+
+            // Root first, so each ancestor's parent is already resolved by the time it needs one.
+            var nearestFirst = new List<(string Key, string Type)>();
+            foreach (var ancestor in outcome.Ancestors)
+            {
+                var mirrored = await MirrorOneAsync(
+                    runtime, home, outcome.Instance!, ancestor, pr, association, nearestFirst, statuses, ct);
+                nearestFirst.Insert(0, mirrored);
+            }
+
+            type = outcome.OwnType ?? "task";
+            title = outcome.OwnTitle is { Length: > 0 } ownTitle ? OutsidePullRequests.CapTitle(ownTitle) : Title(pr);
+
+            var (resolved, note) = OutsidePullRequests.ResolveParent(type, nearestFirst);
+            parentKey = resolved;
+            if (note is not null) description += "\n\n" + note;
+        }
+
         var created = await runtime.QuietBoard.CreateIssueAsync(
-            new IssueCreateRequest(
-                home.Project.Id, "task", Title(pr), OutsidePullRequests.Describe(url, pr, association, home),
-                null, null, null),
-            ct);
+            new IssueCreateRequest(home.Project.Id, type, title, description, parentKey, null, null), ct);
         if (created is null) return;
 
         _filing[url] = (created.Key, Stage.Created, association);
         await FinishAsync(runtime, complain, url, pr, ct);
+    }
+
+    /// <summary>
+    /// One ancestor of the chain a pull request's envelope carries: found as it already stands, or created,
+    /// recorded and moved into review as a new issue. Resumable the same way the pull request's own issue
+    /// is - see <see cref="_mirrors"/> - and anything that goes wrong here is a <see cref="HatchException"/>
+    /// that aborts this pull request for the tick, to be picked up again, rather than a <c>complain</c> that
+    /// would let a later ancestor or the pull request's own issue hang under one left unfinished.
+    /// </summary>
+    private async Task<(string Key, string Type)> MirrorOneAsync(
+        Runtime runtime, OutsidePullRequests.Home home, string instance, PullRequestEnvelopeIssue ancestor,
+        PullRequestAnswer pr, string association, IReadOnlyList<(string Key, string Type)> nearestFirstSoFar,
+        IReadOnlyList<StatusDto> statuses, CancellationToken ct)
+    {
+        var cacheKey = $"{instance}|{ancestor.Key}";
+
+        if (!_mirrors.TryGetValue(cacheKey, out var state))
+        {
+            var found = await runtime.QuietBoard.OriginRecordedAsync(home.Project.Id, instance, ancestor.Key, ct);
+            if (found.Count > 0) return (found[0].Key, found[0].Type);
+
+            var type = OutsidePullRequests.FoldType(ancestor.Type);
+            var (parentKey, note) = OutsidePullRequests.ResolveParent(type, nearestFirstSoFar);
+            var title = OutsidePullRequests.CapTitle(ancestor.Title);
+            var description = OutsidePullRequests.MirrorDescription(instance, ancestor.Key, ancestor.Description, ancestor.Truncated, note);
+
+            var created = await runtime.QuietBoard.CreateIssueAsync(
+                new IssueCreateRequest(home.Project.Id, type, title, description, parentKey, null, null), ct);
+            if (created is null) throw new HatchException($"the board would not create a mirrored issue for {ancestor.Key}");
+
+            state = (created.Key, type, Stage.Created);
+            _mirrors[cacheKey] = state;
+        }
+
+        if (state.Stage == Stage.Created)
+        {
+            await runtime.QuietBoard.ContributionAsync(
+                state.Key,
+                new ContributionRequest(
+                    null, null, pr.AuthorLogin, association, instance, OutsidePullRequests.ProjectOf(ancestor.Key), ancestor.Key),
+                ct);
+            // A 409 here means another runner's tick already recorded this ancestor - walked on, not retried.
+
+            state = (state.Key, state.Type, Stage.Recorded);
+            _mirrors[cacheKey] = state;
+        }
+
+        if (Columns.AwaitingReview(statuses) is not { } review)
+            throw new HatchException($"the board has no review column to put the mirrored {state.Key} in");
+
+        await runtime.QuietBoard.MoveAsync(state.Key, review.Id, ct);
+        runtime.Say.Line($"hatch: {state.Key} mirrored from {instance} {ancestor.Key} -> {review.Name}");
+
+        _mirrors.Remove(cacheKey);
+        return (state.Key, state.Type);
     }
 
     /// <summary>The writes after the issue exists, from whichever one has not been made.</summary>
@@ -339,15 +605,16 @@ public sealed class OutsideFiler
 
         if (stage == Stage.Created)
         {
-            var (origin, instance) = Origin(pr);
+            var outcome = OutsidePullRequests.ReadEnvelope(pr);
             (IssueDto? Issue, string? Conflict) put;
             try
             {
                 put = await runtime.QuietBoard.ContributionAsync(
                     key,
                     new ContributionRequest(
-                        url, pr.HeadBranch, pr.AuthorLogin, association, instance, origin?.Project, origin?.Key,
-                        EnvelopeVersion: origin is null ? null : 0),
+                        url, pr.HeadBranch, pr.AuthorLogin, association,
+                        outcome.Instance, outcome.OriginProjectKey, outcome.OriginKey,
+                        EnvelopeVersion: outcome.Version, EnvelopeNote: outcome.Note),
                     ct);
             }
             catch (HatchException e)
@@ -405,16 +672,6 @@ public sealed class OutsideFiler
     {
         var title = (pr.Title ?? "").Trim();
         if (title.Length == 0) return $"Pull request #{pr.Number}";
-        return title.Length > 300 ? title[..300] : title;
-    }
-
-    /// <summary>Where the pull request says it came from, where its title and first line give a version-zero origin; nothing otherwise.</summary>
-    private static ((string Project, string Key)? Origin, string? Instance) Origin(PullRequestAnswer pr)
-    {
-        if (!PullRequestEnvelopeReader.TryReadVersionZero(pr.Title ?? "", pr.Body ?? "", out var key, out var instance)
-            || key is null) return (null, null);
-
-        var dash = key.LastIndexOf('-');
-        return dash <= 0 ? (null, null) : ((key[..dash], key), instance);
+        return OutsidePullRequests.CapTitle(title);
     }
 }

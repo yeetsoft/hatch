@@ -11,7 +11,7 @@ public sealed class TallyTests
         bool skipped = false, bool clamped = false, long? clampedAtTokens = null, int? clampedAtRequests = null,
         bool hardLimited = false, long? hardLimitedAtTokens = null, int? hardLimitedAtRequests = null,
         bool quietStopped = false, bool runTimeStopped = false, bool recused = false, string? recusedReason = null,
-        bool unservable = false) =>
+        bool unservable = false, bool unstarted = false) =>
         new()
         {
             Key = key,
@@ -41,7 +41,8 @@ public sealed class TallyTests
             RunTimeStopped = runTimeStopped,
             Unservable = unservable,
             UnservableModel = unservable ? "fable" : null,
-            ReleaseOutcome = unservable ? ClaimOutcomes.Unservable : null,
+            Unstarted = unstarted,
+            ReleaseOutcome = unservable ? ClaimOutcomes.Unservable : unstarted ? ClaimOutcomes.Unstarted : null,
         };
 
     [Fact]
@@ -201,6 +202,37 @@ public sealed class TallyTests
         Assert.Equal(0, tally.Fails);
         Assert.Null(tally.ExhaustedUntil);
         Assert.Contains(tally.ToState().Interrupted, l => l.Contains("unservable  AER-1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_unstarted_run_neither_resets_nor_advances_the_failure_streak()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 1, moved: false));
+        tally.Record(Report("AER-2", exit: 0, moved: false, unstarted: true));
+
+        // A reset would show as 0, an advance as 2.
+        Assert.Equal(1, tally.Fails);
+    }
+
+    [Fact]
+    public void Three_unstarted_runs_in_a_row_never_end_the_night_and_the_tally_lists_them_apart()
+    {
+        var tally = new Tally(TimeProvider.System);
+
+        tally.Record(Report("AER-1", exit: 0, moved: false, unstarted: true));
+        tally.Record(Report("AER-2", exit: 0, moved: false, unstarted: true));
+        tally.Record(Report("AER-3", exit: 0, moved: false, unstarted: true));
+        tally.Record(Report("AER-4", exit: 0, moved: false, unstarted: true));
+
+        Assert.False(tally.ShouldStop());
+        Assert.Equal(0, tally.Fails);
+        Assert.Null(tally.ExhaustedUntil);
+
+        var interrupted = tally.ToState().Interrupted;
+        Assert.Equal(4, interrupted.Count(l => l.Contains("unstarted  AER-", StringComparison.Ordinal)));
+        Assert.Contains(interrupted, l => l.Contains("unstarted  AER-1  the agent never started", StringComparison.Ordinal));
     }
 
     /// <summary>
