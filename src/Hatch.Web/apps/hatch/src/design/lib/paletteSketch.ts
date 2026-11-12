@@ -11,7 +11,6 @@ import {
   hexToOklch,
   parseTokenBlocks,
   type Palette,
-  type ParameterSpec,
   type PaletteParams,
 } from '@hatch/ui/palette';
 
@@ -31,12 +30,14 @@ export interface SketchPalettes {
 export function sketchPalettes(): SketchPalettes {
   const decoded = decodeSeed(SEED);
   if (!decoded.ok) throw new Error(`paletteSketch: ${decoded.message}`);
-  const blocks = parseTokenBlocks(tokensCss);
-  return {
-    params: decoded.params,
-    light: derivePalette(decoded.params, blocks.light),
-    dark: derivePalette(decoded.params, blocks.dark),
-  };
+  return { params: decoded.params, ...deriveBoth(decoded.params) };
+}
+
+const blocks = parseTokenBlocks(tokensCss);
+
+/** Both blocks derived from one vector: what the live configurator re-derives on every move. */
+export function deriveBoth(params: PaletteParams): Pick<SketchPalettes, 'light' | 'dark'> {
+  return { light: derivePalette(params, blocks.light), dark: derivePalette(params, blocks.dark) };
 }
 
 /** The four accents a panel draws around its dial and across its board -
@@ -58,29 +59,4 @@ export function rimMarks(palette: Palette): RimMark[] {
     const colour = palette[token];
     return { token, hue: hexToOklch(colour).h, colour };
   });
-}
-
-/** A roll window as the slider track draws it: one segment, or more where a
-    picked window wraps past the parameter's own 0/360 seam. */
-export type Band = readonly [from: number, to: number];
-
-export function windowBands(spec: ParameterSpec): Band[] {
-  const { min, max, window } = spec;
-  if ('lo' in window) return [[window.lo, window.hi]];
-
-  const bands: Band[] = [];
-  for (const pick of window.pick) {
-    const lo = pick - window.jitter;
-    const hi = pick + window.jitter;
-    if (lo < min) {
-      bands.push([min, hi]);
-      bands.push([max + (lo - min), max]);
-    } else if (hi > max) {
-      bands.push([lo, max]);
-      bands.push([min, min + (hi - max)]);
-    } else {
-      bands.push([lo, hi]);
-    }
-  }
-  return bands;
 }

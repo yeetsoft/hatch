@@ -2,7 +2,7 @@
    Pure TypeScript with no DOM and no React, so the public site can import it. */
 export { derivePalette } from './derive';
 export { hexToOklch, oklchToHex, clipChroma, parseCssColor, formatRgba, type Oklch, type Rgba } from './oklch';
-export { IDENTITY, PARAMETERS, PARAMETER_KEYS, rollParams, type ParameterSpec, type PaletteParams, type RollWindow } from './params';
+export { IDENTITY, PARAMETERS, PARAMETER_KEYS, rollParams, windowBands, type Band, type ParameterSpec, type PaletteParams, type RollWindow } from './params';
 export {
   CONTRAST_PAIRS,
   contrastRatio,
@@ -14,7 +14,7 @@ export {
   type MeasuredPair,
   type Palette,
 } from './pairs';
-export { decodeSeed, encodeSeed, makeSeedCodec, SEED_VERSION, type SeedRefusal, type SeedResult } from './seed';
+export { decodeSeed, encodeSeed, makeSeedCodec, snapToSeed, SEED_VERSION, type SeedRefusal, type SeedResult } from './seed';
 export { ROLES, type Role } from './roles';
 export { colourTokens, isColourValue, parseTokenBlocks, type TokenBlock, type TokenBlocks } from './tokenBlocks';
 export { paletteCss } from './sheet';

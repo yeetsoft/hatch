@@ -28,17 +28,45 @@ export interface ParameterSpec {
   min: number;
   max: number;
   window: RollWindow;
+  /** What a control calls it; the table key where absent. */
+  label?: string;
+  /** Appended to a readout of the value (`°`, `×`); none where absent. */
+  unit?: string;
 }
 
 /** In draw order: `rollParams` reads this table top to bottom. */
 export const PARAMETERS: Readonly<Record<keyof PaletteParams, ParameterSpec>> = {
-  hue: { min: 0, max: 360, window: { lo: 0, hi: 360 } },
-  spread: { min: 0.5, max: 1.5, window: { lo: 0.8, hi: 1.25 } },
-  chroma: { min: 0.5, max: 2, window: { lo: 0.85, hi: 1.6 } },
-  lift: { min: -0.08, max: 0.08, window: { lo: -0.04, hi: 0.04 } },
-  tint: { min: 0, max: 0.05, window: { lo: 0.004, hi: 0.03 } },
-  tintHue: { min: 0, max: 360, window: { pick: [0, 30, 180, 210], jitter: 12 } },
+  hue: { min: 0, max: 360, window: { lo: 0, hi: 360 }, label: 'Hue', unit: '°' },
+  spread: { min: 0.5, max: 1.5, window: { lo: 0.8, hi: 1.25 }, label: 'Spread', unit: '×' },
+  chroma: { min: 0.5, max: 2, window: { lo: 0.85, hi: 1.6 }, label: 'Chroma', unit: '×' },
+  lift: { min: -0.08, max: 0.08, window: { lo: -0.04, hi: 0.04 }, label: 'Lift' },
+  tint: { min: 0, max: 0.05, window: { lo: 0.004, hi: 0.03 }, label: 'Tint' },
+  tintHue: { min: 0, max: 360, window: { pick: [0, 30, 180, 210], jitter: 12 }, label: 'Tint hue', unit: '°' },
 };
+
+/** A roll window as a track draws it: one segment, or more where a picked window wraps past the 0/360 seam. */
+export type Band = readonly [from: number, to: number];
+
+export function windowBands(spec: ParameterSpec): Band[] {
+  const { min, max, window } = spec;
+  if ('lo' in window) return [[window.lo, window.hi]];
+
+  const bands: Band[] = [];
+  for (const pick of window.pick) {
+    const lo = pick - window.jitter;
+    const hi = pick + window.jitter;
+    if (lo < min) {
+      bands.push([min, hi]);
+      bands.push([max + (lo - min), max]);
+    } else if (hi > max) {
+      bands.push([lo, max]);
+      bands.push([min, min + (hi - max)]);
+    } else {
+      bands.push([lo, hi]);
+    }
+  }
+  return bands;
+}
 
 export const PARAMETER_KEYS = Object.keys(PARAMETERS) as (keyof PaletteParams)[];
 

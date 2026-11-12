@@ -16,6 +16,8 @@
     "./sharedSeed": "./src/theme/sharedSeed.ts",
     "./palette": "./src/theme/palette/index.ts",
     "./menuState": "./src/components/menuState.ts",
+    "./dialMath": "./src/components/dialMath.ts",
+    "./readoutMath": "./src/components/readoutMath.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",
     "./calloutSubject": "./src/components/calloutSubject.ts",
     "./standalone/topbar": "./src/standalone/topbar.ts"

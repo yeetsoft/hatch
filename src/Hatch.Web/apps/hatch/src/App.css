@@ -9550,3 +9550,29 @@ button.hatch-option.chosen {
   color: var(--muted);
   font-size: var(--t-label);
 }
+
+/* The Parameter controls section: the live group on its console ground, the two boards re-deriving beside it.
+   The panel takes the ground rules of .design-pc-panel; the boards wrap under it rather than shrink. */
+.design-pc-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.design-pc-live-panel {
+  flex: none;
+  width: 280px;
+  padding: var(--sp-5);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 2px, color-mix(in srgb, var(--on-console) 3%, transparent) 2px 3px),
+    var(--console);
+}
+
+.design-pc-live > .design-pc-boards {
+  flex: 1 1 24rem;
+  min-width: 0;
+}

@@ -1,0 +1,123 @@
+/* The house's first range styling, on the console ground: --console-line track, --console-glow thumb and focus
+   ring. A native <input type="range"> stays underneath, so the keys, the touch drag and the screen reader's
+   slider all come with it; only its two parts are redrawn, once per engine. The roll window is a band laid over
+   the track, inset by half a thumb so a value at the window's edge sits under the band's edge. */
+.hatch-parameter-slider {
+  --thumb: 14px;
+  --rail: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  color: var(--on-console);
+  font-family: var(--mono);
+}
+
+.hatch-parameter-slider__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.hatch-parameter-slider__label {
+  color: var(--console-dim);
+  font-size: var(--t-label);
+}
+
+.hatch-parameter-slider__track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 22px;
+}
+
+.hatch-parameter-slider__bands {
+  position: absolute;
+  inset: 0 calc(var(--thumb) / 2);
+  pointer-events: none;
+}
+
+.hatch-parameter-slider__band {
+  position: absolute;
+  top: 50%;
+  height: var(--rail);
+  transform: translateY(-50%);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--console-glow) 45%, transparent);
+}
+
+.hatch-parameter-slider__input {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: var(--r-ctl);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color var(--transition);
+}
+
+.hatch-parameter-slider__input:focus-visible {
+  outline-color: var(--console-glow);
+}
+
+.hatch-parameter-slider__input::-webkit-slider-runnable-track {
+  height: var(--rail);
+  border-radius: var(--r-pill);
+  background: var(--console-line);
+}
+
+.hatch-parameter-slider__input::-moz-range-track {
+  height: var(--rail);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--console-line);
+}
+
+.hatch-parameter-slider__input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  /* Centres the thumb on a rail it is taller than: WebKit lays the thumb from the rail's top edge. */
+  margin-top: calc((var(--rail) - var(--thumb)) / 2);
+  border: 2px solid var(--console);
+  border-radius: 50%;
+  background: var(--console-glow);
+  box-shadow: 0 0 0 0 transparent;
+  transition: box-shadow var(--transition);
+}
+
+.hatch-parameter-slider__input::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  border: 2px solid var(--console);
+  border-radius: 50%;
+  background: var(--console-glow);
+  box-shadow: 0 0 0 0 transparent;
+  transition: box-shadow var(--transition);
+}
+
+.hatch-parameter-slider__input:hover::-webkit-slider-thumb,
+.hatch-parameter-slider__input:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--console-glow) 30%, transparent);
+}
+
+.hatch-parameter-slider__input:hover::-moz-range-thumb,
+.hatch-parameter-slider__input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--console-glow) 30%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-parameter-slider__input,
+  .hatch-parameter-slider__input::-webkit-slider-thumb,
+  .hatch-parameter-slider__input::-moz-range-thumb {
+    transition: none;
+  }
+}

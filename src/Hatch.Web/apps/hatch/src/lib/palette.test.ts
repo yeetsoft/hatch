@@ -15,6 +15,7 @@ import {
   rollParams,
   ROLES,
   semanticHueGap,
+  windowBands,
   type PaletteParams,
   type TokenBlock,
 } from '@hatch/ui/palette';
@@ -209,6 +210,28 @@ describe('PARAMETERS and rollParams', () => {
 
   it('rolls the same vector from the same stream', () => {
     expect(rollParams(mulberry32(5))).toEqual(rollParams(mulberry32(5)));
+  });
+
+  it('bands a plain window as one segment', () => {
+    expect(windowBands(PARAMETERS.spread)).toEqual([[0.8, 1.25]]);
+  });
+
+  it('bands the whole range for an unrestricted parameter', () => {
+    expect(windowBands(PARAMETERS.hue)).toEqual([[0, 360]]);
+  });
+
+  it('splits a picked window into five segments, two of them wrapped', () => {
+    const bands = windowBands(PARAMETERS.tintHue);
+    expect(bands).toHaveLength(5);
+    expect(bands).toEqual(
+      expect.arrayContaining([
+        [0, 12],
+        [348, 360],
+        [18, 42],
+        [168, 192],
+        [198, 222],
+      ]),
+    );
   });
 });
 
