@@ -5514,6 +5514,241 @@ public class WorkControllerTests
             Only(await h.Work.GetQueue(runner: a, model: ["fable"], agent: "claude")).Blocked);
     }
 
+    // ---- Refused models: a move the runner will not take is folded for it ----
+
+    private static string Refused(EfHatchIssue issue, string column, string model, string runner) =>
+        ModelFamilies.Refused(Key(issue), column, model, runner);
+
+    /// <summary>A key with a config row refusing <paramref name="refused"/>, the identity a <c>runner</c> name resolves to.</summary>
+    private static async Task<EfApiKey> RefusingKeyAsync(Harness h, params string[] refused)
+    {
+        var key = await h.AddKeyAsync(RunnerName());
+        h.Db.RunnerConfigs.Add(new EfHatchRunnerConfig
+        {
+            ApiKeyId = key.Id,
+            RefusedModels = RunnerTagColumn.Write(refused),
+            UpdatedAt = Now,
+        });
+        await h.Db.SaveChangesAsync();
+        return key;
+    }
+
+    [Fact]
+    public async Task Queue_ARefusedAlias_IsFoldedForTheRefusingRunnerOnly()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var refuses = await RefusingKeyAsync(h, "fable");
+        var other = await h.AddKeyAsync(RunnerName());
+
+        var folded = Only(await h.Work.GetQueue(0, null, default, runner: refuses.Name));
+        Assert.Equal(Refused(issue, "todo", "fable", refuses.Name), folded.Blocked);
+        Assert.Equal(BlockedKinds.Other, folded.BlockedKind);
+
+        // A key with no config row, a name no key answers to, and no name at all refuse nothing.
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: other.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: "no-such-runner")).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ARefusedAlias_CoversAPinnedIdThatNamesIt_AndNoOther()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned to a fable", h.Todo);
+        await h.OverrideAsync(issue, model: "claude-fable-5-2");
+        var fable = await RefusingKeyAsync(h, "fable");
+        var opus = await RefusingKeyAsync(h, "opus");
+
+        Assert.Equal(
+            Refused(issue, "todo", "claude-fable-5-2", fable.Name),
+            Only(await h.Work.GetQueue(0, null, default, runner: fable.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: opus.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ARefusedPinnedId_MatchesItselfOnly()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "pinned", h.Todo);
+        await h.OverrideAsync(issue, model: "claude-opus-5-5");
+        var same = await RefusingKeyAsync(h, "claude-opus-5-5");
+        var newer = await RefusingKeyAsync(h, "claude-opus-5-6");
+
+        Assert.Equal(
+            Refused(issue, "todo", "claude-opus-5-5", same.Name),
+            Only(await h.Work.GetQueue(0, null, default, runner: same.Name)).Blocked);
+        Assert.Null(Only(await h.Work.GetQueue(0, null, default, runner: newer.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Queue_ARefusedModel_IsReadOffThePlaybookWhenTheIssueNamesNone()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "runs on the playbook model", h.Todo);
+        var key = await RefusingKeyAsync(h, "sonnet");
+
+        Assert.Equal(
+            Refused(issue, "todo", "sonnet", key.Name),
+            Only(await h.Work.GetQueue(0, null, default, runner: key.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task RefusalFold_AMoveThatNamesNoModel_IsNeverFolded()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "no override", h.Todo);
+        issue.Project = await h.Db.Projects.SingleAsync(p => p.Id == h.ProjectId);
+        var todo = new EfHatchStatus { Name = "todo", SortOrder = 20 };
+
+        Assert.Null(Dispatch.RefusalFold(issue, todo, null, new RunnerRefusal("a", ["fable", "opus", "sonnet", "haiku"])));
+        Assert.Null(Dispatch.RefusalFold(issue, todo, null, null));
+        Assert.Null(Dispatch.RefusalFold(issue, todo, null, new RunnerRefusal("a", [])));
+    }
+
+    [Fact]
+    public async Task Queue_AHop_IsNeverFoldedOnARefusal()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("story", "carried across", h.Inbox);
+        await h.OverrideAsync(issue, model: "fable");
+        await h.ExpressAsync(issue);
+        await h.TickExpressSkipsAsync(h.Inbox);
+        var key = await RefusingKeyAsync(h, "fable");
+
+        var entry = Only(await h.Work.GetQueue(0, null, default, runner: key.Name));
+
+        Assert.Null(entry.Blocked);
+        Assert.True(entry.Hop);
+    }
+
+    [Fact]
+    public async Task Queue_AnIdleReviewSelfMove_KeepsItsOwnSentenceRatherThanTheRefusal()
+    {
+        var h = await NewAsync();
+        await h.ConflictPlaybookAsync();
+        var issue = await h.FileAsync("story", "up for review, clean", h.Review);
+        await h.OverrideAsync(issue, model: "fable");
+        await h.VerdictAsync(issue, MergeVerdicts.Clean);
+        var key = await RefusingKeyAsync(h, "fable");
+
+        var blocked = Only(await h.Work.GetQueue(0, null, default, runner: key.Name)).Blocked;
+
+        Assert.NotNull(blocked);
+        Assert.DoesNotContain("refuses it", blocked);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerAndRunner_AgreeOnARefusal()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var key = await RefusingKeyAsync(h, "fable");
+        await AddLoopRunnerAsync(h, key.Name);
+
+        var asRunner = Only(await h.Work.GetQueue(0, null, default, asRunner: key.Name));
+        var runner = Only(await h.Work.GetQueue(0, null, default, runner: key.Name));
+
+        Assert.Equal(Refused(issue, "todo", "fable", key.Name), asRunner.Blocked);
+        Assert.Equal(asRunner.Blocked, runner.Blocked);
+        Assert.Equal(asRunner.BlockedKind, runner.BlockedKind);
+    }
+
+    [Fact]
+    public async Task Queue_AsRunnerWithOnlyASession_ReadsTheKeysRefusals()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var key = await RefusingKeyAsync(h, "fable");
+        await h.AddSessionAsync(key, where: "here:/one", standing: true);
+
+        Assert.Equal(
+            Refused(issue, "todo", "fable", key.Name),
+            Only(await h.Work.GetQueue(0, null, default, asRunner: key.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_SkipsARefusedRowToTheNextClearOne_AndWorkReturnsTheRefusedRowBlocked()
+    {
+        var h = await NewAsync();
+        var clear = await h.FileAsync("task", "runs on haiku", h.Todo);
+        var refused = await h.FileAsync("task", "wants fable", h.InProgress);
+        await h.OverrideAsync(clear, model: "haiku");
+        await h.OverrideAsync(refused, model: "fable");
+        var key = await RefusingKeyAsync(h, "fable");
+        var other = await h.AddKeyAsync(RunnerName());
+
+        var next = Value(await h.Work.GetNextWork(0, null, null, default, runner: key.Name));
+        Assert.Equal(Key(clear), next.Issue.Key);
+        Assert.Equal(Key(refused), Value(await h.Work.GetNextWork(0, null, null, default, runner: other.Name)).Issue.Key);
+
+        var named = Value(await h.Work.GetWork(Key(refused), null, default, runner: key.Name));
+        Assert.Equal(Refused(refused, "in progress", "fable", key.Name), named.Blocked);
+        Assert.Null(Value(await h.Work.GetWork(Key(refused), null, default, runner: other.Name)).Blocked);
+    }
+
+    [Fact]
+    public async Task Next_EveryRowRefused_IsNoContent()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var key = await RefusingKeyAsync(h, "fable");
+
+        Assert.IsType<NoContentResult>((await h.Work.GetNextWork(0, null, null, default, runner: key.Name)).Result);
+    }
+
+    [Fact]
+    public async Task Work_ANamedTicketWithNoRunnerSent_IsFoldedOnTheCallingKeysOwnRefusals()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var key = await RefusingKeyAsync(h, "fable");
+
+        // The CLI's work KEY sends no runner: the calling key is the runner.
+        h.Caller.Key = key;
+
+        Assert.Equal(
+            Refused(issue, "todo", "fable", key.Name),
+            Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task Work_ANamedTicketFromAKeyThatRefusesNothing_IsClear()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "wants fable", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        h.Caller.Key = await h.AddKeyAsync(RunnerName());
+
+        Assert.Null(Value(await h.Work.GetWork(Key(issue), null, default)).Blocked);
+    }
+
+    [Fact]
+    public async Task LetGoBy_APeerThatRefusesTheModel_IsNotOneThatCouldTakeTheTicket()
+    {
+        var h = await NewAsync();
+        var issue = await h.FileAsync("task", "dropped by A", h.Todo);
+        await h.OverrideAsync(issue, model: "fable");
+        var a = RunnerName();
+        await AddLoopRunnerAsync(h, a);
+        var peer = await RefusingKeyAsync(h, "fable");
+        await AddLoopRunnerAsync(h, peer.Name);
+        await Released(h, issue, Now.AddMinutes(-7), ClaimOutcomes.Dropped, a);
+
+        // B is the only other live runner, and B refuses the model: nobody else could take it.
+        Assert.Null(Only(await h.Work.GetQueue(runner: a)).Blocked);
+
+        var config = await h.Db.RunnerConfigs.SingleAsync(c => c.ApiKeyId == peer.Id);
+        config.RefusedModels = RunnerTagColumn.Write([]);
+        await h.Db.SaveChangesAsync();
+        Assert.Equal(DeferralSentence(a, 7), Only(await h.Work.GetQueue(runner: a)).Blocked);
+    }
+
     [Fact]
     public async Task Models_ABadEntry_IsRefusedWithTheRunnerModelsSentence()
     {

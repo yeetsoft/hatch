@@ -378,6 +378,18 @@ dotnet 10.0.100, node 22.11.0`. The Runners page draws the dependencies a
 runner has the same way, as `has dotnet 10.0.100, node 22.11.0`, under the
 repositories line in a row's details.
 
+A key can also **refuse** a model outright, whatever the runner offers: the
+list `PUT /api/hatch/runners/{name}/refused-models` holds. A move whose model
+it names is folded for that runner, from every dispatch read and a named
+ticket alike - *"HA-12 in Breakdown runs on fable - build-box refuses it"* -
+so the runner never claims a ticket only to refuse it. An alias refused covers
+a pinned id that names it (`opus` refuses `claude-opus-5-5`); a pinned id
+refused covers itself only. `hatch work KEY` sends no runner name, so it is
+judged on the calling key's own list. A runner that refuses the model is not
+counted as offering it: the board's list of moves no live runner can take
+says `no live runner offers fable` once every live runner refuses it or
+lacks it.
+
 ### Has
 
 A machine can declare what it has that detection cannot see. `HATCH_HAS` is a
