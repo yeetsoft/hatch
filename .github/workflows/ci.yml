@@ -510,8 +510,13 @@ jobs:
       # docker build: render the Dockerfile it would, and pass the action the
       # same inputs minus the registry, so the build-arg is proved to reach
       # the Dockerfile through the action itself.
+      # The docker driver, not the default docker-container one: the base is
+      # hatch-runner:ci, built into the daemon above and never pushed, and a
+      # container builder cannot see the daemon's image store to pull it from.
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
 
       - name: Render the Dockerfile the handed-out workflow would build
         run: artifacts/hatch/linux-x64/hatch image dockerfile --base hatch-runner:ci > /tmp/Dockerfile.rendered
