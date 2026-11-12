@@ -16,6 +16,7 @@ const check = (over: Partial<MergeCheck> = {}): MergeCheck => ({
   runner: 'box:/work/repo',
   checkedBy: 'runner',
   playbookFilePath: null,
+  dependencyFilePath: null,
   ...over,
 });
 

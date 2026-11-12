@@ -152,10 +152,14 @@ request from merging, and they show up rather than sit silent: the nav
 bar's attention panel grows a section, **Approved, not merging**, between
 *Pull requests to review* and *Questions to answer* — each row names the
 issue and says why, in its own sentence: a closed pull request, more than
-one branch on origin named for it, no branch on origin named for it, or —
-rarer — a branch that holds the trunk but never got a check run before a
-ten-minute settle window closed. The issue page draws the same sentence as
-a chip beside the pull request link, for that ticket alone.
+one branch on origin named for it, no branch on origin named for it, a
+pull request that changes a playbook file or `.hatch/dependencies.json` —
+a person merges either on the forge after reading it, whatever the
+ticket's pre-approval — or — rarer — a branch that holds the trunk but
+never got a check run before a ten-minute settle window closed. A
+dependency-file row that asks for something no live runner has says so on
+the end of its sentence. The issue page draws the same sentence as a chip
+beside the pull request link, for that ticket alone.
 
 A branch that starts conflicting with the trunk, or whose build fails, is
 not one of these — the loop already pushes it straight back to review on

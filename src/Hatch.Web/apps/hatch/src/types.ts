@@ -620,6 +620,11 @@ export interface MergeCheck {
       changes, as the runner found it in the branch's diff. Null when it does
       not, or for `none`/`ambiguous`, which name no branch. */
   playbookFilePath: string | null;
+  /** The path of the project's dependency file (.hatch/dependencies.json)
+      this branch's pull request changes, as the runner found it in the
+      branch's diff. Null when it does not, or for `none`/`ambiguous`, which
+      name no branch. */
+  dependencyFilePath: string | null;
 }
 
 /** The kind of work an issue in the merges column is, and why it is not work
@@ -1938,6 +1943,10 @@ export interface Review {
   /** The path of the project's playbook file a counted clean merge check
       names its pull request as changing, or null when none has. */
   playbookFilePath: string | null;
+  /** The path of the project's dependency file (.hatch/dependencies.json) a
+      counted clean merge check names its pull request as changing, or null
+      when none has. */
+  dependencyFilePath: string | null;
 }
 
 /** An issue in review whose branch has stopped merging. Mirrors ConflictDto. */

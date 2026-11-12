@@ -781,13 +781,14 @@ public sealed class MergeTrain : IAsyncDisposable
     /// or when the read carries no base branch or sha (an older <c>gh</c>, or
     /// a fake that answers neither); the caller's own dedupe and comment,
     /// where it has one, is what a true refusal falls back to.
-    /// <paramref name="judged"/>'s own <c>PlaybookFilePath</c> is carried
+    /// <paramref name="judged"/>'s own <c>PlaybookFilePath</c> and
+    /// <c>DependencyFilePath</c>/<c>DependencyFileContent</c> are carried
     /// forward unchanged onto the new check: an update merges the trunk's
     /// changes into the branch, never the branch's own changes into the
-    /// trunk, so a branch that already changed the playbook file still
-    /// changes it at the new sha, and one that did not cannot start to -
-    /// carrying the value forward can only keep a row held that was already
-    /// held, never release one that should not be.
+    /// trunk, so a branch that already changed the playbook or dependency
+    /// file still changes it at the new sha, and one that did not cannot
+    /// start to - carrying the value forward can only keep a row held that
+    /// was already held, never release one that should not be.
     /// </remarks>
     private async Task TryWriteUpdateMergeCheckAsync(
         Runtime runtime, ReviewCheckDto issue, Checkouts.Polled where, MergeCheckDto judged,
@@ -801,7 +802,7 @@ public sealed class MergeTrain : IAsyncDisposable
             issue.Key,
             new MergeCheckRequest(
                 where.Remote!, baseRef, baseSha, MergeVerdicts.Clean, judged.Branch, sha, [], runtime.RunnerName,
-                true, judged.PlaybookFilePath),
+                true, judged.PlaybookFilePath, judged.DependencyFilePath, judged.DependencyFileContent),
             ct);
     }
 

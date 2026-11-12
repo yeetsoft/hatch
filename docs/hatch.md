@@ -2562,9 +2562,10 @@ own. CI runs it on every pull request.
 
 `EfHatchMergeCheck` — `IssueId`, `Remote`, `Canonical`, `Trunk`, `TrunkSha`,
 `Branch?`, `BranchSha?`, `Verdict`, `Files`, `HoldsTrunk?`, `PlaybookFilePath?`,
-`CheckedAt`, `Runner`, `CheckedBy`. What a runner found when it merged an
-issue's branch against the trunk, and the two refs it was looking at when it
-did. `Verdict` is one of four:
+`DependencyFilePath?`, `DependencyFileContent?`, `CheckedAt`, `Runner`,
+`CheckedBy`. What a runner found when it merged an issue's branch against the
+trunk, and the two refs it was looking at when it did. `Verdict` is one of
+four:
 
 | Verdict | Means |
 |---|---|
@@ -2593,6 +2594,18 @@ diff does not touch it; and null for a repository no project reads as its
 own, repo-sourced primary repository, since nothing asked the runner to look
 at all - the review read names the path, in `WorkRepositoryDto.PlaybookFilePath`,
 so the runner never spells `.hatch/playbooks.yaml` itself.
+
+`DependencyFilePath` is the same question asked of `.hatch/dependencies.json`
+instead - unlike `PlaybookFilePath`, nothing on the board tells the runner
+where to look: the path is `DependencyDeclaration.Path`, a constant the
+runner already knows, so `Check` asks the diff about it on every repository,
+whatever the project reads as its own. `DependencyFileContent` rides beside
+it only when the path changed: the branch's own blob there, as text, read
+with `ReadBlob` against the branch's own ref rather than the diff - null
+when the blob could not be read, is not valid UTF-8, or is over 16 KB, so a
+file too large to carry still holds without the board trying to parse a
+fragment of it. The board parses what arrives with `DependencyDeclaration.Parse`;
+an unparseable file still holds, and names nothing further.
 
 **One verdict per issue per repository**, unique on `(IssueId, Canonical)`, where
 `Canonical` is [`RemoteIdentity.Canonical`](#repository) of the remote as the
@@ -6421,9 +6434,15 @@ the order the judge checks them:
 above - item 13, and the two **merge** sub-cases of item 14 - is
 **hold** instead, *"its pull request changes `<path>` - a person
 merges it on the forge after reading it"*, when any counted clean
-verdict names a path (HA-431). Every other item above - the pushback,
-the update, every pending, and the holds already in the list - is
-unaffected by the flag.
+verdict names a playbook path (HA-431) or, checked next, a dependency path
+(HA-2278) - the playbook check wins when a branch somehow names both. Every
+other item above - the pushback, the update, every pending, and the holds
+already in the list - is unaffected by either flag. `MergeWork.Judge` takes
+an optional trailing `fleetLacks`, appended as `" - {fleetLacks}"` onto the
+dependency sentence alone; only `AttentionController` supplies one, from
+`Dispatch.FleetLacksAsync` against the branch's own parsed declaration, so
+the merges column and `hatch queue` always show the base sentence with no
+clause.
 
 **Pushback is built, not deferred.** `POST /work/{key}/pushback`
 (`WorkController.cs:575-642`, `WorkController.PushbackWork`) carries an issue
