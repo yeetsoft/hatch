@@ -16,9 +16,10 @@ export type FlowBoard = Board & { queue?: QueueEntry[] | null; queueError?: stri
  * last good queue) and the failure's sentence is `queueError`, for
  * `BoardPage` to show beside the board's own error line.
  *
- * `getQueue` is called with no runner - the board-wide read `useQueue`
- * defaults to, not a per-runner one; `FlowVizControl` offers no runner
- * picker.
+ * `getQueue` is called with no runner, with takers - the board-wide read
+ * `useQueue` defaults to, not a per-runner one; `FlowVizControl` offers no
+ * runner picker. Takers lets `flowBand` tell a clear or in-line row no live
+ * runner can take from one some runner can.
  */
 export async function readFlowBoard(
   getBoard: () => Promise<Board>,
@@ -40,4 +41,4 @@ export async function readFlowBoard(
 
 /** Stable across renders, so `useLoaded`'s effect does not re-run on every
     one of them - see `lib/useLoaded.ts`'s own doc comment on `load`. */
-export const getFlowBoard = () => readFlowBoard(getBoard, getQueue);
+export const getFlowBoard = () => readFlowBoard(getBoard, () => getQueue(null, true));

@@ -625,6 +625,58 @@ describe('flowBand', () => {
 
     expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
   });
+
+  it('says Blocked for a clear row the server judged no live runner can take', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: null, takers: [] });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
+  });
+
+  it('says Blocked for a turn row the server judged no live runner can take', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: 'not its turn', blockedKind: 'turn', takers: [] });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'other', words: 'Blocked' });
+  });
+
+  it('keeps Clear for a clear row with a taker', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: null, takers: ['host:/a'] });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'clear', words: 'Clear' });
+  });
+
+  it('keeps In line for a turn row with a taker', () => {
+    const row = entry({
+      fromStatus: status({ id: 1 }),
+      blocked: 'not its turn',
+      blockedKind: 'turn',
+      takers: ['host:/a'],
+    });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'turn', words: 'In line' });
+  });
+
+  it('keeps Clear for a clear row the server did not judge takers for, takers null', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: null, takers: null });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'clear', words: 'Clear' });
+  });
+
+  it('keeps Clear for a clear row the server did not judge takers for, takers absent', () => {
+    const row = entry({ fromStatus: status({ id: 1 }), blocked: null });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'clear', words: 'Clear' });
+  });
+
+  it('keeps Dependency for a dependency row with no takers, guarding against over-reach', () => {
+    const row = entry({
+      fromStatus: status({ id: 1 }),
+      blocked: 'waiting on HA-2',
+      blockedKind: 'dependency',
+      takers: [],
+    });
+
+    expect(flowBand(row, card({ statusId: 1 }))).toEqual({ kind: 'dependency', words: 'Dependency' });
+  });
 });
 
 describe('flowSentence', () => {
@@ -660,6 +712,20 @@ describe('flowSentence', () => {
 
     expect(flowSentence(row, card({ statusId: 1 }))).toBe(queueWords(row));
     expect(flowSentence(row, card({ statusId: 1 }))).toContain('(only host:/a can take this)');
+  });
+
+  it('names the runner and the reason for a clear row no live runner can take', () => {
+    const row = entry({
+      fromStatus: status({ id: 1 }),
+      blocked: null,
+      takers: [],
+      untaken: [{ runner: 'host:/a', reason: 'outside its scope: AER' }],
+    });
+
+    expect(flowSentence(row, card({ statusId: 1 }))).toBe(queueWords(row));
+    expect(flowSentence(row, card({ statusId: 1 }))).toContain(
+      '(no live runner can take this: host:/a: outside its scope: AER)',
+    );
   });
 });
 
