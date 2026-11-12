@@ -173,10 +173,10 @@ public class TypesNoneOnlyAllTests(ITestOutputHelper output)
     {
         using var http = new HttpClient { BaseAddress = new Uri(baseUrl) };
 
-        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/hatch/projects", new("E2E", "E2E"));
+        var project = await PostAsync<ProjectCreateRequest, ProjectDto>(http, "/api/projects", new("E2E", "E2E"));
         foreach (var (type, title) in new[] { ("story", "Story one"), ("story", "Story two"), ("task", "Task one"), ("bug", "Bug one") })
             await PostAsync<IssueCreateRequest, IssueDto>(
-                http, "/api/hatch/issues", new(project.Id, type, title, null, null, null, null));
+                http, "/api/issues", new(project.Id, type, title, null, null, null, null));
     }
 
     private static async Task<TResponse> PostAsync<TRequest, TResponse>(HttpClient http, string path, TRequest body)

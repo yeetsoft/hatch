@@ -31,5 +31,5 @@ export function logoCrop(sourceWidth: number, sourceHeight: number): { sx: numbe
     replaced logo actually repaint. */
 export function projectLogoUrl(project: { id: number; logoUpdatedAt: string | null }): string | null {
   if (project.logoUpdatedAt === null) return null;
-  return `/api/hatch/projects/${project.id}/logo?v=${Date.parse(project.logoUpdatedAt)}`;
+  return `/api/projects/${project.id}/logo?v=${Date.parse(project.logoUpdatedAt)}`;
 }

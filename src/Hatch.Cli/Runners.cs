@@ -21,7 +21,7 @@ namespace Hatch.Cli;
 /// </remarks>
 public sealed class Runners(HatchClient client)
 {
-    private const string Path = "/api/hatch/runners/sessions";
+    private const string Path = "/api/runners/sessions";
 
     private static RunnerSessionRefusalDto? HeldBy(string body)
     {

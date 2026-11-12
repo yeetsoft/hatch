@@ -9,7 +9,7 @@ namespace Hatch.Cli;
 /// </summary>
 /// <remarks>
 /// Nothing here re-litigates the endpoint: the totals, the per-issue counts and
-/// their order, and the session estimate are <c>GET /api/hatch/reports/activity</c>'s
+/// their order, and the session estimate are <c>GET /api/reports/activity</c>'s
 /// own. This prints what it was served, in the same words the page already
 /// uses - <c>kindWords</c>, <c>headlineWords</c>, <c>emptyWords</c> and
 /// <c>touchWords</c>, <c>apps/hatch/src/lib/activity.ts</c>, mirrored rather

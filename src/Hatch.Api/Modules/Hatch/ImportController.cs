@@ -22,7 +22,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// endpoint has no idea where the file it was handed lives, which is the point.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/import")]
+[Route("api/import")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class ImportController(HatchContext db, PlanImportParser parser, RankService ranks, ICallerIdentity caller, TimeProvider time) : ControllerBase
 {

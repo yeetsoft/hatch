@@ -13,7 +13,7 @@ public sealed class BoardRunnerMintTests
     public async Task Suggest_reads_a_bare_string_body()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", "/api/hatch/runners/suggest-name", HttpStatusCode.OK, "Data");
+        h.Wire.Reply("GET", "/api/runners/suggest-name", HttpStatusCode.OK, "Data");
 
         Assert.Equal("Data", await h.Board.SuggestRunnerNameAsync(default));
     }
@@ -22,7 +22,7 @@ public sealed class BoardRunnerMintTests
     public async Task Suggest_reads_a_quoted_string_body()
     {
         using var h = new CliHarness();
-        h.Wire.Reply("GET", "/api/hatch/runners/suggest-name", HttpStatusCode.OK, "\"Data\"");
+        h.Wire.Reply("GET", "/api/runners/suggest-name", HttpStatusCode.OK, "\"Data\"");
 
         Assert.Equal("Data", await h.Board.SuggestRunnerNameAsync(default));
     }
@@ -32,7 +32,7 @@ public sealed class BoardRunnerMintTests
     {
         using var h = new CliHarness();
         h.Wire.Json(
-            "POST", "/api/hatch/runners",
+            "POST", "/api/runners",
             new RunnerMintedDto(
                 new RunnerDto(
                     "Riker", "key", default, default, null, null, null, "new", null, null, null, null, 0,
@@ -44,7 +44,7 @@ public sealed class BoardRunnerMintTests
         Assert.Null(taken);
         Assert.Equal("Riker", minted!.Runner.Name);
         Assert.Equal("hatch_ak_minted", minted.Secret);
-        Assert.Equal("{\"name\":\"Riker\"}", h.Wire.To("POST", "/api/hatch/runners").Single().Body);
+        Assert.Equal("{\"name\":\"Riker\"}", h.Wire.To("POST", "/api/runners").Single().Body);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class BoardRunnerMintTests
     {
         using var h = new CliHarness();
         h.Wire.Reply(
-            "POST", "/api/hatch/runners", HttpStatusCode.Conflict,
+            "POST", "/api/runners", HttpStatusCode.Conflict,
             "hatch: there is already a runner called \"Riker\"");
 
         var (minted, taken) = await h.Board.CreateRunnerAsync("Riker", default);

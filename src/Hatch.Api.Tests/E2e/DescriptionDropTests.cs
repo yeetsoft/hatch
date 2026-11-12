@@ -11,7 +11,7 @@ namespace Hatch.Api.Tests.E2e;
 /// <summary>
 /// A file dropped on the description's own drop zone, end to end in headless
 /// Chromium: the zone's capture-phase listeners beat Monaco's own, the file
-/// uploads through <c>POST /api/hatch/attachments</c>, the editor inserts the
+/// uploads through <c>POST /api/attachments</c>, the editor inserts the
 /// link, Save writes it, and - for an image - the preview draws it. The same
 /// zone wraps the New issue dialog's body, so one case closes there too.
 ///
@@ -52,7 +52,7 @@ public partial class DescriptionDropTests
     private static readonly byte[] FakePdfBytes = Encoding.UTF8.GetBytes("not really a pdf, just bytes the server never looks inside");
 
     /// <summary>Plain CSS, since the page reads it with <c>querySelector</c>, which knows none of Playwright's extensions.</summary>
-    private const string Picture = ".hatch-markdown img[src^=\"/api/hatch/images/\"]";
+    private const string Picture = ".hatch-markdown img[src^=\"/api/images/\"]";
 
     /// <summary>Runs in the page: whether the image has been fetched and decoded, rather than merely put in the DOM.</summary>
     private const string RenderedScript = """
@@ -123,10 +123,10 @@ public partial class DescriptionDropTests
         }
         """;
 
-    [GeneratedRegex(@"\[name\.pdf\]\(/api/hatch/attachments/(?<id>[0-9a-fA-F-]{36})\)")]
+    [GeneratedRegex(@"\[name\.pdf\]\(/api/attachments/(?<id>[0-9a-fA-F-]{36})\)")]
     private static partial Regex InsertedAttachment();
 
-    [GeneratedRegex(@"!\[name\.png\]\(/api/hatch/images/(?<id>[0-9a-fA-F-]{36})\)")]
+    [GeneratedRegex(@"!\[name\.png\]\(/api/images/(?<id>[0-9a-fA-F-]{36})\)")]
     private static partial Regex InsertedImage();
 
     [SkippableFact(Timeout = CaseTimeoutMs)]
@@ -190,23 +190,23 @@ public partial class DescriptionDropTests
             await DragAsync(harness, deadline, "dragover the PDF", editorSelector, "dragover", "name.pdf", "application/pdf", pdfBase64);
             await DragAsync(harness, deadline, "dropping the PDF", editorSelector, "drop", "name.pdf", "application/pdf", pdfBase64);
 
-            await harness.WaitForFunctionAsync(deadline, "waiting for the editor to hold the attachment link", TextIncludesScript, new object[] { EditorHost, "/api/hatch/attachments/" });
+            await harness.WaitForFunctionAsync(deadline, "waiting for the editor to hold the attachment link", TextIncludesScript, new object[] { EditorHost, "/api/attachments/" });
             await harness.WaitForVisibleAsync(deadline, saveSelector);
             var editorText = await harness.EvaluateOnAsync<string>(deadline, "reading the editor for the attachment link", editorSelector, TextContentScript);
             var insertedAttachment = InsertedAttachment().Match(editorText);
-            Assert.True(insertedAttachment.Success, $"The editor holds no [name.pdf](/api/hatch/attachments/{{id}}): {editorText}");
+            Assert.True(insertedAttachment.Success, $"The editor holds no [name.pdf](/api/attachments/{{id}}): {editorText}");
 
             await harness.ClickAsync(deadline, saveSelector);
             await harness.WaitForHiddenAsync(deadline, saveSelector);
 
-            var issueAfterPdf = await http.GetAsync($"/api/hatch/issues/{key}");
+            var issueAfterPdf = await http.GetAsync($"/api/issues/{key}");
             Assert.Equal(HttpStatusCode.OK, issueAfterPdf.StatusCode);
             var descriptionAfterPdf = JsonDocument.Parse(await issueAfterPdf.Content.ReadAsStringAsync()).RootElement.GetProperty("description").GetString()!;
             var savedAttachment = InsertedAttachment().Match(descriptionAfterPdf);
-            Assert.True(savedAttachment.Success, $"The saved description holds no [name.pdf](/api/hatch/attachments/{{id}}): {descriptionAfterPdf}");
+            Assert.True(savedAttachment.Success, $"The saved description holds no [name.pdf](/api/attachments/{{id}}): {descriptionAfterPdf}");
             var attachmentId = savedAttachment.Groups["id"].Value;
 
-            var downloadedAttachment = await http.GetAsync($"/api/hatch/attachments/{attachmentId}");
+            var downloadedAttachment = await http.GetAsync($"/api/attachments/{attachmentId}");
             Assert.Equal(HttpStatusCode.OK, downloadedAttachment.StatusCode);
             Assert.Equal("application/pdf", downloadedAttachment.Content.Headers.ContentType?.MediaType);
             Assert.Equal("attachment", downloadedAttachment.Content.Headers.ContentDisposition?.DispositionType);
@@ -219,10 +219,10 @@ public partial class DescriptionDropTests
             await DragAsync(harness, deadline, "dragover the PNG", dropZoneSelector, "dragover", "name.png", "image/png", OnePixelPng);
             await DragAsync(harness, deadline, "dropping the PNG", dropZoneSelector, "drop", "name.png", "image/png", OnePixelPng);
 
-            await harness.WaitForFunctionAsync(deadline, "waiting for the editor to hold the image link", TextIncludesScript, new object[] { EditorHost, "/api/hatch/images/" });
+            await harness.WaitForFunctionAsync(deadline, "waiting for the editor to hold the image link", TextIncludesScript, new object[] { EditorHost, "/api/images/" });
             await harness.WaitForVisibleAsync(deadline, saveSelector);
             var editorTextAfterPng = await harness.EvaluateOnAsync<string>(deadline, "reading the editor for the image link", editorSelector, TextContentScript);
-            Assert.True(InsertedImage().IsMatch(editorTextAfterPng), $"The editor holds no ![name.png](/api/hatch/images/{{id}}): {editorTextAfterPng}");
+            Assert.True(InsertedImage().IsMatch(editorTextAfterPng), $"The editor holds no ![name.png](/api/images/{{id}}): {editorTextAfterPng}");
 
             await harness.ClickAsync(deadline, saveSelector);
 
@@ -256,9 +256,9 @@ public partial class DescriptionDropTests
             await DragAsync(harness, deadline, "dragover the PDF in the dialog", DropZone, "dragover", "name.pdf", "application/pdf", pdfBase64);
             await DragAsync(harness, deadline, "dropping the PDF in the dialog", DropZone, "drop", "name.pdf", "application/pdf", pdfBase64);
 
-            await harness.WaitForFunctionAsync(deadline, "waiting for the dialog's editor to hold the attachment link", TextIncludesScript, new object[] { EditorHost, "/api/hatch/attachments/" });
+            await harness.WaitForFunctionAsync(deadline, "waiting for the dialog's editor to hold the attachment link", TextIncludesScript, new object[] { EditorHost, "/api/attachments/" });
             var dialogEditorText = await harness.EvaluateOnAsync<string>(deadline, "reading the dialog's editor for the attachment link", EditorHost, TextContentScript);
-            Assert.True(InsertedAttachment().IsMatch(dialogEditorText), $"The dialog's editor holds no [name.pdf](/api/hatch/attachments/{{id}}): {dialogEditorText}");
+            Assert.True(InsertedAttachment().IsMatch(dialogEditorText), $"The dialog's editor holds no [name.pdf](/api/attachments/{{id}}): {dialogEditorText}");
 
             harness.AssertNoPageErrors();
         }

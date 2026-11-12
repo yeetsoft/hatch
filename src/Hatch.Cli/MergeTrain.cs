@@ -214,7 +214,7 @@ public sealed class MergeTrain : IAsyncDisposable
     /// <see cref="PutPullRequestStateAsync"/>). There is no stored verdict and no
     /// window logic like <see cref="Poll.NoneWindow"/> - an open pull request is
     /// asked about every interval by design, and a merged one stops appearing in
-    /// <c>/api/hatch/work/review</c> at all, so nothing asks again.
+    /// <c>/api/work/review</c> at all, so nothing asks again.
     /// </summary>
     /// <remarks>
     /// Keyed on the issue and not the checkout, unlike Poll's own merge-check,

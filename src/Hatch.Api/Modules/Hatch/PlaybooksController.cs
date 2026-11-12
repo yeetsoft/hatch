@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// it is cut here rather than asked for politely in a prompt.
 /// </remarks>
 [ApiController]
-[Route("api/hatch/playbooks")]
+[Route("api/playbooks")]
 public class PlaybooksController(HatchContext db, TimeProvider time, ICallerIdentity caller, ModelFamilies? families = null) : ControllerBase
 {
     /// <summary>Every row, in board order - the order the page draws them in.</summary>

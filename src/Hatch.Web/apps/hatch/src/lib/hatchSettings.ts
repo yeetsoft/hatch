@@ -59,7 +59,7 @@ export type DefaultTokenField = 'defaultMaxTokens' | 'defaultMaxTokensPerHour';
 
 /** Whether the token budget fields may be edited: the loading-is-permissive
     convention the Runners page already gates on, so a page that has not yet
-    heard back from `/api/hatch/auth/me` does not flash the fields closed. */
+    heard back from `/api/auth/me` does not flash the fields closed. */
 export const tokenBudgetEditable = (me: Me | null, isAdmin: boolean): boolean =>
   me === null || isAdmin || me.role === null;
 

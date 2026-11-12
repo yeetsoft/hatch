@@ -60,7 +60,7 @@ namespace Hatch.Cli;
 ///
 /// <para><b>The trunk half runs whether or not anything is in review.</b> The
 /// merge and build halves above visit only a checkout whose review issues name
-/// it, because their targets come from <c>/api/hatch/work/review</c> - a quiet
+/// it, because their targets come from <c>/api/work/review</c> - a quiet
 /// board would otherwise never have its trunk read at all. So, separately,
 /// every checkout <see cref="Runtime.Checkouts"/> holds that has an origin gets
 /// its trunk's build read the same way the branch half reads a tip's, reusing

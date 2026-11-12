@@ -48,8 +48,8 @@ public static partial class DreamWeave
         RequireMode(mode, seed);
 
         var read = mode == "seed"
-            ? $"hatch api GET \"/api/hatch/dreams?q={Uri.EscapeDataString(seed!)}&projectId={projectId}&limit=200\""
-            : $"hatch api GET \"/api/hatch/dreams?projectId={projectId}&limit=200\"";
+            ? $"hatch api GET \"/api/dreams?q={Uri.EscapeDataString(seed!)}&projectId={projectId}&limit=200\""
+            : $"hatch api GET \"/api/dreams?projectId={projectId}&limit=200\"";
         var order = mode == "seed" ? "best match first" : "newest first";
 
         var sb = new StringBuilder();
@@ -89,7 +89,7 @@ public static partial class DreamWeave
         sb.AppendLine();
         sb.AppendLine("## Recording what you drew on");
         sb.AppendLine();
-        sb.AppendLine("Before moving the ticket on, run `hatch api PUT /api/hatch/issues/<KEY>/dreams '{\"dreamIds\":[...]}'`, where `<KEY>` is this ticket's own key.");
+        sb.AppendLine("Before moving the ticket on, run `hatch api PUT /api/issues/<KEY>/dreams '{\"dreamIds\":[...]}'`, where `<KEY>` is this ticket's own key.");
         sb.AppendLine();
         sb.AppendLine("## The Dream Board stays as it is");
         sb.AppendLine();
@@ -110,7 +110,7 @@ public static partial class DreamWeave
         "seed" => "Find the thread running through the dreams that bear on the seed.",
         "pressing" => "Find the thread the dreams return to with the most urgency.",
         "common" => "Find the thread the most dreams touch.",
-        _ => $"Find the nearest step toward the vision these dreams describe, given what `hatch api GET \"/api/hatch/plan?projectId={projectId}\"` says has already shipped.",
+        _ => $"Find the nearest step toward the vision these dreams describe, given what `hatch api GET \"/api/plan?projectId={projectId}\"` says has already shipped.",
     };
 
     private static void RequireMode(string mode, string? seed)

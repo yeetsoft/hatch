@@ -183,3 +183,17 @@ form until its operator upgrades it. Nothing breaks meanwhile: the root answers
 the old path with a permanent redirect to the same path at the root, and a pull
 request whose first line still carries the old form is read the same way as the
 new one, for the same key and instance.
+
+## The old `/api/hatch` prefix
+
+Every route moved from `/api/hatch/<name>` to `/api/<name>`. The old prefix
+answers a permanent redirect to the same path and query string: `301` for a
+`GET` or `HEAD`, `308` for every other method, so a `POST`, `PUT`, `PATCH` or
+`DELETE` is repeated with its body rather than turned into a read. An API key,
+a script, or a `hatch` binary built before the change keeps working through it;
+upgrade the binary when convenient, and call `/api/<name>` from anything new.
+
+The other direction does not work: a **new** `hatch` against a server that has
+not been upgraded asks for `/api/<name>` and gets a `404`. Upgrade the server
+first, then the binaries. A proxy that routes by the `/api/hatch` prefix needs
+the same move.

@@ -152,7 +152,7 @@ Layout:
 
 ```
 src/
-  Hatch.Api          the API — Hatch's server half, at api/hatch/*
+  Hatch.Api          the API — Hatch's server half, at api/*
   Hatch.Cli          the `hatch` CLI: work, go-to-work, board, and the rest
   Hatch.Contracts    the wire types both of the above share
   Hatch.Web/

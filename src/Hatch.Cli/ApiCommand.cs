@@ -19,8 +19,8 @@ public sealed class ApiCommand(Cli cli)
     [
         "usage: hatch api <METHOD> <path> [<json body>]",
         "",
-        "  hatch api GET /api/hatch/issues?statusId=2",
-        "  hatch api PATCH /api/hatch/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
+        "  hatch api GET /api/issues?statusId=2",
+        "  hatch api PATCH /api/issues/AER-12 '{\"dueAt\":\"2026-10-01\"}'",
         "",
         "  The body is sent as it was typed. docs/hatch-planning.md has the shapes",
         "  for filing and reshaping work.",

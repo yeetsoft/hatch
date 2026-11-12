@@ -16,7 +16,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// there.
 /// </summary>
 [ApiController]
-[Route("api/hatch/playbook-files")]
+[Route("api/playbook-files")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class PlaybookFileController(
     HatchContext db, ICallerIdentity caller, TimeProvider time, ModelFamilies? families = null) : ControllerBase

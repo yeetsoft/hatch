@@ -8,7 +8,7 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class ActivityCommandTests
 {
-    private const string Route = "/api/hatch/reports/activity";
+    private const string Route = "/api/reports/activity";
 
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-11T12:00:00Z");
 
@@ -125,7 +125,7 @@ public sealed class ActivityCommandTests
 
         Assert.Equal(0, await new ActivityCommand(h.Cli).RunAsync(["--actor", "Riker II"], default));
 
-        Assert.Empty(h.Wire.To("GET", "/api/hatch/me"));
+        Assert.Empty(h.Wire.To("GET", "/api/me"));
         Assert.StartsWith("?actor=Riker%20II&", Query(h));
         Assert.Equal("Nothing recorded for Riker II in this window.", h.Said);
     }
@@ -134,7 +134,7 @@ public sealed class ActivityCommandTests
     public async Task Without_an_actor_a_key_with_an_owner_defaults_to_the_owner()
     {
         using var h = AHarness();
-        h.Wire.Json("GET", "/api/hatch/me", new MeDto("key", "Riker-MBP", null, true, false, false, "riker"));
+        h.Wire.Json("GET", "/api/me", new MeDto("key", "Riker-MBP", null, true, false, false, "riker"));
         h.Wire.Json("GET", Route, ABusyReport());
 
         Assert.Equal(0, await new ActivityCommand(h.Cli).RunAsync([], default));
@@ -149,7 +149,7 @@ public sealed class ActivityCommandTests
     public async Task Without_an_actor_or_an_owner_it_is_refused_and_the_activity_is_never_asked(string kind, string? owner)
     {
         using var h = AHarness();
-        h.Wire.Json("GET", "/api/hatch/me", new MeDto(kind, "Somebody", null, true, false, false, owner));
+        h.Wire.Json("GET", "/api/me", new MeDto(kind, "Somebody", null, true, false, false, owner));
 
         Assert.Equal(1, await new ActivityCommand(h.Cli).RunAsync([], default));
 
@@ -216,7 +216,7 @@ public sealed class ActivityCommandTests
     public async Task Project_resolves_the_key_to_an_id_and_sends_that()
     {
         using var h = AHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
         h.Wire.Json("GET", Route, AReport(0, [], []));
 
         Assert.Equal(0, await new ActivityCommand(h.Cli).RunAsync(["--actor", "riker", "--project", "aer"], default));
@@ -250,7 +250,7 @@ public sealed class ActivityCommandTests
     public async Task A_project_key_nobody_has_is_refused_by_name_and_the_activity_is_never_asked()
     {
         using var h = AHarness();
-        h.Wire.Json("GET", "/api/hatch/projects", new List<ProjectDto> { AProject(3, "AER") });
+        h.Wire.Json("GET", "/api/projects", new List<ProjectDto> { AProject(3, "AER") });
 
         Assert.Equal(1, await new ActivityCommand(h.Cli).RunAsync(["--actor", "riker", "--project", "ZZZ"], default));
 

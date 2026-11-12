@@ -99,7 +99,7 @@ The heartbeat table a running loop writes is a bridge, joined to the key by
 name, that HA-1937 retires.
 
 - **Where it is minted.** A key is minted only by *creating a runner*
-  (`POST /api/hatch/runners`), from **Runners → Create runner**, admin only:
+  (`POST /api/runners`), from **Runners → Create runner**, admin only:
   no key may mint, rotate, revoke or re-own a key, only a person at that
   screen. The dialog takes **Name** ("What the audit trail will call it") and
   **Owner** ("Whose tickets this key's `--mine` will reach"), then **Create**.
@@ -108,7 +108,7 @@ name, that HA-1937 retires.
   shown again. A name already held, by a key revoked or not, is refused. An
   admin can change the owner later, on the runner's Identity card.
 - **Replacing a secret.** An admin rotates a runner with
-  `POST /api/hatch/runners/{name}/rotate`; a new secret is made at once and
+  `POST /api/runners/{name}/rotate`; a new secret is made at once and
   shown once, sent `no-store`; the old secret is refused from the next call (a
   `401`), so every loop using it needs the new one; the name, owner, tags,
   bounds, sessions, omissions and attribution carry over, and the key's prefix
@@ -117,7 +117,7 @@ name, that HA-1937 retires.
   revoke to stop it. [`api-reference`](api-reference) has the route. On the
   Runners page these are Rotate key and Revoke on a runner's own Identity
   card, admin only.
-- **What a key reaches.** Everything under `/api/hatch`, less the routes that
+- **What a key reaches.** Every route of the board's own API (not sign-in, `people` or `ui-logs`), less the routes that
   take a person only. Those refuse a key outright — on a walled Hatch with
   `key_not_accepted`, and with the wall off they refuse any program the same
   way. Among them: a ticket's assignee, priority, hold and pre-approval; its

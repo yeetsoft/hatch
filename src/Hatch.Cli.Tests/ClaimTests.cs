@@ -13,7 +13,7 @@ public sealed class ClaimTests
     public async Task A_claim_names_the_runner_and_comes_back_with_a_token()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, ttlSeconds: 300));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, ttlSeconds: 300));
 
         var (claim, refused) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -21,7 +21,7 @@ public sealed class ClaimTests
         Assert.NotNull(claim);
         Assert.Equal(Token, claim.Token);
         Assert.Equal(300, claim.TtlSeconds);
-        Assert.Equal("test:/checkout", h.Wire.To("POST", "/api/hatch/issues/AER-1/claim")[0].Read<ClaimRequest>().Runner);
+        Assert.Equal("test:/checkout", h.Wire.To("POST", "/api/issues/AER-1/claim")[0].Read<ClaimRequest>().Runner);
 
         await claim.ReleaseAsync();
     }
@@ -30,7 +30,7 @@ public sealed class ClaimTests
     public async Task A_ticket_somebody_else_holds_is_an_answer_and_not_a_fault()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.Conflict,
             "\"hatch is working this from other:/tree, last heard from 8 seconds ago\"");
 
         var (claim, refused) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
@@ -45,7 +45,7 @@ public sealed class ClaimTests
     public async Task A_board_that_will_not_answer_is_not_a_ticket_somebody_holds()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.InternalServerError, "boom");
 
         var (claim, refused) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -58,7 +58,7 @@ public sealed class ClaimTests
     public async Task A_2xx_body_that_is_not_a_claim_is_a_HatchException_and_not_a_crash()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, "not json at all");
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, "not json at all");
 
         await Assert.ThrowsAsync<HatchException>(
             () => Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat));
@@ -82,8 +82,8 @@ public sealed class ClaimTests
     public async Task A_release_presents_the_token_and_happens_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -91,7 +91,7 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
         await claim.DisposeAsync();
 
-        var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
+        var released = h.Wire.To("DELETE", "/api/issues/AER-1/claim");
         Assert.Single(released);
         Assert.Contains(Token.ToString(), released[0].Query, StringComparison.Ordinal);
 
@@ -105,14 +105,14 @@ public sealed class ClaimTests
     public async Task A_release_names_the_outcome_when_it_is_given_one()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Dropped);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains(Token.ToString(), released.Query, StringComparison.Ordinal);
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
@@ -125,8 +125,8 @@ public sealed class ClaimTests
     public async Task A_release_on_any_outcome_removes_the_session_record(string? outcome)
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         var path = SessionRecord.PathFor(h.Root, h.Temp);
@@ -142,8 +142,8 @@ public sealed class ClaimTests
     public async Task A_release_the_board_never_answers_still_removes_the_session_record()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.InternalServerError);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.InternalServerError);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         var path = SessionRecord.PathFor(h.Root, h.Temp);
@@ -160,15 +160,15 @@ public sealed class ClaimTests
     public async Task An_unservable_release_a_hatch_400s_is_asked_again_without_an_outcome()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Once("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Unservable);
 
-        var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
+        var released = h.Wire.To("DELETE", "/api/issues/AER-1/claim");
         Assert.Equal(2, released.Count);
         Assert.Contains("outcome=unservable", released[0].Query, StringComparison.Ordinal);
         Assert.Contains(Token.ToString(), released[1].Query, StringComparison.Ordinal);
@@ -179,14 +179,14 @@ public sealed class ClaimTests
     public async Task An_unservable_release_a_hatch_accepts_is_sent_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Unservable);
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     /// <summary>A Hatch too old to know the value 400s it; the lease is still given back, by the plain release.</summary>
@@ -194,15 +194,15 @@ public sealed class ClaimTests
     public async Task An_unstarted_release_a_hatch_400s_is_asked_again_without_an_outcome()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Once("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Unstarted);
 
-        var released = h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim");
+        var released = h.Wire.To("DELETE", "/api/issues/AER-1/claim");
         Assert.Equal(2, released.Count);
         Assert.Contains("outcome=unstarted", released[0].Query, StringComparison.Ordinal);
         Assert.Contains(Token.ToString(), released[1].Query, StringComparison.Ordinal);
@@ -213,42 +213,42 @@ public sealed class ClaimTests
     public async Task An_unstarted_release_a_hatch_accepts_is_sent_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Unstarted);
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
     public async Task A_dropped_release_answered_400_is_not_retried()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.BadRequest);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.BadRequest);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Dropped);
 
-        Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
     }
 
     [Fact]
     public async Task A_release_names_worked_the_same_way()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Worked);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -256,9 +256,9 @@ public sealed class ClaimTests
     public async Task The_heartbeat_carries_the_line_only_when_it_has_changed()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         claim!.Chatter.Line = "⏺ Bash  make test-api";
@@ -283,9 +283,9 @@ public sealed class ClaimTests
     public async Task The_heartbeat_carries_the_usage_reading_only_when_it_has_moved()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         claim!.Readout = new ReadoutState();
@@ -320,9 +320,9 @@ public sealed class ClaimTests
     public async Task A_line_printed_again_is_carried_again_though_its_text_is_the_same()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -343,9 +343,9 @@ public sealed class ClaimTests
     public async Task A_line_cleared_is_not_a_word_said()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -365,9 +365,9 @@ public sealed class ClaimTests
     public async Task A_new_line_is_carried_and_the_token_is_on_every_beat()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -386,10 +386,10 @@ public sealed class ClaimTests
     public async Task A_refused_heartbeat_is_a_lost_lease_and_says_so_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim was taken over\"");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -402,9 +402,9 @@ public sealed class ClaimTests
         // And then it stops asking. A lease that is over is over, and a runner
         // that kept knocking would be one more request a minute about a ticket
         // somebody else is working.
-        var beats = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat");
+        var beats = h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat");
         await Task.Delay(Harness.Beat * 6);
-        Assert.Equal(beats, h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat"));
+        Assert.Equal(beats, h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat"));
         Assert.Equal(1, stopped);
 
         await claim.ReleaseAsync();
@@ -416,10 +416,10 @@ public sealed class ClaimTests
     public async Task A_quiet_refusal_names_its_reason_and_is_not_lost_to_others()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim has gone quiet for 15 minutes","reason":"quiet"}""");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -435,10 +435,10 @@ public sealed class ClaimTests
     public async Task A_run_time_refusal_names_its_reason_and_is_not_lost_to_others()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim has run past its playbook's limit","reason":"run-time"}""");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -457,10 +457,10 @@ public sealed class ClaimTests
     public async Task A_refusal_named_anything_but_quiet_is_lost_to_others(string reason)
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             $$"""{"error":"this claim was taken over","reason":"{{reason}}"}""");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -475,10 +475,10 @@ public sealed class ClaimTests
     public async Task A_legacy_bare_string_refusal_has_no_reason_and_still_reads_as_lost_to_others()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim was taken over\"");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -495,10 +495,10 @@ public sealed class ClaimTests
     public async Task OnLost_sees_the_reason_already_set_when_it_fires()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             """{"error":"this claim has gone quiet for 15 minutes","reason":"quiet"}""");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -516,9 +516,9 @@ public sealed class ClaimTests
     public async Task A_stallLapse_give_up_leaves_the_reason_null_and_still_reads_as_lost_to_others()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(
             h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromMilliseconds(80));
@@ -537,9 +537,9 @@ public sealed class ClaimTests
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         using var h = new Harness(clock: clock);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK,
             Fixtures.Taken(Token, stallLapseSeconds: 900));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var before = clock.GetUtcNow();
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
@@ -554,9 +554,9 @@ public sealed class ClaimTests
     public async Task The_take_answer_s_MaxRunSeconds_feeds_RunLimit_and_zero_is_null()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK,
             Fixtures.Taken(Token, maxRunSeconds: 3600));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -565,8 +565,8 @@ public sealed class ClaimTests
         await claim.ReleaseAsync();
 
         using var h2 = new Harness();
-        h2.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h2.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h2.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h2.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim2, _) = await Claim.TakeAsync(h2.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -579,8 +579,8 @@ public sealed class ClaimTests
     public async Task UseRunLimit_sets_RunLimit_when_positive_and_ignores_zero_and_negative()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -602,9 +602,9 @@ public sealed class ClaimTests
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         using var h = new Harness(clock: clock);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -628,14 +628,14 @@ public sealed class ClaimTests
     public async Task A_release_sends_both_outcome_and_reason_when_given_both()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.Quiet);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
         Assert.Contains("reason=quiet", released.Query, StringComparison.Ordinal);
     }
@@ -644,14 +644,14 @@ public sealed class ClaimTests
     public async Task A_release_sends_reason_run_time_when_given_it()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(ClaimOutcomes.Dropped, ClaimLostReasons.RunTime);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
         Assert.Contains("reason=run-time", released.Query, StringComparison.Ordinal);
     }
@@ -660,14 +660,14 @@ public sealed class ClaimTests
     public async Task A_release_sends_neither_outcome_nor_reason_when_the_reason_is_given_with_no_outcome()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await claim!.ReleaseAsync(null, ClaimLostReasons.Quiet);
 
-        var released = Assert.Single(h.Wire.To("DELETE", "/api/hatch/issues/AER-1/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", "/api/issues/AER-1/claim"));
         Assert.DoesNotContain("outcome", released.Query, StringComparison.Ordinal);
         Assert.DoesNotContain("reason", released.Query, StringComparison.Ordinal);
     }
@@ -710,10 +710,10 @@ public sealed class ClaimTests
     public async Task A_handler_attached_after_the_lease_is_already_lost_still_gets_it_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.Conflict,
             "\"this claim was taken over\"");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -738,10 +738,10 @@ public sealed class ClaimTests
     public async Task A_handler_attached_after_the_notice_is_already_recorded_still_gets_it_once()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -767,10 +767,10 @@ public sealed class ClaimTests
     public async Task A_preemption_notice_is_not_a_lost_lease_and_the_heartbeat_keeps_going()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.OK, Fixtures.Preempted("AER-9", "Trunk is down"));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -786,9 +786,9 @@ public sealed class ClaimTests
 
         // Unlike a lost lease: the lease is still good, and the put-down needs
         // it, so the heartbeat keeps going rather than stopping.
-        var beats = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat");
+        var beats = h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat");
         await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") > beats, "more heartbeats after the notice");
+            () => h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat") > beats, "more heartbeats after the notice");
 
         await claim.ReleaseAsync();
     }
@@ -797,16 +797,16 @@ public sealed class ClaimTests
     public async Task Any_other_failure_is_weather_and_the_next_tick_tries_again()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.RequestTimeout, "slow");
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.RequestTimeout, "slow");
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
         await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 4, "four heartbeats");
+            () => h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat") >= 4, "four heartbeats");
 
         // A timeout, a 500 and an origin that did not answer are all reasons to
         // ask again in a minute, and none of them is a reason to end an
@@ -822,9 +822,9 @@ public sealed class ClaimTests
     public async Task UseQuietLimit_sets_StallLapse_when_positive_and_ignores_zero_and_negative()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -845,9 +845,9 @@ public sealed class ClaimTests
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         using var h = new Harness(clock: clock);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token, stallLapseSeconds: 300));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
         claim!.UseQuietLimit(1500);
@@ -885,9 +885,9 @@ public sealed class ClaimTests
     public async Task A_heartbeat_that_keeps_failing_past_stallLapse_gives_up_and_stops_beating()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(
             h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromMilliseconds(80));
@@ -901,9 +901,9 @@ public sealed class ClaimTests
         // And then it stops asking, exactly as it does for a 409 - a lease this
         // runner has already stopped believing it holds is not one to keep
         // knocking about.
-        var beats = h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat");
+        var beats = h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat");
         await Task.Delay(Harness.Beat * 6);
-        Assert.Equal(beats, h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat"));
+        Assert.Equal(beats, h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat"));
         Assert.Equal(1, stopped);
 
         await claim.ReleaseAsync();
@@ -920,20 +920,20 @@ public sealed class ClaimTests
     {
         var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
         using var h = new Harness(clock: clock);
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         // Two failures, then a success, on repeat - each success lands well
         // inside stallLapse, so the give-up clock keeps resetting and the
         // outage, however long it runs on, never actually elapses.
         for (var i = 0; i < 8; i++)
         {
-            h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-            h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-            h.Wire.Once("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+            h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+            h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+            h.Wire.Once("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
         }
 
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(
             h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.FromSeconds(2));
@@ -942,12 +942,12 @@ public sealed class ClaimTests
         // real time, so the 24 heartbeats this proves never race a real
         // Task.Delay against a real timeout - no CI scheduling jitter to
         // trip on.
-        for (var i = 0; i < 200 && h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") < 24; i++)
+        for (var i = 0; i < 200 && h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat") < 24; i++)
         {
             await Task.Delay(5);
             clock.Advance(Harness.Beat);
         }
-        Assert.True(h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 24);
+        Assert.True(h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat") >= 24);
 
         Assert.Null(claim!.Lost);
 
@@ -959,9 +959,9 @@ public sealed class ClaimTests
     public async Task A_stallLapse_of_zero_never_gives_up_however_long_beats_keep_failing()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         // Explicit zero, well past what a real stallLapse would have given up
         // at by now.
@@ -969,7 +969,7 @@ public sealed class ClaimTests
             h.Client, "AER-1", "test:/checkout", default, Harness.Beat, stallLapse: TimeSpan.Zero);
 
         await Harness.Eventually(
-            () => h.Wire.Count("POST", "/api/hatch/issues/AER-1/claim/heartbeat") >= 10, "several failed heartbeats");
+            () => h.Wire.Count("POST", "/api/issues/AER-1/claim/heartbeat") >= 10, "several failed heartbeats");
 
         Assert.Null(claim!.Lost);
 
@@ -981,9 +981,9 @@ public sealed class ClaimTests
     public async Task AttachPlaybookAsync_sends_the_id_on_the_heartbeat_route_and_returns_true_on_204()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         // The background heartbeat is running throughout too, so the call this
         // proves is picked out by its PlaybookId rather than its position.
@@ -1003,9 +1003,9 @@ public sealed class ClaimTests
     public async Task AttachPlaybookAsync_returns_false_rather_than_throwing_on_a_refusal()
     {
         using var h = new Harness();
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
-        h.Wire.Reply("DELETE", "/api/hatch/issues/AER-1/claim", HttpStatusCode.NoContent);
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.OK, Fixtures.Taken(Token));
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim/heartbeat", HttpStatusCode.InternalServerError, "boom");
+        h.Wire.Reply("DELETE", "/api/issues/AER-1/claim", HttpStatusCode.NoContent);
 
         var (claim, _) = await Claim.TakeAsync(h.Client, "AER-1", "test:/checkout", default, Harness.Beat);
 
@@ -1063,7 +1063,7 @@ public sealed class ClaimTests
     }
 
     private static List<ClaimHeartbeatRequest> Beats(Harness h) =>
-        h.Wire.To("POST", "/api/hatch/issues/AER-1/claim/heartbeat")
+        h.Wire.To("POST", "/api/issues/AER-1/claim/heartbeat")
             .Select(c => c.Read<ClaimHeartbeatRequest>())
             .ToList();
 }

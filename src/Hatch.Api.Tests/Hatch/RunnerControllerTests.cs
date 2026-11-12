@@ -53,7 +53,7 @@ public sealed class RunnerControllerTests : IDisposable
 
         Assert.Equal(["win-x64", "osx-arm64"], offered.Select(d => d.Rid));
         Assert.Equal("hatch.exe", offered[0].FileName);
-        Assert.Equal("/api/hatch/runner/download/win-x64", offered[0].Url);
+        Assert.Equal("/api/runner/download/win-x64", offered[0].Url);
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public sealed class RunnerControllerTests : IDisposable
         var offered = Controller().Get().Downloads;
 
         Assert.Equal(["win-x64", "osx-arm64", "osx-x64", "linux-x64"], offered.Select(d => d.Rid));
-        Assert.All(offered, d => Assert.Equal($"/api/hatch/runner/download/{d.Rid}", d.Url));
+        Assert.All(offered, d => Assert.Equal($"/api/runner/download/{d.Rid}", d.Url));
         Assert.All(offered, d => Assert.False(string.IsNullOrWhiteSpace(d.Platform)));
     }
 

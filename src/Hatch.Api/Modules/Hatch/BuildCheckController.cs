@@ -27,7 +27,7 @@ namespace Hatch.Api.Modules.Hatch;
 /// <see cref="WorkController"/>.</para>
 /// </remarks>
 [ApiController]
-[Route("api/hatch/issues/{key}/build-check")]
+[Route("api/issues/{key}/build-check")]
 [RequireRole(PersonRole.User, AcceptKey = true)]
 public class BuildCheckController(
     HatchContext db, ICallerIdentity caller, TimeProvider time) : ControllerBase

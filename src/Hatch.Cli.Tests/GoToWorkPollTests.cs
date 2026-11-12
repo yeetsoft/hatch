@@ -10,9 +10,9 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class GoToWorkPollTests
 {
-    private const string Queue = "/api/hatch/work/queue";
-    private const string Review = "/api/hatch/work/review";
-    private const string Beat = "/api/hatch/runners/sessions";
+    private const string Queue = "/api/work/queue";
+    private const string Review = "/api/work/review";
+    private const string Beat = "/api/runners/sessions";
     private const string PrUrl = "https://github.com/o/r/pull/1";
 
     private static readonly string Trunk = new('a', 40);
@@ -21,12 +21,12 @@ public sealed class GoToWorkPollTests
     private static void OneTicket(Harness h, string key = "AER-1")
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{key}", Fixtures.Work(key, from: "In Review"));
-        h.Wire.Json("POST", $"/api/hatch/issues/{key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{key}/questions", Array.Empty<QuestionDto>());
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{key}", Fixtures.Work(key, from: "In Review"));
+        h.Wire.Json("POST", $"/api/issues/{key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{key}/questions", Array.Empty<QuestionDto>());
     }
 
     /// <summary>One issue in review whose branch has stopped merging, and a board that takes the verdict.</summary>
@@ -35,7 +35,7 @@ public sealed class GoToWorkPollTests
     {
         h.Wire.Json("GET", Review, new[] { Fixtures.Review(key, pullRequestUrl: pullRequestUrl) });
         h.Wire.Reply(
-            "PUT", $"/api/hatch/issues/{key}/merge-check", put,
+            "PUT", $"/api/issues/{key}/merge-check", put,
             put == HttpStatusCode.OK
                 ? System.Text.Json.JsonSerializer.Serialize(Fixtures.MergeCheck(), Fixtures.Json)
                 : "\"no\"");
@@ -57,7 +57,7 @@ public sealed class GoToWorkPollTests
 
         var routes = h.Wire.Calls.Select(c => c.Route).ToList();
         var beat = routes.IndexOf($"POST {Beat}");
-        var put = routes.IndexOf("PUT /api/hatch/issues/AER-9/merge-check");
+        var put = routes.IndexOf("PUT /api/issues/AER-9/merge-check");
         var queue = routes.IndexOf($"GET {Queue}");
 
         // The merge train now reads review independently, on its own clock, so
@@ -84,7 +84,7 @@ public sealed class GoToWorkPollTests
         // first tick - unconditional and immediate, on its own clock, the
         // moment the loop starts regardless of --once.
         Assert.Equal(2, h.Wire.To("GET", Review).Count);
-        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+        Assert.Single(h.Wire.To("PUT", "/api/issues/AER-9/merge-check"));
         Assert.Single(h.Sessions.Spawned);
     }
 
@@ -97,12 +97,12 @@ public sealed class GoToWorkPollTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, Array.Empty<QueueEntryDto>());
-        h.Wire.Json("GET", "/api/hatch/questions", Array.Empty<QuestionDto>());
+        h.Wire.Json("GET", "/api/questions", Array.Empty<QuestionDto>());
         InReview(h);
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+        Assert.Single(h.Wire.To("PUT", "/api/issues/AER-9/merge-check"));
         Assert.Empty(h.Sessions.Spawned);
     }
 
@@ -111,12 +111,12 @@ public sealed class GoToWorkPollTests
     {
         using var h = new Harness();
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row("AER-1") });
-        h.Wire.Reply("POST", "/api/hatch/issues/AER-1/claim", HttpStatusCode.Conflict, "\"hatch is working this from other:/tree, last heard from 8 seconds ago\"");
+        h.Wire.Reply("POST", "/api/issues/AER-1/claim", HttpStatusCode.Conflict, "\"hatch is working this from other:/tree, last heard from 8 seconds ago\"");
         InReview(h);
 
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
-        Assert.Single(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+        Assert.Single(h.Wire.To("PUT", "/api/issues/AER-9/merge-check"));
     }
 
     /// <summary>
@@ -127,7 +127,7 @@ public sealed class GoToWorkPollTests
     private static void HeadInReview(Harness h, string key = "AER-9")
     {
         h.Wire.Json("GET", Review, new[] { Fixtures.MergeRow(key, $"{key.ToLowerInvariant()}-thing", PrUrl, WorkKinds.Hold) });
-        h.Wire.Json("PUT", $"/api/hatch/issues/{key}/build-check", Fixtures.Build(BuildVerdicts.Passed, Fixtures.MergeCanonical, Tip));
+        h.Wire.Json("PUT", $"/api/issues/{key}/build-check", Fixtures.Build(BuildVerdicts.Passed, Fixtures.MergeCanonical, Tip));
         h.Forge.Answer = new ForgeAnswer(new BuildRead(BuildVerdicts.Passed, []), null);
     }
 
@@ -153,7 +153,7 @@ public sealed class GoToWorkPollTests
         await interrupting.CancelAsync();
         await running;
 
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-9/merge-check"));
         Assert.Empty(h.Workspace.Calls);
     }
 
@@ -180,7 +180,7 @@ public sealed class GoToWorkPollTests
         await interrupting.CancelAsync();
         await running;
 
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-9/merge-check"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-9/merge-check"));
 
         // The one exception: the wait's own self-check keeps this checkout
         // current, so it may hold a "prepare" call - never an "enter".
@@ -278,13 +278,13 @@ public sealed class GoToWorkPollTests
         using var h = new Harness();
         OneTicket(h);
         InReview(h);
-        h.Wire.Json("PUT", "/api/hatch/issues/AER-9/build-check", Fixtures.Build());
+        h.Wire.Json("PUT", "/api/issues/AER-9/build-check", Fixtures.Build());
         h.Forge.Answer = new ForgeAnswer(null, "gh is not installed");
 
         Assert.Equal(0, await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default));
 
         Assert.Single(h.Sessions.Spawned);
-        Assert.Empty(h.Wire.To("PUT", "/api/hatch/issues/AER-9/build-check"));
+        Assert.Empty(h.Wire.To("PUT", "/api/issues/AER-9/build-check"));
         Assert.Single(h.Say.Complained, l => l.Contains("could not read builds", StringComparison.Ordinal));
     }
 

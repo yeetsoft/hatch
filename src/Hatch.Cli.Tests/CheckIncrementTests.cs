@@ -12,9 +12,9 @@ namespace Hatch.Cli.Tests;
 /// </summary>
 public sealed class CheckIncrementTests
 {
-    private const string Queue = "/api/hatch/work/queue";
+    private const string Queue = "/api/work/queue";
     private const string Key = "AER-1";
-    private const string Verdict = "/api/hatch/work/AER-1/verdict";
+    private const string Verdict = "/api/work/AER-1/verdict";
 
     private static readonly StatusDto FromStatus = Fixtures.Status(3, "In Review");
     private static readonly StatusDto FailTarget = Fixtures.Status(4, "In Progress");
@@ -29,19 +29,19 @@ public sealed class CheckIncrementTests
     private static void Board(Harness h, WorkDto work, IReadOnlyList<QuestionDto>? questionsAfter = null)
     {
         h.Wire.Json("GET", Queue, new[] { Fixtures.Row(Key) });
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", work);
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/work-log", Fixtures.WorkLogRow());
-        h.Wire.Json("GET", $"/api/hatch/issues/{Key}/questions", questionsAfter ?? Array.Empty<QuestionDto>());
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
-        h.Wire.Json("PUT", $"/api/hatch/issues/{Key}/stall", Fixtures.Issue(Key));
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{Key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{Key}", work);
+        h.Wire.Json("POST", $"/api/issues/{Key}/work-log", Fixtures.WorkLogRow());
+        h.Wire.Json("GET", $"/api/issues/{Key}/questions", questionsAfter ?? Array.Empty<QuestionDto>());
+        h.Wire.Json("POST", $"/api/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Json("PUT", $"/api/issues/{Key}/stall", Fixtures.Issue(Key));
         h.Workspace.Entry = (path, _) => Entered(path);
     }
 
     private static List<CommentCreateRequest> Written(Harness h) =>
-        h.Wire.To("POST", $"/api/hatch/issues/{Key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
+        h.Wire.To("POST", $"/api/issues/{Key}/comments").Select(c => c.Read<CommentCreateRequest>()).ToList();
 
     // ---- Pass and first fail: the verdict moves the ticket ----
 
@@ -56,10 +56,10 @@ public sealed class CheckIncrementTests
 
         Assert.Equal(0, code);
         Assert.Single(h.Wire.To("POST", Verdict));
-        Assert.Empty(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Empty(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Contains(h.Say.Said, l => l == $"hatch: {Key} In Review -> Done");
 
-        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -74,10 +74,10 @@ public sealed class CheckIncrementTests
 
         Assert.Equal(0, code);
         Assert.Single(h.Wire.To("POST", Verdict));
-        Assert.Empty(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Empty(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Contains(h.Say.Said, l => l == $"hatch: {Key} In Review -> In Progress");
 
-        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -94,7 +94,7 @@ public sealed class CheckIncrementTests
 
         Assert.Equal(0, code);
         Assert.Empty(h.Wire.To("POST", Verdict));
-        Assert.Empty(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Empty(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
 
         var comment = Assert.Single(Written(h));
         Assert.Contains("let it go", comment.Body, StringComparison.Ordinal);
@@ -127,7 +127,7 @@ public sealed class CheckIncrementTests
         await new GoToWorkCommand(h.Runtime).RunAsync(["--once"], default);
 
         Assert.Empty(h.Wire.To("POST", Verdict));
-        var marked = Assert.Single(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        var marked = Assert.Single(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Contains("left it in", marked.Read<StallRequest>().Why, StringComparison.Ordinal);
     }
 
@@ -146,7 +146,7 @@ public sealed class CheckIncrementTests
         var comment = Assert.Single(Written(h));
         Assert.Contains("let it go", comment.Body, StringComparison.Ordinal);
 
-        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
         Assert.Contains("outcome=dropped", released.Query, StringComparison.Ordinal);
     }
 
@@ -163,10 +163,10 @@ public sealed class CheckIncrementTests
 
         Assert.Equal(0, code);
         Assert.Single(h.Wire.To("POST", Verdict));
-        Assert.Empty(h.Wire.To("PUT", $"/api/hatch/issues/{Key}/stall"));
+        Assert.Empty(h.Wire.To("PUT", $"/api/issues/{Key}/stall"));
         Assert.Empty(Written(h));
 
-        var released = Assert.Single(h.Wire.To("DELETE", $"/api/hatch/issues/{Key}/claim"));
+        var released = Assert.Single(h.Wire.To("DELETE", $"/api/issues/{Key}/claim"));
         Assert.Contains("outcome=worked", released.Query, StringComparison.Ordinal);
     }
 
@@ -176,11 +176,11 @@ public sealed class CheckIncrementTests
     public async Task An_attached_check_session_with_a_dirty_tree_writes_a_plain_comment_and_never_applies()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", CheckWork());
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
-        h.Wire.Json("POST", $"/api/hatch/issues/{Key}/comments", Fixtures.Comment());
+        h.Wire.Json("GET", $"/api/work/{Key}", CheckWork());
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{Key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("POST", $"/api/issues/{Key}/comments", Fixtures.Comment());
         h.Workspace.Entry = (path, _) => Entered(path);
         h.Workspace.TreeUnchangedAnswer = false;
 
@@ -197,10 +197,10 @@ public sealed class CheckIncrementTests
     public async Task An_attached_check_session_with_a_clean_tree_applies_the_verdict()
     {
         using var h = new Harness();
-        h.Wire.Json("GET", $"/api/hatch/work/{Key}", CheckWork());
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
-        h.Wire.Reply("POST", $"/api/hatch/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
-        h.Wire.Reply("DELETE", $"/api/hatch/issues/{Key}/claim", HttpStatusCode.NoContent);
+        h.Wire.Json("GET", $"/api/work/{Key}", CheckWork());
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim", HttpStatusCode.OK, Fixtures.Taken(Guid.NewGuid()));
+        h.Wire.Reply("POST", $"/api/issues/{Key}/claim/heartbeat", HttpStatusCode.NoContent);
+        h.Wire.Reply("DELETE", $"/api/issues/{Key}/claim", HttpStatusCode.NoContent);
         h.Wire.Json("POST", Verdict, Fixtures.Issue(Key, statusId: PassTarget.Id));
         h.Workspace.Entry = (path, _) => Entered(path);
 
