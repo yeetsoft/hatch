@@ -217,6 +217,16 @@
   outline-offset: 2px;
 }
 
+/* Tune: the same control at the width of its word, for the button that opens the configurator. A class after the
+   base and at its weight, so it only has to say what differs. */
+.hatch-theme-picker__button--text {
+  inline-size: auto;
+  padding: 0 var(--sp-2);
+  font-size: var(--t-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+}
+
 /* The seed field's rules are doubled up on the line's class: base.css styles
    `input[type="text"]` (an element and an attribute) and a lone class loses to
    it for the face, the padding and the border. */

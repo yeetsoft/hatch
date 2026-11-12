@@ -45,6 +45,20 @@ describe('ThemeSwitch', () => {
     expect(html.indexOf('aria-label="Copy link"')).toBeGreaterThan(html.indexOf('aria-label="Copy seed"'));
   });
 
+  it('has a Tune button named by its text, after the dice and enabled while Random is off', () => {
+    const tune = html.match(/<button[^>]*>Tune<\/button>/);
+    expect(tune).not.toBeNull();
+    expect(tune![0]).toContain('type="button"');
+    expect(tune![0]).not.toContain('disabled');
+    expect(tune![0]).not.toContain('aria-label');
+    expect(html.indexOf('>Tune<')).toBeGreaterThan(html.indexOf('aria-label="Roll a new theme"'));
+    expect(html.indexOf('>Tune<')).toBeLessThan(html.indexOf('aria-label="Theme seed"'));
+  });
+
+  it('draws no configurator until Tune is pressed', () => {
+    expect(html).not.toContain('role="dialog"');
+  });
+
   it('has a status region for the copy announcement, and no alert until a seed is refused', () => {
     expect(html).toMatch(/<span[^>]*role="status"/);
     expect(html).not.toContain('role="alert"');

@@ -17,6 +17,7 @@
     "./palette": "./src/theme/palette/index.ts",
     "./menuState": "./src/components/menuState.ts",
     "./dialMath": "./src/components/dialMath.ts",
+    "./tuneSession": "./src/theme/tuneSession.ts",
     "./readoutMath": "./src/components/readoutMath.ts",
     "./modalFocus": "./src/components/modalFocus.ts",
     "./calloutPlacement": "./src/components/calloutPlacement.ts",

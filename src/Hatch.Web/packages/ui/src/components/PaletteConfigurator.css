@@ -1,0 +1,189 @@
+/* <PaletteConfigurator>'s arrangement: the Instrument panel HA-2272 picked. The board, with its contrast readout,
+   across the top; the dial beside the sliders; a foot with the seed field, copy, and Roll, Revert and Apply.
+
+   The ground, the ink and the head's and foot's rules are the Modal's console tone, so this file paints only what is
+   inside it. Every colour is a console token: the candidate's own colours are the board's and the dial's, set inline
+   by them. The `.design-pc-*` rules in apps/hatch/src/App.css are the sketches this was drawn from; they stay where
+   they are until the gallery's sketches go, and nothing here imports them.
+
+   Nothing moves on its own. The two transitions are a hover and a focus ring, and are off under reduced motion. */
+
+.hatch-configurator {
+  display: grid;
+  gap: var(--sp-4);
+  /* Room for the dial's focus ring (offset 4px) and the sliders' thumbs inside a body that clips what overflows. */
+  padding: var(--sp-1);
+  min-width: 0;
+  color: var(--on-console);
+  font-family: var(--mono);
+}
+
+.hatch-configurator__block {
+  margin: 0;
+  color: var(--console-dim);
+  font-size: var(--t-label);
+}
+
+/* <ParameterControls> is one flex column; here the dial takes the first column and spans the sliders, which stack
+   in the second. Doubled with the container's class so it outranks the group's own rule whichever sheet is last. */
+.hatch-configurator .hatch-parameter-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--sp-5);
+  align-items: center;
+}
+
+.hatch-configurator .hatch-parameter-controls > .hatch-hue-dial {
+  grid-column: 1;
+  grid-row: 1 / span 5;
+}
+
+.hatch-configurator .hatch-parameter-controls > .hatch-parameter-slider {
+  grid-column: 2;
+}
+
+@media (max-width: 40rem) {
+  .hatch-configurator .hatch-parameter-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hatch-configurator .hatch-parameter-controls > .hatch-hue-dial,
+  .hatch-configurator .hatch-parameter-controls > .hatch-parameter-slider {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}
+
+/* ---- The foot ---- */
+
+.hatch-configurator__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-family: var(--mono);
+  color: var(--on-console);
+}
+
+.hatch-configurator__seed {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+/* Doubled up on the foot: base.css styles `input[type="text"]` (an element and an attribute) and a lone class
+   loses to it for the face, the padding and the border. */
+.hatch-configurator__foot .hatch-configurator__seed-input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--sp-1-5) var(--sp-2);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--on-console);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  transition: border-color var(--transition);
+}
+
+.hatch-configurator__foot .hatch-configurator__seed-input:focus-visible {
+  outline: 2px solid var(--console-glow);
+  outline-offset: 2px;
+}
+
+.hatch-configurator__foot .hatch-configurator__seed-input[aria-invalid='true'] {
+  border-color: var(--warn);
+}
+
+.hatch-configurator__icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--on-console);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.hatch-configurator__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hatch-configurator__action {
+  padding: var(--sp-1-5) var(--sp-3);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--on-console);
+  font-family: var(--mono);
+  font-size: var(--t-label);
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
+}
+
+.hatch-configurator__icon:hover,
+.hatch-configurator__action:hover {
+  border-color: var(--console-glow);
+  color: var(--console-glow);
+}
+
+/* Apply is the one filled control: the glow is the ground and the console the ink, which is the pair the console
+   tokens measure at 13.5:1. */
+.hatch-configurator__action.hatch-configurator__action--primary {
+  border-color: var(--console-glow);
+  background: var(--console-glow);
+  color: var(--console);
+}
+
+.hatch-configurator__action.hatch-configurator__action--primary:hover {
+  color: var(--console);
+  background: var(--on-console);
+  border-color: var(--on-console);
+}
+
+.hatch-configurator__icon:focus-visible,
+.hatch-configurator__action:focus-visible {
+  outline: 2px solid var(--console-glow);
+  outline-offset: 2px;
+}
+
+/* A refusal and the copy confirmation, both live regions, on their own line under the row. An empty status leaves
+   the flow rather than taking display:none, so it stays in the accessibility tree for the announcement to land in
+   and costs no gap. */
+.hatch-configurator__message {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--console-dim);
+  font-size: var(--t-label);
+  line-height: var(--lh-tight);
+}
+
+[role='alert'].hatch-configurator__message {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.hatch-configurator__status:empty {
+  position: absolute;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-configurator__foot .hatch-configurator__seed-input,
+  .hatch-configurator__icon,
+  .hatch-configurator__action {
+    transition: none;
+  }
+}

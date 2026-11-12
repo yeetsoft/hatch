@@ -5,6 +5,10 @@ import './Modal.css';
 
 export type ModalWidth = 'default' | 'narrow';
 
+/** The ground the panel is painted on. `card` is the house dialog; `console` is the dark instrument ground the
+    palette configurator is drawn for (`--console`, with its `--console-*` siblings). */
+export type ModalTone = 'card' | 'console';
+
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -19,6 +23,9 @@ export interface ModalProps {
       for a dialog whose content is a reading measure of its own, not the
       house's 720px. */
   width?: ModalWidth;
+  /** `console` paints the panel on `--console` with `--on-console` ink, for a dialog whose content is drawn for
+      that ground. Left off, the card it has always been. */
+  tone?: ModalTone;
 }
 
 /**
@@ -78,7 +85,7 @@ export interface ModalProps {
  * finds `wasOpenRef` already set. A server render has no `document` and no effect,
  * so it records nothing.
  */
-export function Modal({ open, onClose, title, children, footer, width = 'default' }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, width = 'default', tone = 'card' }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<Element | null>(null);
@@ -130,7 +137,7 @@ export function Modal({ open, onClose, title, children, footer, width = 'default
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`hatch-card hatch-modal__panel${framed ? ' hatch-modal__panel--framed' : ''}${width === 'narrow' ? ' hatch-modal__panel--narrow' : ''}`}
+        className={`hatch-card hatch-modal__panel${framed ? ' hatch-modal__panel--framed' : ''}${width === 'narrow' ? ' hatch-modal__panel--narrow' : ''}${tone === 'console' ? ' hatch-modal__panel--console' : ''}`}
       >
         <div className="hatch-modal__head">
           <h3 id={titleId}>{title}</h3>

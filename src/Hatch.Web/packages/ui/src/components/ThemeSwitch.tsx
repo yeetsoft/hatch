@@ -3,7 +3,10 @@ import { useTheme } from '../theme/useTheme';
 import type { ThemeChoice } from '../theme/themeContext';
 import { checkSeed, rollSeed } from '../theme/randomPalette';
 import { shareLink } from '../theme/sharedSeed';
-import { COPY_SHAPES, DIE_SHAPES, LINK_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from './themePickerIcons';
+import { COPY_SHAPES, DIE_SHAPES, LINK_SHAPES } from './themePickerIcons';
+import { PickerIcon } from './PickerIcon';
+import { PaletteConfigurator } from './PaletteConfigurator';
+import { useCopyAnnounce } from './useCopyAnnounce';
 import './ThemeSwitch.css';
 
 /** The ground the switch is sitting on. `surface` is a page or a card - the
@@ -17,28 +20,6 @@ const CHOICES: { value: ThemeChoice; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ];
-
-/** How long "Seed copied" stays up. */
-const COPIED_MS = 2000;
-
-function Icon({ shapes }: { shapes: IconShape[] }) {
-  return (
-    <svg
-      viewBox={PICKER_ICON_VIEWBOX}
-      width="18"
-      height="18"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {shapes.map((shape, at) =>
-        shape.tag === 'rect' ? <rect key={at} {...shape.attrs} /> : <circle key={at} {...shape.attrs} />,
-      )}
-    </svg>
-  );
-}
 
 /**
  * The control for the mechanism Phase 1 shipped: `auto` defers to the OS,
@@ -75,8 +56,10 @@ export function ThemeSwitch({
   const shown = palette ?? lastSeed ?? '';
   const [draft, setDraft] = useState(shown);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [copied, setCopied] = useState('');
-  const copiedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { message: copied, copy } = useCopyAnnounce();
+  const [tuning, setTuning] = useState(false);
+  const tuneRef = useRef<HTMLButtonElement>(null);
+  const wasTuning = useRef(false);
   const random = palette !== null;
 
   /* A roll, a Random toggle or a paste elsewhere moves the seed under the
@@ -89,7 +72,19 @@ export function ThemeSwitch({
     setRefusal(null);
   }, [shown]);
 
-  useEffect(() => () => clearTimeout(copiedTimer.current), []);
+  /* The configurator is portalled out of the gear's panel (which translates and clips, and would hold a fixed
+     overlay inside itself), and focus moving into it closes the gear, so by the time the dialog hands focus back
+     Tune is in a `visibility: hidden` panel and cannot take it. Where it could not, the gear's own trigger is the
+     nearest place the operator was. Runs after the dialog's own cleanup, which is where it tried. */
+  useEffect(() => {
+    if (wasTuning.current && !tuning) {
+      const tune = tuneRef.current;
+      if (tune && document.activeElement !== tune) {
+        tune.closest<HTMLElement>('.hatch-menu')?.querySelector<HTMLElement>('.hatch-menu__trigger')?.focus();
+      }
+    }
+    wasTuning.current = tuning;
+  }, [tuning]);
 
   const commit = () => {
     const text = draft.trim();
@@ -109,19 +104,6 @@ export function ThemeSwitch({
       setDraft(shown);
       setRefusal(null);
     }
-  };
-
-  const announce = (message: string) => {
-    setCopied(message);
-    clearTimeout(copiedTimer.current);
-    copiedTimer.current = setTimeout(() => setCopied(''), COPIED_MS);
-  };
-
-  const copy = (text: string, done: string, failMessage: string) => {
-    /* Plain http has no clipboard, and a denied permission rejects. */
-    const failed = () => announce(failMessage);
-    if (!navigator.clipboard) return failed();
-    navigator.clipboard.writeText(text).then(() => announce(done), failed);
   };
 
   return (
@@ -160,9 +142,18 @@ export function ThemeSwitch({
           disabled={!random}
           onClick={() => setPalette(rollSeed())}
         >
-          <Icon shapes={DIE_SHAPES} />
+          <PickerIcon shapes={DIE_SHAPES} />
         </button>
-        {/* The configurator's Tune button belongs here, after the dice. */}
+        {/* Named by its text, and enabled with Random on or off: tuning from the house palette is how a first seed
+            gets made. */}
+        <button
+          ref={tuneRef}
+          type="button"
+          className="hatch-theme-picker__button hatch-theme-picker__button--text"
+          onClick={() => setTuning(true)}
+        >
+          Tune
+        </button>
         <input
           type="text"
           className="hatch-theme-picker__seed"
@@ -188,7 +179,7 @@ export function ThemeSwitch({
           disabled={shown === ''}
           onClick={() => copy(shown, 'Seed copied', 'Could not copy - select the seed and copy it by hand')}
         >
-          <Icon shapes={COPY_SHAPES} />
+          <PickerIcon shapes={COPY_SHAPES} />
         </button>
         <button
           type="button"
@@ -198,7 +189,7 @@ export function ThemeSwitch({
           disabled={shown === ''}
           onClick={() => copy(shareLink(shown), 'Link copied', 'Could not copy the link')}
         >
-          <Icon shapes={LINK_SHAPES} />
+          <PickerIcon shapes={LINK_SHAPES} />
         </button>
       </div>
       {refusal !== null ? (
@@ -209,6 +200,7 @@ export function ThemeSwitch({
       <span className="hatch-theme-picker__message hatch-theme-picker__status" role="status">
         {copied}
       </span>
+      <PaletteConfigurator open={tuning} onClose={() => setTuning(false)} />
     </div>
   );
 }
