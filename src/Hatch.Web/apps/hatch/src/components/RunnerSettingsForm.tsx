@@ -9,12 +9,13 @@ import {
   settingsChanged,
   settingsOf,
   settingsRequest,
+  type RunnerSettingsRequest,
 } from '../lib/runners';
-import type { Runner, RunnerPatchRequest, RunnerSession } from '../types';
+import type { Runner, RunnerSession } from '../types';
 
 /**
- * The detail's "What it may work" card: the runner's tags and its under, saved
- * on their own button and never together with the ceilings.
+ * The detail's "What it may work" card: the runner's tags, its under and the
+ * models it refuses, saved on their own button and never together with the ceilings.
  *
  * Saved on a button rather than on blur, as the bounds are: an epic key
  * half-typed is not one to send. `refusal` is the server's refusal of the last
@@ -33,7 +34,7 @@ export function RunnerSettingsForm({
   live: RunnerSession[];
   editable: boolean;
   refusal: string | null;
-  onSave: (request: RunnerPatchRequest) => void;
+  onSave: (request: RunnerSettingsRequest) => void;
 }) {
   const [draft, setDraft] = useState(settingsOf(runner));
   const dirty = settingsChanged(draft, runner);
@@ -62,6 +63,12 @@ export function RunnerSettingsForm({
             <Field label="Under" hint="An epic to stay inside, like AER-930. Empty is the whole board.">
               <input value={draft.under} onChange={(e) => setDraft({ ...draft, under: e.target.value })} />
             </Field>
+            <RunnerTagsField
+              label="Refuses models"
+              hint="One model per line, like fable or claude-opus-5. Empty refuses none. Binds on the board's very next dispatch read, not on the next heartbeat the way tags do."
+              value={draft.refusedModels}
+              onChange={(refusedModels) => setDraft({ ...draft, refusedModels })}
+            />
           </div>
           {isIssueKeyShape(draft.under) && <Text tone="muted">{underLink(draft.under.trim())}</Text>}
 
@@ -80,6 +87,7 @@ export function RunnerSettingsForm({
         <>
           <Text>Tags: {runner.tags.length === 0 ? 'any runner' : runner.tags.join(', ')}</Text>
           <Text>Under: {runner.under ? underLink(runner.under) : 'the whole board'}</Text>
+          <Text>Refuses: {runner.refusedModels.length === 0 ? 'nothing' : runner.refusedModels.join(', ')}</Text>
         </>
       )}
 
