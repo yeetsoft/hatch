@@ -226,13 +226,13 @@ export function breakdown(
   return { rows, total: rows.reduce((sum, row) => sum + row.count, 0) };
 }
 
-/** A moment's label: the day alone on a `day` or `week` step, the day plus the
-    time on `hour`. */
-export function momentLabel(at: string, step: CumulativeFlow['step'], locale?: string): string {
+/** A moment's label: the day alone on a step of a day or more, the day plus
+    the time on anything finer. */
+export function momentLabel(at: string, stepMinutes: number, locale?: string): string {
   const date = new Date(at);
   const day = date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 
-  return step === 'hour' ? `${day} ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : day;
+  return stepMinutes < 1440 ? `${day} ${date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}` : day;
 }
 
 /** The custom properties a band is painted with - its column's or its

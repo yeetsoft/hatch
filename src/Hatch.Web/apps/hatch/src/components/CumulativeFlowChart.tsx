@@ -232,7 +232,7 @@ export function CumulativeFlowChart({
                   style={{ top: pointer.y + GAP, left: near ? pointer.x - GAP - CARD_WIDTH : pointer.x + GAP }}
                 >
                   <div className="hatch-cumulative-flow-card-moment">
-                    {momentLabel(hovered.at, answer.step, locale)}
+                    {momentLabel(hovered.at, answer.stepMinutes, locale)}
                   </div>
 
                   {hoveredBreakdown.rows.map((row) => (
@@ -257,7 +257,7 @@ export function CumulativeFlowChart({
           by={by}
           statuses={statuses}
           projects={projects}
-          step={answer.step}
+          stepMinutes={answer.stepMinutes}
           locale={locale}
         />
       </div>

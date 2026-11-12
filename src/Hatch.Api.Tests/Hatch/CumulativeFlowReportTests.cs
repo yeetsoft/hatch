@@ -347,15 +347,16 @@ public class CumulativeFlowReportTests
         var from = Day(-5);
         var now = Day(0);
 
-        var offGrid = Fold([row], from: from, to: from.AddHours(2.5), now: now);
-        Assert.Equal(
-            [from, from.AddHours(1), from.AddHours(2), from.AddHours(2.5)],
-            offGrid.Points.Select(p => p.At));
+        var offGrid = Fold([row], from: from, to: from.AddMinutes(1002), now: now);
+        Assert.Equal(5, offGrid.StepMinutes);
+        Assert.Equal(202, offGrid.Points.Count);
+        Assert.Equal(from.AddMinutes(1000), offGrid.Points[^2].At);
+        Assert.Equal(from.AddMinutes(1002), offGrid.Points[^1].At);
 
-        var onGrid = Fold([row], from: from, to: from.AddHours(3), now: now);
-        Assert.Equal(
-            [from, from.AddHours(1), from.AddHours(2), from.AddHours(3)],
-            onGrid.Points.Select(p => p.At));
+        var onGrid = Fold([row], from: from, to: from.AddMinutes(1000), now: now);
+        Assert.Equal(5, onGrid.StepMinutes);
+        Assert.Equal(201, onGrid.Points.Count);
+        Assert.Equal(from.AddMinutes(1000), onGrid.Points[^1].At);
     }
 
     [Fact]
@@ -415,46 +416,74 @@ public class CumulativeFlowReportTests
     }
 
     [Theory]
-    [InlineData(999, "hour")]
-    [InlineData(1000, "day")]
-    [InlineData(998.5, "hour")]
-    [InlineData(999.5, "day")]
-    public void StepRule_AtTheHourDayBoundary(double hours, string expected)
+    [InlineData(999, 1)]
+    [InlineData(1000, 5)]
+    [InlineData(4995, 5)]
+    [InlineData(4996, 15)]
+    [InlineData(14985, 15)]
+    [InlineData(14986, 30)]
+    [InlineData(29970, 30)]
+    [InlineData(29971, 60)]
+    [InlineData(59940, 60)]
+    [InlineData(59941, 180)]
+    [InlineData(179820, 180)]
+    [InlineData(179821, 360)]
+    [InlineData(359640, 360)]
+    [InlineData(359641, 720)]
+    [InlineData(719280, 720)]
+    [InlineData(719281, 1440)]
+    [InlineData(1438560, 1440)]
+    [InlineData(1438561, 10080)]
+    public void StepRule_AtEachRungEdge(int minutes, int expected)
     {
         var from = Day(0);
-        var to = from.AddHours(hours);
+        var to = from.AddMinutes(minutes);
         var row = Issue(1, "epic", 1, from);
 
         var result = Fold([row], from: from, to: to, now: to);
 
-        Assert.Equal(expected, result.Step);
+        Assert.Equal(expected, result.StepMinutes);
     }
 
     [Fact]
-    public void StepRule_999Hours_Is1000Points()
+    public void StepRule_999Minutes_Is1000Points()
     {
         var from = Day(0);
-        var to = from.AddHours(999);
+        var to = from.AddMinutes(999);
         var row = Issue(1, "epic", 1, from);
 
         var result = Fold([row], from: from, to: to, now: to);
 
-        Assert.Equal("hour", result.Step);
+        Assert.Equal(1, result.StepMinutes);
         Assert.Equal(1000, result.Points.Count);
     }
 
-    [Theory]
-    [InlineData(999, "day")]
-    [InlineData(1000, "week")]
-    public void StepRule_AtTheDayWeekBoundary(double days, string expected)
+    [Fact]
+    public void StepRule_AnHourWindow_IsAPointAMinute()
     {
         var from = Day(0);
-        var to = from.AddDays(days);
+        var to = from.AddHours(1);
         var row = Issue(1, "epic", 1, from);
 
         var result = Fold([row], from: from, to: to, now: to);
 
-        Assert.Equal(expected, result.Step);
+        Assert.Equal(1, result.StepMinutes);
+        Assert.Equal(61, result.Points.Count);
+        Assert.All(result.Points.Zip(result.Points.Skip(1)), p => Assert.Equal(TimeSpan.FromMinutes(1), p.Second.At - p.First.At));
+    }
+
+    [Fact]
+    public void StepRule_NinetyDays_IsEveryThreeHours()
+    {
+        var from = Day(0);
+        var to = from.AddDays(90);
+        var row = Issue(1, "epic", 1, from);
+
+        var result = Fold([row], from: from, to: to, now: to);
+
+        Assert.Equal(180, result.StepMinutes);
+        Assert.Equal(721, result.Points.Count);
+        Assert.All(result.Points.Zip(result.Points.Skip(1)), p => Assert.Equal(TimeSpan.FromHours(3), p.Second.At - p.First.At));
     }
 
     [Fact]
@@ -466,7 +495,7 @@ public class CumulativeFlowReportTests
 
         var result = Fold([row], from: from, to: to, now: to);
 
-        Assert.Equal("week", result.Step);
+        Assert.Equal(10080, result.StepMinutes);
         Assert.True(result.Points.Count > WorkLogController.MaxBuckets);
     }
 }

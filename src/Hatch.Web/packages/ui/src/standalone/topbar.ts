@@ -20,7 +20,8 @@
    on both pages, and on the logo page it would be React's *second* copy.
 
    The rule that keeps the two in step: this file may not invent a class name.
-   Every one below appears in TopBar.tsx, ThemeSwitch.tsx or Menu.tsx.
+   Every one below appears in TopBar.tsx, ThemeSwitch.tsx or Menu.tsx
+   (standaloneClasses.test.ts holds it to that).
 
    base.css is deliberately NOT imported. It paints the body - face, ground,
    heading scale - and these are host pages with their own designs. The bar
@@ -36,6 +37,8 @@ import {
   writeChoice,
   type ThemeChoice,
 } from '../theme/themeStore';
+import { checkSeed, readLastSeed, rollSeed, storePalette } from '../theme/randomPalette';
+import { COPY_SHAPES, DIE_SHAPES, PICKER_ICON_VIEWBOX, type IconShape } from '../components/themePickerIcons';
 
 /* The mark's geometry, the same two paths <HatchMark> draws; see TopBar.tsx. */
 import { HATCH_MARK_BODY, HATCH_MARK_CAP, HATCH_MARK_VIEWBOX } from '../brand/hatchMark';
@@ -95,6 +98,9 @@ let groupSeq = 0;
    aria-controls target. */
 let menuSeq = 0;
 
+/* And for the refusal a seed field points at with aria-describedby. */
+let messageSeq = 0;
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** HatchMark.tsx's artwork, restated in DOM calls - the same two paths from
@@ -133,15 +139,169 @@ function brand(href: string, name: string): HTMLAnchorElement {
   return link;
 }
 
+/** The die and copy glyphs, drawn from the shapes ThemeSwitch.tsx draws. */
+function pickerIcon(shapes: IconShape[]): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', PICKER_ICON_VIEWBOX);
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  for (const shape of shapes) {
+    const element = document.createElementNS(SVG_NS, shape.tag);
+    for (const [attr, value] of Object.entries(shape.attrs)) element.setAttribute(attr, value);
+    svg.appendChild(element);
+  }
+  return svg;
+}
+
+/** How long "Seed copied" stays up, as in ThemeSwitch.tsx. */
+const COPIED_MS = 2000;
+
+/**
+ * The palette line of ThemeSwitch.tsx: Random, the dice, the seed and its copy
+ * button, driving the store directly. `storePalette` then `applyPalette` is
+ * what <ThemeProvider>'s setPalette does, so a seed set here is the seed an
+ * app opens with.
+ */
+function paletteLine(): HTMLElement[] {
+  /* The seed in the field, and what Random-off keeps. */
+  let applied = readPalette();
+  let last = readLastSeed();
+  const shown = () => applied ?? last ?? '';
+
+  const line = document.createElement('div');
+  line.className = 'hatch-theme-picker__line';
+
+  const randomLabel = document.createElement('label');
+  randomLabel.className = 'hatch-theme-picker__random';
+  const toggle = document.createElement('input');
+  toggle.type = 'checkbox';
+  toggle.setAttribute('role', 'switch');
+  const track = document.createElement('span');
+  track.className = 'hatch-theme-picker__track';
+  track.setAttribute('aria-hidden', 'true');
+  const randomText = document.createElement('span');
+  randomText.textContent = 'Random';
+  randomLabel.append(toggle, track, randomText);
+
+  const dice = document.createElement('button');
+  dice.type = 'button';
+  dice.className = 'hatch-theme-picker__button';
+  dice.setAttribute('aria-label', 'Roll a new theme');
+  dice.title = 'Roll a new theme';
+  dice.appendChild(pickerIcon(DIE_SHAPES));
+
+  const seed = document.createElement('input');
+  seed.type = 'text';
+  seed.className = 'hatch-theme-picker__seed';
+  seed.setAttribute('aria-label', 'Theme seed');
+  seed.spellcheck = false;
+  seed.autocomplete = 'off';
+  seed.autocapitalize = 'off';
+
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'hatch-theme-picker__button';
+  copy.setAttribute('aria-label', 'Copy seed');
+  copy.title = 'Copy seed';
+  copy.appendChild(pickerIcon(COPY_SHAPES));
+
+  /* A <p> that exists only while there is something to say; the status is
+     always there, so the announcement has a region to land in. */
+  const refusal = document.createElement('p');
+  refusal.className = 'hatch-theme-picker__message';
+  refusal.setAttribute('role', 'alert');
+  refusal.id = `hatch-theme-seed-message-${(messageSeq += 1)}`;
+  refusal.hidden = true;
+
+  const status = document.createElement('span');
+  status.className = 'hatch-theme-picker__message hatch-theme-picker__status';
+  status.setAttribute('role', 'status');
+
+  const refuse = (message: string | null) => {
+    refusal.textContent = message ?? '';
+    refusal.hidden = message === null;
+    if (message === null) {
+      seed.removeAttribute('aria-invalid');
+      seed.removeAttribute('aria-describedby');
+    } else {
+      seed.setAttribute('aria-invalid', 'true');
+      seed.setAttribute('aria-describedby', refusal.id);
+    }
+  };
+
+  /* One place the line is redrawn from, after anything moves the seed. */
+  const render = () => {
+    toggle.checked = applied !== null;
+    dice.disabled = applied === null;
+    seed.value = shown();
+    copy.disabled = shown() === '';
+    refuse(null);
+  };
+
+  const set = (next: string | null) => {
+    storePalette(next);
+    applyPalette(next);
+    applied = next;
+    if (next !== null) last = next;
+    render();
+  };
+
+  toggle.addEventListener('change', () => set(applied === null ? (last ?? rollSeed()) : null));
+  dice.addEventListener('click', () => set(rollSeed()));
+
+  const commit = () => {
+    const text = seed.value.trim();
+    if (text === '' || text === shown()) return;
+    const checked = checkSeed(text);
+    if (checked.ok) set(checked.seed);
+    else refuse(checked.message);
+  };
+  seed.addEventListener('input', () => refuse(null));
+  seed.addEventListener('blur', commit);
+  seed.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+    } else if (event.key === 'Escape' && (seed.value !== shown() || !refusal.hidden)) {
+      /* Revert, and keep the Escape: the gear would close on it otherwise. */
+      event.stopPropagation();
+      render();
+    }
+  });
+
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  const announce = (message: string) => {
+    status.textContent = message;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (status.textContent = ''), COPIED_MS);
+  };
+  copy.addEventListener('click', () => {
+    const failed = () => announce('Could not copy - select the seed and copy it by hand');
+    if (!navigator.clipboard) return failed();
+    navigator.clipboard.writeText(shown()).then(() => announce('Seed copied'), failed);
+  });
+
+  /* The configurator's Tune button belongs here, after the dice. */
+  line.append(randomLabel, dice, seed, copy);
+  render();
+  return [line, refusal, status];
+}
+
 /**
  * ThemeSwitch.tsx, in the `surface` tone: it sits inside the gear's own
- * card-surfaced panel now, not directly on the bar's fill.
+ * card-surfaced panel now, not directly on the bar's fill. The radios and the
+ * palette line beneath them, in the same wrapper.
  *
  * Real radio inputs, for the reason the component gives: the browser then
  * supplies the whole keyboard contract - one tab stop for the group, arrows to
  * move within it - and the grouping is announced off the fieldset/legend.
  */
-function themeSwitch(): HTMLFieldSetElement {
+function themeSwitch(): HTMLDivElement {
   const name = `hatch-theme-${(groupSeq += 1)}`;
   const current = readChoice();
 
@@ -177,7 +337,10 @@ function themeSwitch(): HTMLFieldSetElement {
     fieldset.appendChild(label);
   }
 
-  return fieldset;
+  const picker = document.createElement('div');
+  picker.className = 'hatch-theme-picker';
+  picker.append(fieldset, ...paletteLine());
+  return picker;
 }
 
 /** GearIcon.tsx's artwork, restated in DOM calls - see themeSwitch() above
